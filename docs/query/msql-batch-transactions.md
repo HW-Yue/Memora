@@ -1,6 +1,6 @@
 # MSQL Batch 与事务边界 v1
 
-状态：F12 已实现；多语句 AST 和 session 事务边界状态机已冻结，尚不执行数据事务。
+状态：F12 Parser 与 F16b Batch Executor 已实现；F16c 将补齐 Parser 错误恢复和 daemon IPC 接线。
 
 ## Batch Parser
 
@@ -52,6 +52,44 @@ active --COMMIT/ROLLBACK--> idle
 同一 batch 在前面已成功发生的状态转换不会因后续非法边界自动撤销。例如 `BEGIN; BEGIN` 在第二项失败后仍为 active；F16 接入真实 Store transaction 后负责失败回滚策略。
 
 短生命周期 CLI 退出和 IPC session 关闭时必须在 F16 回滚 active transaction，不允许把状态带到新连接。
+
+## Batch Executor
+
+F16b 的 request 将 SQL 与每条 statement 的结构化输入分离：
+
+```json
+{
+  "request_id": "request-7",
+  "source": "BEGIN; UPDATE work.notes SET title = :title WHERE row_id = :id; COMMIT",
+  "statements": [
+    {},
+    {
+      "parameters": {"named": {"title": "新标题", "id": "row_..."}, "positional": []},
+      "mutation": {
+        "expected_schema_version": 3,
+        "expected_revision": 7,
+        "max_affected_rows": 1
+      }
+    },
+    {}
+  ]
+}
+```
+
+`statements` 可以整体省略；一旦提供，数量必须与解析后的 statement 数量严格一致。Parameter 和 mutation guard 不跨 statement 复用，也不插值到 `source`。
+
+一个 Batch Session 串行执行 request，并持有跨 request 的 active Store transaction。事务内 Catalog 绑定、SELECT 和 Row mutation 都使用同一个 transaction scope，因此可以读取自己的未提交写入。session close 必须幂等回滚。
+
+执行状态：
+
+- 事务外每条语句 autocommit；失败项不阻止后续独立语句；
+- 显式事务中的读失败返回 `failed`，但不自动中止事务；
+- 显式事务中的写失败立即回滚；此前成功项改为 `rolled_back`，后续项和结束边界为 `skipped`；
+- 越过被跳过的 COMMIT/ROLLBACK 后，后续事务外语句继续执行；
+- 显式 ROLLBACK 自身为 `succeeded`，事务中此前已执行项为 `rolled_back`；
+- BEGIN/COMMIT/ROLLBACK 的非法状态只让该边界 `failed`，不伪造 Store 状态转换。
+
+F16b 在完整 AST 上执行。F16c 将已定位 Parser error 作为 statement result，并从 Lexer token 边界恢复后续 statement；在此之前无法形成完整 statement list 的解析失败仍是 request error。
 
 ## 关联
 

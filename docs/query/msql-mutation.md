@@ -1,6 +1,6 @@
 # MSQL Mutation Executor v1
 
-状态：F15e 已实现；F16 将其接入 batch transaction 和 Result Envelope。
+状态：F15e Executor 与 F16b batch transaction / Result Envelope 接线已实现。
 
 ## Request options
 

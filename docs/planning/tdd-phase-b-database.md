@@ -48,13 +48,21 @@
 
 提交：`feat(F16a): expose transaction-scoped row operations`
 
-## F16b Batch 与事务执行
+## F16b Batch 事务执行核心
 
 先测：autocommit 独立失败继续；显式事务内写失败全回滚；读失败结构化返回；事务后独立语句继续。
 
-开发：连接 session、Store transaction 和 batch envelope，严格实现已确认语义。
+开发：连接长驻 MSQL session、Store transaction 和 batch envelope，严格实现已确认语义；session close 回滚未提交事务。
 
 提交：`feat(F16b): execute atomic MSQL batches`
+
+## F16c 可恢复解析与 IPC Session
+
+先测：已定位的 Parser 错误进入对应 statement result；安全恢复后续语句；同一 IPC connection 跨 request 复用事务，断连回滚。
+
+开发：Parser 在 token 边界恢复 batch item；daemon 为每个 IPC session 持有 Batch Executor，并暴露版本化 `msql.execute` payload。
+
+提交：`feat(F16c): connect batch execution to IPC sessions`
 
 ## F17 History Store
 
