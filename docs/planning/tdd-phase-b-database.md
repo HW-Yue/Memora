@@ -26,11 +26,13 @@
 
 ## F15 Row CRUD 与 revision
 
-实现按代码规模门槛拆成三个原子切片：
+实现按代码规模门槛拆成五个原子切片：
 
 - F15a：持久 Row、稳定 `row_id`、按 `column_id` 编码、类型校验和重启读取；
 - F15b：expected revision、UPDATE、逻辑 DELETE 和并发冲突；
-- F15c：参数化 MSQL Binder/Planner/CRUD Executor、影响行数预算和注入边界。
+- F15c：命名/位置参数绑定和类型化表达式求值；
+- F15d：Column/Table Binder 和有界 SELECT Planner；
+- F15e：参数化 INSERT/UPDATE/DELETE Executor、影响行数预算和注入边界。
 
 先测：参数化 CRUD、稳定 row_id、expected revision 成功/冲突、逻辑 DELETE、影响行数上限和 SQL 注入样例。
 
