@@ -79,6 +79,7 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 	inserted, err := engine.rows.Insert(ctx, databaseName, tableName, values, datarow.WriteOptions{
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		Metadata:              mutationMetadata(options),
+		IndexTerms:            options.IndexTerms,
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -121,6 +122,7 @@ func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, b
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		ExpectedRevision:      options.ExpectedRevision,
 		Metadata:              mutationMetadata(options),
+		IndexTerms:            options.IndexTerms,
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)

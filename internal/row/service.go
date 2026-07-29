@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/agentindex"
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/relation"
@@ -53,12 +54,14 @@ type Options struct {
 	Clock          Clock
 	RelationIDs    relation.IDSource
 	RelationPolicy RelationPolicy
+	AgentIndex     agentindex.Options
 }
 
 type Service struct {
 	store          store.Store
 	catalog        Catalog
 	history        *history.Service
+	agentIndex     *agentindex.Service
 	relations      *relation.Service
 	ids            IDSource
 	clock          Clock
@@ -83,6 +86,7 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 	}
 	return &Service{
 		store: database, catalog: dictionary, history: history.New(database),
+		agentIndex: agentindex.New(database, options.AgentIndex),
 		relations: relation.New(database, relation.Options{
 			IDs: options.RelationIDs, Clock: options.Clock,
 		}),

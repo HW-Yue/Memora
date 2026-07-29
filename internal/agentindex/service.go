@@ -63,6 +63,20 @@ func New(database store.Store, options Options) *Service {
 func (service *Service) TargetTerms() int { return service.targetTerms }
 func (service *Service) MaxTerms() int    { return service.maxTerms }
 
+func (service *Service) ValidateTerms(terms []string) error {
+	normalized, err := normalizeTerms(terms)
+	if err != nil {
+		return err
+	}
+	if len(normalized) > service.maxTerms {
+		return indexError(
+			result.CodeConstraint,
+			fmt.Sprintf("Agent index has %d terms; maximum is %d", len(normalized), service.maxTerms),
+		)
+	}
+	return nil
+}
+
 func (service *Service) ReplaceIn(
 	ctx context.Context,
 	tx store.Tx,
@@ -72,16 +86,10 @@ func (service *Service) ReplaceIn(
 	if err := validateLocator(locator); err != nil {
 		return Snapshot{}, err
 	}
-	normalized, err := normalizeTerms(terms)
-	if err != nil {
+	if err := service.ValidateTerms(terms); err != nil {
 		return Snapshot{}, err
 	}
-	if len(normalized) > service.maxTerms {
-		return Snapshot{}, indexError(
-			result.CodeConstraint,
-			fmt.Sprintf("Agent index has %d terms; maximum is %d", len(normalized), service.maxTerms),
-		)
-	}
+	normalized, _ := normalizeTerms(terms)
 	return service.replaceIn(ctx, tx, Snapshot{
 		Version: Version, Locator: locator, Source: SourceAgent,
 		State: StateActive, Terms: normalized,

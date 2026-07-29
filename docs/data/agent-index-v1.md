@@ -1,6 +1,6 @@
 # Agent Inverted Index v1
 
-状态：F19a 已冻结完整词项快照、posting 和预算；Row/MSQL 原子接入由 F19b 完成。
+状态：F19a/F19b 已冻结完整词项快照、posting、预算与 Row/MSQL 原子接入。
 
 ## 输入契约
 
@@ -40,6 +40,10 @@ database_id + normalized_term
 ## 查询边界
 
 F19 的 lookup 是精确规范化词项到 Row locator 的有界查询，最多返回 1000 个 posting。posting 明确标记 `source=agent`，只用于候选发现，不返回 Row 正文；调用方必须用 SELECT 回表。
+
+`INSERT`、`UPDATE` 和 `RESTORE` 可在 MSQL mutation options 中携带非 nil `index_terms` 完整快照。空数组表示“本 revision 明确没有 Agent 词项”，字段缺失表示本次没有提供新快照。Row 当前记录、History 和 posting 在同一事务中提交；DELETE 总是写入 invalid 快照并移除活跃 posting。
+
+普通 UPDATE 缺少 `index_terms` 时的 durable `pending_reindex` 状态和后台重建属于 F24；在 F24 完成前，Agent 维护链路必须随语义修改提供完整快照。
 
 F20 的机械 posting 使用独立来源和结构。F21 才负责两路归一化与融合评分。
 

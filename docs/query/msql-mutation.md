@@ -18,13 +18,16 @@ MSQL source、parameter values 和 mutation guard 分字段提交：
   "max_affected_rows": 1,
   "actor": "agent:codex",
   "source": "conversation:event-42",
-  "reason": "用户确认新标题"
+  "reason": "用户确认新标题",
+  "index_terms": ["新标题", "项目状态"]
 }
 ```
 
 INSERT 要求非零 `expected_schema_version` 和 1–1000 的 `max_affected_rows`。UPDATE/DELETE 还要求非零 `expected_revision`。Guard 不属于 SQL 字符串，不能被参数内容或注释改变。
 
 F17a 的 `actor`、`source` 和 `reason` 也属于结构化 options，并原样进入已提交 History provenance；它们不参与 Parser、predicate 或 value expression。
+
+F19b 的 `index_terms` 是 Agent 针对提交后完整 Row 生成的完整词项快照，不属于 SQL source 或某个 Column。非 nil 空数组表示显式空快照；字段缺失表示未提供。词项与 Row、History 在同一事务提交，参数中的 SQL 形文本不会被重新解析。
 
 ## INSERT
 

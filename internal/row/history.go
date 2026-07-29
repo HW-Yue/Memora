@@ -150,6 +150,9 @@ func (transaction *Transaction) Restore(
 	targetRevision uint64,
 	options WriteOptions,
 ) (Row, error) {
+	if err := transaction.validateIndexTerms(options.IndexTerms); err != nil {
+		return Row{}, err
+	}
 	table, err := transaction.tableForWrite(ctx, databaseName, tableName, options)
 	if err != nil {
 		return Row{}, stableError(err)
@@ -190,6 +193,15 @@ func (transaction *Transaction) Restore(
 	stored.UpdatedAt = transaction.service.clock.Now().UTC()
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
 		return Row{}, stableError(err)
+	}
+	if stored.State == StateDeleted {
+		if _, err := transaction.service.agentIndex.InvalidateIn(
+			ctx, transaction.tx, agentIndexLocator(stored),
+		); err != nil {
+			return Row{}, stableError(err)
+		}
+	} else if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
+		return Row{}, err
 	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationCompensate, options.Metadata); err != nil {
 		return Row{}, err

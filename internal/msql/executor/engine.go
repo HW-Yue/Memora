@@ -46,12 +46,13 @@ type Parameters struct {
 }
 
 type MutationOptions struct {
-	ExpectedSchemaVersion uint64 `json:"expected_schema_version,omitempty"`
-	ExpectedRevision      uint64 `json:"expected_revision,omitempty"`
-	MaxAffectedRows       uint64 `json:"max_affected_rows,omitempty"`
-	Actor                 string `json:"actor,omitempty"`
-	Source                string `json:"source,omitempty"`
-	Reason                string `json:"reason,omitempty"`
+	ExpectedSchemaVersion uint64   `json:"expected_schema_version,omitempty"`
+	ExpectedRevision      uint64   `json:"expected_revision,omitempty"`
+	MaxAffectedRows       uint64   `json:"max_affected_rows,omitempty"`
+	Actor                 string   `json:"actor,omitempty"`
+	Source                string   `json:"source,omitempty"`
+	Reason                string   `json:"reason,omitempty"`
+	IndexTerms            []string `json:"index_terms,omitempty"`
 }
 
 type Output struct {
