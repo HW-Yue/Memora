@@ -1,6 +1,6 @@
 # 物理与检索索引
 
-状态：倒排索引方向已形成；聚簇布局尚未确认。
+状态：倒排索引方向已形成；F25 generation manifest 已冻结；聚簇布局尚未确认。
 
 ## 两类索引
 
@@ -35,6 +35,8 @@ Row 可以用标准 UPDATE/DELETE 按稳定 `row_id` 修改。当前 Record 变�
 Router 和倒排索引必须支持 generation 重建：各类新 generation 独立旁路构建并验证，再通过 `indexes/manifest` 原子发布新的启用组合；旧 generation 等读者释放后由 compaction 回收。局部删除使用 tombstone，tombstone 不是永久存储，不能无限增长。
 
 Router、Agent 倒排和机械倒排分别维护 generation，由 Database 的 `indexes/manifest` 原子固定当前组合；一种索引重建不复制其他索引。物理目录见 [Database 物理目录](./database-file-layout.md)。
+
+F25 的 generation record、checksum validation、expected manifest revision、query pin 和旧 generation GC 规则见 [Index Generation Manifest v1](./generation-manifest-v1.md)。
 
 为防止 Agent 漏词，引擎同时生成可关闭、可丢弃并重建的机械分词/N-gram posting。Posting 必须区分 `agent` 与 `mechanical` 来源，查询时分别计分并各自归一化。融合权重以 Database 为单位持久化；新建 Database 启动配置使用 Agent `0.8`、机械 `0.2`。建库后是否允许 AI 调整及其条件留到配置生命周期设计；任何被允许的变更都必须通过 MSQL、revision 和审计。机械词项只作为字面召回兜底。
 

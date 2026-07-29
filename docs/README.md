@@ -68,6 +68,7 @@
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
 - [Binlog 与多设备同步基础](./storage/binlog-and-sync.md) — 已提交逻辑变更流，为增量同步和时间点恢复保留基础。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
+- [Index Generation Manifest v1](./storage/generation-manifest-v1.md) — F25 的三类独立 generation、原子发布、query pin 与 GC。
 - [Tablespace、Page 与 Record 布局](./storage/tablespace-page-record-layout.md) — Data File、Extent、Page、混合字段和 Schema 演化。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。

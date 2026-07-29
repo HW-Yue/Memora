@@ -1,6 +1,6 @@
 # Database 物理目录
 
-状态：Database、Table、History 和派生索引的目录边界已确认；文件编码和滚动参数待验证。
+状态：Database、Table、History、派生索引目录及 generation manifest 生命周期已确认；文件编码和滚动参数待验证。
 
 ## 稳定目录身份
 
@@ -75,10 +75,9 @@ indexes/
 ## 尚未确认
 
 - `database_id`、`table_id` 和 generation ID 编码；
-- `database.meta` 与 `manifest` 的二进制/文本格式、checksum 和双写保护；
+- `database.meta` 与 manifest 的最终原生二进制编码和双写保护；
 - Data File、History segment 和 posting 文件的扩展名；
 - Tablespace/History 的滚动、预分配、压缩和回收参数；
-- manifest pin、旧 generation 引用计数和崩溃恢复协议。
 
 ## 关联
 
