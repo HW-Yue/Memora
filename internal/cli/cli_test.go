@@ -63,6 +63,24 @@ func TestRun(t *testing.T) {
 			wantCode:   2,
 			wantStderr: "memora: unknown option for version: \"--yaml\"\n",
 		},
+		{
+			name:       "exec requires source",
+			args:       []string{"exec"},
+			wantCode:   2,
+			wantStderr: "memora: exec requires an MSQL source argument\n",
+		},
+		{
+			name:       "query rejects malformed input",
+			args:       []string{"query", "--input", `{"unknown":true}`, "SELECT * FROM work.notes LIMIT 1"},
+			wantCode:   2,
+			wantStderr: "memora: --input must be one strict StatementInput JSON object\n",
+		},
+		{
+			name:       "query rejects mutation",
+			args:       []string{"query", "UPDATE work.notes SET title = 'unsafe'"},
+			wantCode:   2,
+			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, MATCH, or OPEN ROUTE\n",
+		},
 	}
 
 	for _, tt := range tests {

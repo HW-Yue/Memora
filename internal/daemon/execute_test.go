@@ -39,7 +39,7 @@ func TestExecuteHandlerKeepsTransactionPerConnectionAndRollsBackOnDisconnect(t *
 		t.Fatal(err)
 	}
 	rows := row.New(databaseStore, dictionary, row.Options{})
-	handler := newDatabaseHandler(ctx, dictionary, rows)
+	handler := newDatabaseHandler(ctx, dictionary, rows, databaseStore)
 	defer handler.Close()
 	server := ipc.NewServer(handler)
 	defer server.Close()

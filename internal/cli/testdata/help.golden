@@ -5,9 +5,12 @@ Usage:
 
 Commands:
   daemon     Manage the local daemon
+  doctor     Verify logical database integrity
+  exec       Execute MSQL through the local daemon
   help       Show this help
   init       Initialize a local instance
   parse      Parse an MSQL request through the local daemon
+  query      Query MSQL through the local daemon
   version    Show build version
 
 Run 'memora help' for usage.

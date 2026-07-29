@@ -135,7 +135,7 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 	}
 	dictionary := catalog.New(databaseStore, catalog.Options{})
 	rows := row.New(databaseStore, dictionary, row.Options{})
-	handler := newDatabaseHandler(ctx, dictionary, rows)
+	handler := newDatabaseHandler(ctx, dictionary, rows, databaseStore)
 	server := ipc.NewServer(handler)
 	if ready != nil {
 		select {

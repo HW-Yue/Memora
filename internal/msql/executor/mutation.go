@@ -11,6 +11,9 @@ import (
 )
 
 func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, parameters Parameters, options MutationOptions) (Output, error) {
+	if engine.catalogStatement(statement) {
+		return engine.executeCatalog(ctx, statement)
+	}
 	if statement.Select != nil {
 		return engine.Query(ctx, statement, parameters)
 	}

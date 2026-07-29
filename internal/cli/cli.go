@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"github.com/HW-Yue/Memora/internal/config"
 	"github.com/HW-Yue/Memora/internal/daemon"
 	"github.com/HW-Yue/Memora/internal/instance"
+	"github.com/HW-Yue/Memora/internal/msql/executor"
+	"github.com/HW-Yue/Memora/internal/msql/parser"
 )
 
 const (
@@ -28,9 +31,12 @@ Usage:
 
 Commands:
   daemon     Manage the local daemon
+  doctor     Verify logical database integrity
+  exec       Execute MSQL through the local daemon
   help       Show this help
   init       Initialize a local instance
   parse      Parse an MSQL request through the local daemon
+  query      Query MSQL through the local daemon
   version    Show build version
 
 Run 'memora help' for usage.
@@ -75,6 +81,10 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return writeText(stdout, stderr, helpText)
 	case "daemon":
 		return runDaemon(args[1:], stdout, stderr, dependencies)
+	case "doctor":
+		return runDoctor(args[1:], stdout, stderr, dependencies)
+	case "exec", "query":
+		return runExecute(args[0], args[1:], stdout, stderr, dependencies)
 	case "init":
 		return runInit(args[1:], stdout, stderr, dependencies)
 	case "parse":
@@ -87,6 +97,113 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runExecute(
+	command string,
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var source, inputJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--input":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--input requires a JSON object")
+			}
+			if inputJSON != "" {
+				return usageError(stderr, "--input may only be specified once")
+			}
+			inputJSON = args[index+1]
+			index++
+		default:
+			if source != "" {
+				return usageError(stderr, command+" accepts exactly one MSQL source argument")
+			}
+			source = args[index]
+		}
+	}
+	if source == "" {
+		return usageError(stderr, command+" requires an MSQL source argument")
+	}
+	if command == "query" {
+		if batch, err := parser.ParseBatch(source); err == nil {
+			for _, statement := range batch.Statements {
+				if !queryStatement(statement.Kind) {
+					return usageError(
+						stderr,
+						"query only accepts SHOW, DESCRIBE, SELECT, MATCH, or OPEN ROUTE",
+					)
+				}
+			}
+		}
+	}
+	statements := []executor.StatementInput{}
+	if inputJSON != "" {
+		var input executor.StatementInput
+		decoder := json.NewDecoder(bytes.NewBufferString(inputJSON))
+		decoder.DisallowUnknownFields()
+		decoder.UseNumber()
+		if err := decoder.Decode(&input); err != nil ||
+			decoder.Decode(&struct{}{}) != io.EOF {
+			return usageError(stderr, "--input must be one strict StatementInput JSON object")
+		}
+		statements = append(statements, input)
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	envelope, err := daemon.Execute(context.Background(), dataDir, source, statements)
+	if err != nil {
+		return commandError(stderr, command+" MSQL", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(envelope); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if !envelope.OK {
+		return ExitFailure
+	}
+	return ExitOK
+}
+
+func queryStatement(kind string) bool {
+	switch kind {
+	case "SHOW", "DESCRIBE", "SELECT", "MATCH", "OPEN_ROUTE":
+		return true
+	default:
+		return false
+	}
+}
+
+func runDoctor(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	dataDir, code := daemonDataDir(args, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	report, err := daemon.Doctor(context.Background(), dataDir)
+	if err != nil {
+		return commandError(stderr, "inspect database integrity", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(report); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if report.Status != "healthy" {
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {

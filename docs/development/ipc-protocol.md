@@ -1,6 +1,6 @@
 # 本地 IPC 协议
 
-状态：F08 传输与 session 核心、F08b daemon socket、F16c `msql.execute` session 接线均已实现。
+状态：F08 传输与 session 核心、F08b daemon socket、F16c `msql.execute` session、F27 `doctor` 均已实现。
 
 ## 边界
 
@@ -34,7 +34,7 @@ v1 单个 frame 默认上限为 1 MiB。接收端先读取并校验 4 字节长�
 
 未知 JSON 字段默认忽略，以允许同一大版本中的向前兼容；不支持的 `version` 必须返回结构化 `protocol_version` 错误，不能把请求交给 handler。
 
-daemon 暴露 `ping`、`msql.parse` 和 `msql.execute`。`msql.parse` 只返回版本化 Batch AST 或精确词法/语法 issue，用于 CLI 诊断；`msql.execute` 接收 source 与逐 statement 的 parameter/mutation options，并返回 `memora.result/v1` Envelope。执行请求复用同一 Lexer、Parser 和 AST，不得增加 SQL 字符串旁路。
+daemon 暴露 `ping`、`msql.parse`、`msql.execute` 和 `doctor`。`msql.parse` 只返回版本化 Batch AST 或精确词法/语法 issue，用于 CLI 诊断；`msql.execute` 接收 source 与逐 statement 的 parameter/mutation options，并返回 `memora.result/v1` Envelope。执行请求复用同一 Lexer、Parser 和 AST，不得增加 SQL 字符串旁路。`doctor` 在 daemon 内验证 Logical Snapshot 并返回权威对象计数与 canonical hash，不接受任意文件路径。
 
 ## 并发与 Session
 

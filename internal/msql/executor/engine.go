@@ -7,6 +7,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
+	"github.com/HW-Yue/Memora/internal/msql/binder"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
@@ -48,8 +49,9 @@ type Rows interface {
 }
 
 type Engine struct {
-	catalog Catalog
-	rows    Rows
+	catalog       Catalog
+	catalogBinder *binder.Catalog
+	rows          Rows
 }
 
 type Parameters struct {
@@ -92,7 +94,11 @@ func (err *Error) StableCode() string {
 }
 
 func New(dictionary Catalog, rows Rows) *Engine {
-	return &Engine{catalog: dictionary, rows: rows}
+	engine := &Engine{catalog: dictionary, rows: rows}
+	if service, ok := dictionary.(binder.CatalogService); ok {
+		engine.catalogBinder = binder.NewCatalog(service)
+	}
+	return engine
 }
 
 func executeError(code result.Code, message string) error {

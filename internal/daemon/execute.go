@@ -11,6 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/store"
 )
 
 type executePayload struct {
@@ -23,13 +24,19 @@ type databaseHandler struct {
 	context    context.Context
 	dictionary executor.Catalog
 	rows       *row.Service
+	store      store.Store
 	sessions   map[string]*executor.BatchSession
 	closed     bool
 }
 
-func newDatabaseHandler(ctx context.Context, dictionary executor.Catalog, rows *row.Service) *databaseHandler {
+func newDatabaseHandler(
+	ctx context.Context,
+	dictionary executor.Catalog,
+	rows *row.Service,
+	database store.Store,
+) *databaseHandler {
 	return &databaseHandler{
-		context: ctx, dictionary: dictionary, rows: rows,
+		context: ctx, dictionary: dictionary, rows: rows, store: database,
 		sessions: make(map[string]*executor.BatchSession),
 	}
 }
@@ -56,6 +63,13 @@ func Execute(
 }
 
 func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session, request ipc.Request) (json.RawMessage, error) {
+	if request.Method == "doctor" {
+		report, err := handler.doctor(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(report)
+	}
 	if request.Method != "msql.execute" {
 		return handleRequest(ctx, session, request)
 	}
