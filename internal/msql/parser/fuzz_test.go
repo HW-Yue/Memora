@@ -12,6 +12,8 @@ func FuzzParseNeverPanics(f *testing.F) {
 		"INSERT INTO notes (title) VALUES ('hello')",
 		"UPDATE notes SET title = 'new' WHERE row_id = ?",
 		"DELETE FROM notes WHERE row_id = :id",
+		"CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'",
+		"ALTER TABLE work.notes ADD COLUMN status TEXT PURPOSE 'State'",
 		"SELECT (",
 		"\x00\xff",
 	}

@@ -20,6 +20,7 @@ type Statement struct {
 	Show        *ShowStatement        `json:"show,omitempty"`
 	Describe    *DescribeStatement    `json:"describe,omitempty"`
 	Create      *CreateStatement      `json:"create,omitempty"`
+	Alter       *AlterStatement       `json:"alter,omitempty"`
 	Select      *SelectStatement      `json:"select,omitempty"`
 	Insert      *InsertStatement      `json:"insert,omitempty"`
 	Update      *UpdateStatement      `json:"update,omitempty"`
@@ -41,6 +42,8 @@ type Name struct {
 type ShowStatement struct {
 	Object   string `json:"object"`
 	Database *Name  `json:"database,omitempty"`
+	Table    *Name  `json:"table,omitempty"`
+	Compact  bool   `json:"compact,omitempty"`
 }
 
 type DescribeStatement struct {
@@ -50,15 +53,29 @@ type DescribeStatement struct {
 }
 
 type CreateStatement struct {
-	Object  string             `json:"object"`
-	Name    Name               `json:"name"`
-	Columns []ColumnDefinition `json:"columns,omitempty"`
+	Object       string             `json:"object"`
+	Name         Name               `json:"name"`
+	Purpose      string             `json:"purpose,omitempty"`
+	Scope        string             `json:"scope,omitempty"`
+	AntiScope    string             `json:"anti_scope,omitempty"`
+	RowSemantics string             `json:"row_semantics,omitempty"`
+	Columns      []ColumnDefinition `json:"columns,omitempty"`
 }
 
 type ColumnDefinition struct {
 	Name    Identifier `json:"name"`
 	Type    TypeRef    `json:"type"`
 	NotNull bool       `json:"not_null,omitempty"`
+	Purpose string     `json:"purpose,omitempty"`
+}
+
+type AlterStatement struct {
+	Object     string            `json:"object"`
+	Name       Name              `json:"name"`
+	Action     string            `json:"action"`
+	ColumnName *Identifier       `json:"column_name,omitempty"`
+	NewName    *Identifier       `json:"new_name,omitempty"`
+	Column     *ColumnDefinition `json:"column,omitempty"`
 }
 
 type TypeRef struct {

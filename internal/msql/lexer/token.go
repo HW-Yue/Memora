@@ -47,14 +47,15 @@ func (token Token) IsKeyword(keyword string) bool {
 }
 
 var keywords = map[string]struct{}{
-	"AGAINST": {}, "ALTER": {}, "AND": {}, "AS": {}, "AT": {}, "BEGIN": {},
+	"ADD": {}, "AGAINST": {}, "ALTER": {}, "AND": {}, "ANTI": {}, "AS": {}, "AT": {}, "BEGIN": {},
 	"BY": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
 	"DATABASES": {}, "DELETE": {}, "DESCRIBE": {}, "DOCTOR": {}, "DROP": {},
 	"EXPLAIN": {}, "EXPORT": {}, "FALSE": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
 	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LIMIT": {}, "MATCH": {},
 	"NOT": {}, "NULL": {}, "OF": {}, "ON": {}, "OPEN": {}, "OR": {},
-	"ORDER": {}, "PACK": {}, "PACKAGE": {}, "PURGE": {}, "READ": {},
-	"REINDEX": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "SELECT": {},
-	"SET": {}, "SHOW": {}, "START": {}, "TABLE": {}, "TABLES": {}, "TO": {},
+	"ORDER": {}, "PACK": {}, "PACKAGE": {}, "PURGE": {}, "PURPOSE": {}, "READ": {},
+	"REINDEX": {}, "RENAME": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "ROW": {},
+	"SCOPE": {}, "SELECT": {}, "SEMANTICS": {}, "SET": {}, "SHOW": {}, "START": {},
+	"COLUMN": {}, "COLUMNS": {}, "TABLE": {}, "TABLES": {}, "TO": {},
 	"TRANSACTION": {}, "TRUE": {}, "UPDATE": {}, "VALUES": {}, "WHERE": {},
 }

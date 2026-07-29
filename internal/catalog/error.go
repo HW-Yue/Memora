@@ -29,3 +29,7 @@ func (err *Error) Error() string {
 		return fmt.Sprintf("catalog %s %q failed", err.Object, err.Name)
 	}
 }
+
+func (err *Error) StableCode() string {
+	return string(err.Code)
+}

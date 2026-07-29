@@ -77,6 +77,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseDescribe()
 	case parser.matchWord("CREATE"):
 		statement, err = parser.parseCreate()
+	case parser.matchWord("ALTER"):
+		statement, err = parser.parseAlter()
 	case parser.matchWord("SELECT"):
 		statement, err = parser.parseSelect()
 	case parser.matchWord("INSERT"):
@@ -128,9 +130,20 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			}
 			show.Database = &name
 		}
+	case parser.matchWord("COLUMNS"):
+		show.Object = "COLUMNS"
+		if _, err := parser.expectWord("FROM"); err != nil {
+			return ast.Statement{}, err
+		}
+		name, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Table = &name
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, or TABLES")
+		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, TABLES, or COLUMNS")
 	}
+	show.Compact = parser.matchWord("COMPACT")
 	return ast.Statement{Kind: "SHOW", Show: show}, nil
 }
 
@@ -141,8 +154,10 @@ func (parser *parser) parseDescribe() (ast.Statement, error) {
 		describe.Object = "DATABASE"
 	case parser.matchWord("TABLE"):
 		describe.Object = "TABLE"
+	case parser.matchWord("COLUMN"):
+		describe.Object = "COLUMN"
 	default:
-		return ast.Statement{}, parser.unexpected("DATABASE or TABLE")
+		return ast.Statement{}, parser.unexpected("DATABASE, TABLE, or COLUMN")
 	}
 	name, err := parser.parseName()
 	if err != nil {
@@ -163,6 +178,11 @@ func (parser *parser) parseCreate() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		create.Name = name
+		metadata, err := parser.parseCatalogMetadata(false)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		applyMetadata(create, metadata)
 	case parser.matchWord("TABLE"):
 		create.Object = "TABLE"
 		name, err := parser.parseName()
@@ -170,6 +190,11 @@ func (parser *parser) parseCreate() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		create.Name = name
+		metadata, err := parser.parseCatalogMetadata(true)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		applyMetadata(create, metadata)
 		if _, err := parser.expectKind(lexer.KindLeftParen, "("); err != nil {
 			return ast.Statement{}, err
 		}
@@ -190,6 +215,69 @@ func (parser *parser) parseCreate() (ast.Statement, error) {
 		return ast.Statement{}, parser.unexpected("DATABASE or TABLE")
 	}
 	return ast.Statement{Kind: "CREATE", Create: create}, nil
+}
+
+type catalogMetadata struct {
+	purpose      string
+	scope        string
+	antiScope    string
+	rowSemantics string
+}
+
+func (parser *parser) parseCatalogMetadata(table bool) (catalogMetadata, error) {
+	var metadata catalogMetadata
+	seen := make(map[string]bool)
+	for {
+		var option string
+		switch {
+		case parser.checkWord("PURPOSE"):
+			option = "PURPOSE"
+		case parser.checkWord("SCOPE"):
+			option = "SCOPE"
+		case parser.checkWord("ANTI"):
+			option = "ANTI_SCOPE"
+		case table && parser.checkWord("ROW"):
+			option = "ROW_SEMANTICS"
+		default:
+			return metadata, nil
+		}
+		optionToken := parser.advance()
+		if seen[option] {
+			return catalogMetadata{}, parser.errorAt(optionToken, option+" only once")
+		}
+		seen[option] = true
+		if option == "ANTI_SCOPE" {
+			if _, err := parser.expectWord("SCOPE"); err != nil {
+				return catalogMetadata{}, err
+			}
+		}
+		if option == "ROW_SEMANTICS" {
+			if _, err := parser.expectWord("SEMANTICS"); err != nil {
+				return catalogMetadata{}, err
+			}
+		}
+		value, err := parser.expectKind(lexer.KindString, "string literal")
+		if err != nil {
+			return catalogMetadata{}, err
+		}
+		switch option {
+		case "PURPOSE":
+			metadata.purpose = value.Value
+		case "SCOPE":
+			metadata.scope = value.Value
+		case "ANTI_SCOPE":
+			metadata.antiScope = value.Value
+		case "ROW_SEMANTICS":
+			metadata.rowSemantics = value.Value
+		}
+	}
+}
+
+func applyMetadata(create *ast.CreateStatement, metadata catalogMetadata) {
+	create.Purpose = metadata.purpose
+	create.Scope = metadata.scope
+	create.AntiScope = metadata.antiScope
+	create.RowSemantics = metadata.rowSemantics
 }
 
 func (parser *parser) parseColumnDefinition() (ast.ColumnDefinition, error) {
@@ -229,7 +317,74 @@ func (parser *parser) parseColumnDefinition() (ast.ColumnDefinition, error) {
 	} else {
 		parser.matchWord("NULL")
 	}
+	if parser.matchWord("PURPOSE") {
+		purpose, err := parser.expectKind(lexer.KindString, "string literal")
+		if err != nil {
+			return ast.ColumnDefinition{}, err
+		}
+		column.Purpose = purpose.Value
+	}
 	return column, nil
+}
+
+func (parser *parser) parseAlter() (ast.Statement, error) {
+	alter := &ast.AlterStatement{}
+	switch {
+	case parser.matchWord("DATABASE"):
+		alter.Object = "DATABASE"
+	case parser.matchWord("TABLE"):
+		alter.Object = "TABLE"
+	default:
+		return ast.Statement{}, parser.unexpected("DATABASE or TABLE")
+	}
+	name, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	alter.Name = name
+
+	switch {
+	case parser.matchWord("ADD") && alter.Object == "TABLE":
+		if _, err := parser.expectWord("COLUMN"); err != nil {
+			return ast.Statement{}, err
+		}
+		column, err := parser.parseColumnDefinition()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		alter.Action = "ADD_COLUMN"
+		alter.Column = &column
+	case parser.matchWord("RENAME"):
+		if alter.Object == "TABLE" && parser.matchWord("COLUMN") {
+			columnName, err := parser.parseIdentifier()
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			if _, err := parser.expectWord("TO"); err != nil {
+				return ast.Statement{}, err
+			}
+			newName, err := parser.parseIdentifier()
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			alter.Action = "RENAME_COLUMN"
+			alter.ColumnName = &columnName
+			alter.NewName = &newName
+			break
+		}
+		if _, err := parser.expectWord("TO"); err != nil {
+			return ast.Statement{}, err
+		}
+		newName, err := parser.parseIdentifier()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		alter.Action = "RENAME"
+		alter.NewName = &newName
+	default:
+		return ast.Statement{}, parser.unexpected("ADD COLUMN or RENAME")
+	}
+	return ast.Statement{Kind: "ALTER", Alter: alter}, nil
 }
 
 func (parser *parser) parseSelect() (ast.Statement, error) {

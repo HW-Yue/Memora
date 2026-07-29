@@ -1,16 +1,17 @@
 # MSQL Parser Core v1
 
-状态：F11 已实现；单语句核心 AST 契约已冻结。多语句和事务边界已由 F12 扩展。
+状态：F11 已实现；多语句和事务边界由 F12 扩展，Catalog DDL 由 F13c 扩展。
 
 ## 入口与 AST
 
 `parser.Parse(source)` 接收一条 MSQL 语句，可带一个尾部分号，返回版本为 `memora.msql.ast/v1` 的 Document。AST 使用显式 tagged union，不暴露 SQLite 语法树或执行细节。
 
-F11 支持以下 statement kind：
+核心支持以下 statement kind：
 
-- `SHOW`：`SHOW INSTANCE`、`SHOW DATABASES`、`SHOW TABLES [FROM database]`；
-- `DESCRIBE`：`DESCRIBE DATABASE|TABLE name [COMPACT]`；
-- `CREATE`：`CREATE DATABASE name`、基础 `CREATE TABLE name (...)`；
+- `SHOW`：`SHOW INSTANCE`、`SHOW DATABASES`、`SHOW TABLES [FROM database]`、`SHOW COLUMNS FROM database.table`，可选 `COMPACT`；
+- `DESCRIBE`：`DESCRIBE DATABASE|TABLE|COLUMN name [COMPACT]`；
+- `CREATE`：`CREATE DATABASE`、`CREATE TABLE` 及自描述元数据；
+- `ALTER`：Database/Table rename、Column add/rename；
 - `SELECT`：projection、`FROM`、可选 `WHERE` 和 `LIMIT`；
 - `INSERT`：可选 column list 和一个或多个 `VALUES` row；
 - `UPDATE`：一个或多个 `SET` assignment 和可选 `WHERE`；
@@ -27,11 +28,12 @@ Database、Table 和 Column 是否存在、类型是否合法、VALUES 数量是
 基础 Column definition 为：
 
 ```ebnf
-column_definition = identifier type_ref [ "NOT" "NULL" | "NULL" ] ;
+column_definition = identifier type_ref [ "NOT" "NULL" | "NULL" ]
+                    [ "PURPOSE" string ] ;
 type_ref          = identifier [ "(" integer { "," integer } ")" ] ;
 ```
 
-逻辑类型集合、约束和字段预算由 F14 冻结。
+逻辑类型集合、约束和字段预算由 F14 冻结。Catalog DDL 的完整语法与限定名规则见 [MSQL Catalog DDL v1](./catalog-ddl.md)。
 
 ## 表达式
 

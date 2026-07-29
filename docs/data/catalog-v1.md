@@ -1,6 +1,6 @@
 # Catalog v1
 
-状态：F13a/F13b 已实现 Database、Table、Column；MSQL Binder 由 F13c 补齐。
+状态：F13 已实现 Database、Table、Column 和 MSQL Catalog Binder。
 
 ## 持久契约
 
@@ -52,3 +52,4 @@ Table 可在创建时原子携带初始 Column，也可随后逐个增加 Column
 - [自描述 Data Dictionary](./self-describing-data-dictionary.md)
 - [SQLite 原型 Store](../decisions/0001-prototype-store.md)
 - [Phase B TDD 计划](../planning/tdd-phase-b-database.md)
+- [MSQL Catalog DDL v1](../query/catalog-ddl.md)
