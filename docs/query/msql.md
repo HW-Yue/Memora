@@ -1,6 +1,6 @@
 # MSQL 标准语言
 
-状态：协议定位已确认；正式语法尚未冻结。
+状态：协议定位已确认；F11 核心单语句语法已冻结，完整 v0 Grammar 尚未冻结。
 
 ## 定位
 
@@ -121,5 +121,6 @@ Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
 ## 关联
 
 - [MSQL Lexer v0](./msql-lexer.md)
+- [MSQL Parser Core v1](./msql-parser.md)
 - [语义路由](./semantic-routing.md)
 - [上下文生命周期](./context-lifecycle.md)

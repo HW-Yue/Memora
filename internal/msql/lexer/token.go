@@ -50,11 +50,11 @@ var keywords = map[string]struct{}{
 	"AGAINST": {}, "ALTER": {}, "AND": {}, "AS": {}, "AT": {}, "BEGIN": {},
 	"BY": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
 	"DATABASES": {}, "DELETE": {}, "DESCRIBE": {}, "DOCTOR": {}, "DROP": {},
-	"EXPLAIN": {}, "EXPORT": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
+	"EXPLAIN": {}, "EXPORT": {}, "FALSE": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
 	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LIMIT": {}, "MATCH": {},
 	"NOT": {}, "NULL": {}, "OF": {}, "ON": {}, "OPEN": {}, "OR": {},
 	"ORDER": {}, "PACK": {}, "PACKAGE": {}, "PURGE": {}, "READ": {},
 	"REINDEX": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "SELECT": {},
 	"SET": {}, "SHOW": {}, "START": {}, "TABLE": {}, "TABLES": {}, "TO": {},
-	"TRANSACTION": {}, "UPDATE": {}, "VALUES": {}, "WHERE": {},
+	"TRANSACTION": {}, "TRUE": {}, "UPDATE": {}, "VALUES": {}, "WHERE": {},
 }
