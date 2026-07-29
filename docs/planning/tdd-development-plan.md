@@ -2,7 +2,7 @@
 
 状态：执行中。
 
-当前进度：F00–F12 已完成；下一项为 Phase A 退出测试与 F13 Data Dictionary。
+当前进度：F00–F12 与 Phase A 退出测试已完成；下一项为 F13 Data Dictionary。
 
 ## 产品目标
 

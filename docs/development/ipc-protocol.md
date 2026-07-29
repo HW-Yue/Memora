@@ -34,6 +34,8 @@ v1 单个 frame 默认上限为 1 MiB。接收端先读取并校验 4 字节长�
 
 未知 JSON 字段默认忽略，以允许同一大版本中的向前兼容；不支持的 `version` 必须返回结构化 `protocol_version` 错误，不能把请求交给 handler。
 
+Phase A 暴露 `ping` 和 `msql.parse` 两个 daemon method。`msql.parse` 只返回版本化 Batch AST 或精确词法/语法 issue，用于 CLI 诊断和链路验收；它不执行数据操作。F13 之后的执行请求必须复用同一 Lexer、Parser 和 AST，不得增加 SQL 字符串旁路。
+
 ## 并发与 Session
 
 一个连接对应一个随机 `session_id`，可承载多个并发 request。响应可能乱序，客户端必须用 `request_id` 关联。

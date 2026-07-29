@@ -30,6 +30,7 @@ Commands:
   daemon     Manage the local daemon
   help       Show this help
   init       Initialize a local instance
+  parse      Parse an MSQL request through the local daemon
   version    Show build version
 
 Run 'memora help' for usage.
@@ -76,6 +77,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runDaemon(args[1:], stdout, stderr, dependencies)
 	case "init":
 		return runInit(args[1:], stdout, stderr, dependencies)
+	case "parse":
+		return runParse(args[1:], stdout, stderr, dependencies)
 	case "version":
 		return runVersion(args[1:], stdout, stderr, build)
 	default:
@@ -84,6 +87,43 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var source string
+	for index := 0; index < len(args); index++ {
+		if args[index] == "--data-dir" {
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+			continue
+		}
+		if source != "" {
+			return usageError(stderr, "parse accepts exactly one MSQL source argument")
+		}
+		source = args[index]
+	}
+	if source == "" {
+		return usageError(stderr, "parse requires an MSQL source argument")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	response, err := daemon.Parse(context.Background(), dataDir, source)
+	if err != nil {
+		return commandError(stderr, "parse MSQL", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(response); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if !response.OK {
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func runDaemon(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {

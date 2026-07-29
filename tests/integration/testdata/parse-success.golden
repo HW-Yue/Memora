@@ -1,0 +1,1 @@
+{"ok":true,"ast":{"version":"memora.msql.ast/v1","statements":[{"kind":"SHOW","show":{"object":"DATABASES"}},{"kind":"SELECT","select":{"projections":[{"kind":"star"}],"from":{"parts":[{"value":"notes"}]}}}]}}

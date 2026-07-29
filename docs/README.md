@@ -68,6 +68,7 @@
 
 - [开发与验证路线](./planning/roadmap.md) — 先验证 AI-native 体验，再进入完整存储内核。
 - [TDD 开发总计划](./planning/tdd-development-plan.md) — 按独立 feature branch/commit 推进，测试先行并设置阶段质量门。
+- [Phase A 退出验收](./planning/phase-a-exit-evidence.md) — 干净 datadir 下 CLI、daemon、并发 MSQL parse、重启和全量门禁证据。
 
 ## 开发
 

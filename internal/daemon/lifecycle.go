@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -123,12 +122,7 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		_ = listener.Close()
 		_ = os.Remove(socketPath)
 	}()
-	handler := ipc.HandlerFunc(func(_ context.Context, _ ipc.Session, request ipc.Request) (json.RawMessage, error) {
-		if request.Method != "ping" {
-			return nil, fmt.Errorf("unknown IPC method %q", request.Method)
-		}
-		return json.RawMessage(`{"message":"pong"}`), nil
-	})
+	handler := ipc.HandlerFunc(handleRequest)
 	server := ipc.NewServer(handler)
 	defer func() { _ = server.Close() }()
 	if ready != nil {
