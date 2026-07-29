@@ -1,0 +1,65 @@
+{
+  "version": "memora.skill/v1",
+  "source": "SKILL.md",
+  "msql_ast_version": "memora.msql.ast/v1",
+  "result_version": "memora.result/v1",
+  "allowed_commands": [
+    "doctor",
+    "query",
+    "exec"
+  ],
+  "physical_access": "forbidden",
+  "conflict_policy": "ask_user_before_mutation",
+  "workflows": [
+    "discover",
+    "query",
+    "summarize",
+    "write",
+    "assimilate",
+    "request_user",
+    "receipt"
+  ],
+  "budgets": {
+    "route_rows": 12,
+    "candidate_rows": 24,
+    "select_rows": 10,
+    "receipt_characters": 2000,
+    "context_characters": 12000
+  },
+  "examples": [
+    {
+      "name": "doctor",
+      "command": "memora doctor"
+    },
+    {
+      "name": "discover-databases",
+      "command": "memora query \"SHOW DATABASES\"",
+      "msql": "SHOW DATABASES"
+    },
+    {
+      "name": "discover-schema",
+      "command": "memora query \"DESCRIBE TABLE work.notes COMPACT\"",
+      "msql": "DESCRIBE TABLE work.notes COMPACT"
+    },
+    {
+      "name": "route",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"database\":\"work\",\"path\":\"/\",\"cursor\":\"\",\"limit\":12}}}' \"SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit\"",
+      "msql": "SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit"
+    },
+    {
+      "name": "match",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"query\":\"routing design\",\"terms\":[\"routing\",\"router\",\"路由\"],\"limit\":24}}}' \"MATCH work.notes QUERY :query TERMS :terms LIMIT :limit\"",
+      "msql": "MATCH work.notes QUERY :query TERMS :terms LIMIT :limit"
+    },
+    {
+      "name": "select",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"limit\":10}}}' \"SELECT title, summary FROM work.notes WHERE _row_id = :row LIMIT :limit\"",
+      "msql": "SELECT title, summary FROM work.notes WHERE _row_id = :row LIMIT :limit"
+    },
+    {
+      "name": "write",
+      "command": "memora exec --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"summary\":\"Route results are locators only\"}},\"mutation\":{\"expected_schema_version\":1,\"expected_revision\":2,\"max_affected_rows\":1,\"index_terms\":[\"routing\",\"locator\"],\"route_leaf_ids\":[\"route_query\"],\"actor\":\"agent:host\",\"source\":\"conversation:event-7\",\"reason\":\"refine verified conclusion\"}}' \"UPDATE work.notes SET summary = :summary WHERE _row_id = :row\"",
+      "msql": "UPDATE work.notes SET summary = :summary WHERE _row_id = :row"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Memora"
+  short_description: "Query and maintain a local semantic database"
+  default_prompt: "Use $memora to query or maintain my local semantic knowledge safely."
