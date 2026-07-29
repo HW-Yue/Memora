@@ -1,17 +1,17 @@
 # 数据库查询 Sub-agent
 
-状态：已被内置 Agent Runtime 取代为默认方案；本文保留为宿主侧兼容设计。
+状态：宿主侧兼容设计。默认查询的候选发现职责已由独立的索引发现 Sub-agent 规格取代。
 
 ## 目标
 
-当宿主希望自行编排时，主 Agent 可以把查询意图交给独立的只读数据库 sub-agent，后者完成发现、导航、SQL 重试和结果压缩。Memora 默认不依赖该能力，而由内置 Agent Runtime 提供相同行为。
+主 Agent 可以按 Canonical Skill 自己完成查询，也可以把查询意图交给独立的只读数据库 sub-agent，由后者隔离发现、导航、SQL 重试和结果压缩。Memora v0 不要求宿主支持 sub-agent。
 
 ```text
 Main Agent
   → query intent + scope hint + result budget
   → Memora Query Agent（独立上下文）
       → SHOW / DESCRIBE / ROUTE
-      → SELECT / SEARCH / JOIN
+      → SELECT / MATCH / JOIN
       → 必要时修正 SQL
   ← bounded Context Pack
 ```
@@ -39,6 +39,8 @@ Query Agent：
 - 只读；
 - 加载完整 Memora Query Skill 和 MSQL 语法；
 - 自己发现数据库和 Schema，不猜字段；
+- 按 Query Skill 为当前意图输出去重后的 `query_terms: string[]`，允许加入原问题未出现的同义词、旧名称、缩写和跨语言别名；
+- `query_terms` 启动预算为 12 个、启动 Policy 上限为 32 个；两者按 Database 配置，建库后可变性待定；
 - 通过 Router、倒排和关系完成查询；
 - 只通过 SQL 获取数据；
 - 不返回导航过程、完整索引或调试日志。
@@ -83,7 +85,9 @@ Query Agent：
 
 持续复用 Query Agent 可以减少重复发现，但会重新产生上下文膨胀和旧 Schema 污染，只应作为经过测量的可选优化。
 
-Memora 内置方案由常驻 Runtime 保存可重建的 Query Workspace，不要求同一个模型原始上下文永久存在。详见 [内置 Agent Runtime](./embedded-agent-runtime.md)。
+未来可选的内置方案可由 Runtime 保存可重建的 Query Workspace，但不属于 v0 依赖。详见 [可选内置 Agent Runtime](./embedded-agent-runtime.md)。
+
+当前默认两阶段链路见 [索引发现 Sub-agent](./index-discovery-subagent.md)：发现阶段只返回数据项定位，主 Agent 再用 SQL 读取正文。本文保留的 Context Pack 方式仅供无法采用该链路的宿主兼容。
 
 ## 边界
 

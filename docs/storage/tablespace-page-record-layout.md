@@ -16,7 +16,9 @@ Page 按 Extent 批量分配
 Segment 为具体索引或存储结构持有 Page/Extent
 ```
 
-Table/Row 是逻辑身份，Record 是某个 revision 的物理编码。Row Directory 将 `row_id` 映射到当前 Record，旧 Record 进入版本存储。
+Table/Row 是逻辑身份，主数据结构中的 Record 保存当前版本。事务旧版本进入 Undo version chain，长期语义 revision 进入独立 History Store；二者不能混用。若最终保留 Row Directory，它只把稳定 `row_id` 映射到当前 Record。
+
+每个 User Table 使用独立 Tablespace 目录，目录名来自不可变 `table_id`。Tablespace 可以由一个或多个滚动 Data File 承载；当前 Row、聚簇索引和普通二级 B+ Tree在其中共同分配 Segment。Router 和倒排 generation 属于 Database 的独立可重建索引目录，不进入 User Table Tablespace。
 
 ## 第一版尺寸候选
 
@@ -24,7 +26,7 @@ Table/Row 是逻辑身份，Record 是某个 revision 的物理编码。Row Dire
 - Extent：1 MiB，即 64 个 Page；
 - Data File 滚动上限：256 MiB，即 256 个 Extent；
 - 编码后单条 Record 的页内目标：不超过 8 KiB；
-- 语义正文仍以约 300～1200 个中文字为软预算，不按字数截断。
+- 语义 Row 启动写作目标约 800 字，文本 Column 启动默认上限为 1200 个字符并可演化；字段超限由逻辑写入层报错，物理 Page 层不负责截断。
 
 这些值与查询内存没有直接关系。16 KiB 对约 800 个中文字及系统元数据有余量；256 MiB 只是候选的校验、回收、备份和 compaction 粒度，必须通过基准测试确认。
 
@@ -48,7 +50,7 @@ Checksum / Page LSN
 
 Slot 可移动而逻辑 `row_id` 不变。B+ Tree 叶子优先只保存紧凑键、`row_id` 和 Record 定位，不内联完整可变正文。
 
-Record 变大时追加新 revision 并更新 Row Directory，不在原位置强行扩张。B+ Tree 只对自己的键 Page 执行 split/merge，正文增长不会引发整条索引链搬迁。
+Record 变大且当前 Page 空间不足时，引擎可以迁移当前 Record 并更新其稳定定位，不在原位置强行扩张；事务旧值已经由 Undo 保存，不为 MVCC 追加一份主记录。B+ Tree 只对自己的键 Page 执行 split/merge，正文增长不会改变逻辑 `row_id`。
 
 ## Segment 的标准含义
 
@@ -88,7 +90,7 @@ Tablespace、Data File、Page、Slot、Segment 和 Record 地址都不得进入 
 - 16 KiB Page、1 MiB Extent 和 256 MiB Data File 策略是否合适；
 - Row Directory 主键和 Record 指针的具体编码；
 - 8 KiB 页内阈值以及 overflow 的硬上限；
-- Tablespace 和 Data File 按 Database、Table 还是用途划分；
+- Table Data File 的滚动大小、编号、预分配和回收策略；
 - `pread/pwrite` 稳定后是否增加局部 mmap；
 - checksum、压缩和加密的粒度。
 

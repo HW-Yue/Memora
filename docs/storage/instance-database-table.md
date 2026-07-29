@@ -51,6 +51,7 @@ Database 提供语义和治理边界，Table 负责一个边界内部的结构�
 ## 跨库能力
 
 - 对象使用 Instance 内唯一标识，显示时仍优先暴露可读名称；
+- Database 的磁盘子目录使用稳定 `database_id`，改名不移动物理目录；
 - 跨库关系允许存在，但必须通过 Policy 检查；
 - MSQL 可以显式限定 `database.table`；
 - 同一 Instance 内可实现原子的跨 Database 事务；
@@ -58,7 +59,7 @@ Database 提供语义和治理边界，Table 负责一个边界内部的结构�
 
 ## 尚未确认
 
-- User Tablespace 按 Database、Table 还是用途划分；
+- 每表 Tablespace 的 Data File 滚动与回收策略；
 - 何时需要把 Database 迁移成独立 Instance；
 - 跨库 SQL 的第一版语法范围；
 - 跨库关系在 Wiki 导出中的路径和命名规则。

@@ -23,7 +23,10 @@
 | Buffer Pool | 有容量上限的 Page 内存缓存；替代 Page Cache 作为正式名称 |
 | Undo Log | 回滚未提交修改并支持旧版本读取的信息 |
 | Redo Log | 遵守 WAL 顺序的崩溃恢复日志；正式名称不再写成 WAL 文件 |
+| Binlog | 已提交逻辑事务的有序变更日志，用于设备同步、订阅和时间点恢复 |
 | LSN | Redo Log 的字节位置/顺序，不与 commit sequence 混用 |
+| Transaction ID | 当前 Instance 内一次事务的身份，用于锁、Undo 和事务状态 |
+| Global Transaction ID | 已提交事务跨设备不变的来源身份，用于同步幂等、位点和防回环 |
 
 `Vault` 只在“Obsidian Vault”语境使用，避免同时表示 Memora 存储实例。
 
@@ -37,9 +40,9 @@
 - Context Pack；
 - Query Agent / Mutation Agent；
 - object revision；
-- Working Set / Warm LRU。
+- Buffer Pool / Buffer Frame / Dirty Page / Page Table。
 
-`commit sequence`、`revision` 和 `LSN` 表示三个不同维度，不能因为都递增就共用字段。
+`transaction ID`、`global transaction ID`、`commit sequence`、`revision`、Redo `LSN` 和 Binlog position/event ID 表示不同维度，不能因为都递增就共用字段。
 
 ## 避免的歧义
 

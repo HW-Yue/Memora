@@ -16,8 +16,10 @@
 - `purpose`：一句话说明用途；
 - `scope` 与 `anti_scope`：收什么、不收什么；
 - 创建原因、默认 Policy 与隐私等级；
+- Agent 词项与机械词项的 Search Weight Profile 及其 revision；
 - 根 Route 列表；
 - `schema_version`、`route_revision`；
+- 自适应配置版本、最近调优原因和评测依据；
 - 创建时间、最近有效变更时间。
 
 ## Table 元数据
@@ -37,6 +39,7 @@
 
 - `column_id`、名称、别名；
 - 类型、可空性、默认值；
+- 文本字段最大字符数等 Column 级约束；
 - 业务含义、单位和格式；
 - `semantic_role`，例如 title、summary、identity、status；
 - 索引提示、隐私标签和废弃状态。

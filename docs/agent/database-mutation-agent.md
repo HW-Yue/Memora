@@ -1,10 +1,10 @@
 # 数据库 Mutation Agent
 
-状态：写入职责和协议候选；执行形态调整为内置 Agent Runtime 的 write profile。
+状态：Skill 写入职责和协议候选；v0 由外部宿主 Agent 执行。
 
 ## 目标
 
-主 Agent 不应在每次发言后机械保存聊天，也不应在已经很长的主上下文中同时完成 Schema 发现、查重、迁移和写入。内置 Agent Runtime 的 write profile 负责把一次对话或资料产生的“稳定状态变化”转成可验证的 MSQL 事务。语义职责与只读查询隔离，但不要求运行成另一个宿主 Agent 或进程。
+主 Agent 不应在每次发言后机械保存聊天。Canonical Skill 规定如何把一次对话或资料产生的“稳定状态变化”转成可验证的 MSQL 事务；宿主可用独立 sub-agent 隔离上下文，也可在当前 Agent 中执行同一有界流程。
 
 ```text
 Main Agent / Session Hook
@@ -50,6 +50,8 @@ RELATE      只新增或修正关系
 
 永远追加 INSERT 属于质量失败。
 
+每个文本字段不得超过其 Column 当前配置的字符上限，Column 启动默认值为 1200。超限写入必须返回结构化错误；Mutation Agent 根据语义选择 SPLIT、改用合适字段类型或提交 Schema 调整后重试，不能截断正文、忽略错误或强制写入。调整上限必须通过 MSQL、Policy 和 revision 校验。
+
 ## 提交信封
 
 每次写入至少携带：
@@ -66,7 +68,25 @@ RELATE      只新增或修正关系
 }
 ```
 
-`source_event_id` 用于幂等重试。confidence 不是正确性证明；低置信度写入应进入 disputed/candidate 状态或拒绝自动提交。
+`source_event_id` 用于幂等重试。confidence 不是正确性证明，数据库也不根据它创建 `candidate/disputed` 状态。Skill 发现待写内容与现有 Row 语义冲突时，必须读取并向用户并列展示冲突内容；得到用户指示后重新生成 SQL 修改方案，不能让引擎猜测真伪或自动选边。低置信且无法向用户说明的内容不应自动提交。
+
+## 语义索引词项
+
+每个 INSERT、REVISE、MERGE 或 SPLIT 结果必须为对应 Row 输出去重后的字符串列表：
+
+```json
+{
+  "index_terms": ["Memora", "MSQL", "个人数据库", "倒排索引"]
+}
+```
+
+词项可以来自 Row 的任意字段，不记录来源字段，也不携带逐词权重。每次产生新 revision 时，Agent 必须重新输出完整词项列表，不能提交增删 diff。引擎自动关联 `row_id` 和 `revision`，并在同一事务中原子替换上一 revision 的全部 Agent posting。Database 级 Agent/机械通道权重不属于单条 Row 的写入结果。
+
+同一提交还要输出完整 Router membership 快照；一个 `row_id` 可以属于多个叶子。Mutation Agent 将业务 UPDATE、词项替换和 Route membership 替换组合成一个 MSQL 事务，任一步失败都回滚，不能让 Row 与发现索引处于不同 revision。
+
+直接 SQL 修改若没有预先生成语义索引快照，写入仍可成功，但旧词项和 Router 引用立即失效，新 revision 进入 `pending_reindex`。后台 Mutation/Reindex Agent 必须携带 expected revision；过期结果不得覆盖更新后的 Row。
+
+`index_terms` 的启动预算为 24 个、启动 Policy 上限为 64 个。两者存于 Database 配置，建库后是否允许 AI 调整留到配置生命周期设计；超出当前预算时 Agent 应先删除低价值词项，不能把正文机械拆词塞入语义通道。
 
 ## 风险边界
 
@@ -74,7 +94,7 @@ RELATE      只新增或修正关系
 - Schema、批量 merge、跨库 move 属于 L2，先返回影响计划；
 - PURGE、清历史、放宽隐私属于 L3，必须显式授权；
 - 任何 revision/schema mismatch 都重新读取，不能强制覆盖；
-- 自动 decay/consolidation 只能生成候选事务，不能静默销毁 Row。
+- 自动 decay/consolidation 只能生成待用户确认的事务计划，不能静默销毁 Row。
 
 ## 返回收据
 
@@ -95,10 +115,10 @@ RELATE      只新增或修正关系
 
 ## 与 Query Agent 的关系
 
-- read profile 永远只读，目标是最小 Context Pack；
+- discovery/read profile 永远只读，目标是最小候选定位列表；主 Agent SQL 回表后才形成回答或 Context Pack；
 - write profile 可写，目标是最小且正确的状态变化；
 - write profile 可以调用只读发现能力，但 read profile 不能获得写权限；
-- 两者共享内置 Runtime 和统一 MSQL 执行核心，权限由引擎 Policy 强制；
+- 两者共享 Canonical Skill 规则和统一 MSQL 执行核心，权限由引擎 Policy 强制；
 - 模型上下文可以轮换，Query Workspace 和机器缓存负责恢复热状态。
 
 ## 待验证
@@ -106,7 +126,7 @@ RELATE      只新增或修正关系
 - Codex/Claude 怎样稳定提供 conversation delta 和 session event ID；
 - 写入在每轮、稳定结论出现时、compaction 前还是会话结束时触发；
 - “值得写”分类器的 precision/recall；
-- 低置信度 candidate 是否会形成新的待办垃圾；
+- Skill 的语义冲突展示和用户指令回填协议是否足够清晰；
 - Mutation Receipt 是否需要包含用户可读 diff。
 
 ## 关联

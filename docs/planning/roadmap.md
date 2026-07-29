@@ -14,16 +14,16 @@
 
 退出条件：核心任务、指标和失败判定可以自动运行，不再只靠主观演示。
 
-## Phase 1：Go 垂直切片
+## Phase 1：macOS Go 垂直切片
 
-先实现一个本地 Go 可执行文件，端到端跑通而不追求完整存储内核：
+先实现一个仅面向 macOS 的本地 Go 可执行文件，端到端跑通而不追求完整存储内核：
 
 ```text
 memora
+memora daemon
 memora init
 memora --stdio
 memora exec
-memora ask
 memora query
 memora export
 memora pack
@@ -32,26 +32,30 @@ memora open
 memora doctor
 ```
 
-包含：统一 MSQL 执行核心、可配置模型的最小内置 Agent Loop、Data Dictionary、Database/Table/Column、Semantic Row、revision、关系、BM25/N-gram、Router、稳定 JSON 错误。底层可以是临时简化实现，但协议和测试不可一次性抛弃。
+包含：本地 daemon 与 IPC、统一 MSQL 执行核心、文件 Page Buffer Pool、Data Dictionary、Database/Table/Column、Semantic Row、revision、关系、Agent 词项与机械 N-gram 混合倒排、Router、稳定 JSON 错误。底层可以是临时简化实现，但协议和测试不可一次性抛弃。
 
 退出条件：自然对话能够自主建模、SQL 取数、精确修订并导出 Wiki；一个逻辑 Database 可以打包、校验、安装和只读直接问答。
 
 ## Phase 2：Agent 集成
 
-- 完成内置 Runtime 的 read/write profile、有界 Context Pack 和 Mutation Receipt；
-- 加入 Query Workspace、Session/Warm LRU、交互 CLI 和 `--stdio` 长驻会话；
-- 发布供外部 Agent 直接调用 `memora ask` 或 `memora exec` 的最小 Skill；
+- 完成 Canonical Skill 的 read/write 流程、有界 Context Pack 和 Mutation Receipt；
+- 实现索引发现 Sub-agent 的逐层导航、混合倒排评分、定位返回和主 Agent SQL 回表；
+- 实现 Router membership 反向索引、`pending_reindex` 队列、tombstone，以及 Row/子树/Database 三级重建与原子切换；
+- 完成 Query Workspace 生命周期、daemon 生命周期、交互 CLI 和 `--stdio` bridge；
+- 发布供外部 Agent 调用 `memora exec` 的 Canonical Skill；
 - 接入 Codex/Claude，验证宿主无关性；
 - 保留宿主侧 Query Sub-agent 作为可选兼容路径。
 
 退出条件：20～50 轮主题切换中，主上下文增长、工具调用和召回达到候选门槛。
+
+自带模型 Provider 和 `memora ask` 不进入 v0 关键路径；Skill-first 体验通过后，再依据独立使用需求决定是否实现。
 
 ## Phase 3：语义自治质量
 
 - Schema 查重、alias、merge/rename/migration；
 - 记录 worthiness、split/merge、contradiction 和 supersede；
 - 资料吸收 inventory、coverage 和 source receipt；
-- Router + BM25 + N-gram + graph 融合排序；
+- Router + Agent 词项 + 机械 N-gram + graph 融合排序；
 - memory feedback 和可审计修订候选；
 - 与 Basic Memory、Mem0/Vector baseline 做对照。
 
@@ -62,9 +66,9 @@ memora doctor
 产品体验成立后再实现：
 
 - Tablespace、Data File、Page、Extent、Segment；
-- Row Directory、Version Store、B+ Tree 和 Posting Run；
-- Buffer Pool、锁、MVCC、Undo Log、Redo Log 和恢复；
-- 多进程协调、compaction、校验、备份和故障注入；
+- 最新 Record Store、Undo version chain、History Store、B+ Tree 和 Posting Run；
+- Buffer Pool、锁、MVCC、Undo Log、Redo Log、逻辑 Binlog 和恢复；
+- 多进程协调、compaction、校验、备份、Binlog 增量重放和故障注入；
 - format version 与迁移工具。
 
 退出条件：事务、崩溃恢复、索引原子可见和跨版本兼容测试通过。
@@ -88,6 +92,7 @@ memora doctor
 
 ## 关联
 
+- [TDD 开发总计划](./tdd-development-plan.md)
 - [尚未确认的问题](./open-questions.md)
 - [质量模型与验收](../product/quality-model.md)
 - [市场空白与定位](../research/market-positioning.md)

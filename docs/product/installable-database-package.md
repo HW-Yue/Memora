@@ -18,22 +18,24 @@ Memora 的基本可分发对象不是聊天记录、Markdown 目录或向量索�
 
 ## 三种开箱即用方式
 
-以下命令名是协议候选，不代表 CLI 已实现：
+以下命令名是 CLI 候选，不代表已经实现；每个命令都必须转换为对应的 MSQL 管理语句，再经过统一 Parser、Policy 和执行器：
 
 ```text
-memora                         进入当前 Instance 的全局问答循环
-memora ask "上次为什么放弃方案 A？"  自动跨库路由并回答
-memora ask --database work_x "发布风险是什么？"
+Codex/Claude + Memora Skill    进入当前 Instance 的全局问答
+memora exec <msql>             执行 Skill 生成的确定性操作
 
 memora pack work_x -o work_x.<package>
 memora install work_x.<package>
 memora open work_x.<package>   以独立、默认只读方式直接问答
 ```
 
+对应的 MSQL 采用独立声明式语句，例如 `PACK DATABASE ... TO ...`、`INSTALL PACKAGE ...` 和 `OPEN PACKAGE ... READ ONLY`，不使用通用 `CALL` 包装。
+
 - `install` 把一个库纳入本地 Instance，之后可参与全局路由；
 - `open` 不导入个人 Instance，适合审阅、演示和一次性问答；
+- `pack`、`install` 和 `open` 不得直接调用绕过 MSQL 的包管理接口；
 - 外部 Agent 仍可使用 `--stdio`、Skill 或可选 MCP adapter；
-- CLI 自带 Agent Runtime，不能要求接收方先安装 Claude、Codex 或自建 RAG 服务。
+- v0 由 Codex/Claude Code Skill 提供 AI；数据库包本身不绑定某个模型，也不携带 Provider 凭据。未来可选的内置 Runtime 另行评估。
 
 ## 包的逻辑内容
 
@@ -41,11 +43,14 @@ memora open work_x.<package>   以独立、默认只读方式直接问答
 
 - manifest：格式版本、Database 身份、名称、用途、作者声明和兼容范围；
 - Data Dictionary：Table、Column、关系、别名、约束和短描述；
+- Database 级可演化配置及其 revision，包括 Search Weight、词项、Router 和 Context Pack 预算；
 - 当前可见语义 Row、revision、关系和必要 Source Receipt；
 - Database Router 和供冷启动发现的短摘要；
 - 完整性清单与内容哈希。
 
 倒排索引等派生状态可以随包携带以加速打开，但安装方必须能丢弃并确定性重建。模型 API Key、Provider 凭据、Query Workspace、LRU、未提交事务、其他 Database 数据和宿主聊天记录不得进入包。
+
+物理存储中，Database 的 `data/` 与 `history/` 属于权威内容，`indexes/router/` 和 `indexes/inverted/` 属于可选派生 generation。打包不能因省略派生索引而丢失任何 Row、revision 或关系。
 
 是否携带完整 revision 历史是待验证策略；至少要保留当前 snapshot 的 revision 身份和来源，使安装后修改仍可审计。
 
@@ -81,7 +86,7 @@ memora open work_x.<package>   以独立、默认只读方式直接问答
 - 全局问题能选中正确 Database，且不会把同名不同项目事实串库；
 - 指定 Database 的问题不会读取范围外内容；
 - 包冲突、损坏、版本不兼容和不可信内容都有明确失败结果；
-- 安装、直接打开和全局问答都不依赖后台 daemon。
+- 安装、直接打开和全局问答都由本地 daemon 统一执行。
 
 ## 未决问题
 
@@ -94,5 +99,5 @@ memora open work_x.<package>   以独立、默认只读方式直接问答
 ## 关联
 
 - [AI-native 产品契约](./ai-native-contract.md)
-- [内置 Agent Runtime](../agent/embedded-agent-runtime.md)
+- [可选内置 Agent Runtime](../agent/embedded-agent-runtime.md)
 - [Instance、Database 与 Table](../storage/instance-database-table.md)

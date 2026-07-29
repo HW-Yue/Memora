@@ -59,7 +59,7 @@
 
 ### 无向量召回
 
-查询故意使用与原文不同的同义表达，比较 Router+BM25+N-gram+关系与 Vector baseline 的差距。
+查询故意使用与原文不同的同义表达，比较 Router+Agent 词项+机械 N-gram+关系与 Vector baseline 的差距，并校准两路索引权重。
 
 ## 对照组
 

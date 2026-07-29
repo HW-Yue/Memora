@@ -1,6 +1,6 @@
 # 上下文生命周期
 
-状态：首选方向改为内置 Agent Runtime；上下文重建和预算仍需原型验证。
+状态：v0 采用 Skill-first 有界查询；上下文重建和预算仍需原型验证。
 
 ## 问题
 
@@ -23,11 +23,13 @@ Agent 为了查询需要读取数据库、Schema、Router、候选列表和结�
 - 主题切换或版本失效后不能继续使用旧 Route；
 - 导航缓存不能长期占用 MVCC snapshot。
 
-## 当前首选：内置 Agent Runtime
+## 当前首选：宿主 Agent + Canonical Skill
 
-外部调用方把查询意图、scope hint 和结果预算交给 Memora 内置 Agent Runtime。Runtime 在受控模型上下文里读取 Router、Schema、SQL 错误和候选，只向调用方返回最终回答或 Context Pack。
+Codex/Claude Code 按 Skill 在当前 Agent 或隔离 sub-agent 中读取 Router、Schema、SQL 错误和候选。无论宿主是否支持 sub-agent，都必须限制每一步输出，并只把必要定位交给最终 SQL 回表步骤。
 
-Runtime 由 Memora 管理 prompt、工具协议、Query Workspace、缓存失效和输出预算，不依赖宿主能否创建 sub-agent。内置 loop 生成的 MSQL 与外部直接提交的 MSQL 使用同一执行核心。详见 [内置 Agent Runtime](../agent/embedded-agent-runtime.md)。
+查询采用两阶段链路：索引发现步骤只产生候选数据项定位，主 Agent 用 MSQL `SELECT` 回表后，才生成回答或 Context Pack。索引候选本身不进入最终回答。
+
+Skill 管理稳定流程，MSQL 响应预算和 Policy 由引擎强制。未来若增加内置 Runtime，也只能复用同一 MSQL 核心和预算。详见 [可选内置 Agent Runtime](../agent/embedded-agent-runtime.md)。
 
 ## 降级方案：三层缓存
 
@@ -45,33 +47,33 @@ focus=语义路由与SQL
 
 目标约 50～150 tokens。
 
-### L1：Navigation Session Cache
+### L1：Query Workspace
 
-完整 Router、短句柄和候选路径由 CLI 或 Agent 会话保存，用 cursor 复用，不重复返回全文。缓存绑定 database ID、Schema version、Route revision 和 TTL。
+当前宿主会话可以暂存短句柄、候选定位和 cursor，避免同一轮重复输出。状态绑定 Database ID、Schema version、Route revision、调用方与权限 scope。
 
-缓存采用 Database 分区、Route/Table 为内部项的分层 LRU；另设可跨聊天复用的 Warm LRU。具体见 [工作集与 LRU 缓存](./working-set-cache.md)。
+Query Workspace 不是相关性缓存，不让 Agent 因为上次走过某条 Route 就优先返回它。具体见 [Query Workspace 与缓存边界](./working-set-cache.md)。
 
 ### L2：Engine Cache
 
-B+ Tree Page、Data Dictionary、posting 和执行计划留在引擎内，不进入模型上下文。
+B+ Tree、Data、Data Dictionary 和 posting Page 由引擎 Buffer Pool 缓存，不进入模型上下文。详见 [Buffer Pool](../storage/buffer-pool.md)。
 
 ## 查询生命周期候选
 
 ```text
 调用方提交查询意图
-→ Runtime 恢复紧凑 Query Workspace
-→ 内置 loop 发现/路由/执行 MSQL
-→ Runtime 返回受预算约束的回答或 Context Pack
-→ Runtime 保存可重建 checkpoint，模型上下文可结束或轮换
+→ Skill 恢复或重建紧凑 Route Frame
+→ 宿主 Agent 发现/路由/执行 MSQL
+→ 宿主返回受预算约束的回答或 Context Pack
+→ 保存可选的短 checkpoint，模型上下文可结束或轮换
 → 调用方使用结果继续工作
 → 需要长期保存的状态通过独立写入流程提交
 ```
 
 ## 关键现实限制
 
-Memora 可以控制内置 loop 的模型输入和工具输出，但不能突破模型本身的上下文上限，也不能删除外部宿主已经接收的结果。因此 Runtime 保存的是可重建工作状态，而不是无限增长的原始模型对话。
+Memora 不能删除 Codex/Claude Code 已经接收的工具输出，也不能突破宿主模型的上下文上限。因此必须从数据库响应源头限制输出；可保存的只是短小、可重建的工作状态，不是原始模型对话。
 
-Runtime 默认运行在前台 `memora` 交互进程中；外部 Agent 可以通过 `memora --stdio` 持有同一个长驻进程。单次命令退出后由持久化 checkpoint 和 warm-cache 重建，不依赖后台 daemon 或 socket。
+CLI、`--stdio` bridge 和单次命令都连接同一个本地 daemon，使最近访问的文件 Page 能继续留在 Buffer Pool。daemon 重启可以从空 Buffer Pool 冷启动，缓存丢失只能降低性能，不能影响数据库事实。
 
 因此第一版必须优先依赖：
 
@@ -99,7 +101,7 @@ database_id + schema_version + route_id + route_revision
 1. Codex、Claude Code 的 sub-agent 返回结果实际占用多少主上下文？
 2. Query Agent 应保持一次性启动，还是在实测延迟过高后按数据库短期复用？
 3. 如何强制 Context Pack 大小、字段和证据格式？
-4. 不支持 sub-agent 的宿主怎样接收紧凑的 LRU Bootstrap？
+4. 不支持 sub-agent 的宿主怎样接收紧凑的 Query Workspace checkpoint？
 5. 主题切换由主 Agent 判断还是数据库提供 topic hint？
 6. 输出预算按字符还是针对具体模型估算 token？
 7. 查询结果怎样压缩，同时保留证据和可追溯性？

@@ -1,0 +1,127 @@
+# Phase B：逻辑数据库与语义检索
+
+目标：以原型 Store 跑通可迁移的逻辑数据库闭环。SQLite 只是实现细节，所有验收针对 Memora 契约。
+
+## F13 Data Dictionary
+
+先测：CREATE/SHOW/DESCRIBE Database、Table、Column，重名、rename、schema version、purpose/scope 缺失和重启读取。
+
+开发：实现稳定 database/table/column ID、Catalog Binder 和自描述 Schema。
+
+提交：`feat(F13): add self-describing catalog`
+
+## F14 类型、约束与字段预算
+
+先测：NULL、整数、布尔、时间、文本、关系 ID、类型错误、默认 1200 字符和可配置上限。
+
+开发：实现逻辑类型系统、约束验证和稳定错误码；禁止截断。
+
+提交：`feat(F14): enforce logical types and limits`
+
+## F15 Row CRUD 与 revision
+
+先测：参数化 CRUD、稳定 row_id、expected revision 成功/冲突、逻辑 DELETE、影响行数上限和 SQL 注入样例。
+
+开发：实现 Binder、Planner、CRUD Executor、row_state 和 revision。
+
+提交：`feat(F15): execute revisioned row CRUD`
+
+## F16 Batch 与事务执行
+
+先测：autocommit 独立失败继续；显式事务内写失败全回滚；读失败结构化返回；事务后独立语句继续。
+
+开发：连接 session、Store transaction 和 batch envelope，严格实现已确认语义。
+
+提交：`feat(F16): execute atomic MSQL batches`
+
+## F17 History Store
+
+先测：每次修改生成 revision；AS OF、SHOW HISTORY、补偿撤销、逻辑删除历史和跨重启一致。
+
+开发：实现追加式逻辑 History API、actor/source/reason 和 commit sequence。
+
+提交：`feat(F17): preserve semantic revision history`
+
+## F18 结构化关系
+
+先测：正反向遍历、引用不存在、删除引用、跨表/跨库 Policy、关系 revision 和循环关系。
+
+开发：实现关系记录与正反向索引；引擎不解释 `contradicts` 等业务语义。
+
+提交：`feat(F18): store revisioned relationships`
+
+## F19 Agent 倒排索引
+
+先测：完整词项快照、去重、任意字段来源、旧 revision 失效、24/64 预算和事务回滚。
+
+开发：实现 `term → row_id + revision` posting、反向映射和 Agent 来源标记。
+
+提交：`feat(F19): index agent-selected terms`
+
+## F20 机械索引
+
+先测：中英混合、标点、N-gram、长文本、关闭/重建、空间预算和与 Agent posting 隔离。
+
+开发：实现可配置 tokenizer/N-gram、机械 posting 和确定性规范化。
+
+提交：`feat(F20): add rebuildable mechanical index`
+
+## F21 MATCH 融合评分
+
+先测：两路独立归一化、0.8/0.2 默认权重、配置覆盖、稳定 tie-break、LIMIT 和只返回定位。
+
+开发：实现 MATCH Planner、融合评分和解释信息；不得从索引返回正文。
+
+提交：`feat(F21): fuse semantic and lexical matches`
+
+## F22 Router 多层树
+
+先测：多叉节点、多个叶子 membership、row_id 反向索引、rename、split/merge、删除全部引用和容量边界。
+
+开发：实现 Database Router、稳定 node ID、membership 快照和遍历 cursor。
+
+提交：`feat(F22): build multi-level semantic router`
+
+## F23 索引发现流程
+
+先测：逐层 Route、错误分支由倒排救回、关系补充候选、预算耗尽、冷库发现和最终只返回 ID。
+
+开发：实现发现 Planner 与确定性候选融合接口，供 Agent profile 调用。
+
+提交：`feat(F23): discover row locators across indexes`
+
+## F24 pending_reindex
+
+先测：普通 SQL UPDATE 立即使旧语义索引失效；机械检索可用；后台结果 revision 过期不得覆盖；重试幂等。
+
+开发：实现 durable reindex queue、worker lease、expected revision 和失败可观测性。
+
+提交：`feat(F24): rebuild semantic metadata asynchronously`
+
+## F25 Generation Manifest
+
+先测：Router/Agent/机械 generation 独立重建、manifest 原子切换、查询 pin、崩溃前后组合一致和旧读者释放后回收。
+
+开发：实现 index manifest、旁路验证、发布和 generation GC。
+
+提交：`feat(F25): publish independent index generations`
+
+## F26 逻辑备份与迁移出口
+
+先测：导出再导入得到等价 Catalog/Row/history/relation；未知字段保留；旧 format fixture 可迁移；索引可丢弃重建。
+
+开发：实现版本化 logical snapshot，作为原型后端迁往原生内核的安全出口。
+
+提交：`feat(F26): export portable logical snapshots`
+
+## F27 数据库垂直链路
+
+先测：init → DDL → 写入 → Route/MATCH → SELECT 回表 → UPDATE → history → restart 的黑盒 E2E。
+
+开发：补齐 CLI `exec/query/doctor`、完整性检查和用户可读诊断，不新增旁路 API。
+
+提交：`feat(F27): complete local database vertical slice`
+
+## Phase B 退出测试
+
+固定 seed 的一万 Row 数据集通过 CRUD、事务、检索、重建和重启测试；所有索引都能删除后重建；逻辑 snapshot 往返哈希一致。

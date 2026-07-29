@@ -20,6 +20,7 @@
 
 - [AI-native 产品边界](./product/ai-native-boundary.md) — AI 负责语义建模，引擎负责物理正确性。
 - [AI-native 产品契约](./product/ai-native-contract.md) — 什么才算真正由 AI 自主管理的数据库。
+- [AI-native 可演化配置](./product/adaptive-configuration.md) — 默认值进入数据库；冻结、迁移和 AI 优化边界留到最后阶段确定。
 - [可安装的独立语义数据库](./product/installable-database-package.md) — 单库打包、安装、直接问答和全局跨库入口。
 - [质量模型与验收](./product/quality-model.md) — 写入、检索、修改、上下文和接管的效果指标。
 - [语义记录模型](./data/semantic-records.md) — AI 自定义表和字段，记录是短小完整的知识模块。
@@ -29,22 +30,27 @@
 ## Agent 与查询
 
 - [AI 自主权与约束](./agent/autonomy.md) — 自主建模、风险等级和引擎不变量。
-- [内置 Agent Runtime](./agent/embedded-agent-runtime.md) — 自带模型循环，内外调用统一进入同一 MSQL 执行核心。
+- [可选内置 Agent Runtime](./agent/embedded-agent-runtime.md) — v0 后候选；第一版由 Codex/Claude Code 按 Skill 调用统一 MSQL 核心。
+- [索引发现 Sub-agent](./agent/index-discovery-subagent.md) — 逐层导航并融合倒排，只返回数据项定位，主 Agent 再用 SQL 取数。
 - [数据库查询 Sub-agent](./agent/database-query-subagent.md) — 旧首选方案；保留为宿主侧兼容方式。
-- [数据库 Mutation Agent](./agent/database-mutation-agent.md) — 写入职责和收据设计，后续并入内置 Runtime 的能力配置。
+- [数据库 Mutation Agent](./agent/database-mutation-agent.md) — Skill 写入职责、维护选择和收据设计。
 - [MSQL](./query/msql.md) — 标准化发现、查询、修改和事务语言。
-- [语义路由](./query/semantic-routing.md) — 短索引、倒排召回与关系扩展。
-- [无向量检索质量链路](./query/retrieval-quality.md) — 从意图扩展、候选融合到有界 Context Pack 的完整流程。
+- [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 多层多叉语义树逐层找到叶子数据项 ID，再与倒排和关系候选融合。
+- [无向量检索质量链路](./query/retrieval-quality.md) — 从逐层发现、候选融合、返回定位到主 Agent SQL 回表的完整流程。
 - [上下文生命周期](./query/context-lifecycle.md) — 当前重点：索引缓存、污染、失效和平台限制。
-- [工作集与 LRU 缓存](./query/working-set-cache.md) — 跨聊天复用热路径，减少重复发现和工具调用。
+- [Query Workspace 与缓存边界](./query/working-set-cache.md) — 区分 Agent 临时状态、物理 Page 缓存和查询结果缓存。
 
 ## 存储
 
 - [存储引擎术语](./storage/terminology.md) — 与 MySQL/InnoDB 对齐的标准命名和 Memora 独有概念。
+- [Buffer Pool](./storage/buffer-pool.md) — daemon 中缓存文件 Page，最近访问的 Page 按 LRU 或近似算法保留与淘汰。
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
+- [Binlog 与多设备同步基础](./storage/binlog-and-sync.md) — 已提交逻辑变更流，为增量同步和时间点恢复保留基础。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
 - [Tablespace、Page 与 Record 布局](./storage/tablespace-page-record-layout.md) — Data File、Extent、Page、混合字段和 Schema 演化。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
+- [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
+- [Database 物理目录](./storage/database-file-layout.md) — 每库 data/history、每表 Tablespace 和独立索引 generation。
 
 ## 导出与调研
 
@@ -57,6 +63,7 @@
 ## 计划
 
 - [开发与验证路线](./planning/roadmap.md) — 先验证 AI-native 体验，再进入完整存储内核。
+- [TDD 开发总计划](./planning/tdd-development-plan.md) — 按独立 feature branch/commit 推进，测试先行并设置阶段质量门。
 
 ## 文档规模约束
 
