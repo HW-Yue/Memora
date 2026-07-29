@@ -3,6 +3,7 @@ package snapshot
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -100,7 +101,7 @@ func prepare(value document) (preparedDocument, error) {
 		relationOutgoing: map[string][]string{}, relationIncoming: map[string][]string{},
 		commitSequence: value.CommitSequence,
 	}
-	rowKeys := map[string]struct{}{}
+	rowKeys := map[string]string{}
 	for _, raw := range value.Rows {
 		var header rowHeader
 		if json.Unmarshal(raw, &header) != nil || !validRow(header, layout) {
@@ -110,7 +111,7 @@ func prepare(value document) (preparedDocument, error) {
 		if _, exists := rowKeys[key]; exists {
 			return preparedDocument{}, snapshotError(result.CodeValidation, "logical snapshot Row is duplicated")
 		}
-		rowKeys[key] = struct{}{}
+		rowKeys[key] = header.DatabaseID
 		prepared.rows = append(prepared.rows, header)
 		prepared.rowIDs[header.TableID] = append(prepared.rowIDs[header.TableID], header.ID)
 		prepared.commitSequence = max(prepared.commitSequence, header.CommitSequence)
@@ -120,7 +121,7 @@ func prepare(value document) (preparedDocument, error) {
 		if json.Unmarshal(raw, &record) != nil || !validHistory(record) {
 			return preparedDocument{}, snapshotError(result.CodeValidation, "logical snapshot History is invalid")
 		}
-		if _, exists := rowKeys[record.TableID+"\x00"+record.RowID]; !exists {
+		if databaseID, exists := rowKeys[record.TableID+"\x00"+record.RowID]; !exists || databaseID != record.DatabaseID {
 			return preparedDocument{}, snapshotError(result.CodeValidation, "logical snapshot History references a missing Row")
 		}
 		key := record.TableID + "\x00" + record.RowID
@@ -212,8 +213,9 @@ func validHistory(value history.Record) bool {
 	}
 }
 
-func validRelation(value relation.Relation, rows map[string]struct{}) bool {
-	if value.Version != relation.Version || !cleanID(value.ID) ||
+func validRelation(value relation.Relation, rows map[string]string) bool {
+	if value.Version != relation.Version || !strings.HasPrefix(value.ID, "rel_") ||
+		!cleanID(strings.TrimPrefix(value.ID, "rel_")) ||
 		value.Revision == 0 || value.CommitSequence == 0 ||
 		(value.State != relation.StateLive && value.State != relation.StateDeleted) ||
 		value.CreatedAt.IsZero() || value.UpdatedAt.IsZero() ||
@@ -224,12 +226,12 @@ func validRelation(value relation.Relation, rows map[string]struct{}) bool {
 	return true
 }
 
-func validEndpoint(value relation.Endpoint, rows map[string]struct{}) bool {
+func validEndpoint(value relation.Endpoint, rows map[string]string) bool {
 	if !cleanID(value.DatabaseID) || !cleanID(value.TableID) || !cleanID(value.RowID) {
 		return false
 	}
-	_, exists := rows[value.TableID+"\x00"+value.RowID]
-	return exists
+	databaseID, exists := rows[value.TableID+"\x00"+value.RowID]
+	return exists && databaseID == value.DatabaseID
 }
 
 func endpointKey(value relation.Endpoint) string {

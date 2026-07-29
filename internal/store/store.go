@@ -23,8 +23,14 @@ type Store interface {
 	Close() error
 }
 
+type Entry struct {
+	Key   string
+	Value []byte
+}
+
 type Tx interface {
 	Get(context.Context, string, string) ([]byte, error)
+	Scan(context.Context, string) ([]Entry, error)
 	Put(context.Context, string, string, []byte) error
 	Delete(context.Context, string, string) error
 	Commit() error

@@ -77,6 +77,46 @@ func Run(t *testing.T, open OpenFunc) {
 		}
 	})
 
+	t.Run("scan is deterministic and isolated by bucket", func(t *testing.T) {
+		database := mustOpen(t, open, filepath.Join(t.TempDir(), "scan.db"))
+		defer mustClose(t, database)
+		tx := mustBegin(t, database, store.ReadWrite)
+		for _, entry := range []struct {
+			bucket string
+			key    string
+			value  string
+		}{
+			{bucket: "rows", key: "row_b", value: "second"},
+			{bucket: "other", key: "row_0", value: "hidden"},
+			{bucket: "rows", key: "row_a", value: "first"},
+		} {
+			if err := tx.Put(
+				context.Background(), entry.bucket, entry.key, []byte(entry.value),
+			); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		read := mustBegin(t, database, store.ReadOnly)
+		defer rollback(t, read)
+		entries, err := read.Scan(context.Background(), "rows")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 2 || entries[0].Key != "row_a" ||
+			string(entries[0].Value) != "first" || entries[1].Key != "row_b" ||
+			string(entries[1].Value) != "second" {
+			t.Fatalf("Scan() = %#v", entries)
+		}
+		entries[0].Value[0] = 'X'
+		stored, err := read.Get(context.Background(), "rows", "row_a")
+		if err != nil || string(stored) != "first" {
+			t.Fatalf("Scan() returned aliased bytes: %q, %v", stored, err)
+		}
+	})
+
 	t.Run("concurrent readers", func(t *testing.T) {
 		database := mustOpen(t, open, filepath.Join(t.TempDir(), "concurrent.db"))
 		defer mustClose(t, database)

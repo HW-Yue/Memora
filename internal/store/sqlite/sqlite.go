@@ -106,6 +106,35 @@ func (tx *transaction) Get(ctx context.Context, bucket, key string) ([]byte, err
 	return append([]byte(nil), value...), nil
 }
 
+func (tx *transaction) Scan(ctx context.Context, bucket string) ([]store.Entry, error) {
+	tx.mu.Lock()
+	defer tx.mu.Unlock()
+	if tx.done {
+		return nil, store.ErrTxClosed
+	}
+	rows, err := tx.tx.QueryContext(ctx,
+		"SELECT key, value FROM memora_kv WHERE bucket = ? ORDER BY key",
+		bucket,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("scan SQLite store bucket: %w", err)
+	}
+	defer rows.Close()
+	entries := []store.Entry{}
+	for rows.Next() {
+		var entry store.Entry
+		if err := rows.Scan(&entry.Key, &entry.Value); err != nil {
+			return nil, fmt.Errorf("scan SQLite store entry: %w", err)
+		}
+		entry.Value = append([]byte(nil), entry.Value...)
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan SQLite store bucket: %w", err)
+	}
+	return entries, nil
+}
+
 func (tx *transaction) Put(ctx context.Context, bucket, key string, value []byte) error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()

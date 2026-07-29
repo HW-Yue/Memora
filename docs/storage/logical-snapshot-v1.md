@@ -1,6 +1,6 @@
 # Logical Snapshot v1
 
-状态：F26a 已冻结版本化逻辑格式、v0 迁移与确定性哈希；F26b 接入 Store 导出、原子导入和逻辑索引重建。
+状态：F26a/F26b 已冻结版本化逻辑格式、v0 迁移、确定性哈希、Store 导出、原子导入和逻辑索引重建。
 
 ## 迁移边界
 
@@ -31,7 +31,9 @@ Catalog、Row、History 和 Relation record 继续使用各自的稳定逻辑 ID
 
 ## 索引边界
 
-Row 定位、History revision、Relation 正反向定位、Agent、Router、机械倒排及 generation manifest 都不属于快照权威内容。F26b 导入时重建前三类逻辑定位；语义和机械索引保持可丢弃、可由 Row 与 Catalog 重建。
+Row 定位、History revision、Relation 正反向定位、Agent、Router、机械倒排及 generation manifest 都不属于快照权威内容。导入在同一 Store transaction 中重建前三类逻辑定位并恢复 commit sequence；语义和机械索引保持可丢弃、可由 Row 与 Catalog 重建。
+
+导入只接受空目标，先完成全量格式与引用验证，再原子写入。失败或 rollback 不留下部分 Catalog、Row、History、Relation 或定位索引。
 
 ## 关联
 
