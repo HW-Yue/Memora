@@ -57,48 +57,19 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 }
 
 func (service *Service) Insert(ctx context.Context, databaseName, tableName string, values map[string]any, options WriteOptions) (Row, error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	tx, table, err := service.beginWrite(ctx, databaseName, tableName, options)
+	transaction, err := service.BeginTransaction(ctx)
 	if err != nil {
 		return Row{}, stableError(err)
 	}
-	defer func() { _ = tx.Rollback() }()
-	encodedValues, err := validateValues(table, values, nil)
+	defer func() { _ = transaction.Rollback() }()
+	inserted, err := transaction.Insert(ctx, databaseName, tableName, values, options)
 	if err != nil {
-		return Row{}, stableError(err)
+		return Row{}, err
 	}
-	id, err := service.nextID()
-	if err != nil {
-		return Row{}, stableError(err)
+	if err := transaction.Commit(); err != nil {
+		return Row{}, err
 	}
-	if _, err := tx.Get(ctx, rowBucket(table.ID), id); err == nil {
-		return Row{}, stableError(rowError(result.CodeAlreadyExists, "allocated row ID already exists"))
-	} else if !errors.Is(err, store.ErrNotFound) {
-		return Row{}, stableError(err)
-	}
-	now := service.clock.Now().UTC()
-	stored := storedRow{
-		ID: id, DatabaseID: table.DatabaseID, TableID: table.ID,
-		SchemaVersion: table.SchemaVersion, Revision: 1, State: StateLive,
-		Values: encodedValues, CreatedAt: now, UpdatedAt: now,
-	}
-	if err := putStored(ctx, tx, stored); err != nil {
-		return Row{}, stableError(err)
-	}
-	index, err := loadIndex(ctx, tx, table.ID)
-	if err != nil {
-		return Row{}, stableError(err)
-	}
-	index = append(index, id)
-	if err := saveIndex(ctx, tx, table.ID, index); err != nil {
-		return Row{}, stableError(err)
-	}
-	if err := tx.Commit(); err != nil {
-		return Row{}, stableError(err)
-	}
-	projected, err := project(table, stored)
-	return projected, stableError(err)
+	return inserted, nil
 }
 
 func (service *Service) Get(ctx context.Context, databaseName, tableName, rowID string) (Row, error) {
@@ -176,26 +147,6 @@ func (service *Service) ListPage(ctx context.Context, databaseName, tableName st
 		rows = append(rows, projected)
 	}
 	return rows, false, nil
-}
-
-func (service *Service) beginWrite(ctx context.Context, databaseName, tableName string, options WriteOptions) (store.Tx, catalog.Table, error) {
-	if options.ExpectedSchemaVersion == 0 {
-		return nil, catalog.Table{}, rowError(result.CodeValidation, "write requires expected schema version")
-	}
-	tx, err := service.store.Begin(ctx, store.ReadWrite)
-	if err != nil {
-		return nil, catalog.Table{}, err
-	}
-	table, err := service.catalog.DescribeTableIn(ctx, tx, databaseName, tableName)
-	if err != nil {
-		_ = tx.Rollback()
-		return nil, catalog.Table{}, err
-	}
-	if table.SchemaVersion != options.ExpectedSchemaVersion {
-		_ = tx.Rollback()
-		return nil, catalog.Table{}, revisionError("schema", options.ExpectedSchemaVersion, table.SchemaVersion)
-	}
-	return tx, table, nil
 }
 
 func (service *Service) nextID() (string, error) {

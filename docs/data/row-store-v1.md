@@ -26,6 +26,8 @@ DELETE 是逻辑删除：保留当前字段，把 `row_state` 改为 `deleted` �
 
 F15e 已把这些操作接入统一 MSQL Executor，结构化 mutation options 和影响预算见 [MSQL Mutation Executor v1](../query/msql-mutation.md)。
 
+F16a 增加 transaction-scoped Row API：同一个 scope 内的 Catalog 绑定、Get/List 与 CRUD 共用一个 read-write Store transaction，并可统一 Commit/Rollback。原有 Service CRUD 是该 scope 的 autocommit 包装，不能维护另一套 validation 或 revision 逻辑。
+
 ## Schema 与值校验
 
 每次写入必须携带 `expected_schema_version`。Row Service 在同一个 Store transaction 中读取 Catalog 和写 Row；版本不一致返回 `revision_conflict`。

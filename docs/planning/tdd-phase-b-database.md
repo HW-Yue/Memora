@@ -40,13 +40,21 @@
 
 提交：`feat(F15): execute revisioned row CRUD`
 
-## F16 Batch 与事务执行
+## F16a Transaction-scoped Row API
+
+先测：同一事务可读到自己的多次写入；commit 后整体可见；rollback 后全部不可见；Catalog/Row 绑定共享同一 Store snapshot。
+
+开发：把 Row CRUD 抽成可复用的 transaction scope；autocommit Service API 复用相同原语，避免两套 revision/validation 逻辑。
+
+提交：`feat(F16a): expose transaction-scoped row operations`
+
+## F16b Batch 与事务执行
 
 先测：autocommit 独立失败继续；显式事务内写失败全回滚；读失败结构化返回；事务后独立语句继续。
 
 开发：连接 session、Store transaction 和 batch envelope，严格实现已确认语义。
 
-提交：`feat(F16): execute atomic MSQL batches`
+提交：`feat(F16b): execute atomic MSQL batches`
 
 ## F17 History Store
 
