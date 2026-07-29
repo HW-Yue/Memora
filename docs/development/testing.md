@@ -8,7 +8,7 @@
 ./scripts/ci.sh
 ```
 
-它按固定顺序执行 format、vet、unit、race、integration 和 e2e。开发中可以只运行一层：
+它按固定顺序执行 format、vet、unit、race、integration、e2e 和无 CGO macOS 双架构 cross-build。开发中可以只运行一层：
 
 ```bash
 ./scripts/ci.sh --list

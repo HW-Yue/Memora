@@ -68,6 +68,7 @@
 ## 开发
 
 - [测试约定](./development/testing.md) — Unit、integration、e2e、race、隔离目录和确定性 Testkit。
+- [ADR-0001：SQLite 原型 Store](./decisions/0001-prototype-store.md) — 用可替换 CGO-free 后端先验证产品，原生内核通过质量门后再替换。
 
 ## 文档规模约束
 

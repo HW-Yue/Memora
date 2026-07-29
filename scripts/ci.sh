@@ -8,7 +8,7 @@ cd "$repository_root"
 
 go_command=${MEMORA_CI_GO:-go}
 gofmt_command=${MEMORA_CI_GOFMT:-gofmt}
-stages=(format vet unit race integration e2e)
+stages=(format vet unit race integration e2e cross-build)
 
 usage() {
   printf 'usage: scripts/ci.sh [--list | --stage <name>]\n' >&2
@@ -43,6 +43,14 @@ run_stage() {
       ;;
     e2e)
       "$go_command" test -tags=e2e ./...
+      ;;
+    cross-build)
+      cross_build_dir=$(mktemp -d)
+      trap 'rm -rf -- "$cross_build_dir"' EXIT
+      CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$go_command" test -c \
+        -o "$cross_build_dir/store-arm64.test" ./internal/store/sqlite
+      CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 "$go_command" test -c \
+        -o "$cross_build_dir/store-amd64.test" ./internal/store/sqlite
       ;;
     *)
       printf 'ci: unknown stage %q\n' "$stage" >&2
