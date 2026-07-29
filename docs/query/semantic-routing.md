@@ -1,6 +1,6 @@
 # Agent 语义目录索引（Router）
 
-状态：F22a 已冻结多层多叉树、稳定节点、路径、membership、12/100 启动容量和显式分裂协议；发现融合评分由 F23 完成。
+状态：F22 已冻结 Router；F23 已冻结 Route、倒排和一跳关系的确定性发现融合。
 
 ## 目标
 
@@ -113,10 +113,7 @@ active generation N 继续查询
 ## 未决问题
 
 - Router 如何自动发现内容变化并提示需要重组？
-- 路由与倒排结果如何合并评分？
 - 根目录数据库很多时如何避免 `SHOW DATABASES` 自身变长？
-- Router 路径错误时，混合词项索引能否稳定救回记录？
-- 搜索深度和 beam width 的启动配置；
 - generation 切换前的覆盖率、重复率和质量验收门槛；
 - `subtree_dirty_ratio`、`full_rebuild_min_rows` 和 `full_rebuild_ratio` 的启动值；
 

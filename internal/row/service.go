@@ -12,6 +12,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/agentindex"
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/mechanicalindex"
 	"github.com/HW-Yue/Memora/internal/relation"
@@ -61,22 +62,24 @@ type Options struct {
 	AgentIndex      agentindex.Options
 	MechanicalIndex mechanicalindex.Options
 	Router          router.Options
+	Discovery       discovery.Options
 	Search          search.Options
 }
 
 type Service struct {
-	store           store.Store
-	catalog         Catalog
-	history         *history.Service
-	agentIndex      *agentindex.Service
-	mechanicalIndex *mechanicalindex.Service
-	relations       *relation.Service
-	routes          *router.Service
-	ids             IDSource
-	clock           Clock
-	relationPolicy  RelationPolicy
-	searchOptions   search.Options
-	mu              sync.Mutex
+	store            store.Store
+	catalog          Catalog
+	history          *history.Service
+	agentIndex       *agentindex.Service
+	mechanicalIndex  *mechanicalindex.Service
+	relations        *relation.Service
+	routes           *router.Service
+	ids              IDSource
+	clock            Clock
+	relationPolicy   RelationPolicy
+	searchOptions    search.Options
+	discoveryOptions discovery.Options
+	mu               sync.Mutex
 }
 
 func New(database store.Store, dictionary Catalog, options Options) *Service {
@@ -103,7 +106,7 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 		}),
 		routes: router.New(database, options.Router),
 		ids:    options.IDs, clock: options.Clock, relationPolicy: options.RelationPolicy,
-		searchOptions: options.Search,
+		searchOptions: options.Search, discoveryOptions: options.Discovery,
 	}
 }
 

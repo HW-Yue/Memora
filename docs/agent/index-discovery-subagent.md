@@ -1,6 +1,6 @@
 # 索引发现 Sub-agent
 
-状态：两阶段查询方向已确认；定位结果 Schema、融合算法和调用预算待冻结。
+状态：F23 已冻结定位 Schema、确定性融合与启动预算。
 
 ## 职责
 
@@ -36,13 +36,7 @@
 - 多层发现达到预算后返回结构化 `truncated`，不能无限导航；
 - 候选之间分数接近时保留多个定位，让主 Agent 用 SQL 读取后判断。
 
-## 待冻结
-
-- 定位结果是否包含 Database、Table、Row ID、revision 和分数解释；
-- 全局 ID 与 Table 内 Row ID 的关系；
-- Route、Agent 词项、机械词项和关系信号的归一化与融合；
-- 每层候选数、最大深度和总调用预算；
-- 主 Agent 一次回表读取多少候选以及怎样二次查询。
+具体权重、预算、截断和一致性规则见 [Index Discovery v1](../query/index-discovery-v1.md)。主 Agent 的回表字段与二次查询策略仍由具体问题和输出预算决定。
 
 ## 关联
 
