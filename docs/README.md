@@ -39,6 +39,7 @@
 
 - [AI 自主权与约束](./agent/autonomy.md) — 自主建模、风险等级和引擎不变量。
 - [Canonical Skill v1](./agent/canonical-skill-v1.md) — F28 的唯一宿主规则源、版本 lint、冲突边界和上下文预算。
+- [Skill 查询流程 v1](./agent/skill-query-v1.md) — F30 的发现、Route/MATCH、SELECT 回表、evidence 和可恢复终态。
 - [可选内置 Agent Runtime](./agent/embedded-agent-runtime.md) — v0 后候选；第一版由 Codex/Claude Code 按 Skill 调用统一 MSQL 核心。
 - [索引发现 Sub-agent](./agent/index-discovery-subagent.md) — 逐层导航并融合倒排，只返回数据项定位，主 Agent 再用 SQL 取数。
 - [数据库查询 Sub-agent](./agent/database-query-subagent.md) — 旧首选方案；保留为宿主侧兼容方式。

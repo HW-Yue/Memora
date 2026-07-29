@@ -58,12 +58,16 @@
 
 ```text
 invalid_request, parse_error, unsupported_statement, validation_error
-not_found, already_exists, revision_conflict, constraint_violation
+not_found, already_exists, permission_denied, revision_conflict, constraint_violation
 value_too_long, transaction_aborted, invalid_transaction_state
 cancelled, deadline_exceeded, output_truncated, internal_error
 ```
 
 `internal_error` 不得携带 stack、物理 Page、文件路径或底层 SQLite 信息。新增机器可读语义必须先登记 code 和恢复规则。
+
+`permission_denied` 表示请求语法有效，但调用方无权读取或修改目标逻辑
+对象。客户端可以缩小授权范围内的请求或向用户说明受限，不能换用物理文件、
+另一条检索通道或更高权限入口绕过。
 
 ## Warning 与截断
 

@@ -34,15 +34,37 @@ may return only locators; never answer from those candidates. Select projected
 semantic fields by Row ID, then summarize only the returned rows. Report empty,
 truncated, stale, or permission-limited results instead of filling gaps.
 
+Use this bounded state machine:
+
+```text
+SHOW DATABASES → DESCRIBE TABLE
+→ optional OPEN ROUTE (empty/not found falls back)
+→ MATCH
+→ validate database/table/Row/revision locators
+→ SELECT projected fields + row_id + revision
+→ answer only from revision-matched SELECT rows
+```
+
+Generate 1–32 non-empty, case-insensitively deduplicated query terms. Use an
+existing Route only when it plausibly scopes the question. Do not broaden a
+permission denial. If a selected Row changed, discard it and refresh discovery
+at most once when it can materially affect the answer.
+
 ```sh
 memora query --input '{"parameters":{"named":{"query":"routing design","terms":["routing","router","路由"],"limit":24}}}' "MATCH work.notes QUERY :query TERMS :terms LIMIT :limit"
-memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}}}' "SELECT title, summary FROM work.notes WHERE _row_id = :row LIMIT :limit"
+memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
 
 Keep at most 12 Router rows, 24 candidate locators, 10 selected rows, and 12,000
 characters of combined working context. Follow cursors only while another page
 can materially change the answer. Drop the Route Frame when its schema or route
 revision is stale, the topic changes, or the task ends.
+
+Stop when enough SELECT evidence answers the question, all candidates are
+exhausted, a hard budget is reached, access is denied, or another call cannot
+change the answer. Cite `database.table`, Row ID, revision, and available source
+anchor for every factual summary. Distinguish “no matching Row,” “truncated,”
+“stale during SELECT,” and “permission denied.”
 
 ## Write
 

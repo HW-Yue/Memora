@@ -53,8 +53,8 @@
     },
     {
       "name": "select",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"limit\":10}}}' \"SELECT title, summary FROM work.notes WHERE _row_id = :row LIMIT :limit\"",
-      "msql": "SELECT title, summary FROM work.notes WHERE _row_id = :row LIMIT :limit"
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"limit\":10}}}' \"SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit\"",
+      "msql": "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
     },
     {
       "name": "write",
