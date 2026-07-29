@@ -128,13 +128,21 @@
 
 提交：`feat(F19b): index row terms atomically`
 
-## F20 机械索引
+## F20a 机械 Tokenizer 与 Posting
 
 先测：中英混合、标点、N-gram、长文本、关闭/重建、空间预算和与 Agent posting 隔离。
 
-开发：实现可配置 tokenizer/N-gram、机械 posting 和确定性规范化。
+开发：实现 transaction-scoped tokenizer/N-gram、机械 posting、预算标记和同 revision rebuild。
 
-提交：`feat(F20): add rebuildable mechanical index`
+提交：`feat(F20a): store rebuildable mechanical postings`
+
+## F20b Row 自动机械索引
+
+先测：INSERT/UPDATE/RESTORE 自动替换、DELETE 失效、非文本字段忽略、Batch 回滚和 read-own-write。
+
+开发：从当前 Catalog 文本 Column 按稳定顺序生成机械快照，并接入 Row transaction。
+
+提交：`feat(F20b): maintain mechanical row index`
 
 ## F21 MATCH 融合评分
 

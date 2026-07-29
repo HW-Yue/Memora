@@ -31,6 +31,7 @@
 - [History Store v1](./data/history-store-v1.md) — F17 的追加式语义 revision、commit sequence、provenance 与补偿边界。
 - [Relationship Store v1](./data/relationship-store-v1.md) — F18 的结构化关系、revision、双向索引与完整性边界。
 - [Agent Inverted Index v1](./data/agent-index-v1.md) — F19 的完整词项快照、posting、revision 失效与 24/64 预算。
+- [Mechanical Inverted Index v1](./data/mechanical-index-v1.md) — F20 的中英 tokenizer、N-gram、空间预算、来源隔离与重建。
 - [资料吸收](./data/assimilation.md) — 外部资料临时读取，吸收后不保存原文。
 
 ## Agent 与查询
