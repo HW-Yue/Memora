@@ -2,7 +2,7 @@
 
 状态：执行中。
 
-当前进度：F00–F27 与 Phase A 退出测试已完成；下一项为 Phase B 退出测试。
+当前进度：F00–F27 与 Phase A/B 退出测试已完成；下一项为 F28 Canonical Skill 契约。
 
 ## 产品目标
 

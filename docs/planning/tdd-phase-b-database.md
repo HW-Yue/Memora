@@ -1,5 +1,7 @@
 # Phase B：逻辑数据库与语义检索
 
+状态：F13–F27 与 Phase B 退出测试已完成。
+
 目标：以原型 Store 跑通可迁移的逻辑数据库闭环。SQLite 只是实现细节，所有验收针对 Memora 契约。
 
 ## F13 Data Dictionary
