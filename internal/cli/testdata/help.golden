@@ -4,6 +4,7 @@ Usage:
   memora <command> [options]
 
 Commands:
+  daemon     Manage the local daemon
   help       Show this help
   init       Initialize a local instance
   version    Show build version

@@ -90,6 +90,13 @@ type Result struct {
 	Created  bool
 }
 
+func Read(root string) (Metadata, error) {
+	if !filepath.IsAbs(root) {
+		return Metadata{}, ErrPathNotAbsolute
+	}
+	return readMetadata(filepath.Join(root, metadataFilename))
+}
+
 func Initialize(ctx context.Context, root string, options Options) (Result, error) {
 	if !filepath.IsAbs(root) {
 		return Result{}, ErrPathNotAbsolute

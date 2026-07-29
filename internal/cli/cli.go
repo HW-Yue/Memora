@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/HW-Yue/Memora/internal/config"
+	"github.com/HW-Yue/Memora/internal/daemon"
 	"github.com/HW-Yue/Memora/internal/instance"
 )
 
@@ -24,6 +27,7 @@ Usage:
   memora <command> [options]
 
 Commands:
+  daemon     Manage the local daemon
   help       Show this help
   init       Initialize a local instance
   version    Show build version
@@ -68,6 +72,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 			return usageError(stderr, "help does not accept arguments")
 		}
 		return writeText(stdout, stderr, helpText)
+	case "daemon":
+		return runDaemon(args[1:], stdout, stderr, dependencies)
 	case "init":
 		return runInit(args[1:], stdout, stderr, dependencies)
 	case "version":
@@ -78,6 +84,107 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runDaemon(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	if len(args) == 0 {
+		return usageError(stderr, "daemon requires start, run, status, or stop")
+	}
+	action := args[0]
+	dataDir, code := daemonDataDir(args[1:], stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	switch action {
+	case "start":
+		if _, err := instance.Read(dataDir); err != nil {
+			return commandError(stderr, "open instance", err)
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			return commandError(stderr, "resolve executable", err)
+		}
+		state, err := daemon.Start(context.Background(), executable, dataDir)
+		if err != nil {
+			return commandError(stderr, "start daemon", err)
+		}
+		return writeText(stdout, stderr, fmt.Sprintf("Memora daemon started with PID %d\n", state.PID))
+	case "run":
+		if _, err := instance.Read(dataDir); err != nil {
+			return commandError(stderr, "open instance", err)
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		if err := daemon.Run(ctx, dataDir, nil); err != nil {
+			return commandError(stderr, "run daemon", err)
+		}
+		return ExitOK
+	case "status":
+		state, err := daemon.Inspect(dataDir)
+		if err != nil {
+			return commandError(stderr, "inspect daemon", err)
+		}
+		if state.Running {
+			return writeText(stdout, stderr, fmt.Sprintf("Memora daemon is running with PID %d\n", state.PID))
+		}
+		return writeText(stdout, stderr, "Memora daemon is stopped\n")
+	case "stop":
+		if err := daemon.Stop(context.Background(), dataDir); err != nil {
+			return commandError(stderr, "stop daemon", err)
+		}
+		return writeText(stdout, stderr, "Memora daemon stopped\n")
+	default:
+		return usageError(stderr, fmt.Sprintf("unknown daemon action: %q", action))
+	}
+}
+
+func daemonDataDir(args []string, stderr io.Writer, dependencies Dependencies) (string, int) {
+	var dataDirOverride *string
+	for index := 0; index < len(args); index++ {
+		if args[index] != "--data-dir" {
+			return "", usageError(stderr, fmt.Sprintf("unknown daemon option: %q", args[index]))
+		}
+		index++
+		if index >= len(args) {
+			return "", usageError(stderr, "--data-dir requires a path")
+		}
+		value := args[index]
+		if !filepath.IsAbs(value) {
+			return "", usageError(stderr, "--data-dir must be an absolute path")
+		}
+		dataDirOverride = &value
+	}
+	homeDir := dependencies.HomeDir
+	if homeDir == nil {
+		homeDir = os.UserHomeDir
+	}
+	home, err := homeDir()
+	if err != nil {
+		return "", commandError(stderr, "resolve user home", err)
+	}
+	configFile := ""
+	defaultConfig, err := config.DefaultFile(home)
+	if err != nil {
+		return "", commandError(stderr, "resolve config file", err)
+	}
+	if _, statErr := os.Stat(defaultConfig); statErr == nil {
+		configFile = defaultConfig
+	} else if !os.IsNotExist(statErr) {
+		return "", commandError(stderr, "inspect config file", statErr)
+	}
+	loaded, err := config.Load(config.LoadOptions{
+		ConfigFile: configFile,
+		LookupEnv:  dependencies.LookupEnv,
+		Overrides:  config.Overrides{DataDir: dataDirOverride},
+	})
+	if err != nil {
+		return "", commandError(stderr, "load config", err)
+	}
+	locations, err := instance.DefaultLocations(home, loaded.InstanceName, loaded.DataDir)
+	if err != nil {
+		return "", commandError(stderr, "resolve daemon data directory", err)
+	}
+	return locations.DataDir, ExitOK
 }
 
 func runInit(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {

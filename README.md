@@ -23,6 +23,9 @@ memora help
 memora init
 memora init --data-dir /absolute/path
 memora init --instance work --log-level debug
+memora daemon start --data-dir /absolute/path
+memora daemon status --data-dir /absolute/path
+memora daemon stop --data-dir /absolute/path
 memora version
 memora version --json
 ```

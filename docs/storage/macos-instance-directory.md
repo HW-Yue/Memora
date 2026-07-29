@@ -79,6 +79,17 @@ created_at_unix_nano i64 | instance_uuid[16] | crc32 u32
 
 初始化先在同目录写临时文件并 `fsync`，再用不覆盖既有目标的 hard-link 原子发布，最后同步目录。两个进程同时首次初始化时只有一个 UUID 成为正式身份，另一方读取胜出的完整文件。重复 `memora init` 保持原身份；长度、magic、版本、Page Size 或 CRC 错误都拒绝启动，绝不自动覆盖。
 
+## daemon 运行文件
+
+F07 使用：
+
+```text
+system/daemon.lock
+system/daemon.pid
+```
+
+`daemon.lock` 的非阻塞排他 `flock` 是“一个 Instance 只有一个 writer daemon”的真相源；PID 文件只用于状态展示和发送 SIGTERM。锁释放但 PID 遗留时，`status/start` 将其视为 stale 并清理。daemon 启动前必须读取并校验 `instance.meta`，不能在未初始化或 metadata 损坏的目录中运行。
+
 ## MySQL 参考边界
 
 Instance 内继续参考 MySQL 的结构原则：一个 datadir、集中式事务日志、每个逻辑 Database 的独立子目录。文件扩展名、Page 格式和恢复协议由 Memora 自己定义，不兼容 `.ibd`。
@@ -87,7 +98,7 @@ Instance 内继续参考 MySQL 的结构原则：一个 datadir、集中式事�
 
 - `system/` 的内部文件名；
 - launchd 使用 LaunchAgent 还是其他用户级启动方式；
-- Unix socket、PID 和锁文件位置；
+- Unix socket 位置及路径长度边界；
 - 备份、快照和导出包默认输出位置；
 - 自定义 datadir 位于外接盘或网络文件系统时的支持边界。
 
