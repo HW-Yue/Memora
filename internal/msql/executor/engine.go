@@ -7,6 +7,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
+	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 )
@@ -27,6 +28,11 @@ type Rows interface {
 	AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error)
 	HistoryPage(context.Context, string, string, string, int) ([]history.Record, bool, error)
 	Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error)
+	Relate(context.Context, row.RelationDefinition) (relation.Relation, error)
+	GetRelation(context.Context, string) (relation.Relation, error)
+	DeleteRelation(context.Context, string, uint64) (relation.Relation, error)
+	ListOutgoingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
+	ListIncomingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
 }
 
 type Engine struct {

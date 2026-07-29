@@ -89,6 +89,10 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseDelete()
 	case parser.matchWord("RESTORE"):
 		statement, err = parser.parseRestore()
+	case parser.matchWord("RELATE"):
+		statement, err = parser.parseRelate()
+	case parser.matchWord("UNRELATE"):
+		statement, err = parser.parseUnrelate()
 	case parser.matchWord("BEGIN"):
 		statement = transactionStatement("BEGIN")
 	case parser.matchWord("START"):
@@ -171,8 +175,48 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Limit = &limit
+	case parser.matchWord("RELATIONS"):
+		show.Object = "RELATIONS"
+		if _, err := parser.expectWord("FROM"); err != nil {
+			return ast.Statement{}, err
+		}
+		name, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Table = &name
+		if _, err := parser.expectWord("FOR"); err != nil {
+			return ast.Statement{}, err
+		}
+		if _, err := parser.expectWord("ROW"); err != nil {
+			return ast.Statement{}, err
+		}
+		row, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Row = &row
+		if _, err := parser.expectWord("DIRECTION"); err != nil {
+			return ast.Statement{}, err
+		}
+		switch {
+		case parser.matchWord("OUTGOING"):
+			show.Direction = "OUTGOING"
+		case parser.matchWord("INCOMING"):
+			show.Direction = "INCOMING"
+		default:
+			return ast.Statement{}, parser.unexpected("OUTGOING or INCOMING")
+		}
+		if _, err := parser.expectWord("LIMIT"); err != nil {
+			return ast.Statement{}, err
+		}
+		limit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, TABLES, COLUMNS, or HISTORY")
+		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, TABLES, COLUMNS, HISTORY, or RELATIONS")
 	}
 	show.Compact = parser.matchWord("COMPACT")
 	return ast.Statement{Kind: "SHOW", Show: show}, nil
@@ -612,6 +656,63 @@ func (parser *parser) parseRestore() (ast.Statement, error) {
 	}
 	return ast.Statement{Kind: "RESTORE", Restore: &ast.RestoreStatement{
 		Table: table, Row: &rowExpression, Revision: &revision,
+	}}, nil
+}
+
+func (parser *parser) parseRelate() (ast.Statement, error) {
+	sourceTable, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("ROW"); err != nil {
+		return ast.Statement{}, err
+	}
+	sourceRow, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("TO"); err != nil {
+		return ast.Statement{}, err
+	}
+	targetTable, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("ROW"); err != nil {
+		return ast.Statement{}, err
+	}
+	targetRow, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("TYPE"); err != nil {
+		return ast.Statement{}, err
+	}
+	relationType, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	statement := &ast.RelateStatement{
+		SourceTable: sourceTable, SourceRow: &sourceRow,
+		TargetTable: targetTable, TargetRow: &targetRow, Type: &relationType,
+	}
+	if parser.matchWord("DESCRIPTION") {
+		description, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Description = &description
+	}
+	return ast.Statement{Kind: "RELATE", Relate: statement}, nil
+}
+
+func (parser *parser) parseUnrelate() (ast.Statement, error) {
+	relationExpression, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "UNRELATE", Unrelate: &ast.UnrelateStatement{
+		Relation: &relationExpression,
 	}}, nil
 }
 

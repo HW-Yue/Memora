@@ -302,7 +302,8 @@ func retryable(code result.Code) bool {
 }
 
 func mutationStatement(statement ast.Statement) bool {
-	return statement.Insert != nil || statement.Update != nil || statement.Delete != nil || statement.Restore != nil
+	return statement.Insert != nil || statement.Update != nil || statement.Delete != nil ||
+		statement.Restore != nil || statement.Relate != nil || statement.Unrelate != nil
 }
 
 func spanSource(source string, span lexer.Span, fallback string) string {
@@ -331,5 +332,6 @@ func parserResultCode(err *parser.Error) result.Code {
 }
 
 func mutationKind(kind string) bool {
-	return kind == "INSERT" || kind == "UPDATE" || kind == "DELETE" || kind == "RESTORE"
+	return kind == "INSERT" || kind == "UPDATE" || kind == "DELETE" || kind == "RESTORE" ||
+		kind == "RELATE" || kind == "UNRELATE"
 }

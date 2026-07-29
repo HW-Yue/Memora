@@ -1,6 +1,6 @@
 # Relationship Store v1
 
-状态：F18a/F18b 已冻结持久化记录、revision、双向索引与 Row 引用完整性；MSQL 接入由 F18c 完成。
+状态：F18a–F18c 已冻结持久化记录、revision、双向索引、Row 引用完整性与 MSQL 接入。
 
 ## 系统记录
 
@@ -48,7 +48,7 @@ AI 定义 `depends_on`、`contradicts`、`part_of` 等 type 的业务语义；�
 
 同库跨表默认允许；跨库默认拒绝，只有显式注入的 Relation Policy 可以放行。自定义 Policy 也可以进一步收紧同库关系。普通 Row UPDATE 不失效关系；逻辑 DELETE 才级联失效引用。
 
-MSQL 参数绑定、Batch rollback 和 IPC session 属于 F18c。
+MSQL 使用参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`；详见 [MSQL Relationships v1](../query/msql-relationships.md)。
 
 ## 关联
 

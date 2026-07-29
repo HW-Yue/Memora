@@ -26,6 +26,8 @@ type Statement struct {
 	Update      *UpdateStatement      `json:"update,omitempty"`
 	Delete      *DeleteStatement      `json:"delete,omitempty"`
 	Restore     *RestoreStatement     `json:"restore,omitempty"`
+	Relate      *RelateStatement      `json:"relate,omitempty"`
+	Unrelate    *UnrelateStatement    `json:"unrelate,omitempty"`
 	Transaction *TransactionStatement `json:"transaction,omitempty"`
 }
 
@@ -41,12 +43,13 @@ type Name struct {
 }
 
 type ShowStatement struct {
-	Object   string      `json:"object"`
-	Database *Name       `json:"database,omitempty"`
-	Table    *Name       `json:"table,omitempty"`
-	Row      *Expression `json:"row,omitempty"`
-	Limit    *Expression `json:"limit,omitempty"`
-	Compact  bool        `json:"compact,omitempty"`
+	Object    string      `json:"object"`
+	Database  *Name       `json:"database,omitempty"`
+	Table     *Name       `json:"table,omitempty"`
+	Row       *Expression `json:"row,omitempty"`
+	Limit     *Expression `json:"limit,omitempty"`
+	Direction string      `json:"direction,omitempty"`
+	Compact   bool        `json:"compact,omitempty"`
 }
 
 type DescribeStatement struct {
@@ -127,6 +130,19 @@ type RestoreStatement struct {
 	Revision *Expression `json:"revision"`
 }
 
+type RelateStatement struct {
+	SourceTable Name        `json:"source_table"`
+	SourceRow   *Expression `json:"source_row"`
+	TargetTable Name        `json:"target_table"`
+	TargetRow   *Expression `json:"target_row"`
+	Type        *Expression `json:"relation_type"`
+	Description *Expression `json:"description,omitempty"`
+}
+
+type UnrelateStatement struct {
+	Relation *Expression `json:"relation"`
+}
+
 type TransactionStatement struct {
 	Action string `json:"action"`
 }
@@ -171,6 +187,9 @@ func (document Document) Parameters() []Parameter {
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		appendExpression(statement.Show.Row)
 		appendExpression(statement.Show.Limit)
+	case statement.Show != nil && statement.Show.Object == "RELATIONS":
+		appendExpression(statement.Show.Row)
+		appendExpression(statement.Show.Limit)
 	case statement.Insert != nil:
 		for row := range statement.Insert.Values {
 			for column := range statement.Insert.Values[row] {
@@ -187,6 +206,13 @@ func (document Document) Parameters() []Parameter {
 	case statement.Restore != nil:
 		appendExpression(statement.Restore.Row)
 		appendExpression(statement.Restore.Revision)
+	case statement.Relate != nil:
+		appendExpression(statement.Relate.SourceRow)
+		appendExpression(statement.Relate.TargetRow)
+		appendExpression(statement.Relate.Type)
+		appendExpression(statement.Relate.Description)
+	case statement.Unrelate != nil:
+		appendExpression(statement.Unrelate.Relation)
 	}
 	return parameters
 }

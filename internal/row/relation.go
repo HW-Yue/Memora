@@ -23,6 +23,81 @@ type RelationDefinition struct {
 	Description string
 }
 
+func (service *Service) Relate(
+	ctx context.Context,
+	definition RelationDefinition,
+) (relation.Relation, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	created, err := transaction.Relate(ctx, definition)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return relation.Relation{}, err
+	}
+	return created, nil
+}
+
+func (service *Service) GetRelation(
+	ctx context.Context,
+	relationID string,
+) (relation.Relation, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	return transaction.GetRelation(ctx, relationID)
+}
+
+func (service *Service) DeleteRelation(
+	ctx context.Context,
+	relationID string,
+	expectedRevision uint64,
+) (relation.Relation, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	deleted, err := transaction.DeleteRelation(ctx, relationID, expectedRevision)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return relation.Relation{}, err
+	}
+	return deleted, nil
+}
+
+func (service *Service) ListOutgoingRelations(
+	ctx context.Context,
+	endpoint RelationEndpoint,
+) ([]relation.Relation, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	return transaction.ListOutgoingRelations(ctx, endpoint)
+}
+
+func (service *Service) ListIncomingRelations(
+	ctx context.Context,
+	endpoint RelationEndpoint,
+) ([]relation.Relation, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	return transaction.ListIncomingRelations(ctx, endpoint)
+}
+
 func (transaction *Transaction) Relate(
 	ctx context.Context,
 	definition RelationDefinition,

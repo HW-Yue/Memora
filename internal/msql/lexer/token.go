@@ -58,4 +58,5 @@ var keywords = map[string]struct{}{
 	"SCOPE": {}, "SELECT": {}, "SEMANTICS": {}, "SET": {}, "SHOW": {}, "START": {},
 	"COLUMN": {}, "COLUMNS": {}, "TABLE": {}, "TABLES": {}, "TO": {},
 	"TRANSACTION": {}, "TRUE": {}, "UPDATE": {}, "VALUES": {}, "WHERE": {},
+	"RELATE": {}, "UNRELATE": {},
 }
