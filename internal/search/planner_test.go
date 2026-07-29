@@ -60,6 +60,9 @@ func TestPlannerSupportsWeightOverrideAndReturnsOnlyLocators(t *testing.T) {
 			"literal": {locator("row_a", 1)},
 		},
 	}
+	otherTable := locator("row_outside", 1)
+	otherTable.TableID = "tbl_other"
+	source.mechanical["literal"] = append(source.mechanical["literal"], otherTable)
 	planner, err := search.New(source, search.Options{
 		AgentWeight: 0.2, MechanicalWeight: 0.8,
 	})
@@ -68,7 +71,7 @@ func TestPlannerSupportsWeightOverrideAndReturnsOnlyLocators(t *testing.T) {
 	}
 	result, err := planner.Match(context.Background(), search.Request{
 		DatabaseID: "db_work", AgentTerms: []string{"semantic"},
-		MechanicalTerms: []string{"literal"}, Limit: 10,
+		MechanicalTerms: []string{"literal"}, TableID: "tbl_notes", Limit: 10,
 	})
 	if err != nil {
 		t.Fatal(err)

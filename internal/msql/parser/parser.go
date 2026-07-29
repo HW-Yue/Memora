@@ -93,6 +93,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseRelate()
 	case parser.matchWord("UNRELATE"):
 		statement, err = parser.parseUnrelate()
+	case parser.matchWord("MATCH"):
+		statement, err = parser.parseMatch()
 	case parser.matchWord("BEGIN"):
 		statement = transactionStatement("BEGIN")
 	case parser.matchWord("START"):
@@ -713,6 +715,37 @@ func (parser *parser) parseUnrelate() (ast.Statement, error) {
 	}
 	return ast.Statement{Kind: "UNRELATE", Unrelate: &ast.UnrelateStatement{
 		Relation: &relationExpression,
+	}}, nil
+}
+
+func (parser *parser) parseMatch() (ast.Statement, error) {
+	table, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("QUERY"); err != nil {
+		return ast.Statement{}, err
+	}
+	query, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("TERMS"); err != nil {
+		return ast.Statement{}, err
+	}
+	terms, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("LIMIT"); err != nil {
+		return ast.Statement{}, err
+	}
+	limit, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "MATCH", Match: &ast.MatchStatement{
+		Table: table, Query: &query, Terms: &terms, Limit: &limit,
 	}}, nil
 }
 

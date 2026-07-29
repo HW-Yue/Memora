@@ -38,6 +38,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.relate(ctx, statement.Relate, bound, options)
 	case statement.Unrelate != nil:
 		return engine.unrelate(ctx, statement.Unrelate, bound, options)
+	case statement.Match != nil:
+		return engine.match(ctx, statement.Match, bound)
 	default:
 		return Output{}, unsupported(statement)
 	}

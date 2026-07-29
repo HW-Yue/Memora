@@ -1,6 +1,6 @@
 # MATCH Fusion v1
 
-状态：F21a 已冻结双通道归一化、权重和排序；Row source 与 MSQL Grammar 由 F21b 完成。
+状态：F21a/F21b 已冻结双通道归一化、权重、排序、真实索引 source 与 MSQL Grammar。
 
 ## 输入
 
@@ -40,6 +40,19 @@ score, agent_score, mechanical_score
 ```
 
 超过 LIMIT 设置 `truncated=true`。MATCH 不返回标题、正文或任意业务 Column；Agent 必须按 locator 使用 SELECT 回表。
+
+## MSQL
+
+```sql
+MATCH work.notes
+QUERY :raw_query
+TERMS :query_terms
+LIMIT :limit;
+```
+
+表必须使用 `database.table` 限定名。`:raw_query` 是非空 TEXT，由引擎的 mechanical tokenizer 生成词项；`:query_terms` 是 Query Agent 提交的 TEXT array，可为空；LIMIT 为 1–1000。`query` 和 `terms` 仍可作为业务标识符，不新增全局保留字。
+
+Executor 在一个 Row transaction snapshot 中读取两套 posting，并按绑定 Table ID 过滤候选。结果进入标准 Result Envelope；MATCH 是纯读，单条失败不会中断批次中的后续独立 MATCH。
 
 ## 关联
 

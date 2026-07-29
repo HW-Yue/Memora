@@ -10,6 +10,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/search"
 )
 
 const maxQueryScan = 1000
@@ -33,6 +34,7 @@ type Rows interface {
 	DeleteRelation(context.Context, string, uint64) (relation.Relation, error)
 	ListOutgoingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
 	ListIncomingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
+	Match(context.Context, string, string, string, []string, int) (search.Result, error)
 }
 
 type Engine struct {

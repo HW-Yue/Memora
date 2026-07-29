@@ -73,6 +73,8 @@ F15 已把 `expected_schema_version`、`expected_revision` 和 `max_affected_row
 
 F18 已冻结参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`。关系结果只返回结构化边与稳定 Row 定位；业务内容仍必须使用 SELECT 回表。语法和事务边界见 [MSQL Relationships v1](./msql-relationships.md)。
 
+F21 已冻结 `MATCH database.table QUERY :raw_query TERMS :query_terms LIMIT :limit`。两路 posting 独立归一化并按配置融合，只返回稳定 locator 与评分；详见 [MATCH Fusion v1](./match-fusion-v1.md)。
+
 文本值超过目标 Column 当前配置的字符上限时，INSERT、UPDATE、MERGE 等写入返回稳定的字段超限错误；文本 Column 启动默认上限为 1200 个字符。引擎不自动截断，调用方可以切分后重试，也可以通过声明式 DDL 调整该 Column 的类型或上限；所有变更都经过 Policy 和 revision 校验。
 
 普通 SQL 负责业务 Row 修改；Agent 生成的完整 `index_terms` 和 Route membership 也必须由声明式 MSQL 语句或 UPDATE 扩展正式提交，不能通过私有 API 旁路写索引。具体 Grammar 待冻结。逻辑 DELETE 默认保留 revision 和 History Store；不可恢复的 PURGE 是独立高风险语句。

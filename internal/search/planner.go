@@ -31,6 +31,7 @@ type Options struct {
 
 type Request struct {
 	DatabaseID      string
+	TableID         string
 	AgentTerms      []string
 	MechanicalTerms []string
 	Limit           int
@@ -101,10 +102,10 @@ func (planner *Planner) Match(ctx context.Context, request Request) (Result, err
 		return Result{}, searchError(result.CodeValidation, "MATCH requires at least one query term")
 	}
 	scores := make(map[string]*candidate)
-	if err := planner.collect(ctx, request.DatabaseID, agentTerms, true, scores); err != nil {
+	if err := planner.collect(ctx, request.DatabaseID, request.TableID, agentTerms, true, scores); err != nil {
 		return Result{}, err
 	}
-	if err := planner.collect(ctx, request.DatabaseID, mechanicalTerms, false, scores); err != nil {
+	if err := planner.collect(ctx, request.DatabaseID, request.TableID, mechanicalTerms, false, scores); err != nil {
 		return Result{}, err
 	}
 	maxAgent, maxMechanical := 0, 0
@@ -155,6 +156,7 @@ type candidate struct {
 func (planner *Planner) collect(
 	ctx context.Context,
 	databaseID string,
+	tableID string,
 	terms []string,
 	agent bool,
 	scores map[string]*candidate,
@@ -171,6 +173,9 @@ func (planner *Planner) collect(
 			return stableError(err)
 		}
 		for _, locator := range locators {
+			if tableID != "" && locator.TableID != tableID {
+				continue
+			}
 			if locator.DatabaseID != databaseID || locator.TableID == "" ||
 				locator.RowID == "" || locator.Revision == 0 {
 				return searchError(result.CodeInternal, "search source returned an invalid locator")

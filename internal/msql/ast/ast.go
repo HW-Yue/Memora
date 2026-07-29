@@ -28,6 +28,7 @@ type Statement struct {
 	Restore     *RestoreStatement     `json:"restore,omitempty"`
 	Relate      *RelateStatement      `json:"relate,omitempty"`
 	Unrelate    *UnrelateStatement    `json:"unrelate,omitempty"`
+	Match       *MatchStatement       `json:"match,omitempty"`
 	Transaction *TransactionStatement `json:"transaction,omitempty"`
 }
 
@@ -143,6 +144,13 @@ type UnrelateStatement struct {
 	Relation *Expression `json:"relation"`
 }
 
+type MatchStatement struct {
+	Table Name        `json:"table"`
+	Query *Expression `json:"query"`
+	Terms *Expression `json:"terms"`
+	Limit *Expression `json:"limit"`
+}
+
 type TransactionStatement struct {
 	Action string `json:"action"`
 }
@@ -213,6 +221,10 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Relate.Description)
 	case statement.Unrelate != nil:
 		appendExpression(statement.Unrelate.Relation)
+	case statement.Match != nil:
+		appendExpression(statement.Match.Query)
+		appendExpression(statement.Match.Terms)
+		appendExpression(statement.Match.Limit)
 	}
 	return parameters
 }

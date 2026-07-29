@@ -5,6 +5,11 @@ import (
 	"unicode"
 )
 
+func QueryTerms(query string) []string {
+	terms, _ := tokenize([]string{query}, defaultMaxTerms, defaultMaxInputCharacters)
+	return terms
+}
+
 func tokenize(fields []string, maxTerms, maxInputCharacters int) ([]string, bool) {
 	seen := make(map[string]struct{}, maxTerms)
 	terms := make([]string, 0, maxTerms)
