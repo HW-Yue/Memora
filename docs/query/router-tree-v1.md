@@ -1,6 +1,6 @@
 # Router Tree v1
 
-状态：F22a 已冻结 Router 树、路径、membership、容量和 cursor；F22b 已完成 Row/MSQL mutation option 接入。
+状态：F22 已完成 Router 树、Row membership 与 MSQL 管理/遍历闭环。
 
 ## 系统对象
 
@@ -29,6 +29,25 @@ leaf 保存 `database_id + table_id + row_id + row_revision`，同一 Row 可属
 ## 遍历
 
 child 按 name 稳定排序，页大小为 1–100。cursor 是绑定 parent ID 与 offset 的不透明 base64url 值；跨 parent、损坏或越界 cursor 返回 validation error。leaf 只返回 locator，不返回 Row 正文。
+
+## MSQL
+
+所有动态值都使用 literal/parameter，不接受字符串插值：
+
+```sql
+CREATE ROUTE ROOT FOR DATABASE :database PURPOSE :purpose;
+CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose;
+ALTER ROUTE :route RENAME TO :name;
+DELETE ROUTE :route;
+SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit;
+SHOW ROUTES UNDER :parent CURSOR :cursor LIMIT :limit;
+OPEN ROUTE FROM DATABASE :database AT :path LIMIT :limit;
+OPEN ROUTE :leaf LIMIT :limit;
+```
+
+CREATE 返回新节点的稳定 ID、path、kind、purpose 和 revision。ALTER/DELETE 要求结构化 `expected_revision`；三种写操作都要求 `max_affected_rows`。SHOW 返回节点元数据和可继续读取的 `next_cursor`；空 cursor 表示第一页。OPEN 只接受 leaf，结果严格为 Database/Table/Row/revision locator，不返回业务正文。
+
+Database name 先绑定 Catalog stable ID；因此新会话可从 `/` 冷启动，不需要预先记住 root ID。上述写操作参加普通显式 Batch 事务，任一写失败时节点、路径和 membership 一起回滚。
 
 ## 关联
 

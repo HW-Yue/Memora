@@ -18,8 +18,8 @@ Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop
 SHOW INSTANCE;
 SHOW DATABASES;
 DESCRIBE DATABASE project_memora COMPACT;
-SHOW ROUTES FROM DATABASE project_memora AT '/';
-OPEN ROUTE FROM DATABASE project_memora AT '/indexing';
+SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit;
+OPEN ROUTE FROM DATABASE :database AT :path LIMIT :limit;
 DESCRIBE TABLE project_memora.design_topics COMPACT;
 SELECT ... LIMIT 5;
 ```
@@ -75,6 +75,8 @@ F18 已冻结参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `
 
 F21 已冻结 `MATCH database.table QUERY :raw_query TERMS :query_terms LIMIT :limit`。两路 posting 独立归一化并按配置融合，只返回稳定 locator 与评分；详见 [MATCH Fusion v1](./match-fusion-v1.md)。
 
+F22 已冻结参数化 Router 管理与遍历。CREATE 返回稳定节点身份；ALTER/DELETE 使用 expected revision；SHOW 通过不透明 cursor 分页；OPEN 只返回 locator。ID 与 Database/path 两种定位形式及事务边界见 [Router Tree v1](./router-tree-v1.md)。
+
 文本值超过目标 Column 当前配置的字符上限时，INSERT、UPDATE、MERGE 等写入返回稳定的字段超限错误；文本 Column 启动默认上限为 1200 个字符。引擎不自动截断，调用方可以切分后重试，也可以通过声明式 DDL 调整该 Column 的类型或上限；所有变更都经过 Policy 和 revision 校验。
 
 普通 SQL 负责业务 Row 修改；Agent 生成的完整 `index_terms` 和 Route membership 也必须由声明式 MSQL 语句或 UPDATE 扩展正式提交，不能通过私有 API 旁路写索引。具体 Grammar 待冻结。逻辑 DELETE 默认保留 revision 和 History Store；不可恢复的 PURGE 是独立高风险语句。
@@ -120,7 +122,6 @@ Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
 
 - MSQL v0 首批冻结哪些 SQL 语句和 Memora 扩展？
 - 多语句批次的整体输出预算是什么？
-- Router cursor 是否属于语言标准？
 - 数据项级语义词项在 `MATCH` 中怎样表达作用范围？
 - `query_terms` 怎样通过参数绑定进入 `MATCH ... AGAINST`？
 - 自研 Parser 还是基于现有 Go SQL Parser？

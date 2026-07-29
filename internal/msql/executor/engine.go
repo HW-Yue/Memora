@@ -9,6 +9,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/search"
 )
@@ -16,6 +17,7 @@ import (
 const maxQueryScan = 1000
 
 type Catalog interface {
+	DescribeDatabase(context.Context, string) (catalog.Database, error)
 	DescribeTable(context.Context, string, string) (catalog.Table, error)
 }
 
@@ -35,6 +37,14 @@ type Rows interface {
 	ListOutgoingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
 	ListIncomingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
 	Match(context.Context, string, string, string, []string, int) (search.Result, error)
+	CreateRouterRoot(context.Context, string, string) (router.Node, error)
+	CreateRouterNode(context.Context, string, router.NodeDefinition) (router.Node, error)
+	RenameRouterNode(context.Context, string, string, uint64) (router.Node, error)
+	DeleteRouterNode(context.Context, string, uint64) (uint64, error)
+	GetRouterNode(context.Context, string) (router.Node, error)
+	ResolveRouterPath(context.Context, string, string) (router.Node, error)
+	ListRouterChildren(context.Context, string, string, int) ([]router.Node, string, error)
+	ListRouterLeaf(context.Context, string, int) ([]router.Locator, bool, error)
 }
 
 type Engine struct {
@@ -65,6 +75,7 @@ type Output struct {
 	Revision       *uint64
 	CommitSequence *uint64
 	Truncated      bool
+	NextCursor     string
 }
 
 type Error struct {

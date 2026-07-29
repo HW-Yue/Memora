@@ -24,6 +24,183 @@ func (transaction *Transaction) CreateRouterNode(
 	return node, stableError(err)
 }
 
+func (service *Service) CreateRouterRoot(
+	ctx context.Context,
+	databaseID, purpose string,
+) (router.Node, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	node, err := transaction.CreateRouterRoot(ctx, databaseID, purpose)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return router.Node{}, err
+	}
+	return node, nil
+}
+
+func (service *Service) CreateRouterNode(
+	ctx context.Context,
+	parentID string,
+	definition router.NodeDefinition,
+) (router.Node, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	node, err := transaction.CreateRouterNode(ctx, parentID, definition)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return router.Node{}, err
+	}
+	return node, nil
+}
+
+func (service *Service) RenameRouterNode(
+	ctx context.Context,
+	nodeID, newName string,
+	expectedRevision uint64,
+) (router.Node, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	node, err := transaction.RenameRouterNode(ctx, nodeID, newName, expectedRevision)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return router.Node{}, err
+	}
+	return node, nil
+}
+
+func (transaction *Transaction) RenameRouterNode(
+	ctx context.Context,
+	nodeID, newName string,
+	expectedRevision uint64,
+) (router.Node, error) {
+	node, err := transaction.service.routes.RenameIn(
+		ctx, transaction.tx, nodeID, newName, expectedRevision,
+	)
+	return node, stableError(err)
+}
+
+func (service *Service) DeleteRouterNode(
+	ctx context.Context,
+	nodeID string,
+	expectedRevision uint64,
+) (uint64, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	revision, err := transaction.DeleteRouterNode(ctx, nodeID, expectedRevision)
+	if err != nil {
+		return 0, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return 0, err
+	}
+	return revision, nil
+}
+
+func (transaction *Transaction) DeleteRouterNode(
+	ctx context.Context,
+	nodeID string,
+	expectedRevision uint64,
+) (uint64, error) {
+	if err := transaction.service.routes.DeleteNodeIn(
+		ctx, transaction.tx, nodeID, expectedRevision,
+	); err != nil {
+		return 0, stableError(err)
+	}
+	return expectedRevision + 1, nil
+}
+
+func (service *Service) GetRouterNode(
+	ctx context.Context,
+	nodeID string,
+) (router.Node, error) {
+	node, err := service.routes.Get(ctx, nodeID)
+	return node, stableError(err)
+}
+
+func (transaction *Transaction) GetRouterNode(
+	ctx context.Context,
+	nodeID string,
+) (router.Node, error) {
+	node, err := transaction.service.routes.GetIn(ctx, transaction.tx, nodeID)
+	return node, stableError(err)
+}
+
+func (service *Service) ResolveRouterPath(
+	ctx context.Context,
+	databaseID, path string,
+) (router.Node, error) {
+	node, err := service.routes.ResolvePath(ctx, databaseID, path)
+	return node, stableError(err)
+}
+
+func (transaction *Transaction) ResolveRouterPath(
+	ctx context.Context,
+	databaseID, path string,
+) (router.Node, error) {
+	node, err := transaction.service.routes.ResolvePathIn(
+		ctx, transaction.tx, databaseID, path,
+	)
+	return node, stableError(err)
+}
+
+func (service *Service) ListRouterChildren(
+	ctx context.Context,
+	parentID, cursor string,
+	limit int,
+) ([]router.Node, string, error) {
+	nodes, next, err := service.routes.ListChildren(ctx, parentID, cursor, limit)
+	return nodes, next, stableError(err)
+}
+
+func (transaction *Transaction) ListRouterChildren(
+	ctx context.Context,
+	parentID, cursor string,
+	limit int,
+) ([]router.Node, string, error) {
+	nodes, next, err := transaction.service.routes.ListChildrenIn(
+		ctx, transaction.tx, parentID, cursor, limit,
+	)
+	return nodes, next, stableError(err)
+}
+
+func (service *Service) ListRouterLeaf(
+	ctx context.Context,
+	leafID string,
+	limit int,
+) ([]router.Locator, bool, error) {
+	locators, truncated, err := service.routes.ListLeafPage(ctx, leafID, limit)
+	return locators, truncated, stableError(err)
+}
+
+func (transaction *Transaction) ListRouterLeaf(
+	ctx context.Context,
+	leafID string,
+	limit int,
+) ([]router.Locator, bool, error) {
+	locators, truncated, err := transaction.service.routes.ListLeafPageIn(
+		ctx, transaction.tx, leafID, limit,
+	)
+	return locators, truncated, stableError(err)
+}
+
 func (service *Service) RouterMemberships(
 	ctx context.Context,
 	value Row,

@@ -105,6 +105,23 @@ func (service *Service) DescribeDatabase(ctx context.Context, name string) (Data
 	return *database, nil
 }
 
+// DescribeDatabaseIn resolves a Database from the caller's Store transaction.
+func (service *Service) DescribeDatabaseIn(
+	ctx context.Context,
+	tx store.Tx,
+	name string,
+) (Database, error) {
+	state, err := load(ctx, tx)
+	if err != nil {
+		return Database{}, err
+	}
+	database, found := findDatabase(&state, name)
+	if !found {
+		return Database{}, missing("database", name)
+	}
+	return *database, nil
+}
+
 func (service *Service) RenameDatabase(ctx context.Context, name, newName string) (Database, error) {
 	if err := require("database", name, "new name", newName); err != nil {
 		return Database{}, err

@@ -95,6 +95,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseUnrelate()
 	case parser.matchWord("MATCH"):
 		statement, err = parser.parseMatch()
+	case parser.matchWord("OPEN"):
+		statement, err = parser.parseOpenRoute()
 	case parser.matchWord("BEGIN"):
 		statement = transactionStatement("BEGIN")
 	case parser.matchWord("START"):
@@ -217,8 +219,55 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Limit = &limit
+	case parser.matchWord("ROUTES"):
+		show.Object = "ROUTES"
+		switch {
+		case parser.matchWord("UNDER"):
+			show.RouteMode = "ID"
+			route, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Route = &route
+		case parser.matchWord("FROM"):
+			show.RouteMode = "PATH"
+			if _, err := parser.expectWord("DATABASE"); err != nil {
+				return ast.Statement{}, err
+			}
+			database, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.RouteDB = &database
+			if _, err := parser.expectWord("AT"); err != nil {
+				return ast.Statement{}, err
+			}
+			path, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Route = &path
+		default:
+			return ast.Statement{}, parser.unexpected("UNDER or FROM DATABASE")
+		}
+		if _, err := parser.expectWord("CURSOR"); err != nil {
+			return ast.Statement{}, err
+		}
+		cursor, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Cursor = &cursor
+		if _, err := parser.expectWord("LIMIT"); err != nil {
+			return ast.Statement{}, err
+		}
+		limit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, TABLES, COLUMNS, HISTORY, or RELATIONS")
+		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, TABLES, COLUMNS, HISTORY, RELATIONS, or ROUTES")
 	}
 	show.Compact = parser.matchWord("COMPACT")
 	return ast.Statement{Kind: "SHOW", Show: show}, nil
@@ -246,6 +295,9 @@ func (parser *parser) parseDescribe() (ast.Statement, error) {
 }
 
 func (parser *parser) parseCreate() (ast.Statement, error) {
+	if parser.matchWord("ROUTE") {
+		return parser.parseCreateRoute()
+	}
 	create := &ast.CreateStatement{}
 	switch {
 	case parser.matchWord("DATABASE"):
@@ -405,6 +457,9 @@ func (parser *parser) parseColumnDefinition() (ast.ColumnDefinition, error) {
 }
 
 func (parser *parser) parseAlter() (ast.Statement, error) {
+	if parser.matchWord("ROUTE") {
+		return parser.parseRenameRoute()
+	}
 	alter := &ast.AlterStatement{}
 	switch {
 	case parser.matchWord("DATABASE"):
@@ -616,6 +671,15 @@ func (parser *parser) parseUpdate() (ast.Statement, error) {
 }
 
 func (parser *parser) parseDelete() (ast.Statement, error) {
+	if parser.matchWord("ROUTE") {
+		route, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		return ast.Statement{Kind: "DELETE_ROUTE", DeleteRoute: &ast.DeleteRouteStatement{
+			Route: &route,
+		}}, nil
+	}
 	if _, err := parser.expectWord("FROM"); err != nil {
 		return ast.Statement{}, err
 	}
@@ -747,6 +811,121 @@ func (parser *parser) parseMatch() (ast.Statement, error) {
 	return ast.Statement{Kind: "MATCH", Match: &ast.MatchStatement{
 		Table: table, Query: &query, Terms: &terms, Limit: &limit,
 	}}, nil
+}
+
+func (parser *parser) parseCreateRoute() (ast.Statement, error) {
+	statement := &ast.CreateRouteStatement{}
+	switch {
+	case parser.matchWord("ROOT"):
+		statement.Mode = "ROOT"
+		if _, err := parser.expectWord("FOR"); err != nil {
+			return ast.Statement{}, err
+		}
+		if _, err := parser.expectWord("DATABASE"); err != nil {
+			return ast.Statement{}, err
+		}
+		database, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Database = &database
+	case parser.matchWord("UNDER"):
+		statement.Mode = "CHILD"
+		parent, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Parent = &parent
+		if _, err := parser.expectWord("NAME"); err != nil {
+			return ast.Statement{}, err
+		}
+		name, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Name = &name
+		if _, err := parser.expectWord("KIND"); err != nil {
+			return ast.Statement{}, err
+		}
+		nodeKind, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.NodeKind = &nodeKind
+	default:
+		return ast.Statement{}, parser.unexpected("ROOT or UNDER")
+	}
+	if _, err := parser.expectWord("PURPOSE"); err != nil {
+		return ast.Statement{}, err
+	}
+	purpose, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	statement.Purpose = &purpose
+	return ast.Statement{Kind: "CREATE_ROUTE", CreateRoute: statement}, nil
+}
+
+func (parser *parser) parseRenameRoute() (ast.Statement, error) {
+	route, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("RENAME"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("TO"); err != nil {
+		return ast.Statement{}, err
+	}
+	name, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "RENAME_ROUTE", RenameRoute: &ast.RenameRouteStatement{
+		Route: &route, Name: &name,
+	}}, nil
+}
+
+func (parser *parser) parseOpenRoute() (ast.Statement, error) {
+	if _, err := parser.expectWord("ROUTE"); err != nil {
+		return ast.Statement{}, err
+	}
+	statement := &ast.OpenRouteStatement{}
+	if parser.matchWord("FROM") {
+		statement.Mode = "PATH"
+		if _, err := parser.expectWord("DATABASE"); err != nil {
+			return ast.Statement{}, err
+		}
+		database, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Database = &database
+		if _, err := parser.expectWord("AT"); err != nil {
+			return ast.Statement{}, err
+		}
+		path, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Path = &path
+	} else {
+		statement.Mode = "ID"
+		route, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Route = &route
+	}
+	if _, err := parser.expectWord("LIMIT"); err != nil {
+		return ast.Statement{}, err
+	}
+	limit, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	statement.Limit = &limit
+	return ast.Statement{Kind: "OPEN_ROUTE", OpenRoute: statement}, nil
 }
 
 func (parser *parser) parseName() (ast.Name, error) {

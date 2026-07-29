@@ -425,15 +425,24 @@ func (service *Service) ResolvePathIn(
 }
 
 func (service *Service) ListLeaf(ctx context.Context, leafID string, limit int) ([]Locator, error) {
+	locators, _, err := service.ListLeafPage(ctx, leafID, limit)
+	return locators, err
+}
+
+func (service *Service) ListLeafPage(
+	ctx context.Context,
+	leafID string,
+	limit int,
+) ([]Locator, bool, error) {
 	if limit < 1 || limit > maxPageSize {
-		return nil, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
+		return nil, false, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
 	}
 	tx, err := service.store.Begin(ctx, store.ReadOnly)
 	if err != nil {
-		return nil, stableError(err)
+		return nil, false, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	return service.ListLeafIn(ctx, tx, leafID, limit)
+	return service.ListLeafPageIn(ctx, tx, leafID, limit)
 }
 
 func (service *Service) ListLeafIn(
@@ -442,21 +451,32 @@ func (service *Service) ListLeafIn(
 	leafID string,
 	limit int,
 ) ([]Locator, error) {
+	locators, _, err := service.ListLeafPageIn(ctx, tx, leafID, limit)
+	return locators, err
+}
+
+func (service *Service) ListLeafPageIn(
+	ctx context.Context,
+	tx store.Tx,
+	leafID string,
+	limit int,
+) ([]Locator, bool, error) {
 	if limit < 1 || limit > maxPageSize {
-		return nil, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
+		return nil, false, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
 	}
 	node, err := getNode(ctx, tx, leafID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if node.Kind != KindLeaf {
-		return nil, routerError(result.CodeConstraint, "Router node is not a leaf")
+		return nil, false, routerError(result.CodeConstraint, "Router node is not a leaf")
 	}
 	locators, err := loadLocators(ctx, tx, leafID)
+	truncated := len(locators) > limit
 	if len(locators) > limit {
 		locators = locators[:limit]
 	}
-	return locators, err
+	return locators, truncated, err
 }
 
 func (service *Service) MembershipsForRow(
@@ -500,6 +520,20 @@ func (service *Service) ListChildren(
 	parentID, cursor string,
 	limit int,
 ) ([]Node, string, error) {
+	tx, err := service.store.Begin(ctx, store.ReadOnly)
+	if err != nil {
+		return nil, "", stableError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return service.ListChildrenIn(ctx, tx, parentID, cursor, limit)
+}
+
+func (service *Service) ListChildrenIn(
+	ctx context.Context,
+	tx store.Tx,
+	parentID, cursor string,
+	limit int,
+) ([]Node, string, error) {
 	if limit < 1 || limit > maxPageSize {
 		return nil, "", routerError(result.CodeValidation, "Router child limit must be between 1 and 100")
 	}
@@ -507,11 +541,6 @@ func (service *Service) ListChildren(
 	if err != nil {
 		return nil, "", err
 	}
-	tx, err := service.store.Begin(ctx, store.ReadOnly)
-	if err != nil {
-		return nil, "", stableError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
 	if _, err := getNode(ctx, tx, parentID); err != nil {
 		return nil, "", err
 	}
@@ -781,7 +810,11 @@ func canonicalPath(path string) string {
 	if !strings.HasPrefix(value, "/") {
 		value = "/" + value
 	}
-	return strings.TrimSuffix(value, "/")
+	value = strings.TrimRight(value, "/")
+	if value == "" {
+		return "/"
+	}
+	return value
 }
 
 type cursorValue struct {

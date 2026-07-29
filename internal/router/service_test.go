@@ -42,6 +42,10 @@ func TestRouterBuildsMultiBranchTreeAndMaintainsMultiLeafReverseMembership(t *te
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+	resolvedRoot, err := service.ResolvePath(ctx, "db_work", "/")
+	if err != nil || resolvedRoot.ID != root.ID {
+		t.Fatalf("ResolvePath(root) = %#v, %v", resolvedRoot, err)
+	}
 
 	memberships, err := service.MembershipsForRow(ctx, row.DatabaseID, row.TableID, row.RowID)
 	if err != nil || len(memberships) != 2 ||

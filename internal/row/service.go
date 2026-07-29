@@ -28,6 +28,7 @@ const (
 )
 
 type Catalog interface {
+	DescribeDatabaseIn(context.Context, store.Tx, string) (catalog.Database, error)
 	DescribeTableIn(context.Context, store.Tx, string, string) (catalog.Table, error)
 }
 

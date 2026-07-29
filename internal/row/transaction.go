@@ -41,6 +41,16 @@ func (transaction *Transaction) DescribeTable(ctx context.Context, databaseName,
 	return table, stableError(err)
 }
 
+func (transaction *Transaction) DescribeDatabase(
+	ctx context.Context,
+	databaseName string,
+) (catalog.Database, error) {
+	database, err := transaction.service.catalog.DescribeDatabaseIn(
+		ctx, transaction.tx, databaseName,
+	)
+	return database, stableError(err)
+}
+
 func (transaction *Transaction) Get(ctx context.Context, databaseName, tableName, rowID string) (Row, error) {
 	value, err := transaction.get(ctx, databaseName, tableName, rowID, false)
 	return value, stableError(err)

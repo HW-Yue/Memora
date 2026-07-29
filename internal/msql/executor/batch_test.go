@@ -9,6 +9,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
 )
@@ -321,6 +322,9 @@ func batchFixture(t *testing.T, ctx context.Context) (*executor.BatchSession, *r
 	}
 	rows := row.New(databaseStore, dictionary, row.Options{
 		IDs: &idSource{values: []string{"first", "second", "third", "fourth"}},
+		Router: router.Options{IDs: &routerIDSource{values: []string{
+			"root", "first", "second", "third", "fourth", "fifth",
+		}}},
 	})
 	session := executor.NewBatchSession(ctx, dictionary, rows)
 	return session, rows, func() {
@@ -329,6 +333,16 @@ func batchFixture(t *testing.T, ctx context.Context) (*executor.BatchSession, *r
 			t.Errorf("Close() error = %v", err)
 		}
 	}
+}
+
+type routerIDSource struct {
+	values []string
+}
+
+func (source *routerIDSource) Next() (string, error) {
+	value := source.values[0]
+	source.values = source.values[1:]
+	return value, nil
 }
 
 func assertStatuses(t *testing.T, envelope result.Envelope, statuses ...result.Status) {
