@@ -203,6 +203,15 @@ func (transaction *Transaction) Restore(
 	} else if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
 		return Row{}, err
 	}
+	if stored.State == StateDeleted {
+		if _, err := transaction.service.mechanicalIndex.InvalidateIn(
+			ctx, transaction.tx, mechanicalIndexLocator(stored),
+		); err != nil {
+			return Row{}, stableError(err)
+		}
+	} else if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
+		return Row{}, err
+	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationCompensate, options.Metadata); err != nil {
 		return Row{}, err
 	}

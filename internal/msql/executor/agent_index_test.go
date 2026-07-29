@@ -88,4 +88,9 @@ func TestAgentIndexTermsRollBackWithExplicitBatch(t *testing.T) {
 	); err != nil || len(matches) != 0 {
 		t.Fatalf("postings after rollback = %#v, %v", matches, err)
 	}
+	if matches, err := rows.LookupMechanicalTerm(
+		ctx, "db_database", "rolled", 10,
+	); err != nil || len(matches) != 0 {
+		t.Fatalf("mechanical postings after rollback = %#v, %v", matches, err)
+	}
 }

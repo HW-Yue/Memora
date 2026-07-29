@@ -13,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/agentindex"
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/mechanicalindex"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
@@ -50,23 +51,25 @@ func (policy RelationPolicyFunc) AllowRelation(
 }
 
 type Options struct {
-	IDs            IDSource
-	Clock          Clock
-	RelationIDs    relation.IDSource
-	RelationPolicy RelationPolicy
-	AgentIndex     agentindex.Options
+	IDs             IDSource
+	Clock           Clock
+	RelationIDs     relation.IDSource
+	RelationPolicy  RelationPolicy
+	AgentIndex      agentindex.Options
+	MechanicalIndex mechanicalindex.Options
 }
 
 type Service struct {
-	store          store.Store
-	catalog        Catalog
-	history        *history.Service
-	agentIndex     *agentindex.Service
-	relations      *relation.Service
-	ids            IDSource
-	clock          Clock
-	relationPolicy RelationPolicy
-	mu             sync.Mutex
+	store           store.Store
+	catalog         Catalog
+	history         *history.Service
+	agentIndex      *agentindex.Service
+	mechanicalIndex *mechanicalindex.Service
+	relations       *relation.Service
+	ids             IDSource
+	clock           Clock
+	relationPolicy  RelationPolicy
+	mu              sync.Mutex
 }
 
 func New(database store.Store, dictionary Catalog, options Options) *Service {
@@ -86,7 +89,8 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 	}
 	return &Service{
 		store: database, catalog: dictionary, history: history.New(database),
-		agentIndex: agentindex.New(database, options.AgentIndex),
+		agentIndex:      agentindex.New(database, options.AgentIndex),
+		mechanicalIndex: mechanicalindex.New(database, options.MechanicalIndex),
 		relations: relation.New(database, relation.Options{
 			IDs: options.RelationIDs, Clock: options.Clock,
 		}),

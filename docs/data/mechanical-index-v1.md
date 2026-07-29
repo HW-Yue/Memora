@@ -1,6 +1,6 @@
 # Mechanical Inverted Index v1
 
-状态：F20a 已冻结确定性 tokenizer、posting、预算和重建；Row 自动维护由 F20b 完成。
+状态：F20a/F20b 已冻结确定性 tokenizer、posting、预算、重建与 Row 自动维护。
 
 ## Tokenizer v1
 
@@ -31,6 +31,10 @@ Agent 与 mechanical 使用独立 bucket、独立 source 和独立生命周期�
 - `invalid`：Row 已删除或快照显式失效。
 
 普通 replace 要求更高 Row revision。同 revision 的 `RebuildIn` 被允许，用于 tokenizer/config 重建；它先移除旧机械 posting，再原子发布新快照。F25 再把大规模旁路构建接入 generation manifest。
+
+Row transaction 按稳定 Catalog Column 顺序读取所有当前 TEXT 值；INTEGER、BOOLEAN、TIMESTAMP、RELATION_ID 和 NULL 不进入 tokenizer。INSERT、UPDATE 和 live RESTORE 自动完整替换机械快照，DELETE 和 deleted RESTORE 自动失效；调用方不提交机械词项，也不能直接操作 posting。
+
+单 Row `RebuildMechanicalIndex` 在当前 revision 原子重建，供诊断和后续 REINDEX Planner 复用。显式 Batch rollback 同时撤销 Row、History、Agent posting 和机械 posting。
 
 ## 查询边界
 

@@ -155,6 +155,9 @@ func (transaction *Transaction) Insert(
 	if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
 		return Row{}, err
 	}
+	if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
+		return Row{}, err
+	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationInsert, options.Metadata); err != nil {
 		return Row{}, err
 	}
@@ -210,6 +213,9 @@ func (transaction *Transaction) Update(
 	if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
 		return Row{}, err
 	}
+	if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
+		return Row{}, err
+	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationUpdate, options.Metadata); err != nil {
 		return Row{}, err
 	}
@@ -259,6 +265,11 @@ func (transaction *Transaction) Delete(
 	}
 	if _, err := transaction.service.agentIndex.InvalidateIn(
 		ctx, transaction.tx, agentIndexLocator(stored),
+	); err != nil {
+		return Row{}, stableError(err)
+	}
+	if _, err := transaction.service.mechanicalIndex.InvalidateIn(
+		ctx, transaction.tx, mechanicalIndexLocator(stored),
 	); err != nil {
 		return Row{}, stableError(err)
 	}
