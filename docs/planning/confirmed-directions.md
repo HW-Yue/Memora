@@ -35,6 +35,9 @@
 31. 自然语言由内置 loop 转换为 MSQL，内置 loop 与外部 CLI/SDK 调用统一经过同一 Parser、Policy、事务和执行器；
 32. 内置 Agent 不能绕过 MSQL 操作物理存储；查询、写入和 Schema 变更通过同一 Runtime 的不同能力配置隔离。
 33. `memora` CLI 进程直接承载 Instance、执行引擎和 Agent Runtime，不使用后台 daemon 或 socket；默认命令进入前台交互循环，`--stdio` 为外部 Agent 提供长驻 JSONL 会话。
+34. 一个逻辑 Database 是可独立分发的产品对象：可导出为自描述包，在另一台机器校验后一键安装，也可由 CLI 以默认只读方式直接打开问答；包格式和命令名仍待原型确定。
+35. 默认 `memora`/`memora ask` 提供 Instance 级全局记忆入口，先跨 Database 路由再执行有界 MSQL；“全局”不取消 Database 的项目、隐私、导出和删除边界。
+36. 数据库包只承载声明式数据和元数据，不携带可执行安装逻辑、模型密钥、宿主聊天或运行时缓存；未信任包不能借文本获得 prompt 或工具权限。
 
 ## 尚需验证
 

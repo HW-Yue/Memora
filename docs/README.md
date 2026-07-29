@@ -20,6 +20,7 @@
 
 - [AI-native 产品边界](./product/ai-native-boundary.md) — AI 负责语义建模，引擎负责物理正确性。
 - [AI-native 产品契约](./product/ai-native-contract.md) — 什么才算真正由 AI 自主管理的数据库。
+- [可安装的独立语义数据库](./product/installable-database-package.md) — 单库打包、安装、直接问答和全局跨库入口。
 - [质量模型与验收](./product/quality-model.md) — 写入、检索、修改、上下文和接管的效果指标。
 - [语义记录模型](./data/semantic-records.md) — AI 自定义表和字段，记录是短小完整的知识模块。
 - [自描述 Data Dictionary](./data/self-describing-data-dictionary.md) — 让陌生 Agent 在有界输出内理解库、表、字段和边界。

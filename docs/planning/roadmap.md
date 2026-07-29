@@ -26,12 +26,15 @@ memora exec
 memora ask
 memora query
 memora export
+memora pack
+memora install
+memora open
 memora doctor
 ```
 
 包含：统一 MSQL 执行核心、可配置模型的最小内置 Agent Loop、Data Dictionary、Database/Table/Column、Semantic Row、revision、关系、BM25/N-gram、Router、稳定 JSON 错误。底层可以是临时简化实现，但协议和测试不可一次性抛弃。
 
-退出条件：自然对话能够自主建模、SQL 取数、精确修订并导出 Wiki。
+退出条件：自然对话能够自主建模、SQL 取数、精确修订并导出 Wiki；一个逻辑 Database 可以打包、校验、安装和只读直接问答。
 
 ## Phase 2：Agent 集成
 
@@ -69,7 +72,7 @@ memora doctor
 ## Phase 5：个人数据库产品化
 
 - 稳定 Obsidian Wiki 增量导出；
-- Instance 搬迁、校验、备份和恢复；
+- Instance 搬迁、校验、备份和恢复，以及数据库包升级/冲突策略；
 - Policy、隐私域和跨 Database 关系；
 - CLI 安装升级和 Skill 分发；
 - 可选 MCP adapter；

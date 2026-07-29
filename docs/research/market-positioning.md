@@ -6,6 +6,8 @@
 
 Memora 是由 AI 自主建模和维护、由 Agent 通过 SQL 精确读写、能够被陌生 Agent 低成本接管的本地个人数据库。
 
+它的产品交付形态进一步明确为：一个全局本地 Instance 提供跨项目问答，每个逻辑 Database 又可单独打包、安装或直接打开问答。
+
 ## 市场空白
 
 现有产品通常只覆盖以下一部分：
@@ -16,6 +18,7 @@ Vector database：检索强，但不知道什么值得保存
 Graph memory：关系和时间强，但精细表格修改和迁移弱
 Markdown memory：人可读，但长期结构和同步成本高
 Traditional SQL：修改和事务强，但不面向 Agent 上下文设计
+Portable memory file：容易复制和直接 ask，但通常缺少自主关系 Schema 和精确事务修改
 ```
 
 Memora 的机会是把 AI 的语义自治与数据库的确定性约束放在同一个产品协议里。
@@ -23,6 +26,7 @@ Memora 的机会是把 AI 的语义自治与数据库的确定性约束放在同
 ## 必须吸收的市场经验
 
 - Basic Memory：Skill、MCP/CLI、渐进式工具发现、会话 hook；
+- Supermemory / OpenMemory：跨 AI 客户端共享一个记忆入口；
 - Letta：极小常驻状态和按需档案分层；
 - Graphiti：事实有效时间、来源 Episode、矛盾失效而非覆盖；
 - MemMachine：保留 ground truth 能显著降低有损抽取风险；
@@ -59,6 +63,7 @@ Memora 的机会是把 AI 的语义自治与数据库的确定性约束放在同
 4. AI 对已有知识做精确、可审计、可回滚的 merge/split/revise；
 5. Codex、Claude 等陌生 Agent 真正可以零旧上下文接管；
 6. 同一数据稳定导出为人可读 Wiki，而不牺牲数据库身份。
+7. 单个逻辑库能作为安全、无宿主依赖的数据库包安装和直接问答，同时仍可加入全局跨库路由。
 
 ## 立即风险
 
