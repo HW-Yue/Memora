@@ -13,3 +13,22 @@ memora daemon         管理本地常驻服务
 所有 Agent 操作必须经过同一套 MSQL Parser、Policy、事务和执行器；Agent 不能直接操作 Page、索引或日志。自带模型的 `memora ask` 属于 v0 发布后的可选评估，不阻塞 Skill-first 产品。
 
 当前设计入口见 [`docs/README.md`](./docs/README.md)。
+
+## 当前实现状态
+
+开发按 [TDD 开发总计划](./docs/planning/tdd-development-plan.md) 推进。当前 CLI 骨架提供：
+
+```text
+memora help
+memora version
+memora version --json
+```
+
+本地验证：
+
+```bash
+go test ./...
+go build -o /tmp/memora ./cmd/memora
+```
+
+README 顶部列出的其他命令属于后续 feature，尚未实现。

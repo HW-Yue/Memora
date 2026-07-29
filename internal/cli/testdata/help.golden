@@ -1,0 +1,10 @@
+Memora is an AI-maintained local personal database.
+
+Usage:
+  memora <command> [options]
+
+Commands:
+  help       Show this help
+  version    Show build version
+
+Run 'memora help' for usage.
