@@ -94,6 +94,7 @@ func (engine *Engine) restore(
 			ExpectedRevision:      options.ExpectedRevision,
 			Metadata:              mutationMetadata(options),
 			IndexTerms:            options.IndexTerms,
+			RouteLeafIDs:          options.RouteLeafIDs,
 		},
 	)
 	if err != nil {

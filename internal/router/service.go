@@ -400,6 +400,10 @@ func (service *Service) Get(ctx context.Context, nodeID string) (Node, error) {
 		return Node{}, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	return service.GetIn(ctx, tx, nodeID)
+}
+
+func (service *Service) GetIn(ctx context.Context, tx store.Tx, nodeID string) (Node, error) {
 	return getNode(ctx, tx, nodeID)
 }
 
@@ -409,6 +413,14 @@ func (service *Service) ResolvePath(ctx context.Context, databaseID, path string
 		return Node{}, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	return service.ResolvePathIn(ctx, tx, databaseID, path)
+}
+
+func (service *Service) ResolvePathIn(
+	ctx context.Context,
+	tx store.Tx,
+	databaseID, path string,
+) (Node, error) {
 	return resolvePathIn(ctx, tx, databaseID, path)
 }
 
@@ -421,6 +433,18 @@ func (service *Service) ListLeaf(ctx context.Context, leafID string, limit int) 
 		return nil, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	return service.ListLeafIn(ctx, tx, leafID, limit)
+}
+
+func (service *Service) ListLeafIn(
+	ctx context.Context,
+	tx store.Tx,
+	leafID string,
+	limit int,
+) ([]Locator, error) {
+	if limit < 1 || limit > maxPageSize {
+		return nil, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
+	}
 	node, err := getNode(ctx, tx, leafID)
 	if err != nil {
 		return nil, err
@@ -448,6 +472,18 @@ func (service *Service) MembershipsForRow(
 		return nil, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	return service.MembershipsForRowIn(ctx, tx, databaseID, tableID, rowID)
+}
+
+func (service *Service) MembershipsForRowIn(
+	ctx context.Context,
+	tx store.Tx,
+	databaseID, tableID, rowID string,
+) ([]Membership, error) {
+	locator := Locator{DatabaseID: databaseID, TableID: tableID, RowID: rowID, Revision: 1}
+	if err := validateLocator(locator); err != nil {
+		return nil, err
+	}
 	leafIDs, err := loadStrings(ctx, tx, reverseBucket, locatorKey(locator))
 	if err != nil || len(leafIDs) == 0 {
 		return []Membership{}, err

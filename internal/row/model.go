@@ -27,6 +27,7 @@ type WriteOptions struct {
 	ExpectedSchemaVersion uint64
 	Metadata              WriteMetadata
 	IndexTerms            []string
+	RouteLeafIDs          []string
 }
 
 type WriteMetadata struct {

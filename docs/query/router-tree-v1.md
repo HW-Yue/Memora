@@ -1,6 +1,6 @@
 # Router Tree v1
 
-状态：F22a 已冻结 Router 树、路径、membership、容量和 cursor；Row/MSQL 接入由 F22b 完成。
+状态：F22a 已冻结 Router 树、路径、membership、容量和 cursor；F22b 已完成 Row/MSQL mutation option 接入。
 
 ## 系统对象
 
@@ -20,7 +20,11 @@ AI 通过显式事务完成 split/merge：创建目标节点、为受影响 Row 
 
 leaf 保存 `database_id + table_id + row_id + row_revision`，同一 Row 可属于多个 leaf。引擎同时维护 `Row locator → sorted leaf IDs` 反向索引。完整替换先预检所有目标 leaf 容量，再原子移除旧引用、增加新引用；失败不能先破坏旧 membership。
 
-删除 leaf/子树时递归清除所有正反向引用。Row DELETE 和普通 UPDATE 缺少新 membership 时的自动失效/`pending_reindex` 由 F22b/F24 接入。
+`route_leaf_ids` 是提交后完整 membership 快照：非 nil 空数组表示显式清空，字段缺失表示本次未提供语义重建结果。INSERT/UPDATE/RESTORE 在同一 Row transaction 中替换快照并写入提交后的 Row revision；失败或 Batch rollback 不留下 Row、正向 locator 或反向索引的部分状态。Row DELETE 始终清空 membership。
+
+普通 UPDATE 未提供新快照时，旧语义 locator 的自动失效和 durable `pending_reindex` 由 F24 完成；机械索引不依赖该异步结果。
+
+删除 leaf/子树时递归清除所有正反向引用。
 
 ## 遍历
 

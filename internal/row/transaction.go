@@ -158,6 +158,9 @@ func (transaction *Transaction) Insert(
 	if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
 		return Row{}, err
 	}
+	if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
+		return Row{}, err
+	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationInsert, options.Metadata); err != nil {
 		return Row{}, err
 	}
@@ -216,6 +219,9 @@ func (transaction *Transaction) Update(
 	if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
 		return Row{}, err
 	}
+	if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
+		return Row{}, err
+	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationUpdate, options.Metadata); err != nil {
 		return Row{}, err
 	}
@@ -272,6 +278,9 @@ func (transaction *Transaction) Delete(
 		ctx, transaction.tx, mechanicalIndexLocator(stored),
 	); err != nil {
 		return Row{}, stableError(err)
+	}
+	if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
+		return Row{}, err
 	}
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
 		return Row{}, stableError(err)

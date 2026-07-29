@@ -55,6 +55,7 @@ type MutationOptions struct {
 	Source                string   `json:"source,omitempty"`
 	Reason                string   `json:"reason,omitempty"`
 	IndexTerms            []string `json:"index_terms,omitempty"`
+	RouteLeafIDs          []string `json:"route_leaf_ids,omitempty"`
 }
 
 type Output struct {

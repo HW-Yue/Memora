@@ -82,6 +82,7 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		Metadata:              mutationMetadata(options),
 		IndexTerms:            options.IndexTerms,
+		RouteLeafIDs:          options.RouteLeafIDs,
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -125,6 +126,7 @@ func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, b
 		ExpectedRevision:      options.ExpectedRevision,
 		Metadata:              mutationMetadata(options),
 		IndexTerms:            options.IndexTerms,
+		RouteLeafIDs:          options.RouteLeafIDs,
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)

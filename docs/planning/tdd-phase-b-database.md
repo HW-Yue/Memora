@@ -168,13 +168,21 @@
 
 提交：`feat(F22a): build multi-level semantic router`
 
-## F22b Row 与 MSQL Router 接入
+## F22b Row Membership 接入
 
-先测：Row revision membership、DELETE 自动失效、参数化完整快照、SHOW/OPEN 有界输出、Batch 回滚。
+先测：Row revision membership、DELETE 自动失效、结构化完整快照和 Batch 回滚。
 
-开发：把 route membership option、Row transaction、Router AST/Executor 和 locator-only Result Envelope 接入。
+开发：把 `route_leaf_ids` mutation option 接入 Row transaction、History 与 Batch。
 
-提交：`feat(F22b): maintain MSQL route memberships`
+提交：`feat(F22b): maintain row route memberships`
+
+## F22c MSQL Router 管理与遍历
+
+先测：参数化 CREATE/RENAME/DELETE ROUTE、SHOW/OPEN 有界输出、cursor、Result Envelope 和 Batch 回滚。
+
+开发：把 Router AST/Grammar、Executor 和 locator-only 输出接入统一 MSQL/IPC。
+
+提交：`feat(F22c): execute MSQL router operations`
 
 ## F23 索引发现流程
 

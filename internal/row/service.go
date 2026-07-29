@@ -16,6 +16,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/mechanicalindex"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/search"
 	"github.com/HW-Yue/Memora/internal/store"
 	"github.com/google/uuid"
@@ -58,6 +59,7 @@ type Options struct {
 	RelationPolicy  RelationPolicy
 	AgentIndex      agentindex.Options
 	MechanicalIndex mechanicalindex.Options
+	Router          router.Options
 	Search          search.Options
 }
 
@@ -68,6 +70,7 @@ type Service struct {
 	agentIndex      *agentindex.Service
 	mechanicalIndex *mechanicalindex.Service
 	relations       *relation.Service
+	routes          *router.Service
 	ids             IDSource
 	clock           Clock
 	relationPolicy  RelationPolicy
@@ -97,7 +100,8 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 		relations: relation.New(database, relation.Options{
 			IDs: options.RelationIDs, Clock: options.Clock,
 		}),
-		ids: options.IDs, clock: options.Clock, relationPolicy: options.RelationPolicy,
+		routes: router.New(database, options.Router),
+		ids:    options.IDs, clock: options.Clock, relationPolicy: options.RelationPolicy,
 		searchOptions: options.Search,
 	}
 }

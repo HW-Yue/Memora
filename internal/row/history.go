@@ -212,6 +212,13 @@ func (transaction *Transaction) Restore(
 	} else if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
 		return Row{}, err
 	}
+	if stored.State == StateDeleted {
+		if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
+			return Row{}, err
+		}
+	} else if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
+		return Row{}, err
+	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationCompensate, options.Metadata); err != nil {
 		return Row{}, err
 	}
