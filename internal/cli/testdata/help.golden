@@ -5,6 +5,7 @@ Usage:
 
 Commands:
   help       Show this help
+  init       Initialize a local instance
   version    Show build version
 
 Run 'memora help' for usage.

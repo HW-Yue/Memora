@@ -1,6 +1,6 @@
 # macOS Instance 数据目录
 
-状态：第一阶段平台、默认根路径和 Instance 顶层目录已确认；各目录内部文件继续逐项设计。
+状态：默认路径、顶层目录和 `instance.meta` v1 已实现；daemon 文件继续逐项设计。
 
 ## 平台范围
 
@@ -20,7 +20,7 @@
 ~/Library/Application Support/Memora/instances/default/
 ```
 
-实现使用 macOS/Go 的标准用户目录 API 解析 Application Support，不能在代码中拼接固定用户名或依赖当前工作目录。
+实现使用 Go 的用户主目录 API 取得当前用户目录，再解析 macOS Library 位置；不能拼接固定用户名或依赖当前工作目录。
 
 ## 为什么不照搬 MySQL 的绝对路径
 
@@ -35,7 +35,7 @@ Memora 的物理层次参考 MySQL，但部署身份不同：它是个人用户�
 ~/Library/Logs/Memora/     daemon 和诊断日志
 ```
 
-数据库 Page、Redo、Undo、Binlog、Data Dictionary、Router 和倒排索引都不能放入 Caches。模型凭据进入 macOS Keychain，不进入 datadir。
+数据库 Page、Redo、Undo、Binlog、Data Dictionary、Router 和倒排索引都不能放入 Caches。Skill-first v0 不接收模型凭据；未来若引入自带 Provider，凭据只能进入系统 Keychain，不能进入 datadir。
 
 ## 路径覆盖
 
@@ -66,13 +66,25 @@ default/
 
 `databases/` 下使用稳定 `database_id`，每库再分权威 data/history 与可重建 index generation。完整布局见 [Database 物理目录](./database-file-layout.md)。
 
+## instance.meta v1
+
+`instance.meta` 是固定 44 字节的 bootstrap 文件，只保存启动不变量：
+
+```text
+magic[8] | format_version u32 | page_size u32
+created_at_unix_nano i64 | instance_uuid[16] | crc32 u32
+```
+
+整数使用 little-endian；v1 默认 Page Size 为 16 KiB。文件权限为 `0600`，Instance 和固定子目录为 `0700`。
+
+初始化先在同目录写临时文件并 `fsync`，再用不覆盖既有目标的 hard-link 原子发布，最后同步目录。两个进程同时首次初始化时只有一个 UUID 成为正式身份，另一方读取胜出的完整文件。重复 `memora init` 保持原身份；长度、magic、版本、Page Size 或 CRC 错误都拒绝启动，绝不自动覆盖。
+
 ## MySQL 参考边界
 
 Instance 内继续参考 MySQL 的结构原则：一个 datadir、集中式事务日志、每个逻辑 Database 的独立子目录。文件扩展名、Page 格式和恢复协议由 Memora 自己定义，不兼容 `.ibd`。
 
 ## 尚未确认
 
-- `instance.meta` 的编码、校验和原子更新协议；
 - `system/` 的内部文件名；
 - launchd 使用 LaunchAgent 还是其他用户级启动方式；
 - Unix socket、PID 和锁文件位置；

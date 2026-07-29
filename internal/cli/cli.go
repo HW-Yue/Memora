@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+
+	"github.com/HW-Yue/Memora/internal/instance"
 )
 
 const (
@@ -19,6 +24,7 @@ Usage:
 
 Commands:
   help       Show this help
+  init       Initialize a local instance
   version    Show build version
 
 Run 'memora help' for usage.
@@ -38,6 +44,18 @@ type versionOutput struct {
 }
 
 func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
+	return RunWithDependencies(args, stdout, stderr, build, Dependencies{
+		HomeDir: os.UserHomeDir,
+	})
+}
+
+type Dependencies struct {
+	HomeDir func() (string, error)
+	Clock   instance.Clock
+	IDs     instance.IDSource
+}
+
+func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
 	if len(args) == 0 {
 		return writeText(stdout, stderr, helpText)
 	}
@@ -48,6 +66,8 @@ func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
 			return usageError(stderr, "help does not accept arguments")
 		}
 		return writeText(stdout, stderr, helpText)
+	case "init":
+		return runInit(args[1:], stdout, stderr, dependencies)
 	case "version":
 		return runVersion(args[1:], stdout, stderr, build)
 	default:
@@ -56,6 +76,64 @@ func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
 		}
 		return ExitUsage
 	}
+}
+
+func runInit(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	instanceName := "default"
+	dataDirOverride := ""
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			index++
+			if index >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			dataDirOverride = args[index]
+			if !filepath.IsAbs(dataDirOverride) {
+				return usageError(stderr, "--data-dir must be an absolute path")
+			}
+		case "--instance":
+			index++
+			if index >= len(args) {
+				return usageError(stderr, "--instance requires a name")
+			}
+			instanceName = args[index]
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown option for init: %q", args[index]))
+		}
+	}
+
+	homeDir := dependencies.HomeDir
+	if homeDir == nil {
+		homeDir = os.UserHomeDir
+	}
+	home, err := homeDir()
+	if err != nil {
+		return commandError(stderr, "resolve user home", err)
+	}
+	locations, err := instance.DefaultLocations(home, instanceName, dataDirOverride)
+	if err != nil {
+		return usageError(stderr, err.Error())
+	}
+	result, err := instance.Initialize(context.Background(), locations.DataDir, instance.Options{
+		Clock: dependencies.Clock,
+		IDs:   dependencies.IDs,
+	})
+	if err != nil {
+		return commandError(stderr, "initialize instance", err)
+	}
+	if result.Created {
+		return writeText(stdout, stderr, fmt.Sprintf(
+			"Initialized Memora instance %s at %s\n",
+			result.Metadata.InstanceID,
+			locations.DataDir,
+		))
+	}
+	return writeText(stdout, stderr, fmt.Sprintf(
+		"Memora instance %s already initialized at %s\n",
+		result.Metadata.InstanceID,
+		locations.DataDir,
+	))
 }
 
 func runVersion(args []string, stdout, stderr io.Writer, build BuildInfo) int {
@@ -84,6 +162,13 @@ func usageError(stderr io.Writer, message string) int {
 		return ExitFailure
 	}
 	return ExitUsage
+}
+
+func commandError(stderr io.Writer, action string, err error) int {
+	if _, writeErr := fmt.Fprintf(stderr, "memora: %s: %v\n", action, err); writeErr != nil {
+		return ExitFailure
+	}
+	return ExitFailure
 }
 
 func writeText(stdout, stderr io.Writer, value string) int {

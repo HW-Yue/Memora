@@ -2,9 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/HW-Yue/Memora/internal/testkit"
 )
 
 func TestRun(t *testing.T) {
@@ -78,6 +82,73 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunInit(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "custom-instance")
+	createdAt := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		Clock:   testkit.NewFakeClock(createdAt),
+		IDs:     testkit.NewFakeIDs("018f2f7e-7b5d-7c31-8a29-53f27d8f93c1"),
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := RunWithDependencies(
+		[]string{"init", "--data-dir", dataDir},
+		&stdout,
+		&stderr,
+		BuildInfo{},
+		dependencies,
+	)
+	if code != ExitOK {
+		t.Fatalf("first init code = %d, stderr = %s", code, &stderr)
+	}
+	want := fmt.Sprintf("Initialized Memora instance 018f2f7e-7b5d-7c31-8a29-53f27d8f93c1 at %s\n", dataDir)
+	if got := stdout.String(); got != want {
+		t.Fatalf("first init stdout = %q, want %q", got, want)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = RunWithDependencies(
+		[]string{"init", "--data-dir", dataDir},
+		&stdout,
+		&stderr,
+		BuildInfo{},
+		dependencies,
+	)
+	if code != ExitOK {
+		t.Fatalf("second init code = %d, stderr = %s", code, &stderr)
+	}
+	want = fmt.Sprintf("Memora instance 018f2f7e-7b5d-7c31-8a29-53f27d8f93c1 already initialized at %s\n", dataDir)
+	if got := stdout.String(); got != want {
+		t.Fatalf("second init stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunInitRejectsRelativeDataDir(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := RunWithDependencies(
+		[]string{"init", "--data-dir", "relative/path"},
+		&stdout,
+		&stderr,
+		BuildInfo{},
+		Dependencies{HomeDir: os.UserHomeDir},
+	)
+	if code != ExitUsage {
+		t.Fatalf("init code = %d, want %d", code, ExitUsage)
+	}
+	if got, want := stderr.String(), "memora: --data-dir must be an absolute path\n"; got != want {
+		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }
 
