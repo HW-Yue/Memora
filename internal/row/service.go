@@ -134,43 +134,48 @@ func (service *Service) get(ctx context.Context, databaseName, tableName, rowID 
 }
 
 func (service *Service) List(ctx context.Context, databaseName, tableName string, limit int) ([]Row, error) {
+	rows, _, err := service.ListPage(ctx, databaseName, tableName, limit)
+	return rows, err
+}
+
+func (service *Service) ListPage(ctx context.Context, databaseName, tableName string, limit int) ([]Row, bool, error) {
 	if limit < 1 || limit > maxListRows {
-		return nil, rowError(result.CodeValidation, fmt.Sprintf("row list limit must be between 1 and %d", maxListRows))
+		return nil, false, rowError(result.CodeValidation, fmt.Sprintf("row list limit must be between 1 and %d", maxListRows))
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	tx, err := service.store.Begin(ctx, store.ReadOnly)
 	if err != nil {
-		return nil, stableError(err)
+		return nil, false, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	table, err := service.catalog.DescribeTableIn(ctx, tx, databaseName, tableName)
 	if err != nil {
-		return nil, stableError(err)
+		return nil, false, stableError(err)
 	}
 	index, err := loadIndex(ctx, tx, table.ID)
 	if err != nil {
-		return nil, stableError(err)
+		return nil, false, stableError(err)
 	}
 	rows := make([]Row, 0, min(limit, len(index)))
 	for _, rowID := range index {
 		stored, err := getStored(ctx, tx, table.ID, rowID)
 		if err != nil {
-			return nil, stableError(err)
+			return nil, false, stableError(err)
 		}
 		if stored.State == StateDeleted {
 			continue
 		}
 		projected, err := project(table, stored)
 		if err != nil {
-			return nil, stableError(err)
+			return nil, false, stableError(err)
+		}
+		if len(rows) == limit {
+			return rows, true, nil
 		}
 		rows = append(rows, projected)
-		if len(rows) == limit {
-			break
-		}
 	}
-	return rows, nil
+	return rows, false, nil
 }
 
 func (service *Service) beginWrite(ctx context.Context, databaseName, tableName string, options WriteOptions) (store.Tx, catalog.Table, error) {

@@ -66,6 +66,10 @@ func evaluate(expression *ast.Expression, table catalog.Table, current *datarow.
 		if err != nil {
 			return nil, err
 		}
+		left, right, err = normalizeOperands(expression.Operator, table, expression.Left, expression.Right, left, right)
+		if err != nil {
+			return nil, err
+		}
 		return binaryValue(expression.Operator, left, right)
 	}
 	return nil, executeError(result.CodeValidation, fmt.Sprintf("unsupported expression kind %q", expression.Kind))
@@ -114,7 +118,10 @@ func binaryValue(operator string, left, right any) (any, error) {
 				return comparison >= 0, nil
 			}
 		}
-		equal := equalValues(left, right)
+		equal, compatible := equalValues(left, right)
+		if !compatible {
+			return nil, typeError("equality comparison requires compatible values")
+		}
 		if operator == "=" {
 			return equal, nil
 		}
@@ -215,26 +222,81 @@ func integerValue(value any) (int64, bool) {
 	return 0, false
 }
 
-func equalValues(left, right any) bool {
+func equalValues(left, right any) (bool, bool) {
 	if left == nil || right == nil {
-		return left == nil && right == nil
+		return left == nil && right == nil, true
 	}
 	if leftInteger, ok := integerValue(left); ok {
 		rightInteger, rightOK := integerValue(right)
-		return rightOK && leftInteger == rightInteger
+		return rightOK && leftInteger == rightInteger, rightOK
 	}
 	switch leftValue := left.(type) {
 	case string:
 		rightValue, ok := right.(string)
-		return ok && leftValue == rightValue
+		return ok && leftValue == rightValue, ok
 	case bool:
 		rightValue, ok := right.(bool)
-		return ok && leftValue == rightValue
+		return ok && leftValue == rightValue, ok
 	case time.Time:
 		rightValue, ok := right.(time.Time)
-		return ok && leftValue.Equal(rightValue)
+		return ok && leftValue.Equal(rightValue), ok
 	}
-	return false
+	return false, false
+}
+
+func normalizeOperands(operator string, table catalog.Table, leftExpression, rightExpression *ast.Expression, left, right any) (any, any, error) {
+	switch operator {
+	case "=", "!=", "<>", "<", "<=", ">", ">=":
+	default:
+		return left, right, nil
+	}
+	if left == nil || right == nil {
+		return left, right, nil
+	}
+	if column, kind, found := expressionField(table, leftExpression); found && rightExpression.Kind != "identifier" {
+		normalized, err := normalizeForField(column, kind, right)
+		return left, normalized, err
+	}
+	if column, kind, found := expressionField(table, rightExpression); found && leftExpression.Kind != "identifier" {
+		normalized, err := normalizeForField(column, kind, left)
+		return normalized, right, err
+	}
+	return left, right, nil
+}
+
+func expressionField(table catalog.Table, expression *ast.Expression) (catalog.Column, string, bool) {
+	if expression == nil || expression.Kind != "identifier" || expression.Name == nil || len(expression.Name.Parts) != 1 {
+		return catalog.Column{}, "", false
+	}
+	name := expression.Name.Parts[0].Value
+	if column, found := findColumn(table, name); found {
+		return column, "", true
+	}
+	switch strings.ToLower(name) {
+	case "row_id", "row_state":
+		return catalog.Column{}, "string", true
+	case "revision", "schema_version":
+		return catalog.Column{}, "integer", true
+	default:
+		return catalog.Column{}, "", false
+	}
+}
+
+func normalizeForField(column catalog.Column, kind string, value any) (any, error) {
+	if kind == "" {
+		return column.Validate(value)
+	}
+	if kind == "string" {
+		if _, ok := value.(string); !ok {
+			return nil, typeError("field requires string value")
+		}
+		return value, nil
+	}
+	integer, ok := integerValue(value)
+	if !ok {
+		return nil, typeError("field requires INTEGER value")
+	}
+	return integer, nil
 }
 
 func checkedArithmetic(operator string, left, right int64) (int64, bool) {

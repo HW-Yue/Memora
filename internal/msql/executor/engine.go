@@ -17,6 +17,7 @@ type Catalog interface {
 }
 
 type Rows interface {
+	Get(context.Context, string, string, string) (row.Row, error)
 	ListPage(context.Context, string, string, int) ([]row.Row, bool, error)
 }
 

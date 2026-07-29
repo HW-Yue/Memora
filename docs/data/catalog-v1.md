@@ -26,6 +26,8 @@ Table 同时保存所属稳定 `database_id`。读取旧 F13 snapshot 时由父 
 - Database 在 Instance 内唯一，Table 在所属 Database 内唯一，Column 在所属 Table 内唯一；
 - `SHOW` 结果按规范化名称确定性排序。
 
+Column 当前名称和 rename 目标不能占用 `row_id`、`database_id`、`table_id`、`schema_version`、`revision`、`row_state`、`created_at`、`updated_at` 等系统信封字段。
+
 F13 不做模糊同义合并。用途相近但名称不同的对象仍需由 Agent 提出显式 merge/rename 方案。
 
 ## 自描述最低要求

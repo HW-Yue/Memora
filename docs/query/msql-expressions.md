@@ -26,6 +26,8 @@
 
 涉及 NULL 的普通比较在 WHERE 语境不能成为 true；v1 尚未加入 `IS NULL`。表达式不做字符串到数字/布尔的隐式转换。
 
+Planner 在扫描 Row 前按比较另一侧的 Column 类型验证 parameter/literal。因此空 Table 上的 `integer_column = 'text'` 仍返回 `constraint_violation`；Timestamp parameter 的 RFC3339 string 会先规范化为 UTC。
+
 ## 字段绑定
 
 Row 表达式中的字段当前必须是不限定的一段 identifier。系统字段为：

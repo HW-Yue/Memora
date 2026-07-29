@@ -62,6 +62,9 @@ func (service *Service) RenameColumn(ctx context.Context, databaseName, tableNam
 	if err := require("column", columnName, "new name", newName); err != nil {
 		return Column{}, err
 	}
+	if isReservedColumn(newName) {
+		return Column{}, &Error{Code: CodeValidation, Object: "column", Name: newName, Field: "a non-system name"}
+	}
 	var renamed Column
 	err := service.mutate(ctx, func(state *snapshot) error {
 		database, table, err := locateTable(state, databaseName, tableName)
@@ -112,6 +115,9 @@ func validateColumnDefinition(definition ColumnDefinition) error {
 	if err := require("column", definition.Name, "name", definition.Name); err != nil {
 		return err
 	}
+	if isReservedColumn(definition.Name) {
+		return &Error{Code: CodeValidation, Object: "column", Name: definition.Name, Field: "a non-system name"}
+	}
 	if err := require("column", definition.Name, "type", definition.Type); err != nil {
 		return err
 	}
@@ -120,6 +126,16 @@ func validateColumnDefinition(definition ColumnDefinition) error {
 	}
 	_, err := logical.ParseDeclaration(definition.Type)
 	return err
+}
+
+func isReservedColumn(name string) bool {
+	switch canonical(name) {
+	case "row_id", "database_id", "table_id", "schema_version", "revision",
+		"row_state", "created_at", "updated_at":
+		return true
+	default:
+		return false
+	}
 }
 
 func uniqueColumnDefinitions(columns []ColumnDefinition) error {

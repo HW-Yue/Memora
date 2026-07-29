@@ -46,7 +46,7 @@ JSON 只是原型 Store value 的版本内编码。读取使用 JSON number 保�
 
 - `Get` 只返回 live Row，`GetIncludingDeleted` 是内部显式 tombstone 读取；
 - `List` 按稳定插入顺序返回 live Row；
-- 单次内部 List limit 必须在 1–1000，F15c Planner 还会应用查询和影响行数预算；
+- 单次内部 List/Page limit 必须在 1–1000，并显式报告是否仍有更多 live Row；F15d Planner 据此返回截断状态；
 - 返回字段使用当前 Column 名，不回显废弃 alias。
 
 ## 关联

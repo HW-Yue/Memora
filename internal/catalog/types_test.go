@@ -93,6 +93,11 @@ func TestCatalogRejectsUnknownAndMalformedTypesBeforeWriting(t *testing.T) {
 		})
 		assertStableCode(t, err, result.CodeValidation)
 	}
+	_, err = service.CreateTable(ctx, "work", catalog.TableDefinition{
+		Name: "reserved", Purpose: "Reserved", RowSemantics: "One invalid row",
+		Columns: []catalog.ColumnDefinition{{Name: "row_id", Type: "TEXT", Purpose: "Collision"}},
+	})
+	assertStableCode(t, err, result.CodeValidation)
 	tables, err := service.ShowTables(ctx, "work")
 	if err != nil {
 		t.Fatal(err)
