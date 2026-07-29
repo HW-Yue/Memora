@@ -2,7 +2,7 @@
 
 状态：执行中。
 
-当前进度：F00–F23 与 Phase A 退出测试已完成；下一项为 F24 pending_reindex。
+当前进度：F00–F24 与 Phase A 退出测试已完成；下一项为 F25 Generation Manifest。
 
 ## 产品目标
 

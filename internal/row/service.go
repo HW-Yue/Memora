@@ -15,6 +15,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/mechanicalindex"
+	"github.com/HW-Yue/Memora/internal/reindex"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
@@ -74,6 +75,7 @@ type Service struct {
 	mechanicalIndex  *mechanicalindex.Service
 	relations        *relation.Service
 	routes           *router.Service
+	reindex          *reindex.Service
 	ids              IDSource
 	clock            Clock
 	relationPolicy   RelationPolicy
@@ -104,8 +106,9 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 		relations: relation.New(database, relation.Options{
 			IDs: options.RelationIDs, Clock: options.Clock,
 		}),
-		routes: router.New(database, options.Router),
-		ids:    options.IDs, clock: options.Clock, relationPolicy: options.RelationPolicy,
+		routes:  router.New(database, options.Router),
+		reindex: reindex.New(),
+		ids:     options.IDs, clock: options.Clock, relationPolicy: options.RelationPolicy,
 		searchOptions: options.Search, discoveryOptions: options.Discovery,
 	}
 }

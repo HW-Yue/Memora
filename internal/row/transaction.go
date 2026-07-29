@@ -223,13 +223,31 @@ func (transaction *Transaction) Update(
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
 		return Row{}, stableError(err)
 	}
-	if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
+	if options.IndexTerms == nil {
+		if _, err := transaction.service.agentIndex.InvalidateIn(
+			ctx, transaction.tx, agentIndexLocator(stored),
+		); err != nil {
+			return Row{}, stableError(err)
+		}
+	} else if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
 		return Row{}, err
 	}
 	if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
 		return Row{}, err
 	}
-	if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
+	if options.RouteLeafIDs == nil {
+		if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
+			return Row{}, err
+		}
+	} else if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
+		return Row{}, err
+	}
+	needAgent, needRouter := options.IndexTerms == nil, options.RouteLeafIDs == nil
+	if needAgent || needRouter {
+		if err := transaction.enqueueReindex(ctx, stored, needAgent, needRouter); err != nil {
+			return Row{}, err
+		}
+	} else if err := transaction.clearReindex(ctx, stored); err != nil {
 		return Row{}, err
 	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationUpdate, options.Metadata); err != nil {
@@ -290,6 +308,9 @@ func (transaction *Transaction) Delete(
 		return Row{}, stableError(err)
 	}
 	if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
+		return Row{}, err
+	}
+	if err := transaction.clearReindex(ctx, stored); err != nil {
 		return Row{}, err
 	}
 	if err := putStored(ctx, transaction.tx, stored); err != nil {

@@ -119,7 +119,14 @@ func (service *Service) replaceIn(
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if exists && next.Revision <= current.Revision {
+	if exists && next.Revision < current.Revision {
+		return Snapshot{}, indexError(
+			result.CodeRevisionConflict,
+			fmt.Sprintf("Agent index revision is %d; new Row revision is %d", current.Revision, next.Revision),
+		)
+	}
+	if exists && next.Revision == current.Revision &&
+		!(current.State == StateInvalid && next.State == StateActive) {
 		return Snapshot{}, indexError(
 			result.CodeRevisionConflict,
 			fmt.Sprintf("Agent index revision is %d; new Row revision is %d", current.Revision, next.Revision),

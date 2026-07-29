@@ -32,6 +32,8 @@ F19b 的 `index_terms` 是 Agent 针对提交后完整 Row 生成的完整词项
 
 F22b 的 `route_leaf_ids` 是提交后完整 Router membership 快照，同样位于结构化 option 而不是 SQL source。非 nil 空数组显式清空，字段缺失表示本次未提供；目标必须是同一 Database 的 leaf。快照、Row revision、History 与 Router 正反向索引原子提交，DELETE 始终清空 membership。
 
+F24 起，UPDATE/RESTORE 缺少任一语义快照不会沿用旧 revision：对应 Agent/Router 通道立即失效，并为提交后的 Row revision 原子写入 durable `pending_reindex`。机械索引照常同步更新。两个快照都提供时不排队；DELETE 清除待处理任务。worker 的 lease、失败、重试和 stale revision 规则见 [Pending Reindex v1](../data/pending-reindex-v1.md)。
+
 ## INSERT
 
 - Column list 按 current name/alias 绑定稳定 `column_id`；省略时使用 Catalog 顺序；

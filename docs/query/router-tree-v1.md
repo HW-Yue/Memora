@@ -22,7 +22,7 @@ leaf 保存 `database_id + table_id + row_id + row_revision`，同一 Row 可属
 
 `route_leaf_ids` 是提交后完整 membership 快照：非 nil 空数组表示显式清空，字段缺失表示本次未提供语义重建结果。INSERT/UPDATE/RESTORE 在同一 Row transaction 中替换快照并写入提交后的 Row revision；失败或 Batch rollback 不留下 Row、正向 locator 或反向索引的部分状态。Row DELETE 始终清空 membership。
 
-普通 UPDATE 未提供新快照时，旧语义 locator 的自动失效和 durable `pending_reindex` 由 F24 完成；机械索引不依赖该异步结果。
+普通 UPDATE/RESTORE 未提供新快照时，旧语义 locator 立即失效，并为新 Row revision 原子写入 durable `pending_reindex`；机械索引不依赖该异步结果。
 
 删除 leaf/子树时递归清除所有正反向引用。
 
