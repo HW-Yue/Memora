@@ -66,13 +66,21 @@
 
 提交：`feat(F07): run single-instance local daemon`
 
-## F08 IPC 与会话
+## F08 IPC 传输与会话核心
 
 先测：并发客户端、请求取消、超时、超大 frame、断线、跨 request session 和客户端退出后的事务清理。
 
-开发：实现带协议版本的本地 framed JSON/JSONL IPC，以及 CLI client。
+开发：实现带协议版本的 length-prefixed JSON IPC、可并发 CLI client 和连接级 session cleanup hook。
 
 提交：`feat(F08): add versioned daemon IPC`
+
+## F08b daemon socket 接入
+
+先测：短路径和 Instance 隔离、live/stale socket、daemon ping、启动就绪与退出清理。
+
+开发：将 IPC 接入 daemon 和 CLI，使用仅当前用户可访问的短 Unix socket 路径。
+
+提交：`feat(F08b): connect daemon IPC socket`
 
 ## F09 统一响应 Envelope
 

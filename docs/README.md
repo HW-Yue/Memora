@@ -69,6 +69,7 @@
 
 - [测试约定](./development/testing.md) — Unit、integration、e2e、race、隔离目录和确定性 Testkit。
 - [进程配置与宿主边界](./development/process-configuration.md) — 非秘密启动配置的优先级，以及不接收 Codex/Claude 模型密钥的边界。
+- [本地 IPC 协议](./development/ipc-protocol.md) — 长度前缀 JSON、协议版本、并发请求和连接级 Session 生命周期。
 - [ADR-0001：SQLite 原型 Store](./decisions/0001-prototype-store.md) — 用可替换 CGO-free 后端先验证产品，原生内核通过质量门后再替换。
 
 ## 文档规模约束
