@@ -33,5 +33,15 @@ func FuzzParseNeverPanics(f *testing.F) {
 				t.Fatalf("Marshal(batch) error = %v", err)
 			}
 		}
+		items, err := ParseBatchItems(source)
+		if err == nil {
+			for _, item := range items {
+				if item.Statement != nil {
+					if _, err := json.Marshal(item.Statement); err != nil {
+						t.Fatalf("Marshal(batch item) error = %v", err)
+					}
+				}
+			}
+		}
 	})
 }

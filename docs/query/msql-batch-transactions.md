@@ -1,6 +1,6 @@
 # MSQL Batch 与事务边界 v1
 
-状态：F12 Parser 与 F16b Batch Executor 已实现；F16c 将补齐 Parser 错误恢复和 daemon IPC 接线。
+状态：F12 Parser 与 F16a–F16c 事务执行链路已实现。
 
 ## Batch Parser
 
@@ -15,7 +15,7 @@
 - statement 之间缺少分号时返回 `unexpected_token`；
 - 已定位到 statement 的 Parser 错误携带从 0 开始的 `StatementIndex`。
 
-F12 在首个语法错误处停止形成 AST。F16 生成 Result Envelope 时，已定位错误必须进入对应 statement result；后续语句的恢复与 `skipped`/继续执行规则由执行层结合事务边界处理，不能把错误降级成模糊 request error。
+`ParseBatch` 保留“首错即停”的完整 AST API。执行链路使用 `ParseBatchItems`：仅在 Lexer 已确认的分号 token 处恢复，因此字符串、quoted identifier 和注释内的分号不会被误切。已定位 Parser 错误成为对应 statement result，后续安全 statement 继续；无法形成 token stream 的 Lexer 错误和空请求仍是 request error。
 
 ## 事务 AST
 
@@ -60,19 +60,22 @@ F16b 的 request 将 SQL 与每条 statement 的结构化输入分离：
 ```json
 {
   "request_id": "request-7",
-  "source": "BEGIN; UPDATE work.notes SET title = :title WHERE row_id = :id; COMMIT",
-  "statements": [
-    {},
-    {
-      "parameters": {"named": {"title": "新标题", "id": "row_..."}, "positional": []},
-      "mutation": {
-        "expected_schema_version": 3,
-        "expected_revision": 7,
-        "max_affected_rows": 1
-      }
-    },
-    {}
-  ]
+  "method": "msql.execute",
+  "payload": {
+    "source": "BEGIN; UPDATE work.notes SET title = :title WHERE row_id = :id; COMMIT",
+    "statements": [
+      {},
+      {
+        "parameters": {"named": {"title": "新标题", "id": "row_..."}, "positional": []},
+        "mutation": {
+          "expected_schema_version": 3,
+          "expected_revision": 7,
+          "max_affected_rows": 1
+        }
+      },
+      {}
+    ]
+  }
 }
 ```
 
@@ -89,7 +92,7 @@ F16b 的 request 将 SQL 与每条 statement 的结构化输入分离：
 - 显式 ROLLBACK 自身为 `succeeded`，事务中此前已执行项为 `rolled_back`；
 - BEGIN/COMMIT/ROLLBACK 的非法状态只让该边界 `failed`，不伪造 Store 状态转换。
 
-F16b 在完整 AST 上执行。F16c 将已定位 Parser error 作为 statement result，并从 Lexer token 边界恢复后续 statement；在此之前无法形成完整 statement list 的解析失败仍是 request error。
+daemon 暴露 `msql.execute`，外层 IPC `request_id` 直接成为 Result Envelope 的 `request_id`。每个 IPC connection 按 `session_id` 延迟创建且独占一个 Batch Session；断连 hook 和 daemon shutdown 都会关闭 session 并回滚 active transaction。JSON number 使用保真 decoder，不能先转为 `float64` 再进入 INTEGER 校验。
 
 ## 关联
 

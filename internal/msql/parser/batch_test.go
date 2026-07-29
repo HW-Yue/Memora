@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+
+	"github.com/HW-Yue/Memora/internal/msql/ast"
 )
 
 func TestParseBatchStatementListGolden(t *testing.T) {
@@ -43,5 +45,35 @@ func TestParseBatchReportsFailedStatementIndex(t *testing.T) {
 	}
 	if parseError.Code != ErrorUnexpectedToken || parseError.StatementIndex != 1 || parseError.Span.Start.Column != 26 {
 		t.Fatalf("ParseBatch() error = %#v", parseError)
+	}
+}
+
+func TestParseBatchItemsRecoversAfterStatementError(t *testing.T) {
+	t.Parallel()
+
+	items, err := ParseBatchItems(`
+		SELECT * FROM work.notes LIMIT 1;
+		SELECT * work.notes WHERE title = ?;
+		SELECT * FROM work.notes WHERE row_id = ? LIMIT 1
+	`)
+	if err != nil {
+		t.Fatalf("ParseBatchItems() request error = %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("item count = %d, want 3: %#v", len(items), items)
+	}
+	if items[0].Statement == nil || items[0].Issue != nil {
+		t.Fatalf("first item = %#v", items[0])
+	}
+	if items[1].Statement != nil || items[1].Issue == nil ||
+		items[1].Issue.StatementIndex != 1 || items[1].Kind != "SELECT" {
+		t.Fatalf("failed item = %#v", items[1])
+	}
+	if items[2].Statement == nil || items[2].Issue != nil {
+		t.Fatalf("recovered item = %#v", items[2])
+	}
+	parameters := (ast.Document{Statement: *items[2].Statement}).Parameters()
+	if len(parameters) != 1 || parameters[0].Ordinal != 2 {
+		t.Fatalf("recovered parameters = %#v, want global ordinal 2", parameters)
 	}
 }

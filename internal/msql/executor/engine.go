@@ -30,14 +30,14 @@ type Engine struct {
 }
 
 type Parameters struct {
-	Named      map[string]any
-	Positional []any
+	Named      map[string]any `json:"named,omitempty"`
+	Positional []any          `json:"positional,omitempty"`
 }
 
 type MutationOptions struct {
-	ExpectedSchemaVersion uint64
-	ExpectedRevision      uint64
-	MaxAffectedRows       uint64
+	ExpectedSchemaVersion uint64 `json:"expected_schema_version,omitempty"`
+	ExpectedRevision      uint64 `json:"expected_revision,omitempty"`
+	MaxAffectedRows       uint64 `json:"max_affected_rows,omitempty"`
 }
 
 type Output struct {

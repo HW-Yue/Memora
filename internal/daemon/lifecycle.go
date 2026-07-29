@@ -10,7 +10,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/ipc"
+	"github.com/HW-Yue/Memora/internal/row"
+	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
 	"golang.org/x/sys/unix"
 )
 
@@ -122,17 +125,32 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		_ = listener.Close()
 		_ = os.Remove(socketPath)
 	}()
-	handler := ipc.HandlerFunc(handleRequest)
+	databaseDirectory := filepath.Join(dataDir, "databases")
+	if err := os.MkdirAll(databaseDirectory, 0o700); err != nil {
+		return fmt.Errorf("create prototype database directory: %w", err)
+	}
+	databaseStore, err := sqlitestore.Open(filepath.Join(databaseDirectory, "prototype.sqlite"))
+	if err != nil {
+		return err
+	}
+	dictionary := catalog.New(databaseStore, catalog.Options{})
+	rows := row.New(databaseStore, dictionary, row.Options{})
+	handler := newDatabaseHandler(ctx, dictionary, rows)
 	server := ipc.NewServer(handler)
-	defer func() { _ = server.Close() }()
 	if ready != nil {
 		select {
 		case ready <- State{Running: true, PID: lease.pid}:
 		case <-ctx.Done():
-			return nil
+			_ = server.Close()
+			_ = handler.Close()
+			return databaseStore.Close()
 		}
 	}
-	return server.Serve(ctx, listener)
+	serveErr := server.Serve(ctx, listener)
+	serverErr := server.Close()
+	handlerErr := handler.Close()
+	storeErr := databaseStore.Close()
+	return errors.Join(serveErr, serverErr, handlerErr, storeErr)
 }
 
 func (lease *Lease) Close() error {

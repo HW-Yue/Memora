@@ -1,6 +1,6 @@
 # 本地 IPC 协议
 
-状态：F08 传输与 session 核心、F08b daemon socket 绑定均已实现。
+状态：F08 传输与 session 核心、F08b daemon socket、F16c `msql.execute` session 接线均已实现。
 
 ## 边界
 
@@ -34,7 +34,7 @@ v1 单个 frame 默认上限为 1 MiB。接收端先读取并校验 4 字节长�
 
 未知 JSON 字段默认忽略，以允许同一大版本中的向前兼容；不支持的 `version` 必须返回结构化 `protocol_version` 错误，不能把请求交给 handler。
 
-Phase A 暴露 `ping` 和 `msql.parse` 两个 daemon method。`msql.parse` 只返回版本化 Batch AST 或精确词法/语法 issue，用于 CLI 诊断和链路验收；它不执行数据操作。F13 之后的执行请求必须复用同一 Lexer、Parser 和 AST，不得增加 SQL 字符串旁路。
+daemon 暴露 `ping`、`msql.parse` 和 `msql.execute`。`msql.parse` 只返回版本化 Batch AST 或精确词法/语法 issue，用于 CLI 诊断；`msql.execute` 接收 source 与逐 statement 的 parameter/mutation options，并返回 `memora.result/v1` Envelope。执行请求复用同一 Lexer、Parser 和 AST，不得增加 SQL 字符串旁路。
 
 ## 并发与 Session
 
@@ -48,7 +48,7 @@ Phase A 暴露 `ping` 和 `msql.parse` 两个 daemon method。`msql.parse` 只�
 
 客户端 deadline 转为协议毫秒值时向上取整，避免服务端因精度截断提前超时。无论超时或取消先在客户端还是服务端被观察到，返回错误都必须分别满足 Go `errors.Is(err, context.DeadlineExceeded)` 或 `errors.Is(err, context.Canceled)`，调用方不依赖竞态路径判断语义。
 
-连接结束后，daemon 先取消并等待该连接的活跃请求，再调用一次 session cleanup。后续事务状态机会在这里回滚未提交事务；F08 只冻结生命周期 hook，不执行事务。
+连接结束后，daemon 先取消并等待该连接的活跃请求，再调用一次 session cleanup。F16c 已在该 hook 中幂等关闭 Batch Session 并回滚未提交 Store transaction；daemon shutdown 也会关闭仍注册的全部 session。
 
 ## 安全边界
 

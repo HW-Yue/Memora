@@ -22,6 +22,8 @@ Begin(ReadOnly | ReadWrite)
 
 业务层、MSQL Parser、Data Dictionary、Router 和索引模块禁止导入 SQLite driver、拼接 SQLite SQL 或依赖 SQLite rowid/schema。原型表只是 Store 适配器的私有实现。
 
+F16c 起 daemon 将单个原型 Store 放在实例的 `databases/prototype.sqlite`。该路径只用于可替换原型，不能被业务层、MSQL 客户端或逻辑 snapshot 当成逐库最终布局；未来按稳定 `database_id` 拆分的物理目录仍以独立布局规格为准。
+
 ## 强制测试
 
 同一 `storetest` contract 必须覆盖：

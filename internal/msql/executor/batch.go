@@ -7,20 +7,21 @@ import (
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/msql/ast"
+	"github.com/HW-Yue/Memora/internal/msql/lexer"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
 type StatementInput struct {
-	Parameters Parameters
-	Mutation   MutationOptions
+	Parameters Parameters      `json:"parameters,omitempty"`
+	Mutation   MutationOptions `json:"mutation,omitempty"`
 }
 
 type BatchRequest struct {
-	RequestID  string
-	Source     string
-	Statements []StatementInput
+	RequestID  string           `json:"request_id"`
+	Source     string           `json:"source"`
+	Statements []StatementInput `json:"statements,omitempty"`
 }
 
 // BatchSession serializes requests for one connection and owns any explicit
@@ -57,11 +58,11 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 	if session.closed {
 		return result.FailedRequest(request.RequestID, result.CodeInvalidRequest, "MSQL session is closed", false)
 	}
-	batch, err := parser.ParseBatch(request.Source)
+	items, err := parser.ParseBatchItems(request.Source)
 	if err != nil {
 		return result.FailedRequest(request.RequestID, result.CodeParseError, parseMessage(err), false)
 	}
-	inputs, ok := statementInputs(request.Statements, len(batch.Statements))
+	inputs, ok := statementInputs(request.Statements, len(items))
 	if !ok {
 		return result.FailedRequest(
 			request.RequestID,
@@ -71,21 +72,38 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 		)
 	}
 
-	results := make([]result.StatementResult, 0, len(batch.Statements))
+	results := make([]result.StatementResult, 0, len(items))
 	transactionStart := -1
 	if session.active != nil || session.aborted {
 		transactionStart = 0
 	}
-	for index, statement := range batch.Statements {
-		source := statementSource(request.Source, statement)
+	for index, item := range items {
+		source := spanSource(request.Source, item.Span, item.Kind)
 		if session.aborted {
-			results = append(results, skippedStatement(index, statement.Kind, source))
-			if statement.Kind == "COMMIT" || statement.Kind == "ROLLBACK" {
+			results = append(results, skippedStatement(index, item.Kind, source))
+			if item.Kind == "COMMIT" || item.Kind == "ROLLBACK" {
 				session.aborted = false
 				transactionStart = -1
 			}
 			continue
 		}
+		if item.Issue != nil {
+			parseFailure := failedStatement(
+				index, item.Kind, source, parserResultCode(item.Issue), item.Issue.Error(),
+			)
+			if session.active != nil && mutationKind(item.Kind) {
+				rollbackErr := session.active.Rollback()
+				session.active = nil
+				markRolledBack(results, transactionStart, "transaction was rolled back after a write parse failure")
+				if rollbackErr != nil {
+					parseFailure = statementFailure(index, item.Kind, source, rollbackErr)
+				}
+				session.aborted = true
+			}
+			results = append(results, parseFailure)
+			continue
+		}
+		statement := *item.Statement
 
 		switch statement.Kind {
 		case "BEGIN":
@@ -286,14 +304,14 @@ func mutationStatement(statement ast.Statement) bool {
 	return statement.Insert != nil || statement.Update != nil || statement.Delete != nil
 }
 
-func statementSource(source string, statement ast.Statement) string {
-	start, end := statement.Span.Start.Offset, statement.Span.End.Offset
+func spanSource(source string, span lexer.Span, fallback string) string {
+	start, end := span.Start.Offset, span.End.Offset
 	if start >= 0 && end >= start && end <= len(source) {
 		if value := strings.TrimSpace(source[start:end]); value != "" {
 			return value
 		}
 	}
-	return statement.Kind
+	return fallback
 }
 
 func parseMessage(err error) string {
@@ -302,4 +320,15 @@ func parseMessage(err error) string {
 		return parseErr.Error()
 	}
 	return "MSQL request could not be parsed"
+}
+
+func parserResultCode(err *parser.Error) result.Code {
+	if err.Code == parser.ErrorUnsupportedStatement {
+		return result.CodeUnsupported
+	}
+	return result.CodeParseError
+}
+
+func mutationKind(kind string) bool {
+	return kind == "INSERT" || kind == "UPDATE" || kind == "DELETE"
 }

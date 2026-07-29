@@ -40,7 +40,7 @@
 - [MSQL](./query/msql.md) — 标准化发现、查询、修改和事务语言。
 - [MSQL Lexer v0](./query/msql-lexer.md) — F10 已冻结的 Token、Unicode source span、注释、参数与稳定词法错误。
 - [MSQL Parser Core v1](./query/msql-parser.md) — F11 已冻结的单语句 AST、表达式优先级、参数与精确 Parser 错误。
-- [MSQL Batch 与事务边界 v1](./query/msql-batch-transactions.md) — F12 多语句 token stream、事务 AST 和跨 request session 状态机。
+- [MSQL Batch 与事务边界 v1](./query/msql-batch-transactions.md) — F12/F16 的可恢复多语句解析、原子事务执行和跨 request IPC session。
 - [MSQL Catalog DDL v1](./query/catalog-ddl.md) — F13c 的自描述建模、发现、rename 和限定名 Binder 契约。
 - [MSQL 参数与表达式 v1](./query/msql-expressions.md) — F15c 的无插值参数绑定、整数/布尔表达式和稳定求值错误。
 - [MSQL SELECT Planner v1](./query/msql-select.md) — F15d 的限定表/字段绑定、强制 LIMIT、精确 Row ID 与截断边界。

@@ -210,6 +210,36 @@ func TestBatchExplicitRollbackReportsExecutedStatements(t *testing.T) {
 	}
 }
 
+func TestBatchLocalizesParseErrorAndRecoversLaterStatement(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	session, _, closeSession := batchFixture(t, ctx)
+	defer closeSession()
+	envelope := session.Execute(ctx, executor.BatchRequest{
+		RequestID: "parse-recovery",
+		Source: `
+			SELECT * work.notes;
+			INSERT INTO work.notes (title) VALUES ('after parse error');
+			SELECT title FROM work.notes LIMIT 10
+		`,
+		Statements: []executor.StatementInput{
+			{},
+			{Mutation: executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1}},
+			{},
+		},
+	})
+
+	assertStatuses(t, envelope, result.StatusFailed, result.StatusSucceeded, result.StatusSucceeded)
+	if envelope.Results[0].Error == nil || envelope.Results[0].Error.Code != result.CodeParseError ||
+		envelope.Results[0].Error.StatementIndex == nil || *envelope.Results[0].Error.StatementIndex != 0 {
+		t.Fatalf("parse result = %#v", envelope.Results[0])
+	}
+	if len(envelope.Results[2].Rows) != 1 || envelope.Results[2].Rows[0]["title"] != "after parse error" {
+		t.Fatalf("recovered SELECT rows = %#v", envelope.Results[2].Rows)
+	}
+}
+
 func batchFixture(t *testing.T, ctx context.Context) (*executor.BatchSession, *row.Service, func()) {
 	t.Helper()
 	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
