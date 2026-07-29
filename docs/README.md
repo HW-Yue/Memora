@@ -37,6 +37,7 @@
 - [MSQL](./query/msql.md) — 标准化发现、查询、修改和事务语言。
 - [MSQL Lexer v0](./query/msql-lexer.md) — F10 已冻结的 Token、Unicode source span、注释、参数与稳定词法错误。
 - [MSQL Parser Core v1](./query/msql-parser.md) — F11 已冻结的单语句 AST、表达式优先级、参数与精确 Parser 错误。
+- [MSQL Batch 与事务边界 v1](./query/msql-batch-transactions.md) — F12 多语句 token stream、事务 AST 和跨 request session 状态机。
 - [MSQL Result Envelope v1](./query/result-envelope.md) — 单条/批量统一结果、稳定错误码、warning 与截断兼容规则。
 - [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 多层多叉语义树逐层找到叶子数据项 ID，再与倒排和关系候选融合。
 - [无向量检索质量链路](./query/retrieval-quality.md) — 从逐层发现、候选融合、返回定位到主 Agent SQL 回表的完整流程。

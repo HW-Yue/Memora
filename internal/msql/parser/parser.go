@@ -33,6 +33,39 @@ func Parse(source string) (*ast.Document, error) {
 	return &ast.Document{Version: ast.Version, Statement: statement}, nil
 }
 
+func ParseBatch(source string) (*ast.Batch, error) {
+	tokens, err := lexer.Lex(source)
+	if err != nil {
+		return nil, err
+	}
+	parser := parser{tokens: tokens}
+	batch := &ast.Batch{Version: ast.Version}
+	for {
+		for parser.matchKind(lexer.KindSemicolon) {
+		}
+		if parser.checkKind(lexer.KindEOF) {
+			break
+		}
+		statementIndex := len(batch.Statements)
+		statement, err := parser.parseStatement()
+		if err != nil {
+			return nil, withStatementIndex(err, statementIndex)
+		}
+		batch.Statements = append(batch.Statements, statement)
+		if parser.checkKind(lexer.KindEOF) {
+			break
+		}
+		if !parser.matchKind(lexer.KindSemicolon) {
+			return nil, withStatementIndex(parser.unexpected("; or end of request"), statementIndex)
+		}
+	}
+	if len(batch.Statements) == 0 {
+		token := parser.peek()
+		return nil, &Error{Code: ErrorEmptyBatch, Span: token.Span, Expected: "at least one statement", Found: "EOF", StatementIndex: -1}
+	}
+	return batch, nil
+}
+
 func (parser *parser) parseStatement() (ast.Statement, error) {
 	start := parser.peek().Span.Start
 	var statement ast.Statement
@@ -52,17 +85,31 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseUpdate()
 	case parser.matchWord("DELETE"):
 		statement, err = parser.parseDelete()
+	case parser.matchWord("BEGIN"):
+		statement = transactionStatement("BEGIN")
+	case parser.matchWord("START"):
+		if _, err = parser.expectWord("TRANSACTION"); err == nil {
+			statement = transactionStatement("BEGIN")
+		}
+	case parser.matchWord("COMMIT"):
+		statement = transactionStatement("COMMIT")
+	case parser.matchWord("ROLLBACK"):
+		statement = transactionStatement("ROLLBACK")
 	case parser.checkKind(lexer.KindEOF):
 		return ast.Statement{}, parser.unexpected("statement")
 	default:
 		token := parser.peek()
-		return ast.Statement{}, &Error{Code: ErrorUnsupportedStatement, Span: token.Span, Found: tokenDescription(token)}
+		return ast.Statement{}, &Error{Code: ErrorUnsupportedStatement, Span: token.Span, Found: tokenDescription(token), StatementIndex: -1}
 	}
 	if err != nil {
 		return ast.Statement{}, err
 	}
 	statement.Span = lexer.Span{Start: start, End: parser.previous().Span.End}
 	return statement, nil
+}
+
+func transactionStatement(action string) ast.Statement {
+	return ast.Statement{Kind: action, Transaction: &ast.TransactionStatement{Action: action}}
 }
 
 func (parser *parser) parseShow() (ast.Statement, error) {
@@ -437,11 +484,18 @@ func (parser *parser) unexpected(expected string) *Error {
 	if token.Kind == lexer.KindEOF {
 		code = ErrorUnexpectedEOF
 	}
-	return &Error{Code: code, Span: token.Span, Expected: expected, Found: tokenDescription(token)}
+	return &Error{Code: code, Span: token.Span, Expected: expected, Found: tokenDescription(token), StatementIndex: -1}
 }
 
 func (parser *parser) errorAt(token lexer.Token, expected string) *Error {
-	return &Error{Code: ErrorUnexpectedToken, Span: token.Span, Expected: expected, Found: tokenDescription(token)}
+	return &Error{Code: ErrorUnexpectedToken, Span: token.Span, Expected: expected, Found: tokenDescription(token), StatementIndex: -1}
+}
+
+func withStatementIndex(err error, index int) error {
+	if parseError, ok := err.(*Error); ok {
+		parseError.StatementIndex = index
+	}
+	return err
 }
 
 func tokenDescription(token lexer.Token) string {

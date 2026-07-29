@@ -20,11 +20,16 @@ func FuzzParseNeverPanics(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, source string) {
 		document, err := Parse(source)
-		if err != nil {
-			return
+		if err == nil {
+			if _, err := json.Marshal(document); err != nil {
+				t.Fatalf("Marshal(document) error = %v", err)
+			}
 		}
-		if _, err := json.Marshal(document); err != nil {
-			t.Fatalf("Marshal() error = %v", err)
+		batch, err := ParseBatch(source)
+		if err == nil {
+			if _, err := json.Marshal(batch); err != nil {
+				t.Fatalf("Marshal(batch) error = %v", err)
+			}
 		}
 	})
 }

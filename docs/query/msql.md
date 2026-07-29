@@ -122,5 +122,6 @@ Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
 
 - [MSQL Lexer v0](./msql-lexer.md)
 - [MSQL Parser Core v1](./msql-parser.md)
+- [MSQL Batch 与事务边界 v1](./msql-batch-transactions.md)
 - [语义路由](./semantic-routing.md)
 - [上下文生命周期](./context-lifecycle.md)

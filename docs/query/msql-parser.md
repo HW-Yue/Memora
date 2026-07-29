@@ -1,6 +1,6 @@
 # MSQL Parser Core v1
 
-状态：F11 已实现；单语句核心 AST 契约已冻结。多语句和事务边界由 F12 扩展。
+状态：F11 已实现；单语句核心 AST 契约已冻结。多语句和事务边界已由 F12 扩展。
 
 ## 入口与 AST
 
@@ -59,9 +59,9 @@ AST 节点保留 Lexer 的 UTF-8 byte span 和 Unicode 行列位置，但稳定 
 
 Lexer 错误原样返回，调用层统一映射为 Result Envelope 的 `parse_error`。
 
-## F12 边界
+## Batch 边界
 
-F11 只接受一条 statement 和至多一个尾部分号。分号后仍有 token 时返回 `unexpected_token`；不得静默忽略，也不得用字符串拆分。F12 将在同一 token stream 上增加 statement list、空语句规则和事务边界。
+`Parse` 只接受一条 statement 和至多一个尾部分号。分号后仍有 token 时返回 `unexpected_token`；不得静默忽略，也不得用字符串拆分。完整 request 使用 [MSQL Batch 与事务边界 v1](./msql-batch-transactions.md) 的 `ParseBatch`。
 
 ## 关联
 

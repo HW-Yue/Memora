@@ -12,13 +12,15 @@ const (
 	ErrorUnexpectedToken      ErrorCode = "unexpected_token"
 	ErrorUnexpectedEOF        ErrorCode = "unexpected_eof"
 	ErrorUnsupportedStatement ErrorCode = "unsupported_statement"
+	ErrorEmptyBatch           ErrorCode = "empty_batch"
 )
 
 type Error struct {
-	Code     ErrorCode
-	Span     lexer.Span
-	Expected string
-	Found    string
+	Code           ErrorCode
+	Span           lexer.Span
+	Expected       string
+	Found          string
+	StatementIndex int
 }
 
 func (err *Error) Error() string {

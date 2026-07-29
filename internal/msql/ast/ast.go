@@ -9,16 +9,22 @@ type Document struct {
 	Statement Statement `json:"statement"`
 }
 
+type Batch struct {
+	Version    string      `json:"version"`
+	Statements []Statement `json:"statements"`
+}
+
 type Statement struct {
-	Kind     string             `json:"kind"`
-	Span     lexer.Span         `json:"-"`
-	Show     *ShowStatement     `json:"show,omitempty"`
-	Describe *DescribeStatement `json:"describe,omitempty"`
-	Create   *CreateStatement   `json:"create,omitempty"`
-	Select   *SelectStatement   `json:"select,omitempty"`
-	Insert   *InsertStatement   `json:"insert,omitempty"`
-	Update   *UpdateStatement   `json:"update,omitempty"`
-	Delete   *DeleteStatement   `json:"delete,omitempty"`
+	Kind        string                `json:"kind"`
+	Span        lexer.Span            `json:"-"`
+	Show        *ShowStatement        `json:"show,omitempty"`
+	Describe    *DescribeStatement    `json:"describe,omitempty"`
+	Create      *CreateStatement      `json:"create,omitempty"`
+	Select      *SelectStatement      `json:"select,omitempty"`
+	Insert      *InsertStatement      `json:"insert,omitempty"`
+	Update      *UpdateStatement      `json:"update,omitempty"`
+	Delete      *DeleteStatement      `json:"delete,omitempty"`
+	Transaction *TransactionStatement `json:"transaction,omitempty"`
 }
 
 type Identifier struct {
@@ -87,6 +93,10 @@ type Assignment struct {
 type DeleteStatement struct {
 	Table Name        `json:"table"`
 	Where *Expression `json:"where,omitempty"`
+}
+
+type TransactionStatement struct {
+	Action string `json:"action"`
 }
 
 type Expression struct {
