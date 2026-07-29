@@ -29,6 +29,7 @@
 - [逻辑类型与字段预算 v1](./data/logical-types.md) — F14 的 NULL、整数、布尔、时间、文本、关系 ID 和禁止截断规则。
 - [Row Store v1](./data/row-store-v1.md) — F15 的稳定 Row 身份、Column ID 编码、Schema/revision 校验与逻辑删除契约。
 - [History Store v1](./data/history-store-v1.md) — F17 的追加式语义 revision、commit sequence、provenance 与补偿边界。
+- [Relationship Store v1](./data/relationship-store-v1.md) — F18 的结构化关系、revision、双向索引与完整性边界。
 - [资料吸收](./data/assimilation.md) — 外部资料临时读取，吸收后不保存原文。
 
 ## Agent 与查询

@@ -88,13 +88,21 @@
 
 提交：`feat(F17c): execute MSQL history operations`
 
-## F18 结构化关系
+## F18a 关系记录与双向索引
 
-先测：正反向遍历、引用不存在、删除引用、跨表/跨库 Policy、关系 revision 和循环关系。
+先测：关系 revision、正反向索引一致、逻辑删除、重复 relation ID 和跨重启一致。
 
-开发：实现关系记录与正反向索引；引擎不解释 `contradicts` 等业务语义。
+开发：实现统一的 transaction-scoped relation Store；引擎持久化 relation type，但不解释 `contradicts` 等业务语义。
 
-提交：`feat(F18): store revisioned relationships`
+提交：`feat(F18a): store revisioned relationships`
+
+## F18b Row 引用完整性与 MSQL
+
+先测：引用不存在、Row 删除自动失效引用、跨表/跨库 Policy、循环关系、Batch 回滚和参数注入。
+
+开发：把 endpoint 校验、删除级联、Policy guard 与声明式 MSQL 接入 Row transaction。
+
+提交：`feat(F18b): enforce structured relationship integrity`
 
 ## F19 Agent 倒排索引
 
