@@ -35,6 +35,7 @@
 - [数据库查询 Sub-agent](./agent/database-query-subagent.md) — 旧首选方案；保留为宿主侧兼容方式。
 - [数据库 Mutation Agent](./agent/database-mutation-agent.md) — Skill 写入职责、维护选择和收据设计。
 - [MSQL](./query/msql.md) — 标准化发现、查询、修改和事务语言。
+- [MSQL Result Envelope v1](./query/result-envelope.md) — 单条/批量统一结果、稳定错误码、warning 与截断兼容规则。
 - [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 多层多叉语义树逐层找到叶子数据项 ID，再与倒排和关系候选融合。
 - [无向量检索质量链路](./query/retrieval-quality.md) — 从逐层发现、候选融合、返回定位到主 Agent SQL 回表的完整流程。
 - [上下文生命周期](./query/context-lifecycle.md) — 当前重点：索引缓存、污染、失效和平台限制。

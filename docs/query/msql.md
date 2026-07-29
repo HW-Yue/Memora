@@ -78,22 +78,7 @@ Router/倒排的 Row、子树或 Database 重建必须映射为 MSQL `REINDEX` �
 
 ## 统一响应
 
-所有语句使用同一种 JSON envelope。`SELECT`、`SHOW`、`DESCRIBE`、写入和管理语句只改变字段取值，不各自定义一套顶层响应结构。候选字段包括：
-
-```json
-{
-  "ok": true,
-  "statement": "SHOW_DATABASES",
-  "columns": [],
-  "rows": [],
-  "affected_rows": 0,
-  "revision": null,
-  "truncated": false,
-  "warnings": []
-}
-```
-
-错误也必须保留同一顶层 envelope，并使用稳定机器可读错误码。字段名称、空值规则和流式结果表达仍待 v0 协议冻结。
+所有语句使用 [MSQL Result Envelope v1](./result-envelope.md)。`SELECT`、`SHOW`、`DESCRIBE`、写入和管理语句只改变 statement result 的字段取值，不各自定义顶层结构。单语句也进入 `results[]`；错误、warning、截断、batch 顺序和未知字段兼容规则已经冻结。
 
 ## 多语句请求
 
@@ -127,7 +112,6 @@ Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
 ## 未决问题
 
 - MSQL v0 首批冻结哪些 SQL 语句和 Memora 扩展？
-- 统一 JSON envelope 的字段、空值和流式结果怎样表达？
 - 多语句批次的整体输出预算是什么？
 - Router cursor 是否属于语言标准？
 - 数据项级语义词项在 `MATCH` 中怎样表达作用范围？

@@ -1,0 +1,26 @@
+{
+  "version": "memora.result/v1",
+  "request_id": "req-failure",
+  "ok": false,
+  "results": [
+    {
+      "index": 0,
+      "statement": "UPDATE",
+      "source": "UPDATE notes SET body = ?",
+      "status": "failed",
+      "columns": [],
+      "rows": [],
+      "affected_rows": 0,
+      "truncated": false,
+      "warnings": [],
+      "error": {
+        "code": "value_too_long",
+        "message": "body exceeds its 1200 character limit",
+        "retryable": false,
+        "statement_index": 0
+      }
+    }
+  ],
+  "truncated": false,
+  "warnings": []
+}

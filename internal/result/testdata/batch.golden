@@ -1,0 +1,48 @@
+{
+  "version": "memora.result/v1",
+  "request_id": "req-batch",
+  "ok": false,
+  "results": [
+    {
+      "index": 0,
+      "statement": "SELECT",
+      "source": "SELECT * FROM notes LIMIT 1",
+      "status": "succeeded",
+      "columns": [],
+      "rows": [],
+      "affected_rows": 0,
+      "truncated": false,
+      "warnings": []
+    },
+    {
+      "index": 1,
+      "statement": "SELECT",
+      "source": "SELECT * FROM missing",
+      "status": "failed",
+      "columns": [],
+      "rows": [],
+      "affected_rows": 0,
+      "truncated": false,
+      "warnings": [],
+      "error": {
+        "code": "not_found",
+        "message": "table missing was not found",
+        "retryable": false,
+        "statement_index": 1
+      }
+    },
+    {
+      "index": 2,
+      "statement": "SHOW_DATABASES",
+      "source": "SHOW DATABASES",
+      "status": "succeeded",
+      "columns": [],
+      "rows": [],
+      "affected_rows": 0,
+      "truncated": false,
+      "warnings": []
+    }
+  ],
+  "truncated": false,
+  "warnings": []
+}

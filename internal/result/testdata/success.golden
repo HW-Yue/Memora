@@ -1,0 +1,37 @@
+{
+  "version": "memora.result/v1",
+  "request_id": "req-success",
+  "ok": true,
+  "results": [
+    {
+      "index": 0,
+      "statement": "SELECT",
+      "source": "SELECT row_id, title FROM notes LIMIT 1",
+      "status": "succeeded",
+      "columns": [
+        {
+          "name": "row_id",
+          "type": "ID",
+          "nullable": false
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "rows": [
+        {
+          "row_id": "row-1",
+          "title": "IPC design"
+        }
+      ],
+      "affected_rows": 0,
+      "revision": 7,
+      "truncated": false,
+      "warnings": []
+    }
+  ],
+  "truncated": false,
+  "warnings": []
+}

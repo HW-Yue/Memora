@@ -1,0 +1,31 @@
+{
+  "version": "memora.result/v1",
+  "request_id": "req-truncated",
+  "ok": true,
+  "results": [
+    {
+      "index": 0,
+      "statement": "SHOW_ROUTES",
+      "source": "SHOW ROUTES FROM DATABASE work AT '/'",
+      "status": "succeeded",
+      "columns": [],
+      "rows": [
+        {
+          "route": "/architecture"
+        }
+      ],
+      "affected_rows": 0,
+      "truncated": true,
+      "next_cursor": "cursor-2",
+      "warnings": [
+        {
+          "code": "output_truncated",
+          "message": "statement output reached its row budget"
+        }
+      ]
+    }
+  ],
+  "truncated": true,
+  "next_cursor": "cursor-2",
+  "warnings": []
+}
