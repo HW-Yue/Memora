@@ -25,6 +25,7 @@
 - [质量模型与验收](./product/quality-model.md) — 写入、检索、修改、上下文和接管的效果指标。
 - [语义记录模型](./data/semantic-records.md) — AI 自定义表和字段，记录是短小完整的知识模块。
 - [自描述 Data Dictionary](./data/self-describing-data-dictionary.md) — 让陌生 Agent 在有界输出内理解库、表、字段和边界。
+- [Catalog v1](./data/catalog-v1.md) — F13 的稳定对象身份、名称解析、语义必填项和 Schema version 传播规则。
 - [资料吸收](./data/assimilation.md) — 外部资料临时读取，吸收后不保存原文。
 
 ## Agent 与查询

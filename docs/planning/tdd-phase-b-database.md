@@ -4,6 +4,12 @@
 
 ## F13 Data Dictionary
 
+实现按代码规模门槛拆成三个可独立验证的原子切片：
+
+- F13a：持久化 Database/Table Catalog，覆盖稳定 ID、重名、rename、schema version、必填语义元数据和重启读取；
+- F13b：增加 Column Catalog，并验证 Column 变化向 Table/Database schema version 传播；
+- F13c：补齐 Catalog DDL/发现语法并实现只依赖 Catalog 契约的 Binder。
+
 先测：CREATE/SHOW/DESCRIBE Database、Table、Column，重名、rename、schema version、purpose/scope 缺失和重启读取。
 
 开发：实现稳定 database/table/column ID、Catalog Binder 和自描述 Schema。
