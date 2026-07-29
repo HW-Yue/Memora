@@ -112,13 +112,21 @@
 
 提交：`feat(F18c): execute MSQL relationship operations`
 
-## F19 Agent 倒排索引
+## F19a Agent 词项快照与 Posting
 
-先测：完整词项快照、去重、任意字段来源、旧 revision 失效、24/64 预算和事务回滚。
+先测：完整词项快照、规范化去重、旧 revision 失效、24/64 预算和事务回滚。
 
-开发：实现 `term → row_id + revision` posting、反向映射和 Agent 来源标记。
+开发：实现 transaction-scoped `term → row_id + revision` posting、反向快照和 Agent 来源标记。
 
-提交：`feat(F19): index agent-selected terms`
+提交：`feat(F19a): store agent-selected term snapshots`
+
+## F19b Row 与 MSQL 词项接入
+
+先测：任意字段产生的完整词项随 INSERT/UPDATE 原子替换、DELETE 失效、Batch 回滚、空快照和参数边界。
+
+开发：把 `index_terms` mutation option 接入 Row transaction、MSQL Executor 和 IPC request。
+
+提交：`feat(F19b): index row terms atomically`
 
 ## F20 机械索引
 
