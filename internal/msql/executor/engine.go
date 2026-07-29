@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -22,6 +23,10 @@ type Rows interface {
 	Insert(context.Context, string, string, map[string]any, row.WriteOptions) (row.Row, error)
 	Update(context.Context, string, string, string, map[string]any, row.WriteOptions) (row.Row, error)
 	Delete(context.Context, string, string, string, row.WriteOptions) (row.Row, error)
+	AsOfRevision(context.Context, string, string, string, uint64) (row.Row, error)
+	AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error)
+	HistoryPage(context.Context, string, string, string, int) ([]history.Record, bool, error)
+	Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error)
 }
 
 type Engine struct {

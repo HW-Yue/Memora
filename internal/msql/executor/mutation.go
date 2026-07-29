@@ -22,12 +22,16 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return Output{}, err
 	}
 	switch {
+	case statement.Show != nil && statement.Show.Object == "HISTORY":
+		return engine.showHistory(ctx, statement, bound)
 	case statement.Insert != nil:
 		return engine.insert(ctx, statement.Insert, bound, options)
 	case statement.Update != nil:
 		return engine.update(ctx, statement.Update, bound, options)
 	case statement.Delete != nil:
 		return engine.delete(ctx, statement.Delete, bound, options)
+	case statement.Restore != nil:
+		return engine.restore(ctx, statement.Restore, bound, options)
 	default:
 		return Output{}, unsupported(statement)
 	}

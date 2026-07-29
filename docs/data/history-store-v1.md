@@ -1,6 +1,6 @@
 # History Store v1
 
-状态：F17a 追加式存储与 F17b Row 查询/补偿 API 已实现；F17c 将接入 MSQL。
+状态：F17a–F17c 追加、Row API 和 MSQL 历史链路已实现。
 
 ## 目的与边界
 
@@ -50,7 +50,7 @@ Row Service 和 transaction scope 提供：
 
 AS OF snapshot 按稳定 Column ID 通过当前 Catalog 投影，因此 rename 后使用新名称但不搬迁历史。Restore 同时校验当前 expected schema/revision，并把旧 snapshot 重新按当前 Schema 验证；新增的非 nullable Column 缺值等不兼容情况必须失败。
 
-补偿可以恢复逻辑删除 Row，但只能新增 revision，不能删除或覆盖既有 history。F17c 将冻结 `AS OF`、`SHOW HISTORY` 和 `RESTORE` 的 MSQL Grammar 与有界 Result Envelope。
+补偿可以恢复逻辑删除 Row，但只能新增 revision，不能删除或覆盖既有 history。`AS OF`、`SHOW HISTORY` 和 `RESTORE` 的语法与有界结果见 [MSQL History v1](../query/msql-history.md)。
 
 ## 关联
 

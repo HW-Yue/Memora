@@ -87,6 +87,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseUpdate()
 	case parser.matchWord("DELETE"):
 		statement, err = parser.parseDelete()
+	case parser.matchWord("RESTORE"):
+		statement, err = parser.parseRestore()
 	case parser.matchWord("BEGIN"):
 		statement = transactionStatement("BEGIN")
 	case parser.matchWord("START"):
@@ -140,8 +142,37 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Table = &name
+	case parser.matchWord("HISTORY"):
+		show.Object = "HISTORY"
+		if _, err := parser.expectWord("FROM"); err != nil {
+			return ast.Statement{}, err
+		}
+		name, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Table = &name
+		if _, err := parser.expectWord("FOR"); err != nil {
+			return ast.Statement{}, err
+		}
+		if _, err := parser.expectWord("ROW"); err != nil {
+			return ast.Statement{}, err
+		}
+		row, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Row = &row
+		if _, err := parser.expectWord("LIMIT"); err != nil {
+			return ast.Statement{}, err
+		}
+		limit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, TABLES, or COLUMNS")
+		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, TABLES, COLUMNS, or HISTORY")
 	}
 	show.Compact = parser.matchWord("COMPACT")
 	return ast.Statement{Kind: "SHOW", Show: show}, nil
@@ -412,6 +443,26 @@ func (parser *parser) parseSelect() (ast.Statement, error) {
 		return ast.Statement{}, err
 	}
 	selectStatement.From = from
+	if parser.matchWord("AS") {
+		if _, err := parser.expectWord("OF"); err != nil {
+			return ast.Statement{}, err
+		}
+		asOf := &ast.AsOfClause{}
+		switch {
+		case parser.matchWord("REVISION"):
+			asOf.Kind = "REVISION"
+		case parser.matchWord("COMMIT_SEQUENCE"):
+			asOf.Kind = "COMMIT_SEQUENCE"
+		default:
+			return ast.Statement{}, parser.unexpected("REVISION or COMMIT_SEQUENCE")
+		}
+		value, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		asOf.Value = value
+		selectStatement.AsOf = asOf
+	}
 	if parser.matchWord("WHERE") {
 		where, err := parser.parseExpression(1)
 		if err != nil {
@@ -535,6 +586,33 @@ func (parser *parser) parseDelete() (ast.Statement, error) {
 		deleteStatement.Where = &where
 	}
 	return ast.Statement{Kind: "DELETE", Delete: deleteStatement}, nil
+}
+
+func (parser *parser) parseRestore() (ast.Statement, error) {
+	table, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("ROW"); err != nil {
+		return ast.Statement{}, err
+	}
+	rowExpression, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("TO"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("REVISION"); err != nil {
+		return ast.Statement{}, err
+	}
+	revision, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "RESTORE", Restore: &ast.RestoreStatement{
+		Table: table, Row: &rowExpression, Revision: &revision,
+	}}, nil
 }
 
 func (parser *parser) parseName() (ast.Name, error) {

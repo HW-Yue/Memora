@@ -25,6 +25,7 @@ type Statement struct {
 	Insert      *InsertStatement      `json:"insert,omitempty"`
 	Update      *UpdateStatement      `json:"update,omitempty"`
 	Delete      *DeleteStatement      `json:"delete,omitempty"`
+	Restore     *RestoreStatement     `json:"restore,omitempty"`
 	Transaction *TransactionStatement `json:"transaction,omitempty"`
 }
 
@@ -40,10 +41,12 @@ type Name struct {
 }
 
 type ShowStatement struct {
-	Object   string `json:"object"`
-	Database *Name  `json:"database,omitempty"`
-	Table    *Name  `json:"table,omitempty"`
-	Compact  bool   `json:"compact,omitempty"`
+	Object   string      `json:"object"`
+	Database *Name       `json:"database,omitempty"`
+	Table    *Name       `json:"table,omitempty"`
+	Row      *Expression `json:"row,omitempty"`
+	Limit    *Expression `json:"limit,omitempty"`
+	Compact  bool        `json:"compact,omitempty"`
 }
 
 type DescribeStatement struct {
@@ -86,8 +89,14 @@ type TypeRef struct {
 type SelectStatement struct {
 	Projections []Expression `json:"projections"`
 	From        Name         `json:"from"`
+	AsOf        *AsOfClause  `json:"as_of,omitempty"`
 	Where       *Expression  `json:"where,omitempty"`
 	Limit       *Expression  `json:"limit,omitempty"`
+}
+
+type AsOfClause struct {
+	Kind  string     `json:"kind"`
+	Value Expression `json:"value"`
 }
 
 type InsertStatement struct {
@@ -110,6 +119,12 @@ type Assignment struct {
 type DeleteStatement struct {
 	Table Name        `json:"table"`
 	Where *Expression `json:"where,omitempty"`
+}
+
+type RestoreStatement struct {
+	Table    Name        `json:"table"`
+	Row      *Expression `json:"row"`
+	Revision *Expression `json:"revision"`
 }
 
 type TransactionStatement struct {
@@ -148,8 +163,14 @@ func (document Document) Parameters() []Parameter {
 		for index := range statement.Select.Projections {
 			appendExpression(&statement.Select.Projections[index])
 		}
+		if statement.Select.AsOf != nil {
+			appendExpression(&statement.Select.AsOf.Value)
+		}
 		appendExpression(statement.Select.Where)
 		appendExpression(statement.Select.Limit)
+	case statement.Show != nil && statement.Show.Object == "HISTORY":
+		appendExpression(statement.Show.Row)
+		appendExpression(statement.Show.Limit)
 	case statement.Insert != nil:
 		for row := range statement.Insert.Values {
 			for column := range statement.Insert.Values[row] {
@@ -163,6 +184,9 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Update.Where)
 	case statement.Delete != nil:
 		appendExpression(statement.Delete.Where)
+	case statement.Restore != nil:
+		appendExpression(statement.Restore.Row)
+		appendExpression(statement.Restore.Revision)
 	}
 	return parameters
 }

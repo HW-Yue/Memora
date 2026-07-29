@@ -1,6 +1,6 @@
 # MSQL Parser Core v1
 
-状态：F11 已实现；多语句和事务边界由 F12 扩展，Catalog DDL 由 F13c 扩展。
+状态：F11 已实现；多语句和事务边界由 F12 扩展，Catalog DDL 由 F13c 扩展，History 由 F17c 扩展。
 
 ## 入口与 AST
 
@@ -16,6 +16,9 @@
 - `INSERT`：可选 column list 和一个或多个 `VALUES` row；
 - `UPDATE`：一个或多个 `SET` assignment 和可选 `WHERE`；
 - `DELETE`：`FROM` 和可选 `WHERE`。
+- `RESTORE`：限定 Table、Row expression 和目标 revision；
+- `SELECT` 可在 FROM 后携带 `AS OF REVISION|COMMIT_SEQUENCE expression`；
+- `SHOW HISTORY` 携带限定 Table、Row expression 和强制 LIMIT。
 
 Database、Table 和 Column 是否存在、类型是否合法、VALUES 数量是否匹配等属于 Binder/Policy，不由 Parser 判断。
 

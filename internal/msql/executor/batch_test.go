@@ -240,6 +240,60 @@ func TestBatchLocalizesParseErrorAndRecoversLaterStatement(t *testing.T) {
 	}
 }
 
+func TestBatchWriteFailureRollsBackRestoreAndCompensationHistory(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	session, rows, closeSession := batchFixture(t, ctx)
+	defer closeSession()
+	inserted := insertQueryRow(t, ctx, rows, map[string]any{"title": "initial"})
+	if _, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "revised"}, row.WriteOptions{
+		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rows.Delete(ctx, "work", "notes", inserted.ID, row.WriteOptions{
+		ExpectedSchemaVersion: 1, ExpectedRevision: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	envelope := session.Execute(ctx, executor.BatchRequest{
+		RequestID: "restore-rollback",
+		Source: `
+			BEGIN;
+			RESTORE work.notes ROW :row_id TO REVISION :revision;
+			INSERT INTO work.notes (title, count) VALUES ('invalid', 'wrong');
+			COMMIT
+		`,
+		Statements: []executor.StatementInput{
+			{},
+			{
+				Parameters: executor.Parameters{Named: map[string]any{
+					"row_id": inserted.ID, "revision": int64(1),
+				}},
+				Mutation: executor.MutationOptions{
+					ExpectedSchemaVersion: 1, ExpectedRevision: 3, MaxAffectedRows: 1,
+					Actor: "agent:test", Source: "batch:test", Reason: "restore in failed transaction",
+				},
+			},
+			{Mutation: executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1}},
+			{},
+		},
+	})
+	assertStatuses(t, envelope,
+		result.StatusRolledBack, result.StatusRolledBack, result.StatusFailed, result.StatusSkipped,
+	)
+	current, err := rows.GetIncludingDeleted(ctx, "work", "notes", inserted.ID)
+	if err != nil || current.Revision != 3 || current.State != row.StateDeleted {
+		t.Fatalf("current after restore rollback = %#v, %v", current, err)
+	}
+	records, err := rows.History(ctx, "work", "notes", inserted.ID)
+	if err != nil || len(records) != 3 {
+		t.Fatalf("history after restore rollback = %#v, %v", records, err)
+	}
+}
+
 func batchFixture(t *testing.T, ctx context.Context) (*executor.BatchSession, *row.Service, func()) {
 	t.Helper()
 	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))

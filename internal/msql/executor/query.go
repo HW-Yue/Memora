@@ -64,7 +64,39 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 	if err != nil {
 		return Output{}, err
 	}
-	if exact {
+	if selectStatement.AsOf != nil {
+		if !exact {
+			return Output{}, executeError(result.CodeValidation, "AS OF requires an exact row_id predicate")
+		}
+		rowID, err = normalizeHistoryRowID(rowID)
+		if err != nil {
+			return Output{}, err
+		}
+		if containsIdentifier(&selectStatement.AsOf.Value) {
+			return Output{}, executeError(result.CodeValidation, "AS OF value cannot reference a Row field")
+		}
+		value, err := evaluate(&selectStatement.AsOf.Value, table, nil, bound)
+		if err != nil {
+			return Output{}, err
+		}
+		version, ok := integerValue(value)
+		if !ok || version < 1 {
+			return Output{}, executeError(result.CodeValidation, "AS OF value must be a positive INTEGER")
+		}
+		var candidate datarow.Row
+		switch selectStatement.AsOf.Kind {
+		case "REVISION":
+			candidate, err = engine.rows.AsOfRevision(ctx, databaseName, tableName, rowID, uint64(version))
+		case "COMMIT_SEQUENCE":
+			candidate, err = engine.rows.AsOfCommit(ctx, databaseName, tableName, rowID, uint64(version))
+		default:
+			return Output{}, executeError(result.CodeValidation, "AS OF kind is invalid")
+		}
+		if err != nil {
+			return Output{}, normalizeError(err)
+		}
+		candidates = []datarow.Row{candidate}
+	} else if exact {
 		candidate, getErr := engine.rows.Get(ctx, databaseName, tableName, rowID)
 		if getErr == nil {
 			candidates = []datarow.Row{candidate}
