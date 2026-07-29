@@ -1,6 +1,6 @@
 # macOS Instance 数据目录
 
-状态：默认路径、顶层目录和 `instance.meta` v1 已实现；daemon 文件继续逐项设计。
+状态：默认路径、顶层目录、`instance.meta` v1 和 daemon 运行文件已实现。
 
 ## 平台范围
 
@@ -90,6 +90,8 @@ system/daemon.pid
 
 `daemon.lock` 的非阻塞排他 `flock` 是“一个 Instance 只有一个 writer daemon”的真相源；PID 文件只用于状态展示和发送 SIGTERM。锁释放但 PID 遗留时，`status/start` 将其视为 stale 并清理。daemon 启动前必须读取并校验 `instance.meta`，不能在未初始化或 metadata 损坏的目录中运行。
 
+Unix socket 不放入 datadir，避免自定义深层路径超过 macOS `AF_UNIX` 上限。它位于仅当前用户可访问的临时运行目录，文件名由规范化 datadir 稳定派生；具体协议与清理规则见 [本地 IPC 协议](../development/ipc-protocol.md)。
+
 ## MySQL 参考边界
 
 Instance 内继续参考 MySQL 的结构原则：一个 datadir、集中式事务日志、每个逻辑 Database 的独立子目录。文件扩展名、Page 格式和恢复协议由 Memora 自己定义，不兼容 `.ibd`。
@@ -98,7 +100,6 @@ Instance 内继续参考 MySQL 的结构原则：一个 datadir、集中式事�
 
 - `system/` 的内部文件名；
 - launchd 使用 LaunchAgent 还是其他用户级启动方式；
-- Unix socket 位置及路径长度边界；
 - 备份、快照和导出包默认输出位置；
 - 自定义 datadir 位于外接盘或网络文件系统时的支持边界。
 

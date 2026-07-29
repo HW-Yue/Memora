@@ -88,7 +88,7 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 
 func runDaemon(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
 	if len(args) == 0 {
-		return usageError(stderr, "daemon requires start, run, status, or stop")
+		return usageError(stderr, "daemon requires start, run, status, ping, or stop")
 	}
 	action := args[0]
 	dataDir, code := daemonDataDir(args[1:], stderr, dependencies)
@@ -128,6 +128,11 @@ func runDaemon(args []string, stdout, stderr io.Writer, dependencies Dependencie
 			return writeText(stdout, stderr, fmt.Sprintf("Memora daemon is running with PID %d\n", state.PID))
 		}
 		return writeText(stdout, stderr, "Memora daemon is stopped\n")
+	case "ping":
+		if err := daemon.Ping(context.Background(), dataDir); err != nil {
+			return commandError(stderr, "ping daemon", err)
+		}
+		return writeText(stdout, stderr, "pong\n")
 	case "stop":
 		if err := daemon.Stop(context.Background(), dataDir); err != nil {
 			return commandError(stderr, "stop daemon", err)

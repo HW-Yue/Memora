@@ -66,7 +66,9 @@ func waitForState(parent context.Context, dataDir string, running bool) (State, 
 	for {
 		state, err := Inspect(dataDir)
 		if err == nil && state.Running == running {
-			return state, nil
+			if !running || Ping(ctx, dataDir) == nil {
+				return state, nil
+			}
 		}
 		select {
 		case <-ctx.Done():

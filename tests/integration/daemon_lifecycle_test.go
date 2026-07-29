@@ -28,6 +28,10 @@ func TestDaemonLifecycleCLI(t *testing.T) {
 	if !strings.Contains(status, "running") {
 		t.Fatalf("status = %q, want running", status)
 	}
+	ping := command(t, root, binary, "daemon", "ping", "--data-dir", dataDir)
+	if !strings.Contains(ping, "pong") {
+		t.Fatalf("ping = %q, want pong", ping)
+	}
 	if output, err := runCommand(root, binary, "daemon", "start", "--data-dir", dataDir); err == nil {
 		t.Fatalf("second daemon start succeeded: %s", output)
 	}

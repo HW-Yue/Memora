@@ -1,6 +1,6 @@
 # 本地 IPC 协议
 
-状态：F08 传输与 session 核心已实现；daemon socket 绑定由 F08b 完成。
+状态：F08 传输与 session 核心、F08b daemon socket 绑定均已实现。
 
 ## 边界
 
@@ -48,4 +48,8 @@ v1 单个 frame 默认上限为 1 MiB。接收端先读取并校验 4 字节长�
 
 ## 安全边界
 
-IPC 只监听本机 Unix socket。socket 目录与文件必须仅当前用户可访问；客户端输入仍视为不可信数据，frame 上限不能被请求覆盖。socket 的短路径、stale 清理和 CLI 健康检查见 F08b。
+IPC 只监听本机 Unix socket。socket 位于当前用户临时目录的 `memora-<uid>/` 下，以规范化 datadir 的 SHA-256 前 12 字节作为 Instance 文件名。目录为 `0700`、socket 为 `0600`，并校验目录属于当前用户。
+
+路径不得超过 macOS 103 字节的有效上限；当前用户临时目录过长时回退到 `/tmp/memora-<uid>/`。活 socket 绝不替换；连接失败的 stale socket 可以清理；同名非 socket 文件必须保留并报错。
+
+`daemon start` 只有在 lock、socket 和 `ping` 都就绪后才成功返回。正常退出清理 socket；客户端输入仍视为不可信数据，frame 上限不能被请求覆盖。
