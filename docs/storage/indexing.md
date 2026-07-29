@@ -75,7 +75,7 @@ History Store
 - 内部主键使用递增整数、UUIDv7 还是双层 ID？
 - 二级索引引用当前对象还是具体 revision？
 - 倒排索引采用 B+ Tree posting，还是不可变 Posting Run？
-- 两路归一化方法和权重怎样通过 benchmark 校准；
+- 0.8/0.2 启动权重怎样通过质量 benchmark 校准；
 - 关系索引是否统一由内核提供正向和反向结构。
 
 ## 关联

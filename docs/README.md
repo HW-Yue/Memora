@@ -51,6 +51,7 @@
 - [MSQL Mutation Executor v1](./query/msql-mutation.md) — F15e 的参数化 CRUD、expected revision、影响行数预算与零插值边界。
 - [MSQL History v1](./query/msql-history.md) — F17c 的 AS OF、SHOW HISTORY、RESTORE 补偿与事务回滚语义。
 - [MSQL Relationships v1](./query/msql-relationships.md) — F18c 的参数化关系创建、双向发现、逻辑删除与 Batch 语义。
+- [MATCH Fusion v1](./query/match-fusion-v1.md) — F21 的双通道独立归一化、0.8/0.2 权重、稳定排序与 locator-only 输出。
 - [MSQL Result Envelope v1](./query/result-envelope.md) — 单条/批量统一结果、稳定错误码、warning 与截断兼容规则。
 - [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 多层多叉语义树逐层找到叶子数据项 ID，再与倒排和关系候选融合。
 - [无向量检索质量链路](./query/retrieval-quality.md) — 从逐层发现、候选融合、返回定位到主 Agent SQL 回表的完整流程。

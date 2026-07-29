@@ -144,13 +144,21 @@
 
 提交：`feat(F20b): maintain mechanical row index`
 
-## F21 MATCH 融合评分
+## F21a MATCH 融合 Planner
 
 先测：两路独立归一化、0.8/0.2 默认权重、配置覆盖、稳定 tie-break、LIMIT 和只返回定位。
 
-开发：实现 MATCH Planner、融合评分和解释信息；不得从索引返回正文。
+开发：实现纯 MATCH Planner、融合评分和通道解释分；不得从索引返回正文。
 
-提交：`feat(F21): fuse semantic and lexical matches`
+提交：`feat(F21a): fuse semantic and lexical candidates`
+
+## F21b Row Source 与 MSQL MATCH
+
+先测：真实双索引候选、原始 query 机械分词、参数化 query_terms、表范围、Result Envelope 和 Batch read failure。
+
+开发：把一致快照 source、MATCH AST/Grammar、Executor 和 locator-only 输出接入。
+
+提交：`feat(F21b): execute fused MSQL matches`
 
 ## F22 Router 多层树
 
