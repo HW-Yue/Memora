@@ -160,13 +160,21 @@
 
 提交：`feat(F21b): execute fused MSQL matches`
 
-## F22 Router 多层树
+## F22a Router 树与 Membership
 
 先测：多叉节点、多个叶子 membership、row_id 反向索引、rename、split/merge、删除全部引用和容量边界。
 
-开发：实现 Database Router、稳定 node ID、membership 快照和遍历 cursor。
+开发：实现 transaction-scoped Database Router、稳定 node ID、路径 redirect、membership 快照和遍历 cursor。
 
-提交：`feat(F22): build multi-level semantic router`
+提交：`feat(F22a): build multi-level semantic router`
+
+## F22b Row 与 MSQL Router 接入
+
+先测：Row revision membership、DELETE 自动失效、参数化完整快照、SHOW/OPEN 有界输出、Batch 回滚。
+
+开发：把 route membership option、Row transaction、Router AST/Executor 和 locator-only Result Envelope 接入。
+
+提交：`feat(F22b): maintain MSQL route memberships`
 
 ## F23 索引发现流程
 

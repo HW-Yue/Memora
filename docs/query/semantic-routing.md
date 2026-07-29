@@ -1,6 +1,6 @@
 # Agent 语义目录索引（Router）
 
-状态：多层多叉树和叶子 ID 候选已确认；节点容量、分裂协议和评分待冻结。
+状态：F22a 已冻结多层多叉树、稳定节点、路径、membership、12/100 启动容量和显式分裂协议；发现融合评分由 F23 完成。
 
 ## 目标
 
@@ -31,7 +31,7 @@ Router 是 Memora 专有的 Agent 索引，不是 B+ Tree、文件目录或 MySQ
 - 可选查询提示；
 - Schema/Route revision。
 
-叶子节点使用同样的短说明，但把子分支替换为有限数量的稳定数据项 ID/locator。具体 locator 是否需要同时携带 Database、Table、Row ID 和 revision，留到协议冻结。
+叶子节点使用同样的短说明，但把子分支替换为有限数量的稳定 locator，固定携带 Database、Table、Row ID 和 revision。
 
 同一 `row_id` 可以同时出现在多个语义相关的叶子节点中；叶子只保存引用，不复制 Row。Row 内容或归属变化时，Agent 通过 MSQL 提交完整 Route membership 快照，引擎在同一事务中增加、移动或删除所有叶子引用。逻辑 DELETE 后不得继续作为活跃 Router 候选。
 
@@ -112,12 +112,11 @@ active generation N 继续查询
 
 ## 未决问题
 
-- Router 采用系统表还是独立系统对象；
 - Router 如何自动发现内容变化并提示需要重组？
 - 路由与倒排结果如何合并评分？
 - 根目录数据库很多时如何避免 `SHOW DATABASES` 自身变长？
 - Router 路径错误时，混合词项索引能否稳定救回记录？
-- 内部节点 fan-out、叶子 ID 数、搜索深度和 beam width 的启动配置；
+- 搜索深度和 beam width 的启动配置；
 - generation 切换前的覆盖率、重复率和质量验收门槛；
 - `subtree_dirty_ratio`、`full_rebuild_min_rows` 和 `full_rebuild_ratio` 的启动值；
 
