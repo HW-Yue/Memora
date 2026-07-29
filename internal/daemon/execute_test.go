@@ -58,13 +58,17 @@ func TestExecuteHandlerKeepsTransactionPerConnectionAndRollsBackOnDisconnect(t *
 			{},
 			{
 				Parameters: executor.Parameters{Named: map[string]any{"count": int64(7)}},
-				Mutation:   executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1},
+				Mutation: executor.MutationOptions{
+					ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
+					Actor: "agent:test", Source: "ipc:test", Reason: "verify IPC history metadata",
+				},
 			},
 		},
 	}, &first); err != nil {
 		t.Fatalf("execute first request: %v", err)
 	}
-	if len(first.Results) != 2 || first.Results[1].Status != result.StatusSucceeded {
+	if len(first.Results) != 2 || first.Results[1].Status != result.StatusSucceeded ||
+		first.Results[1].CommitSequence == nil || *first.Results[1].CommitSequence != 1 {
 		t.Fatalf("first envelope = %#v", first)
 	}
 

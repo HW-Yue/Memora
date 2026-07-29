@@ -12,11 +12,13 @@ func TestEnvelopeGolden(t *testing.T) {
 	t.Parallel()
 
 	revision := uint64(7)
+	commitSequence := uint64(182)
 	tests := map[string]Envelope{
 		"success": NewEnvelope("req-success", StatementResult{
 			Index: 0, Statement: "SELECT", Source: "SELECT row_id, title FROM notes LIMIT 1", Status: StatusSucceeded,
-			Columns: []Column{{Name: "row_id", Type: "ID", Nullable: false}, {Name: "title", Type: "TEXT", Nullable: false}},
-			Rows:    []Row{{"row_id": "row-1", "title": "IPC design"}}, Revision: &revision,
+			Columns:  []Column{{Name: "row_id", Type: "ID", Nullable: false}, {Name: "title", Type: "TEXT", Nullable: false}},
+			Rows:     []Row{{"row_id": "row-1", "title": "IPC design"}},
+			Revision: &revision, CommitSequence: &commitSequence,
 		}),
 		"failure": NewEnvelope("req-failure", FailedStatement(0, "UPDATE", "UPDATE notes SET body = ?", CodeValueTooLong, "body exceeds its 1200 character limit", false)),
 		"truncated": func() Envelope {

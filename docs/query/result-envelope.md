@@ -39,7 +39,7 @@
 }
 ```
 
-`statement` 是稳定的大写 AST kind，不是 SQLite 或内核名称。`source` 是可定位失败语句的有界原文，参数值不得插值回显。`columns` 描述名称、逻辑 MSQL 类型和 nullable；`rows` 使用 Column 名到 JSON value 的对象。写入可以返回 `affected_rows` 和对象 `revision`。
+`statement` 是稳定的大写 AST kind，不是 SQLite 或内核名称。`source` 是可定位失败语句的有界原文，参数值不得插值回显。`columns` 描述名称、逻辑 MSQL 类型和 nullable；`rows` 使用 Column 名到 JSON value 的对象。写入可以返回 `affected_rows`、对象 `revision` 和本次事务的 `commit_sequence`。
 
 状态固定为：
 

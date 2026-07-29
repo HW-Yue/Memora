@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
 )
@@ -17,8 +19,9 @@ type Transaction struct {
 	service *Service
 	tx      store.Tx
 
-	finishMu sync.Mutex
-	done     bool
+	finishMu       sync.Mutex
+	done           bool
+	commitSequence uint64
 }
 
 func (service *Service) BeginTransaction(ctx context.Context) (*Transaction, error) {
@@ -123,9 +126,14 @@ func (transaction *Transaction) Insert(
 		return Row{}, stableError(err)
 	}
 	now := transaction.service.clock.Now().UTC()
+	commitSequence, err := transaction.ensureCommitSequence(ctx)
+	if err != nil {
+		return Row{}, err
+	}
 	stored := storedRow{
 		ID: id, DatabaseID: table.DatabaseID, TableID: table.ID,
-		SchemaVersion: table.SchemaVersion, Revision: 1, State: StateLive,
+		SchemaVersion: table.SchemaVersion, Revision: 1,
+		CommitSequence: commitSequence, State: StateLive,
 		Values: encodedValues, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
@@ -138,6 +146,9 @@ func (transaction *Transaction) Insert(
 	index = append(index, id)
 	if err := saveIndex(ctx, transaction.tx, table.ID, index); err != nil {
 		return Row{}, stableError(err)
+	}
+	if err := transaction.appendHistory(ctx, stored, history.OperationInsert, options.Metadata); err != nil {
+		return Row{}, err
 	}
 	projected, err := project(table, stored)
 	return projected, stableError(err)
@@ -176,9 +187,17 @@ func (transaction *Transaction) Update(
 	stored.Values = encodedValues
 	stored.SchemaVersion = table.SchemaVersion
 	stored.Revision++
+	commitSequence, err := transaction.ensureCommitSequence(ctx)
+	if err != nil {
+		return Row{}, err
+	}
+	stored.CommitSequence = commitSequence
 	stored.UpdatedAt = transaction.service.clock.Now().UTC()
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
 		return Row{}, stableError(err)
+	}
+	if err := transaction.appendHistory(ctx, stored, history.OperationUpdate, options.Metadata); err != nil {
+		return Row{}, err
 	}
 	projected, err := project(table, stored)
 	return projected, stableError(err)
@@ -209,9 +228,17 @@ func (transaction *Transaction) Delete(
 	stored.State = StateDeleted
 	stored.SchemaVersion = table.SchemaVersion
 	stored.Revision++
+	commitSequence, err := transaction.ensureCommitSequence(ctx)
+	if err != nil {
+		return Row{}, err
+	}
+	stored.CommitSequence = commitSequence
 	stored.UpdatedAt = transaction.service.clock.Now().UTC()
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
 		return Row{}, stableError(err)
+	}
+	if err := transaction.appendHistory(ctx, stored, history.OperationDelete, options.Metadata); err != nil {
+		return Row{}, err
 	}
 	projected, err := project(table, stored)
 	return projected, stableError(err)
@@ -233,6 +260,48 @@ func (transaction *Transaction) tableForWrite(
 		return catalog.Table{}, revisionError("schema", options.ExpectedSchemaVersion, table.SchemaVersion)
 	}
 	return table, nil
+}
+
+func (transaction *Transaction) ensureCommitSequence(ctx context.Context) (uint64, error) {
+	if transaction.commitSequence != 0 {
+		return transaction.commitSequence, nil
+	}
+	sequence, err := transaction.service.history.ReserveCommitSequence(ctx, transaction.tx)
+	if err != nil {
+		return 0, stableError(err)
+	}
+	transaction.commitSequence = sequence
+	return sequence, nil
+}
+
+func (transaction *Transaction) appendHistory(
+	ctx context.Context,
+	stored storedRow,
+	operation history.Operation,
+	metadata WriteMetadata,
+) error {
+	metadata = normalizedMetadata(metadata)
+	return stableError(transaction.service.history.AppendIn(ctx, transaction.tx, history.Record{
+		DatabaseID: stored.DatabaseID, TableID: stored.TableID, RowID: stored.ID,
+		SchemaVersion: stored.SchemaVersion, Revision: stored.Revision,
+		CommitSequence: stored.CommitSequence, Operation: operation,
+		State: string(stored.State), Values: stored.Values,
+		Actor: metadata.Actor, Source: metadata.Source, Reason: metadata.Reason,
+		CreatedAt: stored.CreatedAt, UpdatedAt: stored.UpdatedAt, RecordedAt: stored.UpdatedAt,
+	}))
+}
+
+func normalizedMetadata(metadata WriteMetadata) WriteMetadata {
+	if strings.TrimSpace(metadata.Actor) == "" {
+		metadata.Actor = "system:direct-api"
+	}
+	if strings.TrimSpace(metadata.Source) == "" {
+		metadata.Source = "direct-api"
+	}
+	if strings.TrimSpace(metadata.Reason) == "" {
+		metadata.Reason = "row mutation"
+	}
+	return metadata
 }
 
 func (transaction *Transaction) Commit() error {

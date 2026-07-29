@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
 	"github.com/google/uuid"
@@ -41,6 +42,7 @@ type Options struct {
 type Service struct {
 	store   store.Store
 	catalog Catalog
+	history *history.Service
 	ids     IDSource
 	clock   Clock
 	mu      sync.Mutex
@@ -53,7 +55,10 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 	if options.Clock == nil {
 		options.Clock = systemClock{}
 	}
-	return &Service{store: database, catalog: dictionary, ids: options.IDs, clock: options.Clock}
+	return &Service{
+		store: database, catalog: dictionary, history: history.New(database),
+		ids: options.IDs, clock: options.Clock,
+	}
 }
 
 func (service *Service) Insert(ctx context.Context, databaseName, tableName string, values map[string]any, options WriteOptions) (Row, error) {
@@ -149,6 +154,22 @@ func (service *Service) ListPage(ctx context.Context, databaseName, tableName st
 	return rows, false, nil
 }
 
+func (service *Service) History(ctx context.Context, databaseName, tableName, rowID string) ([]history.Record, error) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	tx, err := service.store.Begin(ctx, store.ReadOnly)
+	if err != nil {
+		return nil, stableError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	table, err := service.catalog.DescribeTableIn(ctx, tx, databaseName, tableName)
+	if err != nil {
+		return nil, stableError(err)
+	}
+	records, err := service.history.ListIn(ctx, tx, table.ID, rowID)
+	return records, stableError(err)
+}
+
 func (service *Service) nextID() (string, error) {
 	id, err := service.ids.Next()
 	if err != nil {
@@ -228,7 +249,8 @@ func project(table catalog.Table, stored storedRow) (Row, error) {
 	}
 	return Row{
 		ID: stored.ID, DatabaseID: stored.DatabaseID, TableID: stored.TableID,
-		SchemaVersion: stored.SchemaVersion, Revision: stored.Revision, State: stored.State,
+		SchemaVersion: stored.SchemaVersion, Revision: stored.Revision,
+		CommitSequence: stored.CommitSequence, State: stored.State,
 		Values: values, CreatedAt: stored.CreatedAt, UpdatedAt: stored.UpdatedAt,
 	}, nil
 }

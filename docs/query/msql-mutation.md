@@ -15,11 +15,16 @@ MSQL source、parameter values 和 mutation guard 分字段提交：
   },
   "expected_schema_version": 3,
   "expected_revision": 7,
-  "max_affected_rows": 1
+  "max_affected_rows": 1,
+  "actor": "agent:codex",
+  "source": "conversation:event-42",
+  "reason": "用户确认新标题"
 }
 ```
 
 INSERT 要求非零 `expected_schema_version` 和 1–1000 的 `max_affected_rows`。UPDATE/DELETE 还要求非零 `expected_revision`。Guard 不属于 SQL 字符串，不能被参数内容或注释改变。
+
+F17a 的 `actor`、`source` 和 `reason` 也属于结构化 options，并原样进入已提交 History provenance；它们不参与 Parser、predicate 或 value expression。
 
 ## INSERT
 
@@ -47,6 +52,7 @@ Planner 先形成完整候选，再执行任何写入：
 
 - `affected_rows = 1`；
 - 提交后的 Row `revision`；
+- 本次事务的 `commit_sequence`；
 - 非 nil 的空 `columns[]/rows[]`。
 
 预算、类型、revision 或参数失败不产生部分写入。DELETE 仍是 Row Store 的逻辑 tombstone。

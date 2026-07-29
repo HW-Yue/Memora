@@ -235,6 +235,7 @@ func successfulStatement(index int, kind, source string, output Output) result.S
 	statement.Rows = output.Rows
 	statement.AffectedRows = output.AffectedRows
 	statement.Revision = output.Revision
+	statement.CommitSequence = output.CommitSequence
 	statement.Truncated = output.Truncated
 	return statement
 }

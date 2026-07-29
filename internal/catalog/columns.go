@@ -131,7 +131,7 @@ func validateColumnDefinition(definition ColumnDefinition) error {
 func isReservedColumn(name string) bool {
 	switch canonical(name) {
 	case "row_id", "database_id", "table_id", "schema_version", "revision",
-		"row_state", "created_at", "updated_at":
+		"commit_sequence", "row_state", "created_at", "updated_at":
 		return true
 	default:
 		return false

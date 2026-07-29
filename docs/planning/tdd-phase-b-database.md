@@ -64,13 +64,21 @@
 
 提交：`feat(F16c): connect batch execution to IPC sessions`
 
-## F17 History Store
+## F17a 追加式 History Store
 
-先测：每次修改生成 revision；AS OF、SHOW HISTORY、补偿撤销、逻辑删除历史和跨重启一致。
+先测：每次修改生成 history revision；同一事务共享 commit sequence；回滚不留历史；逻辑删除和跨重启一致。
 
-开发：实现追加式逻辑 History API、actor/source/reason 和 commit sequence。
+开发：实现追加式逻辑 History API、actor/source/reason、稳定 Row snapshot 和 transaction-scoped commit sequence。
 
-提交：`feat(F17): preserve semantic revision history`
+提交：`feat(F17a): append semantic row history`
+
+## F17b History 查询与补偿
+
+先测：AS OF revision/commit sequence、SHOW HISTORY、补偿撤销和删除后恢复；补偿产生新 revision，不改写旧历史。
+
+开发：把 History read/compensate 接入 Row 与 MSQL Executor，返回 commit sequence 和结构化 provenance。
+
+提交：`feat(F17b): query and compensate row history`
 
 ## F18 结构化关系
 

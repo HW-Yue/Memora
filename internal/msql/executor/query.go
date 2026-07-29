@@ -189,6 +189,7 @@ func starProjections(table catalog.Table) []projection {
 	projections := []projection{
 		mustSystemProjection("row_id"),
 		mustSystemProjection("revision"),
+		mustSystemProjection("commit_sequence"),
 		mustSystemProjection("row_state"),
 		mustSystemProjection("schema_version"),
 	}
@@ -207,6 +208,8 @@ func systemProjection(name string) (projection, bool) {
 		return projection{name: "row_id", column: result.Column{Name: "row_id", Type: "ID"}}, true
 	case "revision":
 		return projection{name: "revision", column: result.Column{Name: "revision", Type: "INTEGER"}}, true
+	case "commit_sequence":
+		return projection{name: "commit_sequence", column: result.Column{Name: "commit_sequence", Type: "INTEGER"}}, true
 	case "row_state":
 		return projection{name: "row_state", column: result.Column{Name: "row_state", Type: "TEXT"}}, true
 	case "schema_version":
@@ -229,6 +232,8 @@ func projectRow(current datarow.Row, projections []projection) result.Row {
 			projected[projection.name] = current.ID
 		case "revision":
 			projected[projection.name] = current.Revision
+		case "commit_sequence":
+			projected[projection.name] = current.CommitSequence
 		case "row_state":
 			projected[projection.name] = string(current.State)
 		case "schema_version":

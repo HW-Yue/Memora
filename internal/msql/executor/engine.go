@@ -38,14 +38,18 @@ type MutationOptions struct {
 	ExpectedSchemaVersion uint64 `json:"expected_schema_version,omitempty"`
 	ExpectedRevision      uint64 `json:"expected_revision,omitempty"`
 	MaxAffectedRows       uint64 `json:"max_affected_rows,omitempty"`
+	Actor                 string `json:"actor,omitempty"`
+	Source                string `json:"source,omitempty"`
+	Reason                string `json:"reason,omitempty"`
 }
 
 type Output struct {
-	Columns      []result.Column
-	Rows         []result.Row
-	AffectedRows uint64
-	Revision     *uint64
-	Truncated    bool
+	Columns        []result.Column
+	Rows           []result.Row
+	AffectedRows   uint64
+	Revision       *uint64
+	CommitSequence *uint64
+	Truncated      bool
 }
 
 type Error struct {

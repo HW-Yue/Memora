@@ -162,6 +162,8 @@ func fieldValue(table catalog.Table, current datarow.Row, name *ast.Name) (any, 
 		return current.ID, nil
 	case "revision":
 		return current.Revision, nil
+	case "commit_sequence":
+		return current.CommitSequence, nil
 	case "row_state":
 		return string(current.State), nil
 	case "schema_version":
@@ -275,7 +277,7 @@ func expressionField(table catalog.Table, expression *ast.Expression) (catalog.C
 	switch strings.ToLower(name) {
 	case "row_id", "row_state":
 		return catalog.Column{}, "string", true
-	case "revision", "schema_version":
+	case "revision", "schema_version", "commit_sequence":
 		return catalog.Column{}, "integer", true
 	default:
 		return catalog.Column{}, "", false

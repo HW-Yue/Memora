@@ -68,6 +68,7 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 	}
 	inserted, err := engine.rows.Insert(ctx, databaseName, tableName, values, datarow.WriteOptions{
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
+		Metadata:              mutationMetadata(options),
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -109,6 +110,7 @@ func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, b
 	updated, err := engine.rows.Update(ctx, databaseName, tableName, matches[0].ID, changes, datarow.WriteOptions{
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		ExpectedRevision:      options.ExpectedRevision,
+		Metadata:              mutationMetadata(options),
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -168,6 +170,7 @@ func (engine *Engine) delete(ctx context.Context, deleteStatement *ast.DeleteSta
 	deleted, err := engine.rows.Delete(ctx, databaseName, tableName, matches[0].ID, datarow.WriteOptions{
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		ExpectedRevision:      options.ExpectedRevision,
+		Metadata:              mutationMetadata(options),
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -286,12 +289,17 @@ func affectedBudgetError(actual int, maximum uint64) error {
 
 func mutationOutput(changed datarow.Row) Output {
 	revision := changed.Revision
+	commitSequence := changed.CommitSequence
 	return Output{
 		Columns: []result.Column{}, Rows: []result.Row{},
-		AffectedRows: 1, Revision: &revision,
+		AffectedRows: 1, Revision: &revision, CommitSequence: &commitSequence,
 	}
 }
 
 func emptyMutationOutput() Output {
 	return Output{Columns: []result.Column{}, Rows: []result.Row{}}
+}
+
+func mutationMetadata(options MutationOptions) datarow.WriteMetadata {
+	return datarow.WriteMetadata{Actor: options.Actor, Source: options.Source, Reason: options.Reason}
 }

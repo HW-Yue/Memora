@@ -22,17 +22,26 @@ func TestExecuteParameterizedInsertTreatsInjectionTextAsData(t *testing.T) {
 			Named:      map[string]any{"title": injection, "done": false},
 			Positional: []any{int64(7)},
 		},
-		executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1},
+		executor.MutationOptions{
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
+			Actor: "agent:test", Source: "executor:test", Reason: "verify parameterized insert",
+		},
 	)
 	if err != nil {
 		t.Fatalf("Execute(INSERT) error = %v", err)
 	}
-	if output.AffectedRows != 1 || output.Revision == nil || *output.Revision != 1 {
+	if output.AffectedRows != 1 || output.Revision == nil || *output.Revision != 1 ||
+		output.CommitSequence == nil || *output.CommitSequence != 1 {
 		t.Fatalf("insert output = %#v", output)
 	}
 	stored, err := rows.List(ctx, "work", "notes", 100)
 	if err != nil || len(stored) != 1 || stored[0].Values["title"] != injection {
 		t.Fatalf("stored injection-shaped value = %#v, %v", stored, err)
+	}
+	records, err := rows.History(ctx, "work", "notes", stored[0].ID)
+	if err != nil || len(records) != 1 || records[0].Actor != "agent:test" ||
+		records[0].Source != "executor:test" || records[0].Reason != "verify parameterized insert" {
+		t.Fatalf("insert history = %#v, %v", records, err)
 	}
 
 	_, err = execute(ctx, subject,

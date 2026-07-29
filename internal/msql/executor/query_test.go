@@ -77,17 +77,18 @@ func TestQueryEvaluatesTypedPredicatesAndStarProjection(t *testing.T) {
 	second := insertQueryRow(t, ctx, rows, map[string]any{"title": "second", "count": 4, "done": true})
 
 	output, err := query(ctx, subject,
-		"SELECT * FROM work.notes WHERE done = TRUE AND count + 1 >= 5 LIMIT 1",
+		"SELECT * FROM work.notes WHERE done = TRUE AND count + 1 >= 5 AND commit_sequence = 2 LIMIT 1",
 		executor.Parameters{},
 	)
 	if err != nil {
 		t.Fatalf("Query() error = %v", err)
 	}
 	if len(output.Rows) != 1 || output.Rows[0]["row_id"] != second.ID ||
-		output.Rows[0]["revision"] != uint64(1) || output.Rows[0]["row_state"] != "live" {
+		output.Rows[0]["revision"] != uint64(1) || output.Rows[0]["commit_sequence"] != uint64(2) ||
+		output.Rows[0]["row_state"] != "live" {
 		t.Fatalf("star output = %#v", output)
 	}
-	if len(output.Columns) != 8 {
+	if len(output.Columns) != 9 {
 		t.Fatalf("star columns = %#v", output.Columns)
 	}
 
