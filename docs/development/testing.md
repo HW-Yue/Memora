@@ -5,19 +5,20 @@
 ## 默认命令
 
 ```bash
-go test ./...
-go test -race ./...
-go vet ./...
+./scripts/ci.sh
 ```
 
-需要真实进程、文件或完整用户链路的测试分层运行：
+它按固定顺序执行 format、vet、unit、race、integration 和 e2e。开发中可以只运行一层：
 
 ```bash
-go test -tags=integration ./...
-go test -tags=e2e ./...
+./scripts/ci.sh --list
+./scripts/ci.sh --stage unit
+./scripts/ci.sh --stage integration
 ```
 
 普通测试不得访问网络、真实用户 datadir 或模型 API。真实 Codex/Claude 测试属于受控 smoke/benchmark，不进入默认 PR 门禁。
+
+GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workflow 中复制另一套测试顺序。PR CI 只有 `contents: read` 权限，不发布 Release 或上传产品制品；发布流程属于后续独立 feature。
 
 ## Testkit
 

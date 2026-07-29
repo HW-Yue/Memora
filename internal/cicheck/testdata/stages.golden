@@ -1,0 +1,6 @@
+format
+vet
+unit
+race
+integration
+e2e
