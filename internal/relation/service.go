@@ -150,6 +150,10 @@ func (service *Service) Get(ctx context.Context, relationID string) (Relation, e
 		return Relation{}, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	return service.GetIn(ctx, tx, relationID)
+}
+
+func (service *Service) GetIn(ctx context.Context, tx store.Tx, relationID string) (Relation, error) {
 	return getRelation(ctx, tx, currentBucket, relationID)
 }
 
@@ -161,6 +165,14 @@ func (service *Service) ListIncoming(ctx context.Context, endpoint Endpoint) ([]
 	return service.list(ctx, reverseBucket, endpoint)
 }
 
+func (service *Service) ListOutgoingIn(ctx context.Context, tx store.Tx, endpoint Endpoint) ([]Relation, error) {
+	return service.listIn(ctx, tx, forwardBucket, endpoint)
+}
+
+func (service *Service) ListIncomingIn(ctx context.Context, tx store.Tx, endpoint Endpoint) ([]Relation, error) {
+	return service.listIn(ctx, tx, reverseBucket, endpoint)
+}
+
 func (service *Service) list(ctx context.Context, bucket string, endpoint Endpoint) ([]Relation, error) {
 	if err := validateEndpoint(endpoint); err != nil {
 		return nil, err
@@ -170,6 +182,18 @@ func (service *Service) list(ctx context.Context, bucket string, endpoint Endpoi
 		return nil, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	return service.listIn(ctx, tx, bucket, endpoint)
+}
+
+func (service *Service) listIn(
+	ctx context.Context,
+	tx store.Tx,
+	bucket string,
+	endpoint Endpoint,
+) ([]Relation, error) {
+	if err := validateEndpoint(endpoint); err != nil {
+		return nil, err
+	}
 	ids, err := loadIndex(ctx, tx, bucket, endpointKey(endpoint))
 	if err != nil {
 		return nil, err

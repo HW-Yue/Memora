@@ -9,6 +9,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
 )
@@ -203,6 +204,12 @@ func (transaction *Transaction) Update(
 	return projected, stableError(err)
 }
 
+func relationEndpoint(stored storedRow) relation.Endpoint {
+	return relation.Endpoint{
+		DatabaseID: stored.DatabaseID, TableID: stored.TableID, RowID: stored.ID,
+	}
+}
+
 func (transaction *Transaction) Delete(
 	ctx context.Context,
 	databaseName, tableName, rowID string,
@@ -234,6 +241,9 @@ func (transaction *Transaction) Delete(
 	}
 	stored.CommitSequence = commitSequence
 	stored.UpdatedAt = transaction.service.clock.Now().UTC()
+	if err := transaction.invalidateRelations(ctx, relationEndpoint(stored), commitSequence); err != nil {
+		return Row{}, err
+	}
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
 		return Row{}, stableError(err)
 	}

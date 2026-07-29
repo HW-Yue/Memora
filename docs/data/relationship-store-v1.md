@@ -1,6 +1,6 @@
 # Relationship Store v1
 
-状态：F18a 已冻结持久化记录、revision 和双向索引；Row 引用完整性与 MSQL 接入由 F18b 完成。
+状态：F18a/F18b 已冻结持久化记录、revision、双向索引与 Row 引用完整性；MSQL 接入由 F18c 完成。
 
 ## 系统记录
 
@@ -37,14 +37,18 @@ AI 定义 `depends_on`、`contradicts`、`part_of` 等 type 的业务语义；�
 
 图允许自环和循环关系。引擎不能把循环当成一致性错误，也不能替 AI 判断领域图是否合理。
 
-## F18b 边界
+## Row 引用完整性
 
-F18a 的 transaction-scoped Store 接受稳定 endpoint，不单独判断 Row 是否存在。F18b 在 Row transaction 内完成：
+底层 transaction-scoped Store 接受稳定 endpoint；Row transaction 在写入前完成：
 
 - source/target 当前 Row 存在性；
 - Row 删除时同事务失效全部入边和出边；
 - 跨表与跨库 Policy；
-- MSQL 参数绑定和 Batch 回滚。
+- 关系写入与 Row 写入共享 commit sequence 和回滚边界。
+
+同库跨表默认允许；跨库默认拒绝，只有显式注入的 Relation Policy 可以放行。自定义 Policy 也可以进一步收紧同库关系。普通 Row UPDATE 不失效关系；逻辑 DELETE 才级联失效引用。
+
+MSQL 参数绑定、Batch rollback 和 IPC session 属于 F18c。
 
 ## 关联
 

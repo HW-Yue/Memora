@@ -96,13 +96,21 @@
 
 提交：`feat(F18a): store revisioned relationships`
 
-## F18b Row 引用完整性与 MSQL
+## F18b Row 引用完整性
 
-先测：引用不存在、Row 删除自动失效引用、跨表/跨库 Policy、循环关系、Batch 回滚和参数注入。
+先测：引用不存在、Row 删除自动失效引用、跨表/跨库 Policy、循环关系和事务回滚。
 
-开发：把 endpoint 校验、删除级联、Policy guard 与声明式 MSQL 接入 Row transaction。
+开发：把 endpoint 校验、删除级联和 Policy guard 接入 Row transaction。
 
 提交：`feat(F18b): enforce structured relationship integrity`
+
+## F18c MSQL 关系操作
+
+先测：关系创建、正反向读取、逻辑删除、Batch 回滚和参数注入。
+
+开发：把声明式关系语句接入 Parser、Executor、Result Envelope 和 IPC session。
+
+提交：`feat(F18c): execute MSQL relationship operations`
 
 ## F19 Agent 倒排索引
 

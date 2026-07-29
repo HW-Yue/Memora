@@ -12,6 +12,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
 	"github.com/google/uuid"
@@ -34,18 +35,35 @@ type Clock interface {
 	Now() time.Time
 }
 
+type RelationPolicy interface {
+	AllowRelation(context.Context, catalog.Table, catalog.Table) bool
+}
+
+type RelationPolicyFunc func(context.Context, catalog.Table, catalog.Table) bool
+
+func (policy RelationPolicyFunc) AllowRelation(
+	ctx context.Context,
+	source, target catalog.Table,
+) bool {
+	return policy(ctx, source, target)
+}
+
 type Options struct {
-	IDs   IDSource
-	Clock Clock
+	IDs            IDSource
+	Clock          Clock
+	RelationIDs    relation.IDSource
+	RelationPolicy RelationPolicy
 }
 
 type Service struct {
-	store   store.Store
-	catalog Catalog
-	history *history.Service
-	ids     IDSource
-	clock   Clock
-	mu      sync.Mutex
+	store          store.Store
+	catalog        Catalog
+	history        *history.Service
+	relations      *relation.Service
+	ids            IDSource
+	clock          Clock
+	relationPolicy RelationPolicy
+	mu             sync.Mutex
 }
 
 func New(database store.Store, dictionary Catalog, options Options) *Service {
@@ -55,9 +73,20 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 	if options.Clock == nil {
 		options.Clock = systemClock{}
 	}
+	if options.RelationPolicy == nil {
+		options.RelationPolicy = RelationPolicyFunc(func(
+			_ context.Context,
+			source, target catalog.Table,
+		) bool {
+			return source.DatabaseID == target.DatabaseID
+		})
+	}
 	return &Service{
 		store: database, catalog: dictionary, history: history.New(database),
-		ids: options.IDs, clock: options.Clock,
+		relations: relation.New(database, relation.Options{
+			IDs: options.RelationIDs, Clock: options.Clock,
+		}),
+		ids: options.IDs, clock: options.Clock, relationPolicy: options.RelationPolicy,
 	}
 }
 
