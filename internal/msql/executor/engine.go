@@ -19,6 +19,9 @@ type Catalog interface {
 type Rows interface {
 	Get(context.Context, string, string, string) (row.Row, error)
 	ListPage(context.Context, string, string, int) ([]row.Row, bool, error)
+	Insert(context.Context, string, string, map[string]any, row.WriteOptions) (row.Row, error)
+	Update(context.Context, string, string, string, map[string]any, row.WriteOptions) (row.Row, error)
+	Delete(context.Context, string, string, string, row.WriteOptions) (row.Row, error)
 }
 
 type Engine struct {
@@ -29,6 +32,12 @@ type Engine struct {
 type Parameters struct {
 	Named      map[string]any
 	Positional []any
+}
+
+type MutationOptions struct {
+	ExpectedSchemaVersion uint64
+	ExpectedRevision      uint64
+	MaxAffectedRows       uint64
 }
 
 type Output struct {

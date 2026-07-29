@@ -68,6 +68,8 @@ Query Agent 按 Query Skill 为每次语义检索输出去重后的 `query_terms
 - Parser/AST 验证完整 SQL，正则不负责语法正确性；
 - 响应使用稳定 JSON envelope 和错误码。
 
+F15 已把 `expected_schema_version`、`expected_revision` 和 `max_affected_rows` 冻结为 MSQL request 的结构化 mutation options，而不是拼进 SQL 文本。语法、预算和精确 mutation 边界见 [MSQL Mutation Executor v1](./msql-mutation.md)。
+
 文本值超过目标 Column 当前配置的字符上限时，INSERT、UPDATE、MERGE 等写入返回稳定的字段超限错误；文本 Column 启动默认上限为 1200 个字符。引擎不自动截断，调用方可以切分后重试，也可以通过声明式 DDL 调整该 Column 的类型或上限；所有变更都经过 Policy 和 revision 校验。
 
 普通 SQL 负责业务 Row 修改；Agent 生成的完整 `index_terms` 和 Route membership 也必须由声明式 MSQL 语句或 UPDATE 扩展正式提交，不能通过私有 API 旁路写索引。具体 Grammar 待冻结。逻辑 DELETE 默认保留 revision 和 History Store；不可恢复的 PURGE 是独立高风险语句。

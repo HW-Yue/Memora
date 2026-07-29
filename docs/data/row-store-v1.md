@@ -24,6 +24,8 @@ UPDATE 和 DELETE 都必须同时携带：
 
 DELETE 是逻辑删除：保留当前字段，把 `row_state` 改为 `deleted` 并令 revision 加一。普通 Get/List 不返回 tombstone；内部显式读取可用于恢复、History 和后续事务链路。再次 UPDATE/DELETE 已删除 Row 返回 `not_found`，F15 不执行物理清除。
 
+F15e 已把这些操作接入统一 MSQL Executor，结构化 mutation options 和影响预算见 [MSQL Mutation Executor v1](../query/msql-mutation.md)。
+
 ## Schema 与值校验
 
 每次写入必须携带 `expected_schema_version`。Row Service 在同一个 Store transaction 中读取 Catalog 和写 Row；版本不一致返回 `revision_conflict`。
