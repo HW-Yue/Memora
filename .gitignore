@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Go build and test outputs
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+
+# Local runtime state and secrets
+/.memora/
+/tmp/
