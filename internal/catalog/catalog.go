@@ -85,7 +85,7 @@ func (service *Service) ShowDatabases(ctx context.Context) ([]Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	databases := append([]Database(nil), state.Databases...)
+	databases := append([]Database{}, state.Databases...)
 	sort.Slice(databases, func(left, right int) bool {
 		return canonical(databases[left].Name) < canonical(databases[right].Name)
 	})
@@ -143,6 +143,9 @@ func (service *Service) CreateTable(ctx context.Context, databaseName string, de
 		if _, exists := findTable(database, definition.Name); exists {
 			return duplicate("table", definition.Name)
 		}
+		if err := uniqueColumnDefinitions(definition.Columns); err != nil {
+			return err
+		}
 		tableID, err := service.nextID("tbl")
 		if err != nil {
 			return err
@@ -152,7 +155,14 @@ func (service *Service) CreateTable(ctx context.Context, databaseName string, de
 			ID: tableID, Name: definition.Name, Aliases: []string{},
 			Purpose: definition.Purpose, Scope: definition.Scope, AntiScope: definition.AntiScope,
 			RowSemantics: definition.RowSemantics, SchemaVersion: 1,
-			CreatedAt: now, UpdatedAt: now,
+			CreatedAt: now, UpdatedAt: now, Columns: []Column{},
+		}
+		for _, columnDefinition := range definition.Columns {
+			column, err := service.newColumn(columnDefinition, now)
+			if err != nil {
+				return err
+			}
+			created.Columns = append(created.Columns, column)
 		}
 		database.Tables = append(database.Tables, created)
 		touchDatabase(database, now)
@@ -166,7 +176,7 @@ func (service *Service) ShowTables(ctx context.Context, databaseName string) ([]
 	if err != nil {
 		return nil, err
 	}
-	tables := append([]Table(nil), database.Tables...)
+	tables := append([]Table{}, database.Tables...)
 	sort.Slice(tables, func(left, right int) bool {
 		return canonical(tables[left].Name) < canonical(tables[right].Name)
 	})
@@ -284,6 +294,29 @@ func load(ctx context.Context, tx store.Tx) (snapshot, error) {
 	if state.Databases == nil {
 		state.Databases = []Database{}
 	}
+	for databaseIndex := range state.Databases {
+		database := &state.Databases[databaseIndex]
+		if database.Aliases == nil {
+			database.Aliases = []string{}
+		}
+		if database.Tables == nil {
+			database.Tables = []Table{}
+		}
+		for tableIndex := range database.Tables {
+			table := &database.Tables[tableIndex]
+			if table.Aliases == nil {
+				table.Aliases = []string{}
+			}
+			if table.Columns == nil {
+				table.Columns = []Column{}
+			}
+			for columnIndex := range table.Columns {
+				if table.Columns[columnIndex].Aliases == nil {
+					table.Columns[columnIndex].Aliases = []string{}
+				}
+			}
+		}
+	}
 	return state, nil
 }
 
@@ -296,6 +329,11 @@ func validateTableDefinition(definition TableDefinition) error {
 	}
 	if err := require("table", definition.Name, "row semantics", definition.RowSemantics); err != nil {
 		return err
+	}
+	for _, column := range definition.Columns {
+		if err := validateColumnDefinition(column); err != nil {
+			return err
+		}
 	}
 	return nil
 }

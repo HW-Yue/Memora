@@ -1,6 +1,6 @@
 # Catalog v1
 
-状态：F13a 已实现 Database/Table；Column 与 MSQL Binder 由 F13b/F13c 补齐。
+状态：F13a/F13b 已实现 Database、Table、Column；MSQL Binder 由 F13c 补齐。
 
 ## 持久契约
 
@@ -32,6 +32,8 @@ F13 不做模糊同义合并。用途相近但名称不同的对象仍需由 Age
 - Table 创建必须提供 `purpose` 和 `row_semantics`；
 - Column 创建必须提供逻辑类型和 `purpose`；
 - `anti_scope` 和 Table `scope` 可选，但存在时随 Catalog 持久化。
+
+Table 可在创建时原子携带初始 Column，也可随后逐个增加 Column。任一初始 Column 无效或重名时，整个 Table 都不会写入。F13b 读取 F13a 未包含 `columns` 字段的 snapshot 时将其规范化为空数组，保持同一 `memora.catalog/v1` 逻辑格式兼容。
 
 缺失必填语义返回 `validation_error`，名称或 alias 冲突返回 `already_exists`，解析不到对象返回 `not_found`。
 

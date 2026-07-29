@@ -17,6 +17,14 @@ type TableDefinition struct {
 	Scope        string
 	AntiScope    string
 	RowSemantics string
+	Columns      []ColumnDefinition
+}
+
+type ColumnDefinition struct {
+	Name     string
+	Type     string
+	Nullable bool
+	Purpose  string
 }
 
 type Database struct {
@@ -40,6 +48,19 @@ type Table struct {
 	Scope         string    `json:"scope,omitempty"`
 	AntiScope     string    `json:"anti_scope,omitempty"`
 	RowSemantics  string    `json:"row_semantics"`
+	SchemaVersion uint64    `json:"schema_version"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	Columns       []Column  `json:"columns"`
+}
+
+type Column struct {
+	ID            string    `json:"column_id"`
+	Name          string    `json:"name"`
+	Aliases       []string  `json:"aliases"`
+	Type          string    `json:"type"`
+	Nullable      bool      `json:"nullable"`
+	Purpose       string    `json:"purpose"`
 	SchemaVersion uint64    `json:"schema_version"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
