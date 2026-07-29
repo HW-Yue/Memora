@@ -35,6 +35,8 @@ F13 不做模糊同义合并。用途相近但名称不同的对象仍需由 Age
 
 Table 可在创建时原子携带初始 Column，也可随后逐个增加 Column。任一初始 Column 无效或重名时，整个 Table 都不会写入。F13b 读取 F13a 未包含 `columns` 字段的 snapshot 时将其规范化为空数组，保持同一 `memora.catalog/v1` 逻辑格式兼容。
 
+F14 后 Column 的 `type` 保存规范名称，文本字段另存当前 `max_characters`。旧 snapshot 中的 `TEXT(n)` 在读取时规范化为 `type = TEXT` 和 `max_characters = n`；类型集合与值验证见 [逻辑类型与字段预算 v1](./logical-types.md)。
+
 缺失必填语义返回 `validation_error`，名称或 alias 冲突返回 `already_exists`，解析不到对象返回 `not_found`。
 
 ## Schema version

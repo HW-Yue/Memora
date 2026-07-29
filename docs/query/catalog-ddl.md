@@ -25,6 +25,8 @@ CREATE TABLE work.notes
 
 Parser 允许缺省语义项以保持语法与 AST 分层；Catalog Binder 必须拒绝缺少 Database `purpose/scope`、Table `purpose/row_semantics` 或 Column `type/purpose` 的创建。
 
+Column 类型由 F14 冻结；`TEXT` 使用 1200 字符启动上限，`TEXT(n)` 持久化 Column 自己的正整数上限。完整集合和输入规则见 [逻辑类型与字段预算 v1](../data/logical-types.md)。
+
 增加 Column 使用：
 
 ```sql

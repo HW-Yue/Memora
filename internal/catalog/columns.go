@@ -3,8 +3,9 @@ package catalog
 import (
 	"context"
 	"sort"
-	"strings"
 	"time"
+
+	"github.com/HW-Yue/Memora/internal/logical"
 )
 
 func (service *Service) AddColumn(ctx context.Context, databaseName, tableName string, definition ColumnDefinition) (Column, error) {
@@ -95,9 +96,14 @@ func (service *Service) newColumn(definition ColumnDefinition, now time.Time) (C
 	if err != nil {
 		return Column{}, err
 	}
+	logicalType, err := logical.ParseDeclaration(definition.Type)
+	if err != nil {
+		return Column{}, err
+	}
 	return Column{
-		ID: id, Name: definition.Name, Aliases: []string{}, Type: strings.ToUpper(definition.Type),
-		Nullable: definition.Nullable, Purpose: definition.Purpose, SchemaVersion: 1,
+		ID: id, Name: definition.Name, Aliases: []string{}, Type: string(logicalType.Kind),
+		MaxCharacters: logicalType.MaxCharacters,
+		Nullable:      definition.Nullable, Purpose: definition.Purpose, SchemaVersion: 1,
 		CreatedAt: now, UpdatedAt: now,
 	}, nil
 }
@@ -109,7 +115,11 @@ func validateColumnDefinition(definition ColumnDefinition) error {
 	if err := require("column", definition.Name, "type", definition.Type); err != nil {
 		return err
 	}
-	return require("column", definition.Name, "purpose", definition.Purpose)
+	if err := require("column", definition.Name, "purpose", definition.Purpose); err != nil {
+		return err
+	}
+	_, err := logical.ParseDeclaration(definition.Type)
+	return err
 }
 
 func uniqueColumnDefinitions(columns []ColumnDefinition) error {

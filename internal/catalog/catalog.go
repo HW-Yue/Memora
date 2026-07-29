@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/logical"
 	"github.com/HW-Yue/Memora/internal/store"
 	"github.com/google/uuid"
 )
@@ -311,9 +312,19 @@ func load(ctx context.Context, tx store.Tx) (snapshot, error) {
 				table.Columns = []Column{}
 			}
 			for columnIndex := range table.Columns {
-				if table.Columns[columnIndex].Aliases == nil {
-					table.Columns[columnIndex].Aliases = []string{}
+				column := &table.Columns[columnIndex]
+				if column.Aliases == nil {
+					column.Aliases = []string{}
 				}
+				definition, err := logical.ParseDeclaration(column.Type)
+				if err != nil {
+					return snapshot{}, fmt.Errorf("decode catalog column type: %w", err)
+				}
+				if definition.Kind == logical.KindText && column.MaxCharacters > 0 {
+					definition.MaxCharacters = column.MaxCharacters
+				}
+				column.Type = string(definition.Kind)
+				column.MaxCharacters = definition.MaxCharacters
 			}
 		}
 	}

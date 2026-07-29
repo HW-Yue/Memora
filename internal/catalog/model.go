@@ -1,6 +1,10 @@
 package catalog
 
-import "time"
+import (
+	"time"
+
+	"github.com/HW-Yue/Memora/internal/logical"
+)
 
 const Version = "memora.catalog/v1"
 
@@ -59,11 +63,22 @@ type Column struct {
 	Name          string    `json:"name"`
 	Aliases       []string  `json:"aliases"`
 	Type          string    `json:"type"`
+	MaxCharacters int       `json:"max_characters,omitempty"`
 	Nullable      bool      `json:"nullable"`
 	Purpose       string    `json:"purpose"`
 	SchemaVersion uint64    `json:"schema_version"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+func (column Column) Validate(value any) (any, error) {
+	return logical.Validate(logical.Constraint{
+		Name: column.Name,
+		Definition: logical.Definition{
+			Kind: logical.Kind(column.Type), MaxCharacters: column.MaxCharacters,
+		},
+		Nullable: column.Nullable,
+	}, value)
 }
 
 type snapshot struct {

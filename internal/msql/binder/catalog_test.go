@@ -94,6 +94,8 @@ func TestCatalogBinderRejectsMissingMetadataQualificationAndDuplicates(t *testin
 	assertBinderCode(t, err, "validation_error")
 	_, err = bind(ctx, subject, "DESCRIBE COLUMN work.notes")
 	assertBinderCode(t, err, "validation_error")
+	_, err = bind(ctx, subject, "CREATE TABLE work.invalid PURPOSE 'Invalid' ROW SEMANTICS 'One invalid row' (value FLOAT PURPOSE 'Value')")
+	assertBinderCode(t, err, "validation_error")
 }
 
 func TestCatalogBinderNormalizesContextAndStoreFailures(t *testing.T) {
