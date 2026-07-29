@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,8 +94,11 @@ func TestRunInit(t *testing.T) {
 	createdAt := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
 	dependencies := Dependencies{
 		HomeDir: func() (string, error) { return home, nil },
-		Clock:   testkit.NewFakeClock(createdAt),
-		IDs:     testkit.NewFakeIDs("018f2f7e-7b5d-7c31-8a29-53f27d8f93c1"),
+		LookupEnv: func(string) (string, bool) {
+			return "", false
+		},
+		Clock: testkit.NewFakeClock(createdAt),
+		IDs:   testkit.NewFakeIDs("018f2f7e-7b5d-7c31-8a29-53f27d8f93c1"),
 	}
 
 	var stdout bytes.Buffer
@@ -129,6 +133,59 @@ func TestRunInit(t *testing.T) {
 	want = fmt.Sprintf("Memora instance 018f2f7e-7b5d-7c31-8a29-53f27d8f93c1 already initialized at %s\n", dataDir)
 	if got := stdout.String(); got != want {
 		t.Fatalf("second init stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunInitUsesMemoraEnvironmentWithoutLeakingHostSecrets(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "environment-instance")
+	values := map[string]string{
+		"MEMORA_DATA_DIR":   dataDir,
+		"MEMORA_INSTANCE":   "environment",
+		"MEMORA_LOG_LEVEL":  "debug",
+		"OPENAI_API_KEY":    "must-not-leak-openai",
+		"ANTHROPIC_API_KEY": "must-not-leak-anthropic",
+	}
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		LookupEnv: func(name string) (string, bool) {
+			value, ok := values[name]
+			return value, ok
+		},
+		Clock: testkit.NewFakeClock(time.Now()),
+		IDs:   testkit.NewFakeIDs("018f2f7e-7b5d-7c31-8a29-53f27d8f93c1"),
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := RunWithDependencies([]string{"init"}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK {
+		t.Fatalf("init code = %d, stderr = %s", code, &stderr)
+	}
+	if !strings.Contains(stdout.String(), dataDir) {
+		t.Fatalf("stdout = %q, want data dir %q", &stdout, dataDir)
+	}
+	err := filepath.WalkDir(dataDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for _, secret := range []string{"must-not-leak-openai", "must-not-leak-anthropic"} {
+			if bytes.Contains(content, []byte(secret)) {
+				t.Fatalf("file %q leaked host secret", path)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WalkDir() error = %v", err)
 	}
 }
 

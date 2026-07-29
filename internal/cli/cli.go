@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/HW-Yue/Memora/internal/config"
 	"github.com/HW-Yue/Memora/internal/instance"
 )
 
@@ -50,9 +51,10 @@ func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
 }
 
 type Dependencies struct {
-	HomeDir func() (string, error)
-	Clock   instance.Clock
-	IDs     instance.IDSource
+	HomeDir   func() (string, error)
+	LookupEnv func(string) (string, bool)
+	Clock     instance.Clock
+	IDs       instance.IDSource
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -79,8 +81,10 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 }
 
 func runInit(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
-	instanceName := "default"
-	dataDirOverride := ""
+	var instanceOverride *string
+	var dataDirOverride *string
+	var logLevelOverride *string
+	var configFileOverride *string
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
 		case "--data-dir":
@@ -88,8 +92,9 @@ func runInit(args []string, stdout, stderr io.Writer, dependencies Dependencies)
 			if index >= len(args) {
 				return usageError(stderr, "--data-dir requires a path")
 			}
-			dataDirOverride = args[index]
-			if !filepath.IsAbs(dataDirOverride) {
+			value := args[index]
+			dataDirOverride = &value
+			if !filepath.IsAbs(value) {
 				return usageError(stderr, "--data-dir must be an absolute path")
 			}
 		case "--instance":
@@ -97,7 +102,25 @@ func runInit(args []string, stdout, stderr io.Writer, dependencies Dependencies)
 			if index >= len(args) {
 				return usageError(stderr, "--instance requires a name")
 			}
-			instanceName = args[index]
+			value := args[index]
+			instanceOverride = &value
+		case "--log-level":
+			index++
+			if index >= len(args) {
+				return usageError(stderr, "--log-level requires a value")
+			}
+			value := args[index]
+			logLevelOverride = &value
+		case "--config":
+			index++
+			if index >= len(args) {
+				return usageError(stderr, "--config requires a path")
+			}
+			value := args[index]
+			if !filepath.IsAbs(value) {
+				return usageError(stderr, "--config must be an absolute path")
+			}
+			configFileOverride = &value
 		default:
 			return usageError(stderr, fmt.Sprintf("unknown option for init: %q", args[index]))
 		}
@@ -111,7 +134,33 @@ func runInit(args []string, stdout, stderr io.Writer, dependencies Dependencies)
 	if err != nil {
 		return commandError(stderr, "resolve user home", err)
 	}
-	locations, err := instance.DefaultLocations(home, instanceName, dataDirOverride)
+	configFile := ""
+	if configFileOverride != nil {
+		configFile = *configFileOverride
+	} else {
+		defaultConfig, configErr := config.DefaultFile(home)
+		if configErr != nil {
+			return commandError(stderr, "resolve config file", configErr)
+		}
+		if _, statErr := os.Stat(defaultConfig); statErr == nil {
+			configFile = defaultConfig
+		} else if !os.IsNotExist(statErr) {
+			return commandError(stderr, "inspect config file", statErr)
+		}
+	}
+	loaded, err := config.Load(config.LoadOptions{
+		ConfigFile: configFile,
+		LookupEnv:  dependencies.LookupEnv,
+		Overrides: config.Overrides{
+			InstanceName: instanceOverride,
+			DataDir:      dataDirOverride,
+			LogLevel:     logLevelOverride,
+		},
+	})
+	if err != nil {
+		return commandError(stderr, "load config", err)
+	}
+	locations, err := instance.DefaultLocations(home, loaded.InstanceName, loaded.DataDir)
 	if err != nil {
 		return usageError(stderr, err.Error())
 	}

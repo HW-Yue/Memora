@@ -22,6 +22,7 @@ memora daemon         管理本地常驻服务
 memora help
 memora init
 memora init --data-dir /absolute/path
+memora init --instance work --log-level debug
 memora version
 memora version --json
 ```
