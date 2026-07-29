@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -50,5 +51,14 @@ func (err *RemoteError) Error() string {
 }
 
 func (err *RemoteError) Is(target error) bool {
-	return target == ErrProtocolVersion && err.Code == "protocol_version"
+	switch target {
+	case ErrProtocolVersion:
+		return err.Code == "protocol_version"
+	case context.Canceled:
+		return err.Code == "cancelled"
+	case context.DeadlineExceeded:
+		return err.Code == "deadline_exceeded"
+	default:
+		return false
+	}
 }

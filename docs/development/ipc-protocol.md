@@ -44,6 +44,8 @@ v1 单个 frame 默认上限为 1 MiB。接收端先读取并校验 4 字节长�
 - 客户端显式取消；
 - socket 断开或 daemon 关闭。
 
+客户端 deadline 转为协议毫秒值时向上取整，避免服务端因精度截断提前超时。无论超时或取消先在客户端还是服务端被观察到，返回错误都必须分别满足 Go `errors.Is(err, context.DeadlineExceeded)` 或 `errors.Is(err, context.Canceled)`，调用方不依赖竞态路径判断语义。
+
 连接结束后，daemon 先取消并等待该连接的活跃请求，再调用一次 session cleanup。后续事务状态机会在这里回滚未提交事务；F08 只冻结生命周期 hook，不执行事务。
 
 ## 安全边界

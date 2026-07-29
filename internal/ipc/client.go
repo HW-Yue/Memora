@@ -46,10 +46,18 @@ func (client *Client) Call(ctx context.Context, method string, payload, result a
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := time.Until(deadline)
 		if remaining > 0 {
-			request.TimeoutMS = max(1, remaining.Milliseconds())
+			request.TimeoutMS = durationMillisecondsCeil(remaining)
 		}
 	}
 	return client.callRequest(ctx, request, result)
+}
+
+func durationMillisecondsCeil(duration time.Duration) int64 {
+	milliseconds := duration / time.Millisecond
+	if duration%time.Millisecond != 0 {
+		milliseconds++
+	}
+	return max(1, int64(milliseconds))
 }
 
 func (client *Client) callRequest(ctx context.Context, request Request, result any) error {
