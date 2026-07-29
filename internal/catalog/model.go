@@ -46,6 +46,7 @@ type Database struct {
 
 type Table struct {
 	ID            string    `json:"table_id"`
+	DatabaseID    string    `json:"database_id"`
 	Name          string    `json:"name"`
 	Aliases       []string  `json:"aliases"`
 	Purpose       string    `json:"purpose"`

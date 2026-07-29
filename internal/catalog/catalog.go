@@ -153,7 +153,7 @@ func (service *Service) CreateTable(ctx context.Context, databaseName string, de
 		}
 		now := service.clock.Now().UTC()
 		created = Table{
-			ID: tableID, Name: definition.Name, Aliases: []string{},
+			ID: tableID, DatabaseID: database.ID, Name: definition.Name, Aliases: []string{},
 			Purpose: definition.Purpose, Scope: definition.Scope, AntiScope: definition.AntiScope,
 			RowSemantics: definition.RowSemantics, SchemaVersion: 1,
 			CreatedAt: now, UpdatedAt: now, Columns: []Column{},
@@ -190,6 +190,24 @@ func (service *Service) DescribeTable(ctx context.Context, databaseName, tableNa
 		return Table{}, err
 	}
 	table, found := findTable(&database, tableName)
+	if !found {
+		return Table{}, missing("table", tableName)
+	}
+	return *table, nil
+}
+
+// DescribeTableIn resolves a Table from the caller's Store transaction so
+// schema validation and Row changes can share one consistent snapshot.
+func (service *Service) DescribeTableIn(ctx context.Context, tx store.Tx, databaseName, tableName string) (Table, error) {
+	state, err := load(ctx, tx)
+	if err != nil {
+		return Table{}, err
+	}
+	database, found := findDatabase(&state, databaseName)
+	if !found {
+		return Table{}, missing("database", databaseName)
+	}
+	table, found := findTable(database, tableName)
 	if !found {
 		return Table{}, missing("table", tableName)
 	}
@@ -305,6 +323,9 @@ func load(ctx context.Context, tx store.Tx) (snapshot, error) {
 		}
 		for tableIndex := range database.Tables {
 			table := &database.Tables[tableIndex]
+			if table.DatabaseID == "" {
+				table.DatabaseID = database.ID
+			}
 			if table.Aliases == nil {
 				table.Aliases = []string{}
 			}

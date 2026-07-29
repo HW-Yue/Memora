@@ -184,6 +184,13 @@ func TestCatalogReadsF13aTablesWithoutColumnField(t *testing.T) {
 	}
 
 	service := catalog.New(databaseStore, catalog.Options{IDs: &idSource{values: []string{"body"}}})
+	table, err := service.DescribeTable(ctx, "work", "notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if table.DatabaseID != "db_1" {
+		t.Fatalf("legacy table database ID = %q", table.DatabaseID)
+	}
 	columns, err := service.ShowColumns(ctx, "work", "notes")
 	if err != nil {
 		t.Fatal(err)

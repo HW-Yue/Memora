@@ -2,7 +2,7 @@
 
 状态：执行中。
 
-当前进度：F00–F14 与 Phase A 退出测试已完成；下一项为 F15 Row CRUD 与 revision。
+当前进度：F00–F14、F15a 与 Phase A 退出测试已完成；下一项为 F15b revision mutation。
 
 ## 产品目标
 

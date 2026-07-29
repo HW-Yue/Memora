@@ -16,6 +16,8 @@ col_<uuid>
 
 rename 只修改当前名称，不修改 ID。旧名称进入 alias，当前名称和 alias 都可继续解析。
 
+Table 同时保存所属稳定 `database_id`。读取旧 F13 snapshot 时由父 Database 确定性补齐；Row Store 因而不需要把可变 Database 名称写进 Row。
+
 ## 名称规则
 
 - 名称展示时保留原始 Unicode 和大小写；
