@@ -102,11 +102,16 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 }
 
 func (service *Service) Get(ctx context.Context, databaseName, tableName, rowID string) (Row, error) {
-	value, err := service.get(ctx, databaseName, tableName, rowID)
+	value, err := service.get(ctx, databaseName, tableName, rowID, false)
 	return value, stableError(err)
 }
 
-func (service *Service) get(ctx context.Context, databaseName, tableName, rowID string) (Row, error) {
+func (service *Service) GetIncludingDeleted(ctx context.Context, databaseName, tableName, rowID string) (Row, error) {
+	value, err := service.get(ctx, databaseName, tableName, rowID, true)
+	return value, stableError(err)
+}
+
+func (service *Service) get(ctx context.Context, databaseName, tableName, rowID string, includeDeleted bool) (Row, error) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	tx, err := service.store.Begin(ctx, store.ReadOnly)
@@ -122,7 +127,7 @@ func (service *Service) get(ctx context.Context, databaseName, tableName, rowID 
 	if err != nil {
 		return Row{}, err
 	}
-	if stored.State == StateDeleted {
+	if stored.State == StateDeleted && !includeDeleted {
 		return Row{}, rowError(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID))
 	}
 	return project(table, stored)

@@ -2,7 +2,7 @@
 
 状态：执行中。
 
-当前进度：F00–F14、F15a 与 Phase A 退出测试已完成；下一项为 F15b revision mutation。
+当前进度：F00–F14、F15a/F15b 与 Phase A 退出测试已完成；下一项为 F15c 参数化 MSQL CRUD。
 
 ## 产品目标
 

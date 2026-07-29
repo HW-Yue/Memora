@@ -1,6 +1,6 @@
 # Row Store v1
 
-状态：F15a 已实现 Insert/Get/List；revision mutation 与 MSQL 执行由 F15b/F15c 补齐。
+状态：F15a/F15b 已实现持久 CRUD 与 revision；MSQL 执行由 F15c 补齐。
 
 ## 逻辑身份
 
@@ -12,6 +12,17 @@ revision, row_state, values, created_at, updated_at
 ```
 
 创建时 `revision = 1`、`row_state = live`。Row 不保存可变 Database、Table 或 Column 名称；业务值以稳定 `column_id → value` 编码。读取时按当前 Catalog 投影名称，因此 rename 不复制 Row，也不改变身份。
+
+## Revision mutation
+
+UPDATE 和 DELETE 都必须同时携带：
+
+- `expected_schema_version`：防止按过期 Schema 解释字段；
+- `expected_revision`：防止覆盖 Row 的更新版本。
+
+任一不匹配返回 `revision_conflict`，重新读取前不得强制覆盖。成功 UPDATE 保持 `row_id/created_at`，写入当前 Schema version、令 revision 加一并更新 `updated_at`。同一 expected revision 的并发更新只有一个能够成功。
+
+DELETE 是逻辑删除：保留当前字段，把 `row_state` 改为 `deleted` 并令 revision 加一。普通 Get/List 不返回 tombstone；内部显式读取可用于恢复、History 和后续事务链路。再次 UPDATE/DELETE 已删除 Row 返回 `not_found`，F15 不执行物理清除。
 
 ## Schema 与值校验
 
@@ -33,7 +44,7 @@ JSON 只是原型 Store value 的版本内编码。读取使用 JSON number 保�
 
 ## 读取边界
 
-- `Get` 只返回 live Row；
+- `Get` 只返回 live Row，`GetIncludingDeleted` 是内部显式 tombstone 读取；
 - `List` 按稳定插入顺序返回 live Row；
 - 单次内部 List limit 必须在 1–1000，F15c Planner 还会应用查询和影响行数预算；
 - 返回字段使用当前 Column 名，不回显废弃 alias。
