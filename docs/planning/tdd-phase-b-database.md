@@ -208,13 +208,21 @@
 
 提交：`feat(F25): publish independent index generations`
 
-## F26 逻辑备份与迁移出口
+## F26a 逻辑快照格式与迁移
 
-先测：导出再导入得到等价 Catalog/Row/history/relation；未知字段保留；旧 format fixture 可迁移；索引可丢弃重建。
+先测：未知字段保留；旧 format fixture 可迁移；非法 identity、revision 和 commit sequence 被拒绝；语义等价快照哈希一致。
 
-开发：实现版本化 logical snapshot，作为原型后端迁往原生内核的安全出口。
+开发：冻结版本化 logical snapshot 信封、v0→v1 migrator 和 canonical hash。
 
-提交：`feat(F26): export portable logical snapshots`
+提交：`feat(F26a): define portable logical snapshots`
+
+## F26b 逻辑快照 Store 往返
+
+先测：导出再导入得到等价 Catalog/Row/history/relation；commit sequence 连续；未知字段跨 Store 保留；索引可丢弃重建。
+
+开发：实现 Store 扫描、权威记录导出、空目标原子导入及 Row/History/Relation 定位索引重建。
+
+提交：`feat(F26b): import portable logical snapshots`
 
 ## F27 数据库垂直链路
 

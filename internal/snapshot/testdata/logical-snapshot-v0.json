@@ -1,0 +1,83 @@
+{
+  "version": "memora.logical-snapshot/v0",
+  "catalog": {
+    "version": "memora.catalog/v1",
+    "databases": [
+      {
+        "database_id": "db_legacy",
+        "name": "legacy",
+        "aliases": [],
+        "purpose": "legacy migration fixture",
+        "scope": "compatibility tests",
+        "schema_version": 1,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "future_catalog": {"preserved": true},
+        "tables": [
+          {
+            "table_id": "tbl_legacy",
+            "database_id": "db_legacy",
+            "name": "notes",
+            "aliases": [],
+            "purpose": "legacy notes",
+            "row_semantics": "one legacy note",
+            "schema_version": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "columns": [
+              {
+                "column_id": "col_title",
+                "name": "title",
+                "aliases": [],
+                "type": "TEXT",
+                "max_characters": 2000,
+                "nullable": false,
+                "purpose": "note title",
+                "schema_version": 1,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "rows": [
+    {
+      "row_id": "row_legacy",
+      "database_id": "db_legacy",
+      "table_id": "tbl_legacy",
+      "schema_version": 1,
+      "revision": 1,
+      "commit_sequence": 1,
+      "row_state": "live",
+      "values": {"col_title": "legacy note"},
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "future_row": "keep-this"
+    }
+  ],
+  "history": [
+    {
+      "version": "memora.history/v1",
+      "database_id": "db_legacy",
+      "table_id": "tbl_legacy",
+      "row_id": "row_legacy",
+      "schema_version": 1,
+      "revision": 1,
+      "commit_sequence": 1,
+      "operation": "INSERT",
+      "row_state": "live",
+      "values": {"col_title": "legacy note"},
+      "actor": "migration:fixture",
+      "source": "fixture:v0",
+      "reason": "compatibility coverage",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "recorded_at": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "relations": [],
+  "future_v0": "preserve-me"
+}
