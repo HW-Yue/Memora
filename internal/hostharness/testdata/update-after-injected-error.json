@@ -1,0 +1,274 @@
+{
+  "version": "memora.host-transcript/v1",
+  "name": "update-after-injected-error",
+  "turns": [
+    {
+      "user": "Remember that Route and MATCH results are locators only.",
+      "actions": [
+        {
+          "call": {
+            "id": "discover",
+            "command": "query",
+            "msql": "SHOW DATABASES"
+          },
+          "expect": {
+            "ok": true,
+            "rows": 1
+          }
+        },
+        {
+          "call": {
+            "id": "insert",
+            "command": "exec",
+            "msql": "INSERT INTO work.notes (title) VALUES (:title)",
+            "input": {
+              "parameters": {
+                "named": {
+                  "title": "Route results are locators"
+                }
+              },
+              "mutation": {
+                "expected_schema_version": 1,
+                "max_affected_rows": 1,
+                "actor": "agent:harness",
+                "source": "conversation:turn-1",
+                "reason": "capture routing rule",
+                "index_terms": [
+                  "route",
+                  "locator"
+                ]
+              }
+            }
+          },
+          "expect": {
+            "ok": true,
+            "status": "succeeded",
+            "revision": 1
+          }
+        },
+        {
+          "call": {
+            "id": "update-timeout",
+            "command": "exec",
+            "msql": "UPDATE work.notes SET title = :title WHERE row_id = :row",
+            "input": {
+              "parameters": {
+                "named": {
+                  "row": "row_one",
+                  "title": "Route and MATCH results are locators only"
+                }
+              },
+              "mutation": {
+                "expected_schema_version": 1,
+                "expected_revision": 1,
+                "max_affected_rows": 1,
+                "actor": "agent:harness",
+                "source": "conversation:turn-1",
+                "reason": "refine routing rule",
+                "index_terms": [
+                  "route",
+                  "match",
+                  "locator"
+                ]
+              }
+            }
+          },
+          "inject": {
+            "code": "deadline_exceeded",
+            "message": "scripted daemon timeout",
+            "retryable": true
+          },
+          "expect": {
+            "ok": false,
+            "code": "deadline_exceeded"
+          }
+        },
+        {
+          "call": {
+            "id": "update-retry",
+            "command": "exec",
+            "msql": "UPDATE work.notes SET title = :title WHERE row_id = :row",
+            "input": {
+              "parameters": {
+                "named": {
+                  "row": "row_one",
+                  "title": "Route and MATCH results are locators only"
+                }
+              },
+              "mutation": {
+                "expected_schema_version": 1,
+                "expected_revision": 1,
+                "max_affected_rows": 1,
+                "actor": "agent:harness",
+                "source": "conversation:turn-1",
+                "reason": "refine routing rule",
+                "index_terms": [
+                  "route",
+                  "match",
+                  "locator"
+                ]
+              }
+            }
+          },
+          "expect": {
+            "ok": true,
+            "status": "succeeded",
+            "revision": 2
+          }
+        },
+        {
+          "call": {
+            "id": "verify",
+            "command": "query",
+            "msql": "SELECT row_id, title, revision FROM work.notes WHERE row_id = :row LIMIT 1",
+            "input": {
+              "parameters": {
+                "named": {
+                  "row": "row_one"
+                }
+              }
+            }
+          },
+          "expect": {
+            "ok": true,
+            "rows": 1,
+            "row_contains": {
+              "row_id": "row_one",
+              "title": "Route and MATCH results are locators only"
+            }
+          }
+        }
+      ],
+      "reply": "Saved the refined routing decision as row_one revision 2 after a transient retry.",
+      "reply_expect": {
+        "contains": [
+          "row_one",
+          "revision 2",
+          "retry"
+        ],
+        "excludes": [
+          "all jobs have failed"
+        ],
+        "max_characters": 2000
+      }
+    }
+  ],
+  "expected_tool_sequence": [
+    {
+      "id": "discover",
+      "command": "query",
+      "msql": "SHOW DATABASES"
+    },
+    {
+      "id": "insert",
+      "command": "exec",
+      "msql": "INSERT INTO work.notes (title) VALUES (:title)",
+      "input": {
+        "parameters": {
+          "named": {
+            "title": "Route results are locators"
+          }
+        },
+        "mutation": {
+          "expected_schema_version": 1,
+          "max_affected_rows": 1,
+          "actor": "agent:harness",
+          "source": "conversation:turn-1",
+          "reason": "capture routing rule",
+          "index_terms": [
+            "route",
+            "locator"
+          ]
+        }
+      }
+    },
+    {
+      "id": "update-timeout",
+      "command": "exec",
+      "msql": "UPDATE work.notes SET title = :title WHERE row_id = :row",
+      "input": {
+        "parameters": {
+          "named": {
+            "row": "row_one",
+            "title": "Route and MATCH results are locators only"
+          }
+        },
+        "mutation": {
+          "expected_schema_version": 1,
+          "expected_revision": 1,
+          "max_affected_rows": 1,
+          "actor": "agent:harness",
+          "source": "conversation:turn-1",
+          "reason": "refine routing rule",
+          "index_terms": [
+            "route",
+            "match",
+            "locator"
+          ]
+        }
+      }
+    },
+    {
+      "id": "update-retry",
+      "command": "exec",
+      "msql": "UPDATE work.notes SET title = :title WHERE row_id = :row",
+      "input": {
+        "parameters": {
+          "named": {
+            "row": "row_one",
+            "title": "Route and MATCH results are locators only"
+          }
+        },
+        "mutation": {
+          "expected_schema_version": 1,
+          "expected_revision": 1,
+          "max_affected_rows": 1,
+          "actor": "agent:harness",
+          "source": "conversation:turn-1",
+          "reason": "refine routing rule",
+          "index_terms": [
+            "route",
+            "match",
+            "locator"
+          ]
+        }
+      }
+    },
+    {
+      "id": "verify",
+      "command": "query",
+      "msql": "SELECT row_id, title, revision FROM work.notes WHERE row_id = :row LIMIT 1",
+      "input": {
+        "parameters": {
+          "named": {
+            "row": "row_one"
+          }
+        }
+      }
+    }
+  ],
+  "final_assertions": [
+    {
+      "call": {
+        "id": "final-row",
+        "command": "query",
+        "msql": "SELECT row_id, title, revision FROM work.notes WHERE row_id = :row LIMIT 1",
+        "input": {
+          "parameters": {
+            "named": {
+              "row": "row_one"
+            }
+          }
+        }
+      },
+      "expect": {
+        "ok": true,
+        "rows": 1,
+        "row_contains": {
+          "row_id": "row_one",
+          "title": "Route and MATCH results are locators only"
+        }
+      }
+    }
+  ]
+}
