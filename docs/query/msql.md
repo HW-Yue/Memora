@@ -120,5 +120,6 @@ Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
 
 ## 关联
 
+- [MSQL Lexer v0](./msql-lexer.md)
 - [语义路由](./semantic-routing.md)
 - [上下文生命周期](./context-lifecycle.md)
