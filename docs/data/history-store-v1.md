@@ -1,6 +1,6 @@
 # History Store v1
 
-状态：F17a 追加式存储已实现；F17b 将接入 AS OF、SHOW HISTORY 和补偿撤销。
+状态：F17a 追加式存储与 F17b Row 查询/补偿 API 已实现；F17c 将接入 MSQL。
 
 ## 目的与边界
 
@@ -39,16 +39,18 @@ F17 之前的原型 Row 可能没有 `commit_sequence` 或早期 history。读�
 
 直接 Row API 未提供 provenance 时使用明确的技术默认值 `system:direct-api / direct-api / row mutation`，避免空字段。MSQL mutation 可以通过结构化 options 传入 actor、source 和 reason；参数值不得拼入 provenance 或 SQL source。
 
-## F17b 读取边界
+## 读取与补偿
 
-待接入：
+Row Service 和 transaction scope 提供：
 
-- 按 revision 和 commit sequence 的 AS OF；
-- SHOW HISTORY 的有界、结构化 provenance；
-- 从任意历史 snapshot 创建新的 COMPENSATE revision；
-- 删除后的恢复和当前 Schema 校验。
+- `AsOfRevision` 精确读取指定 object revision；
+- `AsOfCommit` 读取不晚于指定 commit sequence 的最近 revision；
+- `HistoryPage` 按最新 revision 优先返回 1–1000 条并报告 `has_more`；
+- `Restore` 从指定 revision 创建新的 `COMPENSATE` revision。
 
-补偿只能新增 revision，不能删除或覆盖既有 history。
+AS OF snapshot 按稳定 Column ID 通过当前 Catalog 投影，因此 rename 后使用新名称但不搬迁历史。Restore 同时校验当前 expected schema/revision，并把旧 snapshot 重新按当前 Schema 验证；新增的非 nullable Column 缺值等不兼容情况必须失败。
+
+补偿可以恢复逻辑删除 Row，但只能新增 revision，不能删除或覆盖既有 history。F17c 将冻结 `AS OF`、`SHOW HISTORY` 和 `RESTORE` 的 MSQL Grammar 与有界 Result Envelope。
 
 ## 关联
 

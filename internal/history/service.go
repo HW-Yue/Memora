@@ -18,6 +18,7 @@ const (
 	metaKey      = "commit_sequence"
 	recordBucket = "history_records"
 	indexBucket  = "history_indexes"
+	maxPageSize  = 1000
 )
 
 type Service struct {
@@ -113,6 +114,71 @@ func (service *Service) List(ctx context.Context, tableID, rowID string) ([]Reco
 	return service.ListIn(ctx, tx, tableID, rowID)
 }
 
+func (service *Service) GetRevisionIn(
+	ctx context.Context,
+	tx store.Tx,
+	tableID, rowID string,
+	revision uint64,
+) (Record, error) {
+	if revision == 0 {
+		return Record{}, historyError(result.CodeValidation, "history revision must be greater than zero")
+	}
+	return readRecord(ctx, tx, tableID, rowID, revision)
+}
+
+func (service *Service) AsOfCommitIn(
+	ctx context.Context,
+	tx store.Tx,
+	tableID, rowID string,
+	commitSequence uint64,
+) (Record, error) {
+	if commitSequence == 0 {
+		return Record{}, historyError(result.CodeValidation, "commit sequence must be greater than zero")
+	}
+	revisions, err := loadIndex(ctx, tx, tableID, rowID)
+	if err != nil {
+		return Record{}, err
+	}
+	for index := len(revisions) - 1; index >= 0; index-- {
+		record, err := readRecord(ctx, tx, tableID, rowID, revisions[index])
+		if err != nil {
+			return Record{}, err
+		}
+		if record.CommitSequence <= commitSequence {
+			return record, nil
+		}
+	}
+	return Record{}, historyError(result.CodeNotFound, "no Row history is visible at the requested commit sequence")
+}
+
+func (service *Service) ListPageIn(
+	ctx context.Context,
+	tx store.Tx,
+	tableID, rowID string,
+	limit int,
+) ([]Record, bool, error) {
+	if limit < 1 || limit > maxPageSize {
+		return nil, false, historyError(
+			result.CodeValidation,
+			fmt.Sprintf("history limit must be between 1 and %d", maxPageSize),
+		)
+	}
+	revisions, err := loadIndex(ctx, tx, tableID, rowID)
+	if err != nil {
+		return nil, false, err
+	}
+	count := min(limit, len(revisions))
+	records := make([]Record, 0, count)
+	for index := len(revisions) - 1; index >= len(revisions)-count; index-- {
+		record, err := readRecord(ctx, tx, tableID, rowID, revisions[index])
+		if err != nil {
+			return nil, false, err
+		}
+		records = append(records, record)
+	}
+	return records, len(revisions) > count, nil
+}
+
 func (service *Service) ListIn(ctx context.Context, tx store.Tx, tableID, rowID string) ([]Record, error) {
 	revisions, err := loadIndex(ctx, tx, tableID, rowID)
 	if err != nil {
@@ -120,26 +186,34 @@ func (service *Service) ListIn(ctx context.Context, tx store.Tx, tableID, rowID 
 	}
 	records := make([]Record, 0, len(revisions))
 	for _, revision := range revisions {
-		encoded, err := tx.Get(ctx, recordBucket, recordKey(tableID, rowID, revision))
+		record, err := readRecord(ctx, tx, tableID, rowID, revision)
 		if err != nil {
-			return nil, stableError(err)
-		}
-		decoder := json.NewDecoder(bytes.NewReader(encoded))
-		decoder.UseNumber()
-		var record Record
-		if err := decoder.Decode(&record); err != nil || record.Version != Version ||
-			record.TableID != tableID || record.RowID != rowID || record.Revision != revision {
-			return nil, historyError(result.CodeInternal, "history revision is corrupt")
-		}
-		if err := validateRecord(record); err != nil {
-			return nil, historyError(result.CodeInternal, "history revision is corrupt")
-		}
-		if record.Values == nil {
-			record.Values = map[string]any{}
+			return nil, err
 		}
 		records = append(records, record)
 	}
 	return records, nil
+}
+
+func readRecord(ctx context.Context, tx store.Tx, tableID, rowID string, revision uint64) (Record, error) {
+	encoded, err := tx.Get(ctx, recordBucket, recordKey(tableID, rowID, revision))
+	if errors.Is(err, store.ErrNotFound) {
+		return Record{}, historyError(result.CodeNotFound, "history revision was not found")
+	}
+	if err != nil {
+		return Record{}, stableError(err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	var record Record
+	if err := decoder.Decode(&record); err != nil || record.Version != Version ||
+		record.TableID != tableID || record.RowID != rowID || record.Revision != revision {
+		return Record{}, historyError(result.CodeInternal, "history revision is corrupt")
+	}
+	if err := validateRecord(record); err != nil {
+		return Record{}, historyError(result.CodeInternal, "history revision is corrupt")
+	}
+	return record, nil
 }
 
 func loadIndex(ctx context.Context, tx store.Tx, tableID, rowID string) ([]uint64, error) {
@@ -182,7 +256,7 @@ func saveIndex(ctx context.Context, tx store.Tx, tableID, rowID string, revision
 func validateRecord(record Record) error {
 	if record.DatabaseID == "" || record.TableID == "" || record.RowID == "" ||
 		record.SchemaVersion == 0 || record.Revision == 0 || record.CommitSequence == 0 ||
-		record.State == "" || record.Values == nil || record.CreatedAt.IsZero() ||
+		(record.State != "live" && record.State != "deleted") || record.Values == nil || record.CreatedAt.IsZero() ||
 		record.UpdatedAt.IsZero() || record.RecordedAt.IsZero() {
 		return historyError(result.CodeValidation, "history revision is incomplete")
 	}

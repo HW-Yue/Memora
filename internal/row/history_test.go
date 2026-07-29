@@ -7,6 +7,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
 )
@@ -165,5 +166,126 @@ func TestTransactionHistorySharesCommitSequenceAndRollsBackAtomically(t *testing
 		if historyErr != nil || len(records) != 1 || records[0].CommitSequence != 1 {
 			t.Fatalf("committed history for %s = %#v, %v", rowID, records, historyErr)
 		}
+	}
+}
+
+func TestHistoryAsOfAndCompensationRestoreDeletedRow(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer databaseStore.Close()
+	dictionary := catalog.New(databaseStore, catalog.Options{
+		IDs: &idSource{values: []string{"database", "table", "title", "body"}},
+	})
+	createSchema(t, ctx, dictionary)
+	service := row.New(databaseStore, dictionary, row.Options{
+		IDs: &idSource{values: []string{"note"}},
+	})
+	inserted, err := service.Insert(ctx, "work", "notes", map[string]any{"title": "initial"}, row.WriteOptions{
+		ExpectedSchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := service.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "revised"}, row.WriteOptions{
+		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Delete(ctx, "work", "notes", inserted.ID, row.WriteOptions{
+		ExpectedSchemaVersion: 1, ExpectedRevision: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	atRevision, err := service.AsOfRevision(ctx, "work", "notes", inserted.ID, 1)
+	if err != nil || atRevision.Values["title"] != "initial" || atRevision.Revision != 1 ||
+		atRevision.CommitSequence != inserted.CommitSequence || atRevision.State != row.StateLive {
+		t.Fatalf("AsOfRevision() = %#v, %v", atRevision, err)
+	}
+	atCommit, err := service.AsOfCommit(ctx, "work", "notes", inserted.ID, updated.CommitSequence)
+	if err != nil || atCommit.Values["title"] != "revised" || atCommit.Revision != 2 {
+		t.Fatalf("AsOfCommit() = %#v, %v", atCommit, err)
+	}
+
+	restored, err := service.Restore(ctx, "work", "notes", inserted.ID, 1, row.WriteOptions{
+		ExpectedSchemaVersion: 1, ExpectedRevision: 3,
+		Metadata: row.WriteMetadata{
+			Actor: "agent:test", Source: "history:revision-1", Reason: "undo deletion",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	if restored.Revision != 4 || restored.CommitSequence != 4 || restored.State != row.StateLive ||
+		restored.Values["title"] != "initial" {
+		t.Fatalf("restored row = %#v", restored)
+	}
+	current, err := service.Get(ctx, "work", "notes", inserted.ID)
+	if err != nil || current.Revision != 4 {
+		t.Fatalf("current row = %#v, %v", current, err)
+	}
+	records, hasMore, err := service.HistoryPage(ctx, "work", "notes", inserted.ID, 2)
+	if err != nil || !hasMore || len(records) != 2 ||
+		records[0].Revision != 4 || records[0].Operation != history.OperationCompensate ||
+		records[1].Revision != 3 {
+		t.Fatalf("HistoryPage() = %#v, hasMore=%v, %v", records, hasMore, err)
+	}
+	all, err := service.History(ctx, "work", "notes", inserted.ID)
+	if err != nil || len(all) != 4 || all[0].Values == nil ||
+		all[0].Operation != history.OperationInsert || all[3].Reason != "undo deletion" {
+		t.Fatalf("immutable history = %#v, %v", all, err)
+	}
+
+	_, err = service.Restore(ctx, "work", "notes", inserted.ID, 2, row.WriteOptions{
+		ExpectedSchemaVersion: 1, ExpectedRevision: 3,
+	})
+	assertCode(t, err, result.CodeRevisionConflict)
+}
+
+func TestHistoryProjectionAndRestoreFollowStableColumnIdentity(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer databaseStore.Close()
+	dictionary := catalog.New(databaseStore, catalog.Options{
+		IDs: &idSource{values: []string{"database", "table", "title", "body"}},
+	})
+	createSchema(t, ctx, dictionary)
+	service := row.New(databaseStore, dictionary, row.Options{
+		IDs: &idSource{values: []string{"note"}},
+	})
+	inserted, err := service.Insert(ctx, "work", "notes", map[string]any{"title": "stable ID"}, row.WriteOptions{
+		ExpectedSchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dictionary.RenameColumn(ctx, "work", "notes", "title", "Heading"); err != nil {
+		t.Fatal(err)
+	}
+
+	historical, err := service.AsOfRevision(ctx, "work", "notes", inserted.ID, 1)
+	if err != nil || historical.Values["Heading"] != "stable ID" {
+		t.Fatalf("renamed history projection = %#v, %v", historical, err)
+	}
+	if _, exists := historical.Values["title"]; exists {
+		t.Fatalf("history exposed deprecated name: %#v", historical.Values)
+	}
+	restored, err := service.Restore(ctx, "work", "notes", inserted.ID, 1, row.WriteOptions{
+		ExpectedSchemaVersion: 2, ExpectedRevision: 1,
+	})
+	if err != nil || restored.SchemaVersion != 2 || restored.Revision != 2 ||
+		restored.Values["Heading"] != "stable ID" {
+		t.Fatalf("restored renamed row = %#v, %v", restored, err)
 	}
 }

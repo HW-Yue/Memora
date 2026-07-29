@@ -30,6 +30,8 @@ F16a 增加 transaction-scoped Row API：同一个 scope 内的 Catalog 绑定�
 
 F17a 起每次 Row mutation 还在同一 transaction 内追加 [History Store v1](./history-store-v1.md)。当前 Row 保存最近一次 `commit_sequence`；同一显式事务修改多个 Row 时 sequence 相同，而每个 Row 的 revision 独立递增。
 
+F17b 的补偿恢复复用相同 transaction scope 和 expected schema/revision guard。它可以从 tombstone 恢复 live snapshot，但结果永远是新的 COMPENSATE revision，不会把当前 revision 倒退。
+
 ## Schema 与值校验
 
 每次写入必须携带 `expected_schema_version`。Row Service 在同一个 Store transaction 中读取 Catalog 和写 Row；版本不一致返回 `revision_conflict`。

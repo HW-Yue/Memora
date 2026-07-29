@@ -72,13 +72,21 @@
 
 提交：`feat(F17a): append semantic row history`
 
-## F17b History 查询与补偿
+## F17b History Row API
 
-先测：AS OF revision/commit sequence、SHOW HISTORY、补偿撤销和删除后恢复；补偿产生新 revision，不改写旧历史。
+先测：AS OF revision/commit sequence、分页 History、补偿撤销和删除后恢复；补偿产生新 revision，不改写旧历史。
 
-开发：把 History read/compensate 接入 Row 与 MSQL Executor，返回 commit sequence 和结构化 provenance。
+开发：实现 transaction-scoped History read/compensate，并按当前稳定 Column ID/Schema 投影 snapshot。
 
 提交：`feat(F17b): query and compensate row history`
+
+## F17c MSQL History
+
+先测：参数化 AS OF、SHOW HISTORY 有界输出、RESTORE guard/provenance、Batch 回滚与注入文本。
+
+开发：冻结 History AST/Grammar，把查询与补偿接入 MSQL Executor 和 Result Envelope。
+
+提交：`feat(F17c): execute MSQL history operations`
 
 ## F18 结构化关系
 
