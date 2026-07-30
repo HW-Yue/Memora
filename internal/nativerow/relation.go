@@ -23,6 +23,26 @@ func (repository *Repository) PutRelation(value relation.Relation) error {
 	return repository.file.Put(nativestore.ObjectKindRelation, relationSchemaVersion, recordID, payload)
 }
 
+func (repository *Repository) StageRelation(transaction *nativestore.Transaction, value relation.Relation) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	if value.Revision > 1 {
+		latest, err := repository.GetRelation(value.ID, true)
+		if err != nil {
+			return err
+		}
+		if latest.State == relation.StateDeleted || value.Revision != latest.Revision+1 || value.Source != latest.Source || value.Target != latest.Target || !value.CreatedAt.Equal(latest.CreatedAt) {
+			return ErrRevisionConflict
+		}
+	}
+	payload, err := encodeRelation(value)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRelation, relationSchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
+}
+
 func (repository *Repository) GetRelation(id string, includeDeleted bool) (relation.Relation, error) {
 	ids, err := repository.file.IDs(nativestore.ObjectKindRelation)
 	if err != nil {

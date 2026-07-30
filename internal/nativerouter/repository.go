@@ -55,6 +55,33 @@ func (repository *Repository) CreateChild(id, parentID, name string, kind router
 }
 
 func (repository *Repository) Attach(leafID string, locator router.Locator, membershipRevision uint64) error {
+	value := router.Membership{LeafID: leafID, MembershipRevision: membershipRevision, Locator: locator}
+	if err := repository.validateMembership(value); err != nil {
+		return err
+	}
+	payload, err := encodeMembership(value)
+	if err != nil {
+		return err
+	}
+	return repository.file.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload)
+}
+
+func (repository *Repository) StageMembership(transaction *nativestore.Transaction, value router.Membership) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	if err := repository.validateMembership(value); err != nil {
+		return err
+	}
+	payload, err := encodeMembership(value)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload)
+}
+
+func (repository *Repository) validateMembership(value router.Membership) error {
+	leafID, locator, membershipRevision := value.LeafID, value.Locator, value.MembershipRevision
 	leaf, err := repository.Get(leafID)
 	if err != nil {
 		return err
@@ -62,11 +89,15 @@ func (repository *Repository) Attach(leafID string, locator router.Locator, memb
 	if leaf.Kind != router.KindLeaf || locator.DatabaseID != leaf.DatabaseID || locator.TableID != leaf.TableID || locator.RowID == "" || locator.Revision == 0 || membershipRevision == 0 {
 		return fmt.Errorf("%w: invalid leaf membership", ErrInvalid)
 	}
-	payload, err := encodeMembership(router.Membership{LeafID: leafID, MembershipRevision: membershipRevision, Locator: locator})
-	if err != nil {
-		return err
+	return nil
+}
+
+func membershipRecordID(value router.Membership) string {
+	id := value.LeafID + "@" + value.RowID
+	if value.MembershipRevision > 1 {
+		id += fmt.Sprintf("@%020d", value.MembershipRevision)
 	}
-	return repository.file.Put(nativestore.ObjectKindRouteMembership, schemaVersion, leafID+"@"+locator.RowID, payload)
+	return id
 }
 
 func (repository *Repository) Get(id string) (router.Node, error) {
@@ -199,7 +230,7 @@ func (repository *Repository) memberships() ([]router.Membership, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]router.Membership, 0, len(ids))
+	latest := make(map[string]router.Membership)
 	for _, id := range ids {
 		payload, err := repository.file.Get(nativestore.ObjectKindRouteMembership, id)
 		if err != nil {
@@ -209,7 +240,17 @@ func (repository *Repository) memberships() ([]router.Membership, error) {
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, value)
+		key := value.LeafID + "\x00" + value.RowID
+		current, ok := latest[key]
+		if !ok || value.MembershipRevision > current.MembershipRevision {
+			latest[key] = value
+		}
+	}
+	result := make([]router.Membership, 0, len(latest))
+	for _, value := range latest {
+		if !value.Deleted {
+			result = append(result, value)
+		}
 	}
 	return result, nil
 }
@@ -269,6 +310,11 @@ func encodeMembership(value router.Membership) ([]byte, error) {
 	}
 	encoded = binary.LittleEndian.AppendUint64(encoded, value.Revision)
 	encoded = binary.LittleEndian.AppendUint64(encoded, value.MembershipRevision)
+	if value.Deleted {
+		encoded = append(encoded, 1)
+	} else {
+		encoded = append(encoded, 0)
+	}
 	return encoded, nil
 }
 
@@ -283,10 +329,14 @@ func decodeMembership(payload []byte) (router.Membership, error) {
 		return router.Membership{}, err
 	}
 	membershipRevision, err := input.u64()
-	if err != nil || input.offset != len(payload) || rowRevision == 0 || membershipRevision == 0 {
+	if err != nil {
+		return router.Membership{}, err
+	}
+	deleted, err := input.byte()
+	if err != nil || deleted > 1 || input.offset != len(payload) || rowRevision == 0 || membershipRevision == 0 {
 		return router.Membership{}, ErrCorrupt
 	}
-	return router.Membership{LeafID: texts[0], MembershipRevision: membershipRevision, Locator: router.Locator{DatabaseID: texts[1], TableID: texts[2], RowID: texts[3], Revision: rowRevision}}, nil
+	return router.Membership{LeafID: texts[0], MembershipRevision: membershipRevision, Deleted: deleted == 1, Locator: router.Locator{DatabaseID: texts[1], TableID: texts[2], RowID: texts[3], Revision: rowRevision}}, nil
 }
 
 func encodeTexts(values []string) ([]byte, error) {

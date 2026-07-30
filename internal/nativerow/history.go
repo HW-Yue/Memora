@@ -25,12 +25,27 @@ type historyMetadata struct {
 }
 
 func (repository *Repository) AppendHistory(value row.Row, operation history.Operation, metadata row.WriteMetadata, recordedAt time.Time) error {
-	metadata = normalizedMetadata(metadata)
-	payload, err := encodeHistory(historyMetadata{rowID: value.ID, revision: value.Revision, operation: operation, actor: metadata.Actor, source: metadata.Source, reason: metadata.Reason, recordedAt: recordedAt.UTC()})
+	payload, err := historyPayload(value, operation, metadata, recordedAt)
 	if err != nil {
 		return err
 	}
 	return repository.file.Put(nativestore.ObjectKindHistory, historySchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
+}
+
+func (repository *Repository) StageHistory(transaction *nativestore.Transaction, value row.Row, operation history.Operation, metadata row.WriteMetadata, recordedAt time.Time) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	payload, err := historyPayload(value, operation, metadata, recordedAt)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindHistory, historySchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
+}
+
+func historyPayload(value row.Row, operation history.Operation, metadata row.WriteMetadata, recordedAt time.Time) ([]byte, error) {
+	metadata = normalizedMetadata(metadata)
+	return encodeHistory(historyMetadata{rowID: value.ID, revision: value.Revision, operation: operation, actor: metadata.Actor, source: metadata.Source, reason: metadata.Reason, recordedAt: recordedAt.UTC()})
 }
 
 func (repository *Repository) History(databaseID, tableID, rowID string, limit int) ([]history.Record, bool, error) {

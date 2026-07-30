@@ -37,6 +37,35 @@ func (repository *Repository) Write(value row.Row) error {
 }
 
 func (repository *Repository) WriteRevision(value row.Row) error {
+	if err := repository.validateRevision(value); err != nil {
+		return err
+	}
+	return repository.writeRecord(value, revisionRecordID(value.ID, value.Revision))
+}
+
+func (repository *Repository) StageRevision(transaction *nativestore.Transaction, value row.Row) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	if err := repository.validateRevision(value); err != nil {
+		return err
+	}
+	table, err := repository.table(value.DatabaseID, value.TableID)
+	if err != nil {
+		return err
+	}
+	normalized, err := normalize(value, table)
+	if err != nil {
+		return err
+	}
+	payload, err := encode(normalized, table)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRow, recordSchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
+}
+
+func (repository *Repository) validateRevision(value row.Row) error {
 	latest, err := repository.ReadIncludingDeleted(value.ID)
 	if err != nil {
 		return err
@@ -46,7 +75,7 @@ func (repository *Repository) WriteRevision(value row.Row) error {
 		!value.CreatedAt.Equal(latest.CreatedAt) {
 		return ErrRevisionConflict
 	}
-	return repository.writeRecord(value, revisionRecordID(value.ID, value.Revision))
+	return nil
 }
 
 func (repository *Repository) writeRecord(value row.Row, recordID string) error {

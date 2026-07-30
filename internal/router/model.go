@@ -41,6 +41,7 @@ type Locator struct {
 type Membership struct {
 	LeafID             string `json:"leaf_id"`
 	MembershipRevision uint64 `json:"membership_revision,omitempty"`
+	Deleted            bool   `json:"deleted,omitempty"`
 	Locator
 }
 
