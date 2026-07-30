@@ -4,8 +4,8 @@
 [小 Feature TDD 与合入协议](./feature-tdd-protocol.md)和
 [当前 Feature 规划](./next-feature-plan.md)执行。
 
-当前进度：F52–F80 已完成原生逻辑闭环；F51 的 Vector/cosine 结论已撤销。
-F81 是待 Review 的 16 KiB Page Codec，不自动授权 F82 Page File Manager。
+当前进度：F52–F81 已完成；F51 的 Vector/cosine 结论已撤销。
+F82 Page File Manager 是下一项。
 
 ## 产品目标
 

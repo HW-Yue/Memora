@@ -56,6 +56,9 @@ Record Bytes
 Checksum / Page LSN
 ```
 
+固定 64-byte Header、Page Type、CRC32C 和编解码错误见
+[Page Codec v1](./page-codec-v1.md)。slotted payload 属于后续 Feature。
+
 Slot 可移动而逻辑 `row_id` 不变。B+ Tree 叶子优先只保存紧凑键、`row_id` 和 Record 定位，不内联完整可变正文。
 
 Record 变大且当前 Page 空间不足时，引擎可以迁移并更新稳定定位，不在原位置强行
@@ -102,7 +105,7 @@ Tablespace、Data File、Page、Slot、Segment 和 Record 地址都不得进入 
 - 8 KiB 页内阈值以及 overflow 的硬上限；
 - Table Data File 的滚动大小、编号、预分配和回收策略；
 - `pread/pwrite` 稳定后是否增加局部 mmap；
-- checksum、压缩和加密的粒度。
+- 压缩和加密的粒度。
 
 ## 关联
 
