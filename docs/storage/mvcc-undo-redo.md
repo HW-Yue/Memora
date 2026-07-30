@@ -22,7 +22,7 @@
 - 显式事务固定开始时的 snapshot，并读取自己的暂存写；
 - 写入前取得 Row、Table/Schema、Route 等明确对象的排他写锁；
 - autocommit 在语句终态释放锁，显式事务在 commit/rollback 后释放；
-- 多对象写按稳定 key 排序并使用非等待 try-lock，冲突立即失败；
+- 多对象写按稳定 key 排序；首选非等待 try-lock，冲突策略待 F82 Review；
 - Row revision 先写入事务缓冲，只有完整 COMMIT 后进入 Row Directory；
 - reader 依据 snapshot commit sequence 选择可见 immutable revision；
 - rollback 丢弃未发布记录，不需要用物理 Undo 恢复 in-place Page；

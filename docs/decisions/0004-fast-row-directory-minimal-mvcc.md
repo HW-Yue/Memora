@@ -41,7 +41,6 @@ Memora 是本地个人数据库，常态是一个 daemon、单 writer、少量�
    - 显式事务在开始时固定 snapshot，并能读取自己的未提交写；
    - 对 Row、Table/Schema、Route 等明确逻辑对象使用排他写锁；
    - autocommit 持锁到语句终态，显式事务持锁到 commit/rollback；
-   - 多对象写按稳定 key 排序后 try-lock，冲突立即返回，不建立等待环；
    - immutable Row revisions 与 commit marker 决定可见性；
    - rollback 丢弃未发布写，不先实现 in-place 更新和物理 Undo chain。
 8. 长期语义 History 与 MVCC 分离：History 永久保存来源和业务 revision；MVCC
@@ -55,6 +54,9 @@ instance、Page latch、doublewrite、change buffer、adaptive hash、Group Comm
 
 这些能力只有具体用户故事和 benchmark 证明需要时才单独 Review。未来增加 Page、
 Redo 或 Undo 不能改变 RowID、MSQL、Route locator 或 History 的产品语义。
+
+F82 当前首选多对象写按稳定 key 排序后非等待 try-lock，冲突立即返回，从而不建立
+等待环；这是待用户 Review 的实现策略，不属于本 ADR 已确认的产品边界。
 
 ## 结果
 

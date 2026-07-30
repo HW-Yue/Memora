@@ -174,9 +174,9 @@ B+ Tree、Page latch、gap/next-key lock、范围锁、锁等待、死锁检测�
 snapshot commit sequence 实现最小可见性，不预先绑定物理 Undo/Redo 方案。
 105. RowID 点查前的 Database/Table/Schema 解析也不能每次重读完整 Catalog；
 daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原子发布。
-106. 第一阶段写锁按稳定对象 ID 加锁，多对象 Mutation 按 key 排序并 fail-fast
-try-lock；autocommit 持有到语句终态，显式事务持有到 commit/rollback。普通
-MVCC reader 不取该锁。
+106. 第一阶段写锁按稳定对象 ID 加排他锁；autocommit 持有到语句终态，显式事务
+持有到 commit/rollback，普通 MVCC reader 不取该锁。冲突 fail-fast 还是有界
+等待仍需在 F82 Review 时确认。
 
 ## 尚需验证
 
