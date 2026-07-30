@@ -3,8 +3,8 @@
 状态：执行中。
 
 当前进度：F00–F50 与 Phase A/B/C 退出测试已有实现；F51 结论已撤销。
-当前下一项为 F52 原生极简文件格式；随后接通现有逻辑层、迁移并删除 SQLite，
-再完成 Table 级语义树产品对账。
+F52 原生 Record Put/Get 已完成。当前下一项为 F53 真实 Catalog/Row Put/Get，
+F54 立即接通 MSQL INSERT/SELECT。事务与恢复在三个闭环之后实现。
 
 ## 产品目标
 
@@ -22,12 +22,12 @@ Codex / Claude Code 安装 Skill
 
 ## 实现顺序
 
-1. 冻结 `.memora` Header、事务 Frame 和 typed logical record；
-2. 实现追加式原生文件、提交、恢复和损坏拒绝；
-3. 持久化 Catalog、Row、History、Relation 与 Table Router；
-4. 接通现有 MSQL/服务层，迁移旧数据并删除 SQLite；
-5. 完成 Table 级语义树逐层 SQL 导航和 AI 维护旅程；
-6. 通过产品故事门后，再以实测证据决定 Page/B+ Tree/MVCC 等优化。
+1. 原生文件 Put → close/reopen → Get；
+2. 真实 Catalog/Row encode → write → reopen → decode；
+3. MSQL CREATE/INSERT → restart → SELECT by RowID；
+4. 逐项接入 Update/Delete/History/Relation/Table Router；
+5. 在已接通闭环上增加事务与恢复，再迁移并删除 SQLite；
+6. 完成 Table 级语义树和产品故事门，按证据决定其他优化。
 
 SQLite 已进入退出流程，只作为迁移来源临时保留，不再新增依赖或能力。具体顺序
 见 [ADR-0003](../decisions/0003-native-minimal-store-first.md)。MSQL、Data

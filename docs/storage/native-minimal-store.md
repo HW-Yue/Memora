@@ -1,123 +1,105 @@
 # 原生极简存储格式
 
-状态：讨论稿。原生极简底座优先已确认；append-only 布局、字段编号与精确二进制
-golden 须在 F52 开工前确认并冻结。
+状态：F52 第一闭环已实现；`Put → Close → Reopen → Get` 已通过，事务与恢复后置。
 
-## 目标
+## 当前唯一目标
 
-先得到一个 Memora 自己可读写、可校验、可恢复的最小持久化核心。它不是 SQLite
-包装，也不先实现 B+ Tree 数据库。AI 仍只操作 MSQL 和逻辑对象。
+把一个带稳定 ID 和类型的 Record 写进 Memora 自有文件，关闭文件，重新打开，
+再按同一 ID 取出完全相同的内容。
+
+F52 不证明数据库已经可用，只证明最底层字节闭环真实成立。闭环通过前不实现
+事务、rollback、崩溃恢复、MVCC、Undo/Redo、Binlog、Page、B+ Tree 或 Buffer
+Pool。
 
 ## 磁盘位置
 
 ```text
 <instance>/
 ├── instance.meta
-├── system/
-│   └── system.memora
-├── databases/
-│   └── db_<stable-id>/
-│       └── database.memora
+├── system/system.memora
+├── databases/db_<stable-id>/database.memora
 └── tmp/
 ```
 
-- `instance.meta`：只保存启动所需身份与 format version；
-- `system.memora`：Database catalog、授权、审计和 Instance 级配置；
-- `database.memora`：一个逻辑 Database 的全部权威逻辑记录与 Table Router；
-- `tmp/`：迁移、校验和 compaction 的可丢弃临时输出。
+F52 只在测试临时目录创建一个 `database.memora`。它不读取、修改或迁移现有
+SQLite 文件，也不切换 daemon 默认后端。
 
-第一阶段不创建 `redo/`、`undo/`、`binlog/`、per-table Tablespace 或独立索引
-generation 文件。需要时由后续格式版本增加，不能预留一堆空架构冒充实现。
+## Bootstrap v0 文件
 
-## 文件结构
-
-每个 `.memora` 文件由固定 Header 和只追加 Transaction Frame 组成：
+文件只包含一个 Header 和连续 Record Frame：
 
 ```text
 File Header
-Transaction BEGIN
-  Logical Record Frame...
-Transaction COMMIT
-Transaction BEGIN
-  ...
-Transaction COMMIT
+Record Frame
+Record Frame
+...
 ```
 
-Header v1 固定 64 字节：
+File Header v0 固定 32 字节：
 
 ```text
-magic[8] | format_version u32 | file_kind u16 | header_size u16
-flags u32 | created_at i64 | file_uuid[16] | scope_uuid[16] | crc32 u32
+magic[8] | format_version u16 | header_size u16
+file_kind u16 | flags u16 | file_uuid[16]
 ```
 
-整数使用 little-endian。magic、版本、类型、长度或 CRC 不符时拒绝打开，不能
-猜测、静默升级或覆盖。
-
-Frame Header v1 固定 32 字节：
+Record Header v0 固定 24 字节：
 
 ```text
-frame_length u32 | frame_type u16 | flags u16
-transaction_id u64 | commit_sequence u64
-payload_crc32 u32 | header_crc32 u32
+record_length u32 | object_kind u16 | flags u16
+record_schema_version u32 | id_length u32
+payload_length u32 | payload_crc32 u32
 ```
 
-`frame_length` 包含 Header 与 payload。未知 frame type 按版本兼容规则跳过或拒绝，
-不能当成已知记录解码。
+Header 后依次写 stable ID bytes 和 payload bytes。整数使用 little-endian，ID 和
+Text 使用 UTF-8。`record_length = 24 + id_length + payload_length`。
 
-## 逻辑 Record
-
-payload 使用 Memora 自己的 typed field 编码，不保存 SQL、Go struct dump 或
-SQLite row。每条 Record 具有：
+## 最小 API
 
 ```text
-object_kind | record_schema_version | stable_object_id | fields[]
+Create(path, file_kind) → File
+Open(path) → File
+Put(object_kind, schema_version, stable_id, payload)
+Get(object_kind, stable_id) → payload
+Close()
 ```
 
-每个 field 使用稳定数字 `field_id + logical_type + flags + length + bytes`；字段按
-ID 排序，Text 为 UTF-8。首批 object kind：
+- v0 只允许单进程、单 writer；
+- `Put` 每次追加一个完整 Record Frame；
+- v0 同一 `object_kind + stable_id` 重复写入返回错误，不定义 update；
+- `Open` 顺序扫描完整 Record，建立 ID → file offset 内存表；
+- `Get` 按 offset 读取并校验 kind、ID、长度和 payload CRC；
+- `Close` 只负责关闭文件；F52 不承诺掉电 durability。
 
-- Database/Table/Column catalog；
-- Row revision 与逻辑 tombstone；
-- Relation revision；
-- Table Route node 与完整 Row membership；
-- Database 配置与 commit metadata；
-- audit event（仅 `system.memora`）。
+## 错误边界
 
-逻辑类型复用现有 NULL、Bool、Integer、Time、Text、Bytes、Stable ID 和列表契约。
+- magic、版本、长度、ID、CRC 或重复 ID 不合法时返回稳定错误；
+- 文件中存在半条 Record 时拒绝打开，不尝试截断或修复；
+- decoder 必须先校验长度上限，再分配内存；
+- 不识别的 format version 拒绝打开；
+- 这些是读取正确性检查，不是崩溃恢复。
 
-## 提交与恢复
+## 后续闭环
 
-- 单 writer 为一个事务连续追加 BEGIN、Record、COMMIT；
-- COMMIT 保存本事务 frame 数、范围和事务摘要；
-- COMMIT 完整写入并 `fsync` 后事务才成功；
-- 启动时顺序扫描，只发布校验完整且有 COMMIT 的事务；
-- 崩溃留下的半个 frame 或无 COMMIT 尾部不可见，可在持有排他锁后截断；
-- 已提交区间出现 CRC、sequence 或引用错误时报告 corrupt，不带病启动。
+1. **F52 字节闭环**：写测试 Record，close/reopen 后按 ID 读回；
+2. **F53 逻辑闭环**：用同一格式写入真实 Catalog 与 Row typed payload；
+3. **F54 产品最小闭环**：MSQL `CREATE/INSERT → restart → SELECT by RowID`；
+4. **F55 业务接宽**：Update/Delete/History/Relation/Table Router；
+5. **F56 正确性增强**：再增加事务原子性、fsync 边界和崩溃恢复。
 
-早期版本在打开时重建有界内存目录：stable ID → 最新 Record offset、Route child、
-leaf membership 与反向 membership。它是确定性执行缓存，不是 AI 语义判断，也不
-进入模型上下文。
-
-## 演化边界
-
-append-only 文件增长后，compaction 写入新的完整 `.memora` 文件，校验后原子
-替换；长期 History 不能被错误丢弃。只有实测证明启动扫描、随机读取或并发成为
-瓶颈，才引入 checkpoint、Page、B+ Tree、Buffer Pool 或独立日志。
-
-无论物理结构怎样升级，MSQL、稳定 ID、revision、Table Router 和 logical
-snapshot 不能改变。
+后续版本可以改变物理 format version，但必须提供明确迁移；不能为了避免升级而把
+F52 重新膨胀成完整内核。
 
 ## F52 验收
 
-- Header/Frame/typed field 的 golden bytes；
-- 空文件、单事务、多事务和 Unicode reopen；
-- 每个字节截断点、CRC 损坏、未知版本和非法长度；
-- 未提交尾部不可见，已提交事务不丢失；
-- 相同逻辑输入得到确定性 payload；
+- 空文件 create/open；
+- ASCII、中文、空 payload 与边界长度 Put/Get；
+- close/reopen 后 byte-for-byte 相同；
+- 多个不同 ID 可读取，重复 ID 被拒绝；
+- magic/version/length/CRC 损坏得到稳定错误；
 - fuzz decode 不 panic、不越界、不无限分配。
 
 ## 关联
 
-- [ADR-0003：原生极简 Store 优先](../decisions/0003-native-minimal-store-first.md)
+- [F52 开工门](../planning/f52-native-format-gate.md)
+- [ADR-0003](../decisions/0003-native-minimal-store-first.md)
 - [逻辑类型与字段预算](../data/logical-types.md)
-- [Logical Snapshot v1](./logical-snapshot-v1.md)

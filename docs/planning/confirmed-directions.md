@@ -79,16 +79,16 @@
 内存目录，不实现物理 Page Buffer Pool。AI Route Frame 与任何物理缓存始终分离；
 Page/Buffer Pool 只有实测需要时才独立设计。
 64. 对 MySQL/InnoDB 已有成熟实现且不与 Memora 的 AI-native 边界冲突的常规数据库机制，不逐项重新发明；讨论时先用一个范围明确的是非题确认是否参考 MySQL，再只讨论 Memora 必须偏离的部分。
-65. 原生 v1 使用权威 append-only Transaction Frame，不建立独立 Redo、Undo 或
-Binlog；完整 COMMIT + fsync 是首个 durability 边界，未提交崩溃尾部不可见。
-66. 每次事务使用本地 transaction ID 和单调 commit sequence；二者与 Row
-revision 分离。GTID、LSN 和跨设备位点在真正实现对应能力时另行增加。
-67. 原生 v1 先支持单 writer、多 reader 和已提交 snapshot；更多 SQL isolation、
-record/gap lock 与死锁检测以后按真实并发需求独立设计。
-68. 原生 v1 不做 Redo/Binlog 两阶段提交或 Group Commit；一个 `.memora` 文件内
-连续事务帧和一次 commit fsync 提供最小原子提交。
-69. 长期语义 revision 作为 typed History record 持久化；第一版不实现物理
-MVCC/Undo/Purge，不能用它们解释尚不存在的恢复语义。
+65. F52 原生 bootstrap 只实现单 Record append、close/reopen 和按稳定 ID Get；
+不建立事务帧、COMMIT、fsync durability 或崩溃恢复承诺。
+66. transaction ID、commit sequence、GTID 和 LSN 都在真实 Record 与 MSQL
+闭环通过后再逐项加入，不能预埋未验证语义。
+67. F52 只支持单进程、单 writer；并发 reader、snapshot、SQL isolation、锁和
+死锁检测以后按真实并发需求设计。
+68. 半条 Record、CRC 损坏和未知版本在 F52 只返回稳定错误，不截断、不修复、
+不声称恢复；F56 才定义原子提交与恢复。
+69. History 在 Catalog/Row 与 MSQL 闭环之后作为独立 typed record 接入；物理
+MVCC/Undo/Purge 继续后置。
 70. Router 正式定义为 Agent 语义目录索引：每个 Table 拥有一棵多层多叉树，
 内部节点提供短语义分支，叶子节点保存有限的数据项 ID/locator；同一 `row_id`
 可被多个叶子引用但不复制 Row。AI 逐层查到候选 ID，最终按 ID 用 SQL 回表，
@@ -112,13 +112,13 @@ DELETE/SPLIT/MERGE 能失效全部叶子引用。
 `databases/db_<id>/database.memora` 与 `tmp/`；首版不创建 redo/undo/binlog、
 Tablespace 或独立索引目录。
 78. `databases/` 下每个逻辑库的物理子目录使用不可变 `database_id`，可读名称只由 Data Dictionary 映射；rename、同名库、包安装和设备同步都不能依赖或触发目录改名，ID 的具体编码仍待确定。
-79. `database.memora` 第一版以追加式已提交 Transaction Frame 统一保存 Catalog、
-Row revision、History、Relation、Table Route node/membership 和配置；逻辑类型
+79. `database.memora` 从单 Record Frame 起步：F52 只存测试 Record，F53 才存
+真实 Catalog/Row，F55 再逐项加入 History、Relation 和 Table Route。逻辑类型
 不能退化为 SQLite schema、Go struct dump 或无语义 bucket 文件格式。
 80. 第一版不做 per-table Tablespace、B+ Tree、固定 Page 或物理 Buffer Pool；
 打开文件时重建 stable ID、Route child 和 membership 的有界内存定位目录。
-81. 长期语义 History 是权威 record，append-only compaction 不得丢弃；它与
-事务帧的崩溃尾部处理分工明确，不依赖 Undo Purge。
+81. 长期语义 History 接入后是权威 record，未来 compaction 不得丢弃；F52–F54
+不以尚未实现的 History、事务或 Undo 作为通过条件。
 82. Page、B+ Tree、checkpoint、Buffer Pool、MVCC、Undo/Redo、Binlog 和独立
 index generation 全部以后按实测瓶颈单独立项，不能预先固化进 format v1。
 83. 数据库不内置 `candidate/disputed` 等语义冲突状态，也不理解、裁决或自动合并互相矛盾的内容。引擎只检测 revision、锁、唯一键、外键、类型等机械冲突并结构化报错；Skill 负责查询并向用户并列展示语义冲突，得到用户指示后重新生成 SQL 写入。
@@ -153,12 +153,16 @@ SHOW ROUTES/UNDER → OPEN ROUTE → SELECT by RowID`；MSQL 是 Memora 的 SQL
 [产品与用户故事门禁](./feature-product-gate.md)。持久化后端、查询主路径、
 索引算法、Provider 或许可等架构选择必须事前向用户明确披露并获得确认。
 97. F51 的发布门结论因使用字符向量/cosine 且未验证逐层 AI 导航而撤销。
-98. 原生底座顺序改为 F52 格式 → F53 事务文件 → F54 typed repository →
-F55 接现有服务 → F56 迁移/切默认 → F57 删除 SQLite → F58 Table Router →
-F59 新产品门；详见 [ADR-0003](../decisions/0003-native-minimal-store-first.md)。
+98. 原生底座顺序改为 F52 Record Put/Get → F53 Catalog/Row Put/Get → F54
+MSQL INSERT/SELECT → F55 接宽对象 → F56 事务/恢复 → F57 迁移/切默认 →
+F58 删除 SQLite → F59 Table Router → F60 产品门；详见
+[ADR-0003](../decisions/0003-native-minimal-store-first.md)。
 99. SQLite 只作为迁移来源临时保留；原生 snapshot 等价、回读和回滚证据完成后，
 删除 driver、`internal/store/sqlite`、`.sqlite` 文件名和测试耦合。Unix socket/IPC
 是否删除属于另一决策，在用户明确确认前不能与 SQLite 清理混为一件事。
+100. F52 已完成最小自有文件闭环：32-byte File Header、24-byte Record Header、
+单 Record append、close/reopen、ID → offset 和 Get；没有事务、恢复、并发或
+SQLite 接入。下一项只能是 F53 真实 Catalog/Row round-trip。
 
 ## 尚需验证
 

@@ -64,15 +64,15 @@ JSON 错误。底层可以是可替换的简化实现，但不得定义上层产
 退出条件：连续 50 次以上自主建模不出现未报告的结构熵增；逐层语义树召回、
 Row 拆分重组和冷启动接管通过产品故事门。
 
-## Phase 4：原生极简存储底座（当前优先）
+## Phase 4：原生写入/读取闭环（当前优先）
 
 先实现：
 
-- `.memora` Header、事务 Frame、typed logical record 和 CRC；
-- append-only commit、fsync、reopen、崩溃尾部忽略和损坏拒绝；
-- Catalog、Row revision、History、Relation 与 Table Router 持久化；
-- 现有 MSQL 接入、SQLite snapshot 迁移、回读验证与默认切换；
-- 删除主程序中的 SQLite driver、文件名和测试耦合。
+- `.memora` Header、单 Record Frame、Put/Get 和 close/reopen；
+- 真实 Catalog/Row typed payload 的写入/读取；
+- MSQL INSERT → restart → SELECT by RowID；
+- 再逐项接入其他对象，之后才增加事务与崩溃恢复；
+- 最后执行 SQLite snapshot 迁移、回读验证、默认切换和清理。
 
 退出条件：新 Instance 只使用自有文件；旧数据可迁移；CRUD、History、Relation、
 Table Router、重启和损坏拒绝全部运行于原生底座。
