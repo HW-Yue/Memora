@@ -24,7 +24,7 @@ Memora 的基本可分发对象不是聊天记录、Markdown 目录或向量索�
 Codex/Claude + Memora Skill    进入当前 Instance 的全局问答
 memora exec <msql>             执行 Skill 生成的确定性操作
 
-memora pack work_x --by Alice -o work_x.memora-db
+memora pack work_x --by Alice -o /absolute/exports/work_x.memora-db
 memora install work_x.memora-db --trusted
 memora open work_x.memora-db   校验并只读审阅 manifest
 ```

@@ -10,6 +10,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 func (engine *Engine) relate(
@@ -82,6 +83,15 @@ func (engine *Engine) unrelate(
 	if !strings.HasPrefix(relationID, "rel_") || strings.TrimPrefix(relationID, "rel_") == "" {
 		return Output{}, executeError(result.CodeValidation, "relation ID must use the rel_ prefix")
 	}
+	if _, present := security.AuthorizationFrom(ctx); present {
+		existing, err := engine.rows.GetRelation(ctx, relationID)
+		if err != nil {
+			return Output{}, normalizeError(err)
+		}
+		if err := engine.authorizeRelation(ctx, existing); err != nil {
+			return Output{}, err
+		}
+	}
 	deleted, err := engine.rows.DeleteRelation(ctx, relationID, options.ExpectedRevision)
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -131,6 +141,11 @@ func (engine *Engine) showRelations(
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
+	for _, value := range relations {
+		if err := engine.authorizeRelation(ctx, value); err != nil {
+			return Output{}, err
+		}
+	}
 	truncated := uint64(len(relations)) > limit
 	if truncated {
 		relations = relations[:limit]
@@ -164,6 +179,13 @@ func (engine *Engine) showRelations(
 		})
 	}
 	return output, nil
+}
+
+func (engine *Engine) authorizeRelation(ctx context.Context, value relation.Relation) error {
+	if err := engine.authorizeDatabaseReference(ctx, value.Source.DatabaseID); err != nil {
+		return err
+	}
+	return engine.authorizeDatabaseReference(ctx, value.Target.DatabaseID)
 }
 
 func relationshipString(

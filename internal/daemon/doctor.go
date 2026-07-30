@@ -5,17 +5,19 @@ import (
 	"encoding/json"
 
 	"github.com/HW-Yue/Memora/internal/ipc"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/snapshot"
 )
 
 type DoctorReport struct {
-	Status          string `json:"status"`
-	SnapshotVersion string `json:"snapshot_version"`
-	SnapshotHash    string `json:"snapshot_hash"`
-	Databases       int    `json:"databases"`
-	Rows            int    `json:"rows"`
-	History         int    `json:"history"`
-	Relations       int    `json:"relations"`
+	Status          string                `json:"status"`
+	SnapshotVersion string                `json:"snapshot_version"`
+	SnapshotHash    string                `json:"snapshot_hash"`
+	Databases       int                   `json:"databases"`
+	Rows            int                   `json:"rows"`
+	History         int                   `json:"history"`
+	Relations       int                   `json:"relations"`
+	Security        security.DoctorReport `json:"security"`
 }
 
 func Doctor(ctx context.Context, dataDir string) (DoctorReport, error) {
@@ -36,6 +38,10 @@ func Doctor(ctx context.Context, dataDir string) (DoctorReport, error) {
 }
 
 func (handler *databaseHandler) doctor(ctx context.Context) (DoctorReport, error) {
+	securityReport, err := handler.security.Doctor(ctx)
+	if err != nil {
+		return DoctorReport{}, err
+	}
 	encoded, err := snapshot.New(handler.store).Export(ctx)
 	if err != nil {
 		return DoctorReport{}, err
@@ -61,5 +67,6 @@ func (handler *databaseHandler) doctor(ctx context.Context) (DoctorReport, error
 		Status: "healthy", SnapshotVersion: snapshot.Version, SnapshotHash: hash,
 		Databases: len(document.Catalog.Databases), Rows: len(document.Rows),
 		History: len(document.History), Relations: len(document.Relations.Current),
+		Security: securityReport,
 	}, nil
 }

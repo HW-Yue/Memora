@@ -17,11 +17,13 @@ import (
 	"github.com/HW-Yue/Memora/internal/config"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/daemon"
+	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
 	"github.com/HW-Yue/Memora/internal/skillschema"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
@@ -151,6 +153,7 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 func runWikiExport(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
 	var daemonArgs []string
 	var root, profilePath string
+	var databases []string
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
 		case "--data-dir":
@@ -171,15 +174,24 @@ func runWikiExport(args []string, stdout, stderr io.Writer, dependencies Depende
 			}
 			profilePath = args[index+1]
 			index++
+		case "--database":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--database requires a Database name or ID")
+			}
+			databases = append(databases, args[index+1])
+			index++
 		default:
 			return usageError(stderr, fmt.Sprintf("unknown export option: %q", args[index]))
 		}
 	}
-	if root == "" || profilePath == "" {
-		return usageError(stderr, "export requires --wiki VAULT and --profile PROFILE.json")
+	if root == "" || profilePath == "" || len(databases) == 0 {
+		return usageError(stderr, "export requires --wiki VAULT, --profile PROFILE.json, and at least one --database")
 	}
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return usageError(stderr, "--wiki must be an absolute normalized path")
+	}
+	if err := security.ValidateOutputRoot(root); err != nil {
+		return usageError(stderr, err.Error())
 	}
 	profile, err := os.ReadFile(profilePath)
 	if err != nil {
@@ -195,9 +207,15 @@ func runWikiExport(args []string, stdout, stderr io.Writer, dependencies Depende
 	}
 	envelope, err := execute(
 		context.Background(), dataDir, "EXPORT WIKI TO :path PROFILE :profile",
-		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{
-			"path": root, "profile": string(profile),
-		}}}},
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{
+				"path": root, "profile": string(profile),
+			}},
+			Authorization: security.Authorization{
+				Version: security.AuthorizationVersion, Actor: "user:local",
+				AuthorizedDatabases: databases,
+			},
+		}},
 	)
 	if err != nil {
 		return commandError(stderr, "export Wiki", err)
@@ -253,6 +271,14 @@ func runDatabasePackage(command string, args []string, stdout, stderr io.Writer,
 	if command == "pack" && (output == "" || author == "") {
 		return usageError(stderr, "pack requires --output PATH and --by AUTHOR")
 	}
+	if command == "pack" && (!filepath.IsAbs(output) || filepath.Clean(output) != output) {
+		return usageError(stderr, "pack --output must be an absolute normalized path")
+	}
+	if command == "pack" {
+		if err := security.ValidateOutputRoot(filepath.Dir(output)); err != nil {
+			return usageError(stderr, err.Error())
+		}
+	}
 	if command == "install" && !trusted {
 		return usageError(stderr, "install requires explicit --trusted consent")
 	}
@@ -269,7 +295,13 @@ func runDatabasePackage(command string, args []string, stdout, stderr io.Writer,
 	var statements []executor.StatementInput
 	if command == "pack" {
 		source = "PACK DATABASE " + quoteMSQLIdentifier(subject) + " BY :author"
-		statements = []executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"author": author}}}}
+		statements = []executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"author": author}},
+			Authorization: security.Authorization{
+				Version: security.AuthorizationVersion, Actor: "user:local",
+				AuthorizedDatabases: []string{subject},
+			},
+		}}
 	} else {
 		encoded, err := os.ReadFile(subject)
 		if err != nil {
@@ -279,7 +311,17 @@ func runDatabasePackage(command string, args []string, stdout, stderr io.Writer,
 		if command == "install" {
 			source = "INSTALL PACKAGE :package TRUSTED"
 		}
-		statements = []executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"package": string(encoded)}}}}
+		input := executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"package": string(encoded)}}}
+		if command == "install" {
+			input.Authorization = security.Authorization{
+				Version: security.AuthorizationVersion, Actor: "user:local",
+				Approval: &security.Approval{
+					Version: security.ApprovalVersion, Action: security.ActionInstallPackage,
+					SubjectSHA256: dbpackage.Hash(encoded), Confirmed: true,
+				},
+			}
+		}
+		statements = []executor.StatementInput{input}
 	}
 	envelope, err := execute(ctx, dataDir, source, statements)
 	if err != nil {
@@ -317,12 +359,25 @@ func quoteMSQLIdentifier(value string) string {
 }
 
 func writePackageFile(path string, content []byte) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return errors.New("output path must be absolute and normalized")
+	}
 	if _, err := os.Stat(path); err == nil {
 		return errors.New("output path already exists")
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 	directory := filepath.Dir(path)
+	if err := security.ValidateOutputRoot(directory); err != nil {
+		return err
+	}
+	destination, err := security.SecureJoin(directory, filepath.Base(path))
+	if err != nil {
+		return err
+	}
+	if destination != path {
+		return errors.New("output path escapes its authorized directory")
+	}
 	temporary, err := os.CreateTemp(directory, ".memora-package-*")
 	if err != nil {
 		return err
@@ -1205,7 +1260,8 @@ func usageError(stderr io.Writer, message string) int {
 }
 
 func commandError(stderr io.Writer, action string, err error) int {
-	if _, writeErr := fmt.Fprintf(stderr, "memora: %s: %v\n", action, err); writeErr != nil {
+	message := security.Redact(err.Error())
+	if _, writeErr := fmt.Fprintf(stderr, "memora: %s: %s\n", action, message); writeErr != nil {
 		return ExitFailure
 	}
 	return ExitFailure

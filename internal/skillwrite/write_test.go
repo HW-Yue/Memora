@@ -41,6 +41,15 @@ func TestEveryMutationDecisionQueriesBeforeWritingAndReturnsCompactReceipt(t *te
 			if len(report.Calls) == 0 || report.Calls[0].Phase != skillwrite.PhasePreflight {
 				t.Fatalf("calls = %#v, want preflight first", report.Calls)
 			}
+			for _, call := range report.Calls {
+				for _, input := range call.Request.Statements {
+					if input.Authorization.Actor != plan.Actor ||
+						len(input.Authorization.AuthorizedDatabases) != 1 ||
+						input.Authorization.AuthorizedDatabases[0] != "work" {
+						t.Fatalf("call lost plan Authorization: %#v", call)
+					}
+				}
+			}
 			if decision == skillwrite.DecisionIgnore {
 				if report.Receipt.Status != skillwrite.ReceiptIgnored || report.Receipt.Ignored != 1 {
 					t.Fatalf("IGNORE receipt = %#v", report.Receipt)

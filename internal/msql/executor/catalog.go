@@ -8,6 +8,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/binder"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 func (engine *Engine) catalogStatement(statement ast.Statement) bool {
@@ -43,7 +44,38 @@ func (engine *Engine) executeCatalog(
 	if err != nil {
 		return Output{}, err
 	}
+	if statement.Show != nil && statement.Show.Object == "DATABASES" {
+		rows = authorizedDatabaseRows(ctx, rows)
+	}
 	return Output{Columns: []result.Column{}, Rows: rows}, nil
+}
+
+func authorizedDatabaseRows(ctx context.Context, rows []result.Row) []result.Row {
+	authorization, present := security.AuthorizationFrom(ctx)
+	if !present {
+		return rows
+	}
+	authorized := make([]result.Row, 0, len(rows))
+	for _, row := range rows {
+		selectors := []string{}
+		if id, ok := row["database_id"].(string); ok {
+			selectors = append(selectors, id)
+		}
+		if name, ok := row["name"].(string); ok {
+			selectors = append(selectors, name)
+		}
+		if aliases, ok := row["aliases"].([]any); ok {
+			for _, alias := range aliases {
+				if text, ok := alias.(string); ok {
+					selectors = append(selectors, text)
+				}
+			}
+		}
+		if security.AllowsAnyDatabase(authorization, selectors...) {
+			authorized = append(authorized, row)
+		}
+	}
+	return authorized
 }
 
 func catalogRows(value binder.CatalogResult) ([]result.Row, error) {

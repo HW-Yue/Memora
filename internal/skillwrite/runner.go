@@ -10,6 +10,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 type Runner struct {
@@ -29,7 +30,7 @@ func (runner *Runner) Run(ctx context.Context, plan Plan) (Report, error) {
 	}
 	report := Report{Calls: []Call{}}
 	for _, check := range plan.Preflight {
-		if err := runner.runCheck(ctx, &report, plan.ID, PhasePreflight, check); err != nil {
+		if err := runner.runCheck(ctx, &report, plan, PhasePreflight, check); err != nil {
 			return report, err
 		}
 	}
@@ -60,7 +61,7 @@ func (runner *Runner) Run(ctx context.Context, plan Plan) (Report, error) {
 		Verified: true,
 	}
 	for _, check := range plan.Verify {
-		if err := runner.runCheck(ctx, &report, plan.ID, PhaseVerify, check); err != nil {
+		if err := runner.runCheck(ctx, &report, plan, PhaseVerify, check); err != nil {
 			receipt.Status = ReceiptCommittedUnverified
 			receipt.Verified = false
 			receipt.Warnings = append(receipt.Warnings, result.Notice{
@@ -76,13 +77,14 @@ func (runner *Runner) Run(ctx context.Context, plan Plan) (Report, error) {
 func (runner *Runner) runCheck(
 	ctx context.Context,
 	report *Report,
-	planID string,
+	plan Plan,
 	phase Phase,
 	check Check,
 ) error {
+	input := authorizedInput(check.Input, plan)
 	call := Call{Phase: phase, Request: executor.BatchRequest{
-		RequestID: planID + "-" + check.ID,
-		Source:    check.MSQL, Statements: []executor.StatementInput{check.Input},
+		RequestID: plan.ID + "-" + check.ID,
+		Source:    check.MSQL, Statements: []executor.StatementInput{input},
 	}}
 	envelope, err := runner.invoke(ctx, report, call)
 	if err != nil {
@@ -161,22 +163,30 @@ func mutationRequest(plan Plan) executor.BatchRequest {
 	if len(plan.Steps) == 1 {
 		return executor.BatchRequest{
 			RequestID: plan.ID + "-mutation", Source: plan.Steps[0].MSQL,
-			Statements: []executor.StatementInput{plan.Steps[0].Input},
+			Statements: []executor.StatementInput{authorizedInput(plan.Steps[0].Input, plan)},
 		}
 	}
 	sources := make([]string, 0, len(plan.Steps)+2)
 	inputs := make([]executor.StatementInput, 0, len(plan.Steps)+2)
 	sources = append(sources, "BEGIN")
-	inputs = append(inputs, executor.StatementInput{})
+	inputs = append(inputs, authorizedInput(executor.StatementInput{}, plan))
 	for _, step := range plan.Steps {
 		sources = append(sources, step.MSQL)
-		inputs = append(inputs, step.Input)
+		inputs = append(inputs, authorizedInput(step.Input, plan))
 	}
 	sources = append(sources, "COMMIT")
-	inputs = append(inputs, executor.StatementInput{})
+	inputs = append(inputs, authorizedInput(executor.StatementInput{}, plan))
 	return executor.BatchRequest{
 		RequestID: plan.ID + "-mutation", Source: strings.Join(sources, ";"), Statements: inputs,
 	}
+}
+
+func authorizedInput(input executor.StatementInput, plan Plan) executor.StatementInput {
+	input.Authorization = security.Authorization{
+		Version: security.AuthorizationVersion, Actor: plan.Actor,
+		AuthorizedDatabases: append([]string{}, plan.AuthorizedDatabases...),
+	}
+	return input
 }
 
 func mutationChanges(plan Plan, envelope result.Envelope) ([]Change, error) {

@@ -72,6 +72,10 @@ func TestCatalogPersistsSelfDescribingSchemaAndStableIDs(t *testing.T) {
 	if gotDatabase.ID != database.ID || gotDatabase.Name != "Work" || gotDatabase.SchemaVersion != 4 {
 		t.Fatalf("reopened database = %#v", gotDatabase)
 	}
+	gotDatabaseByID, err := reopened.DescribeDatabase(ctx, database.ID)
+	if err != nil || gotDatabaseByID.Name != "Work" {
+		t.Fatalf("DescribeDatabase(ID) = %#v, %v", gotDatabaseByID, err)
+	}
 	gotTable, err := reopened.DescribeTable(ctx, "work", "notes")
 	if err != nil {
 		t.Fatalf("DescribeTable(alias) error = %v", err)

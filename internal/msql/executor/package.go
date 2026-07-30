@@ -8,6 +8,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 func (engine *Engine) executePackage(
@@ -25,6 +26,9 @@ func (engine *Engine) executePackage(
 		}
 		author, err := packageText(statement.Author, bound, "package author")
 		if err != nil {
+			return Output{}, err
+		}
+		if err := engine.authorizeDatabaseReference(ctx, statement.Database.Parts[0].Value); err != nil {
 			return Output{}, err
 		}
 		encoded, manifest, err := engine.packages.Pack(ctx, statement.Database.Parts[0].Value, author)
@@ -60,6 +64,11 @@ func (engine *Engine) executePackage(
 		encoded, err := packageText(statement.Value, bound, "package value")
 		if err != nil {
 			return Output{}, err
+		}
+		if err := security.RequireApproval(
+			ctx, security.ActionInstallPackage, dbpackage.Hash([]byte(encoded)),
+		); err != nil {
+			return Output{}, normalizeError(err)
 		}
 		receipt, err := engine.packages.Install(ctx, []byte(encoded), dbpackage.InstallOptions{Trusted: statement.Trusted})
 		if err != nil {

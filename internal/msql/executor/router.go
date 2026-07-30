@@ -9,6 +9,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 func (engine *Engine) createRoute(
@@ -31,6 +32,9 @@ func (engine *Engine) createRoute(
 		if err != nil {
 			return Output{}, err
 		}
+		if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
+			return Output{}, err
+		}
 		database, err := engine.catalog.DescribeDatabase(ctx, databaseName)
 		if err != nil {
 			return Output{}, normalizeError(err)
@@ -42,6 +46,9 @@ func (engine *Engine) createRoute(
 	case "CHILD":
 		parentID, err := routerString(statement.Parent, bound, "Router parent ID")
 		if err != nil {
+			return Output{}, err
+		}
+		if err := engine.authorizeRouterID(ctx, parentID); err != nil {
 			return Output{}, err
 		}
 		name, err := routerString(statement.Name, bound, "Router name")
@@ -77,6 +84,9 @@ func (engine *Engine) renameRoute(
 	if err != nil {
 		return Output{}, err
 	}
+	if err := engine.authorizeRouterID(ctx, routeID); err != nil {
+		return Output{}, err
+	}
 	name, err := routerString(statement.Name, bound, "Router name")
 	if err != nil {
 		return Output{}, err
@@ -101,6 +111,9 @@ func (engine *Engine) deleteRoute(
 	}
 	routeID, err := routerString(statement.Route, bound, "Router node ID")
 	if err != nil {
+		return Output{}, err
+	}
+	if err := engine.authorizeRouterID(ctx, routeID); err != nil {
 		return Output{}, err
 	}
 	revision, err := engine.rows.DeleteRouterNode(ctx, routeID, options.ExpectedRevision)
@@ -191,6 +204,9 @@ func (engine *Engine) openRoute(
 		Rows: make([]result.Row, 0, len(locators)), Truncated: truncated,
 	}
 	for _, locator := range locators {
+		if err := engine.authorizeDatabaseReference(ctx, locator.DatabaseID); err != nil {
+			return Output{}, err
+		}
 		output.Rows = append(output.Rows, result.Row{
 			"database_id": locator.DatabaseID,
 			"table_id":    locator.TableID,
@@ -214,12 +230,21 @@ func (engine *Engine) resolveRouterNode(
 			return router.Node{}, err
 		}
 		node, err := engine.rows.GetRouterNode(ctx, routeID)
-		return node, normalizeError(err)
+		if err != nil {
+			return router.Node{}, normalizeError(err)
+		}
+		if err := engine.authorizeDatabaseReference(ctx, node.DatabaseID); err != nil {
+			return router.Node{}, err
+		}
+		return node, nil
 	case "PATH":
 		databaseName, err := routerString(
 			databaseExpression, bound, "Router Database",
 		)
 		if err != nil {
+			return router.Node{}, err
+		}
+		if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
 			return router.Node{}, err
 		}
 		path, err := routerString(routeExpression, bound, "Router path")
@@ -235,6 +260,17 @@ func (engine *Engine) resolveRouterNode(
 	default:
 		return router.Node{}, executeError(result.CodeValidation, "Router locator mode is invalid")
 	}
+}
+
+func (engine *Engine) authorizeRouterID(ctx context.Context, routeID string) error {
+	if _, present := security.AuthorizationFrom(ctx); !present {
+		return nil
+	}
+	node, err := engine.rows.GetRouterNode(ctx, routeID)
+	if err != nil {
+		return normalizeError(err)
+	}
+	return engine.authorizeDatabaseReference(ctx, node.DatabaseID)
 }
 
 func routeResult(node router.Node) result.Row {

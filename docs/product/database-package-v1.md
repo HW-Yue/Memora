@@ -30,19 +30,18 @@ INSTALL PACKAGE :package TRUSTED;
 包内容作为 TEXT 参数绑定，不插入 MSQL 源码。CLI 是这三条语句的文件 I/O 薄封装：
 
 ```text
-memora pack work --by Alice --output work.memora-db
+memora pack work --by Alice --output /absolute/exports/work.memora-db
 memora open work.memora-db
 memora install work.memora-db --trusted
 ```
 
-`pack` 原子写入权限为 `0600` 的新文件且不覆盖已有路径；`open` 只校验并返回 manifest，
-不修改 Instance；`install` 必须有显式 `TRUSTED`/`--trusted`，再由 daemon 写入。
+`pack` 只接受绝对规范化输出路径，拒绝符号链接逃逸，并原子写入权限为 `0600` 的新文件且不覆盖已有路径；`open` 只校验并返回 manifest，不修改 Instance；`install` 必须有显式 `TRUSTED`/`--trusted`，CLI 同时生成绑定 package SHA-256 的 approval，再由 daemon 写入。
 
 ## 校验与冲突
 
 打开和安装都先完成严格 envelope、版本、单库边界、manifest/authority 一致性、对象计数和
 snapshot SHA-256 校验。未知 envelope 字段、损坏内容、不支持版本均以稳定
-`validation_error` 拒绝。
+`validation_error` 拒绝。包总大小上限为 64 MiB；manifest 文本必须是有效 UTF-8、单行且在字段预算内。
 
 安装是一个原子 Store transaction。目标已有相同 Database ID、大小写不敏感的同名库、
 相同 Table ID 或 Relation ID 时返回 `already_exists`，不会覆盖或隐式 merge。

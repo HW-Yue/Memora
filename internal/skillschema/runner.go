@@ -11,6 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/logical"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 type Runner struct{ tool Tool }
@@ -35,7 +36,7 @@ func (runner *Runner) ensure(ctx context.Context, plan Plan, report *Report) (Re
 	definition := plan.Ensure
 	databases, err := runner.rows(ctx, report, Call{
 		Phase: PhaseDiscover, ID: "discover-databases",
-		Request: request(plan.ID+"-discover-databases", "SHOW DATABASES COMPACT"),
+		Request: request(plan.ID+"-discover-databases", "SHOW DATABASES COMPACT", plan),
 	})
 	if err != nil {
 		return *report, err
@@ -51,7 +52,7 @@ func (runner *Runner) ensure(ctx context.Context, plan Plan, report *Report) (Re
 		}
 		rows, applyErr := runner.rows(ctx, report, Call{
 			Phase: PhaseApply, ID: "create-database",
-			Request: request(plan.ID+"-create-database", source),
+			Request: request(plan.ID+"-create-database", source, plan),
 		})
 		if applyErr != nil {
 			return *report, applyErr
@@ -67,7 +68,7 @@ func (runner *Runner) ensure(ctx context.Context, plan Plan, report *Report) (Re
 	}
 	tables, err := runner.rows(ctx, report, Call{
 		Phase: PhaseDiscover, ID: "discover-tables",
-		Request: request(plan.ID+"-discover-tables", "SHOW TABLES FROM "+identifier(databaseName)+" COMPACT"),
+		Request: request(plan.ID+"-discover-tables", "SHOW TABLES FROM "+identifier(databaseName)+" COMPACT", plan),
 	})
 	if err != nil {
 		return *report, err
@@ -82,7 +83,7 @@ func (runner *Runner) ensure(ctx context.Context, plan Plan, report *Report) (Re
 		}
 		rows, applyErr := runner.rows(ctx, report, Call{
 			Phase: PhaseApply, ID: "create-table",
-			Request: request(plan.ID+"-create-table", source),
+			Request: request(plan.ID+"-create-table", source, plan),
 		})
 		if applyErr != nil {
 			return *report, applyErr
@@ -105,7 +106,7 @@ func (runner *Runner) migrate(ctx context.Context, plan Plan, report *Report) (R
 	migration := plan.Migration
 	databaseRows, err := runner.rows(ctx, report, Call{
 		Phase: PhasePreflight, ID: "describe-database",
-		Request: request(plan.ID+"-describe-database", "DESCRIBE DATABASE "+identifier(migration.Database)+" COMPACT"),
+		Request: request(plan.ID+"-describe-database", "DESCRIBE DATABASE "+identifier(migration.Database)+" COMPACT", plan),
 	})
 	if err != nil {
 		return *report, err
@@ -117,7 +118,7 @@ func (runner *Runner) migrate(ctx context.Context, plan Plan, report *Report) (R
 	for _, step := range migration.Steps {
 		rows, preflightErr := runner.rows(ctx, report, Call{
 			Phase: PhasePreflight, ID: "describe-" + step.ID,
-			Request: request(plan.ID+"-describe-"+step.ID, describeMSQL(migration.Database, step)),
+			Request: request(plan.ID+"-describe-"+step.ID, describeMSQL(migration.Database, step), plan),
 		})
 		if preflightErr != nil {
 			return *report, preflightErr
@@ -127,7 +128,7 @@ func (runner *Runner) migrate(ctx context.Context, plan Plan, report *Report) (R
 		}
 		_, applyErr := runner.rows(ctx, report, Call{
 			Phase: PhaseApply, ID: step.ID,
-			Request: request(plan.ID+"-"+step.ID, alterMSQL(migration.Database, step)),
+			Request: request(plan.ID+"-"+step.ID, alterMSQL(migration.Database, step), plan),
 		})
 		if applyErr != nil {
 			return runner.rollback(ctx, plan, report, impact, completed, applyErr)
@@ -139,7 +140,7 @@ func (runner *Runner) migrate(ctx context.Context, plan Plan, report *Report) (R
 		forward := migration.Steps[index]
 		rows, verifyErr := runner.rows(ctx, report, Call{
 			Phase: PhaseVerify, ID: "verify-" + forward.ID,
-			Request: request(plan.ID+"-verify-"+forward.ID, describeForwardMSQL(migration.Database, forward)),
+			Request: request(plan.ID+"-verify-"+forward.ID, describeForwardMSQL(migration.Database, forward), plan),
 		})
 		if verifyErr != nil || !rowHasName(rows, forward.NewName) {
 			verified = false
@@ -160,7 +161,7 @@ func (runner *Runner) rollback(ctx context.Context, plan Plan, report *Report, i
 		step := completed[index]
 		if _, err := runner.rows(ctx, report, Call{
 			Phase: PhaseRollback, ID: step.ID,
-			Request: request(plan.ID+"-"+step.ID, alterMSQL(plan.Migration.Database, step)),
+			Request: request(plan.ID+"-"+step.ID, alterMSQL(plan.Migration.Database, step), plan),
 		}); err != nil {
 			rollbackOK = false
 			break
@@ -172,7 +173,7 @@ func (runner *Runner) rollback(ctx context.Context, plan Plan, report *Report, i
 		for _, step := range rolledBack {
 			rows, err := runner.rows(ctx, report, Call{
 				Phase: PhaseVerify, ID: "verify-" + step.ID,
-				Request: request(plan.ID+"-verify-"+step.ID, describeAfterMSQL(plan.Migration.Database, step)),
+				Request: request(plan.ID+"-verify-"+step.ID, describeAfterMSQL(plan.Migration.Database, step), plan),
 			})
 			if err != nil || !rowHasName(rows, step.NewName) {
 				verified = false
@@ -213,8 +214,13 @@ func (runner *Runner) rows(ctx context.Context, report *Report, call Call) ([]re
 	return envelope.Results[0].Rows, nil
 }
 
-func request(id, source string) executor.BatchRequest {
-	return executor.BatchRequest{RequestID: id, Source: source, Statements: []executor.StatementInput{{}}}
+func request(id, source string, plan Plan) executor.BatchRequest {
+	return executor.BatchRequest{RequestID: id, Source: source, Statements: []executor.StatementInput{{
+		Authorization: security.Authorization{
+			Version: security.AuthorizationVersion, Actor: plan.Actor,
+			AuthorizedDatabases: append([]string{}, plan.AuthorizedDatabases...),
+		},
+	}}}
 }
 
 func findNamed(rows []result.Row, candidates []string) (result.Row, bool) {

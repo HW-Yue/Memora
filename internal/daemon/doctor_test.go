@@ -7,6 +7,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/store"
 	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
 )
@@ -43,7 +44,9 @@ func TestDoctorReportsAuthorityCountsAndRejectsCorruptCatalog(t *testing.T) {
 	handler := newDatabaseHandler(ctx, dictionary, rows, databaseStore)
 	report, err := handler.doctor(ctx)
 	if err != nil || report.Status != "healthy" || report.Databases != 1 ||
-		report.Rows != 1 || report.History != 1 || report.SnapshotHash == "" {
+		report.Rows != 1 || report.History != 1 || report.SnapshotHash == "" ||
+		report.Security.Status != security.DoctorHealthy ||
+		report.Security.ExternalModels != security.ExternalModelsDisabled {
 		t.Fatalf("doctor report = %#v, %v", report, err)
 	}
 
@@ -59,5 +62,31 @@ func TestDoctorReportsAuthorityCountsAndRejectsCorruptCatalog(t *testing.T) {
 	}
 	if _, err := handler.doctor(ctx); err == nil {
 		t.Fatal("doctor accepted a corrupt Catalog")
+	}
+}
+
+func TestDoctorRejectsCorruptSecurityAudit(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "security-doctor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer databaseStore.Close()
+	dictionary := catalog.New(databaseStore, catalog.Options{})
+	handler := newDatabaseHandler(ctx, dictionary, row.New(databaseStore, dictionary, row.Options{}), databaseStore)
+	tx, err := databaseStore.Begin(ctx, store.ReadWrite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Put(ctx, security.AuditBucket, "corrupt", []byte(`{"version":"bad"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handler.doctor(ctx); err == nil {
+		t.Fatal("doctor accepted corrupt security audit")
 	}
 }

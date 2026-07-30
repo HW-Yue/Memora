@@ -86,9 +86,12 @@ F07 使用：
 ```text
 system/daemon.lock
 system/daemon.pid
+system/security.sqlite
 ```
 
 `daemon.lock` 的非阻塞排他 `flock` 是“一个 Instance 只有一个 writer daemon”的真相源；PID 文件只用于状态展示和发送 SIGTERM。锁释放但 PID 遗留时，`status/start` 将其视为 stale 并清理。daemon 启动前必须读取并校验 `instance.meta`，不能在未初始化或 metadata 损坏的目录中运行。
+
+F46 起，`security.sqlite` 独立保存只含元数据和 payload hash 的 daemon 审计事件。它不进入逻辑 Database snapshot、Wiki 或 Database Package，避免审计记录随业务库导出；`memora doctor` 会严格验证其版本与记录完整性。
 
 Unix socket 不放入 datadir，避免自定义深层路径超过 macOS `AF_UNIX` 上限。它位于仅当前用户可访问的临时运行目录，文件名由规范化 datadir 稳定派生；具体协议与清理规则见 [本地 IPC 协议](../development/ipc-protocol.md)。
 
@@ -98,7 +101,7 @@ Instance 内继续参考 MySQL 的结构原则：一个 datadir、集中式事�
 
 ## 尚未确认
 
-- `system/` 的内部文件名；
+- 除运行文件与 `security.sqlite` 外，`system/` 后续内部文件名；
 - launchd 使用 LaunchAgent 还是其他用户级启动方式；
 - 备份、快照和导出包默认输出位置；
 - 自定义 datadir 位于外接盘或网络文件系统时的支持边界。

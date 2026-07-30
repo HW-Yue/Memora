@@ -10,6 +10,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/security"
 	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
 )
 
@@ -37,7 +38,11 @@ func TestPackageOperationsRunThroughMSQLExecutor(t *testing.T) {
 		t.Fatal(err)
 	}
 	sourceEngine := executor.NewWithPackages(sourceCatalog, sourceRows, dbpackage.New(sourceStore))
-	packed := executePackage(t, ctx, sourceEngine, `PACK DATABASE work BY :author`, executor.Parameters{Named: map[string]any{"author": "Alice"}})
+	packCtx := security.WithAuthorization(ctx, security.Authorization{
+		Version: security.AuthorizationVersion, Actor: "user:test",
+		AuthorizedDatabases: []string{"work"},
+	})
+	packed := executePackage(t, packCtx, sourceEngine, `PACK DATABASE work BY :author`, executor.Parameters{Named: map[string]any{"author": "Alice"}})
 	if len(packed.Rows) != 1 {
 		t.Fatalf("PACK output = %#v", packed)
 	}
@@ -61,7 +66,15 @@ func TestPackageOperationsRunThroughMSQLExecutor(t *testing.T) {
 	if databases, err := targetCatalog.ShowDatabases(ctx); err != nil || len(databases) != 0 {
 		t.Fatalf("OPEN mutated target: %#v, %v", databases, err)
 	}
-	installed := executePackage(t, ctx, targetEngine, `INSTALL PACKAGE ? TRUSTED`, executor.Parameters{Positional: []any{encoded}})
+	installCtx := security.WithAuthorization(ctx, security.Authorization{
+		Version: security.AuthorizationVersion, Actor: "user:test",
+		AuthorizedDatabases: []string{"work"},
+		Approval: &security.Approval{
+			Version: security.ApprovalVersion, Action: security.ActionInstallPackage,
+			SubjectSHA256: dbpackage.Hash([]byte(encoded)), Confirmed: true,
+		},
+	})
+	installed := executePackage(t, installCtx, targetEngine, `INSTALL PACKAGE ? TRUSTED`, executor.Parameters{Positional: []any{encoded}})
 	if installed.AffectedRows != 1 || len(installed.Rows) != 1 || installed.Rows[0]["name"] != "work" {
 		t.Fatalf("INSTALL output = %#v", installed)
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
 )
 
@@ -32,7 +33,11 @@ func (engine *Engine) executeWikiExport(
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
-	manifest, err := engine.wiki.Export(ctx, root, profile)
+	authorization, err := security.RequireAuthorization(ctx)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	manifest, err := engine.wiki.Export(ctx, root, profile, authorization.AuthorizedDatabases)
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}

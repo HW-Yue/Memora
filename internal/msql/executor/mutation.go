@@ -11,6 +11,9 @@ import (
 )
 
 func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, parameters Parameters, options MutationOptions) (Output, error) {
+	if err := engine.authorizeStatement(ctx, statement); err != nil {
+		return Output{}, err
+	}
 	if engine.catalogStatement(statement) {
 		return engine.executeCatalog(ctx, statement)
 	}

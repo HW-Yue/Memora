@@ -12,11 +12,15 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/snapshot"
 	"github.com/HW-Yue/Memora/internal/store"
 )
 
-const Version = "memora.database-package/v1"
+const (
+	Version         = "memora.database-package/v1"
+	maxPackageBytes = 64 << 20
+)
 
 type Manifest struct {
 	Version                string `json:"version"`
@@ -148,6 +152,21 @@ func (service *Service) Open(encoded []byte) (Opened, error) {
 	}
 	database := catalogValue.Databases[0]
 	manifest := value.Manifest
+	for _, metadata := range []struct {
+		value    string
+		maximum  int
+		required bool
+	}{
+		{manifest.Name, 200, true},
+		{manifest.Purpose, 1200, true},
+		{manifest.Scope, 1200, true},
+		{manifest.AntiScope, 1200, false},
+		{manifest.CreatedBy, 200, true},
+	} {
+		if err := security.ValidateMetadataText(metadata.value, metadata.maximum, metadata.required); err != nil {
+			return Opened{}, packageError(result.CodeValidation, "package manifest contains unsafe metadata text")
+		}
+	}
 	if manifest.Version != Version || manifest.SnapshotVersion != snapshot.Version ||
 		manifest.Compatibility != "memora-logical-snapshot-v1" ||
 		manifest.DatabaseID != database.ID || manifest.Name != database.Name ||
@@ -176,6 +195,9 @@ func (service *Service) Install(ctx context.Context, encoded []byte, options Ins
 	if !options.Trusted {
 		return InstallReceipt{}, packageError(result.CodePermissionDenied, "installing a database package requires explicit trust")
 	}
+	if err := security.RequireApproval(ctx, security.ActionInstallPackage, Hash(encoded)); err != nil {
+		return InstallReceipt{}, err
+	}
 	if service.store == nil {
 		return InstallReceipt{}, packageError(result.CodeInternal, "package target Store is unavailable")
 	}
@@ -198,6 +220,9 @@ func Hash(encoded []byte) string {
 }
 
 func decode(encoded []byte) (envelope, error) {
+	if len(encoded) == 0 || len(encoded) > maxPackageBytes {
+		return envelope{}, packageError(result.CodeValidation, "database package exceeds its size budget")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
 	var value envelope

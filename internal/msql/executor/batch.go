@@ -11,11 +11,13 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 type StatementInput struct {
-	Parameters Parameters      `json:"parameters,omitempty"`
-	Mutation   MutationOptions `json:"mutation,omitempty"`
+	Parameters    Parameters             `json:"parameters,omitempty"`
+	Mutation      MutationOptions        `json:"mutation,omitempty"`
+	Authorization security.Authorization `json:"authorization,omitempty"`
 }
 
 type BatchRequest struct {
@@ -187,7 +189,13 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 			if session.active != nil {
 				engine = New(session.active, session.active)
 			}
-			output, executeErr := engine.Execute(ctx, statement, inputs[index].Parameters, inputs[index].Mutation)
+			executionContext := ctx
+			if hasAuthorization(inputs[index].Authorization) {
+				executionContext = security.WithAuthorization(ctx, inputs[index].Authorization)
+			}
+			output, executeErr := engine.Execute(
+				executionContext, statement, inputs[index].Parameters, inputs[index].Mutation,
+			)
 			if executeErr == nil {
 				results = append(results, successfulStatement(index, statement.Kind, source, output))
 				continue
@@ -215,6 +223,11 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 		}
 	}
 	return envelope
+}
+
+func hasAuthorization(authorization security.Authorization) bool {
+	return authorization.Version != "" || authorization.Actor != "" ||
+		len(authorization.AuthorizedDatabases) > 0 || authorization.Approval != nil
 }
 
 func (session *BatchSession) Active() bool {

@@ -20,6 +20,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/snapshot"
 	"github.com/HW-Yue/Memora/internal/store"
 )
@@ -71,7 +72,12 @@ func New(database store.Store) *Service {
 	return &Service{snapshots: snapshot.New(database)}
 }
 
-func (service *Service) Export(ctx context.Context, root string, profile Profile) (Manifest, error) {
+func (service *Service) Export(
+	ctx context.Context,
+	root string,
+	profile Profile,
+	databases []string,
+) (Manifest, error) {
 	if service == nil || service.snapshots == nil {
 		return Manifest{}, exportError(result.CodeInternal, "Wiki exporter is unavailable")
 	}
@@ -79,7 +85,7 @@ func (service *Service) Export(ctx context.Context, root string, profile Profile
 	if err != nil {
 		return Manifest{}, err
 	}
-	return ExportSnapshot(encoded, root, profile)
+	return ExportSnapshotScoped(encoded, root, profile, databases)
 }
 
 func DecodeProfile(encoded []byte) (Profile, error) {
@@ -120,6 +126,22 @@ type layout struct {
 }
 
 func ExportSnapshot(encoded []byte, root string, profile Profile) (Manifest, error) {
+	return exportSnapshot(encoded, root, profile, nil)
+}
+
+func ExportSnapshotScoped(
+	encoded []byte,
+	root string,
+	profile Profile,
+	databases []string,
+) (Manifest, error) {
+	if len(databases) == 0 {
+		return Manifest{}, exportError(result.CodePermissionDenied, "Wiki export requires a non-empty Database scope")
+	}
+	return exportSnapshot(encoded, root, profile, databases)
+}
+
+func exportSnapshot(encoded []byte, root string, profile Profile, databases []string) (Manifest, error) {
 	migrated, err := snapshot.Migrate(encoded)
 	if err != nil {
 		return Manifest{}, err
@@ -127,6 +149,13 @@ func ExportSnapshot(encoded []byte, root string, profile Profile) (Manifest, err
 	value, currentRelations, err := decodeSnapshot(migrated)
 	if err != nil {
 		return Manifest{}, err
+	}
+	if len(databases) > 0 {
+		value, err = scopedLayout(value, profile, databases)
+		if err != nil {
+			return Manifest{}, err
+		}
+		currentRelations = scopedRelations(currentRelations, value.databases)
 	}
 	if err := validateProfile(profile, value.tables); err != nil {
 		return Manifest{}, err
@@ -138,9 +167,22 @@ func ExportSnapshot(encoded []byte, root string, profile Profile) (Manifest, err
 			}
 		}
 	}
-	snapshotHash, err := snapshot.CanonicalHash(migrated)
+	var snapshotHash string
+	if len(databases) == 0 {
+		snapshotHash, err = snapshot.CanonicalHash(migrated)
+	} else {
+		snapshotHash, err = hashJSON(struct {
+			Databases map[string]catalog.Database `json:"databases"`
+			Tables    map[string]catalog.Table    `json:"tables"`
+			Rows      map[string]row.Row          `json:"rows"`
+			Relations []relation.Relation         `json:"relations"`
+		}{
+			Databases: value.databases, Tables: value.tables,
+			Rows: value.rows, Relations: currentRelations,
+		})
+	}
 	if err != nil {
-		return Manifest{}, err
+		return Manifest{}, exportError(result.CodeInternal, "Wiki scoped snapshot could not be hashed")
 	}
 	profileHash, err := hashJSON(profile)
 	if err != nil {
@@ -182,7 +224,71 @@ func ExportSnapshot(encoded []byte, root string, profile Profile) (Manifest, err
 	return manifest, nil
 }
 
+func scopedLayout(value layout, profile Profile, selectors []string) (layout, error) {
+	allowed := map[string]bool{}
+	for _, database := range value.databases {
+		for _, selector := range selectors {
+			if strings.EqualFold(strings.TrimSpace(selector), database.ID) ||
+				strings.EqualFold(strings.TrimSpace(selector), database.Name) {
+				allowed[database.ID] = true
+			}
+		}
+	}
+	if len(allowed) == 0 {
+		return layout{}, exportError(result.CodeNotFound, "Wiki export Database scope matched no Database")
+	}
+	for tableID := range profile.Tables {
+		table, exists := value.tables[tableID]
+		if exists && !allowed[table.DatabaseID] {
+			return layout{}, exportError(result.CodePermissionDenied, "Wiki Export Profile references a Table outside the authorized scope")
+		}
+	}
+	scoped := layout{
+		databases: map[string]catalog.Database{}, tables: map[string]catalog.Table{},
+		rows: map[string]row.Row{}, titles: map[string]string{}, paths: map[string]string{},
+	}
+	for databaseID, database := range value.databases {
+		if allowed[databaseID] {
+			scoped.databases[databaseID] = database
+		}
+	}
+	for tableID, table := range value.tables {
+		if allowed[table.DatabaseID] {
+			scoped.tables[tableID] = table
+		}
+	}
+	for key, stored := range value.rows {
+		if !allowed[stored.DatabaseID] {
+			continue
+		}
+		scoped.rows[key] = stored
+		scoped.titles[key] = value.titles[key]
+		scoped.paths[key] = value.paths[key]
+	}
+	return scoped, nil
+}
+
+func scopedRelations(values []relation.Relation, databases map[string]catalog.Database) []relation.Relation {
+	scoped := make([]relation.Relation, 0, len(values))
+	for _, value := range values {
+		if _, sourceAllowed := databases[value.Source.DatabaseID]; !sourceAllowed {
+			continue
+		}
+		if _, targetAllowed := databases[value.Target.DatabaseID]; !targetAllowed {
+			continue
+		}
+		scoped = append(scoped, value)
+	}
+	sort.Slice(scoped, func(left, right int) bool {
+		return scoped[left].ID < scoped[right].ID
+	})
+	return scoped
+}
+
 func HashDirectory(root string) (string, error) {
+	if err := security.ValidateOutputRoot(root); err != nil {
+		return "", err
+	}
 	paths := []string{}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -450,8 +556,14 @@ func writeIncremental(root string, manifest Manifest, contents map[string][]byte
 	if strings.TrimSpace(root) == "" {
 		return exportError(result.CodeValidation, "Wiki export root is required")
 	}
+	if err := security.ValidateOutputRoot(root); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return exportError(result.CodeInternal, "Wiki export root could not be created")
+	}
+	if err := security.ValidateOutputRoot(root); err != nil {
+		return err
 	}
 	previous, err := readManifest(root)
 	if err != nil {
@@ -463,7 +575,10 @@ func writeIncremental(root string, manifest Manifest, contents map[string][]byte
 			return exportError(result.CodeValidation, "Wiki object path is unsafe")
 		}
 		currentPaths[path] = true
-		absolute := filepath.Join(root, filepath.FromSlash(path))
+		absolute, err := security.SecureJoin(root, filepath.FromSlash(path))
+		if err != nil {
+			return err
+		}
 		if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
 			return exportError(result.CodeInternal, "Wiki object directory could not be created")
 		}
@@ -476,7 +591,11 @@ func writeIncremental(root string, manifest Manifest, contents map[string][]byte
 			return exportError(result.CodeValidation, "previous Wiki manifest contains an unsafe path")
 		}
 		if !currentPaths[object.Path] {
-			if err := os.Remove(filepath.Join(root, filepath.FromSlash(object.Path))); err != nil && !os.IsNotExist(err) {
+			absolute, err := security.SecureJoin(root, filepath.FromSlash(object.Path))
+			if err != nil {
+				return err
+			}
+			if err := os.Remove(absolute); err != nil && !os.IsNotExist(err) {
 				return exportError(result.CodeInternal, "stale Wiki object could not be removed")
 			}
 		}
@@ -486,14 +605,22 @@ func writeIncremental(root string, manifest Manifest, contents map[string][]byte
 		return exportError(result.CodeInternal, "Wiki manifest could not be encoded")
 	}
 	encoded = append(encoded, '\n')
-	if err := writeIfChanged(filepath.Join(root, manifestName), encoded); err != nil {
+	manifestPath, err := security.SecureJoin(root, manifestName)
+	if err != nil {
+		return err
+	}
+	if err := writeIfChanged(manifestPath, encoded); err != nil {
 		return exportError(result.CodeInternal, "Wiki manifest could not be written")
 	}
 	return nil
 }
 
 func readManifest(root string) (Manifest, error) {
-	encoded, err := os.ReadFile(filepath.Join(root, manifestName))
+	path, err := security.SecureJoin(root, manifestName)
+	if err != nil {
+		return Manifest{}, err
+	}
+	encoded, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return Manifest{Version: Version, Objects: []Object{}}, nil
 	}

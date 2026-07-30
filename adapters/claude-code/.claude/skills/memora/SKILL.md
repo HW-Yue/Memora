@@ -16,6 +16,10 @@ Only use the `memora assimilate`, `memora doctor`, `memora query`, `memora exec`
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
+For every Database-specific `query` or `exec`, include one
+`memora.authorization/v1` object in `--input`, binding the host actor and exact
+user-authorized Database names or stable IDs. Never widen or omit that scope to
+recover from `permission_denied`.
 
 ## Install once
 
@@ -46,8 +50,8 @@ fits; do not invent a table from a name alone.
 ```sh
 memora doctor
 memora query "SHOW DATABASES"
-memora query "DESCRIBE TABLE work.notes COMPACT"
-memora query --input '{"parameters":{"named":{"database":"work","path":"/","cursor":"","limit":12}}}' "SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit"
+memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "DESCRIBE TABLE work.notes COMPACT"
+memora query --input '{"parameters":{"named":{"database":"work","path":"/","cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit"
 ```
 
 ## Query and summarize
@@ -74,8 +78,8 @@ permission denial. If a selected Row changed, discard it and refresh discovery
 at most once when it can materially affect the answer.
 
 ```sh
-memora query --input '{"parameters":{"named":{"query":"routing design","terms":["routing","router","路由"],"limit":24}}}' "MATCH work.notes QUERY :query TERMS :terms LIMIT :limit"
-memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
+memora query --input '{"parameters":{"named":{"query":"routing design","terms":["routing","router","路由"],"limit":24}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "MATCH work.notes QUERY :query TERMS :terms LIMIT :limit"
+memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
 
 Keep at most 12 Router rows, 24 candidate locators, 10 selected rows, and 12,000
@@ -113,7 +117,7 @@ Policy validation occurs before any Tool call and multi-step changes share one
 short transaction.
 
 ```sh
-memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"index_terms":["routing","locator"],"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
+memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"index_terms":["routing","locator"],"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
 memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decision":"IGNORE","database":"work","table":"notes","actor":"agent:host","source_event_id":"conversation:event-7","reason":"existing Row already captures it","authorized_databases":["work"],"preflight":[{"id":"duplicate-check","msql":"SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1","input":{"parameters":{"named":{"row":"row_01"}}},"expect_rows":1}],"steps":[],"verify":[]}'
 ```
 

@@ -13,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/security"
 	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
 	"golang.org/x/sys/unix"
 )
@@ -133,9 +134,16 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 	if err != nil {
 		return err
 	}
+	securityStore, err := sqlitestore.Open(filepath.Join(dataDir, "system", "security.sqlite"))
+	if err != nil {
+		_ = databaseStore.Close()
+		return err
+	}
 	dictionary := catalog.New(databaseStore, catalog.Options{})
 	rows := row.New(databaseStore, dictionary, row.Options{})
-	handler := newDatabaseHandler(ctx, dictionary, rows, databaseStore)
+	handler := newDatabaseHandlerWithSecurity(
+		ctx, dictionary, rows, databaseStore, security.New(securityStore, security.Options{}),
+	)
 	server := ipc.NewServer(handler)
 	if ready != nil {
 		select {
@@ -143,14 +151,15 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		case <-ctx.Done():
 			_ = server.Close()
 			_ = handler.Close()
-			return databaseStore.Close()
+			return errors.Join(databaseStore.Close(), securityStore.Close())
 		}
 	}
 	serveErr := server.Serve(ctx, listener)
 	serverErr := server.Close()
 	handlerErr := handler.Close()
 	storeErr := databaseStore.Close()
-	return errors.Join(serveErr, serverErr, handlerErr, storeErr)
+	securityStoreErr := securityStore.Close()
+	return errors.Join(serveErr, serverErr, handlerErr, storeErr, securityStoreErr)
 }
 
 func (lease *Lease) Close() error {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -285,7 +286,9 @@ func TestRunDatabasePackageCommandsUseMSQLAndSafeFiles(t *testing.T) {
 		t.Fatalf("pack code = %d, stdout = %s, stderr = %s", code, stdout.String(), stderr.String())
 	}
 	if sources[0] != `PACK DATABASE "work""quoted" BY :author` ||
-		inputs[0][0].Parameters.Named["author"] != "Alice" {
+		inputs[0][0].Parameters.Named["author"] != "Alice" ||
+		inputs[0][0].Authorization.Actor != "user:local" ||
+		inputs[0][0].Authorization.AuthorizedDatabases[0] != `work"quoted` {
 		t.Fatalf("pack MSQL = %q, %#v", sources[0], inputs[0])
 	}
 	if encoded, err := os.ReadFile(packagePath); err != nil || string(encoded) != `{"version":"fixture"}` {
@@ -308,7 +311,9 @@ func TestRunDatabasePackageCommandsUseMSQLAndSafeFiles(t *testing.T) {
 
 	stdout.Reset()
 	code = RunWithDependencies([]string{"install", packagePath, "--trusted", "--data-dir", dataDir}, &stdout, &stderr, BuildInfo{}, dependencies)
-	if code != ExitOK || sources[2] != "INSTALL PACKAGE :package TRUSTED" {
+	if code != ExitOK || sources[2] != "INSTALL PACKAGE :package TRUSTED" ||
+		inputs[2][0].Authorization.Approval == nil ||
+		inputs[2][0].Authorization.Approval.SubjectSHA256 == "" {
 		t.Fatalf("install code = %d, source = %q", code, sources[2])
 	}
 }
@@ -360,7 +365,9 @@ func TestRunWikiExportUsesMSQLWithBoundProfile(t *testing.T) {
 		ExecuteMSQL: func(_ context.Context, gotDataDir, source string, statements []executor.StatementInput) (result.Envelope, error) {
 			called = true
 			if gotDataDir != dataDir || source != "EXPORT WIKI TO :path PROFILE :profile" ||
-				statements[0].Parameters.Named["path"] != vault || statements[0].Parameters.Named["profile"] != profile {
+				statements[0].Parameters.Named["path"] != vault || statements[0].Parameters.Named["profile"] != profile ||
+				len(statements[0].Authorization.AuthorizedDatabases) != 1 ||
+				statements[0].Authorization.AuthorizedDatabases[0] != "work" {
 				t.Fatalf("export call = %q, %q, %#v", gotDataDir, source, statements)
 			}
 			statement := result.NewStatement(0, "EXPORT_WIKI", source)
@@ -370,10 +377,53 @@ func TestRunWikiExportUsesMSQLWithBoundProfile(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	code := RunWithDependencies([]string{
-		"export", "--wiki", vault, "--profile", profilePath, "--data-dir", dataDir,
+		"export", "--wiki", vault, "--profile", profilePath, "--database", "work", "--data-dir", dataDir,
 	}, &stdout, &stderr, BuildInfo{}, dependencies)
 	if code != ExitOK || !called || stderr.Len() != 0 || !strings.Contains(stdout.String(), `"object_count":2`) {
 		t.Fatalf("export code = %d, called = %v, stdout = %s, stderr = %s", code, called, stdout.String(), stderr.String())
+	}
+}
+
+func TestExternalWritesRejectSymlinkDirectoriesBeforeMSQL(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	target := t.TempDir()
+	link := filepath.Join(home, "linked-output")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(context.Context, string, string, []executor.StatementInput) (result.Envelope, error) {
+			called = true
+			return result.Envelope{}, nil
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunWithDependencies([]string{
+		"pack", "work", "--by", "Alice", "--output", filepath.Join(link, "work.memora-db"),
+	}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitUsage || called {
+		t.Fatalf("pack code = %d, called = %v, stderr = %s", code, called, &stderr)
+	}
+}
+
+func TestCommandErrorsRedactSecrets(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	code := commandError(&stderr, "test", errors.New(
+		"OPENAI_API_KEY=sk-private Authorization: Bearer bearer-private token=token-private",
+	))
+	if code != ExitFailure {
+		t.Fatalf("commandError() = %d", code)
+	}
+	for _, secret := range []string{"sk-private", "bearer-private", "token-private"} {
+		if strings.Contains(stderr.String(), secret) {
+			t.Fatalf("stderr leaked %q: %s", secret, &stderr)
+		}
 	}
 }
 

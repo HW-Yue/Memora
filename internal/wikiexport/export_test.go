@@ -158,6 +158,57 @@ func TestIncrementalExportKeepsStablePathsAcrossRenameAndRemovesDeletedRows(t *t
 	}
 }
 
+func TestScopedExportOmitsUnauthorizedDatabaseAndCrossScopeLinks(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databaseStore, _, rows := wikiFixture(t, ctx)
+	defer databaseStore.Close()
+	encoded, err := snapshot.New(databaseStore).Export(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := wikiProfile()
+	delete(profile.Tables, "tbl_people")
+	root := filepath.Join(t.TempDir(), "vault")
+	manifest, err := wikiexport.ExportSnapshotScoped(encoded, root, profile, []string{"work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Objects) != 1 || manifest.Objects[0].DatabaseID != "db_work" {
+		t.Fatalf("scoped objects = %#v", manifest.Objects)
+	}
+	page, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(manifest.Objects[0].Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(page), "row_alice") || strings.Contains(string(page), "Alice") {
+		t.Fatalf("scoped page leaked cross-Database relation:\n%s", page)
+	}
+	if _, err := os.Stat(filepath.Join(root, "db_personal")); !os.IsNotExist(err) {
+		t.Fatalf("unauthorized Database directory exists: %v", err)
+	}
+	if _, err := rows.Update(
+		ctx, "personal", "people", "row_alice", map[string]any{"name": "Private change"},
+		row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1},
+	); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := snapshot.New(databaseStore).Export(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := wikiexport.ExportSnapshotScoped(
+		changed, filepath.Join(t.TempDir(), "second-vault"), profile, []string{"work"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.SnapshotSHA256 != manifest.SnapshotSHA256 {
+		t.Fatalf("unauthorized change altered scoped snapshot hash: %s != %s", second.SnapshotSHA256, manifest.SnapshotSHA256)
+	}
+}
+
 func TestExportProfileRejectsUnknownOrDuplicatedStableFields(t *testing.T) {
 	t.Parallel()
 

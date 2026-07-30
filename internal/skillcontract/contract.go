@@ -15,6 +15,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
 	"github.com/HW-Yue/Memora/internal/skillconflict"
 )
@@ -65,6 +66,7 @@ type Contract struct {
 	Source                             string    `json:"source"`
 	MSQLASTVersion                     string    `json:"msql_ast_version"`
 	ResultVersion                      string    `json:"result_version"`
+	AuthorizationVersion               string    `json:"authorization_version"`
 	ConflictViewVersion                string    `json:"conflict_view_version"`
 	ConflictResolutionVersion          string    `json:"conflict_resolution_version"`
 	AssimilationEventVersion           string    `json:"assimilation_event_version"`
@@ -147,6 +149,7 @@ func (bundle Bundle) Validate() error {
 	requireEqual("source", contract.Source, "SKILL.md")
 	requireEqual("msql_ast_version", contract.MSQLASTVersion, ast.Version)
 	requireEqual("result_version", contract.ResultVersion, result.Version)
+	requireEqual("authorization_version", contract.AuthorizationVersion, security.AuthorizationVersion)
 	requireEqual("conflict_view_version", contract.ConflictViewVersion, skillconflict.ViewVersion)
 	requireEqual("conflict_resolution_version", contract.ConflictResolutionVersion, skillconflict.ResolutionVersion)
 	requireEqual("assimilation_event_version", contract.AssimilationEventVersion, assimilation.EventVersion)

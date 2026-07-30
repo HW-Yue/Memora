@@ -15,6 +15,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/search"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
 )
 
@@ -66,7 +67,7 @@ type PackageManager interface {
 }
 
 type WikiExporter interface {
-	Export(context.Context, string, wikiexport.Profile) (wikiexport.Manifest, error)
+	Export(context.Context, string, wikiexport.Profile, []string) (wikiexport.Manifest, error)
 }
 
 type Parameters struct {
@@ -84,6 +85,8 @@ type MutationOptions struct {
 	IndexTerms            []string `json:"index_terms,omitempty"`
 	RouteLeafIDs          []string `json:"route_leaf_ids,omitempty"`
 }
+
+type Authorization = security.Authorization
 
 func (options MutationOptions) MarshalJSON() ([]byte, error) {
 	type wireOptions struct {

@@ -4,7 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
@@ -15,6 +20,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 	"github.com/HW-Yue/Memora/internal/store"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
@@ -31,6 +37,7 @@ type databaseHandler struct {
 	dictionary executor.Catalog
 	rows       *row.Service
 	store      store.Store
+	security   *security.Service
 	sessions   map[string]*executor.BatchSession
 	closed     bool
 }
@@ -41,9 +48,21 @@ func newDatabaseHandler(
 	rows *row.Service,
 	database store.Store,
 ) *databaseHandler {
+	return newDatabaseHandlerWithSecurity(
+		ctx, dictionary, rows, database, security.New(database, security.Options{}),
+	)
+}
+
+func newDatabaseHandlerWithSecurity(
+	ctx context.Context,
+	dictionary executor.Catalog,
+	rows *row.Service,
+	database store.Store,
+	securityService *security.Service,
+) *databaseHandler {
 	return &databaseHandler{
 		context: ctx, dictionary: dictionary, rows: rows, store: database,
-		sessions: make(map[string]*executor.BatchSession),
+		security: securityService, sessions: make(map[string]*executor.BatchSession),
 	}
 }
 
@@ -134,7 +153,20 @@ func SourceReceipt(ctx context.Context, dataDir, submissionID string) (assimilat
 	return receipt, err
 }
 
-func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session, request ipc.Request) (json.RawMessage, error) {
+func (handler *databaseHandler) Handle(
+	ctx context.Context,
+	session ipc.Session,
+	request ipc.Request,
+) (response json.RawMessage, responseErr error) {
+	defer func() {
+		if handler.security == nil {
+			return
+		}
+		input := auditInput(request, response, responseErr)
+		if err := handler.security.Record(ctx, input); err != nil && responseErr == nil {
+			response, responseErr = nil, err
+		}
+	}()
 	if request.Method == "doctor" {
 		report, err := handler.doctor(ctx)
 		if err != nil {
@@ -181,6 +213,125 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 		RequestID: request.RequestID, Source: payload.Source, Statements: payload.Statements,
 	})
 	return json.Marshal(envelope)
+}
+
+func auditInput(request ipc.Request, response json.RawMessage, responseErr error) security.AuditInput {
+	actor, databases := auditIdentity(request)
+	status, errorCode := security.AuditSucceeded, ""
+	if responseErr != nil {
+		status, errorCode = security.AuditFailed, stableCode(responseErr)
+	} else {
+		var envelope struct {
+			OK    *bool `json:"ok"`
+			Error *struct {
+				Code string `json:"code"`
+			} `json:"error"`
+			Results []struct {
+				Error *struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			} `json:"results"`
+		}
+		if json.Unmarshal(response, &envelope) == nil && envelope.OK != nil && !*envelope.OK {
+			status = security.AuditFailed
+			if envelope.Error != nil {
+				errorCode = envelope.Error.Code
+			}
+			if errorCode == "" {
+				for _, statement := range envelope.Results {
+					if statement.Error != nil {
+						errorCode = statement.Error.Code
+						break
+					}
+				}
+			}
+			if errorCode == "" {
+				errorCode = string(result.CodeInternal)
+			}
+		}
+	}
+	return security.AuditInput{
+		RequestID: request.RequestID, Method: request.Method, Actor: actor,
+		AuthorizedDatabases: databases, PayloadSHA256: security.HashPayload(request.Payload),
+		Status: status, ErrorCode: errorCode,
+	}
+}
+
+func auditIdentity(request ipc.Request) (string, []string) {
+	actor := "local:" + strconv.Itoa(os.Getuid())
+	databases := []string{}
+	if request.Method == "msql.execute" {
+		var payload executePayload
+		if json.Unmarshal(request.Payload, &payload) == nil {
+			actors := map[string]bool{}
+			scopes := map[string]bool{}
+			for _, statement := range payload.Statements {
+				if value := strings.TrimSpace(statement.Authorization.Actor); value != "" {
+					actors[value] = true
+				}
+				for _, database := range statement.Authorization.AuthorizedDatabases {
+					if value := strings.TrimSpace(database); value != "" {
+						scopes[value] = true
+					}
+				}
+			}
+			if len(actors) == 1 {
+				for value := range actors {
+					actor = value
+				}
+			} else if len(actors) > 1 {
+				actor = "multiple"
+			}
+			for value := range scopes {
+				databases = append(databases, value)
+			}
+			sort.Strings(databases)
+			return sanitizeAuditIdentity(actor, databases)
+		}
+	}
+	var metadata struct {
+		Actor               string   `json:"actor"`
+		AuthorizedDatabases []string `json:"authorized_databases"`
+	}
+	if json.Unmarshal(request.Payload, &metadata) == nil {
+		if value := strings.TrimSpace(metadata.Actor); value != "" {
+			actor = value
+		}
+		databases = append(databases, metadata.AuthorizedDatabases...)
+	}
+	return sanitizeAuditIdentity(actor, databases)
+}
+
+func sanitizeAuditIdentity(actor string, databases []string) (string, []string) {
+	fallbackActor := "local:" + strconv.Itoa(os.Getuid())
+	actor = strings.TrimSpace(actor)
+	if security.ValidateMetadataText(actor, 160, true) != nil {
+		actor = fallbackActor
+	}
+	scopes := make([]string, 0, len(databases))
+	seen := map[string]bool{}
+	for _, database := range databases {
+		database = strings.TrimSpace(database)
+		key := strings.ToLower(database)
+		if seen[key] || security.ValidateMetadataText(database, 200, true) != nil {
+			continue
+		}
+		seen[key] = true
+		scopes = append(scopes, database)
+		if len(scopes) == 32 {
+			break
+		}
+	}
+	sort.Strings(scopes)
+	return actor, scopes
+}
+
+func stableCode(err error) string {
+	var stable interface{ StableCode() string }
+	if errors.As(err, &stable) {
+		return stable.StableCode()
+	}
+	return string(result.CodeInternal)
 }
 
 func (handler *databaseHandler) handleFeedback(
@@ -314,9 +465,11 @@ func (handler *databaseHandler) SessionClosed(_ context.Context, session ipc.Ses
 	delete(handler.sessions, session.ID)
 	handler.mu.Unlock()
 	if batch == nil {
-		return nil
+		return handler.security.Flush(handler.context)
 	}
-	return batch.Close()
+	closeErr := batch.Close()
+	flushErr := handler.security.Flush(handler.context)
+	return errors.Join(closeErr, flushErr)
 }
 
 func (handler *databaseHandler) Close() error {
@@ -338,6 +491,9 @@ func (handler *databaseHandler) Close() error {
 		if err := session.Close(); err != nil && first == nil {
 			first = err
 		}
+	}
+	if err := handler.security.Flush(handler.context); err != nil && first == nil {
+		first = err
 	}
 	return first
 }

@@ -29,14 +29,14 @@ Database/Table → 稳定 ID 目录
 CLI 是参数化 MSQL 的便捷入口：
 
 ```text
-memora export --wiki /absolute/vault --profile profile.json
+memora export --wiki /absolute/vault --profile profile.json --database work
 ```
 
 ```sql
 EXPORT WIKI TO :path PROFILE :profile;
 ```
 
-`:path` 必须是绝对、规范化路径；`:profile` 是 JSON 文本。语句只允许在 autocommit 会话执行，结果返回 `path`、`snapshot_sha256`、`profile_sha256` 和 `object_count`。
+`:path` 必须是绝对、规范化路径；`:profile` 是 JSON 文本。CLI 至少需要一个可重复的 `--database` 名称或稳定 ID，并将它作为结构化 Authorization 传给 MSQL；原始 `EXPORT WIKI` 管理语句同样拒绝空 scope。语句只允许在 autocommit 会话执行，结果返回 `path`、`snapshot_sha256`、`profile_sha256` 和 `object_count`。
 
 ## Export Profile
 
@@ -71,6 +71,8 @@ title、body、property、tag、hidden 角色不能重复。`field_order` 非空
 Vault 根目录的 `.memora-wiki.json` 记录版本、snapshot/profile 哈希，以及每个对象的 Database/Table/Row ID、revision、path 和内容哈希。
 
 导出器只重写内容变化的页面。所有新页面先写入，再删除上一份 manifest 拥有但当前不存在的旧页面，最后原子替换 manifest。未被 manifest 登记的用户文件不会删除；对导出页面的手工修改会在下一次内容有差异的导出中被覆盖。
+
+作用域导出只把授权 Database 投影进页面和 manifest；跨 scope Relation 不生成链接，`snapshot_sha256` 也只覆盖授权投影，因此其他 Database 的变化不会通过目录内容或 hash 暴露。
 
 ## 未决问题
 

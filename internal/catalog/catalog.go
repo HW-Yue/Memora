@@ -401,7 +401,8 @@ func locateTable(state *snapshot, databaseName, tableName string) (*Database, *T
 
 func findDatabase(state *snapshot, name string) (*Database, bool) {
 	for index := range state.Databases {
-		if hasName(state.Databases[index].Name, state.Databases[index].Aliases, name) {
+		if canonical(state.Databases[index].ID) == canonical(name) ||
+			hasName(state.Databases[index].Name, state.Databases[index].Aliases, name) {
 			return &state.Databases[index], true
 		}
 	}

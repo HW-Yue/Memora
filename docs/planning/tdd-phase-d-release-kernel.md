@@ -18,7 +18,7 @@
 
 提交：`feat(F45): export deterministic Obsidian wiki`
 
-## F46 安全与隐私门
+## F46 安全与隐私门（已完成）
 
 先测：数据库 scope、外部模型禁用、路径穿越、日志脱敏、恶意 package 文本和高风险审批绕过。
 

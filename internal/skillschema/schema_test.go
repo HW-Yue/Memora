@@ -32,6 +32,14 @@ func TestEnsureCreatesNewDomainAndReusesSemanticSynonyms(t *testing.T) {
 		created.Receipt.Table.Action != skillschema.ObjectCreated {
 		t.Fatalf("created receipt = %#v", created.Receipt)
 	}
+	for _, call := range created.Calls {
+		for _, input := range call.Request.Statements {
+			if input.Authorization.Actor != "agent:test" ||
+				len(input.Authorization.AuthorizedDatabases) != 2 {
+				t.Fatalf("call lost Schema Plan Authorization: %#v", call)
+			}
+		}
+	}
 	database, err := dictionary.DescribeDatabase(ctx, "work")
 	if err != nil || database.Purpose != "Project knowledge" || database.Scope != "Reviewed projects" {
 		t.Fatalf("created Database = %#v, %v", database, err)
