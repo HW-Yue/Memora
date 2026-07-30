@@ -11,7 +11,8 @@ out of this file; discover them from the current instance for each task.
 
 Only use the `memora assimilate`, `memora doctor`, `memora query`, `memora exec`,
 `memora feedback`, `memora maintain`, `memora mutate`, `memora schema`, and
-`memora reflect` interfaces.
+`memora reflect` interfaces for normal database work. The approval-gated
+`upgrade` and `doctor repair` recovery commands below are the only exception.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -39,6 +40,26 @@ back to a fixed Go module tag or an explicit local source directory. Do not ask
 for sudo, change the install script, bypass `--yes`, or claim success until its
 idempotent init, daemon start, and doctor checks finish. If offline without a
 local source tree and Go toolchain, report the recoverable blocker.
+
+## Upgrade or recover an Instance
+
+Never migrate or roll back an Instance implicitly. If a command reports
+`upgrade_required`, run only the read-only plan first:
+
+```sh
+memora upgrade --plan
+```
+
+Show the user the exact Instance ID, from/to versions, backup destination, and
+steps. Only after explicit approval may you run `memora upgrade --apply --yes`.
+Do not treat install consent as upgrade consent, and do not auto-approve because
+normal database work is blocked.
+
+If a migration journal reports an incomplete migration, show the journal-bound
+backup and ask separately before running `memora doctor repair --yes`. Do not
+choose an arbitrary backup or add `--backup` unless the user explicitly selected
+that verified absolute path. Upgrade apply and doctor repair must remain outside
+host-level implicit command permissions.
 
 ## Discover
 

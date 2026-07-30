@@ -2,7 +2,9 @@ package instance
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 	"sync"
@@ -190,6 +192,74 @@ func TestInitializeRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestInspectDistinguishesUpgradeAndNewerFormats(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "instance")
+	result, err := Initialize(context.Background(), root, Options{
+		Clock: testkit.NewFakeClock(time.Now()),
+		IDs:   testkit.NewFakeIDs(testInstanceID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setFormatVersion(t, root, MinimumUpgradableVersion)
+	inspection, err := Inspect(root)
+	if err != nil || inspection.Status != CompatibilityUpgradeRequired ||
+		inspection.Metadata.InstanceID != result.Metadata.InstanceID {
+		t.Fatalf("legacy inspection = %#v, %v", inspection, err)
+	}
+	if _, err := Read(root); !errors.Is(err, ErrUpgradeRequired) {
+		t.Fatalf("legacy Read() error = %v", err)
+	}
+	setFormatVersion(t, root, FormatVersion+1)
+	inspection, err = Inspect(root)
+	if err != nil || inspection.Status != CompatibilityNewerFormat {
+		t.Fatalf("newer inspection = %#v, %v", inspection, err)
+	}
+	if _, err := Read(root); !errors.Is(err, ErrNewerFormat) {
+		t.Fatalf("newer Read() error = %v", err)
+	}
+}
+
+func TestReadRejectsIncompleteMigrationJournal(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "instance")
+	if _, err := Initialize(context.Background(), root, Options{
+		Clock: testkit.NewFakeClock(time.Now()),
+		IDs:   testkit.NewFakeIDs(testInstanceID),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(root, filepath.FromSlash(MigrationJournalRelativePath))
+	if err := os.WriteFile(journal, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(root); !errors.Is(err, ErrMigrationIncomplete) {
+		t.Fatalf("Read() error = %v, want %v", err, ErrMigrationIncomplete)
+	}
+}
+
+func TestInitializeDoesNotReplaceMissingMetadataWhileMigrationJournalExists(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "instance")
+	if err := os.MkdirAll(filepath.Join(root, "system"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(root, filepath.FromSlash(MigrationJournalRelativePath))
+	if err := os.WriteFile(journal, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Initialize(context.Background(), root, Options{}); !errors.Is(err, ErrMigrationIncomplete) {
+		t.Fatalf("Initialize() error = %v, want %v", err, ErrMigrationIncomplete)
+	}
+	if _, err := os.Stat(filepath.Join(root, metadataFilename)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Initialize() replaced missing metadata during migration: %v", err)
+	}
+}
+
 func TestInitializePublishesSingleIdentityConcurrently(t *testing.T) {
 	t.Parallel()
 
@@ -270,5 +340,19 @@ func assertMode(t *testing.T, path string, want os.FileMode) {
 	got := info.Mode() & (os.ModeType | os.ModePerm)
 	if got != want {
 		t.Fatalf("mode for %q = %v, want %v", path, got, want)
+	}
+}
+
+func setFormatVersion(t *testing.T, root string, version uint32) {
+	t.Helper()
+	path := filepath.Join(root, metadataFilename)
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary.LittleEndian.PutUint32(encoded[8:12], version)
+	binary.LittleEndian.PutUint32(encoded[40:44], crc32.ChecksumIEEE(encoded[:40]))
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

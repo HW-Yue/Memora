@@ -1,6 +1,6 @@
 # macOS Instance 数据目录
 
-状态：默认路径、顶层目录、`instance.meta` v1 和 daemon 运行文件已实现。
+状态：默认路径、顶层目录、`instance.meta` v2、v1 升级和 daemon 运行文件已实现。
 
 ## 平台范围
 
@@ -66,9 +66,9 @@ default/
 
 `databases/` 下使用稳定 `database_id`，每库再分权威 data/history 与可重建 index generation。完整布局见 [Database 物理目录](./database-file-layout.md)。
 
-## instance.meta v1
+## instance.meta v2
 
-`instance.meta` 是固定 44 字节的 bootstrap 文件，只保存启动不变量：
+`instance.meta` v2 延续固定 44 字节的 bootstrap 编码，只保存启动不变量：
 
 ```text
 magic[8] | format_version u32 | page_size u32
@@ -77,7 +77,7 @@ created_at_unix_nano i64 | instance_uuid[16] | crc32 u32
 
 整数使用 little-endian；v1 默认 Page Size 为 16 KiB。文件权限为 `0600`，Instance 和固定子目录为 `0700`。
 
-初始化先在同目录写临时文件并 `fsync`，再用不覆盖既有目标的 hard-link 原子发布，最后同步目录。两个进程同时首次初始化时只有一个 UUID 成为正式身份，另一方读取胜出的完整文件。重复 `memora init` 保持原身份；长度、magic、版本、Page Size 或 CRC 错误都拒绝启动，绝不自动覆盖。
+初始化先在同目录写临时文件并 `fsync`，再用不覆盖既有目标的 hard-link 原子发布，最后同步目录。两个进程同时首次初始化时只有一个 UUID 成为正式身份，另一方读取胜出的完整文件。重复 `memora init` 保持原身份；长度、magic、Page Size 或 CRC 错误都拒绝启动，绝不自动覆盖。v1 返回明确的 upgrade-required 状态，高于 v2 的格式返回 newer-format，不能都误报成损坏；迁移与回滚见 [Instance Format 升级与回滚 v1](./instance-format-upgrade-v1.md)。
 
 ## daemon 运行文件
 

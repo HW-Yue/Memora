@@ -54,6 +54,14 @@ type Lease struct {
 }
 
 func Acquire(dataDir string) (*Lease, error) {
+	return acquire(dataDir, true)
+}
+
+func AcquireMaintenance(dataDir string) (*Lease, error) {
+	return acquire(dataDir, false)
+}
+
+func acquire(dataDir string, daemonPID bool) (*Lease, error) {
 	paths, err := RuntimePaths(dataDir)
 	if err != nil {
 		return nil, err
@@ -76,11 +84,14 @@ func Acquire(dataDir string) (*Lease, error) {
 		}
 		return nil, fmt.Errorf("acquire daemon lock: %w", err)
 	}
-	lease := &Lease{file: file, paths: paths, pid: os.Getpid()}
-	if err := writePID(paths.PIDFile, lease.pid); err != nil {
-		_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
-		_ = file.Close()
-		return nil, err
+	lease := &Lease{file: file, paths: paths}
+	if daemonPID {
+		lease.pid = os.Getpid()
+		if err := writePID(paths.PIDFile, lease.pid); err != nil {
+			_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+			_ = file.Close()
+			return nil, err
+		}
 	}
 	return lease, nil
 }
@@ -169,8 +180,11 @@ func (lease *Lease) Close() error {
 		return nil
 	}
 	lease.closed = true
-	if current, err := readPID(lease.paths.PIDFile); err == nil && current == lease.pid {
-		_ = os.Remove(lease.paths.PIDFile)
+	if lease.pid > 0 {
+		current, err := readPID(lease.paths.PIDFile)
+		if err == nil && current == lease.pid {
+			_ = os.Remove(lease.paths.PIDFile)
+		}
 	}
 	unlockErr := unix.Flock(int(lease.file.Fd()), unix.LOCK_UN)
 	closeErr := lease.file.Close()

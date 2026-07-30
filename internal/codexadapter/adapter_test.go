@@ -49,6 +49,11 @@ func TestBuildUsesCanonicalSkillAndLeastPrivilegeCodexSurfaces(t *testing.T) {
 			t.Errorf("Codex rules contain unsafe broad token %q", forbidden)
 		}
 	}
+	for _, approvalGated := range []string{"memora upgrade --apply", "memora doctor repair"} {
+		if !strings.Contains(rules, `"`+approvalGated+`"`) {
+			t.Errorf("Codex rules do not approval-gate %q", approvalGated)
+		}
+	}
 }
 
 func TestInstallCreatesDiscoverableCodexBundleDeterministically(t *testing.T) {

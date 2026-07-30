@@ -20,6 +20,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/instance"
+	"github.com/HW-Yue/Memora/internal/instanceupgrade"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -58,6 +59,7 @@ Commands:
   query      Query MSQL through the local daemon
   reflect    Ingest an explicit conversation event
   schema     Execute a validated Schema Plan
+  upgrade    Plan or apply a transactional Instance format upgrade
   version    Show build version
 
 Run 'memora help' for usage.
@@ -101,6 +103,9 @@ type Dependencies struct {
 	Maintain           func(context.Context, string, semantichealth.Request) (semantichealth.Receipt, error)
 	RecordFeedback     func(context.Context, string, feedback.Event) (feedback.Receipt, error)
 	ConfirmFeedback    func(context.Context, string, feedback.Confirmation) (feedback.ConfirmationReceipt, error)
+	PreviewUpgrade     func(string) (instanceupgrade.Plan, error)
+	ApplyUpgrade       func(context.Context, string, instanceupgrade.Options) (instanceupgrade.Receipt, error)
+	RepairUpgrade      func(context.Context, string, string, instanceupgrade.Options) (instanceupgrade.Receipt, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -140,6 +145,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runReflect(args[1:], stdout, stderr, dependencies)
 	case "schema":
 		return runSchema(args[1:], stdout, stderr, dependencies)
+	case "upgrade":
+		return runUpgrade(args[1:], stdout, stderr, dependencies)
 	case "version":
 		return runVersion(args[1:], stdout, stderr, build)
 	default:
@@ -966,6 +973,9 @@ func runDoctor(
 	stdout, stderr io.Writer,
 	dependencies Dependencies,
 ) int {
+	if len(args) > 0 && args[0] == "repair" {
+		return runDoctorRepair(args[1:], stdout, stderr, dependencies)
+	}
 	dataDir, code := daemonDataDir(args, stderr, dependencies)
 	if code != ExitOK {
 		return code
@@ -979,6 +989,134 @@ func runDoctor(
 	}
 	if report.Status != "healthy" {
 		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runUpgrade(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	planRequested := false
+	applyRequested := false
+	approved := false
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--plan":
+			planRequested = true
+		case "--apply":
+			applyRequested = true
+		case "--yes":
+			approved = true
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown upgrade option: %q", args[index]))
+		}
+	}
+	if planRequested == applyRequested {
+		return usageError(stderr, "upgrade requires exactly one of --plan or --apply")
+	}
+	if planRequested && approved {
+		return usageError(stderr, "--yes is only valid with upgrade --apply")
+	}
+	if applyRequested && !approved {
+		return usageError(stderr, "upgrade --apply requires --yes after explicit approval")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if planRequested {
+		preview := dependencies.PreviewUpgrade
+		if preview == nil {
+			preview = instanceupgrade.Preview
+		}
+		plan, err := preview(dataDir)
+		if err != nil {
+			return commandError(stderr, "plan Instance upgrade", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(plan); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	apply := dependencies.ApplyUpgrade
+	if apply == nil {
+		apply = instanceupgrade.Apply
+	}
+	receipt, err := apply(context.Background(), dataDir, instanceupgrade.Options{
+		Approved: true, Clock: dependencies.Clock, IDs: dependencies.IDs,
+	})
+	if err != nil {
+		return commandError(stderr, "upgrade Instance", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	return ExitOK
+}
+
+func runDoctorRepair(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var backup string
+	approved := false
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--backup":
+			if index+1 >= len(args) || backup != "" {
+				return usageError(stderr, "--backup requires one absolute path")
+			}
+			backup = args[index+1]
+			index++
+		case "--yes":
+			approved = true
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown doctor repair option: %q", args[index]))
+		}
+	}
+	if !approved {
+		return usageError(stderr, "doctor repair requires --yes after explicit approval")
+	}
+	if backup != "" && !filepath.IsAbs(backup) {
+		return usageError(stderr, "--backup must be an absolute path")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	repair := dependencies.RepairUpgrade
+	if repair == nil {
+		repair = instanceupgrade.Repair
+	}
+	cleanBackup := ""
+	if backup != "" {
+		cleanBackup = filepath.Clean(backup)
+	}
+	receipt, err := repair(context.Background(), dataDir, cleanBackup, instanceupgrade.Options{
+		Approved: true, Clock: dependencies.Clock, IDs: dependencies.IDs,
+	})
+	if err != nil {
+		return commandError(stderr, "repair Instance format", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
 	}
 	return ExitOK
 }

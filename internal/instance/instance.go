@@ -16,16 +16,21 @@ import (
 )
 
 const (
-	metadataFilename = "instance.meta"
-	metadataSize     = 44
-	FormatVersion    = uint32(1)
-	DefaultPageSize  = uint32(16 * 1024)
+	metadataFilename             = "instance.meta"
+	metadataSize                 = 44
+	FormatVersion                = uint32(2)
+	MinimumUpgradableVersion     = uint32(1)
+	DefaultPageSize              = uint32(16 * 1024)
+	MigrationJournalRelativePath = "system/format-migration.json"
 )
 
 var (
-	ErrPathNotAbsolute = errors.New("instance path is not absolute")
-	ErrCorruptMetadata = errors.New("instance metadata is corrupt")
-	metadataMagic      = [8]byte{'M', 'E', 'M', 'O', 'R', 'A', 0, 1}
+	ErrPathNotAbsolute     = errors.New("instance path is not absolute")
+	ErrCorruptMetadata     = errors.New("instance metadata is corrupt")
+	ErrUpgradeRequired     = errors.New("instance format upgrade is required")
+	ErrNewerFormat         = errors.New("instance format is newer than this binary")
+	ErrMigrationIncomplete = errors.New("instance format migration is incomplete")
+	metadataMagic          = [8]byte{'M', 'E', 'M', 'O', 'R', 'A', 0, 1}
 )
 
 var instanceDirectories = [...]string{
@@ -90,11 +95,62 @@ type Result struct {
 	Created  bool
 }
 
+type CompatibilityStatus string
+
+const (
+	CompatibilityCurrent         CompatibilityStatus = "current"
+	CompatibilityUpgradeRequired CompatibilityStatus = "upgrade_required"
+	CompatibilityNewerFormat     CompatibilityStatus = "newer_format"
+)
+
+type Inspection struct {
+	Metadata Metadata
+	Status   CompatibilityStatus
+}
+
 func Read(root string) (Metadata, error) {
 	if !filepath.IsAbs(root) {
 		return Metadata{}, ErrPathNotAbsolute
 	}
-	return readMetadata(filepath.Join(root, metadataFilename))
+	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(MigrationJournalRelativePath))); err == nil {
+		return Metadata{}, ErrMigrationIncomplete
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Metadata{}, fmt.Errorf("inspect instance migration journal: %w", err)
+	}
+	inspection, err := Inspect(root)
+	if err != nil {
+		return Metadata{}, err
+	}
+	switch inspection.Status {
+	case CompatibilityCurrent:
+		return inspection.Metadata, nil
+	case CompatibilityUpgradeRequired:
+		return Metadata{}, ErrUpgradeRequired
+	case CompatibilityNewerFormat:
+		return Metadata{}, ErrNewerFormat
+	default:
+		return Metadata{}, ErrCorruptMetadata
+	}
+}
+
+func Inspect(root string) (Inspection, error) {
+	if !filepath.IsAbs(root) {
+		return Inspection{}, ErrPathNotAbsolute
+	}
+	metadata, err := readMetadata(filepath.Join(root, metadataFilename))
+	if err != nil {
+		return Inspection{}, err
+	}
+	status := CompatibilityCurrent
+	if metadata.FormatVersion < FormatVersion {
+		if metadata.FormatVersion < MinimumUpgradableVersion {
+			return Inspection{}, ErrCorruptMetadata
+		}
+		status = CompatibilityUpgradeRequired
+	} else if metadata.FormatVersion > FormatVersion {
+		status = CompatibilityNewerFormat
+	}
+	return Inspection{Metadata: metadata, Status: status}, nil
 }
 
 func Initialize(ctx context.Context, root string, options Options) (Result, error) {
@@ -110,7 +166,7 @@ func Initialize(ctx context.Context, root string, options Options) (Result, erro
 	}
 
 	metadataPath := filepath.Join(root, metadataFilename)
-	existing, err := readMetadata(metadataPath)
+	existing, err := Read(root)
 	if err == nil {
 		if err := createDirectories(ctx, root); err != nil {
 			return Result{}, err
@@ -227,7 +283,7 @@ func readMetadata(path string) (Metadata, error) {
 	}
 	formatVersion := binary.LittleEndian.Uint32(encoded[8:12])
 	pageSize := binary.LittleEndian.Uint32(encoded[12:16])
-	if formatVersion != FormatVersion || validatePageSize(pageSize) != nil {
+	if formatVersion == 0 || validatePageSize(pageSize) != nil {
 		return Metadata{}, ErrCorruptMetadata
 	}
 	id, err := uuid.FromBytes(encoded[24:40])
@@ -240,6 +296,64 @@ func readMetadata(path string) (Metadata, error) {
 		CreatedAt:     time.Unix(0, int64(binary.LittleEndian.Uint64(encoded[16:24]))).UTC(),
 		InstanceID:    id.String(),
 	}, nil
+}
+
+func RewriteFormatVersion(root string, expected, target uint32) (Metadata, error) {
+	if !filepath.IsAbs(root) {
+		return Metadata{}, ErrPathNotAbsolute
+	}
+	if expected != MinimumUpgradableVersion || target != FormatVersion || target != expected+1 {
+		return Metadata{}, errors.New("unsupported instance format migration")
+	}
+	inspection, err := Inspect(root)
+	if err != nil {
+		return Metadata{}, err
+	}
+	if inspection.Metadata.FormatVersion != expected {
+		return Metadata{}, fmt.Errorf(
+			"instance format changed: got %d, expected %d",
+			inspection.Metadata.FormatVersion,
+			expected,
+		)
+	}
+	id, err := uuid.Parse(inspection.Metadata.InstanceID)
+	if err != nil {
+		return Metadata{}, ErrCorruptMetadata
+	}
+	metadata := inspection.Metadata
+	metadata.FormatVersion = target
+	if err := replaceMetadata(root, encodeMetadata(metadata, id)); err != nil {
+		return Metadata{}, err
+	}
+	return metadata, nil
+}
+
+func replaceMetadata(root string, encoded []byte) error {
+	temporary, err := os.CreateTemp(root, ".instance.meta-migrate-")
+	if err != nil {
+		return fmt.Errorf("create migrated instance metadata: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer func() { _ = os.Remove(temporaryPath) }()
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("secure migrated instance metadata: %w", err)
+	}
+	if _, err := temporary.Write(encoded); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("write migrated instance metadata: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("sync migrated instance metadata: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close migrated instance metadata: %w", err)
+	}
+	if err := os.Rename(temporaryPath, filepath.Join(root, metadataFilename)); err != nil {
+		return fmt.Errorf("publish migrated instance metadata: %w", err)
+	}
+	return syncDirectory(root)
 }
 
 func publishMetadata(ctx context.Context, root, destination string, encoded []byte) (bool, error) {

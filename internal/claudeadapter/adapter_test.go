@@ -21,10 +21,14 @@ func TestBuildAddsOnlyClaudeHostMetadataToCanonicalSkill(t *testing.T) {
 	generated := string(bundle.Files[".claude/skills/memora/SKILL.md"].Content)
 	frontmatter := strings.TrimSuffix(generated, claudeadapter.CanonicalBody(generated))
 	canonical, _ := os.ReadFile(filepath.Join(root, "skills", "memora", "SKILL.md"))
-	for _, command := range []string{"assimilate", "doctor", "exec", "feedback", "maintain", "mutate", "query", "reflect", "schema"} {
+	for _, command := range []string{"assimilate", "exec", "feedback", "maintain", "mutate", "query", "reflect", "schema"} {
 		if !strings.Contains(frontmatter, "Bash(memora "+command+" *)") {
 			t.Errorf("Claude allowed-tools omits %q", command)
 		}
+	}
+	if !strings.Contains(frontmatter, "Bash(memora doctor)") ||
+		strings.Contains(frontmatter, "Bash(memora doctor *)") {
+		t.Fatal("Claude adapter must allow only the exact read-only doctor command implicitly")
 	}
 	if strings.Contains(frontmatter, "install.sh") || strings.Contains(frontmatter, "Bash(memora *)") {
 		t.Fatal("Claude adapter grants bootstrap or broad future command permission")

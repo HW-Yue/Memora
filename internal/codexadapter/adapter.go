@@ -182,6 +182,8 @@ prefix_rule(
     not_match = [
         "memora init",
         "memora daemon start",
+        "memora upgrade --apply",
+        "memora doctor repair",
         "/bin/sh install.sh --yes",
     ],
 )

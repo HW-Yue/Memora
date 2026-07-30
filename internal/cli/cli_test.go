@@ -16,6 +16,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/feedback"
+	"github.com/HW-Yue/Memora/internal/instanceupgrade"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillschema"
@@ -129,6 +130,24 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: --plan must be one strict Schema Plan JSON object\n",
 		},
 		{
+			name:       "upgrade requires one operation",
+			args:       []string{"upgrade"},
+			wantCode:   2,
+			wantStderr: "memora: upgrade requires exactly one of --plan or --apply\n",
+		},
+		{
+			name:       "upgrade apply requires approval",
+			args:       []string{"upgrade", "--apply"},
+			wantCode:   2,
+			wantStderr: "memora: upgrade --apply requires --yes after explicit approval\n",
+		},
+		{
+			name:       "doctor repair requires approval",
+			args:       []string{"doctor", "repair"},
+			wantCode:   2,
+			wantStderr: "memora: doctor repair requires --yes after explicit approval\n",
+		},
+		{
 			name:       "assimilate requires one operation",
 			args:       []string{"assimilate"},
 			wantCode:   2,
@@ -196,6 +215,62 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunUpgradeAndDoctorRepairUseBoundedOperations(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	backupPath := filepath.Join(home, "backup")
+	previewed, applied, repaired := false, false, false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		PreviewUpgrade: func(got string) (instanceupgrade.Plan, error) {
+			previewed = true
+			if got != dataDir {
+				t.Fatalf("preview data dir = %q", got)
+			}
+			return instanceupgrade.Plan{
+				Version: instanceupgrade.PlanVersion, InstanceID: "instance-1",
+				FromVersion: 1, ToVersion: 2,
+			}, nil
+		},
+		ApplyUpgrade: func(_ context.Context, got string, options instanceupgrade.Options) (instanceupgrade.Receipt, error) {
+			applied = true
+			if got != dataDir || !options.Approved {
+				t.Fatalf("apply = %q, %#v", got, options)
+			}
+			return instanceupgrade.Receipt{
+				Version: instanceupgrade.ReceiptVersion, Status: "upgraded",
+				InstanceID: "instance-1", FromVersion: 1, ToVersion: 2,
+			}, nil
+		},
+		RepairUpgrade: func(_ context.Context, got, backup string, options instanceupgrade.Options) (instanceupgrade.Receipt, error) {
+			repaired = true
+			if got != dataDir || backup != backupPath || !options.Approved {
+				t.Fatalf("repair = %q, %q, %#v", got, backup, options)
+			}
+			return instanceupgrade.Receipt{
+				Version: instanceupgrade.ReceiptVersion, Status: "rolled_back",
+				InstanceID: "instance-1", FromVersion: 2, ToVersion: 1,
+			}, nil
+		},
+	}
+	for _, args := range [][]string{
+		{"upgrade", "--plan", "--data-dir", dataDir},
+		{"upgrade", "--apply", "--yes", "--data-dir", dataDir},
+		{"doctor", "repair", "--yes", "--backup", backupPath, "--data-dir", dataDir},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := RunWithDependencies(args, &stdout, &stderr, BuildInfo{}, dependencies)
+		if code != ExitOK || stderr.Len() != 0 || !json.Valid(stdout.Bytes()) {
+			t.Fatalf("%v code=%d stdout=%q stderr=%q", args, code, &stdout, &stderr)
+		}
+	}
+	if !previewed || !applied || !repaired {
+		t.Fatalf("previewed=%t applied=%t repaired=%t", previewed, applied, repaired)
 	}
 }
 

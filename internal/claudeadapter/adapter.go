@@ -116,7 +116,7 @@ func addClaudeFrontmatter(skill string) (string, error) {
 	}
 	position := 4 + end
 	allowed := "\nallowed-tools: " + strings.Join([]string{
-		"Bash(memora assimilate *)", "Bash(memora doctor *)", "Bash(memora exec *)",
+		"Bash(memora assimilate *)", "Bash(memora doctor)", "Bash(memora exec *)",
 		"Bash(memora feedback *)", "Bash(memora maintain *)", "Bash(memora mutate *)",
 		"Bash(memora query *)", "Bash(memora reflect *)", "Bash(memora schema *)",
 	}, " ")

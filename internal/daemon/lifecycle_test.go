@@ -30,6 +30,27 @@ func TestAcquireEnforcesSingleDaemon(t *testing.T) {
 	}
 }
 
+func TestAcquireMaintenanceExcludesDaemonWithoutPublishingPID(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "instance")
+	lease, err := AcquireMaintenance(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lease.Close() }()
+	if _, err := Acquire(dataDir); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("Acquire() during maintenance = %v", err)
+	}
+	paths, err := RuntimePaths(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(paths.PIDFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("maintenance lease published a PID file: %v", err)
+	}
+}
+
 func TestInspectCleansStalePID(t *testing.T) {
 	t.Parallel()
 

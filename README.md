@@ -16,7 +16,7 @@ memora daemon         管理本地常驻服务
 
 ## 当前实现状态
 
-开发按 [TDD 开发总计划](./docs/planning/tdd-development-plan.md) 推进。当前 CLI 提供 Instance/daemon、MSQL query/exec、Skill 写入与 Schema 计划、资料吸收、Database Package、Wiki 导出和诊断链路。基础入口包括：
+开发按 [TDD 开发总计划](./docs/planning/tdd-development-plan.md) 推进。当前 CLI 提供 Instance/daemon、MSQL query/exec、Skill 写入与 Schema 计划、资料吸收、Database Package、Wiki 导出、格式升级和诊断链路。基础入口包括：
 
 ```text
 memora help
@@ -26,9 +26,15 @@ memora init --instance work --log-level debug
 memora daemon start --data-dir /absolute/path
 memora daemon status --data-dir /absolute/path
 memora daemon stop --data-dir /absolute/path
+memora upgrade --plan --data-dir /absolute/path
+memora upgrade --apply --yes --data-dir /absolute/path
+memora doctor repair --yes --data-dir /absolute/path
 memora version
 memora version --json
 ```
+
+升级 apply 与 doctor repair 都是显式高风险操作：Agent 必须先展示只读计划或
+journal 绑定的恢复点，再取得用户单独同意；安装授权不能代替升级授权。
 
 本地验证：
 

@@ -2,7 +2,7 @@
 
 目标：先交付可安全安装的 macOS 产品；AI-native 质量达标后，再用原生内核替换原型 Store。
 
-## F44 Database Pack/Open/Install
+## F44 Database Pack/Open/Install（已完成）
 
 先测：pack 哈希、只读 open、install、同 ID/同名冲突、不可信包、损坏包和索引删除重建。
 
@@ -42,7 +42,7 @@
 
 提交：`ci(F48): publish verified GitHub releases`
 
-## F49 升级与回滚
+## F49 升级与回滚（已完成）
 
 先测：旧 binary/新 datadir、新 binary/旧 datadir、中断迁移、备份恢复和不支持降级。
 
