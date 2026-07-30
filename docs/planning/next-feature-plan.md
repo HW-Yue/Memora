@@ -9,9 +9,9 @@
 
 | Feature | 用户结果 | 完成门 |
 | --- | --- | --- |
-| F81 Inspection MSQL Read Model | 所有真实内容可以稳定、分页、按权限读取 | 10k Row/深 Route/History 有界分页，无 Store 旁路 |
+| F81 Inspection MSQL Read Model | 真实内容可稳定分页，Data Dictionary 能描述卡片与完整文档结构 | 10k Row/深 Route/History 有界分页，动态 Schema 不靠前端猜列名 |
 | F82 Local Read API | 本地 UI 和工具有统一只读接口 | loopback、固定 scope、只读 AST、CLI/API envelope 等价 |
-| F83 Memora Studio v1 | 用户看到 Database、Schema、Row、History、Relation、来源和 Route Tree | 发行二进制完成干净 Instance 可视化旅程 |
+| F83 Memora Studio v1 | 类 MySQL Admin 管理导航；Route 叶子下以卡片和完整文档展示数据项 | 发行二进制完成干净 Instance 可视化旅程，业务正文不使用 Row Grid |
 | F84 Route Trace | 用户看到 AI 每层 Route 选择、RowID 和 SQL | 两个宿主真实 trace 可复现、无 prompt/正文泄漏 |
 
 详细边界见[数据可视化与本地观察接口计划](./visual-inspection-feature-plan.md)。
@@ -68,4 +68,3 @@ Wiki 双向回流、内置 `memora ask` 和跨平台继续单独 Review，不自
 2. 第二批 Review F85–F87，用真实模型和质量数据纠正产品判断；
 3. 第三批 Review F88–F90，建设可解释的 Route/Schema 自治；
 4. F91 以后根据前三批证据重新排序，不一次性授权到底。
-
