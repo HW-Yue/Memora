@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/conversation"
+	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillschema"
@@ -151,6 +152,18 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: assimilate requires exactly one of --event, --submission, or --receipt\n",
 		},
 		{
+			name:       "feedback requires one operation",
+			args:       []string{"feedback"},
+			wantCode:   2,
+			wantStderr: "memora: feedback requires exactly one of --event or --confirmation\n",
+		},
+		{
+			name:       "feedback rejects unknown event field",
+			args:       []string{"feedback", "--event", `{"content":"unsafe"}`},
+			wantCode:   2,
+			wantStderr: "memora: --event must be one strict Feedback Event JSON object\n",
+		},
+		{
 			name:       "reflect requires event",
 			args:       []string{"reflect"},
 			wantCode:   2,
@@ -182,6 +195,59 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunFeedbackPassesEventAndConfirmationToDaemon(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	event := feedback.Event{
+		Version: feedback.EventVersion, EventID: "feedback-cli", Kind: feedback.KindWrong,
+		Actor: "agent:test", Reason: "wrong", Target: feedback.Target{Database: "work", Table: "notes", RowID: "row-1", Revision: 2},
+	}
+	confirmation := feedback.Confirmation{
+		Version: feedback.ConfirmationVersion, ConfirmationID: "confirm-cli", FeedbackEventID: event.EventID,
+		SourceEventID: "user-confirm-cli", Actor: "agent:test", Instruction: "restore", Action: feedback.ActionUndo,
+		ExpectedRevision: 2, AuthorizedDatabases: []string{"work"},
+		Undo: &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, IndexTerms: []string{}, RouteLeafIDs: []string{}},
+	}
+	eventJSON, _ := json.Marshal(event)
+	confirmationJSON, _ := json.Marshal(confirmation)
+	recorded, confirmed := false, false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		RecordFeedback: func(_ context.Context, gotDataDir string, got feedback.Event) (feedback.Receipt, error) {
+			recorded = true
+			if gotDataDir != dataDir || got.EventID != event.EventID {
+				t.Fatalf("feedback event = %q, %#v", gotDataDir, got)
+			}
+			return feedback.Receipt{Version: feedback.ReceiptVersion, EventID: got.EventID, Kind: got.Kind, Status: "recorded", Target: got.Target}, nil
+		},
+		ConfirmFeedback: func(_ context.Context, gotDataDir string, got feedback.Confirmation) (feedback.ConfirmationReceipt, error) {
+			confirmed = true
+			if gotDataDir != dataDir || got.ConfirmationID != confirmation.ConfirmationID {
+				t.Fatalf("feedback confirmation = %q, %#v", gotDataDir, got)
+			}
+			return feedback.ConfirmationReceipt{
+				Version: feedback.ConfirmationReceiptVersion, ConfirmationID: got.ConfirmationID,
+				FeedbackEventID: got.FeedbackEventID, Action: got.Action, Status: "confirmed", Verified: true,
+				Target: event.Target, Warnings: []result.Notice{},
+			}, nil
+		},
+	}
+	for _, args := range [][]string{
+		{"feedback", "--data-dir", dataDir, "--event", string(eventJSON)},
+		{"feedback", "--data-dir", dataDir, "--confirmation", string(confirmationJSON)},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := RunWithDependencies(args, &stdout, &stderr, BuildInfo{}, dependencies); code != ExitOK {
+			t.Fatalf("feedback %v code=%d stderr=%q", args, code, &stderr)
+		}
+	}
+	if !recorded || !confirmed {
+		t.Fatalf("recorded=%t confirmed=%t", recorded, confirmed)
 	}
 }
 

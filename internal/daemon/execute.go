@@ -9,6 +9,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/conversation"
+	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -154,6 +155,9 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 	if request.Method == "conversation.reflect" {
 		return handler.handleReflect(ctx, session, request)
 	}
+	if request.Method == "feedback.record" || request.Method == "feedback.confirm" {
+		return handler.handleFeedback(ctx, session, request)
+	}
 	if request.Method != "msql.execute" {
 		return handleRequest(ctx, session, request)
 	}
@@ -175,6 +179,44 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 		RequestID: request.RequestID, Source: payload.Source, Statements: payload.Statements,
 	})
 	return json.Marshal(envelope)
+}
+
+func (handler *databaseHandler) handleFeedback(
+	ctx context.Context,
+	session ipc.Session,
+	request ipc.Request,
+) (json.RawMessage, error) {
+	batch, ok := handler.session(session.ID)
+	if !ok {
+		return nil, &feedback.Error{Code: result.CodeInvalidRequest, Message: "MSQL daemon session is closed"}
+	}
+	tool := skillwrite.ToolFunc(func(callContext context.Context, call skillwrite.Call) (result.Envelope, error) {
+		return batch.Execute(callContext, call.Request), nil
+	})
+	processor := feedback.New(handler.store, handler.rows, tool)
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if request.Method == "feedback.record" {
+		var event feedback.Event
+		if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+			return nil, &feedback.Error{Code: result.CodeInvalidRequest, Message: "feedback event payload is invalid"}
+		}
+		receipt, err := processor.Record(ctx, event)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(receipt)
+	}
+	var confirmation feedback.Confirmation
+	if err := decoder.Decode(&confirmation); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, &feedback.Error{Code: result.CodeInvalidRequest, Message: "feedback confirmation payload is invalid"}
+	}
+	receipt, err := processor.Confirm(ctx, confirmation)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(receipt)
 }
 
 func (handler *databaseHandler) handleAssimilationSubmission(

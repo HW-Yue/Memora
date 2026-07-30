@@ -82,6 +82,7 @@ useful / irrelevant / stale / wrong / incomplete
 ```
 
 反馈不直接改事实。它生成可审计的修订候选，Mutation Agent 重新读取证据和当前 revision 后再提交。
+协议和逻辑 Undo 边界见[反馈、修订与逻辑 Undo v1](../agent/feedback-revision-v1.md)。
 
 ## 发布门槛
 

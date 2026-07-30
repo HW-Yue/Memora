@@ -8,6 +8,7 @@ Commands:
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
+  feedback   Record feedback or confirm an auditable revision
   help       Show this help
   init       Initialize a local instance
   maintain   Report and retry low-risk semantic maintenance

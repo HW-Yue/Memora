@@ -10,7 +10,8 @@ and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
 Only use the `memora assimilate`, `memora doctor`, `memora query`, `memora exec`,
-`memora maintain`, `memora mutate`, `memora schema`, and `memora reflect` interfaces.
+`memora feedback`, `memora maintain`, `memora mutate`, `memora schema`, and
+`memora reflect` interfaces.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -231,6 +232,29 @@ the index.
 ```sh
 memora maintain --report
 ```
+
+## Record feedback and revise
+
+Record useful, irrelevant, stale, wrong, or incomplete quality feedback against
+the exact displayed Database, Table, Row ID, and revision. A feedback event is
+an auditable quality signal only: it never runs MSQL or changes facts, History,
+indexes, or Route memberships.
+
+```sh
+memora feedback --event '{"version":"memora.feedback-event/v1","event_id":"feedback-10","kind":"wrong","actor":"agent:host","reason":"user says the summary is wrong","target":{"database":"work","table":"notes","row_id":"row_01","revision":2}}'
+```
+
+For stale, wrong, or incomplete feedback, re-SELECT the current Row and wait for
+an explicit user confirmation with a new source event. Submit either a normal
+revision Mutation Plan or an undo request in `memora.feedback-confirmation/v1`.
+Keep scope, actor, provenance, expected revision, and the feedback ID bound to
+the confirmation. Never mutate useful/irrelevant feedback or expand its scope.
+
+Logical undo uses RESTORE and appends a new `COMPENSATE` revision. It never
+deletes History or rewinds the current revision. Supply the expected schema and
+current revisions plus complete index and Route snapshots. If a confirmation is
+in doubt, inspect logical Row History before recovery; never blindly replay it.
+Only a verified `memora.feedback-confirmation-receipt/v1` establishes success.
 
 ## Return a receipt
 

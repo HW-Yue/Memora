@@ -13,6 +13,10 @@
   "semantic_health_version": "memora.semantic-health/v1",
   "maintenance_request_version": "memora.maintenance-request/v1",
   "maintenance_receipt_version": "memora.maintenance-receipt/v1",
+  "feedback_event_version": "memora.feedback-event/v1",
+  "feedback_receipt_version": "memora.feedback-receipt/v1",
+  "feedback_confirmation_version": "memora.feedback-confirmation/v1",
+  "feedback_confirmation_receipt_version": "memora.feedback-confirmation-receipt/v1",
   "allowed_commands": [
     "assimilate",
     "doctor",
@@ -20,8 +24,9 @@
     "exec",
     "mutate",
     "schema",
-    "reflect"
-    ,"maintain"
+    "reflect",
+    "maintain",
+    "feedback"
   ],
   "physical_access": "forbidden",
   "conflict_policy": "ask_user_before_mutation",
@@ -34,8 +39,9 @@
     "conflict",
     "request_user",
     "receipt",
-    "reflect"
-    ,"maintain"
+    "reflect",
+    "maintain",
+    "feedback"
   ],
   "budgets": {
     "route_rows": 12,
@@ -56,6 +62,10 @@
     {
       "name": "semantic-health",
       "command": "memora maintain --report"
+    },
+    {
+      "name": "record-feedback",
+      "command": "memora feedback --event '{\"version\":\"memora.feedback-event/v1\",\"event_id\":\"feedback-10\",\"kind\":\"wrong\",\"actor\":\"agent:host\",\"reason\":\"user says the summary is wrong\",\"target\":{\"database\":\"work\",\"table\":\"notes\",\"row_id\":\"row_01\",\"revision\":2}}'"
     },
     {
       "name": "doctor",

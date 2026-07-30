@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
+	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -52,6 +53,12 @@ func TestCanonicalSkillContract(t *testing.T) {
 	if got, want := bundle.Contract.SourceReceiptVersion, assimilation.SourceReceiptVersion; got != want {
 		t.Fatalf("Source Receipt version = %q, want %q", got, want)
 	}
+	if got, want := bundle.Contract.FeedbackEventVersion, feedback.EventVersion; got != want {
+		t.Fatalf("feedback event version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.FeedbackConfirmationVersion, feedback.ConfirmationVersion; got != want {
+		t.Fatalf("feedback confirmation version = %q, want %q", got, want)
+	}
 
 	for _, example := range bundle.Contract.Examples {
 		if example.MSQL == "" {
@@ -92,7 +99,7 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 	if got := bundle.Contract.ConflictPolicy; got != skillcontract.ConflictAskUserBeforeMutation {
 		t.Fatalf("conflict policy = %q, want %q", got, skillcontract.ConflictAskUserBeforeMutation)
 	}
-	foundCommands := map[string]bool{"schema": false, "reflect": false, "assimilate": false}
+	foundCommands := map[string]bool{"schema": false, "reflect": false, "assimilate": false, "feedback": false}
 	for _, command := range bundle.Contract.AllowedCommands {
 		if _, tracked := foundCommands[command]; tracked {
 			foundCommands[command] = true
@@ -112,6 +119,7 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 		"memora.semantic-conflict/v1", "memora.conflict-resolution/v1",
 		"memora.assimilation-submission/v1", "memora.assimilation-review/v1", "memora.source-receipt/v1",
 		"RETAIN", "REWRITE", "REMOVE", "in_doubt",
+		"memora.feedback-event/v1", "memora.feedback-confirmation/v1", "COMPENSATE",
 	} {
 		if !strings.Contains(bundle.Markdown, required) {
 			t.Errorf("canonical Skill omits conflict protocol token %q", required)

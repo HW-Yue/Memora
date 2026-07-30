@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
+	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -35,6 +36,7 @@ var requiredWorkflows = []string{
 	"receipt",
 	"reflect",
 	"maintain",
+	"feedback",
 }
 
 var forbiddenMarkdownTokens = []string{
@@ -59,26 +61,30 @@ type Example struct {
 }
 
 type Contract struct {
-	Version                       string    `json:"version"`
-	Source                        string    `json:"source"`
-	MSQLASTVersion                string    `json:"msql_ast_version"`
-	ResultVersion                 string    `json:"result_version"`
-	ConflictViewVersion           string    `json:"conflict_view_version"`
-	ConflictResolutionVersion     string    `json:"conflict_resolution_version"`
-	AssimilationEventVersion      string    `json:"assimilation_event_version"`
-	AssimilationReceiptVersion    string    `json:"assimilation_receipt_version"`
-	AssimilationSubmissionVersion string    `json:"assimilation_submission_version"`
-	AssimilationReviewVersion     string    `json:"assimilation_review_version"`
-	SourceReceiptVersion          string    `json:"source_receipt_version"`
-	SemanticHealthVersion         string    `json:"semantic_health_version"`
-	MaintenanceRequestVersion     string    `json:"maintenance_request_version"`
-	MaintenanceReceiptVersion     string    `json:"maintenance_receipt_version"`
-	AllowedCommands               []string  `json:"allowed_commands"`
-	PhysicalAccess                string    `json:"physical_access"`
-	ConflictPolicy                string    `json:"conflict_policy"`
-	Workflows                     []string  `json:"workflows"`
-	Budgets                       Budgets   `json:"budgets"`
-	Examples                      []Example `json:"examples"`
+	Version                            string    `json:"version"`
+	Source                             string    `json:"source"`
+	MSQLASTVersion                     string    `json:"msql_ast_version"`
+	ResultVersion                      string    `json:"result_version"`
+	ConflictViewVersion                string    `json:"conflict_view_version"`
+	ConflictResolutionVersion          string    `json:"conflict_resolution_version"`
+	AssimilationEventVersion           string    `json:"assimilation_event_version"`
+	AssimilationReceiptVersion         string    `json:"assimilation_receipt_version"`
+	AssimilationSubmissionVersion      string    `json:"assimilation_submission_version"`
+	AssimilationReviewVersion          string    `json:"assimilation_review_version"`
+	SourceReceiptVersion               string    `json:"source_receipt_version"`
+	SemanticHealthVersion              string    `json:"semantic_health_version"`
+	MaintenanceRequestVersion          string    `json:"maintenance_request_version"`
+	MaintenanceReceiptVersion          string    `json:"maintenance_receipt_version"`
+	FeedbackEventVersion               string    `json:"feedback_event_version"`
+	FeedbackReceiptVersion             string    `json:"feedback_receipt_version"`
+	FeedbackConfirmationVersion        string    `json:"feedback_confirmation_version"`
+	FeedbackConfirmationReceiptVersion string    `json:"feedback_confirmation_receipt_version"`
+	AllowedCommands                    []string  `json:"allowed_commands"`
+	PhysicalAccess                     string    `json:"physical_access"`
+	ConflictPolicy                     string    `json:"conflict_policy"`
+	Workflows                          []string  `json:"workflows"`
+	Budgets                            Budgets   `json:"budgets"`
+	Examples                           []Example `json:"examples"`
 }
 
 type Bundle struct {
@@ -147,6 +153,10 @@ func (bundle Bundle) Validate() error {
 	requireEqual("semantic_health_version", contract.SemanticHealthVersion, semantichealth.ReportVersion)
 	requireEqual("maintenance_request_version", contract.MaintenanceRequestVersion, semantichealth.RequestVersion)
 	requireEqual("maintenance_receipt_version", contract.MaintenanceReceiptVersion, semantichealth.ReceiptVersion)
+	requireEqual("feedback_event_version", contract.FeedbackEventVersion, feedback.EventVersion)
+	requireEqual("feedback_receipt_version", contract.FeedbackReceiptVersion, feedback.ReceiptVersion)
+	requireEqual("feedback_confirmation_version", contract.FeedbackConfirmationVersion, feedback.ConfirmationVersion)
+	requireEqual("feedback_confirmation_receipt_version", contract.FeedbackConfirmationReceiptVersion, feedback.ConfirmationReceiptVersion)
 	requireEqual("physical_access", contract.PhysicalAccess, PhysicalAccessForbidden)
 	requireEqual("conflict_policy", contract.ConflictPolicy, ConflictAskUserBeforeMutation)
 
@@ -174,6 +184,7 @@ func validateCommands(commands []string) []string {
 	want := map[string]bool{
 		"assimilate": false, "doctor": false, "query": false, "exec": false,
 		"mutate": false, "schema": false, "reflect": false, "maintain": false,
+		"feedback": false,
 	}
 	var violations []string
 	for _, command := range commands {
@@ -241,6 +252,7 @@ func validateMarkdown(markdown string) []string {
 		"## Assimilate sources",
 		"## Request the user",
 		"## Return a receipt",
+		"## Record feedback and revise",
 	} {
 		if !strings.Contains(markdown, heading) {
 			violations = append(violations, fmt.Sprintf("Skill source is missing heading %q", heading))

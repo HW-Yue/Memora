@@ -15,6 +15,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/config"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/daemon"
+	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
@@ -40,6 +41,7 @@ Commands:
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
+  feedback   Record feedback or confirm an auditable revision
   help       Show this help
   init       Initialize a local instance
   maintain   Report and retry low-risk semantic maintenance
@@ -89,6 +91,8 @@ type Dependencies struct {
 	GetSourceReceipt   func(context.Context, string, string) (assimilation.SourceReceipt, error)
 	SemanticHealth     func(context.Context, string) (semantichealth.Report, error)
 	Maintain           func(context.Context, string, semantichealth.Request) (semantichealth.Receipt, error)
+	RecordFeedback     func(context.Context, string, feedback.Event) (feedback.Receipt, error)
+	ConfirmFeedback    func(context.Context, string, feedback.Confirmation) (feedback.ConfirmationReceipt, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -110,6 +114,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runDoctor(args[1:], stdout, stderr, dependencies)
 	case "exec", "query":
 		return runExecute(args[0], args[1:], stdout, stderr, dependencies)
+	case "feedback":
+		return runFeedback(args[1:], stdout, stderr, dependencies)
 	case "init":
 		return runInit(args[1:], stdout, stderr, dependencies)
 	case "mutate":
@@ -130,6 +136,91 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runFeedback(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var eventJSON, confirmationJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--event":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--event requires a JSON object")
+			}
+			if eventJSON != "" {
+				return usageError(stderr, "--event may only be specified once")
+			}
+			eventJSON = args[index+1]
+			index++
+		case "--confirmation":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--confirmation requires a JSON object")
+			}
+			if confirmationJSON != "" {
+				return usageError(stderr, "--confirmation may only be specified once")
+			}
+			confirmationJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown feedback option: %q", args[index]))
+		}
+	}
+	if (eventJSON == "") == (confirmationJSON == "") {
+		return usageError(stderr, "feedback requires exactly one of --event or --confirmation")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if eventJSON != "" {
+		var event feedback.Event
+		decoder := json.NewDecoder(bytes.NewBufferString(eventJSON))
+		decoder.DisallowUnknownFields()
+		decoder.UseNumber()
+		if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+			return usageError(stderr, "--event must be one strict Feedback Event JSON object")
+		}
+		record := dependencies.RecordFeedback
+		if record == nil {
+			record = daemon.RecordFeedback
+		}
+		receipt, err := record(context.Background(), dataDir, event)
+		if err != nil {
+			return commandError(stderr, "record feedback", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	var confirmation feedback.Confirmation
+	decoder := json.NewDecoder(bytes.NewBufferString(confirmationJSON))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&confirmation); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--confirmation must be one strict Feedback Confirmation JSON object")
+	}
+	confirm := dependencies.ConfirmFeedback
+	if confirm == nil {
+		confirm = daemon.ConfirmFeedback
+	}
+	receipt, err := confirm(context.Background(), dataDir, confirmation)
+	if err != nil {
+		return commandError(stderr, "confirm feedback revision", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if receipt.Status == "committed_unverified" {
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func runAssimilate(
