@@ -81,7 +81,7 @@
 - [存储引擎术语](./storage/terminology.md) — 与 MySQL/InnoDB 对齐的标准命名和 Memora 独有概念。
 - [Buffer Pool](./storage/buffer-pool.md) — daemon 中缓存文件 Page，最近访问的 Page 按 LRU 或近似算法保留与淘汰。
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
-- [Binlog 与多设备同步基础](./storage/binlog-and-sync.md) — 已提交逻辑变更流，为增量同步和时间点恢复保留基础。
+- [Committed Change Log（Binlog）与未来同步](./storage/binlog-and-sync.md) — 第一用途是 Admin 展示数据与语义索引变化；同步、PITR 后续复用。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
 - [中间 Route Synopsis](./query/route-synopsis.md) — 可选私有子树总结、按需读取预算及随 reshape 原子更新规则。
 - [来源强度与复核证明](./data/source-provenance.md) — conversation/anchor/reviewed 分级、History 证据与 challenge-bound review。
@@ -107,7 +107,7 @@
 - [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [RowID 取数基础 Feature 计划](./planning/row-read-foundation-feature-plan.md) — 候选 F81/F82：纯代码快速点查、可重建目录、本地最小 MVCC 与精确对象写锁。
-- [数据可视化与本地观察接口计划](./planning/visual-inspection-feature-plan.md) — 候选 F83–F86：只读 MSQL、loopback API、Studio 与 Route Trace。
+- [数据可视化与本地观察接口计划](./planning/visual-inspection-feature-plan.md) — 候选 F83–F87：提交变化流、只读 MSQL、loopback API、Studio 与 Route Trace。
 - [F81 之后的 Feature 规划](./planning/next-feature-plan.md) — 取数基础、可视化、真实 AI 质量、语义自治、产品化和按数据触发的存储演进。
 - [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
 - [F72 AI-native 用户故事门](./planning/f72-ai-native-story-gate.md) — 全部产品故事、实际 MSQL、proof 文件、宿主与许可的最终验收。

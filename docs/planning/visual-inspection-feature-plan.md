@@ -1,16 +1,15 @@
 # 数据可视化与本地观察接口计划
 
-状态：讨论稿，待用户 Review；候选 F83–F86 未获执行授权。
-F81/F82 先补 RowID 快速目录与本地最小 MVCC。
+状态：讨论稿，待用户 Review；候选 F83–F87 未获执行授权。
+F81/F82 先补 RowID 快速目录与本地最小 MVCC；F83 先形成已提交变化流。
 
-## 候选用户故事
+## 用户故事
 
 `US-OBSERVE`：作为普通用户，我能在类似 MySQL Admin 的管理界面中看到
 Memora 的 Database、Table、Schema、关系、历史、来源和健康状态；数据浏览
 以语义 Route Tree 为主入口，点开叶子后能阅读约 1000 字的完整语义数据项
-及其字段结构，而不是在横向表格中查看长文本 Row。
-
-批准后再把该故事提升进产品宪章。
+及其字段结构，而不是在横向表格中查看长文本 Row；同时能按提交顺序看到数据项
+和语义索引怎样变化。
 
 ## 推荐产品形态
 
@@ -41,6 +40,7 @@ Memora Studio 参考常规 MySQL Admin 的管理层级，但不照搬“Row Grid
 中间：Table 语义 Route Tree，懒加载当前层
 右侧：叶子数据项列表或选中数据项的完整文档详情
 底部抽屉：RowID / revision / History / Relation / Source / 实际 MSQL
+时间线：commit → 数据/Schema/Route/membership changes → before/after
 ```
 
 - 首页和管理页可以使用表格展示 Database、Table、Column、配置和健康问题；
@@ -52,7 +52,7 @@ Memora Studio 参考常规 MySQL Admin 的管理层级，但不照搬“Row Grid
 
 ## 数据项展示契约
 
-Table 由 AI 动态建模，前端不能假设每张表都有同名的 `title/body`。F83 需要在
+Table 由 AI 动态建模，前端不能假设每张表都有同名的 `title/body`。F84 需要在
 Data Dictionary 中增加可选、版本化的展示元数据：
 
 - 数据项标题 Column；
@@ -72,26 +72,39 @@ Data Dictionary 中增加可选、版本化的展示元数据：
 4. 数据项详情：完整动态字段、RowID、revision、History、关系、来源和补偿链；
 5. Route Tree：从 Table root 懒加载子节点，显示 purpose/synopsis/revision；
 6. Route 叶子：只显示 locator，再显式 `SELECT` 回表展示 Row；
-7. Route Trace：显示 AI 每层看到什么、选择什么、最终 RowID 和结果状态；
-8. Health：结构问题、导航失败热点和待 Review 的维护计划，不静默修复。
+7. Changes：按 commit sequence 展示 Row、Schema、Route 和 membership 的变化；
+8. Route Trace：显示 AI 每层看到什么、选择什么、最终 RowID 和结果状态；
+9. Health：结构问题、导航失败热点和待 Review 的维护计划，不静默修复。
 
 UI 不一次下载整库或整棵树。所有列表、子节点、History、关系和 Row 都必须有
 limit、cursor、truncated 与版本信息。
 
-## F83 Inspection MSQL Read Model
+## F83 Committed Change Log v1
+
+目标：先产生可供 Admin 读取的确定性提交变化时间线。
+- Change envelope 与业务对象处于同一 Transaction Frame；
+- 记录事务边界、commit sequence、actor/source/reason 和有序 change entries；
+- Row 通过 History locator 展示正文 diff，Route/membership 使用 revision/delta；
+- rollback、未完成事务和 crash tail 不得出现在变化流；
+- 验收：split/merge 同时改变的 Row、Relation、Route 与 membership，要么作为
+  一个完整事务可见，要么完全不可见。
+
+不做：复制、GTID、远程传输、PITR 和物理 Page 日志。
+
+## F84 Inspection MSQL Read Model
 
 目标：先补齐“可安全浏览”的确定性读协议，UI 不拥有特殊后门。
 
 - 为 Database、Table 和语义数据项增加稳定 cursor 分页；
 - 为叶子中的 locator/数据项冻结 `row_id` 顺序与 next cursor，不用无限 OFFSET；
 - 冻结 Data Dictionary 的数据项标题、卡片摘要、字段顺序和确定性降级契约；
-- 统一暴露 History、Relation、Source Receipt、Health 和 Instance 摘要的有界读取；
+- 统一暴露 History、Change Log、Relation、Source Receipt、Health 和 Instance 摘要；
 - 所有结果继续使用 `memora.result/v1` 或显式版本化 envelope；
 - 验收：10k Row、深 Route、多 History 均可逐页浏览，单次响应不超预算。
 
 不做：HTTP、HTML、写入、全文导出和物理 Page 观察。
 
-## F84 Local Read API
+## F85 Local Read API
 
 目标：暴露可供 Studio 和本地工具复用的版本化接口。
 
@@ -104,7 +117,7 @@ limit、cursor、truncated 与版本信息。
 
 不做：公网 API、远程登录、API Key、写接口和模型 Provider。
 
-## F85 Memora Studio v1
+## F86 Memora Studio v1
 
 目标：让普通用户第一次真实看到数据库内容和语义索引结构。
 
@@ -112,13 +125,14 @@ limit、cursor、truncated 与版本信息。
 - Route Tree 是数据浏览主入口，支持懒加载、节点详情、叶子 locator 与 RowID 回表；
 - 叶子下先显示数据项卡片，再显示约 1000 字完整文档和动态字段结构；
 - History、关系、来源、配置与原始字段作为详情面板；
+- Changes 时间线展示事务影响对象，并可对比数据项和 Route Tree 前后 revision；
 - 空、截断、权限拒绝、陈旧 revision 和损坏状态显式可见；
 - 每个面板显示来源 ID/revision，并可复制实际 MSQL；
 - 验收：仅通过发行二进制和本地 API，在干净 Instance 完成完整观察旅程。
 
 不做：图形化写入、拖动 Route 节点、聊天问答和自动优化。
 
-## F86 Route Trace 与可视化诊断
+## F87 Route Trace 与可视化诊断
 
 目标：不只显示静态树，还显示 AI 实际怎样使用它。
 
@@ -128,8 +142,6 @@ limit、cursor、truncated 与版本信息。
 - Studio 将 trace 覆盖在树上，显示错误分支、回退、空叶子和高成本路径；
 - trace 是可清理的观察数据，不是语义事实，不进入 Wiki 或 Database package；
 - 验收：Codex/Claude 各完成一条真实路线，Studio 可复现路径且不能泄露正文。
-
-该 Feature 为后续 Router Health、真实 benchmark 和局部优化提供证据。
 
 ## 待 Review 的三个产品选择
 

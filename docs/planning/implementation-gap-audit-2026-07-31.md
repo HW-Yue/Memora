@@ -31,12 +31,13 @@ Story Gate 与具体实现；不把历史归档或已撤销的 Vector/MATCH 路�
 | Policy | Database scope、影响行数、revision、Package 安装 hash approval、审计 | L0–L3 风险 Policy、每库自动写权限、Schema/跨库/破坏性操作的统一引擎级审批规则 |
 | Database package | pack/install、完整性校验、显式 trusted 安装、只读 manifest 审阅 | `open` 后直接问答、包签名/撤销、版本升级、冲突 merge/fork 策略、History/Source Receipt 携带策略 |
 | 备份与恢复产品 | crash-tail 恢复、逻辑 snapshot、升级专用备份/repair | 普通用户可调用的 Instance 备份、搬迁、恢复、定期验证与时间点恢复 |
+| 提交变化可视化 | Row History、commit sequence、原子 Mutation | 跨 Row/Schema/Route/membership 的事务级 Committed Change Log、稳定分页和 Admin before/after 时间线 |
 | 宿主接入面 | CLI、Skill、Unix socket IPC、Codex/Claude adapter | 可选 MCP adapter、稳定 SDK、launchd 用户服务安装与系统级生命周期集成 |
 | 公开发行 | 双架构构建、checksum、发布 workflow 和 clean-machine 测试 | 当前仓库还没有正式 tag/GitHub Release；签名后的真实发布流程尚未实际执行 |
 | 原生文件长期运行 | append-only Record、事务 Frame、fsync、重开扫描和内存 ID→offset | 文件 compaction/GC、长期 History 保留下的空间回收、增量打开/checkpoint、热点与大库性能证据 |
 | 物理索引与缓存 | 打开时重建通用 `record_id → offset` Map | Catalog 与逻辑 `row_id → latest visible revision` 快速目录、增量打开/checkpoint；当前点查会重组 Catalog，并列举排序全部 Row record ID。Page/B+ Tree/Buffer Pool 由数据后置 |
 | 并发数据库内核 | daemon、原子 Mutation、expected revision | 本地单 writer + 多 reader 的最小 MVCC snapshot，以及精确对象排他写锁；范围锁、锁等待、多 writer、物理 Undo/Redo 与死锁检测后置 |
-| 同步与灾备 | 稳定逻辑 ID、commit sequence、可携带 snapshot | Binlog、GTID、PITR、多设备增量同步、冲突协议、传输授权与加密 |
+| 同步与灾备 | 稳定逻辑 ID、commit sequence、可携带 snapshot | 在本地 Change Log 之上的 GTID、PITR、多设备增量同步、重放、冲突协议、传输授权与加密 |
 | 跨平台 | macOS arm64/amd64 | Linux、Windows、移动端与对应服务/目录/兼容测试；这是明确后置范围 |
 | 内置模型 Runtime | 外部宿主统一走 MSQL | `memora ask`、Provider 抽象和模型凭据管理；v0 已明确 defer，不是当前阻塞项 |
 
@@ -67,12 +68,12 @@ F80 能证明“公开二进制 + 两套 adapter + 同一 MSQL 机械旅程”�
 ## 建议的讨论顺序
 
 1. 先把 Catalog 解析与 RowID 点查改为可重建内存目录，并冻结本地最小 MVCC 可见性；
-2. 再建设本地可视化、只读接口和 Route Trace，让用户与开发者看到真实状态；
+2. 再实现事务级 Committed Change Log，并建设本地可视化、只读接口和 Route Trace；
 3. 再补真实模型与无向量质量 benchmark，确认 AI 是否找得准、写得对、成本可接受；
 4. 再讨论语义 DBA：Router 质量诊断、导航失败反馈和局部优化计划；
 5. 再补完整 Schema 演化与 Row 迁移；
 6. 再确定持续输入入口、风险 Policy、多库发现与 Query Workspace；
 7. 完成 package 问答、备份恢复、正式发行等产品化能力；
-8. 最后由规模与故障数据决定 compaction、Page/B+ Tree/Buffer Pool、高级 MVCC/Redo/Binlog 的进入顺序。
+8. 最后由规模与故障数据决定 compaction、Page/B+ Tree/Buffer Pool、高级 MVCC/Redo 和远程同步的进入顺序。
 
 任何后续 Feature 都需单独形成待批准计划，用户明确授权后才实现。

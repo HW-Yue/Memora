@@ -45,10 +45,11 @@ fsync 边界。它不是通用 Redo/Undo，但在没有 in-place Page 写入时�
 WAL。未来事务 Undo 会被 Purge，仍不能承担长期语义历史。每次已提交语义修改
 另外写入永久 History；业务撤销创建补偿 revision。
 
-如果未来引入 Binlog，它另外记录已提交事务的逻辑变更，为多设备同步和时间点
-恢复服务，不能代替本机 Redo，也不能直接复用物理 Redo 格式。届时是否需要
-MySQL 风格内部两阶段提交和 Group Commit，必须按本地事务与同步用户故事重新
-Review，详见 [Binlog 与多设备同步基础](./binlog-and-sync.md)。
+F83 Committed Change Log（Binlog）记录已提交事务的逻辑变化，第一用途是 Admin
+展示数据、Schema 与语义索引的变化时间线。当前 append-only Store 将 change
+envelope 与业务 Record 放入同一 Transaction Frame，不需要先引入 Redo/Binlog
+两阶段提交或 Group Commit。未来同步与 PITR 可以复用该变化流，但必须单独
+Review，详见 [Committed Change Log 与未来同步](./binlog-and-sync.md)。
 
 ## 并发错误
 

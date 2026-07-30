@@ -177,6 +177,9 @@ daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原�
 106. 第一阶段写锁按稳定对象 ID 加排他锁；autocommit 持有到语句终态，显式事务
 持有到 commit/rollback，普通 MVCC reader 不取该锁。冲突 fail-fast 还是有界
 等待仍需在 F82 Review 时确认。
+107. Binlog 第一用途是 Admin 中按 commit sequence 可视化数据、Schema、Route
+节点和 membership 的已提交变化；它是事务级逻辑变化流。复制、PITR、GTID 和
+多设备同步可以以后复用，但不能主导 F83 的首版事件格式。
 
 ## 尚需验证
 

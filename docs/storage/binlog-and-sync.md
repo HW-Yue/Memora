@@ -1,73 +1,127 @@
-# Binlog 与多设备同步基础
+# Committed Change Log（Binlog）与未来同步
 
-状态：确认从第一版持久化协议纳入 Row-based 逻辑 Binlog；事件编码、保留策略和同步冲突协议待设计。
+状态：产品定位已确认；F83 事件契约与 MSQL 仍待用户 Review，未获实现授权。
 
-## 定位
+## 第一用途
 
-Memora 面向个人使用，但一个人的数据库可能分布在电脑、手机和其他设备。Instance 必须提供可连续订阅的 Binlog，为后续增量同步、时间点恢复和变更订阅保留基础。
+Memora Binlog 的第一用途是给用户和 AI 提供全 Instance、严格按提交顺序排列的
+变化时间线，让 Admin 可以展示：
 
-Binlog 与 Redo Log 不能混用：
+- 哪个数据项被 insert、revise、split、merge、move、supersede 或 delete；
+- Database、Table、Column 和约束怎样演化；
+- 语义 Route 节点怎样创建、改名、拆分、合并或移动；
+- Route membership 怎样挂入、迁移、失效或修复；
+- Relation、配置和维护计划怎样变化；
+- 一次原子 Mutation 同时影响了哪些对象。
 
-- Redo Log 记录物理恢复所需信息，保证本机崩溃后恢复已提交事务；
-- Binlog 记录已经提交的逻辑变更，供其他设备或工具理解和重放；
-- Undo Log 负责事务回滚和 MVCC 旧版本读取。
+主从复制、PITR 和跨设备同步以后可以消费同一逻辑变化流，但不是第一版格式和
+Feature 顺序的主导目标。
 
-## 事务边界
+## 与其他记录的边界
 
-Binlog 只发布已提交事务，并保留完整事务边界和 Instance 内提交顺序。事务回滚时不得留下可同步的业务事件。
+| 记录 | 回答的问题 | 生命周期 |
+| --- | --- | --- |
+| History | 某个语义 Row 为什么形成这个 revision | 永久业务历史 |
+| Committed Change Log / Binlog | 每次已提交事务按顺序改变了哪些逻辑对象 | 可配置但默认长期可观察 |
+| Security Audit | 谁以什么权限调用了什么，结果如何 | 独立安全保留策略 |
+| Route Trace | AI 查询时看到和选择了哪些节点 | 可清理观察数据 |
+| Redo/Undo | 物理恢复和 MVCC 是否需要重做/旧版本 | 仅按物理引擎需要引入 |
 
-Redo 与 Binlog 的一致性参考 MySQL 内部两阶段提交：事务先进入 Redo prepare，随后写入并持久化 Binlog，再完成 Redo commit。恢复时根据 prepare 状态和 Binlog 是否存在决定提交或回滚，避免“本地提交成功但永久缺失同步事件”或“同步端看见本地未提交事务”。
+Binlog 不复制原始 prompt、隐藏推理或完整大正文。Row 详情和正文 diff 通过事件里的
+稳定 RowID/revision 定位 History；Catalog、Route 和 Relation 使用稳定 revision
+或事件内的有界字段 delta。
 
-多个并发提交通过 Group Commit 合并 Redo/Binlog 的刷盘成本，并在保持 commit sequence 与 Binlog 顺序一致的前提下批量确认。该协议只协调同一 Instance 内的两个日志，不是跨设备分布式两阶段提交。
+## 提交与一致性
 
-## Row-based 事件
+Binlog 只包含已经提交的逻辑变化，并保留完整事务边界。回滚、未完成事务和 crash
+tail 不得产生可见事件。
 
-Binlog 参考 MySQL Row-based 思路，记录事务提交造成的逻辑 Row 变化，不记录原始 MSQL 供其他设备重新执行。远端不重新运行表达式、时间函数、查询计划或 Agent 决策。
+当前 append-only 原生 Store 可以把一个 Change Transaction Envelope 与 Row、
+Catalog、Route、membership 和 Relation Record 放在同一 Transaction Frame 内：
 
-事件使用稳定逻辑 ID 和 Schema version 表达 insert、update、delete 及必要的 Schema 变化。具体采用 before/after image、字段差异还是按操作类型混合编码，由空间、冲突检测和演化测试决定。
+```text
+BEGIN frame
+  → logical object revisions
+  → one change transaction envelope
+COMMIT frame + digest + fsync
+  → publish Catalog/Row Directory
+  → publish Change Log cursor
+```
 
-## 事件最低信息
+因此第一阶段不需要为了 Binlog 预先实现 Redo/Binlog 两阶段提交或 Group Commit。
+如果未来采用 dirty Page、独立日志文件或异步刷盘，再根据 crash consistency
+重新 Review。
 
-候选事件至少携带：
+## F83 最小事件契约
 
-- Binlog format version；
-- 本地 transaction ID 和 commit sequence；
-- 独立的 global transaction ID，编码 origin Instance/device ID 与原始提交序号；
-- Database、Table 和 Row 的稳定逻辑 ID；
-- Schema version 与操作类型；
-- 可确定性重放的逻辑变更；
-- event ID、checksum 和时间信息。
+每个已提交事务形成一个有序 envelope：
 
-物理 Page、offset、Buffer Pool 内容、模型密钥、Query Workspace 和 Agent 原始上下文不得进入 Binlog。
+- format version、transaction ID、commit sequence、committed at；
+- actor、source、reason 与可选 Source Receipt ID；
+- Database scope 和事务级 checksum；
+- 按确定顺序排列的 change entries。
 
-## 多设备边界
+每个 entry 至少包含：
 
-Binlog 是同步的变更来源，不等于完整同步系统。后续同步层仍需负责：
+- object kind：Database、Table、Column、Row、Relation、Route node、
+  Route membership 或 Configuration；
+- 稳定 Database/Table/object ID；
+- operation；
+- before/after revision 与 Schema version；
+- Row History locator，或有界的 Catalog/Route/Relation 字段 delta；
+- 与 split/merge/move/compensation 相关的关联对象 ID。
 
-- 设备身份、授权、加密和传输；
-- 断点续传、确认位点和日志保留；
-- event ID 幂等去重与环路抑制；
-- 并发修改、删除传播和 Schema 冲突；
-- 新设备先安装快照、再追赶 Binlog；
-- 长期离线设备超过保留窗口后的重新同步。
+物理 Page、offset、Buffer Pool 内容、模型凭据、Query Workspace 和宿主原始上下文
+不得进入事件。
 
-远端事件写入本地时会产生接收端自己的本地 transaction ID 和 commit sequence，但必须保留原始 global transaction ID，不能把同一事务伪装成新的来源并在设备之间无限回环。
+## Admin 读取形态
 
-## 保留与恢复
+候选 MSQL：
 
-Binlog 是有期限的增量记录，不代替完整备份。保留时间或容量必须可配置并可审计；清理前要考虑已注册设备的确认位点。时间点恢复采用“受信快照 + 后续 Binlog”组合。
+```sql
+SHOW CHANGES AFTER COMMIT_SEQUENCE :cursor LIMIT :limit;
+SHOW CHANGES IN DATABASE :database AFTER COMMIT_SEQUENCE :cursor LIMIT :limit;
+SHOW CHANGE :transaction_id;
+```
 
-## 尚未确认
+结果必须支持稳定 cursor、scope、truncated、事件版本和事务原子性。Admin 提供：
 
-- Row event 采用 before/after image、字段差异还是混合编码；
-- 全局 transaction/event ID 的具体编码；
-- Group Commit 的批次形成、刷盘策略和失败注入细节；
-- 单向复制、中心汇聚还是多主同步；
-- 冲突检测与自动/人工解决规则；
-- Binlog 分段、索引、压缩、加密和保留配置。
+- Instance/Database/Table 的变化时间线；
+- 单事务影响对象列表；
+- 数据项 before/after revision 与字段 diff；
+- Route Tree 节点和 membership 的前后结构对比；
+- 从事件跳转到当前对象、History、Source Receipt 和实际 MSQL；
+- 筛选 actor、operation、object kind、Database/Table 和 commit sequence。
+
+## “索引变化”的边界
+
+第一版可视化的“索引”指 AI 使用的语义 Route Tree 和 membership。Row Directory、
+Page/B+ Tree 或 Buffer Pool 属于可重建物理加速状态，不进入逻辑 Binlog；未来
+Studio 可用独立 Engine Diagnostics 展示其 rebuild、compaction 和健康事件。
+
+## 未来同步复用
+
+以后若增加复制或多设备同步，需要在不破坏本地 Admin 事件的前提下另行扩展：
+
+- origin Instance/device ID 与 global transaction ID；
+- 订阅位点、确认、保留窗口和幂等去重；
+- 快照后追赶、断点续传、加密和授权；
+- 并发修改、Schema 冲突、删除传播与防回环；
+- PITR 的受信快照与日志保留策略。
+
+同步端不得重新执行原始 MSQL 或 Agent 决策；是否采用 before/after image、字段
+delta 或混合重放格式，在同步 Feature Review 时再决定。
+
+## 尚待 Review
+
+- Change Log 默认保留期限，以及用户是否允许关闭或清理；
+- Row 正文 diff 只引用永久 History，还是额外保存有界摘要；
+- Catalog/Route delta 的具体字段和单事务大小预算；
+- 锁冲突、失败事务和维护 dry-run 是否进入独立诊断流；
+- `SHOW CHANGES` 的最终 MSQL 语法和分页 cursor。
 
 ## 关联
 
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)
-- [可安装的独立语义数据库](../product/installable-database-package.md)
-- [Instance、Database 与 Table](./instance-database-table.md)
+- [数据可视化与本地观察接口计划](../planning/visual-inspection-feature-plan.md)
+- [History Store v1](../data/history-store-v1.md)

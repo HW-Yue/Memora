@@ -23,7 +23,7 @@
 | Buffer Pool | 有容量上限的 Page 内存缓存；替代 Page Cache 作为正式名称 |
 | Undo Log | 回滚未提交修改并支持旧版本读取的信息 |
 | Redo Log | 遵守 WAL 顺序的崩溃恢复日志；正式名称不再写成 WAL 文件 |
-| Binlog | 已提交逻辑事务的有序变更日志，用于设备同步、订阅和时间点恢复 |
+| Binlog / Committed Change Log | 已提交逻辑事务的有序变化流；第一用途是 Admin 展示数据与语义索引变化，未来可供同步、订阅和 PITR 复用 |
 | LSN | Redo Log 的字节位置/顺序，不与 commit sequence 混用 |
 | Transaction ID | 当前 Instance 内一次事务的身份，用于锁、Undo 和事务状态 |
 | Global Transaction ID | 已提交事务跨设备不变的来源身份，用于同步幂等、位点和防回环 |

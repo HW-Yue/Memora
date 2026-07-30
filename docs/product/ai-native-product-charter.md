@@ -80,6 +80,7 @@ SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 - **US-CONFLICT**：作为遇到多来源冲突的 AI，我会并列证据并请求用户裁决，不让引擎猜测哪条语义为真。
 - **US-ASSIMILATE**：作为吸收资料的 AI，我临时阅读外部材料，只写入完整语义模块、来源锚点和覆盖收据，不保存机械 chunk。
 - **US-RECOVER**：作为宿主切换或崩溃后的 AI，我能从数据库状态、历史和收据恢复，不依赖某一家模型、官网或 API 地址。
+- **US-OBSERVE**：作为普通用户，我能在 Admin 中查看数据项、Schema 和语义索引的当前结构，并按提交顺序对比每次变化及其来源。
 - **US-ENGINE**：作为确定性引擎，我拒绝越权、超限、陈旧 revision 和半完成 Mutation Plan，但不替 AI 猜测语义。
 - **US-DEVELOPER**：作为 Feature 开发者，我能在开工前看到目标故事和标准旅程，在合入前用同一故事证明没有偏离产品。
 
