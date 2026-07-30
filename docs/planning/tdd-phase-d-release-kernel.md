@@ -50,7 +50,7 @@
 
 提交：`feat(F49): upgrade instances transactionally`
 
-## F50 干净机器验收
+## F50 干净机器验收（已完成）
 
 先测：全新 macOS 用户只安装 Skill，授权后下载 Release、init、启动 daemon、总结项目、重启再查询。
 

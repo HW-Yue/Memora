@@ -115,6 +115,7 @@
 - [安全与隐私门 v1](./development/security-privacy-gate-v1.md) — F46 的 Database scope、外部路径、approval、审计脱敏与 doctor 检查。
 - [macOS Release 制品 v1](./development/macos-release-artifacts-v1.md) — F47 的双架构 Mach-O、可复现归档、版本 manifest、checksum 与 smoke 契约。
 - [GitHub Release 自动化 v1](./development/github-release-automation-v1.md) — F48 的签名 tag 门、最小权限、双架构 smoke、Skill bundle 与 draft 发布契约。
+- [干净机器验收 v1](./development/clean-machine-acceptance-v1.md) — F50 的隔离 HOME、Skill HTTPS 安装、首条记忆、重启查询、诊断包与双架构发布阻断报告。
 - [进程配置与宿主边界](./development/process-configuration.md) — 非秘密启动配置的优先级，以及不接收 Codex/Claude 模型密钥的边界。
 - [本地 IPC 协议](./development/ipc-protocol.md) — 长度前缀 JSON、协议版本、并发请求和连接级 Session 生命周期。
 - [ADR-0001：SQLite 原型 Store](./decisions/0001-prototype-store.md) — 用可替换 CGO-free 后端先验证产品，原生内核通过质量门后再替换。

@@ -52,8 +52,9 @@ go build -o /tmp/memora ./cmd/memora
 ```
 
 GitHub Release 只由已验证签名的 annotated `vMAJOR.MINOR.PATCH` tag 触发；
-workflow 完整测试并在 arm64/amd64 runner 冒烟后，才上传二进制、checksum、
-manifest 和带许可证的 Skill bundle。普通 PR 没有发布权限。
+workflow 完整测试，并在 arm64/amd64 runner 完成原生冒烟及从 Canonical Skill
+开始的零到首条记忆验收后，才上传二进制、checksum、manifest 和带许可证的
+Skill bundle。普通 PR 没有发布权限。
 
 ## 许可
 

@@ -50,8 +50,11 @@ Publication verifier 在上传前及每个下载后的 runner 上重新检查固
 1. ARM macOS runner 验证 tag/API 状态并运行完整 `scripts/ci.sh`。
 2. 从 tag commit 快照构建 publication，上传为只读 workflow artifact。
 3. `macos-15` arm64 与 `macos-15-intel` amd64 分别重新验证并运行 release smoke。
-4. publish job 再下载并验证，生成 GitHub Release notes，创建 draft 并上传六项。
-5. 核对 draft 的 tag、target、asset 名称和非零大小后才转为正式 Release。
+4. 两个原生 runner 另行从 Skill 开始完成零到首条记忆验收，上传通过报告和诊断包。
+5. 独立只读 gate 下载 publication 与双架构验收报告，全部验证后才允许进入
+   获得写权限的 publish job。
+6. publish job 生成 GitHub Release notes，创建 draft 并上传六项；核对 draft
+   的 tag、target、asset 名称和非零大小后才转为正式 Release。
 
 若新建 draft 的上传或核对失败，workflow 只删除本次创建的 draft，绝不清理
 tag；已存在的 Release 在创建前即被拒绝，不会被覆盖。
@@ -62,5 +65,6 @@ F48 不引入 Apple Developer ID 签名、notarization、provenance attestation 
 ## 关联
 
 - [macOS Release 制品 v1](./macos-release-artifacts-v1.md)
+- [干净机器验收 v1](./clean-machine-acceptance-v1.md)
 - [测试约定](./testing.md)
 - [Phase D](../planning/tdd-phase-d-release-kernel.md)

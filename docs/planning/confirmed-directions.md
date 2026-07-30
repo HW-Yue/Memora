@@ -91,6 +91,7 @@
 87. Memora 采用 PolyForm Noncommercial 1.0.0 与独立付费商业许可的双许可证模式：个人及其他非商业用途可免费使用、修改与依许可分发；任何商业用途必须事先取得版权所有者另行签署的书面付费许可。项目属于 source-available，不宣称为 OSI Open Source。
 88. GitHub Release 只由已验证签名的 annotated 稳定 SemVer tag 触发；tag target 必须位于 `main`，重复 Release 必须失败。测试、构建和双架构 smoke 只读，只有其后最终 publish job 获得 `contents: write`；Release 固定同时分发双架构制品与带完整许可的确定性 Skill bundle。
 89. Instance format 必须区分 current、upgrade-required、newer-format、corrupt 与 migration-incomplete；普通 init/daemon/数据命令不得静默迁移或降级。升级先输出只读计划，再经独立显式批准创建完整性备份和 journal；中断后只能从 journal 绑定或用户明确选择的已验证同 Instance 备份恢复。安装授权不等于升级或回滚授权，宿主 Adapter 不隐式放行 `upgrade --apply` 与 `doctor repair`。
+90. 正式 GitHub Release 在 publish 前必须分别于原生 macOS arm64/amd64 隔离 HOME 中，从 publication 内 Canonical Skill 经显式批准和 HTTPS/checksum 安装开始，完成 init、daemon、doctor、固定项目摘要写入、重启查询与最终健康检查。每个架构的版本化报告绑定 version、commit、完整步骤和脱敏诊断包 hash；任一缺失、失败、损坏或绑定不符都阻断发布。该旅程验证产品链路，不替代 F51 的真实 AI 质量评测。
 
 ## 尚需验证
 

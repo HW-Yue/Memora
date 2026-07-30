@@ -121,11 +121,107 @@ jobs:
       - name: Run native release smoke
         run: ./scripts/smoke-release.sh "$RUNNER_TEMP/publication/release" "${GITHUB_REF_NAME#v}" "${{ matrix.arch }}"
 
+  acceptance:
+    name: Clean machine ${{ matrix.arch }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Check out signed tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download publication
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: memora-publication-${{ github.sha }}
+          path: ${{ runner.temp }}/publication
+
+      - name: Run zero-to-first-memory journey
+        run: ./scripts/clean-machine-acceptance.sh "$RUNNER_TEMP/publication" "${GITHUB_REF_NAME#v}" "${{ matrix.arch }}" "$RUNNER_TEMP/acceptance"
+
+      - name: Upload acceptance report and diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: memora-acceptance-${{ github.sha }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/acceptance
+          if-no-files-found: warn
+          retention-days: 14
+
+  release_gate:
+    name: Verify clean-machine release blockers
+    needs:
+      - prepare
+      - smoke
+      - acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out signed tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download publication
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: memora-publication-${{ github.sha }}
+          path: ${{ runner.temp }}/publication
+
+      - name: Download arm64 acceptance report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: memora-acceptance-${{ github.sha }}-arm64
+          path: ${{ runner.temp }}/acceptance/arm64
+
+      - name: Download amd64 acceptance report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: memora-acceptance-${{ github.sha }}-amd64
+          path: ${{ runner.temp }}/acceptance/amd64
+
+      - name: Verify both acceptance reports
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          go run ./cmd/verify-clean-machine-acceptance \
+            --directory "$RUNNER_TEMP/acceptance/arm64" \
+            --publication "$RUNNER_TEMP/publication" \
+            --version "$RELEASE_VERSION" \
+            --arch arm64
+          go run ./cmd/verify-clean-machine-acceptance \
+            --directory "$RUNNER_TEMP/acceptance/amd64" \
+            --publication "$RUNNER_TEMP/publication" \
+            --version "$RELEASE_VERSION" \
+            --arch amd64
+
   publish:
     name: Publish verified GitHub Release
     needs:
       - prepare
-      - smoke
+      - release_gate
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
