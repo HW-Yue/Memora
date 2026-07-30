@@ -184,8 +184,10 @@ daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原�
 报告逐层准确率、最终 RowID 成功率及不同 host/model 的安全 fanout。共享数据库
 采用目标模型集合的共同可靠范围，不建立按模型分叉的权威语义树。
 109. B+ Tree 是必做的持久化主索引，不再由规模 benchmark 决定是否实现；该结论
-取代 67、80、82 中仅针对早期极简闭环的 B+ Tree 后置边界。Page/COW/Redo 和
-Buffer Pool 的具体物理方案仍须在 F81 开工前 Review。
+取代 67、80、82 中仅针对早期极简闭环的 B+ Tree 后置边界。
+110. B+ Tree/Buffer Pool 细节由实现方参考 MySQL 决定：F81 使用 16 KiB Page、
+单实例 Buffer Pool 和 Redo WAL；普通 Page 更新走 WAL，COW 只用于 rebuild、
+compaction、snapshot 和 generation/root swap。复杂并发机制继续后置。
 
 ## 尚需验证
 

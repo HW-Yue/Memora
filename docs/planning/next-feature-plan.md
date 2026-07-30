@@ -10,7 +10,7 @@
 
 | Feature | 用户结果 | 完成门 |
 | --- | --- | --- |
-| F81 Persistent B+ Tree RowID Read Path | Route 得到 RowID 后，以持久化主索引解析 Schema、当前版本和有序 Table Row | 通用 B+ Tree、root/reopen、split/merge、checksum、`O(log_B N)` point-get、version range 与 leaf cursor 通过；内存 Map 仅作缓存 |
+| F81 Page/B+ Tree/Buffer Pool/WAL RowID Path | Route 得到 RowID 后，以持久化主索引和页缓存读取 Schema、当前/历史版本及有序 Table Row | 16 KiB Page、Redo recovery、单实例 Buffer Pool、B+ Tree split/merge、`O(log_B N)` point-get、version range、leaf cursor 与 COW root swap 骨架通过 |
 | F82 Local Minimal MVCC & Write Locks | reader 不会看到半次 Mutation，同一逻辑对象不会被并发覆盖 | 单 writer 串行 commit、多 reader snapshot、read-own-writes、精确对象排他锁、rollback 与故障注入通过 |
 
 F81/F82 的逻辑接口见

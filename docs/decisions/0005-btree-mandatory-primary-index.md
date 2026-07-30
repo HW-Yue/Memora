@@ -1,6 +1,7 @@
 # ADR-0005：B+ Tree 是必做的持久化主索引
 
-状态：Accepted，2026-07-31；F81 物理布局尚待用户 Review，未获实现授权。
+状态：Accepted，2026-07-31；物理策略已由
+[ADR-0006](./0006-mysql-page-buffer-wal-cow.md) 细化，F81 仍未获实现授权。
 
 ## 背景
 
@@ -31,17 +32,14 @@ Map 可以加速热点，但不能代替持久化、有序、可扩展的主索�
 8. F82 的最小 MVCC 与精确对象写锁保持：reader 使用稳定 snapshot/root，writer
    原子发布数据 revision 与对应索引变化。
 
-## 仍待 F81 Review
+## 物理策略
 
-- 固定 Page 大小以及 Page Header/slot/key 编码；
-- B+ Tree Page 位于主 `.memora` 文件还是独立 Index File；
-- Copy-on-Write root publish，还是 in-place Page + Redo；
-- 最小有界 Page cache 是否直接作为 Buffer Pool v1；
-- split/merge 的填充率、回收、free-page 管理与 crash fault points；
-- Catalog、Row current、Row version 是否共享通用树实现和不同 root。
+F81 使用 16 KiB Page、单实例 Buffer Pool 与 Redo WAL；普通 B+ Tree 更新走
+Page/WAL，COW 只用于 rebuild、compaction、snapshot 与 generation/root swap。
+具体编码和实现切片见 ADR-0006。
 
-首选候选是本地单 writer 友好的 Copy-on-Write Page + 原子 root publish，可减少
-首版对物理 Undo/Redo 和 Page latch 的依赖；这只是候选，不是已批准布局。
+仍需由实现测试确定 key prefix compression、Page fill factor、free-page 管理、
+具体 latch 边界和 Data/Index File 的最终拆分。
 
 ## 不随之引入
 

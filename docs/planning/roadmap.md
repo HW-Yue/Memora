@@ -77,9 +77,9 @@ Row 拆分重组和冷启动接管通过产品故事门。
 退出条件：新 Instance 只使用自有文件；旧数据可迁移；CRUD、History、Relation、
 Table Router、重启和损坏拒绝全部运行于原生底座。
 
-B+ Tree 已确认为原生底座闭环后的必做持久化主索引。Page/COW/Redo、完整 Buffer
-Pool、Secondary Index、高级 MVCC/Undo 与同步仍不作为一次性“大内核”实现，
-分别按已 Review Feature 和实测数据进入。
+B+ Tree、16 KiB Page、单实例 Buffer Pool 和 Redo WAL 已确认为 F81 必做；COW
+用于 rebuild/compaction/snapshot/generation 发布。Secondary Index、Buffer Pool
+扩展、高级 MVCC/Undo 与同步仍按独立 Feature 和实测数据进入。
 
 ## Phase 5：个人数据库产品化
 

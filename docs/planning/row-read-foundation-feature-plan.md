@@ -39,7 +39,8 @@ Schema 解析会重组全部 Catalog，逻辑 RowID 到最新可见 revision 也
 
 - InnoDB 的多级 Buffer Pool、复杂 latch 和后台线程；
 - 锁等待队列、gap/next-key lock、范围锁、死锁检测和锁升级；
-- doublewrite、change buffer、adaptive hash 与 Group Commit；
+- doublewrite、change buffer、adaptive hash 与 Group Commit；首版用 WAL full-page
+  image + checksum 处理 torn Page；
 - 为尚未出现的范围查询规模预建复杂优化器。
 
 ## F81 Persistent B+ Tree RowID Read Path
@@ -53,9 +54,9 @@ version[row_id, sequence]        → immutable revision locator
 table[table_id, row_id]          → ordered live/tombstone state
 ```
 
-内存 Catalog cache 和 Page cache 只加速树访问，不是权威目录。daemon 重开从已提交
-root/manifest 打开树，不能扫描全部 Row Record 重建主索引。写事务只有在 durable
-COMMIT 后才能原子发布数据 revision 与新索引 root。
+内存 Catalog cache 和 Buffer Pool 只加速树访问，不是权威目录。daemon 重开从
+checkpoint/root 打开树并重放 WAL，不能扫描全部 Row Record 重建主索引。写事务
+只有在 Redo COMMIT durable 后才能发布数据 revision 与索引变化。
 
 目标读取路径：
 
@@ -63,7 +64,7 @@ COMMIT 后才能原子发布数据 revision 与新索引 root。
 exact row_id plan
 → Catalog B+ Tree/cache
 → Row current/version B+ Tree
-→ Buffer Pool or Page ReadAt
+→ Buffer Pool
 → target Record ReadAt
 → CRC / decode / Schema validate / project
 → memora.result/v1
@@ -71,6 +72,8 @@ exact row_id plan
 
 验收门：
 
+- 16 KiB Page、checksum、page LSN、Redo WAL、checkpoint 与 recovery 通过；
+- 单实例 Buffer Pool 的 pin/latch、young/old LRU、dirty/flush ordering 通过；
 - B+ Tree 支持 search/insert/delete、顺序遍历、split/merge 和 root grow/shrink；
 - Page checksum、root/manifest、close/reopen、损坏拒绝和 crash fault point 通过；
 - Database/Table/Schema 解析查 Catalog 树或缓存，不重读完整 Catalog；
@@ -79,6 +82,10 @@ exact row_id plan
 - Table cursor 沿有序叶 Page 前进，不通过全对象 decode 去重；
 - insert/update/delete/supersede、事务尾损坏和 CRC 错误有确定测试；
 - benchmark 报告树高、Page 访问数、split/merge、冷/热点查、重启时间和内存。
+
+F81 按 Page/WAL → Buffer Pool → B+ Tree → 真实 key space → COW generation 骨架
+五个连续切片实施，详见
+[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 ## F82 Local Minimal MVCC
 
@@ -108,6 +115,6 @@ exact row_id plan
 
 ## 后续升级触发器
 
-B+ Tree 本身不再等待 benchmark 才进入。后续数据只决定 Secondary Index、完整
-Tablespace/Extent、Buffer Pool 分片、compaction/checkpoint 或 Advanced
+B+ Tree、最小 Buffer Pool 与 WAL 不再等待 benchmark 才进入。后续数据只决定
+Secondary Index、完整 Tablespace/Extent、Buffer Pool 分片、compaction 或 Advanced
 MVCC/Undo/Redo 的实现顺序；升级不能改变 MSQL、RowID、Route locator 和 History。

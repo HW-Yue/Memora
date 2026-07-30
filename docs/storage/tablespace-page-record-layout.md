@@ -1,8 +1,8 @@
 # Tablespace、Page 与 Record 布局
 
-状态：B+ Tree 已确认为必做；本文的完整 per-table Tablespace/Extent/in-place
-Record 布局仍是后置候选。F81 只冻结 B+ Tree 所需的最小 Page/root/locator 子集，
-详见 [ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)。
+状态：B+ Tree、16 KiB Page、单实例 Buffer Pool 与 Redo WAL 已确认为 F81 必做；
+完整 per-table Tablespace/Extent 仍是后置候选。见
+[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 ## 核心分离
 
@@ -22,17 +22,20 @@ Table/Row 是逻辑身份。F81 B+ Tree 将稳定 `row_id` 映射到当前/可�
 revision locator；长期语义 revision 进入独立 History。未来若采用 in-place Record
 与物理 Undo chain，仍不能与永久 History 混用。
 
-每个 User Table 使用独立 Tablespace 目录，目录名来自不可变 `table_id`。Tablespace 可以由一个或多个滚动 Data File 承载；当前 Row、聚簇索引和普通二级 B+ Tree在其中共同分配 Segment。Router 和倒排 generation 属于 Database 的独立可重建索引目录，不进入 User Table Tablespace。
+完整候选布局中，每个 User Table 使用不可变 `table_id` 的独立 Tablespace；F81
+是否先共用 Database space 由实现复杂度决定。当前 Row、聚簇索引和二级 B+ Tree
+可分配独立 Segment；Router physical generation 与业务 Row 身份保持分离。
 
-## 第一版尺寸候选
+## 第一版尺寸
 
-- Page：16 KiB；
+- Page：16 KiB，已确认；
 - Extent：1 MiB，即 64 个 Page；
 - Data File 滚动上限：256 MiB，即 256 个 Extent；
 - 编码后单条 Record 的页内目标：不超过 8 KiB；
 - 语义 Row 启动写作目标约 800 字，文本 Column 启动默认上限为 1200 个字符并可演化；字段超限由逻辑写入层报错，物理 Page 层不负责截断。
 
-这些值与查询内存没有直接关系。16 KiB 对约 800 个中文字及系统元数据有余量；256 MiB 只是候选的校验、回收、备份和 compaction 粒度，必须通过基准测试确认。
+除 Page 外其余值仍是候选。16 KiB 对语义 Row 和系统元数据有余量；256 MiB
+滚动粒度必须通过基准测试确认。
 
 ## 按 Page 定位读取
 
@@ -54,7 +57,9 @@ Checksum / Page LSN
 
 Slot 可移动而逻辑 `row_id` 不变。B+ Tree 叶子优先只保存紧凑键、`row_id` 和 Record 定位，不内联完整可变正文。
 
-Record 变大且当前 Page 空间不足时，引擎可以迁移当前 Record 并更新其稳定定位，不在原位置强行扩张；事务旧值已经由 Undo 保存，不为 MVCC 追加一份主记录。B+ Tree 只对自己的键 Page 执行 split/merge，正文增长不会改变逻辑 `row_id`。
+Record 变大且当前 Page 空间不足时，引擎可以迁移并更新稳定定位，不在原位置强行
+扩张；旧语义 revision 由 immutable version/History 保留，不假设已存在物理 Undo。
+B+ Tree 只对键 Page 执行 split/merge，正文增长不会改变逻辑 `row_id`。
 
 ## Segment 的标准含义
 
@@ -91,7 +96,7 @@ Tablespace、Data File、Page、Slot、Segment 和 Record 地址都不得进入 
 
 ## 尚未确认
 
-- 16 KiB Page、1 MiB Extent 和 256 MiB Data File 策略是否合适；
+- 1 MiB Extent 和 256 MiB Data File 策略是否合适；
 - Row Directory 主键和 Record 指针的具体编码；
 - 8 KiB 页内阈值以及 overflow 的硬上限；
 - Table Data File 的滚动大小、编号、预分配和回收策略；

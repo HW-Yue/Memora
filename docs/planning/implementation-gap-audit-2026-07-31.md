@@ -35,7 +35,7 @@ Story Gate 与具体实现；不把历史归档或已撤销的 Vector/MATCH 路�
 | 宿主接入面 | CLI、Skill、Unix socket IPC、Codex/Claude adapter | 可选 MCP adapter、稳定 SDK、launchd 用户服务安装与系统级生命周期集成 |
 | 公开发行 | 双架构构建、checksum、发布 workflow 和 clean-machine 测试 | 当前仓库还没有正式 tag/GitHub Release；签名后的真实发布流程尚未实际执行 |
 | 原生文件长期运行 | append-only Record、事务 Frame、fsync、重开扫描和内存 ID→offset | 文件 compaction/GC、长期 History 保留下的空间回收、增量打开/checkpoint、热点与大库性能证据 |
-| 物理索引与缓存 | 打开时重建通用 `record_id → offset` Map | 必做的 Catalog/Row/version/Table-order B+ Tree、持久 root、Page 校验与最小 Page cache；当前点查会重组 Catalog，并列举排序全部 Row record ID |
+| 物理索引与缓存 | 打开时重建通用 `record_id → offset` Map | 必做的 16 KiB Page、Catalog/Row/version/Table-order B+ Tree、单实例 Buffer Pool、Redo WAL/recovery 与 COW generation root swap；当前点查仍会重组 Catalog 并排序全部 Row ID |
 | 并发数据库内核 | daemon、原子 Mutation、expected revision | 本地单 writer + 多 reader 的最小 MVCC snapshot，以及精确对象排他写锁；范围锁、锁等待、多 writer、物理 Undo/Redo 与死锁检测后置 |
 | 同步与灾备 | 稳定逻辑 ID、commit sequence、可携带 snapshot | 在本地 Change Log 之上的 GTID、PITR、多设备增量同步、重放、冲突协议、传输授权与加密 |
 | 跨平台 | macOS arm64/amd64 | Linux、Windows、移动端与对应服务/目录/兼容测试；这是明确后置范围 |

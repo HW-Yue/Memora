@@ -1,8 +1,8 @@
 # MVCC、Undo Log、Redo Log 与 Binlog 边界
 
-状态：长期术语边界有效；第一阶段改为本地单 writer 的最小 MVCC，不预先实现
-完整 InnoDB Undo/Redo/锁体系。见
-[ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)。
+状态：本地最小 MVCC 与写锁有效；F81 增加 Redo WAL，物理 Undo 继续后置。见
+[ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)和
+[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 ## 事务与版本标识
 
@@ -23,7 +23,7 @@
 - 写入前取得 Row、Table/Schema、Route 等明确对象的排他写锁；
 - autocommit 在语句终态释放锁，显式事务在 commit/rollback 后释放；
 - 多对象写按稳定 key 排序；首选非等待 try-lock，冲突策略待 F82 Review；
-- Row revision 先写入事务缓冲，只有完整 COMMIT 后进入 Row Directory；
+- Row revision 先写入事务缓冲，只有完整 WAL COMMIT 后进入 B+ Tree committed view；
 - reader 依据 snapshot commit sequence 选择可见 immutable revision；
 - rollback 丢弃未发布记录，不需要用物理 Undo 恢复 in-place Page；
 - expected revision 继续处理 Agent 的陈旧语义写；
@@ -37,19 +37,19 @@ gap/next-key lock、范围锁、锁等待或死锁检测。
 ## Undo Log、Redo Log 与历史
 
 - 历史 revision：给 Agent 查询“谁为什么改了什么”；
-- Undo Log：未来 in-place/Page 写入需要回滚或旧版本重建时再引入；
-- Redo Log：未来出现 dirty Page 和异步刷盘时再引入 WAL。
+- Undo Log：未来允许未提交 Page steal、in-place Row body 或多 writer 时再引入；
+- Redo Log：F81 必做的 Page WAL，保证 committed B+ Tree/Page 崩溃恢复。
 
-当前 append-only Frame 在 COMMIT 前不发布，崩溃尾恢复依赖 transaction digest 与
-fsync 边界。它不是通用 Redo/Undo，但在没有 in-place Page 写入时不需要先复制
-WAL。未来事务 Undo 会被 Purge，仍不能承担长期语义历史。每次已提交语义修改
-另外写入永久 History；业务撤销创建补偿 revision。
+当前 append-only Frame 仍是迁移前实现。F81 后 mutation 先形成私有 write set，
+Redo COMMIT fsync 后发布；未提交写不进入共享 Page，因此首版 rollback 可丢弃
+staged writes。未来事务 Undo 会被 Purge，仍不能承担永久 History；业务撤销继续
+创建补偿 revision。
 
 F83 Committed Change Log（Binlog）记录已提交事务的逻辑变化，第一用途是 Admin
-展示数据、Schema 与语义索引的变化时间线。当前 append-only Store 将 change
-envelope 与业务 Record 放入同一 Transaction Frame，不需要先引入 Redo/Binlog
-两阶段提交或 Group Commit。未来同步与 PITR 可以复用该变化流，但必须单独
-Review，详见 [Committed Change Log 与未来同步](./binlog-and-sync.md)。
+展示数据、Schema 与语义索引变化。change envelope 作为业务 Page Record，与
+相关 Page 变更进入同一 WAL transaction，因此首版不需要独立 Redo/Binlog 两阶段
+提交。未来同步与 PITR 可以复用该变化流，但必须单独 Review，详见
+[Committed Change Log 与未来同步](./binlog-and-sync.md)。
 
 ## 并发错误
 
@@ -59,12 +59,11 @@ Review，详见 [Committed Change Log 与未来同步](./binlog-and-sync.md)。
 
 - 是否以及何时增加可配置隔离级别？
 - 是否有真实需求增加锁等待、范围锁或死锁检测；
-- 使用 in-place + Redo Log、Copy-on-Write，还是混合结构？
 - Undo record 的字段级 before image、roll pointer 和 segment/page 编码；
 - 多 CLI 进程的 commit sequence 和锁如何协调？
 - compaction 如何确定最老活跃快照？
 - Data Dictionary 的 MVCC 如何参与 SQL parse/bind/execute？
-- Group Commit 的刷盘批次、顺序和故障注入怎样实现？
+- 何时由真实提交吞吐证明需要 Group Commit？
 
 ## 关联
 

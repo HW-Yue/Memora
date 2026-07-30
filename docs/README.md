@@ -141,7 +141,8 @@
 - [ADR-0002：v0 不内置 Agent Runtime](./decisions/0002-defer-embedded-agent.md) — F43 基于 Skill 覆盖审计 defer Provider/ask loop，并冻结重新开启条件。
 - [ADR-0003：原生极简 Store 优先](./decisions/0003-native-minimal-store-first.md) — 先自有文件格式，再接现有逻辑层并迁出 SQLite。
 - [ADR-0004：RowID 快速目录与本地最小 MVCC](./decisions/0004-fast-row-directory-minimal-mvcc.md) — MVCC/写锁仍有效；内存目录与 B+ Tree 后置部分已被 ADR-0005 取代。
-- [ADR-0005：B+ Tree 是必做的持久化主索引](./decisions/0005-btree-mandatory-primary-index.md) — F81 接通 RowID/版本/Table 顺序的 B+ Tree；具体 Page/COW/Redo 布局待 Review。
+- [ADR-0005：B+ Tree 是必做的持久化主索引](./decisions/0005-btree-mandatory-primary-index.md) — F81 接通 RowID/版本/Table 顺序的 B+ Tree；物理策略由 ADR-0006 细化。
+- [ADR-0006：MySQL 式 Page/Buffer Pool/WAL，COW 用于 generation](./decisions/0006-mysql-page-buffer-wal-cow.md) — 16 KiB Page、单实例 Buffer Pool、Redo recovery 与限定 COW 职责。
 
 ## 文档规模约束
 

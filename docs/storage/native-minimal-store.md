@@ -112,10 +112,11 @@ MSQL Executor 已把精确 `WHERE row_id = :id` 识别为专用 Get，不扫描�
 `row_id@revision`。因此当前精确 RowID Get 随 Catalog 与 Row revision 总数增长，
 还不是最终的 B+ Tree point-get 路径。
 
-下一步目标是持久化 B+ Tree：Catalog、当前 Row、Row version 和 Table 顺序拥有
-已提交 root，内存 Map 只作缓存。它只改变物理定位，不改变 MSQL、RowID、History
-或 Route。完整决策见
-[ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)。
+下一步目标是 16 KiB Page 上的持久化 B+ Tree、单实例 Buffer Pool 与 Redo WAL：
+Catalog、当前 Row、Row version 和 Table 顺序拥有已提交 root，内存 Map 只作缓存。
+它不改变 MSQL、RowID、History 或 Route。见
+[ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)和
+[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 ## F52 验收
 

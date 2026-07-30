@@ -1,7 +1,8 @@
 # Buffer Pool
 
-状态：B+ Tree 必须配有界 Page cache；是否在 F81 直接形成完整 Buffer Pool v1，
-以及 dirty Page/刷脏机制，仍待物理布局 Review。
+状态：F81 必须实现单实例 Buffer Pool v1；16 KiB Page、Redo WAL、young/old LRU、
+pin/latch 与 dirty/flush 顺序已确认，复杂扩展后置。见
+[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 ## 定位
 
@@ -39,13 +40,14 @@ Agent 上一次查询读取过的 Page 因为最近被访问，通常会自然�
 
 新读入 Page 使用 midpoint insertion 进入 old 区，真正再次访问后才提升为 young，避免一次顺序扫描立即挤掉长期热点。分区比例、提升等待时间和扫描保护参数由 benchmark 调整，不写死为永久常量。
 
-## 写入与正确性候选
+## 写入与正确性
 
-- 如果采用 in-place Page，修改先发生在内存并标记 dirty，刷回前必须满足
-  Redo/WAL 的持久化顺序；
-- 如果采用 Copy-on-Write，先写新 Page，再随事务原子发布新 root；
+- 普通 B+ Tree Page 更新通过私有 write set 与 Redo WAL 提交，再在内存发布；
+- Page 修改后标记 dirty，刷回前必须满足 Redo/WAL 持久化顺序；
+- checkpoint 后首次修改写 full-page image，配合 checksum 恢复 torn Page；
+- COW 只用于 rebuild、compaction、snapshot 与 generation/root swap；
 - dirty Page 不能像 clean Page 一样直接丢弃；
-- 后台 Page Cleaner 参考 dirty Page 比例、Redo 生成速度和可用 I/O 做自适应刷脏；
+- v1 使用简单、有界的 flush scheduler；自适应 Page Cleaner 后置；
 - daemon 崩溃后由数据文件和日志恢复，Buffer Pool 本身不是真相源；
 - daemon 关闭时可以只保存最近热 Page 的 `space_id + page_id` 列表，重启后后台预热，不持久化 Page 内容副本；
 - 热 Page 清单失效或丢失时从空池冷启动，只影响性能。
@@ -59,7 +61,7 @@ Query Workspace 可以保存一次 Agent Loop 当前需要的 Route Frame、Sche
 ## 尚未确认
 
 - Buffer Pool 默认与最大内存预算；
-- Page 大小和 Frame 元数据布局；
+- Frame 元数据具体布局；
 - young/old 比例、提升等待时间和扫描保护参数；
 - dirty Page 比例、自适应刷脏阈值和 I/O capacity；
 - Buffer Pool 分片的启用门槛和数量；

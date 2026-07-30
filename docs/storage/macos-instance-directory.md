@@ -58,11 +58,13 @@ default/
 ├── system/auxiliary.memora
 ├── system/security.memora
 ├── databases/database.memora
+├── redo/                    F81 后的 Instance 级 WAL segments
 └── tmp/
 ```
 
-这些文件由引擎创建和管理，用户与 Agent 不直接编辑。第一阶段不创建独立
-redo/undo/binlog 或 Tablespace 目录；以后只有实测证明需要才增加。
+这些文件由引擎创建和管理，用户与 Agent 不直接编辑。当前实现尚未创建 `redo/`；
+F81 format migration 后由引擎管理。Undo、独立同步 Binlog 和完整 Tablespace 目录
+继续后置。
 
 `databases/` 下使用稳定 `database_id`；每库先只有一个权威
 `database.memora`。完整格式见[原生极简存储格式](./native-minimal-store.md)。
@@ -76,9 +78,9 @@ magic[8] | format_version u32 | page_size u32
 created_at_unix_nano i64 | instance_uuid[16] | crc32 u32
 ```
 
-整数使用 little-endian。现有 `page_size` 字段在极简格式阶段只作旧格式兼容保留，
-不能迫使 `.memora` v1 使用 Page；后续通过 Instance format migration 决定是否
-移除或重新定义。文件权限为 `0600`，Instance 和固定子目录为 `0700`。
+整数使用 little-endian。现有 `page_size` 在当前极简格式只作兼容保留；F81 format
+migration 后正式约束 Page 大小，默认 16 KiB。文件权限为 `0600`，Instance 和
+固定子目录为 `0700`。
 
 初始化先在同目录写临时文件并 `fsync`，再用不覆盖既有目标的 hard-link 原子发布，最后同步目录。两个进程同时首次初始化时只有一个 UUID 成为正式身份，另一方读取胜出的完整文件。重复 `memora init` 保持原身份；长度、magic、Page Size 或 CRC 错误都拒绝启动，绝不自动覆盖。v1 返回明确的 upgrade-required 状态，高于 v2 的格式返回 newer-format，不能都误报成损坏；迁移与回滚见 [Instance Format 升级与回滚 v1](./instance-format-upgrade-v1.md)。
 
@@ -104,8 +106,8 @@ Unix socket 不放入 datadir，避免自定义深层路径超过 macOS `AF_UNIX
 
 ## 传统数据库参考边界
 
-只参考经过当前需求验证的正确性机制，不再先复制集中式事务日志、Tablespace、
-Page 或 `.ibd` 布局。Memora 的 `.memora` 格式和恢复协议独立定义。
+Page/B+ Tree/Buffer Pool/Redo WAL 参考 MySQL 的职责和正确性顺序，但 Memora 的
+文件编码、COW generation、单 writer 简化与恢复协议独立定义，不复制 `.ibd`。
 
 ## 尚未确认
 
