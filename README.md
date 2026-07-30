@@ -42,7 +42,12 @@ go build -o /tmp/memora ./cmd/memora
 ```bash
 ./scripts/release.sh 0.1.0 /absolute/output
 ./scripts/smoke-release.sh /absolute/output 0.1.0
+./scripts/publication.sh 0.1.0 /absolute/publication
 ```
+
+GitHub Release 只由已验证签名的 annotated `vMAJOR.MINOR.PATCH` tag 触发；
+workflow 完整测试并在 arm64/amd64 runner 冒烟后，才上传二进制、checksum、
+manifest 和带许可证的 Skill bundle。普通 PR 没有发布权限。
 
 ## 许可
 

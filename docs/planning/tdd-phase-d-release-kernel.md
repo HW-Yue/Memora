@@ -34,7 +34,7 @@
 
 提交：`build(F47): produce macOS release artifacts`
 
-## F48 GitHub Release 自动化
+## F48 GitHub Release 自动化（已完成）
 
 先测：tag 规则、重复发布、缺失制品、checksum 不匹配和 release smoke；PR 不得发布。
 

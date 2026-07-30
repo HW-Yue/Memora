@@ -85,6 +85,52 @@ func TestGitHubWorkflowContract(t *testing.T) {
 	}
 }
 
+func TestGitHubReleaseWorkflowIsTagOnlyAndLeastPrivilege(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	content, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatalf("read Release workflow: %v", err)
+	}
+	workflow := string(content)
+	for _, required := range []string{
+		"tags:",
+		"contents: read",
+		"contents: write",
+		"persist-credentials: false",
+		"validate-release-trigger",
+		"/git/tags/",
+		"./scripts/ci.sh",
+		"macos-15-intel",
+		"arch: arm64",
+		"arch: amd64",
+		"verify-publication",
+		"validate-release-draft",
+		"--draft",
+		"--generate-notes",
+		"gh release upload",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("Release workflow missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"pull_request:",
+		"pull_request_target:",
+		"workflow_dispatch:",
+		"branches:",
+		"--cleanup-tag",
+	} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("Release workflow contains forbidden trigger or mutation %q", forbidden)
+		}
+	}
+	if strings.Index(workflow, "contents: write") < strings.Index(workflow, "publish:") {
+		t.Error("Release workflow grants write permission before the publish job")
+	}
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, current, _, ok := runtime.Caller(0)

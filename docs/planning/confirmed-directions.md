@@ -89,6 +89,7 @@
 85. Wiki v1 以 `database_id/table_id/row_id.md` 作为稳定路径；rename 不移动页面，跨库关系使用 Vault 根目录下的完整稳定相对 Wikilink。增量 manifest 只拥有自己登记的页面，不删除用户新增文件；v1 不生成 slug、redirect、Router/MOC，也不回流 Markdown 编辑。
 86. v0 的最终信任边界是当前 macOS 用户；宿主 Agent 的结构化 MSQL input 必须用 `memora.authorization/v1` 声明 actor 和 Database scope。Policy 在静态 SQL、动态 Route、关系、Pack 与 Wiki 上强制该 scope；Install 另需绑定 package SHA-256 的显式 approval。daemon 审计只保存有界元数据与 payload hash，并与逻辑 Database snapshot/package 分离。
 87. Memora 采用 PolyForm Noncommercial 1.0.0 与独立付费商业许可的双许可证模式：个人及其他非商业用途可免费使用、修改与依许可分发；任何商业用途必须事先取得版权所有者另行签署的书面付费许可。项目属于 source-available，不宣称为 OSI Open Source。
+88. GitHub Release 只由已验证签名的 annotated 稳定 SemVer tag 触发；tag target 必须位于 `main`，重复 Release 必须失败。测试、构建和双架构 smoke 只读，只有其后最终 publish job 获得 `contents: write`；Release 固定同时分发双架构制品与带完整许可的确定性 Skill bundle。
 
 ## 尚需验证
 
