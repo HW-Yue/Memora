@@ -41,6 +41,7 @@
 - [Canonical Skill v1](./agent/canonical-skill-v1.md) — F28 的唯一宿主规则源、版本 lint、冲突边界和上下文预算。
 - [Skill 查询流程 v1](./agent/skill-query-v1.md) — F30 的发现、Route/MATCH、SELECT 回表、evidence 和可恢复终态。
 - [Skill 写入流程 v1](./agent/skill-write-v1.md) — F31 的七种语义决策、Mutation Plan、Policy、短事务和紧凑收据。
+- [Skill Schema 生命周期 v1](./agent/skill-schema-lifecycle-v1.md) — F32 的同义 Schema 复用、受限 DDL、影响预览和补偿回滚。
 - [可选内置 Agent Runtime](./agent/embedded-agent-runtime.md) — v0 后候选；第一版由 Codex/Claude Code 按 Skill 调用统一 MSQL 核心。
 - [索引发现 Sub-agent](./agent/index-discovery-subagent.md) — 逐层导航并融合倒排，只返回数据项定位，主 Agent 再用 SQL 取数。
 - [数据库查询 Sub-agent](./agent/database-query-subagent.md) — 旧首选方案；保留为宿主侧兼容方式。

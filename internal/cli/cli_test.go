@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/skillschema"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 	"github.com/HW-Yue/Memora/internal/testkit"
 )
@@ -98,6 +100,18 @@ func TestRun(t *testing.T) {
 			wantCode:   2,
 			wantStderr: "memora: --plan must be one strict Mutation Plan JSON object\n",
 		},
+		{
+			name:       "schema requires plan",
+			args:       []string{"schema"},
+			wantCode:   2,
+			wantStderr: "memora: schema requires --plan JSON\n",
+		},
+		{
+			name:       "schema rejects unknown plan field",
+			args:       []string{"schema", "--plan", `{"surprise":true}`},
+			wantCode:   2,
+			wantStderr: "memora: --plan must be one strict Schema Plan JSON object\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -118,6 +132,66 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunSchemaExecutesValidatedPlanAndPrintsReceipt(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	plan := skillschema.Plan{
+		Version: skillschema.PlanVersion, ID: "schema-cli", Actor: "agent:test",
+		SourceEventID: "conversation:event-schema", Reason: "reuse existing schema",
+		AuthorizedDatabases: []string{"work"},
+		Ensure: &skillschema.EnsurePlan{
+			Database: catalog.DatabaseDefinition{Name: "work", Purpose: "Work", Scope: "Projects"},
+			Table: catalog.TableDefinition{
+				Name: "notes", Purpose: "Notes", RowSemantics: "One note",
+				Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT", Purpose: "Title"}},
+			},
+		},
+	}
+	encodedPlan, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invocations := 0
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(_ context.Context, gotDataDir, source string, _ []executor.StatementInput) (result.Envelope, error) {
+			invocations++
+			if gotDataDir != dataDir {
+				t.Fatalf("data dir = %q", gotDataDir)
+			}
+			statement := result.NewStatement(0, "SHOW", source)
+			switch source {
+			case "SHOW DATABASES COMPACT":
+				statement.Rows = []result.Row{{"database_id": "db_work", "name": "work", "aliases": []any{}}}
+			case "SHOW TABLES FROM `work` COMPACT":
+				statement.Rows = []result.Row{{"table_id": "tbl_notes", "name": "notes", "aliases": []any{}}}
+			default:
+				t.Fatalf("unexpected schema MSQL %q", source)
+			}
+			return result.NewEnvelope("schema-cli", statement), nil
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := RunWithDependencies(
+		[]string{"schema", "--data-dir", dataDir, "--plan", string(encodedPlan)},
+		&stdout, &stderr, BuildInfo{}, dependencies,
+	)
+	if code != ExitOK || stderr.Len() != 0 || invocations != 2 {
+		t.Fatalf("schema code = %d, stderr = %q, invocations = %d", code, &stderr, invocations)
+	}
+	var receipt skillschema.Receipt
+	if err := json.Unmarshal(stdout.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Status != skillschema.ReceiptApplied ||
+		receipt.Database.Action != skillschema.ObjectReused || receipt.Table.Action != skillschema.ObjectReused {
+		t.Fatalf("receipt = %#v", receipt)
 	}
 }
 

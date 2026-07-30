@@ -9,8 +9,8 @@ Use this single source for stable host behavior. It targets `memora.msql.ast/v1`
 and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
-Only use the `memora doctor`, `memora query`, `memora exec`, and
-`memora mutate` interfaces.
+Only use the `memora doctor`, `memora query`, `memora exec`, `memora mutate`,
+and `memora schema` interfaces.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -102,6 +102,25 @@ track coverage, read bounded windows, compare with existing rows, independently
 review proposed changes, and commit complete semantic modules plus compact source
 anchors. Do not persist original files, mechanical chunks, or unverified claims.
 If coverage or review is incomplete, report the assimilation as incomplete.
+
+## Evolve schemas
+
+Before creating a domain, discover existing Database and Table names and aliases.
+Submit the proposed name plus a short explicit synonym set through one
+`memora.schema-plan/v1` ensure plan. Database purpose/scope, Table
+purpose/row_semantics, and every Column type/purpose are mandatory. Reuse an
+exact candidate or alias; do not infer equivalence from a name alone.
+
+Use a migration plan for renames. Include the expected Database and object
+schema versions and a hard maximum affected-object count. Schema v1 accepts only
+reversible Table and Column renames. The command applies each autocommit DDL in
+order and compensates completed renames in reverse order after a failure. Treat
+`rolled_back` as a failed migration with a verified recovery receipt, not as a
+successful schema change. Ask the user before an irreversible or broad change.
+
+```sh
+memora schema --plan '{"version":"memora.schema-plan/v1","id":"schema-8","actor":"agent:host","source_event_id":"conversation:event-8","reason":"new durable project domain","authorized_databases":["work"],"ensure":{"database":{"name":"work","purpose":"Project knowledge","scope":"Reviewed projects"},"database_synonyms":["projects"],"table":{"name":"notes","purpose":"Durable decisions","row_semantics":"One reviewed decision","columns":[{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title"}]},"table_synonyms":["decisions"]}}'
+```
 
 ## Request the user
 

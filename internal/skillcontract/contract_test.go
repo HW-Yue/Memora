@@ -69,6 +69,13 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 	if got := bundle.Contract.ConflictPolicy; got != skillcontract.ConflictAskUserBeforeMutation {
 		t.Fatalf("conflict policy = %q, want %q", got, skillcontract.ConflictAskUserBeforeMutation)
 	}
+	foundSchema := false
+	for _, command := range bundle.Contract.AllowedCommands {
+		foundSchema = foundSchema || command == "schema"
+	}
+	if !foundSchema {
+		t.Fatal("canonical Skill does not allow the policy-checked schema command")
+	}
 	for _, token := range []string{"sqlite3 ", "prototype.sqlite", "/databases/", ".wal"} {
 		if strings.Contains(bundle.Markdown, token) {
 			t.Errorf("canonical Skill contains forbidden physical access token %q", token)

@@ -12,6 +12,7 @@ Commands:
   mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
+  schema     Execute a validated Schema Plan
   version    Show build version
 
 Run 'memora help' for usage.

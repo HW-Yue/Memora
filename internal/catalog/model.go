@@ -9,26 +9,26 @@ import (
 const Version = "memora.catalog/v1"
 
 type DatabaseDefinition struct {
-	Name      string
-	Purpose   string
-	Scope     string
-	AntiScope string
+	Name      string `json:"name"`
+	Purpose   string `json:"purpose"`
+	Scope     string `json:"scope"`
+	AntiScope string `json:"anti_scope,omitempty"`
 }
 
 type TableDefinition struct {
-	Name         string
-	Purpose      string
-	Scope        string
-	AntiScope    string
-	RowSemantics string
-	Columns      []ColumnDefinition
+	Name         string             `json:"name"`
+	Purpose      string             `json:"purpose"`
+	Scope        string             `json:"scope,omitempty"`
+	AntiScope    string             `json:"anti_scope,omitempty"`
+	RowSemantics string             `json:"row_semantics"`
+	Columns      []ColumnDefinition `json:"columns"`
 }
 
 type ColumnDefinition struct {
-	Name     string
-	Type     string
-	Nullable bool
-	Purpose  string
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Nullable bool   `json:"nullable"`
+	Purpose  string `json:"purpose"`
 }
 
 type Database struct {

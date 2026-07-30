@@ -17,6 +17,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/skillschema"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 )
 
@@ -40,6 +41,7 @@ Commands:
   mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
+  schema     Execute a validated Schema Plan
   version    Show build version
 
 Run 'memora help' for usage.
@@ -100,6 +102,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runMutate(args[1:], stdout, stderr, dependencies)
 	case "parse":
 		return runParse(args[1:], stdout, stderr, dependencies)
+	case "schema":
+		return runSchema(args[1:], stdout, stderr, dependencies)
 	case "version":
 		return runVersion(args[1:], stdout, stderr, build)
 	default:
@@ -108,6 +112,73 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runSchema(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var planJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--plan":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--plan requires a JSON object")
+			}
+			if planJSON != "" {
+				return usageError(stderr, "--plan may only be specified once")
+			}
+			planJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown schema option: %q", args[index]))
+		}
+	}
+	if planJSON == "" {
+		return usageError(stderr, "schema requires --plan JSON")
+	}
+	var plan skillschema.Plan
+	decoder := json.NewDecoder(bytes.NewBufferString(planJSON))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&plan); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--plan must be one strict Schema Plan JSON object")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	execute := dependencies.ExecuteMSQL
+	if execute == nil {
+		execute = daemon.Execute
+	}
+	tool := skillschema.ToolFunc(func(ctx context.Context, call skillschema.Call) (result.Envelope, error) {
+		return execute(ctx, dataDir, call.Request.Source, call.Request.Statements)
+	})
+	report, err := skillschema.New(tool).Run(context.Background(), plan)
+	if err != nil {
+		if report.Receipt.Version != "" {
+			if encodeErr := json.NewEncoder(stdout).Encode(report.Receipt); encodeErr != nil {
+				return writeFailure(stderr, encodeErr)
+			}
+		}
+		return commandError(stderr, "execute Schema Plan", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(report.Receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if !report.Receipt.Verified {
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func runExecute(
