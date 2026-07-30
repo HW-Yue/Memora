@@ -243,7 +243,9 @@ func (service *Service) commitRowRevision(value row.Row, operation history.Opera
 	if desired == nil {
 		desired = make([]string, 0, len(current))
 		for _, membership := range current {
-			desired = append(desired, membership.LeafID)
+			if !membership.Deleted {
+				desired = append(desired, membership.LeafID)
+			}
 		}
 	}
 	wanted := map[string]bool{}
@@ -334,8 +336,26 @@ func (service *Service) AsOfRevision(ctx context.Context, databaseName, tableNam
 	}
 	return project(table, value), nil
 }
-func (service *Service) AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error) {
-	return row.Row{}, ErrUnsupported
+func (service *Service) AsOfCommit(
+	ctx context.Context,
+	databaseName, tableName, rowID string,
+	commitSequence uint64,
+) (row.Row, error) {
+	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return row.Row{}, err
+	}
+	value, err := service.repository.ReadAsOfCommit(rowID, commitSequence)
+	if err != nil {
+		if errors.Is(err, nativestore.ErrNotFound) {
+			return row.Row{}, serviceFailure(result.CodeNotFound, "no Row history is visible at the requested commit sequence", err)
+		}
+		return row.Row{}, err
+	}
+	if value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
+		return row.Row{}, serviceFailure(result.CodeNotFound, "historical Row was not found in requested table", nil)
+	}
+	return project(table, value), nil
 }
 func (service *Service) HistoryPage(ctx context.Context, databaseName, tableName, rowID string, limit int) ([]history.Record, bool, error) {
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
@@ -344,8 +364,80 @@ func (service *Service) HistoryPage(ctx context.Context, databaseName, tableName
 	}
 	return service.repository.History(table.DatabaseID, table.ID, rowID, limit)
 }
-func (service *Service) Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error) {
-	return row.Row{}, ErrUnsupported
+func (service *Service) Restore(
+	ctx context.Context,
+	databaseName, tableName, rowID string,
+	targetRevision uint64,
+	options row.WriteOptions,
+) (row.Row, error) {
+	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return row.Row{}, err
+	}
+	current, err := service.repository.ReadIncludingDeleted(rowID)
+	if err != nil {
+		if errors.Is(err, nativestore.ErrNotFound) {
+			return row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), err)
+		}
+		return row.Row{}, err
+	}
+	if current.DatabaseID != table.DatabaseID || current.TableID != table.ID {
+		return row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found in requested table", rowID), nil)
+	}
+	if options.ExpectedSchemaVersion != table.SchemaVersion || options.ExpectedRevision != current.Revision {
+		return row.Row{}, serviceFailure(result.CodeRevisionConflict, "row or schema revision conflicts with latest", ErrRevisionConflict)
+	}
+	target, err := service.repository.ReadRevision(rowID, targetRevision)
+	if err != nil {
+		if errors.Is(err, nativestore.ErrNotFound) {
+			return row.Row{}, serviceFailure(result.CodeNotFound, "target Row revision was not found", err)
+		}
+		return row.Row{}, err
+	}
+	if target.DatabaseID != table.DatabaseID || target.TableID != table.ID {
+		return row.Row{}, serviceFailure(result.CodeNotFound, "target Row revision belongs to another table", nil)
+	}
+	if target.State != row.StateLive && target.State != row.StateDeleted {
+		return row.Row{}, serviceFailure(result.CodeConstraint, "target Row revision cannot be restored", nil)
+	}
+	values := make(map[string]any, len(table.Columns))
+	for _, column := range table.Columns {
+		value, ok := target.Values[column.ID]
+		if !ok {
+			value = nil
+		}
+		normalized, validateErr := column.Validate(value)
+		if validateErr != nil {
+			return row.Row{}, serviceFailure(
+				result.CodeConstraint,
+				fmt.Sprintf("restore column %q: %v", column.Name, validateErr),
+				validateErr,
+			)
+		}
+		values[column.ID] = normalized
+	}
+	if target.State == row.StateLive && options.RouteLeafIDs == nil {
+		return row.Row{}, serviceFailure(result.CodeValidation, "RESTORE to a live Row requires a complete Route snapshot", nil)
+	}
+	sequence, err := service.repository.NextCommitSequence()
+	if err != nil {
+		return row.Row{}, err
+	}
+	restored := current
+	restored.Values = values
+	restored.State = target.State
+	restored.SchemaVersion = table.SchemaVersion
+	restored.Revision++
+	restored.CommitSequence = sequence
+	restored.UpdatedAt = service.clock.Now().UTC()
+	desired := options.RouteLeafIDs
+	if restored.State == row.StateDeleted {
+		desired = []string{}
+	}
+	if err := service.commitRowRevision(restored, history.OperationCompensate, options.Metadata, desired); err != nil {
+		return row.Row{}, err
+	}
+	return project(table, restored), nil
 }
 func (service *Service) Relate(ctx context.Context, definition row.RelationDefinition) (relation.Relation, error) {
 	source, err := service.relationEndpoint(ctx, definition.Source)

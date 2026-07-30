@@ -166,10 +166,44 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		reopenedRoute.Results[0].Rows[0]["revision"] != float64(2) {
 		t.Fatalf("reopened Route = %#v", reopenedRoute)
 	}
+	e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{"row": rowID},
+			map[string]any{
+				"expected_schema_version": 1, "expected_revision": 2, "max_affected_rows": 1,
+				"actor": "agent:e2e", "source": "e2e:delete", "reason": "verify compensation",
+			},
+		),
+		"DELETE FROM work.notes WHERE row_id = :row")
+	deletedRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 20")
+	if len(deletedRoute.Results[0].Rows) != 0 {
+		t.Fatalf("Route after DELETE = %#v", deletedRoute)
+	}
+	restored := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{"row": rowID, "revision": 2},
+			map[string]any{
+				"expected_schema_version": 1, "expected_revision": 3, "max_affected_rows": 1,
+				"route_leaf_ids": []string{leafID},
+				"actor":          "agent:e2e", "source": "e2e:restore", "reason": "verify compensation",
+			},
+		),
+		"RESTORE work.notes ROW :row TO REVISION :revision")
+	restoredRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 20")
+	if restored.Results[0].Revision == nil || *restored.Results[0].Revision != 4 ||
+		len(restoredRoute.Results[0].Rows) != 1 ||
+		restoredRoute.Results[0].Rows[0]["row_id"] != rowID ||
+		restoredRoute.Results[0].Rows[0]["revision"] != float64(4) {
+		t.Fatalf("Route after RESTORE = restore %#v, route %#v", restored, restoredRoute)
+	}
 	var doctor doctorOutput
 	e2eJSON(t, root, &doctor, binary, "doctor", "--data-dir", dataDir)
 	if doctor.Status != "healthy" || doctor.Databases != 1 ||
-		doctor.Rows != 1 || doctor.History != 2 || doctor.SnapshotHash == "" {
+		doctor.Rows != 1 || doctor.History != 4 || doctor.SnapshotHash == "" {
 		t.Fatalf("final doctor = %#v", doctor)
 	}
 }

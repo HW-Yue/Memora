@@ -98,6 +98,41 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 		openedAfterReattach.Rows[0]["revision"] != uint64(4) {
 		t.Fatalf("reattached Route locator = updated %#v, opened %#v", reattached, openedAfterReattach)
 	}
+	asOfCommit := executeMSQL(t, ctx, engine,
+		"SELECT title, revision FROM work.notes AS OF COMMIT_SEQUENCE :sequence WHERE row_id = :row LIMIT 1",
+		executor.Parameters{Named: map[string]any{"sequence": 2, "row": "row_first"}},
+		executor.MutationOptions{},
+	)
+	if len(asOfCommit.Rows) != 1 || asOfCommit.Rows[0]["title"] != "native authority revised" ||
+		asOfCommit.Rows[0]["revision"] != uint64(2) {
+		t.Fatalf("AS OF COMMIT_SEQUENCE = %#v", asOfCommit)
+	}
+	executeMSQL(t, ctx, engine,
+		"DELETE FROM work.notes WHERE row_id = :row",
+		executor.Parameters{Named: map[string]any{"row": "row_first"}},
+		executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 4, MaxAffectedRows: 1},
+	)
+	openedAfterDelete := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 20",
+		executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
+	if len(openedAfterDelete.Rows) != 0 {
+		t.Fatalf("deleted Route locator = %#v", openedAfterDelete)
+	}
+	restored := executeMSQL(t, ctx, engine,
+		"RESTORE work.notes ROW :row TO REVISION :revision",
+		executor.Parameters{Named: map[string]any{"row": "row_first", "revision": 2}},
+		executor.MutationOptions{
+			ExpectedSchemaVersion: 1, ExpectedRevision: 5, MaxAffectedRows: 1,
+			RouteLeafIDs: []string{"route_leaf"},
+		},
+	)
+	openedAfterRestore := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 20",
+		executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
+	if restored.Revision == nil || *restored.Revision != 6 ||
+		len(openedAfterRestore.Rows) != 1 ||
+		openedAfterRestore.Rows[0]["row_id"] != "row_first" ||
+		openedAfterRestore.Rows[0]["revision"] != uint64(6) {
+		t.Fatalf("RESTORE Route locator = restored %#v, opened %#v", restored, openedAfterRestore)
+	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +146,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	engine = executor.New(dictionary, rows)
 	afterRestart := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_leaf' LIMIT 20", executor.Parameters{}, executor.MutationOptions{})
 	if len(afterRestart.Rows) != 1 || afterRestart.Rows[0]["row_id"] != "row_first" ||
-		afterRestart.Rows[0]["revision"] != uint64(4) {
+		afterRestart.Rows[0]["revision"] != uint64(6) {
 		t.Fatalf("OPEN after restart = %#v", afterRestart)
 	}
 }

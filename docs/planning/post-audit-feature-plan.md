@@ -18,6 +18,7 @@
 - 目标：`RESTORE ... TO REVISION` 与 `AS OF COMMIT_SEQUENCE`；
 - 覆盖：US-DELETE、US-CORRECT、US-RECOVER；
 - 门：删除、历史读取、补偿 revision、Route 恢复、重启重查闭环。
+- 状态：已实现。
 
 ## F75 原生 Feedback 与 Semantic Health
 

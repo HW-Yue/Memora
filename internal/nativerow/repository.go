@@ -95,7 +95,7 @@ func (repository *Repository) validateRevision(value row.Row) error {
 	if err != nil {
 		return err
 	}
-	if latest.State != row.StateLive || value.Revision != latest.Revision+1 ||
+	if value.Revision != latest.Revision+1 ||
 		value.DatabaseID != latest.DatabaseID || value.TableID != latest.TableID ||
 		!value.CreatedAt.Equal(latest.CreatedAt) {
 		return ErrRevisionConflict
@@ -166,6 +166,34 @@ func (repository *Repository) ReadRevision(id string, revision uint64) (row.Row,
 		return row.Row{}, fmt.Errorf("%w: RowID and revision are required", ErrInvalid)
 	}
 	return repository.readRecord(revisionRecordID(id, revision))
+}
+
+func (repository *Repository) ReadAsOfCommit(id string, commitSequence uint64) (row.Row, error) {
+	if id == "" || commitSequence == 0 {
+		return row.Row{}, fmt.Errorf("%w: RowID and commit sequence are required", ErrInvalid)
+	}
+	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	if err != nil {
+		return row.Row{}, err
+	}
+	var selected row.Row
+	found := false
+	for _, recordID := range ids {
+		value, err := repository.readRecord(recordID)
+		if err != nil {
+			return row.Row{}, err
+		}
+		if value.ID != id || value.CommitSequence > commitSequence {
+			continue
+		}
+		if !found || value.CommitSequence > selected.CommitSequence {
+			selected, found = value, true
+		}
+	}
+	if !found {
+		return row.Row{}, nativestore.ErrNotFound
+	}
+	return selected, nil
 }
 
 func (repository *Repository) List(databaseID, tableID string, limit int) ([]row.Row, bool, error) {
