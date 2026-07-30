@@ -34,7 +34,7 @@ Story Gate 与具体实现；不把历史归档或已撤销的 Vector/MATCH 路�
 | 宿主接入面 | CLI、Skill、Unix socket IPC、Codex/Claude adapter | 可选 MCP adapter、稳定 SDK、launchd 用户服务安装与系统级生命周期集成 |
 | 公开发行 | 双架构构建、checksum、发布 workflow 和 clean-machine 测试 | 当前仓库还没有正式 tag/GitHub Release；签名后的真实发布流程尚未实际执行 |
 | 原生文件长期运行 | append-only Record、事务 Frame、fsync、重开扫描和内存 ID→offset | 文件 compaction/GC、长期 History 保留下的空间回收、增量打开/checkpoint、热点与大库性能证据 |
-| 物理索引与缓存 | 打开时重建通用 `record_id → offset` Map | 逻辑 `row_id → latest visible revision` 快速目录、增量打开/checkpoint；当前精确 RowID 仍列举并排序全部 Row record ID。Page/B+ Tree/Buffer Pool 由数据后置 |
+| 物理索引与缓存 | 打开时重建通用 `record_id → offset` Map | Catalog 与逻辑 `row_id → latest visible revision` 快速目录、增量打开/checkpoint；当前点查会重组 Catalog，并列举排序全部 Row record ID。Page/B+ Tree/Buffer Pool 由数据后置 |
 | 并发数据库内核 | daemon、原子 Mutation、expected revision | 本地单 writer + 多 reader 的最小 MVCC snapshot；多 writer、物理 Undo/Redo、锁矩阵与死锁检测后置 |
 | 同步与灾备 | 稳定逻辑 ID、commit sequence、可携带 snapshot | Binlog、GTID、PITR、多设备增量同步、冲突协议、传输授权与加密 |
 | 跨平台 | macOS arm64/amd64 | Linux、Windows、移动端与对应服务/目录/兼容测试；这是明确后置范围 |
@@ -66,7 +66,7 @@ F80 能证明“公开二进制 + 两套 adapter + 同一 MSQL 机械旅程”�
 
 ## 建议的讨论顺序
 
-1. 先把 RowID 点查改为可重建内存目录，并冻结本地最小 MVCC 可见性；
+1. 先把 Catalog 解析与 RowID 点查改为可重建内存目录，并冻结本地最小 MVCC 可见性；
 2. 再建设本地可视化、只读接口和 Route Trace，让用户与开发者看到真实状态；
 3. 再补真实模型与无向量质量 benchmark，确认 AI 是否找得准、写得对、成本可接受；
 4. 再讨论语义 DBA：Router 质量诊断、导航失败反馈和局部优化计划；

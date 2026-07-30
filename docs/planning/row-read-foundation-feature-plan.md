@@ -14,6 +14,7 @@ AI 通过语义 Route 得到 RowID 后，Memora 像正常关系数据库按主�
 SELECT ... WHERE row_id = :id
 → Parser / Binder / Executor
 → exactRowID fast-path
+→ DescribeTable：重读并组装全部 Database / Table / Column
 → Row Service.Get
 → Row Repository.Read
 → IDs(ObjectKindRow)：复制并排序所有物理 Row record ID
@@ -22,7 +23,8 @@ SELECT ... WHERE row_id = :id
 ```
 
 SQL 层已经避免扫描业务 Row；文件层也能 O(1) 找到指定物理 record。缺口位于中间：
-逻辑 RowID 到最新可见 revision 没有目录，所以当前点查仍随全部 Row revision 增长。
+Schema 解析会重组全部 Catalog，逻辑 RowID 到最新可见 revision 也没有目录。因此
+当前主键点查同时受 Catalog 规模和全部 Row revision 数量影响。
 
 ## MySQL 参考边界
 
@@ -40,11 +42,14 @@ SQL 层已经避免扫描业务 Row；文件层也能 O(1) 找到指定物理 re
 - doublewrite、change buffer、adaptive hash 与 Group Commit；
 - 为尚未出现的范围查询规模预建复杂优化器。
 
-## F81 Fast RowID Directory
+## F81 Fast RowID Read Path
 
-新增 Store 内部可替换的 Row Directory，daemon 打开文件时从完整已提交事务重建：
+新增 Store 内部可替换的 Catalog/Row Directory，daemon 打开文件时从完整已提交
+事务重建：
 
 ```text
+database[name/alias]             → database metadata
+table[database, name/alias]      → table + current Schema metadata
 current[row_id]                  → latest committed revision meta
 revision[row_id, revision]       → record meta
 visible[row_id, commit_sequence] → 可见 revision 定位
@@ -58,6 +63,7 @@ table[table_id]                  → 稳定顺序的 live row_id
 
 ```text
 exact row_id plan
+→ Catalog Directory lookup
 → Row Directory lookup
 → one target ReadAt
 → CRC / decode / Schema validate / project
@@ -66,6 +72,7 @@ exact row_id plan
 
 验收门：
 
+- Database/Table/Schema 解析直接查 Catalog Directory，不重读完整 Catalog；
 - current RowID Get 平均 O(1)，不调用 `IDs(ObjectKindRow)`；
 - exact revision 直接定位，as-of commit 只遍历该 Row 的版本，不扫其他 Row；
 - close/reopen 重建结果与写后内存状态完全一致；

@@ -171,6 +171,8 @@ Repository 遍历全部 Row record ID 的实现只是待替换过渡层。
 gap/next-key lock、死锁检测、doublewrite 和复杂后台线程只有实测需要才增加。
 104. MVCC 作为正确性能力保留，但首版用 immutable revision、commit marker 和
 snapshot commit sequence 实现最小可见性，不预先绑定物理 Undo/Redo 方案。
+105. RowID 点查前的 Database/Table/Schema 解析也不能每次重读完整 Catalog；
+daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原子发布。
 
 ## 尚需验证
 

@@ -10,7 +10,7 @@
 
 | Feature | 用户结果 | 完成门 |
 | --- | --- | --- |
-| F81 Fast RowID Directory | Route 得到 RowID 后，以纯 Go 主键路径直接读取最新可见 Row | 当前点查平均 O(1)；重启重建；revision/as-of 与 cursor 有确定测试；不引入 AI 或 B+ Tree |
+| F81 Fast RowID Read Path | Route 得到 RowID 后，以纯 Go 主键路径直接解析 Schema 并读取最新可见 Row | Catalog/Row Directory 重启重建；当前点查平均 O(1)；revision/as-of 与 cursor 有确定测试；不引入 AI 或 B+ Tree |
 | F82 Local Minimal MVCC | reader 不会看到半次 Mutation，显式事务拥有稳定 snapshot | 单 writer 串行 commit、多 reader snapshot、read-own-writes、rollback 与故障注入通过 |
 
 F81/F82 的逻辑接口见

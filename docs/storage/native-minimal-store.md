@@ -107,13 +107,15 @@ MSQL Executor 已把精确 `WHERE row_id = :id` 识别为专用 Get，不扫描�
 文件层也会在重开时建立 `record_id → payload offset` 内存 Map，并用 `ReadAt`
 读取选中的 Record。
 
-但逻辑 Row Repository 为找到最新 revision，目前仍会列出并排序全部 Row record
-ID，再匹配 `row_id` 与 `row_id@revision`。因此当前精确 RowID Get 随 Row revision
-总数增长，不是最终的平均 O(1) 路径。
+但 Get 前的 `DescribeTable` 目前会重读并组装全部 Catalog；逻辑 Row Repository
+为找到最新 revision，也会列出并排序全部 Row record ID，再匹配 `row_id` 与
+`row_id@revision`。因此当前精确 RowID Get 随 Catalog 与 Row revision 总数增长，
+不是最终的平均 O(1) 路径。
 
-下一步目标是可重建的内存 Row Directory：
-`row_id → latest committed revision → record offset`。它只改变物理定位，不改变
-MSQL、RowID、History 或 Route。完整决策见
+下一步目标是可重建的内存 Catalog/Row Directory：
+`database/table/schema → metadata` 与
+`row_id → latest committed revision → record offset`。它只改变物理定位，不
+改变 MSQL、RowID、History 或 Route。完整决策见
 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)。
 
 ## F52 验收
