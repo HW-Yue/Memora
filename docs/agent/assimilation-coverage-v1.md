@@ -52,5 +52,6 @@ cleared tombstone；绝不删除用户源文件。
 ## 关联
 
 - [资料吸收](../data/assimilation.md)
+- [资料独立复核与提交 v1](./assimilation-review-v1.md)
 - [Canonical Skill v1](./canonical-skill-v1.md)
 - [Conversation Delta 交接 v1](./conversation-delta-v1.md)

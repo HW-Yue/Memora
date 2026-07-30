@@ -320,7 +320,8 @@ func mutationOutput(changed datarow.Row) Output {
 	revision := changed.Revision
 	commitSequence := changed.CommitSequence
 	return Output{
-		Columns: []result.Column{}, Rows: []result.Row{},
+		Columns:      []result.Column{{Name: "row_id", Type: "TEXT", Nullable: false}},
+		Rows:         []result.Row{{"row_id": changed.ID}},
 		AffectedRows: 1, Revision: &revision, CommitSequence: &commitSequence,
 	}
 }

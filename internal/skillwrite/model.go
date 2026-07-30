@@ -89,6 +89,7 @@ const (
 type Change struct {
 	Operation      string  `json:"operation"`
 	Target         string  `json:"target"`
+	ObjectID       string  `json:"object_id"`
 	Revision       *uint64 `json:"revision,omitempty"`
 	CommitSequence *uint64 `json:"commit_sequence,omitempty"`
 }

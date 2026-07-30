@@ -57,20 +57,23 @@ type Example struct {
 }
 
 type Contract struct {
-	Version                    string    `json:"version"`
-	Source                     string    `json:"source"`
-	MSQLASTVersion             string    `json:"msql_ast_version"`
-	ResultVersion              string    `json:"result_version"`
-	ConflictViewVersion        string    `json:"conflict_view_version"`
-	ConflictResolutionVersion  string    `json:"conflict_resolution_version"`
-	AssimilationEventVersion   string    `json:"assimilation_event_version"`
-	AssimilationReceiptVersion string    `json:"assimilation_receipt_version"`
-	AllowedCommands            []string  `json:"allowed_commands"`
-	PhysicalAccess             string    `json:"physical_access"`
-	ConflictPolicy             string    `json:"conflict_policy"`
-	Workflows                  []string  `json:"workflows"`
-	Budgets                    Budgets   `json:"budgets"`
-	Examples                   []Example `json:"examples"`
+	Version                       string    `json:"version"`
+	Source                        string    `json:"source"`
+	MSQLASTVersion                string    `json:"msql_ast_version"`
+	ResultVersion                 string    `json:"result_version"`
+	ConflictViewVersion           string    `json:"conflict_view_version"`
+	ConflictResolutionVersion     string    `json:"conflict_resolution_version"`
+	AssimilationEventVersion      string    `json:"assimilation_event_version"`
+	AssimilationReceiptVersion    string    `json:"assimilation_receipt_version"`
+	AssimilationSubmissionVersion string    `json:"assimilation_submission_version"`
+	AssimilationReviewVersion     string    `json:"assimilation_review_version"`
+	SourceReceiptVersion          string    `json:"source_receipt_version"`
+	AllowedCommands               []string  `json:"allowed_commands"`
+	PhysicalAccess                string    `json:"physical_access"`
+	ConflictPolicy                string    `json:"conflict_policy"`
+	Workflows                     []string  `json:"workflows"`
+	Budgets                       Budgets   `json:"budgets"`
+	Examples                      []Example `json:"examples"`
 }
 
 type Bundle struct {
@@ -133,6 +136,9 @@ func (bundle Bundle) Validate() error {
 	requireEqual("conflict_resolution_version", contract.ConflictResolutionVersion, skillconflict.ResolutionVersion)
 	requireEqual("assimilation_event_version", contract.AssimilationEventVersion, assimilation.EventVersion)
 	requireEqual("assimilation_receipt_version", contract.AssimilationReceiptVersion, assimilation.ReceiptVersion)
+	requireEqual("assimilation_submission_version", contract.AssimilationSubmissionVersion, assimilation.SubmissionVersion)
+	requireEqual("assimilation_review_version", contract.AssimilationReviewVersion, assimilation.ReviewVersion)
+	requireEqual("source_receipt_version", contract.SourceReceiptVersion, assimilation.SourceReceiptVersion)
 	requireEqual("physical_access", contract.PhysicalAccess, PhysicalAccessForbidden)
 	requireEqual("conflict_policy", contract.ConflictPolicy, ConflictAskUserBeforeMutation)
 

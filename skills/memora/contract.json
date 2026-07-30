@@ -7,6 +7,9 @@
   "conflict_resolution_version": "memora.conflict-resolution/v1",
   "assimilation_event_version": "memora.assimilation-event/v1",
   "assimilation_receipt_version": "memora.assimilation-receipt/v1",
+  "assimilation_submission_version": "memora.assimilation-submission/v1",
+  "assimilation_review_version": "memora.assimilation-review/v1",
+  "source_receipt_version": "memora.source-receipt/v1",
   "allowed_commands": [
     "assimilate",
     "doctor",
@@ -40,6 +43,10 @@
     {
       "name": "assimilation-status",
       "command": "memora assimilate --event '{\"version\":\"memora.assimilation-event/v1\",\"event_id\":\"book-status-2\",\"task_id\":\"book-task\",\"workspace\":\"project-memora\",\"kind\":\"status\"}'"
+    },
+    {
+      "name": "assimilation-receipt",
+      "command": "memora assimilate --receipt book-submit-1"
     },
     {
       "name": "doctor",

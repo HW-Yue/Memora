@@ -35,7 +35,7 @@ Usage:
   memora <command> [options]
 
 Commands:
-  assimilate  Track temporary source inventory and coverage
+  assimilate  Track, review, and receipt source assimilation
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
@@ -81,8 +81,10 @@ type Dependencies struct {
 		string,
 		[]executor.StatementInput,
 	) (result.Envelope, error)
-	Reflect    func(context.Context, string, conversation.Event) (conversation.Receipt, error)
-	Assimilate func(context.Context, string, assimilation.Event) (assimilation.Receipt, error)
+	Reflect            func(context.Context, string, conversation.Event) (conversation.Receipt, error)
+	Assimilate         func(context.Context, string, assimilation.Event) (assimilation.Receipt, error)
+	SubmitAssimilation func(context.Context, string, assimilation.Submission) (assimilation.SourceReceipt, error)
+	GetSourceReceipt   func(context.Context, string, string) (assimilation.SourceReceipt, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -131,6 +133,8 @@ func runAssimilate(
 ) int {
 	var daemonArgs []string
 	var eventJSON string
+	var submissionJSON string
+	var receiptID string
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
 		case "--data-dir":
@@ -148,22 +152,87 @@ func runAssimilate(
 			}
 			eventJSON = args[index+1]
 			index++
+		case "--submission":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--submission requires a JSON object")
+			}
+			if submissionJSON != "" {
+				return usageError(stderr, "--submission may only be specified once")
+			}
+			submissionJSON = args[index+1]
+			index++
+		case "--receipt":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--receipt requires a submission ID")
+			}
+			if receiptID != "" {
+				return usageError(stderr, "--receipt may only be specified once")
+			}
+			receiptID = args[index+1]
+			index++
 		default:
 			return usageError(stderr, fmt.Sprintf("unknown assimilate option: %q", args[index]))
 		}
 	}
-	if eventJSON == "" {
-		return usageError(stderr, "assimilate requires --event JSON")
+	selected := 0
+	for _, value := range []string{eventJSON, submissionJSON, receiptID} {
+		if value != "" {
+			selected++
+		}
+	}
+	if selected != 1 {
+		return usageError(stderr, "assimilate requires exactly one of --event, --submission, or --receipt")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if receiptID != "" {
+		load := dependencies.GetSourceReceipt
+		if load == nil {
+			load = daemon.SourceReceipt
+		}
+		receipt, err := load(context.Background(), dataDir, receiptID)
+		if err != nil {
+			return commandError(stderr, "read Source Receipt", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+			return writeFailure(stderr, err)
+		}
+		if receipt.Status != assimilation.SubmissionCommitted {
+			return ExitFailure
+		}
+		return ExitOK
+	}
+	if submissionJSON != "" {
+		var submission assimilation.Submission
+		decoder := json.NewDecoder(bytes.NewBufferString(submissionJSON))
+		decoder.DisallowUnknownFields()
+		decoder.UseNumber()
+		if err := decoder.Decode(&submission); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+			return usageError(stderr, "--submission must be one strict Assimilation Submission JSON object")
+		}
+		submit := dependencies.SubmitAssimilation
+		if submit == nil {
+			submit = daemon.SubmitAssimilation
+		}
+		receipt, err := submit(context.Background(), dataDir, submission)
+		if err != nil {
+			return commandError(stderr, "submit reviewed assimilation", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+			return writeFailure(stderr, err)
+		}
+		if receipt.Status != assimilation.SubmissionCommitted {
+			return ExitFailure
+		}
+		return ExitOK
 	}
 	var event assimilation.Event
 	decoder := json.NewDecoder(bytes.NewBufferString(eventJSON))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return usageError(stderr, "--event must be one strict Assimilation Event JSON object")
-	}
-	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
-	if code != ExitOK {
-		return code
 	}
 	process := dependencies.Assimilate
 	if process == nil {

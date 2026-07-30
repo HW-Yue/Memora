@@ -117,8 +117,34 @@ begin; it does not mean knowledge was written. After a successful later commit
 or explicit cancellation, call `clear` to remove temporary Memora state. Never
 delete or modify the user's source file.
 
+Build one `memora.assimilation-submission/v1` only after coverage completes.
+Represent each complete, independently editable semantic module with its normal
+Mutation Plan; represent structure only with RELATE Plans. Bind every module and
+relationship to at least one short source anchor inside a readable inventory
+unit. Express RELATE endpoints as reviewed module IDs in the `source` and
+`target` parameters; Memora replaces them with the verified object IDs returned
+by those module plans. Bind every important number or other key fact separately to its module,
+field, value SHA-256, and exact anchor. Do not copy source windows or quotations
+into the submission merely to support review.
+
+Run a second pass as `memora.assimilation-review/v1`. It may use another Agent,
+or the same Agent with a context ID isolated from the draft. It must bind the
+draft SHA-256 and coverage revision, check the exact module/relationship/key-fact
+ID sets, and explicitly verify anchors, key facts, conflicts, and absence of raw
+source content. If any semantic conflict remains, submit its ID and stop on
+`needs_user`; resolve it through the normal conflict flow before creating a new
+submission ID.
+
+Only `committed` in `memora.source-receipt/v1` means absorption succeeded. An
+`in_doubt` submission may have partially committed: query the affected logical
+Rows and revisions, then recover with a new submission instead of replaying the
+old write. Reload compact provenance with `memora assimilate --receipt <id>`.
+After committed, send an explicit coverage `clear` event; the Source Receipt
+survives while the temporary inventory, coverage, windows, and checkpoint do not.
+
 ```sh
 memora assimilate --event '{"version":"memora.assimilation-event/v1","event_id":"book-status-2","task_id":"book-task","workspace":"project-memora","kind":"status"}'
+memora assimilate --receipt book-submit-1
 ```
 
 ## Evolve schemas

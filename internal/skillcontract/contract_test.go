@@ -43,6 +43,15 @@ func TestCanonicalSkillContract(t *testing.T) {
 	if got, want := bundle.Contract.AssimilationReceiptVersion, assimilation.ReceiptVersion; got != want {
 		t.Fatalf("assimilation receipt version = %q, want %q", got, want)
 	}
+	if got, want := bundle.Contract.AssimilationSubmissionVersion, assimilation.SubmissionVersion; got != want {
+		t.Fatalf("assimilation submission version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.AssimilationReviewVersion, assimilation.ReviewVersion; got != want {
+		t.Fatalf("assimilation review version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.SourceReceiptVersion, assimilation.SourceReceiptVersion; got != want {
+		t.Fatalf("Source Receipt version = %q, want %q", got, want)
+	}
 
 	for _, example := range bundle.Contract.Examples {
 		if example.MSQL == "" {
@@ -101,7 +110,8 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 	}
 	for _, required := range []string{
 		"memora.semantic-conflict/v1", "memora.conflict-resolution/v1",
-		"RETAIN", "REWRITE", "REMOVE",
+		"memora.assimilation-submission/v1", "memora.assimilation-review/v1", "memora.source-receipt/v1",
+		"RETAIN", "REWRITE", "REMOVE", "in_doubt",
 	} {
 		if !strings.Contains(bundle.Markdown, required) {
 			t.Errorf("canonical Skill omits conflict protocol token %q", required)

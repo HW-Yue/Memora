@@ -201,8 +201,18 @@ func mutationChanges(plan Plan, envelope result.Envelope) ([]Change, error) {
 			value := *statement.CommitSequence
 			commitSequence = &value
 		}
+		objectID := step.Target
+		if len(statement.Rows) == 1 {
+			field := "row_id"
+			if step.Kind == "RELATE" {
+				field = "relation_id"
+			}
+			if value, ok := statement.Rows[0][field].(string); ok && strings.TrimSpace(value) != "" {
+				objectID = value
+			}
+		}
 		changes[index] = Change{
-			Operation: step.Kind, Target: step.Target,
+			Operation: step.Kind, Target: step.Target, ObjectID: objectID,
 			Revision: statement.Revision, CommitSequence: statement.CommitSequence,
 		}
 	}

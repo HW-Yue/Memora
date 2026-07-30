@@ -95,6 +95,42 @@ func Assimilate(ctx context.Context, dataDir string, event assimilation.Event) (
 	return receipt, err
 }
 
+func SubmitAssimilation(
+	ctx context.Context,
+	dataDir string,
+	submission assimilation.Submission,
+) (assimilation.SourceReceipt, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return assimilation.SourceReceipt{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return assimilation.SourceReceipt{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var receipt assimilation.SourceReceipt
+	err = client.Call(ctx, "assimilation.submit", submission, &receipt)
+	return receipt, err
+}
+
+func SourceReceipt(ctx context.Context, dataDir, submissionID string) (assimilation.SourceReceipt, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return assimilation.SourceReceipt{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return assimilation.SourceReceipt{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var receipt assimilation.SourceReceipt
+	err = client.Call(ctx, "assimilation.receipt", struct {
+		SubmissionID string `json:"submission_id"`
+	}{SubmissionID: submissionID}, &receipt)
+	return receipt, err
+}
+
 func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session, request ipc.Request) (json.RawMessage, error) {
 	if request.Method == "doctor" {
 		report, err := handler.doctor(ctx)
@@ -105,6 +141,12 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 	}
 	if request.Method == "assimilation.record" {
 		return handler.handleAssimilation(ctx, request)
+	}
+	if request.Method == "assimilation.submit" {
+		return handler.handleAssimilationSubmission(ctx, session, request)
+	}
+	if request.Method == "assimilation.receipt" {
+		return handler.handleSourceReceipt(ctx, request)
 	}
 	if request.Method == "conversation.reflect" {
 		return handler.handleReflect(ctx, session, request)
@@ -130,6 +172,51 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 		RequestID: request.RequestID, Source: payload.Source, Statements: payload.Statements,
 	})
 	return json.Marshal(envelope)
+}
+
+func (handler *databaseHandler) handleAssimilationSubmission(
+	ctx context.Context,
+	session ipc.Session,
+	request ipc.Request,
+) (json.RawMessage, error) {
+	var submission assimilation.Submission
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&submission); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, &assimilation.SubmissionError{Code: result.CodeInvalidRequest, Message: "assimilation submission payload is invalid"}
+	}
+	batch, ok := handler.session(session.ID)
+	if !ok {
+		return nil, &assimilation.SubmissionError{Code: result.CodeInvalidRequest, Message: "MSQL daemon session is closed"}
+	}
+	tool := skillwrite.ToolFunc(func(callContext context.Context, call skillwrite.Call) (result.Envelope, error) {
+		return batch.Execute(callContext, call.Request), nil
+	})
+	receipt, err := assimilation.New(handler.store).Submit(ctx, submission, tool)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(receipt)
+}
+
+func (handler *databaseHandler) handleSourceReceipt(
+	ctx context.Context,
+	request ipc.Request,
+) (json.RawMessage, error) {
+	var payload struct {
+		SubmissionID string `json:"submission_id"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, &assimilation.SubmissionError{Code: result.CodeInvalidRequest, Message: "Source Receipt request is invalid"}
+	}
+	receipt, err := assimilation.New(handler.store).SourceReceipt(ctx, payload.SubmissionID)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(receipt)
 }
 
 func (handler *databaseHandler) handleAssimilation(

@@ -203,7 +203,8 @@ func relationshipMutationOutput(changed relation.Relation) Output {
 	revision := changed.Revision
 	commitSequence := changed.CommitSequence
 	return Output{
-		Columns: []result.Column{}, Rows: []result.Row{},
+		Columns:      []result.Column{{Name: "relation_id", Type: "TEXT", Nullable: false}},
+		Rows:         []result.Row{{"relation_id": changed.ID}},
 		AffectedRows: 1, Revision: &revision, CommitSequence: &commitSequence,
 	}
 }

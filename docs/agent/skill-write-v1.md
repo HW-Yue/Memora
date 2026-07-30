@@ -57,8 +57,8 @@ Row、History、机械索引、Agent index、Route membership 和 pending_reinde
 ## Mutation Receipt
 
 `memora.mutation-receipt/v1` 最多 2,000 字符，包含 Plan ID、decision、状态、
-每个逻辑操作的 target/revision/commit sequence、ignored 数、verify 状态和
-warnings。状态为：
+每个逻辑操作的宿主 target、引擎实际返回的 Row/relation object ID、revision/
+commit sequence、ignored 数、verify 状态和 warnings。状态为：
 
 - `ignored`：preflight 后确认不写；
 - `committed`：事务和 verify 都成功；

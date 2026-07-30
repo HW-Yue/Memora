@@ -115,16 +115,28 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: --plan must be one strict Schema Plan JSON object\n",
 		},
 		{
-			name:       "assimilate requires event",
+			name:       "assimilate requires one operation",
 			args:       []string{"assimilate"},
 			wantCode:   2,
-			wantStderr: "memora: assimilate requires --event JSON\n",
+			wantStderr: "memora: assimilate requires exactly one of --event, --submission, or --receipt\n",
 		},
 		{
 			name:       "assimilate rejects raw content field",
 			args:       []string{"assimilate", "--event", `{"content":"raw source text"}`},
 			wantCode:   2,
 			wantStderr: "memora: --event must be one strict Assimilation Event JSON object\n",
+		},
+		{
+			name:       "assimilate rejects raw submission field",
+			args:       []string{"assimilate", "--submission", `{"content":"raw source text"}`},
+			wantCode:   2,
+			wantStderr: "memora: --submission must be one strict Assimilation Submission JSON object\n",
+		},
+		{
+			name:       "assimilate operations are mutually exclusive",
+			args:       []string{"assimilate", "--event", `{}`, "--receipt", "submission-1"},
+			wantCode:   2,
+			wantStderr: "memora: assimilate requires exactly one of --event, --submission, or --receipt\n",
 		},
 		{
 			name:       "reflect requires event",
@@ -158,6 +170,61 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunAssimilateSubmitsReviewAndReloadsSourceReceipt(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	submission := assimilation.Submission{
+		Version: assimilation.SubmissionVersion, SubmissionID: "submit-cli", TaskID: "book-task",
+		Workspace: "project", CoverageRevision: 3, Author: "agent:host",
+		DraftContextID: "draft", DraftDigest: "sha256:" + strings.Repeat("a", 64),
+	}
+	encoded, err := json.Marshal(submission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := assimilation.SourceReceipt{
+		Version: assimilation.SourceReceiptVersion, SubmissionID: submission.SubmissionID,
+		TaskID: submission.TaskID, Status: assimilation.SubmissionCommitted,
+		Impacts: []assimilation.SourceImpact{}, KeyFacts: []assimilation.KeyFactReceipt{}, Warnings: []result.Notice{},
+	}
+	submitted, loaded := false, false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		SubmitAssimilation: func(_ context.Context, gotDataDir string, got assimilation.Submission) (assimilation.SourceReceipt, error) {
+			submitted = true
+			if gotDataDir != dataDir || got.SubmissionID != submission.SubmissionID {
+				t.Fatalf("submission = %q, %#v", gotDataDir, got)
+			}
+			return receipt, nil
+		},
+		GetSourceReceipt: func(_ context.Context, gotDataDir, gotID string) (assimilation.SourceReceipt, error) {
+			loaded = true
+			if gotDataDir != dataDir || gotID != submission.SubmissionID {
+				t.Fatalf("receipt lookup = %q, %q", gotDataDir, gotID)
+			}
+			return receipt, nil
+		},
+	}
+	for _, args := range [][]string{
+		{"assimilate", "--data-dir", dataDir, "--submission", string(encoded)},
+		{"assimilate", "--data-dir", dataDir, "--receipt", submission.SubmissionID},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := RunWithDependencies(args, &stdout, &stderr, BuildInfo{}, dependencies); code != ExitOK {
+			t.Fatalf("assimilate %v code=%d stderr=%q", args, code, &stderr)
+		}
+		var got assimilation.SourceReceipt
+		if err := json.Unmarshal(stdout.Bytes(), &got); err != nil || got.SubmissionID != submission.SubmissionID {
+			t.Fatalf("Source Receipt = %#v, %v", got, err)
+		}
+	}
+	if !submitted || !loaded {
+		t.Fatalf("submitted=%t loaded=%t", submitted, loaded)
 	}
 }
 
