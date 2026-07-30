@@ -8,7 +8,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/reindex"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestQueueSurvivesRestartAndExpiredLeaseCanBeReclaimed(t *testing.T) {
@@ -16,7 +16,7 @@ func TestQueueSurvivesRestartAndExpiredLeaseCanBeReclaimed(t *testing.T) {
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "database.db")
-	databaseStore, err := sqlitestore.Open(path)
+	databaseStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestQueueSurvivesRestartAndExpiredLeaseCanBeReclaimed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	databaseStore, err = sqlitestore.Open(path)
+	databaseStore, err = nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}

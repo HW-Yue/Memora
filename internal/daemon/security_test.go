@@ -12,14 +12,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestHandlerAuditsRequestHashesWithoutPayloadOrParameters(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "security-audit.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "security-audit.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -86,7 +86,6 @@ func RunReleaseBenchmark(
 	implementations := map[string]string{
 		"no-memory":       "empty-state/v1",
 		"markdown-search": "markdown-lexical-bigram/v1",
-		"sqlite-fts":      "sqlite-fts5-segmented/v1",
 		"vector":          "local-character-trigram-cosine/v1",
 		"memora":          "memora-route-agent-terms-mechanical-fusion/v1",
 	}
@@ -143,7 +142,7 @@ func LoadReleaseBenchmark(path string) (ReleaseBenchmark, error) {
 
 func (release ReleaseBenchmark) Validate() error {
 	if release.Version != ReleaseBenchmarkVersion || release.SuiteID == "" || release.SuiteDigest == "" ||
-		release.CorpusID == "" || release.CorpusDigest == "" || len(release.Reports) != len(BaselineNames()) {
+		release.CorpusID == "" || release.CorpusDigest == "" || len(release.Reports) < len(BaselineNames()) {
 		return benchmarkError(result.CodeValidation, "release benchmark identity and all baseline reports are required")
 	}
 	if err := validateModelSnapshotFromRelease(release); err != nil {

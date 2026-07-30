@@ -10,7 +10,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestRelationStoreMaintainsRevisionedForwardAndReverseIndexes(t *testing.T) {
@@ -18,7 +18,7 @@ func TestRelationStoreMaintainsRevisionedForwardAndReverseIndexes(t *testing.T) 
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "database.db")
-	databaseStore, err := sqlitestore.Open(path)
+	databaseStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestRelationStoreMaintainsRevisionedForwardAndReverseIndexes(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	reopenedStore, err := sqlitestore.Open(path)
+	reopenedStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestRelationStoreRollbackLeavesNoRecordsOrIndexEntries(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

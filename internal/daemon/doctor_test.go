@@ -9,14 +9,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestDoctorReportsAuthorityCountsAndRejectsCorruptCatalog(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestDoctorRejectsCorruptSecurityAudit(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "security-doctor.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "security-doctor.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

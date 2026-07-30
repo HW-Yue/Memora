@@ -16,7 +16,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/nativesnapshot"
 	"github.com/HW-Yue/Memora/internal/security"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"golang.org/x/sys/unix"
 )
 
@@ -144,12 +144,12 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		return err
 	}
 	nativeFile := migration.File
-	auxiliaryStore, err := sqlitestore.Open(filepath.Join(dataDir, "system", "auxiliary.sqlite"))
+	auxiliaryStore, err := nativekvstore.Open(filepath.Join(dataDir, "system", "auxiliary.memora"))
 	if err != nil {
 		_ = nativeFile.Close()
 		return err
 	}
-	securityStore, err := sqlitestore.Open(filepath.Join(dataDir, "system", "security.sqlite"))
+	securityStore, err := nativekvstore.Open(filepath.Join(dataDir, "system", "security.memora"))
 	if err != nil {
 		_ = nativeFile.Close()
 		_ = auxiliaryStore.Close()

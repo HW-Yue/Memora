@@ -16,23 +16,23 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/snapshot"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
-func TestSQLiteAndNativeFixedMSQLCorpusHaveParity(t *testing.T) {
+func TestLogicalKVAndTypedNativeFixedMSQLCorpusHaveParity(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	now := time.Date(2026, 7, 30, 20, 0, 0, 0, time.UTC)
-	sqlitePath := filepath.Join(t.TempDir(), "shadow.db")
+	logicalPath := filepath.Join(t.TempDir(), "shadow.db")
 	nativePath := filepath.Join(t.TempDir(), "shadow.memora")
-	sqlite, err := sqlitestore.Open(sqlitePath)
+	logical, err := nativekvstore.Open(logicalPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = sqlite.Close() })
-	sqlCatalog := catalog.New(sqlite, catalog.Options{IDs: &parityIDs{values: []string{"database", "table", "title"}}, Clock: parityClock{now}})
-	sqlRows := row.New(sqlite, sqlCatalog, row.Options{IDs: &parityIDs{values: []string{"first", "second"}}, Clock: parityClock{now}, RelationIDs: &parityIDs{values: []string{"edge"}}})
+	t.Cleanup(func() { _ = logical.Close() })
+	logicalCatalog := catalog.New(logical, catalog.Options{IDs: &parityIDs{values: []string{"database", "table", "title"}}, Clock: parityClock{now}})
+	logicalRows := row.New(logical, logicalCatalog, row.Options{IDs: &parityIDs{values: []string{"first", "second"}}, Clock: parityClock{now}, RelationIDs: &parityIDs{values: []string{"edge"}}})
 
 	nativeFile, err := nativestore.Create(nativePath, nativestore.FileKindDatabase)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestSQLiteAndNativeFixedMSQLCorpusHaveParity(t *testing.T) {
 	nativeCatalog := nativecatalog.NewService(nativecatalog.New(nativeFile), nativecatalog.ServiceOptions{IDs: &parityIDs{values: []string{"database", "table", "title"}}, Clock: parityClock{now}})
 	nativeRows := nativerow.NewService(nativerow.New(nativeFile), nativeCatalog, nativerow.ServiceOptions{IDs: &parityIDs{values: []string{"first", "second", "edge"}}, Clock: parityClock{now}})
 
-	sqlEngine, nativeEngine := executor.New(sqlCatalog, sqlRows), executor.New(nativeCatalog, nativeRows)
+	logicalEngine, nativeEngine := executor.New(logicalCatalog, logicalRows), executor.New(nativeCatalog, nativeRows)
 	steps := []parityStep{
 		{source: "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'"},
 		{source: "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title')"},
@@ -58,25 +58,25 @@ func TestSQLiteAndNativeFixedMSQLCorpusHaveParity(t *testing.T) {
 		{source: "SHOW RELATIONS FROM work.notes FOR ROW :row DIRECTION OUTGOING LIMIT 10", params: executor.Parameters{Named: map[string]any{"row": "row_first"}}},
 	}
 	for _, step := range steps {
-		sqlOutput, err := executeParity(ctx, sqlEngine, step)
+		logicalOutput, err := executeParity(ctx, logicalEngine, step)
 		if err != nil {
-			t.Fatalf("SQLite %q: %v", step.source, err)
+			t.Fatalf("logical KV %q: %v", step.source, err)
 		}
 		nativeOutput, err := executeParity(ctx, nativeEngine, step)
 		if err != nil {
 			t.Fatalf("native %q: %v", step.source, err)
 		}
-		if !reflect.DeepEqual(nativeOutput, sqlOutput) {
-			t.Fatalf("%q envelope differs\nSQLite: %#v\nnative: %#v", step.source, sqlOutput, nativeOutput)
+		if !reflect.DeepEqual(nativeOutput, logicalOutput) {
+			t.Fatalf("%q envelope differs\nlogical KV: %#v\nnative: %#v", step.source, logicalOutput, nativeOutput)
 		}
 	}
-	if err := sqlite.Close(); err != nil {
+	if err := logical.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := nativeFile.Close(); err != nil {
 		t.Fatal(err)
 	}
-	sqlite, err = sqlitestore.Open(sqlitePath)
+	logical, err = nativekvstore.Open(logicalPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,22 +84,22 @@ func TestSQLiteAndNativeFixedMSQLCorpusHaveParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sqlCatalog = catalog.New(sqlite, catalog.Options{})
-	sqlRows = row.New(sqlite, sqlCatalog, row.Options{})
+	logicalCatalog = catalog.New(logical, catalog.Options{})
+	logicalRows = row.New(logical, logicalCatalog, row.Options{})
 	nativeCatalog = nativecatalog.NewService(nativecatalog.New(nativeFile), nativecatalog.ServiceOptions{})
 	nativeRows = nativerow.NewService(nativerow.New(nativeFile), nativeCatalog, nativerow.ServiceOptions{})
-	sqlEngine, nativeEngine = executor.New(sqlCatalog, sqlRows), executor.New(nativeCatalog, nativeRows)
+	logicalEngine, nativeEngine = executor.New(logicalCatalog, logicalRows), executor.New(nativeCatalog, nativeRows)
 	for _, step := range steps[6:] {
-		sqlOutput, err := executeParity(ctx, sqlEngine, step)
+		logicalOutput, err := executeParity(ctx, logicalEngine, step)
 		if err != nil {
 			t.Fatal(err)
 		}
 		nativeOutput, err := executeParity(ctx, nativeEngine, step)
-		if err != nil || !reflect.DeepEqual(nativeOutput, sqlOutput) {
-			t.Fatalf("restart parity for %q = %#v, %v, want %#v", step.source, nativeOutput, err, sqlOutput)
+		if err != nil || !reflect.DeepEqual(nativeOutput, logicalOutput) {
+			t.Fatalf("restart parity for %q = %#v, %v, want %#v", step.source, nativeOutput, err, logicalOutput)
 		}
 	}
-	sqlSnapshot, err := snapshot.New(sqlite).Export(ctx)
+	logicalSnapshot, err := snapshot.New(logical).Export(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,10 +107,10 @@ func TestSQLiteAndNativeFixedMSQLCorpusHaveParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sqlHash, _ := snapshot.CanonicalHash(sqlSnapshot)
+	logicalHash, _ := snapshot.CanonicalHash(logicalSnapshot)
 	nativeHash, _ := snapshot.CanonicalHash(nativeSnapshot)
-	if nativeHash != sqlHash {
-		t.Fatalf("snapshot hash differs: SQLite %s, native %s", sqlHash, nativeHash)
+	if nativeHash != logicalHash {
+		t.Fatalf("snapshot hash differs: logical KV %s, native %s", logicalHash, nativeHash)
 	}
 }
 

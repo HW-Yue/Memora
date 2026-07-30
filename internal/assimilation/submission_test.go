@@ -14,7 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestReviewedLongFormSubmissionWritesModulesRelationsAndCompactSourceReceipt(t *testing.T) {
@@ -169,7 +169,7 @@ func TestSubmissionRequiresCoverageCompleteAndDoesNotBlindlyReplayInDoubtWrites(
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "submission.db")
-	database, err := sqlitestore.Open(path)
+	database, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestSubmissionRequiresCoverageCompleteAndDoesNotBlindlyReplayInDoubtWrites(
 
 func completedCoverage(t *testing.T, ctx context.Context) (interface{ Close() error }, *assimilation.Processor, uint64) {
 	t.Helper()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "review.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "review.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

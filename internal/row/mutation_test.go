@@ -11,7 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestUpdateAndLogicalDeletePreserveIdentityAndRejectStaleRevision(t *testing.T) {
@@ -19,7 +19,7 @@ func TestUpdateAndLogicalDeletePreserveIdentityAndRejectStaleRevision(t *testing
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "database.db")
-	firstStore, err := sqlitestore.Open(path)
+	firstStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestUpdateAndLogicalDeletePreserveIdentityAndRejectStaleRevision(t *testing
 		t.Fatal(err)
 	}
 
-	secondStore, err := sqlitestore.Open(path)
+	secondStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestConcurrentExpectedRevisionAllowsOneWinner(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestQueryBindsNamedAndPositionalParametersWithoutInterpolation(t *testing.T) {
@@ -142,7 +142,7 @@ func query(ctx context.Context, subject *executor.Engine, source string, paramet
 
 func queryFixture(t *testing.T, ctx context.Context) (*executor.Engine, *row.Service, func()) {
 	t.Helper()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

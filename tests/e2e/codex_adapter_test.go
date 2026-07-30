@@ -12,7 +12,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/hostharness"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/row"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"github.com/HW-Yue/Memora/internal/testkit"
 )
 
@@ -29,7 +29,7 @@ func TestCodexAdapterCleanEnvironmentRunsCoreSkillJourney(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "codex-adapter.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "codex-adapter.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

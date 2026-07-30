@@ -26,5 +26,5 @@ func (adapter *ScriptedAdapter) Run(_ context.Context, scenario Scenario) (Outco
 }
 
 func BaselineNames() []string {
-	return []string{"no-memory", "markdown-search", "sqlite-fts", "vector", "memora"}
+	return []string{"no-memory", "markdown-search", "vector", "memora"}
 }

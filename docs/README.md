@@ -84,6 +84,7 @@
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
 - [Index Generation Manifest v1](./storage/generation-manifest-v1.md) — F25 的三类独立 generation、原子发布、query pin 与 GC。
 - [Logical Snapshot v1](./storage/logical-snapshot-v1.md) — F26 的后端无关逻辑备份、兼容迁移、未知字段和确定性哈希。
+- [SQLite 兼容迁移边界](./storage/sqlite-compatibility-migration.md) — 旧 reader 隔离于独立工具，主程序拒绝静默回退。
 - [Tablespace、Page 与 Record 布局](./storage/tablespace-page-record-layout.md) — Data File、Extent、Page、混合字段和 Schema 演化。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。

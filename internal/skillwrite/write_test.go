@@ -13,7 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"github.com/HW-Yue/Memora/internal/testkit"
 )
 
@@ -126,7 +126,7 @@ func TestReviseCommitsRowAndAgentIndexSnapshotBeforeVerification(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "skill-write.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "skill-write.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

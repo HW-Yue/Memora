@@ -14,14 +14,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/snapshot"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestLogicalSnapshotRoundTripPreservesAuthorityAndRebuildsOnlyLogicalIndexes(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	sourceStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "source.db"))
+	sourceStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "source.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestLogicalSnapshotRoundTripPreservesAuthorityAndRebuildsOnlyLogicalIndexes
 		t.Fatal(err)
 	}
 
-	targetStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "target.db"))
+	targetStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "target.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestLogicalSnapshotPreservesUnknownFieldsAndMigratesV0Fixture(t *testing.T)
 	assertJSONField(t, migrated, "future_v0", "preserve-me")
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "target.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "target.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestLogicalSnapshotRejectsUnsupportedAndNonEmptyImportWithStableCodes(t *te
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "target.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "target.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

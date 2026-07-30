@@ -15,14 +15,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/snapshot"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	ctx := context.Background()
 	encoded := phaseBSnapshot(t, 10_000)
 	sourcePath := filepath.Join(t.TempDir(), "source.db")
-	databaseStore, err := sqlitestore.Open(sourcePath)
+	databaseStore, err := nativekvstore.Open(sourcePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	targetStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "target.db"))
+	targetStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "target.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	if err := databaseStore.Close(); err != nil {
 		t.Fatal(err)
 	}
-	databaseStore, err = sqlitestore.Open(sourcePath)
+	databaseStore, err = nativekvstore.Open(sourcePath)
 	if err != nil {
 		t.Fatal(err)
 	}

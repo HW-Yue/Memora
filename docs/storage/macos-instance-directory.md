@@ -1,7 +1,7 @@
 # macOS Instance 数据目录
 
-状态：默认路径与 `instance.meta` v2 已实现；持久文件目标已改为极简原生布局，
-当前 SQLite/运行文件说明仅代表待迁移实现。
+状态：默认路径、`instance.meta` v2 与原生持久文件已实现；F69 后主程序不再包含
+SQLite。
 
 ## 平台范围
 
@@ -55,8 +55,9 @@ memora init --data-dir /absolute/path
 ```text
 default/
 ├── instance.meta
-├── system/system.memora
-├── databases/db_<stable-id>/database.memora
+├── system/auxiliary.memora
+├── system/security.memora
+├── databases/database.memora
 └── tmp/
 ```
 
@@ -83,17 +84,21 @@ created_at_unix_nano i64 | instance_uuid[16] | crc32 u32
 
 ## daemon 运行文件
 
-当前待迁移实现使用：
+当前实现使用：
 
 ```text
 system/daemon.lock
 system/daemon.pid
-system/security.sqlite
+system/security.memora
+system/auxiliary.memora
 ```
 
 `daemon.lock` 的非阻塞排他 `flock` 是“一个 Instance 只有一个 writer daemon”的真相源；PID 文件只用于状态展示和发送 SIGTERM。锁释放但 PID 遗留时，`status/start` 将其视为 stale 并清理。daemon 启动前必须读取并校验 `instance.meta`，不能在未初始化或 metadata 损坏的目录中运行。
 
-F46 起，`security.sqlite` 独立保存只含元数据和 payload hash 的 daemon 审计事件。它不进入逻辑 Database snapshot、Wiki 或 Database Package，避免审计记录随业务库导出；`memora doctor` 会严格验证其版本与记录完整性。
+`security.memora` 独立保存只含元数据和 payload hash 的 daemon 审计事件；
+`auxiliary.memora` 保存 assimilation 等非业务 authority 状态。两者使用原生事务
+Record，不进入逻辑 Database snapshot、Wiki 或 Database Package；`memora doctor`
+会严格验证审计版本与记录完整性。
 
 Unix socket 不放入 datadir，避免自定义深层路径超过 macOS `AF_UNIX` 上限。它位于仅当前用户可访问的临时运行目录，文件名由规范化 datadir 稳定派生；具体协议与清理规则见 [本地 IPC 协议](../development/ipc-protocol.md)。
 

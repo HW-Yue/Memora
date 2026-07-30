@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestCatalogPersistsSelfDescribingSchemaAndStableIDs(t *testing.T) {
@@ -16,7 +16,7 @@ func TestCatalogPersistsSelfDescribingSchemaAndStableIDs(t *testing.T) {
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "catalog.db")
-	firstStore, err := sqlitestore.Open(path)
+	firstStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestCatalogPersistsSelfDescribingSchemaAndStableIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secondStore, err := sqlitestore.Open(path)
+	secondStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestCatalogRejectsMissingSemanticsAndNameCollisions(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "catalog.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestCatalogListsObjectsDeterministically(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "catalog.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

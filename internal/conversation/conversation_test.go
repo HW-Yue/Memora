@@ -11,14 +11,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestDeltaCommitsStableConclusionIgnoresChitchatAndReplaysIdempotently(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "conversation.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "conversation.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestExplicitCheckpointSupportsProjectSwitchAndSessionEnd(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "checkpoint.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "checkpoint.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestMissingDeltaContextReturnsActionableReceiptBeforeMutation(t *testing.T)
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "missing.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "missing.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

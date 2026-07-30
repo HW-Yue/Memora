@@ -15,14 +15,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestDeterministicHealthReportFindsAllMaintenanceCandidatesWithoutRowBodies(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "health.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "health.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestMaintenanceRetriesOnlyExplicitFailedReindexAndReplaysReceipt(t *testing
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "maintenance.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "maintenance.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

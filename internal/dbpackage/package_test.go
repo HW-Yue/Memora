@@ -15,7 +15,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestPackIsDeterministicAndContainsOnlySelectedDatabaseAuthority(t *testing.T) {
@@ -234,7 +234,7 @@ func seedSource(t *testing.T, ctx context.Context, databaseStore store.Store) {
 
 func openStore(t *testing.T, name string) store.Store {
 	t.Helper()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), name))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), name))
 	if err != nil {
 		t.Fatal(err)
 	}

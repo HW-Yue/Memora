@@ -11,7 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestBatchAutocommitFailureDoesNotStopIndependentStatements(t *testing.T) {
@@ -297,7 +297,7 @@ func TestBatchWriteFailureRollsBackRestoreAndCompensationHistory(t *testing.T) {
 
 func batchFixture(t *testing.T, ctx context.Context) (*executor.BatchSession, *row.Service, func()) {
 	t.Helper()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

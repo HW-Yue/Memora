@@ -11,7 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/skillschema"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"github.com/HW-Yue/Memora/internal/testkit"
 )
 
@@ -231,7 +231,7 @@ func schemaSession(
 	ctx context.Context,
 ) (*executor.BatchSession, *catalog.Service, func()) {
 	t.Helper()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "skill-schema.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "skill-schema.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

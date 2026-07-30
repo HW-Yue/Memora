@@ -13,14 +13,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestAssimilationHandlerPersistsTemporaryCoverageAcrossSessions(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "assimilation.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "assimilation.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestAssimilationSubmissionCommitsReviewedModulesRelationshipAndReloadableRe
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "assimilation-submit.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "assimilation-submit.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestAssimilationHandlerRejectsRawContentField(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "raw.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "raw.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

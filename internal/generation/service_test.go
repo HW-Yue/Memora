@@ -9,14 +9,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/generation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestIndependentGenerationPublishPinsConsistentManifestAndDefersGC(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestManifestPublishIsCrashAtomicBeforeAndAfterCommit(t *testing.T) {
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "database.db")
-	databaseStore, err := sqlitestore.Open(path)
+	databaseStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestManifestPublishIsCrashAtomicBeforeAndAfterCommit(t *testing.T) {
 	if err := databaseStore.Close(); err != nil {
 		t.Fatal(err)
 	}
-	databaseStore, err = sqlitestore.Open(path)
+	databaseStore, err = nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestManifestPublishIsCrashAtomicBeforeAndAfterCommit(t *testing.T) {
 	if err := databaseStore.Close(); err != nil {
 		t.Fatal(err)
 	}
-	databaseStore, err = sqlitestore.Open(path)
+	databaseStore, err = nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestGenerationValidationRejectsBadChecksumIncompleteAndStalePublish(t *test
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "database.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

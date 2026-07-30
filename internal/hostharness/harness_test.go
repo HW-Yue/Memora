@@ -13,7 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"github.com/HW-Yue/Memora/internal/testkit"
 )
 
@@ -181,7 +181,7 @@ func TestReplayValidatesTransportErrorsAndUserReply(t *testing.T) {
 
 func hostSession(t *testing.T, ctx context.Context) (*executor.BatchSession, func()) {
 	t.Helper()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "host-harness.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-harness.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

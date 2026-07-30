@@ -3,7 +3,6 @@ package benchmark
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"math"
 	"sort"
@@ -12,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/HW-Yue/Memora/internal/result"
-	_ "modernc.org/sqlite"
 )
 
 type observedAdapter struct {
@@ -70,7 +68,7 @@ func executeReleaseAdapter(name string, suite Suite, corpus ReleaseCorpus, snaps
 	for _, record := range corpus.Records {
 		switch name {
 		case "no-memory":
-		case "markdown-search", "sqlite-fts", "vector":
+		case "markdown-search", "vector":
 			selected[record.ID] = true
 		case "memora":
 			selected[record.ID] = modeledRecords[record.ID].Durable
@@ -85,14 +83,6 @@ func executeReleaseAdapter(name string, suite Suite, corpus ReleaseCorpus, snaps
 		}
 	}
 	counts := map[string]*Counts{}
-	ftsRankings := map[string][]rankedRecord{}
-	if name == "sqlite-fts" {
-		var err error
-		ftsRankings, err = buildSQLiteFTSRankings(corpus, selected)
-		if err != nil {
-			return releaseExecution{}, err
-		}
-	}
 	evidenceRows := make([]string, 0, len(corpus.Records)+len(corpus.Queries))
 	for _, scenario := range suite.Scenarios {
 		counts[scenario.ID] = &Counts{}
@@ -117,10 +107,7 @@ func executeReleaseAdapter(name string, suite Suite, corpus ReleaseCorpus, snaps
 		if query.Takeover {
 			current.Takeovers++
 		}
-		ranked := ftsRankings[query.ID]
-		if name != "sqlite-fts" {
-			ranked = rankReleaseRecords(name, corpus, query, selected, superseded, modeledRecords, modeledQueries)
-		}
+		ranked := rankReleaseRecords(name, corpus, query, selected, superseded, modeledRecords, modeledQueries)
 		if len(ranked) > 5 {
 			ranked = ranked[:5]
 		}
@@ -207,66 +194,6 @@ func rankReleaseRecords(
 		return results[left].ID < results[right].ID
 	})
 	return results
-}
-
-func buildSQLiteFTSRankings(corpus ReleaseCorpus, selected map[string]bool) (map[string][]rankedRecord, error) {
-	database, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		return nil, benchmarkError(result.CodeInternal, "open SQLite FTS baseline: %v", err)
-	}
-	defer database.Close()
-	if _, err := database.Exec(`CREATE VIRTUAL TABLE documents USING fts5(id UNINDEXED, content)`); err != nil {
-		return nil, benchmarkError(result.CodeInternal, "create SQLite FTS baseline: %v", err)
-	}
-	for _, record := range corpus.Records {
-		if !selected[record.ID] {
-			continue
-		}
-		content := sortedTerms(lexicalVector(record.Text, 1))
-		if _, err := database.Exec(`INSERT INTO documents(id, content) VALUES (?, ?)`, record.ID, content); err != nil {
-			return nil, benchmarkError(result.CodeInternal, "insert SQLite FTS baseline record: %v", err)
-		}
-	}
-	rankings := make(map[string][]rankedRecord, len(corpus.Queries))
-	for _, query := range corpus.Queries {
-		terms := strings.Fields(sortedTerms(lexicalVector(query.Text, 1)))
-		if len(terms) == 0 {
-			continue
-		}
-		clauses := make([]string, 0, len(terms))
-		for _, term := range terms {
-			clauses = append(clauses, `"`+strings.ReplaceAll(term, `"`, `""`)+`"`)
-		}
-		rows, err := database.Query(
-			`SELECT id, bm25(documents) FROM documents WHERE documents MATCH ? ORDER BY bm25(documents), id LIMIT 5`,
-			strings.Join(clauses, " OR "),
-		)
-		if err != nil {
-			return nil, benchmarkError(result.CodeInternal, "query SQLite FTS baseline %q: %v", query.ID, err)
-		}
-		for rows.Next() {
-			var id string
-			var rank float64
-			if err := rows.Scan(&id, &rank); err != nil {
-				rows.Close()
-				return nil, benchmarkError(result.CodeInternal, "scan SQLite FTS baseline: %v", err)
-			}
-			rankings[query.ID] = append(rankings[query.ID], rankedRecord{ID: id, Score: -rank})
-		}
-		if err := rows.Close(); err != nil {
-			return nil, benchmarkError(result.CodeInternal, "close SQLite FTS baseline rows: %v", err)
-		}
-	}
-	return rankings, nil
-}
-
-func sortedTerms(vector map[string]float64) string {
-	terms := make([]string, 0, len(vector))
-	for term := range vector {
-		terms = append(terms, term)
-	}
-	sort.Strings(terms)
-	return strings.Join(terms, " ")
 }
 
 func lexicalVector(text string, hanNGram int) map[string]float64 {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestCatalogPersistsColumnsAndPropagatesSchemaVersions(t *testing.T) {
@@ -16,7 +16,7 @@ func TestCatalogPersistsColumnsAndPropagatesSchemaVersions(t *testing.T) {
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "catalog.db")
-	firstStore, err := sqlitestore.Open(path)
+	firstStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestCatalogPersistsColumnsAndPropagatesSchemaVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secondStore, err := sqlitestore.Open(path)
+	secondStore, err := nativekvstore.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestCatalogRejectsInvalidAndDuplicateColumnsAtomically(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "catalog.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestCatalogReadsF13aTablesWithoutColumnField(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "catalog.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

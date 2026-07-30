@@ -2,7 +2,7 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F68 已完成；F69–F72 继续按顺序推进。
+实现进度：F62–F69 已完成；F70–F72 继续按顺序推进。
 
 ## F62 Transaction Frame
 
@@ -76,11 +76,9 @@ commit sequence 语义。旧 Database Router 不作为 parity 目标：它已被
 - 完成：daemon 默认运行于 native，但仍可回滚到迁移前备份。
 
 实现结果：新 daemon 的主 authority 固定为 `databases/database.memora`，MSQL
-Catalog/Row 直接使用 typed native repositories。检测到旧 `prototype.sqlite` 时，
-先创建只读保留的 byte-for-byte backup，再经 logical snapshot 导入临时 native、
-回读比较 canonical hash，最后原子 rename；取消和校验失败不发布，重复执行直接
-打开已验证 native。F68 仍让 security/assimilation 的非 authority 辅助状态暂存在
-system SQLite；它们在 F69 移出 SQLite，不能被误认为主数据库回退。
+Catalog/Row 直接使用 typed native repositories。F68 验证了旧格式的备份、logical
+snapshot 导入、回读 hash 和原子发布；F69 将该 reader 移入独立兼容 module，主
+程序遇到 legacy-only instance 会明确拒绝并要求先运行迁移工具。
 
 ## F69 删除 SQLite
 
@@ -88,6 +86,11 @@ system SQLite；它们在 F69 移出 SQLite，不能被误认为主数据库回�
 - 删除：driver、`internal/store/sqlite`、主 binary 文件名、SQLite benchmark 与 fixture 耦合；
 - 旧格式 reader 如需保留，隔离成主 binary 外的兼容工具；
 - 完成：`go.mod` 和主程序不含 SQLite，新旅程全绿。
+
+实现结果：删除 root driver、`internal/store/sqlite` 和 SQLite FTS runtime；root
+`go.mod` 只剩 UUID 与系统调用依赖。仍使用窄 Store/Tx 的辅助服务和旧逻辑测试
+统一运行于 append-only `nativekv`，daemon 文件名改为 `.memora`。真实 SQLite
+reader 只存在于 `compat/sqlite-migrator` 独立 module，不能被主 binary import。
 
 ## F70 AI Table Router 查询
 

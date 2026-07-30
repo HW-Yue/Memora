@@ -11,14 +11,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestPackageOperationsRunThroughMSQLExecutor(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	sourceStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "source.db"))
+	sourceStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "source.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestPackageOperationsRunThroughMSQLExecutor(t *testing.T) {
 		t.Fatalf("PACK row = %#v", packed.Rows[0])
 	}
 
-	targetStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "target.db"))
+	targetStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "target.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

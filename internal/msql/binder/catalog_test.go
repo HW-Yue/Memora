@@ -9,14 +9,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/binder"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestCatalogBinderExecutesDiscoveryAndDDLByStableIdentity(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "catalog.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestCatalogBinderRejectsMissingMetadataQualificationAndDuplicates(t *testin
 	t.Parallel()
 
 	ctx := context.Background()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "catalog.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestCatalogBinderRejectsMissingMetadataQualificationAndDuplicates(t *testin
 func TestCatalogBinderNormalizesContextAndStoreFailures(t *testing.T) {
 	t.Parallel()
 
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "catalog.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

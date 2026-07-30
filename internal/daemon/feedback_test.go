@@ -10,14 +10,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/row"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestFeedbackHandlerRecordsWithoutMutationAndConfirmsUndo(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "feedback-daemon.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "feedback-daemon.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

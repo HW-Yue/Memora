@@ -15,7 +15,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/snapshot"
 	"github.com/HW-Yue/Memora/internal/store"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
 )
 
@@ -239,7 +239,7 @@ func TestExportProfileRejectsUnknownOrDuplicatedStableFields(t *testing.T) {
 
 func wikiFixture(t *testing.T, ctx context.Context) (store.Store, *catalog.Service, *row.Service) {
 	t.Helper()
-	databaseStore, err := sqlitestore.Open(filepath.Join(t.TempDir(), "wiki.db"))
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "wiki.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,7 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
-	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
+	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
 func TestFiveFeedbackKindsRecordWithoutChangingFactsAndReplay(t *testing.T) {
@@ -152,7 +152,7 @@ func TestConfirmedRevisionPlanCannotTargetAnotherRow(t *testing.T) {
 func feedbackFixture(t *testing.T) (context.Context, *feedback.Processor, *row.Service, row.Row, func()) {
 	t.Helper()
 	ctx := context.Background()
-	database, err := sqlitestore.Open(filepath.Join(t.TempDir(), "feedback.db"))
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "feedback.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
