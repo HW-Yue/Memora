@@ -109,7 +109,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 				}},
 				Mutation: executor.MutationOptions{
 					ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
-					RouteLeafIDs: []string{},
+					RouteLeafIDs: []string{leafID},
 					Actor:        "agent:e2e", Source: "e2e:update", Reason: "refine decision",
 				},
 			},
@@ -139,6 +139,14 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		history.Results[0].Rows[0]["revision"] != float64(2) {
 		t.Fatalf("SHOW HISTORY envelope = %#v", history)
 	}
+	openedAfterUpdate := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 20")
+	if len(openedAfterUpdate.Results[0].Rows) != 1 ||
+		openedAfterUpdate.Results[0].Rows[0]["row_id"] != rowID ||
+		openedAfterUpdate.Results[0].Rows[0]["revision"] != float64(2) {
+		t.Fatalf("Route after UPDATE = %#v", openedAfterUpdate)
+	}
 
 	e2eCommand(t, root, binary, "daemon", "stop", "--data-dir", dataDir)
 	e2eCommand(t, root, binary, "daemon", "start", "--data-dir", dataDir)
@@ -149,6 +157,14 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		reopened.Results[0].Rows[0]["title"] != "atomic generation manifest" ||
 		reopened.Results[0].Rows[0]["revision"] != float64(2) {
 		t.Fatalf("reopened SELECT = %#v", reopened)
+	}
+	reopenedRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 20")
+	if len(reopenedRoute.Results[0].Rows) != 1 ||
+		reopenedRoute.Results[0].Rows[0]["row_id"] != rowID ||
+		reopenedRoute.Results[0].Rows[0]["revision"] != float64(2) {
+		t.Fatalf("reopened Route = %#v", reopenedRoute)
 	}
 	var doctor doctorOutput
 	e2eJSON(t, root, &doctor, binary, "doctor", "--data-dir", dataDir)

@@ -236,7 +236,7 @@ func (service *Service) commitRowRevision(value row.Row, operation history.Opera
 		return err
 	}
 	routes := nativerouter.New(service.repository.file)
-	current, err := routes.Memberships(value.ID)
+	current, err := routes.MembershipsIncludingDeleted(value.ID)
 	if err != nil {
 		return err
 	}
@@ -254,10 +254,15 @@ func (service *Service) commitRowRevision(value row.Row, operation history.Opera
 		wanted[leafID] = true
 	}
 	for _, membership := range current {
-		delete(wanted, membership.LeafID)
+		desiredMembership := containsRoute(desired, membership.LeafID)
+		if desiredMembership {
+			delete(wanted, membership.LeafID)
+		} else if membership.Deleted {
+			continue
+		}
 		membership.MembershipRevision++
 		membership.Revision = value.Revision
-		membership.Deleted = !containsRoute(desired, membership.LeafID)
+		membership.Deleted = !desiredMembership
 		if err := routes.StageMembership(transaction, membership); err != nil {
 			return err
 		}
@@ -281,9 +286,6 @@ func containsRoute(values []string, target string) bool {
 }
 
 func (service *Service) mutationTarget(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (catalog.Table, row.Row, error) {
-	if len(options.RouteLeafIDs) > 0 {
-		return catalog.Table{}, row.Row{}, ErrUnsupported
-	}
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return catalog.Table{}, row.Row{}, err

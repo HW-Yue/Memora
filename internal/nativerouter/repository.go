@@ -223,7 +223,22 @@ func (repository *Repository) Open(leafID string, limit int) ([]router.Locator, 
 }
 
 func (repository *Repository) Memberships(rowID string) ([]router.Membership, error) {
-	values, err := repository.memberships()
+	values, err := repository.latestMemberships(false)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]router.Membership, 0)
+	for _, value := range values {
+		if value.RowID == rowID {
+			result = append(result, value)
+		}
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].LeafID < result[right].LeafID })
+	return result, nil
+}
+
+func (repository *Repository) MembershipsIncludingDeleted(rowID string) ([]router.Membership, error) {
+	values, err := repository.latestMemberships(true)
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +296,10 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 }
 
 func (repository *Repository) memberships() ([]router.Membership, error) {
+	return repository.latestMemberships(false)
+}
+
+func (repository *Repository) latestMemberships(includeDeleted bool) ([]router.Membership, error) {
 	ids, err := repository.file.IDs(nativestore.ObjectKindRouteMembership)
 	if err != nil {
 		return nil, err
@@ -303,7 +322,7 @@ func (repository *Repository) memberships() ([]router.Membership, error) {
 	}
 	result := make([]router.Membership, 0, len(latest))
 	for _, value := range latest {
-		if !value.Deleted {
+		if includeDeleted || !value.Deleted {
 			result = append(result, value)
 		}
 	}
