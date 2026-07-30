@@ -197,7 +197,7 @@ func releaseFixture(t *testing.T, withLicense bool) string {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"go.mod":                "module example.test/memora\n\ngo 1.26\n",
+		"go.mod":                "module example.test/memora\n\ngo 1.25.0\n",
 		"README.md":             "# Memora release fixture\n",
 		"COMMERCIAL-LICENSE.md": "# Commercial fixture terms\n",
 		filepath.Join("cmd", "memora", "main.go"): `package main

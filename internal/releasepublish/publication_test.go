@@ -105,7 +105,7 @@ func publicationFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	files := map[string]string{
-		"go.mod":                           "module example.test/memora\n\ngo 1.26\n",
+		"go.mod":                           "module example.test/memora\n\ngo 1.25.0\n",
 		"README.md":                        "# Memora fixture\n",
 		"LICENSE":                          "PolyForm fixture\nRequired Notice: Copyright fixture\n",
 		"COMMERCIAL-LICENSE.md":            "Commercial use requires a separate paid license.\n",
