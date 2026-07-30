@@ -38,6 +38,11 @@ Skill-first v0 的模型由 Codex/Claude Code 提供。Memora：
 
 未来若增加内置 Provider，必须另立安全规格并使用系统凭据存储，不能扩展当前 JSON 来保存明文密钥。
 
+F51 的受控离线 benchmark 是工具边界内的例外：`run-ai-native-benchmark` 可从
+`MEMORA_BENCHMARK_OPENAI_*` 进程环境临时读取兼容地址、key 和模型。它不启动
+daemon Provider、不写 Config/datadir，报告只保留 endpoint host、模型、token
+计数和 hash，不保存地址中的凭据、请求 header 或 key。
+
 ## 校验
 
 - Instance 名只允许 Unicode 字母/数字及 `-_.`，不能是空、`.` 或 `..`；

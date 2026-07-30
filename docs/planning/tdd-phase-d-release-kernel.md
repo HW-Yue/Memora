@@ -58,7 +58,7 @@
 
 提交：`test(F50): verify zero-to-first-memory journey`
 
-## F51 AI-native 发布门
+## F51 AI-native 发布门（已完成）
 
 先测：与无记忆、Markdown 搜索、SQLite FTS 和 Vector baseline 比较 write precision、Recall@5、接管率和上下文成本。
 

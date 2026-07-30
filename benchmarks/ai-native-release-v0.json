@@ -1,0 +1,62 @@
+{
+  "version": "memora.ai-native-release-corpus/v1",
+  "id": "ai-native-release-v0",
+  "records": [
+    {"id":"mp-msql","scenario_id":"multi-project-50","project":"memora","text":"Memora 的实际数据读取和修改统一通过 MSQL，语义 Router 只负责发现和导航。","durable":true},
+    {"id":"mp-watering","scenario_id":"multi-project-50","project":"garden","text":"阳台迷迭香固定在每周六早晨浇水。","durable":true},
+    {"id":"mp-price","scenario_id":"multi-project-50","project":"finance","text":"今天收盘时某只股票报价 37.42 元。","durable":false},
+    {"id":"mp-greeting","scenario_id":"multi-project-50","project":"finance","text":"下午好，今天继续聊聊。","durable":false},
+    {"id":"mp-perennial","scenario_id":"multi-project-50","project":"garden","text":"花园选植物时优先本地多年生品种。","durable":true},
+    {"id":"mp-risk","scenario_id":"multi-project-50","project":"finance","text":"投资组合可接受的最大阶段回撤是百分之十五。","durable":true},
+    {"id":"mp-quote","scenario_id":"multi-project-50","project":"books","text":"刚翻到一页写着：系统思考始于看见整体。","durable":false},
+    {"id":"mp-privacy","scenario_id":"multi-project-50","project":"memora","text":"数据库默认仅限本机访问，任何外部工具调用都必须逐次明确批准。","durable":true},
+    {"id":"mp-build","scenario_id":"multi-project-50","project":"memora","text":"刚才本地构建输出显示用了 1.8 秒。","durable":false},
+    {"id":"mp-export","scenario_id":"multi-project-50","project":"memora","text":"Markdown 和 Obsidian 只是数据库快照的确定性导出，不是真相源。","durable":true},
+    {"id":"mp-weather","scenario_id":"multi-project-50","project":"garden","text":"今天午后阳台温度短暂升到三十一度。","durable":false},
+    {"id":"mp-saving","scenario_id":"multi-project-50","project":"finance","text":"每月固定把到手收入的百分之二十转入长期储蓄。","durable":true},
+    {"id":"mp-theme","scenario_id":"multi-project-50","project":"books","text":"已读材料的核心主题是反馈回路会放大或抑制系统变化。","durable":true},
+    {"id":"mp-release","scenario_id":"multi-project-50","project":"memora","text":"正式发布必须由签名标签触发并通过双架构干净机器验收。","durable":true},
+
+    {"id":"rev-export-v1","scenario_id":"repeated-revisions","project":"memora","text":"最初决定把 Markdown 目录作为长期数据的真相源。","durable":true},
+    {"id":"rev-export-v2","scenario_id":"repeated-revisions","project":"memora","text":"修订后的决定是数据库才是真相源，Markdown 仅为可重建快照。","durable":true,"supersedes":"rev-export-v1"},
+    {"id":"rev-stale","scenario_id":"repeated-revisions","project":"memora","text":"一个基于旧 revision 的未确认请求想把 Markdown 重新改回真相源。","durable":false},
+    {"id":"rev-rosemary","scenario_id":"repeated-revisions","project":"garden","text":"植物名称从迷迭草更正为迷迭香，保留原记录历史。","durable":true},
+
+    {"id":"book-loop","scenario_id":"book-assimilation","project":"books","text":"第一章的语义结论：正反馈强化变化，负反馈抵消变化。来源锚点 chapter-1#feedback。","durable":true},
+    {"id":"book-delay","scenario_id":"book-assimilation","project":"books","text":"第二章的语义结论：时间延迟会让干预效果晚于行动出现。来源锚点 chapter-2#delay。","durable":true},
+    {"id":"book-raw","scenario_id":"book-assimilation","project":"books","text":"这里是一整页尚未复核的原始摘录，准备稍后再读。","durable":false},
+    {"id":"book-receipt","scenario_id":"book-assimilation","project":"books","text":"资料清单的两个必读章节均已覆盖并独立复核，Source Receipt 为 receipt-systems-01。","durable":true},
+
+    {"id":"cold-owner","scenario_id":"cold-start-takeover","project":"memora","text":"Memora 当前维护负责人是项目 Agent，用户只处理语义冲突和高风险例外。","durable":true},
+    {"id":"cold-next","scenario_id":"cold-start-takeover","project":"memora","text":"下一项允许进入的开发工作是 F51 AI-native 发布门，门未通过不得开始原生内核。","durable":true},
+    {"id":"cold-nochat","scenario_id":"cold-start-takeover","project":"memora","text":"陌生 Agent 接管时必须通过数据库目录和 Route 重新发现状态，不能依赖旧聊天。","durable":true},
+
+    {"id":"host-contract","scenario_id":"host-switch","project":"memora","text":"Codex 和 Claude Code 使用同一个 Canonical Skill、MSQL 契约和逻辑 Instance。","durable":true},
+    {"id":"host-revision","scenario_id":"host-switch","project":"memora","text":"Claude Code 提交的 revision 必须能被 Codex 读取为同一 row ID 和 revision。","durable":true},
+    {"id":"host-secret","scenario_id":"host-switch","project":"memora","text":"临时终端里出现的一次性登录验证码是 482193。","durable":false}
+  ],
+  "queries": [
+    {"id":"q-router","scenario_id":"multi-project-50","project":"memora","text":"负责定位资料但不直接碰数据的是哪一层？","relevant_ids":["mp-msql"]},
+    {"id":"q-water","scenario_id":"multi-project-50","project":"garden","text":"那盆香草固定什么时候补水？","relevant_ids":["mp-watering"]},
+    {"id":"q-native","scenario_id":"multi-project-50","project":"garden","text":"选花时长期偏向什么类型？","relevant_ids":["mp-perennial"]},
+    {"id":"q-risk","scenario_id":"multi-project-50","project":"finance","text":"组合最多能承受多大的下跌幅度？","relevant_ids":["mp-risk"]},
+    {"id":"q-local","scenario_id":"multi-project-50","project":"memora","text":"哪些数据访问不能未经同意离开电脑？","relevant_ids":["mp-privacy"]},
+    {"id":"q-saving","scenario_id":"multi-project-50","project":"finance","text":"工资到账后长期留存的比例是多少？","relevant_ids":["mp-saving"]},
+    {"id":"q-theme","scenario_id":"multi-project-50","project":"books","text":"读完的材料如何解释变化被增强或压制？","relevant_ids":["mp-theme"]},
+    {"id":"q-publish","scenario_id":"multi-project-50","project":"memora","text":"发布前需要什么触发条件和机器验证？","relevant_ids":["mp-release"]},
+
+    {"id":"q-truth","scenario_id":"repeated-revisions","project":"memora","text":"当前哪个载体才是权威状态？","relevant_ids":["rev-export-v2"]},
+    {"id":"q-old-truth","scenario_id":"repeated-revisions","project":"memora","text":"被取代的导出方案原来怎么规定？","relevant_ids":["rev-export-v1"]},
+    {"id":"q-plant-name","scenario_id":"repeated-revisions","project":"garden","text":"纠正后的香草名称是什么？","relevant_ids":["rev-rosemary"]},
+
+    {"id":"q-feedback","scenario_id":"book-assimilation","project":"books","text":"什么机制会增强或抵消系统里的变化？","relevant_ids":["book-loop"]},
+    {"id":"q-delay","scenario_id":"book-assimilation","project":"books","text":"为什么采取措施后结果可能不会马上出现？","relevant_ids":["book-delay"]},
+    {"id":"q-coverage","scenario_id":"book-assimilation","project":"books","text":"必读范围是否已经完成复核？","relevant_ids":["book-receipt"]},
+
+    {"id":"q-next","scenario_id":"cold-start-takeover","project":"memora","text":"不看聊天记录，现在应该先做哪一道质量门？","relevant_ids":["cold-next"],"takeover":true},
+    {"id":"q-takeover","scenario_id":"cold-start-takeover","project":"memora","text":"新来的 Agent 应当从哪里重新找到工作状态？","relevant_ids":["cold-nochat"],"takeover":true},
+
+    {"id":"q-shared","scenario_id":"host-switch","project":"memora","text":"两个编码宿主靠什么保持行为一致？","relevant_ids":["host-contract"],"takeover":true},
+    {"id":"q-cross-host","scenario_id":"host-switch","project":"memora","text":"在 Claude Code 修改后，Codex 应看到怎样的记录身份？","relevant_ids":["host-revision"],"takeover":true}
+  ]
+}

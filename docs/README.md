@@ -112,6 +112,7 @@
 - [Codex Adapter v1](./development/codex-adapter-v1.md) — F40 从 Canonical Skill 确定性派生 Codex metadata、命令规则与 e2e fixture。
 - [Claude Code Adapter v1](./development/claude-code-adapter-v1.md) — F41 的 `.claude/skills` 包装、turn 级命令权限与跨宿主 digest 兼容。
 - [AI-native Benchmark v1](./development/ai-native-benchmark-v1.md) — F42 的五类可重放旅程、八维评分、baseline adapter 与确定性报告。
+- [AI-native 发布门 v1](./development/ai-native-release-gate-v1.md) — F51 的固定语料、真实 Kimi 观测、五类对照、阈值与防篡改报告。
 - [安全与隐私门 v1](./development/security-privacy-gate-v1.md) — F46 的 Database scope、外部路径、approval、审计脱敏与 doctor 检查。
 - [macOS Release 制品 v1](./development/macos-release-artifacts-v1.md) — F47 的双架构 Mach-O、可复现归档、版本 manifest、checksum 与 smoke 契约。
 - [GitHub Release 自动化 v1](./development/github-release-automation-v1.md) — F48 的签名 tag 门、最小权限、双架构 smoke、Skill bundle 与 draft 发布契约。

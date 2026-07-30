@@ -8,7 +8,7 @@ cd "$repository_root"
 
 go_command=${MEMORA_CI_GO:-go}
 gofmt_command=${MEMORA_CI_GOFMT:-gofmt}
-stages=(format vet unit race integration e2e cross-build)
+stages=(format vet unit quality-gate race integration e2e cross-build)
 
 usage() {
   printf 'usage: scripts/ci.sh [--list | --stage <name>]\n' >&2
@@ -34,6 +34,9 @@ run_stage() {
       ;;
     unit)
       "$go_command" test ./...
+      ;;
+    quality-gate)
+      "$go_command" run ./cmd/verify-ai-native-benchmark
       ;;
     race)
       "$go_command" test -race ./...

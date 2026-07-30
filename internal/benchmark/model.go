@@ -120,12 +120,31 @@ type Report struct {
 	Scenarios     []ScenarioReport `json:"scenarios"`
 	Aggregate     Metrics          `json:"aggregate"`
 	AllHostsEqual bool             `json:"all_hosts_equal"`
+	Evidence      *Evidence        `json:"evidence,omitempty"`
 	Hash          string           `json:"hash"`
 }
 
 type Adapter interface {
 	Name() string
 	Run(context.Context, Scenario) (Outcome, error)
+}
+
+type Evidence struct {
+	Mode            string `json:"mode"`
+	Protocol        string `json:"protocol,omitempty"`
+	Provider        string `json:"provider,omitempty"`
+	EndpointHost    string `json:"endpoint_host,omitempty"`
+	Model           string `json:"model,omitempty"`
+	InputTokens     uint64 `json:"input_tokens,omitempty"`
+	OutputTokens    uint64 `json:"output_tokens,omitempty"`
+	OutputDigest    string `json:"output_digest"`
+	ExecutionDigest string `json:"execution_digest"`
+	CorpusDigest    string `json:"corpus_digest"`
+	Implementation  string `json:"implementation"`
+}
+
+type evidenceAdapter interface {
+	Evidence() Evidence
 }
 
 type Error struct {

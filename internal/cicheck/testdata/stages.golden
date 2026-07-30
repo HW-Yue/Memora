@@ -1,6 +1,7 @@
 format
 vet
 unit
+quality-gate
 race
 integration
 e2e

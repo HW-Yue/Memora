@@ -1,6 +1,6 @@
 # AI-native 质量模型与验收
 
-状态：首轮候选指标。目标值必须由真实 benchmark 校准。
+状态：F51 已完成首轮真实 benchmark 校准；数据集外仍需持续扩展验证。
 
 F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1](../development/ai-native-benchmark-v1.md)。
 
@@ -30,7 +30,7 @@ F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1]
 
 ## 首轮候选门槛
 
-这些是原型目标，不是最终承诺：
+以下原型目标已由 F51 v0 固定为发布门，不是数据集外的最终承诺：
 
 - 写入选择 precision ≥ 95%，宁可漏掉低价值内容，不污染长期库；
 - 自建查询集 Recall@5 ≥ 90%，并单独统计同义表达和跨项目干扰；
@@ -89,7 +89,9 @@ useful / irrelevant / stale / wrong / incomplete
 ## 发布门槛
 
 只有当端到端 Agent 体验优于“Markdown + 搜索”基线时，才进入完整自研存储内核阶段。只有当无向量方案在核心场景达到门槛时，才把“无 Embedding 依赖”升级为正式产品承诺。
-具体阈值不在 F42 伪造；F51 必须用固定 Adapter 和同一评分器产生真实可审计结果。
+F51 已用固定 Adapter 和同一评分器生成首轮真实可审计结果并通过门槛，具体证据见
+[AI-native 发布门 v1](../development/ai-native-release-gate-v1.md)。当前 Vector
+是明确标注的本地稀疏向量，不等同于商业 dense embedding 全面对照。
 
 ## 关联
 

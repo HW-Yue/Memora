@@ -30,6 +30,10 @@ func (runner *Runner) Run(ctx context.Context, suite Suite) (Report, error) {
 		Version: ReportVersion, SuiteID: suite.ID, SuiteDigest: suiteDigest,
 		Adapter: runner.adapter.Name(), Dimensions: 8, Scenarios: []ScenarioReport{}, AllHostsEqual: true,
 	}
+	if adapter, ok := runner.adapter.(evidenceAdapter); ok {
+		evidence := adapter.Evidence()
+		report.Evidence = &evidence
+	}
 	var aggregate Counts
 	for _, scenario := range suite.Scenarios {
 		if err := ctx.Err(); err != nil {
