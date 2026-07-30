@@ -1,6 +1,6 @@
 # AI-native 真实使用审计
 
-状态：完成；产品级结论 `FAIL`；2026-07-30。
+状态：原始审计结论 `FAIL`；F73–F80 修复后运行时复验 `PASS`；2026-07-30。
 
 本审计使用提交 `56cc73f` 构建的 `0.1.0` arm64 发行二进制和隔离 Instance，
 只通过 Canonical Skill 允许的 CLI/MSQL 操作，不读取物理数据库文件。由于主
@@ -78,3 +78,14 @@ nodes 写入原生 `query_budgets` revision 链，并接入公开 MSQL、真实�
 3. 用真实发行二进制重写故事门，每个 mutation 后必须从顶层 Route 重查；
 4. 修复紧凑 Schema，减少调用与上下文；
 5. 增加来源强度、真实隔离复核和数据库内配置的产品验证。
+
+## F80 复验结论
+
+上述重新验收条件已由 F73–F79 逐项修复。F80 删除“语法可解析 + proof 路径存在”
+的假阳性判定，使用同一构建二进制、Codex/Claude 两个干净 adapter 和两个隔离
+Instance 运行全部 16 个用户故事。UPDATE、DELETE/RESTORE、SPLIT/MERGE、资料
+吸收等 mutation 均从 Table 顶层 Route 重查 locator，再按 RowID SELECT；feedback、
+semantic health、配置 revision/补偿恢复和 daemon restart 也走公开 CLI。
+
+因此当前已实现范围恢复产品级 `PASS`。该 PASS 不扩大到尚未实现的完整 Page、
+B+ Tree、MVCC/Undo/Redo 或并发内核。

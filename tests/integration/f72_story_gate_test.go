@@ -11,15 +11,10 @@ import (
 	"github.com/HW-Yue/Memora/internal/claudeadapter"
 	"github.com/HW-Yue/Memora/internal/codexadapter"
 	"github.com/HW-Yue/Memora/internal/skillcontract"
-	"github.com/HW-Yue/Memora/internal/storygate"
 )
 
 func TestF72AINativeStoryProviderAndLicenseGate(t *testing.T) {
 	root := repositoryRoot(t)
-	if err := storygate.Validate(storygate.ReleaseEvidence()); err != nil {
-		t.Fatal(err)
-	}
-
 	canonical := filepath.Join(root, "skills", "memora")
 	bundle, err := skillcontract.Load(canonical)
 	if err != nil {

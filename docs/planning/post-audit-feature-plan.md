@@ -70,3 +70,6 @@
 - mutation 后必须从顶层 Route 重新发现，禁止已知 RowID 旁路验收；
 - Codex 与 Claude adapter 共享协议，并分别执行冷启动 transcript；
 - 只有公开旅程全部通过才恢复产品级 `PASS`。
+- 状态：已实现；静态 proof 清单已替换为 `memora.real-story-gate/v1` 运行时报告。
+  同一构建二进制在 Codex/Claude 两个干净 adapter 和隔离 Instance 中执行全部
+  16 个故事，mutation 故事强制绑定顶层 Route 再发现步骤。

@@ -1,35 +1,47 @@
 package storygate_test
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/storygate"
 )
 
-func TestF72ReleaseEvidenceCoversEveryProductStoryWithRealProofFiles(t *testing.T) {
-	t.Parallel()
-	evidence := storygate.ReleaseEvidence()
-	if err := storygate.Validate(evidence); err != nil {
+func TestRuntimeGateRequiresEveryStoryAndRouteRediscovery(t *testing.T) {
+	report := completeReport("codex")
+	if err := storygate.Validate(report); err != nil {
 		t.Fatal(err)
 	}
-	root := repositoryRoot(t)
-	for _, item := range evidence {
-		for _, proof := range item.Proofs {
-			if info, err := os.Stat(filepath.Join(root, proof)); err != nil || info.IsDir() {
-				t.Errorf("%s proof %q is unavailable: %v", item.Story, proof, err)
-			}
-		}
+	report.Stories[3].RediscoveredFromRoot = false
+	if err := storygate.Validate(report); err == nil || !strings.Contains(err.Error(), "bypassed") {
+		t.Fatalf("missing rediscovery error = %v", err)
 	}
 }
 
-func repositoryRoot(t *testing.T) string {
-	t.Helper()
-	_, current, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve story gate path")
+func TestRuntimeGateRequiresMatchingCodexAndClaudeProtocol(t *testing.T) {
+	codex, claude := completeReport("codex"), completeReport("claude")
+	if err := storygate.ValidatePair(codex, claude); err != nil {
+		t.Fatal(err)
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(current), "..", ".."))
+	claude.ProtocolDigest = strings.Repeat("b", 64)
+	if err := storygate.ValidatePair(codex, claude); err == nil {
+		t.Fatal("mismatched protocol passed")
+	}
+}
+
+func completeReport(host string) storygate.Report {
+	digest := strings.Repeat("a", 64)
+	report := storygate.Report{
+		Version: storygate.ReportVersion, Status: "passed", Host: host,
+		BinarySHA256: digest, CanonicalDigest: digest, ProtocolDigest: digest,
+	}
+	for index, story := range storygate.RequiredStories() {
+		id := "step-" + story
+		report.Steps = append(report.Steps, storygate.Step{ID: id, Surface: "public-cli", OutputSHA256: digest})
+		report.Stories = append(report.Stories, storygate.StoryResult{
+			Story: story, Status: "passed", Steps: []string{id},
+			RediscoveredFromRoot: index >= 3,
+		})
+	}
+	return report
 }

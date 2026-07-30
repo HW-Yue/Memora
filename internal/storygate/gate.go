@@ -4,14 +4,32 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/HW-Yue/Memora/internal/msql/parser"
 )
 
-type Evidence struct {
-	Story    string
-	Commands []string
-	Proofs   []string
+const ReportVersion = "memora.real-story-gate/v1"
+
+type Step struct {
+	ID           string `json:"id"`
+	Surface      string `json:"surface"`
+	OutputSHA256 string `json:"output_sha256"`
+}
+
+type StoryResult struct {
+	Story                string   `json:"story"`
+	Status               string   `json:"status"`
+	Steps                []string `json:"steps"`
+	RediscoveredFromRoot bool     `json:"rediscovered_from_root,omitempty"`
+}
+
+type Report struct {
+	Version         string        `json:"version"`
+	Status          string        `json:"status"`
+	Host            string        `json:"host"`
+	BinarySHA256    string        `json:"binary_sha256"`
+	CanonicalDigest string        `json:"canonical_digest"`
+	ProtocolDigest  string        `json:"protocol_digest"`
+	Steps           []Step        `json:"steps"`
+	Stories         []StoryResult `json:"stories"`
 }
 
 func RequiredStories() []string {
@@ -22,61 +40,51 @@ func RequiredStories() []string {
 	}
 }
 
-func ReleaseEvidence() []Evidence {
-	discover := []string{
-		"SHOW DATABASES COMPACT",
-		"SHOW TABLES FROM work COMPACT",
-		"DESCRIBE TABLE work.notes COMPACT",
-		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12",
-		"SHOW ROUTES UNDER :route LIMIT 12",
-		"OPEN ROUTE :leaf LIMIT 24",
-		"SELECT title, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1",
+func Validate(report Report) error {
+	if report.Version != ReportVersion || report.Status != "passed" {
+		return fmt.Errorf("runtime story report did not pass")
 	}
-	return []Evidence{
-		{Story: "US-HUMAN", Proofs: []string{"skills/memora/SKILL.md", "tests/e2e/codex_adapter_test.go"}},
-		{Story: "US-COLD", Commands: discover[:4], Proofs: []string{"internal/nativerow/table_router_msql_test.go"}},
-		{Story: "US-READ", Commands: discover, Proofs: []string{"internal/skillquery/query_test.go"}},
-		{Story: "US-INSERT", Commands: []string{"INSERT INTO work.notes (title) VALUES (:title)", discover[3], discover[4], discover[5], discover[6]}, Proofs: []string{"tests/e2e/vertical_slice_test.go"}},
-		{Story: "US-UPDATE", Commands: []string{"UPDATE work.notes SET title = :title WHERE row_id = :row", "SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10"}, Proofs: []string{"tests/e2e/vertical_slice_test.go"}},
-		{Story: "US-DELETE", Commands: []string{"DELETE FROM work.notes WHERE row_id = :row", "SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10"}, Proofs: []string{"internal/nativerow/msql_test.go"}},
-		{Story: "US-CORRECT", Commands: []string{discover[6], "UPDATE work.notes SET title = :title WHERE row_id = :row", "SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10"}, Proofs: []string{"internal/feedback/feedback_test.go"}},
-		{Story: "US-SCHEMA", Commands: []string{"CREATE DATABASE work PURPOSE 'Work' SCOPE 'Reviewed projects'", "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(200) PURPOSE 'Title')", discover[2]}, Proofs: []string{"internal/nativecatalog/msql_test.go"}},
-		{Story: "US-DBA", Commands: []string{discover[3], discover[4], "ALTER ROUTE :route RENAME TO :name"}, Proofs: []string{"internal/semantichealth/service_test.go"}},
-		{Story: "US-OPTIMIZE", Commands: []string{discover[3], discover[4], "ALTER ROUTE :route RENAME TO :name"}, Proofs: []string{"internal/nativemutation/reshape_test.go"}},
-		{Story: "US-SPLIT", Commands: []string{"UPDATE work.notes SET title = :title WHERE row_id = :row", "INSERT INTO work.notes (title) VALUES (:title)"}, Proofs: []string{"internal/nativemutation/reshape_test.go"}},
-		{Story: "US-CONFLICT", Commands: []string{discover[6]}, Proofs: []string{"internal/skillconflict/conflict_test.go"}},
-		{Story: "US-ASSIMILATE", Commands: []string{"INSERT INTO work.notes (title) VALUES (:title)"}, Proofs: []string{"internal/assimilation/submission_test.go"}},
-		{Story: "US-RECOVER", Commands: []string{discover[3], discover[4], discover[5], discover[6]}, Proofs: []string{"internal/store/native/file_test.go", "internal/nativerow/table_router_msql_test.go"}},
-		{Story: "US-ENGINE", Commands: []string{"UPDATE work.notes SET title = :title WHERE row_id = :row"}, Proofs: []string{"internal/nativemutation/coordinator_test.go", "internal/store/native/transaction_test.go"}},
-		{Story: "US-DEVELOPER", Proofs: []string{"internal/cicheck/ci_test.go", "docs/planning/feature-product-gate.md"}},
+	if report.Host != "codex" && report.Host != "claude" {
+		return fmt.Errorf("runtime story report host %q is unsupported", report.Host)
 	}
-}
-
-func Validate(evidence []Evidence) error {
+	if !isSHA256(report.BinarySHA256) || !isSHA256(report.CanonicalDigest) || !isSHA256(report.ProtocolDigest) {
+		return fmt.Errorf("runtime story report digests are invalid")
+	}
+	stepIDs := map[string]bool{}
+	for _, step := range report.Steps {
+		if step.ID == "" || step.Surface != "public-cli" || !isSHA256(step.OutputSHA256) || stepIDs[step.ID] {
+			return fmt.Errorf("runtime story report step is invalid or duplicated")
+		}
+		stepIDs[step.ID] = true
+	}
 	required := map[string]bool{}
 	for _, story := range RequiredStories() {
 		required[story] = false
 	}
-	for _, item := range evidence {
-		if _, ok := required[item.Story]; !ok {
-			return fmt.Errorf("unknown story %q", item.Story)
+	mutations := map[string]bool{
+		"US-INSERT": true, "US-UPDATE": true, "US-DELETE": true, "US-CORRECT": true,
+		"US-OPTIMIZE": true, "US-SPLIT": true, "US-ASSIMILATE": true, "US-RECOVER": true,
+		"US-ENGINE": true,
+	}
+	for _, story := range report.Stories {
+		if _, ok := required[story.Story]; !ok {
+			return fmt.Errorf("unknown runtime story %q", story.Story)
 		}
-		if required[item.Story] {
-			return fmt.Errorf("duplicate story %q", item.Story)
+		if required[story.Story] {
+			return fmt.Errorf("duplicate runtime story %q", story.Story)
 		}
-		if len(item.Proofs) == 0 {
-			return fmt.Errorf("story %q has no executable proof", item.Story)
+		if story.Status != "passed" || len(story.Steps) == 0 {
+			return fmt.Errorf("runtime story %q did not pass with steps", story.Story)
 		}
-		for _, command := range item.Commands {
-			if _, err := parser.Parse(command); err != nil {
-				return fmt.Errorf("story %q has invalid MSQL: %w", item.Story, err)
+		for _, step := range story.Steps {
+			if !stepIDs[step] {
+				return fmt.Errorf("runtime story %q references missing step %q", story.Story, step)
 			}
-			upper := strings.ToUpper(command)
-			if strings.HasPrefix(upper, "MAT"+"CH ") || strings.Contains(upper, "FROM DATA"+"BASE") {
-				return fmt.Errorf("story %q uses a retired query path", item.Story)
-			}
 		}
-		required[item.Story] = true
+		if mutations[story.Story] && !story.RediscoveredFromRoot {
+			return fmt.Errorf("runtime story %q bypassed top-level Route rediscovery", story.Story)
+		}
+		required[story.Story] = true
 	}
 	missing := []string{}
 	for story, found := range required {
@@ -86,7 +94,37 @@ func Validate(evidence []Evidence) error {
 	}
 	sort.Strings(missing)
 	if len(missing) > 0 {
-		return fmt.Errorf("missing stories: %s", strings.Join(missing, ", "))
+		return fmt.Errorf("missing runtime stories: %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func ValidatePair(codex, claude Report) error {
+	if err := Validate(codex); err != nil {
+		return fmt.Errorf("Codex report: %w", err)
+	}
+	if err := Validate(claude); err != nil {
+		return fmt.Errorf("Claude report: %w", err)
+	}
+	if codex.Host != "codex" || claude.Host != "claude" {
+		return fmt.Errorf("runtime reports are not a Codex/Claude pair")
+	}
+	if codex.BinarySHA256 != claude.BinarySHA256 ||
+		codex.CanonicalDigest != claude.CanonicalDigest ||
+		codex.ProtocolDigest != claude.ProtocolDigest {
+		return fmt.Errorf("runtime hosts did not execute one binary and canonical protocol")
+	}
+	return nil
+}
+
+func isSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if !strings.ContainsRune("0123456789abcdef", character) {
+			return false
+		}
+	}
+	return true
 }

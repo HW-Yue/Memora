@@ -1,8 +1,7 @@
 # F72 AI-native 用户故事门
 
-状态：结构门完成，但产品级 `PASS` 已由 2026-07-30
-[真实使用审计](./ai-native-live-ux-audit-2026-07-30.md)撤销。该门只能证明语法和
-proof 文件存在，不能证明公开 Skill/CLI 主旅程已接通。
+状态：已被 [F80 真实发行用户故事门](./f80-real-release-story-gate.md)取代。
+本文件只保留旧结构门及其失效原因，不再参与产品 PASS。
 
 本门禁不使用相似度 benchmark。它把产品宪章中的每个 `US-*` 绑定到可解析的
 MSQL transcript 和仓库内实际执行该行为的测试；`internal/storygate` 会拒绝故事

@@ -107,6 +107,7 @@
 - [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
 - [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
 - [F72 AI-native 用户故事门](./planning/f72-ai-native-story-gate.md) — 全部产品故事、实际 MSQL、proof 文件、宿主与许可的最终验收。
+- [F80 真实发行用户故事门](./planning/f80-real-release-story-gate.md) — 双宿主、隔离 Instance、公开 CLI 和 mutation 后顶层 Route 重查的运行时 PASS。
 - [AI-native 真实使用审计](./planning/ai-native-live-ux-audit-2026-07-30.md) — 以发行二进制实测冷启动、Route、修改、恢复和维护；撤销 F72 的产品级 PASS。
 - [真实审计后 Feature 计划](./planning/post-audit-feature-plan.md) — F73–F80 修复修改、恢复、反馈、维护、reshape、Route synopsis、来源与真实故事门。
 - [F52 原生文件格式开工门](./planning/f52-native-format-gate.md) — 下一 Feature 的故事、格式、边界与待确认项。
