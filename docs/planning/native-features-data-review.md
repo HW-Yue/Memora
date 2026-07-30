@@ -1,15 +1,23 @@
 # F53–F61：真实数据与 MSQL 闭环
 
-状态：Review 稿；每项都不承诺事务、掉电安全或并发。
+状态：已批准；每项都不承诺事务、掉电安全或并发。
 
-## F53 Catalog Record Round-trip
+## F53a Typed Payload Round-trip
+
+- 故事：`US-ENGINE`；
+- 写入：稳定版本的 typed fields，不使用 JSON 或 Go struct dump；
+- 读取：经原生文件 close/reopen 后恢复 TEXT、整数、布尔和文本列表；
+- 测试：中文、负数、截断拒绝；
+- 完成：typed payload 的独立物理闭环。
+
+## F53b Catalog Record Round-trip
 
 - 故事：`US-SCHEMA`、`US-ENGINE`；
 - 写入：Database、Table、Column 各自使用稳定 object kind 与 typed fields；
 - 读取：reopen 后按 ID 重建父子关系、名称、用途、Column 类型和 Schema version；
 - 测试：中英名称、alias、nullable、TEXT budget、未知字段、确定性 bytes；
 - 不做：Row、Catalog UPDATE、MSQL、JSON/Go struct dump；
-- 完成：一个真实 Catalog fixture byte-for-byte/field-for-field round-trip。
+- 完成：一个真实 Catalog fixture byte-for-byte/field-for-field round-trip；依赖 F53a。
 
 ## F54 Row Record Round-trip
 

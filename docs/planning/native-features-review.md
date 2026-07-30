@@ -1,6 +1,6 @@
 # 原生闭环后续 Feature Review 稿
 
-状态：讨论稿，等待产品负责人 Review；未批准的 Feature 不开工、不合入 `main`。
+状态：已批准；2026-07-30 起按小闭环逐项实现并合入 `main`。
 
 ## 总原则
 
@@ -17,7 +17,7 @@
 
 | 阶段 | Feature | 得到的闭环 |
 | --- | --- | --- |
-| 真实数据 | F53–F55 | Catalog、Row、revision/tombstone 能写入并读回 |
+| 真实数据 | F53a–F55 | Typed payload、Catalog、Row、revision/tombstone 能写入并读回 |
 | MSQL 接入 | F56–F57 | MSQL 建模、INSERT 和 SELECT 跑在原生文件上 |
 | 对象接宽 | F58–F61 | 修改、History、Relation、Table Router 分别跑通 |
 | 正确性 | F62–F65 | 事务帧、恢复、跨对象原子变更、split/merge |
@@ -27,7 +27,7 @@
 依赖只允许向右推进：
 
 ```text
-F53 → F54 → F55 → F56 → F57
+F53a → F53b → F54 → F55 → F56 → F57
                          ↓
                     F58 → F59 → F60 → F61
                                            ↓
@@ -62,5 +62,5 @@ F53 → F54 → F55 → F56 → F57
 - [F53–F61：真实数据与 MSQL 闭环](./native-features-data-review.md)
 - [F62–F72：正确性、迁移与产品主路](./native-features-transition-review.md)
 
-Review 通过后，本稿才替换当前
-[Phase D 计划](./tdd-phase-d-release-kernel.md)，并逐项生成正式开工门文件。
+本计划已经 Review 通过；它取代旧
+[Phase D 计划](./tdd-phase-d-release-kernel.md) 中冲突的 Feature 顺序，并逐项生成实现证据。

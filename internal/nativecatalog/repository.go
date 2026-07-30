@@ -1,0 +1,357 @@
+package nativecatalog
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"time"
+
+	"github.com/HW-Yue/Memora/internal/catalog"
+	nativestore "github.com/HW-Yue/Memora/internal/store/native"
+)
+
+const recordSchemaVersion = 1
+
+type Repository struct{ file *nativestore.File }
+
+func New(file *nativestore.File) *Repository { return &Repository{file: file} }
+
+func (repository *Repository) Write(databases []catalog.Database) error {
+	if repository == nil || repository.file == nil {
+		return fmt.Errorf("%w: native file is required", ErrInvalid)
+	}
+	if err := validateCatalog(databases); err != nil {
+		return err
+	}
+	for databaseIndex, database := range databases {
+		payload, err := encodeDatabase(database, uint64(databaseIndex))
+		if err != nil {
+			return err
+		}
+		if err := repository.file.Put(nativestore.ObjectKindDatabase, recordSchemaVersion, database.ID, payload); err != nil {
+			return fmt.Errorf("write database %q: %w", database.ID, err)
+		}
+		for tableIndex, table := range database.Tables {
+			payload, err = encodeTable(table, uint64(tableIndex))
+			if err != nil {
+				return err
+			}
+			if err := repository.file.Put(nativestore.ObjectKindTable, recordSchemaVersion, table.ID, payload); err != nil {
+				return fmt.Errorf("write table %q: %w", table.ID, err)
+			}
+			for columnIndex, column := range table.Columns {
+				payload, err = encodeColumn(column, table.ID, uint64(columnIndex))
+				if err != nil {
+					return err
+				}
+				if err := repository.file.Put(nativestore.ObjectKindColumn, recordSchemaVersion, column.ID, payload); err != nil {
+					return fmt.Errorf("write column %q: %w", column.ID, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (repository *Repository) Read() ([]catalog.Database, error) {
+	if repository == nil || repository.file == nil {
+		return nil, fmt.Errorf("%w: native file is required", ErrInvalid)
+	}
+	databases, err := repository.readDatabases()
+	if err != nil {
+		return nil, err
+	}
+	tables, err := repository.readTables()
+	if err != nil {
+		return nil, err
+	}
+	columns, err := repository.readColumns()
+	if err != nil {
+		return nil, err
+	}
+
+	databaseByID := make(map[string]*databaseRecord, len(databases))
+	for index := range databases {
+		databaseByID[databases[index].value.ID] = &databases[index]
+	}
+	tableByID := make(map[string]*tableRecord, len(tables))
+	for index := range tables {
+		table := &tables[index]
+		parent, ok := databaseByID[table.value.DatabaseID]
+		if !ok {
+			return nil, fmt.Errorf("%w: table %q has missing database", ErrCorrupt, table.value.ID)
+		}
+		parent.tables = append(parent.tables, table)
+		tableByID[table.value.ID] = table
+	}
+	for index := range columns {
+		column := columns[index]
+		parent, ok := tableByID[column.tableID]
+		if !ok {
+			return nil, fmt.Errorf("%w: column %q has missing table", ErrCorrupt, column.value.ID)
+		}
+		parent.columns = append(parent.columns, column)
+	}
+
+	sort.Slice(databases, func(left, right int) bool { return databases[left].order < databases[right].order })
+	result := make([]catalog.Database, 0, len(databases))
+	for _, database := range databases {
+		sort.Slice(database.tables, func(left, right int) bool { return database.tables[left].order < database.tables[right].order })
+		for _, table := range database.tables {
+			sort.Slice(table.columns, func(left, right int) bool { return table.columns[left].order < table.columns[right].order })
+			for _, column := range table.columns {
+				table.value.Columns = append(table.value.Columns, column.value)
+			}
+			database.value.Tables = append(database.value.Tables, table.value)
+		}
+		result = append(result, database.value)
+	}
+	return result, nil
+}
+
+type databaseRecord struct {
+	order  uint64
+	value  catalog.Database
+	tables []*tableRecord
+}
+
+type tableRecord struct {
+	order   uint64
+	value   catalog.Table
+	columns []columnRecord
+}
+
+type columnRecord struct {
+	order   uint64
+	tableID string
+	value   catalog.Column
+}
+
+func (repository *Repository) readDatabases() ([]databaseRecord, error) {
+	ids, err := repository.file.IDs(nativestore.ObjectKindDatabase)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]databaseRecord, 0, len(ids))
+	for _, id := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindDatabase, id)
+		if err != nil {
+			return nil, err
+		}
+		record, err := decodeDatabase(payload)
+		if err != nil || record.value.ID != id {
+			return nil, fmt.Errorf("%w: decode database %q", ErrCorrupt, id)
+		}
+		result = append(result, record)
+	}
+	return result, nil
+}
+
+func (repository *Repository) readTables() ([]tableRecord, error) {
+	ids, err := repository.file.IDs(nativestore.ObjectKindTable)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]tableRecord, 0, len(ids))
+	for _, id := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindTable, id)
+		if err != nil {
+			return nil, err
+		}
+		record, err := decodeTable(payload)
+		if err != nil || record.value.ID != id {
+			return nil, fmt.Errorf("%w: decode table %q", ErrCorrupt, id)
+		}
+		result = append(result, record)
+	}
+	return result, nil
+}
+
+func (repository *Repository) readColumns() ([]columnRecord, error) {
+	ids, err := repository.file.IDs(nativestore.ObjectKindColumn)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]columnRecord, 0, len(ids))
+	for _, id := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindColumn, id)
+		if err != nil {
+			return nil, err
+		}
+		record, err := decodeColumn(payload)
+		if err != nil || record.value.ID != id {
+			return nil, fmt.Errorf("%w: decode column %q", ErrCorrupt, id)
+		}
+		result = append(result, record)
+	}
+	return result, nil
+}
+
+func validateCatalog(databases []catalog.Database) error {
+	seen := make(map[string]struct{})
+	for _, database := range databases {
+		if err := validateIdentity(database.ID, database.Name, database.CreatedAt, database.UpdatedAt, seen); err != nil {
+			return err
+		}
+		for _, table := range database.Tables {
+			if table.DatabaseID != database.ID {
+				return fmt.Errorf("%w: table %q has wrong database", ErrInvalid, table.ID)
+			}
+			if err := validateIdentity(table.ID, table.Name, table.CreatedAt, table.UpdatedAt, seen); err != nil {
+				return err
+			}
+			for _, column := range table.Columns {
+				if err := validateIdentity(column.ID, column.Name, column.CreatedAt, column.UpdatedAt, seen); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func validateIdentity(id, name string, createdAt, updatedAt time.Time, seen map[string]struct{}) error {
+	if id == "" || name == "" || createdAt.IsZero() || updatedAt.IsZero() {
+		return fmt.Errorf("%w: ID, name, and timestamps are required", ErrInvalid)
+	}
+	if _, exists := seen[id]; exists {
+		return fmt.Errorf("%w: duplicate object ID %q", ErrInvalid, id)
+	}
+	seen[id] = struct{}{}
+	return nil
+}
+
+func encodeDatabase(value catalog.Database, order uint64) ([]byte, error) {
+	return encodeObject([]fieldValue{
+		{1, value.ID}, {2, order}, {3, value.Name}, {4, value.Aliases}, {5, value.Purpose},
+		{6, value.Scope}, {7, value.AntiScope}, {8, value.SchemaVersion},
+		{9, value.CreatedAt.UTC().UnixNano()}, {10, value.UpdatedAt.UTC().UnixNano()},
+	})
+}
+
+func encodeTable(value catalog.Table, order uint64) ([]byte, error) {
+	return encodeObject([]fieldValue{
+		{1, value.ID}, {2, order}, {3, value.DatabaseID}, {4, value.Name}, {5, value.Aliases},
+		{6, value.Purpose}, {7, value.Scope}, {8, value.AntiScope}, {9, value.RowSemantics},
+		{10, value.SchemaVersion}, {11, value.CreatedAt.UTC().UnixNano()}, {12, value.UpdatedAt.UTC().UnixNano()},
+	})
+}
+
+func encodeColumn(value catalog.Column, tableID string, order uint64) ([]byte, error) {
+	return encodeObject([]fieldValue{
+		{1, value.ID}, {2, order}, {3, tableID}, {4, value.Name}, {5, value.Aliases},
+		{6, value.Type}, {7, int64(value.MaxCharacters)}, {8, value.Nullable}, {9, value.Purpose},
+		{10, value.SchemaVersion}, {11, value.CreatedAt.UTC().UnixNano()}, {12, value.UpdatedAt.UTC().UnixNano()},
+	})
+}
+
+type fieldValue struct {
+	id    uint16
+	value any
+}
+
+func encodeObject(values []fieldValue) ([]byte, error) {
+	fields := make([]field, 0, len(values))
+	for _, value := range values {
+		var item field
+		var err error
+		switch typed := value.value.(type) {
+		case string:
+			item, err = text(value.id, typed)
+		case []string:
+			item, err = textList(value.id, typed)
+		case uint64:
+			item = uintValue(value.id, typed)
+		case int64:
+			item = intValue(value.id, typed)
+		case bool:
+			item = boolValue(value.id, typed)
+		default:
+			return nil, fmt.Errorf("%w: unsupported field %d", ErrInvalid, value.id)
+		}
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, item)
+	}
+	return encodeFields(fields...)
+}
+
+func decodeDatabase(payload []byte) (databaseRecord, error) {
+	fields, err := decodeFields(payload)
+	if err != nil {
+		return databaseRecord{}, err
+	}
+	id, e1 := fields.text(1)
+	order, e2 := fields.uint64(2)
+	name, e3 := fields.text(3)
+	aliases, e4 := fields.textList(4)
+	purpose, e5 := fields.text(5)
+	scope, e6 := fields.text(6)
+	anti, e7 := fields.text(7)
+	schema, e8 := fields.uint64(8)
+	created, e9 := fields.int64(9)
+	updated, e10 := fields.int64(10)
+	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10); err != nil {
+		return databaseRecord{}, err
+	}
+	return databaseRecord{order: order, value: catalog.Database{ID: id, Name: name, Aliases: aliases, Purpose: purpose, Scope: scope, AntiScope: anti, SchemaVersion: schema, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
+}
+
+func decodeTable(payload []byte) (tableRecord, error) {
+	fields, err := decodeFields(payload)
+	if err != nil {
+		return tableRecord{}, err
+	}
+	id, e1 := fields.text(1)
+	order, e2 := fields.uint64(2)
+	databaseID, e3 := fields.text(3)
+	name, e4 := fields.text(4)
+	aliases, e5 := fields.textList(5)
+	purpose, e6 := fields.text(6)
+	scope, e7 := fields.text(7)
+	anti, e8 := fields.text(8)
+	semantics, e9 := fields.text(9)
+	schema, e10 := fields.uint64(10)
+	created, e11 := fields.int64(11)
+	updated, e12 := fields.int64(12)
+	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12); err != nil {
+		return tableRecord{}, err
+	}
+	return tableRecord{order: order, value: catalog.Table{ID: id, DatabaseID: databaseID, Name: name, Aliases: aliases, Purpose: purpose, Scope: scope, AntiScope: anti, RowSemantics: semantics, SchemaVersion: schema, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
+}
+
+func decodeColumn(payload []byte) (columnRecord, error) {
+	fields, err := decodeFields(payload)
+	if err != nil {
+		return columnRecord{}, err
+	}
+	id, e1 := fields.text(1)
+	order, e2 := fields.uint64(2)
+	tableID, e3 := fields.text(3)
+	name, e4 := fields.text(4)
+	aliases, e5 := fields.textList(5)
+	kind, e6 := fields.text(6)
+	maxChars, e7 := fields.int64(7)
+	nullable, e8 := fields.bool(8)
+	purpose, e9 := fields.text(9)
+	schema, e10 := fields.uint64(10)
+	created, e11 := fields.int64(11)
+	updated, e12 := fields.int64(12)
+	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12); err != nil {
+		return columnRecord{}, err
+	}
+	if maxChars < 0 || maxChars > math.MaxInt {
+		return columnRecord{}, fmt.Errorf("%w: invalid max characters", ErrCorrupt)
+	}
+	return columnRecord{order: order, tableID: tableID, value: catalog.Column{ID: id, Name: name, Aliases: aliases, Type: kind, MaxCharacters: int(maxChars), Nullable: nullable, Purpose: purpose, SchemaVersion: schema, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
+}
+
+func firstError(errors ...error) error {
+	for _, err := range errors {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

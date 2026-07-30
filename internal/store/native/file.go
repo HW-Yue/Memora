@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+	"sort"
 	"unicode/utf8"
 )
 
@@ -40,7 +41,11 @@ const (
 type ObjectKind uint16
 
 const (
-	ObjectKindOpaque ObjectKind = 1
+	ObjectKindOpaque   ObjectKind = 1
+	ObjectKindDatabase ObjectKind = 2
+	ObjectKindTable    ObjectKind = 3
+	ObjectKindColumn   ObjectKind = 4
+	ObjectKindRow      ObjectKind = 5
 )
 
 type File struct {
@@ -205,6 +210,20 @@ func (f *File) Get(kind ObjectKind, id string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: payload CRC mismatch", ErrCorrupt)
 	}
 	return payload, nil
+}
+
+func (f *File) IDs(kind ObjectKind) ([]string, error) {
+	if f == nil || f.closed {
+		return nil, ErrClosed
+	}
+	ids := make([]string, 0)
+	for key := range f.records {
+		if key.kind == kind {
+			ids = append(ids, key.id)
+		}
+	}
+	sort.Strings(ids)
+	return ids, nil
 }
 
 func (f *File) Close() error {
