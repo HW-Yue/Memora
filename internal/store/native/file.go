@@ -41,13 +41,15 @@ const (
 type ObjectKind uint16
 
 const (
-	ObjectKindOpaque   ObjectKind = 1
-	ObjectKindDatabase ObjectKind = 2
-	ObjectKindTable    ObjectKind = 3
-	ObjectKindColumn   ObjectKind = 4
-	ObjectKindRow      ObjectKind = 5
-	ObjectKindHistory  ObjectKind = 6
-	ObjectKindRelation ObjectKind = 7
+	ObjectKindOpaque          ObjectKind = 1
+	ObjectKindDatabase        ObjectKind = 2
+	ObjectKindTable           ObjectKind = 3
+	ObjectKindColumn          ObjectKind = 4
+	ObjectKindRow             ObjectKind = 5
+	ObjectKindHistory         ObjectKind = 6
+	ObjectKindRelation        ObjectKind = 7
+	ObjectKindRoute           ObjectKind = 8
+	ObjectKindRouteMembership ObjectKind = 9
 )
 
 type File struct {

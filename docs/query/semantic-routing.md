@@ -1,6 +1,6 @@
 # Agent 语义目录索引（Router）
 
-状态：目标架构已确认；现有 F22 Database 级实现待迁移为 Table 级。
+状态：目标架构已确认；F61 已实现 Table 级原生物理闭环，MSQL/AI 主路切换待 F70。
 
 ## 定义
 

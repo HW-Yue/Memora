@@ -20,6 +20,7 @@ type Node struct {
 	Version    string   `json:"version"`
 	ID         string   `json:"route_id"`
 	DatabaseID string   `json:"database_id"`
+	TableID    string   `json:"table_id,omitempty"`
 	ParentID   string   `json:"parent_id,omitempty"`
 	Name       string   `json:"name"`
 	Aliases    []string `json:"aliases"`
@@ -38,7 +39,8 @@ type Locator struct {
 }
 
 type Membership struct {
-	LeafID string `json:"leaf_id"`
+	LeafID             string `json:"leaf_id"`
+	MembershipRevision uint64 `json:"membership_revision,omitempty"`
 	Locator
 }
 
