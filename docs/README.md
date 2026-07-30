@@ -90,6 +90,7 @@
 - [SQLite 兼容迁移边界](./storage/sqlite-compatibility-migration.md) — 旧 reader 隔离于独立工具，主程序拒绝静默回退。
 - [Tablespace、Page 与 Record 布局](./storage/tablespace-page-record-layout.md) — Data File、Extent、Page、混合字段和 Schema 演化。
 - [Page Codec v1](./storage/page-codec-v1.md) — F81 的 16 KiB Header、Page Type、CRC32C 与确定性编解码边界。
+- [Page File Manager v1](./storage/page-file-manager-v1.md) — F82 的 space manifest、Page 定位 I/O、连续分配与 reopen 边界。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
 - [Instance Format 升级与回滚 v1](./storage/instance-format-upgrade-v1.md) — F49 的兼容状态、v1→v2、完整性备份、迁移 journal 与 `doctor repair`。
@@ -108,6 +109,7 @@
 - [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
 - [小 Feature TDD 与合入协议](./planning/feature-tdd-protocol.md) — F81 以后单一结果、RED/GREEN/REFACTOR、故障矩阵和逐项合入规则。
 - [F81 Page Codec 开工与完成门](./planning/f81-page-codec-gate.md) — 单一结果、RED 清单、明确不做与完整测试门。
+- [F82 Page File Manager 开工与完成门](./planning/f82-page-file-manager-gate.md) — 单 space 文件 I/O 的 RED、故障矩阵与完成证据。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
