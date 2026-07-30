@@ -145,7 +145,7 @@ func (bundle Bundle) RenderCommandExamples() string {
 }
 
 func validateCommands(commands []string) []string {
-	want := map[string]bool{"doctor": false, "query": false, "exec": false}
+	want := map[string]bool{"doctor": false, "query": false, "exec": false, "mutate": false}
 	var violations []string
 	for _, command := range commands {
 		if _, ok := want[command]; !ok {

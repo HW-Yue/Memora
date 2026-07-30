@@ -1,6 +1,6 @@
 # 数据库 Mutation Agent
 
-状态：Skill 写入职责和协议候选；v0 由外部宿主 Agent 执行。
+状态：F31 已实现首个 Skill 写入协议；会话事件交接和语义冲突交互由后续 feature 完成。
 
 ## 目标
 
@@ -131,6 +131,7 @@ RELATE      只新增或修正关系
 
 ## 关联
 
+- [Skill 写入流程 v1](./skill-write-v1.md)
 - [AI 自主权与约束](./autonomy.md)
 - [数据库查询 Sub-agent](./database-query-subagent.md)
 - [AI-native 产品契约](../product/ai-native-contract.md)

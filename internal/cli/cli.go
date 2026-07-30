@@ -16,6 +16,8 @@ import (
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
+	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/skillwrite"
 )
 
 const (
@@ -35,6 +37,7 @@ Commands:
   exec       Execute MSQL through the local daemon
   help       Show this help
   init       Initialize a local instance
+  mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
   version    Show build version
@@ -62,10 +65,16 @@ func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
 }
 
 type Dependencies struct {
-	HomeDir   func() (string, error)
-	LookupEnv func(string) (string, bool)
-	Clock     instance.Clock
-	IDs       instance.IDSource
+	HomeDir     func() (string, error)
+	LookupEnv   func(string) (string, bool)
+	Clock       instance.Clock
+	IDs         instance.IDSource
+	ExecuteMSQL func(
+		context.Context,
+		string,
+		string,
+		[]executor.StatementInput,
+	) (result.Envelope, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -87,6 +96,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runExecute(args[0], args[1:], stdout, stderr, dependencies)
 	case "init":
 		return runInit(args[1:], stdout, stderr, dependencies)
+	case "mutate":
+		return runMutate(args[1:], stdout, stderr, dependencies)
 	case "parse":
 		return runParse(args[1:], stdout, stderr, dependencies)
 	case "version":
@@ -162,7 +173,11 @@ func runExecute(
 	if code != ExitOK {
 		return code
 	}
-	envelope, err := daemon.Execute(context.Background(), dataDir, source, statements)
+	execute := dependencies.ExecuteMSQL
+	if execute == nil {
+		execute = daemon.Execute
+	}
+	envelope, err := execute(context.Background(), dataDir, source, statements)
 	if err != nil {
 		return commandError(stderr, command+" MSQL", err)
 	}
@@ -170,6 +185,68 @@ func runExecute(
 		return writeFailure(stderr, err)
 	}
 	if !envelope.OK {
+		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runMutate(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var planJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--plan":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--plan requires a JSON object")
+			}
+			if planJSON != "" {
+				return usageError(stderr, "--plan may only be specified once")
+			}
+			planJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown mutate option: %q", args[index]))
+		}
+	}
+	if planJSON == "" {
+		return usageError(stderr, "mutate requires --plan JSON")
+	}
+	var plan skillwrite.Plan
+	decoder := json.NewDecoder(bytes.NewBufferString(planJSON))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&plan); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--plan must be one strict Mutation Plan JSON object")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	execute := dependencies.ExecuteMSQL
+	if execute == nil {
+		execute = daemon.Execute
+	}
+	tool := skillwrite.ToolFunc(func(ctx context.Context, call skillwrite.Call) (result.Envelope, error) {
+		return execute(ctx, dataDir, call.Request.Source, call.Request.Statements)
+	})
+	report, err := skillwrite.New(tool).Run(context.Background(), plan)
+	if err != nil {
+		return commandError(stderr, "execute Mutation Plan", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(report.Receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if report.Receipt.Status == skillwrite.ReceiptCommittedUnverified {
 		return ExitFailure
 	}
 	return ExitOK

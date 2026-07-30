@@ -9,7 +9,8 @@ Use this single source for stable host behavior. It targets `memora.msql.ast/v1`
 and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
-Only use the `memora doctor`, `memora query`, and `memora exec` interfaces.
+Only use the `memora doctor`, `memora query`, `memora exec`, and
+`memora mutate` interfaces.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -80,8 +81,18 @@ Use parameters, expected schema/revision, a maximum affected-row count, actor,
 source, reason, complete semantic index terms, and current route memberships.
 Keep transactions short and verify the returned revision and logical row.
 
+Build one `memora.mutation-plan/v1` object. Every decision includes at least one
+read-only preflight with explicit Row expectations. IGNORE has no steps. INSERT,
+REVISE, MOVE, and RELATE have one step; MERGE is one UPDATE plus DELETE steps;
+SPLIT is one UPDATE plus INSERT steps. Keep at most eight steps. Every INSERT or
+UPDATE supplies the complete deduplicated `index_terms` and `route_leaf_ids`
+snapshots, including explicit empty arrays. Submit the plan through `mutate` so
+Policy validation occurs before any Tool call and multi-step changes share one
+short transaction.
+
 ```sh
-memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"index_terms":["routing","locator"],"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"}}' "UPDATE work.notes SET summary = :summary WHERE _row_id = :row"
+memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"index_terms":["routing","locator"],"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
+memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decision":"IGNORE","database":"work","table":"notes","actor":"agent:host","source_event_id":"conversation:event-7","reason":"existing Row already captures it","authorized_databases":["work"],"preflight":[{"id":"duplicate-check","msql":"SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1","input":{"parameters":{"named":{"row":"row_01"}}},"expect_rows":1}],"steps":[],"verify":[]}'
 ```
 
 ## Assimilate sources

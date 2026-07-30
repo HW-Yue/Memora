@@ -2,6 +2,11 @@
 
 状态：F15e Executor 与 F16b batch transaction / Result Envelope 接线已实现。
 
+F31 起，Canonical Skill 的正式自主写入先通过版本化 Mutation Plan 和
+Policy，再由本 Executor 执行；直接 `exec` 仍是底层逻辑 MSQL 入口，不能
+替代写前发现、decision、完整语义快照和 verify。详见
+[Skill 写入流程 v1](../agent/skill-write-v1.md)。
+
 ## Request options
 
 MSQL source、parameter values 和 mutation guard 分字段提交：

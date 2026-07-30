@@ -9,6 +9,7 @@
 ```text
 memora exec  [--data-dir PATH] [--input JSON] "MSQL"
 memora query [--data-dir PATH] [--input JSON] "MSQL"
+memora mutate [--data-dir PATH] --plan 'MUTATION_PLAN_JSON'
 memora doctor [--data-dir PATH]
 ```
 
@@ -35,6 +36,12 @@ memora doctor [--data-dir PATH]
 ```
 
 未知 input 字段、缺少 MSQL source 或多余 source 都是 usage error。多 statement 且每条需要不同 input 的事务仍由长连接 IPC/宿主 API 提交，CLI v1 不把 JSON 数组再发明成另一种 batch 语言。
+
+`mutate` 是 F31 的宿主写入入口。它严格解码 `memora.mutation-plan/v1`，在
+任何 daemon 调用前执行 Skill Policy，并依次发出 preflight、一个 mutation
+batch 和 verify。MERGE/SPLIT 的不同 StatementInput 由 Plan 编译进同一显式
+事务，不改变 `exec --input` 的单 statement 边界。输出为
+`memora.mutation-receipt/v1`。
 
 ## 统一执行
 

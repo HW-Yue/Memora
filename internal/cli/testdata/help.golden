@@ -9,6 +9,7 @@ Commands:
   exec       Execute MSQL through the local daemon
   help       Show this help
   init       Initialize a local instance
+  mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
   version    Show build version

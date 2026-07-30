@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/msql/executor"
+	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/skillwrite"
 	"github.com/HW-Yue/Memora/internal/testkit"
 )
 
@@ -81,6 +86,18 @@ func TestRun(t *testing.T) {
 			wantCode:   2,
 			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, MATCH, or OPEN ROUTE\n",
 		},
+		{
+			name:       "mutate requires plan",
+			args:       []string{"mutate"},
+			wantCode:   2,
+			wantStderr: "memora: mutate requires --plan JSON\n",
+		},
+		{
+			name:       "mutate rejects unknown plan field",
+			args:       []string{"mutate", "--plan", `{"surprise":true}`},
+			wantCode:   2,
+			wantStderr: "memora: --plan must be one strict Mutation Plan JSON object\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -101,6 +118,64 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunMutateExecutesValidatedPlanAndPrintsReceipt(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	rows := 1
+	plan := skillwrite.Plan{
+		Version: skillwrite.PlanVersion, ID: "plan-cli", Decision: skillwrite.DecisionIgnore,
+		Database: "work", Table: "notes", Actor: "agent:test",
+		SourceEventID: "conversation:event-1", Reason: "duplicate",
+		AuthorizedDatabases: []string{"work"},
+		Preflight: []skillwrite.Check{{
+			ID: "existing", MSQL: "SELECT row_id FROM work.notes LIMIT 1", ExpectRows: &rows,
+		}},
+		Steps: []skillwrite.Step{}, Verify: []skillwrite.Check{},
+	}
+	encodedPlan, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invocations := 0
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(
+			_ context.Context,
+			gotDataDir, source string,
+			_ []executor.StatementInput,
+		) (result.Envelope, error) {
+			invocations++
+			if gotDataDir != dataDir || source != plan.Preflight[0].MSQL {
+				t.Fatalf("execute = %q, %q", gotDataDir, source)
+			}
+			statement := result.NewStatement(0, "SELECT", source)
+			statement.Rows = []result.Row{{"row_id": "row_one"}}
+			return result.NewEnvelope("plan-cli-existing", statement), nil
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := RunWithDependencies(
+		[]string{"mutate", "--data-dir", dataDir, "--plan", string(encodedPlan)},
+		&stdout,
+		&stderr,
+		BuildInfo{},
+		dependencies,
+	)
+	if code != ExitOK || stderr.Len() != 0 || invocations != 1 {
+		t.Fatalf("mutate code = %d, stderr = %q, invocations = %d", code, &stderr, invocations)
+	}
+	var receipt skillwrite.Receipt
+	if err := json.Unmarshal(stdout.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Status != skillwrite.ReceiptIgnored || !receipt.Verified || receipt.Ignored != 1 {
+		t.Fatalf("receipt = %#v", receipt)
 	}
 }
 

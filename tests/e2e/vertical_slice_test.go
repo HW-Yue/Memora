@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/skillwrite"
 )
 
 func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
@@ -98,18 +100,48 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		t.Fatalf("OPEN ROUTE envelope = %#v", routed)
 	}
 
-	updated := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
-		"--input", statementInput(map[string]any{
-			"row": rowID, "title": "atomic generation manifest",
-		}, map[string]any{
-			"expected_schema_version": 1, "expected_revision": 1,
-			"max_affected_rows": 1, "index_terms": []string{"atomic", "manifest"},
-			"route_leaf_ids": []string{leafID},
-			"actor":          "agent:e2e", "source": "e2e:update", "reason": "refine decision",
-		}),
-		"UPDATE work.notes SET title = :title WHERE row_id = :row")
-	if updated.Results[0].Revision == nil || *updated.Results[0].Revision != 2 {
-		t.Fatalf("UPDATE envelope = %#v", updated)
+	expectedRow := 1
+	mutationPlan := skillwrite.Plan{
+		Version: skillwrite.PlanVersion, ID: "e2e-revise", Decision: skillwrite.DecisionRevise,
+		Database: "work", Table: "notes", Actor: "agent:e2e",
+		SourceEventID: "e2e:update", Reason: "refine decision",
+		AuthorizedDatabases: []string{"work"},
+		Preflight: []skillwrite.Check{{
+			ID: "current", MSQL: "SELECT title, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1",
+			Input:      executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}},
+			ExpectRows: &expectedRow, RowContains: map[string]any{"title": "generation manifest"},
+		}},
+		Steps: []skillwrite.Step{{
+			ID: "revise", Kind: "UPDATE", Target: rowID,
+			MSQL: "UPDATE work.notes SET title = :title WHERE row_id = :row",
+			Input: executor.StatementInput{
+				Parameters: executor.Parameters{Named: map[string]any{
+					"row": rowID, "title": "atomic generation manifest",
+				}},
+				Mutation: executor.MutationOptions{
+					ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
+					IndexTerms: []string{"atomic", "manifest"}, RouteLeafIDs: []string{leafID},
+					Actor: "agent:e2e", Source: "e2e:update", Reason: "refine decision",
+				},
+			},
+		}},
+		Verify: []skillwrite.Check{{
+			ID: "updated", MSQL: "SELECT title, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1",
+			Input:      executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}},
+			ExpectRows: &expectedRow, RowContains: map[string]any{"title": "atomic generation manifest"},
+		}},
+	}
+	encodedPlan, err := json.Marshal(mutationPlan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mutationReceipt skillwrite.Receipt
+	e2eJSON(t, root, &mutationReceipt, binary,
+		"mutate", "--data-dir", dataDir, "--plan", string(encodedPlan))
+	if mutationReceipt.Status != skillwrite.ReceiptCommitted ||
+		!mutationReceipt.Verified || len(mutationReceipt.Changes) != 1 ||
+		mutationReceipt.Changes[0].Revision == nil || *mutationReceipt.Changes[0].Revision != 2 {
+		t.Fatalf("Mutation Receipt = %#v", mutationReceipt)
 	}
 	history := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"row": rowID}, nil),
