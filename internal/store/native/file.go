@@ -47,6 +47,7 @@ const (
 	ObjectKindColumn   ObjectKind = 4
 	ObjectKindRow      ObjectKind = 5
 	ObjectKindHistory  ObjectKind = 6
+	ObjectKindRelation ObjectKind = 7
 )
 
 type File struct {

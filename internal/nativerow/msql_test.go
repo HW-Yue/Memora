@@ -195,6 +195,114 @@ func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
 	}
 }
 
+func TestNativeRelationsMSQLTraverseBothDirectionsAfterReopen(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 30, 17, 0, 0, 0, time.UTC)
+	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{
+		IDs: &testIDs{values: []string{"database", "table", "title", "private", "private_table", "private_title"}}, Clock: testClock{value: now},
+	})
+	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{Name: "work", Purpose: "Work", Scope: "Projects"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{Name: "notes", Purpose: "Notes", RowSemantics: "One note", Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT(20)", Purpose: "Title"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{Name: "private", Purpose: "Private", Scope: "Personal"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dictionary.CreateTable(ctx, "private", catalog.TableDefinition{Name: "notes", Purpose: "Notes", RowSemantics: "One note", Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT(20)", Purpose: "Title"}}}); err != nil {
+		t.Fatal(err)
+	}
+	rows := NewService(New(file), dictionary, ServiceOptions{IDs: &testIDs{values: []string{"source", "target", "foreign", "edge"}}, Clock: testClock{value: now}})
+	for _, title := range []string{"source", "target"} {
+		if _, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": title}, row.WriteOptions{ExpectedSchemaVersion: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := rows.Insert(ctx, "private", "notes", map[string]any{"title": "foreign"}, row.WriteOptions{ExpectedSchemaVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rows.Relate(ctx, row.RelationDefinition{
+		Source: row.RelationEndpoint{Database: "work", Table: "notes", RowID: "row_source"},
+		Type:   "crosses", Target: row.RelationEndpoint{Database: "private", Table: "notes", RowID: "row_foreign"},
+	}); err == nil {
+		t.Fatal("cross-database relation unexpectedly succeeded")
+	}
+	engine := executor.New(dictionary, rows)
+	created := executeMSQL(t, ctx, engine,
+		"RELATE work.notes ROW :source TO work.notes ROW :target TYPE :type DESCRIPTION :description",
+		executor.Parameters{Named: map[string]any{"source": "row_source", "target": "row_target", "type": "depends_on", "description": "semantic edge"}},
+		executor.MutationOptions{MaxAffectedRows: 1},
+	)
+	if created.Revision == nil || *created.Revision != 1 {
+		t.Fatalf("RELATE output = %#v", created)
+	}
+	if _, err := runMSQL(ctx, engine,
+		"RELATE work.notes ROW 'row_source' TO work.notes ROW 'row_target' TYPE 'depends_on'",
+		executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1}); err == nil {
+		t.Fatal("duplicate RELATE unexpectedly succeeded")
+	}
+	if _, err := runMSQL(ctx, engine,
+		"RELATE work.notes ROW 'row_missing' TO work.notes ROW 'row_target' TYPE 'depends_on'",
+		executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1}); err == nil {
+		t.Fatal("dangling RELATE unexpectedly succeeded")
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := nativestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dictionary = nativecatalog.NewService(nativecatalog.New(reopened), nativecatalog.ServiceOptions{})
+	rows = NewService(New(reopened), dictionary, ServiceOptions{})
+	engine = executor.New(dictionary, rows)
+	outgoing := executeMSQL(t, ctx, engine,
+		"SHOW RELATIONS FROM work.notes FOR ROW 'row_source' DIRECTION OUTGOING LIMIT 10",
+		executor.Parameters{}, executor.MutationOptions{},
+	)
+	incoming := executeMSQL(t, ctx, engine,
+		"SHOW RELATIONS FROM work.notes FOR ROW 'row_target' DIRECTION INCOMING LIMIT 10",
+		executor.Parameters{}, executor.MutationOptions{},
+	)
+	if len(outgoing.Rows) != 1 || len(incoming.Rows) != 1 || outgoing.Rows[0]["relation_id"] != incoming.Rows[0]["relation_id"] {
+		t.Fatalf("relation directions = outgoing %#v, incoming %#v", outgoing.Rows, incoming.Rows)
+	}
+	relationID := outgoing.Rows[0]["relation_id"].(string)
+	deleted := executeMSQL(t, ctx, engine, "UNRELATE :relation_id",
+		executor.Parameters{Named: map[string]any{"relation_id": relationID}},
+		executor.MutationOptions{ExpectedRevision: 1, MaxAffectedRows: 1},
+	)
+	if deleted.Revision == nil || *deleted.Revision != 2 {
+		t.Fatalf("UNRELATE output = %#v", deleted)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err = nativestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	dictionary = nativecatalog.NewService(nativecatalog.New(reopened), nativecatalog.ServiceOptions{})
+	rows = NewService(New(reopened), dictionary, ServiceOptions{})
+	afterDelete := executeMSQL(t, ctx, executor.New(dictionary, rows),
+		"SHOW RELATIONS FROM work.notes FOR ROW 'row_source' DIRECTION OUTGOING LIMIT 10",
+		executor.Parameters{}, executor.MutationOptions{},
+	)
+	if len(afterDelete.Rows) != 0 {
+		t.Fatalf("relations after reopen = %#v", afterDelete.Rows)
+	}
+}
+
 func executeMSQL(t *testing.T, ctx context.Context, engine *executor.Engine, source string, parameters executor.Parameters, options executor.MutationOptions) executor.Output {
 	t.Helper()
 	output, err := runMSQL(ctx, engine, source, parameters, options)

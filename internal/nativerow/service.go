@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
@@ -268,20 +269,90 @@ func (service *Service) HistoryPage(ctx context.Context, databaseName, tableName
 func (service *Service) Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error) {
 	return row.Row{}, ErrUnsupported
 }
-func (service *Service) Relate(context.Context, row.RelationDefinition) (relation.Relation, error) {
-	return relation.Relation{}, ErrUnsupported
+func (service *Service) Relate(ctx context.Context, definition row.RelationDefinition) (relation.Relation, error) {
+	source, err := service.relationEndpoint(ctx, definition.Source)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	target, err := service.relationEndpoint(ctx, definition.Target)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	if source.DatabaseID != target.DatabaseID {
+		return relation.Relation{}, serviceFailure(result.CodeConstraint, "cross-database relation requires an explicit policy", nil)
+	}
+	if !utf8.ValidString(definition.Type) || len([]rune(definition.Type)) < 1 || len([]rune(definition.Type)) > 128 || !utf8.ValidString(definition.Description) || len([]rune(definition.Description)) > 1200 {
+		return relation.Relation{}, serviceFailure(result.CodeConstraint, "relation type or description exceeds its semantic budget", nil)
+	}
+	existing, err := service.repository.ListRelations(source, true)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	for _, value := range existing {
+		if value.Type == definition.Type && value.Target == target {
+			return relation.Relation{}, serviceFailure(result.CodeAlreadyExists, "relation already exists", nil)
+		}
+	}
+	id, err := service.ids.Next()
+	if err != nil || strings.TrimSpace(id) == "" {
+		return relation.Relation{}, fmt.Errorf("allocate relation ID: %w", err)
+	}
+	now := service.clock.Now().UTC()
+	created := relation.Relation{Version: relation.Version, ID: "rel_" + id, Source: source, Type: definition.Type, Target: target, Description: definition.Description, Revision: 1, State: relation.StateLive, CreatedAt: now, UpdatedAt: now}
+	if err := service.repository.PutRelation(created); err != nil {
+		return relation.Relation{}, err
+	}
+	return created, nil
 }
-func (service *Service) GetRelation(context.Context, string) (relation.Relation, error) {
-	return relation.Relation{}, ErrUnsupported
+func (service *Service) GetRelation(_ context.Context, id string) (relation.Relation, error) {
+	value, err := service.repository.GetRelation(id, false)
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return relation.Relation{}, serviceFailure(result.CodeNotFound, "relation was not found", err)
+	}
+	return value, err
 }
-func (service *Service) DeleteRelation(context.Context, string, uint64) (relation.Relation, error) {
-	return relation.Relation{}, ErrUnsupported
+func (service *Service) DeleteRelation(_ context.Context, id string, expected uint64) (relation.Relation, error) {
+	current, err := service.repository.GetRelation(id, false)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	if current.Revision != expected {
+		return relation.Relation{}, serviceFailure(result.CodeRevisionConflict, "relation revision conflicts with latest", ErrRevisionConflict)
+	}
+	deleted := current
+	deleted.Revision++
+	deleted.State = relation.StateDeleted
+	deleted.UpdatedAt = service.clock.Now().UTC()
+	if err := service.repository.PutRelation(deleted); err != nil {
+		return relation.Relation{}, err
+	}
+	return deleted, nil
 }
-func (service *Service) ListOutgoingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error) {
-	return nil, ErrUnsupported
+func (service *Service) ListOutgoingRelations(ctx context.Context, endpoint row.RelationEndpoint) ([]relation.Relation, error) {
+	resolved, err := service.relationEndpoint(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return service.repository.ListRelations(resolved, true)
 }
-func (service *Service) ListIncomingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error) {
-	return nil, ErrUnsupported
+func (service *Service) ListIncomingRelations(ctx context.Context, endpoint row.RelationEndpoint) ([]relation.Relation, error) {
+	resolved, err := service.relationEndpoint(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return service.repository.ListRelations(resolved, false)
+}
+
+func (service *Service) relationEndpoint(ctx context.Context, endpoint row.RelationEndpoint) (relation.Endpoint, error) {
+	table, err := service.catalog.DescribeTable(ctx, endpoint.Database, endpoint.Table)
+	if err != nil {
+		return relation.Endpoint{}, err
+	}
+	value, err := service.repository.Read(endpoint.RowID)
+	if err != nil || value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
+		return relation.Endpoint{}, serviceFailure(result.CodeNotFound, "relation endpoint Row was not found", err)
+	}
+	return relation.Endpoint{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID}, nil
 }
 func (service *Service) Match(context.Context, string, string, string, []string, int) (search.Result, error) {
 	return search.Result{}, ErrUnsupported
