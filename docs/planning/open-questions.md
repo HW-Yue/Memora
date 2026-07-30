@@ -37,7 +37,6 @@
 10. 第一版只提供 CLI+Skill，还是同时提供很薄的 MCP adapter？
 11. MSQL v0 的正式 EBNF 和首批语句边界是什么？
 12. SHOW/DESCRIBE/ROUTE、MATCH、历史和关系遍历在统一 envelope 中的字段是什么？
-15. Skill 的语义冲突展示 envelope 和用户指令怎样稳定转换为下一次 SQL 修改计划？
 16. 多 Database 增长时根目录怎样保持短小且不漏掉冷库？
 16.1 Router 内部 fan-out、叶子 ID 容量、最大深度、beam width、子树/整库重建阈值、generation 验收和语义 split/merge 协议是什么？
 

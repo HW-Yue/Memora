@@ -43,6 +43,7 @@
 - [Skill 写入流程 v1](./agent/skill-write-v1.md) — F31 的七种语义决策、Mutation Plan、Policy、短事务和紧凑收据。
 - [Skill Schema 生命周期 v1](./agent/skill-schema-lifecycle-v1.md) — F32 的同义 Schema 复用、受限 DDL、影响预览和补偿回滚。
 - [Conversation Delta 交接 v1](./agent/conversation-delta-v1.md) — F33 的显式事件、幂等去重、checkpoint 和缺失上下文处理。
+- [Skill 语义冲突交互 v1](./agent/skill-conflict-v1.md) — F34 的并列来源/revision 差异、用户决议和 Mutation Plan 绑定。
 - [可选内置 Agent Runtime](./agent/embedded-agent-runtime.md) — v0 后候选；第一版由 Codex/Claude Code 按 Skill 调用统一 MSQL 核心。
 - [索引发现 Sub-agent](./agent/index-discovery-subagent.md) — 逐层导航并融合倒排，只返回数据项定位，主 Agent 再用 SQL 取数。
 - [数据库查询 Sub-agent](./agent/database-query-subagent.md) — 旧首选方案；保留为宿主侧兼容方式。

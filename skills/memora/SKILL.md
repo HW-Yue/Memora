@@ -149,12 +149,25 @@ memora reflect --event '{"version":"memora.conversation-event/v1","event_id":"ch
 
 ## Request the user
 
-Ask the user before any semantic-conflict mutation. Present both relevant rows,
-their source anchors, revisions, and the smallest useful diff; offer keep,
-revise, merge, split, move, or delete choices. Do not create a database-level
-candidate/disputed state and do not silently pick a winner. Also ask before
-irreversible, privacy-reducing, permission-expanding, or broadly destructive
-operations.
+Ask the user before any semantic-conflict mutation. Build a temporary
+`memora.semantic-conflict/v1` view from one proposal and 1–10 revision-matched
+SELECT rows. Show each alternative side by side with actor, source event,
+reason, Row ID, revision, and a field-sorted proposal/existing diff. Distinguish
+a missing field from a present NULL. The view contains no MSQL or Mutation Plan
+and is never stored as a Row, History entry, checkpoint, or event-journal body.
+
+Wait for an explicit user instruction, then create a new
+`memora.conflict-resolution/v1` with a new source event. Map `RETAIN` to an
+IGNORE Plan, `REWRITE` to a REVISE Plan for the displayed Row/revision, and
+`REMOVE` to a MERGE Plan that updates one displayed survivor and logically
+deletes only the selected displayed Rows. Bind Database/Table, actor, reason,
+authorization, step targets, and expected revisions to the conflict view. Run
+the resulting Plan through normal Policy and `reflect`/`mutate`; refresh the
+view on a revision conflict. Never expand permission, modify an unshown Row,
+create a database-level candidate/disputed state, or silently pick a winner.
+
+Also ask before irreversible, privacy-reducing, permission-expanding, or broadly
+destructive operations.
 
 ## Return a receipt
 

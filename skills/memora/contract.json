@@ -3,6 +3,8 @@
   "source": "SKILL.md",
   "msql_ast_version": "memora.msql.ast/v1",
   "result_version": "memora.result/v1",
+  "conflict_view_version": "memora.semantic-conflict/v1",
+  "conflict_resolution_version": "memora.conflict-resolution/v1",
   "allowed_commands": [
     "doctor",
     "query",
@@ -19,6 +21,7 @@
     "summarize",
     "write",
     "assimilate",
+    "conflict",
     "request_user",
     "receipt",
     "reflect"

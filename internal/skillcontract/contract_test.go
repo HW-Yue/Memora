@@ -10,6 +10,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/skillconflict"
 	"github.com/HW-Yue/Memora/internal/skillcontract"
 )
 
@@ -28,6 +29,12 @@ func TestCanonicalSkillContract(t *testing.T) {
 	}
 	if got, want := bundle.Contract.ResultVersion, result.Version; got != want {
 		t.Fatalf("result version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.ConflictViewVersion, skillconflict.ViewVersion; got != want {
+		t.Fatalf("conflict view version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.ConflictResolutionVersion, skillconflict.ResolutionVersion; got != want {
+		t.Fatalf("conflict resolution version = %q, want %q", got, want)
 	}
 
 	for _, example := range bundle.Contract.Examples {
@@ -83,6 +90,14 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 	for _, token := range []string{"sqlite3 ", "prototype.sqlite", "/databases/", ".wal"} {
 		if strings.Contains(bundle.Markdown, token) {
 			t.Errorf("canonical Skill contains forbidden physical access token %q", token)
+		}
+	}
+	for _, required := range []string{
+		"memora.semantic-conflict/v1", "memora.conflict-resolution/v1",
+		"RETAIN", "REWRITE", "REMOVE",
+	} {
+		if !strings.Contains(bundle.Markdown, required) {
+			t.Errorf("canonical Skill omits conflict protocol token %q", required)
 		}
 	}
 }

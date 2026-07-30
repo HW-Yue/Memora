@@ -1,6 +1,6 @@
 # Canonical Skill v1
 
-状态：F28 已冻结首个宿主行为契约；后续查询、写入和适配能力在此基础上扩展。
+状态：F28 已冻结基础宿主契约；F30–F34 已扩展查询、写入、Schema、会话与语义冲突流程。
 
 ## 唯一来源
 
@@ -13,7 +13,8 @@
 - `memora.skill/v1`；
 - `memora.msql.ast/v1`；
 - `memora.result/v1`；
-- `memora doctor/query/exec` 三个逻辑入口。
+- `memora.semantic-conflict/v1` 和 `memora.conflict-resolution/v1`；
+- `memora doctor/query/exec/mutate/schema/reflect` 六个逻辑入口。
 
 每次 CI 都解析契约中的 MSQL 示例，并校验 Skill 中出现的是同一组命令。
 版本或语法变化必须显式更新契约和 golden，不能让宿主提示静默漂移。
@@ -35,6 +36,8 @@ IGNORE、INSERT、REVISE、MERGE、SPLIT、MOVE 或 RELATE。
 
 资料只由宿主临时读取；覆盖、复核未完成时不得报告吸收成功。语义冲突只
 展示双方来源、revision 和差异，必须等用户决定后才生成 mutation。
+冲突 View 不持久化也不包含 SQL；用户决议通过新 event 绑定已展示
+Row/revision，再转换为 IGNORE、REVISE 或 MERGE Plan。
 
 ## 安全与上下文预算
 
@@ -55,3 +58,4 @@ Skill 禁止读取或修改物理数据库、索引、日志、Page 和 Instance
 - [AI-native 产品契约](../product/ai-native-contract.md)
 - [AI 自主权与约束](./autonomy.md)
 - [上下文生命周期](../query/context-lifecycle.md)
+- [Skill 语义冲突交互 v1](./skill-conflict-v1.md)
