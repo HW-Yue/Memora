@@ -20,15 +20,19 @@
 - daemon 串行发布写事务，第一阶段不支持多个物理 writer 并行提交；
 - autocommit 语句在开始时固定 committed snapshot；
 - 显式事务固定开始时的 snapshot，并读取自己的暂存写；
+- 写入前取得 Row、Table/Schema、Route 等明确对象的排他写锁；
+- autocommit 在语句终态释放锁，显式事务在 commit/rollback 后释放；
+- 多对象写按稳定 key 排序并使用非等待 try-lock，冲突立即失败；
 - Row revision 先写入事务缓冲，只有完整 COMMIT 后进入 Row Directory；
 - reader 依据 snapshot commit sequence 选择可见 immutable revision；
 - rollback 丢弃未发布记录，不需要用物理 Undo 恢复 in-place Page；
 - expected revision 继续处理 Agent 的陈旧语义写；
 - AI 推理在事务外完成，提交保持短小。
 
-这个模型提供接近 `READ COMMITTED` autocommit 与 repeatable snapshot transaction
-的必要行为，但第一 Feature 不开放隔离级别矩阵，也不承诺锁定读、gap lock、
-next-key lock 或死锁检测。
+普通 reader 依靠 MVCC，不取得写锁，也不被未提交 writer 阻塞。这个模型提供接近
+`READ COMMITTED` autocommit 与 repeatable snapshot transaction 的必要行为，
+但第一 Feature 不开放隔离级别矩阵，也不承诺 `SELECT ... FOR UPDATE`、
+gap/next-key lock、范围锁、锁等待或死锁检测。
 
 ## Undo Log、Redo Log 与历史
 
@@ -53,7 +57,7 @@ Review，详见 [Binlog 与多设备同步基础](./binlog-and-sync.md)。
 ## 未决问题
 
 - 是否以及何时增加可配置隔离级别？
-- gap/next-key lock 的内部结构与死锁检测策略；
+- 是否有真实需求增加锁等待、范围锁或死锁检测；
 - 使用 in-place + Redo Log、Copy-on-Write，还是混合结构？
 - Undo record 的字段级 before image、roll pointer 和 segment/page 编码；
 - 多 CLI 进程的 commit sequence 和锁如何协调？

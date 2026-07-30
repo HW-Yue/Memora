@@ -38,7 +38,7 @@ Schema 解析会重组全部 Catalog，逻辑 RowID 到最新可见 revision 也
 第一阶段不复制：
 
 - InnoDB Page、聚簇 B+ Tree 和多级 Buffer Pool；
-- 多 writer 锁调度、gap/next-key lock、死锁检测和锁升级；
+- 锁等待队列、gap/next-key lock、范围锁、死锁检测和锁升级；
 - doublewrite、change buffer、adaptive hash 与 Group Commit；
 - 为尚未出现的范围查询规模预建复杂优化器。
 
@@ -87,6 +87,10 @@ exact row_id plan
 - 一个 daemon 串行发布写事务；
 - autocommit 语句在开始时捕获 committed sequence；
 - 显式事务在开始时固定 snapshot，并可读取自己的 staged writes；
+- 写 Row、Table/Schema、Route 或 membership 前取得对应稳定 ID 的排他写锁；
+- autocommit 持锁到语句终态，显式事务持锁到 commit/rollback；
+- Mutation Plan 将全部 lock key 排序后执行非等待 try-lock；
+- 锁冲突立即返回版本化的稳定 lock-conflict 错误，不建立等待队列或死锁环；
 - reader 只读到 snapshot 已提交的完整 revision；
 - expected revision 继续阻止 Agent 覆盖陈旧版本；
 - rollback 丢弃 staged writes；History 仍是永久语义历史，不充当 MVCC Undo。
@@ -98,6 +102,8 @@ exact row_id plan
 - 新 autocommit reader 看到最新 commit；
 - 显式事务 read-own-writes，rollback 后其他 reader 永远看不到该写；
 - 同一 Row 的陈旧 expected revision 返回稳定冲突；
+- 同一对象的并发写只能有一个成功取得写锁，不同对象不互相误锁；
+- 多对象 Mutation 不会留下部分锁或部分发布状态；
 - race test 与故障注入通过。
 
 ## 后续升级触发器

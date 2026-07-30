@@ -167,12 +167,16 @@ F58 删除 SQLite → F59 Table Router → F60 产品门；详见
 102. 精确 RowID 第一阶段使用 daemon 重开时可重建的内存 Row Directory：
 `row_id → latest committed revision → offset`，目标平均 O(1) 点查；当前
 Repository 遍历全部 Row record ID 的实现只是待替换过渡层。
-103. 本地个人数据库按单 writer、少量 reader 设计；B+ Tree、Page latch、
-gap/next-key lock、死锁检测、doublewrite 和复杂后台线程只有实测需要才增加。
+103. 本地个人数据库按单 writer、少量 reader 设计；需要精确对象排他写锁，但
+B+ Tree、Page latch、gap/next-key lock、范围锁、锁等待、死锁检测、doublewrite
+和复杂后台线程只有实测需要才增加。
 104. MVCC 作为正确性能力保留，但首版用 immutable revision、commit marker 和
 snapshot commit sequence 实现最小可见性，不预先绑定物理 Undo/Redo 方案。
 105. RowID 点查前的 Database/Table/Schema 解析也不能每次重读完整 Catalog；
 daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原子发布。
+106. 第一阶段写锁按稳定对象 ID 加锁，多对象 Mutation 按 key 排序并 fail-fast
+try-lock；autocommit 持有到语句终态，显式事务持有到 commit/rollback。普通
+MVCC reader 不取该锁。
 
 ## 尚需验证
 
