@@ -32,6 +32,16 @@ func TestBuildAddsOnlyClaudeHostMetadataToCanonicalSkill(t *testing.T) {
 	if claudeadapter.CanonicalBody(generated) != claudeadapter.CanonicalBody(string(canonical)) {
 		t.Fatal("Claude adapter changed canonical Skill instructions")
 	}
+	for _, path := range []string{
+		".claude/skills/memora/LICENSE",
+		".claude/skills/memora/COMMERCIAL-LICENSE.md",
+	} {
+		content := string(bundle.Files[path].Content)
+		if !strings.Contains(content, "Commercial use requires a separate paid commercial license") &&
+			!strings.Contains(content, "Any commercial use requires a separate written, paid commercial") {
+			t.Errorf("Claude bundle legal file %q omits the commercial-use boundary", path)
+		}
+	}
 }
 
 func TestCheckedInClaudeAdapterMatchesDeterministicGenerator(t *testing.T) {

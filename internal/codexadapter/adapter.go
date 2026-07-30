@@ -54,12 +54,18 @@ func Build(canonicalDirectory string) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read canonical bootstrap: %w", err)
 	}
+	license, commercialLicense, err := readRepositoryLicenses(canonicalDirectory)
+	if err != nil {
+		return Bundle{}, fmt.Errorf("build Codex adapter: %w", err)
+	}
 	files := map[string]File{
-		".agents/skills/memora/SKILL.md":           {Content: skill, Mode: 0o644},
-		".agents/skills/memora/contract.json":      {Content: contract, Mode: 0o644},
-		".agents/skills/memora/scripts/install.sh": {Content: installer, Mode: 0o755},
-		".agents/skills/memora/agents/openai.yaml": {Content: []byte(openAIMetadata), Mode: 0o644},
-		".codex/rules/memora.rules":                {Content: []byte(commandRules), Mode: 0o644},
+		".agents/skills/memora/COMMERCIAL-LICENSE.md": {Content: commercialLicense, Mode: 0o644},
+		".agents/skills/memora/LICENSE":               {Content: license, Mode: 0o644},
+		".agents/skills/memora/SKILL.md":              {Content: skill, Mode: 0o644},
+		".agents/skills/memora/contract.json":         {Content: contract, Mode: 0o644},
+		".agents/skills/memora/scripts/install.sh":    {Content: installer, Mode: 0o755},
+		".agents/skills/memora/agents/openai.yaml":    {Content: []byte(openAIMetadata), Mode: 0o644},
+		".codex/rules/memora.rules":                   {Content: []byte(commandRules), Mode: 0o644},
 	}
 	manifest := Manifest{Version: Version, CanonicalDigest: digest(skill), ProtocolDigest: digest(contract), Files: manifestFiles(files)}
 	encoded, err := json.MarshalIndent(manifest, "", "  ")
@@ -68,6 +74,19 @@ func Build(canonicalDirectory string) (Bundle, error) {
 	}
 	files["manifest.json"] = File{Content: append(encoded, '\n'), Mode: 0o644}
 	return Bundle{Files: files, Manifest: manifest}, nil
+}
+
+func readRepositoryLicenses(canonicalDirectory string) ([]byte, []byte, error) {
+	root := filepath.Clean(filepath.Join(canonicalDirectory, "..", ".."))
+	license, err := os.ReadFile(filepath.Join(root, "LICENSE"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read repository license: %w", err)
+	}
+	commercialLicense, err := os.ReadFile(filepath.Join(root, "COMMERCIAL-LICENSE.md"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read commercial license notice: %w", err)
+	}
+	return license, commercialLicense, nil
 }
 
 func (bundle Bundle) Install(root string) error {

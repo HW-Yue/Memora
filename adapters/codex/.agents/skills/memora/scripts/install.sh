@@ -74,10 +74,12 @@ else
     [ -n "$expected" ] || fail "release checksum manifest does not contain $asset"
     actual=$(shasum -a 256 "$archive" | awk '{ print $1 }')
     [ "$actual" = "$expected" ] || fail "checksum verification failed for $asset"
-    listing=$(tar -tzf "$archive")
-    [ "$listing" = "memora" ] || fail "release archive has an unexpected layout"
+    listing=$(tar -tzf "$archive" | LC_ALL=C sort)
+    expected_listing=$(printf 'COMMERCIAL-LICENSE.md\nLICENSE\nREADME.md\nmemora')
+    [ "$listing" = "$expected_listing" ] || fail "release archive has an unexpected layout"
     tar -xzf "$archive" -C "$work_dir" memora
-    [ -f "$staged" ] && [ -x "$staged" ] || fail "release archive does not contain an executable memora"
+    [ ! -L "$staged" ] && [ -f "$staged" ] && [ -x "$staged" ] ||
+      fail "release archive does not contain a regular executable memora"
   else
     command -v go >/dev/null 2>&1 || fail "release unavailable and Go is not installed; reconnect or install Go and retry"
     if [ -n "$source_dir" ]; then
@@ -94,7 +96,14 @@ else
     chmod 755 "$staged"
   fi
 
-  staged_version=$($staged version --json 2>/dev/null || true)
+  staged_error="$work_dir/staged-version.stderr"
+  if ! staged_version=$("$staged" version --json 2>"$staged_error"); then
+    if command -v spctl >/dev/null 2>&1 &&
+       ! spctl --assess --type execute "$staged" >/dev/null 2>&1; then
+      fail "macOS Gatekeeper blocked the verified Memora binary; allow it in System Settings > Privacy & Security, then retry"
+    fi
+    fail "staged binary could not run; verify macOS compatibility and retry"
+  fi
   printf '%s' "$staged_version" | grep -F '"version":"'"$version"'"' >/dev/null 2>&1 || fail "staged binary version does not match $version"
   chmod 755 "$staged"
   mv -f "$staged" "$target"

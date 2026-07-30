@@ -280,6 +280,14 @@ current revisions plus complete index and Route snapshots. If a confirmation is
 in doubt, inspect logical Row History before recovery; never blindly replay it.
 Only a verified `memora.feedback-confirmation-receipt/v1` establishes success.
 
+## License
+
+Memora is free for uses allowed by the
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0).
+Commercial use requires a separate written, paid commercial license.
+
+Required Notice: Copyright 2026 HW-Yue. Commercial use requires a separate paid commercial license from the copyright holder. Commercial licensing inquiries: https://github.com/HW-Yue/Memora
+
 ## Return a receipt
 
 After a mutation, return a receipt under 2,000 characters with the logical

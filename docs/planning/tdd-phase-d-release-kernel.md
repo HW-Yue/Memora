@@ -26,7 +26,7 @@
 
 提交：`feat(F46): enforce local privacy boundaries`
 
-## F47 macOS Release 制品
+## F47 macOS Release 制品（已完成）
 
 先测：arm64/amd64 二进制在干净 VM 启动；版本可追踪；checksum、损坏下载和 Gatekeeper 提示可诊断。
 

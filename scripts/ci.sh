@@ -47,10 +47,10 @@ run_stage() {
     cross-build)
       cross_build_dir=$(mktemp -d)
       trap 'rm -rf -- "$cross_build_dir"' EXIT
-      CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$go_command" test -c \
-        -o "$cross_build_dir/store-arm64.test" ./internal/store/sqlite
-      CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 "$go_command" test -c \
-        -o "$cross_build_dir/store-amd64.test" ./internal/store/sqlite
+      CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$go_command" build -trimpath \
+        -o "$cross_build_dir/memora-arm64" ./cmd/memora
+      CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 "$go_command" build -trimpath \
+        -o "$cross_build_dir/memora-amd64" ./cmd/memora
       ;;
     *)
       printf 'ci: unknown stage %q\n' "$stage" >&2

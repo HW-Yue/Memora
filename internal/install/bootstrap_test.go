@@ -88,6 +88,24 @@ func TestBootstrapRejectsChecksumFailureWithoutReplacingOldBinary(t *testing.T) 
 	}
 }
 
+func TestBootstrapDiagnosesGatekeeperBlockWithoutReplacingOldBinary(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	fixture.releaseContent("0.1.0", "#!/bin/sh\nexit 126\n", false)
+	old := fakeMemora("0.0.9")
+	writeExecutable(t, fixture.binary, old)
+	result := fixture.run("--yes")
+	if result.code == 0 || !strings.Contains(result.stderr, "macOS Gatekeeper blocked") ||
+		!strings.Contains(result.stderr, "Privacy & Security") {
+		t.Fatalf("Gatekeeper failure code=%d stderr=%q", result.code, result.stderr)
+	}
+	got, err := os.ReadFile(fixture.binary)
+	if err != nil || string(got) != old {
+		t.Fatalf("Gatekeeper failure replaced old binary: %v", err)
+	}
+}
+
 func TestBootstrapFallsBackToGoOnlyWhenReleaseUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -173,12 +191,17 @@ mkdir -p "${out%/*}"
 cp "$FAKE_SOURCE_BINARY" "$out"
 chmod 755 "$out"
 `)
+	writeExecutable(t, filepath.Join(value.tools, "spctl"), "#!/bin/sh\nexit 1\n")
 	value.sourceBinary = filepath.Join(root, "source-memora")
 	writeExecutable(t, value.sourceBinary, fakeMemora("0.1.0"))
 	return value
 }
 
 func (fixture *fixture) release(version string, badChecksum bool) {
+	fixture.releaseContent(version, fakeMemora(version), badChecksum)
+}
+
+func (fixture *fixture) releaseContent(version, binary string, badChecksum bool) {
 	fixture.t.Helper()
 	asset := "memora_" + version + "_darwin_arm64.tar.gz"
 	archive := filepath.Join(fixture.releaseDir, asset)
@@ -188,12 +211,25 @@ func (fixture *fixture) release(version string, badChecksum bool) {
 	}
 	gzipWriter := gzip.NewWriter(file)
 	tarWriter := tar.NewWriter(gzipWriter)
-	content := []byte(fakeMemora(version))
-	if err := tarWriter.WriteHeader(&tar.Header{Name: "memora", Mode: 0o755, Size: int64(len(content))}); err != nil {
-		fixture.t.Fatal(err)
-	}
-	if _, err := tarWriter.Write(content); err != nil {
-		fixture.t.Fatal(err)
+	for _, entry := range []struct {
+		name    string
+		mode    int64
+		content string
+	}{
+		{name: "memora", mode: 0o755, content: binary},
+		{name: "LICENSE", mode: 0o644, content: "Fixture license\n"},
+		{name: "COMMERCIAL-LICENSE.md", mode: 0o644, content: "Fixture commercial terms\n"},
+		{name: "README.md", mode: 0o644, content: "# Fixture\n"},
+	} {
+		content := []byte(entry.content)
+		if err := tarWriter.WriteHeader(&tar.Header{
+			Name: entry.name, Mode: entry.mode, Size: int64(len(content)),
+		}); err != nil {
+			fixture.t.Fatal(err)
+		}
+		if _, err := tarWriter.Write(content); err != nil {
+			fixture.t.Fatal(err)
+		}
 	}
 	if err := tarWriter.Close(); err != nil {
 		fixture.t.Fatal(err)

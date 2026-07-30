@@ -59,10 +59,16 @@ func Build(canonicalDirectory string) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read canonical bootstrap: %w", err)
 	}
+	license, commercialLicense, err := readRepositoryLicenses(canonicalDirectory)
+	if err != nil {
+		return Bundle{}, fmt.Errorf("build Claude Code adapter: %w", err)
+	}
 	files := map[string]File{
-		".claude/skills/memora/SKILL.md":           {Content: []byte(skill), Mode: 0o644},
-		".claude/skills/memora/contract.json":      {Content: contract, Mode: 0o644},
-		".claude/skills/memora/scripts/install.sh": {Content: installer, Mode: 0o755},
+		".claude/skills/memora/COMMERCIAL-LICENSE.md": {Content: commercialLicense, Mode: 0o644},
+		".claude/skills/memora/LICENSE":               {Content: license, Mode: 0o644},
+		".claude/skills/memora/SKILL.md":              {Content: []byte(skill), Mode: 0o644},
+		".claude/skills/memora/contract.json":         {Content: contract, Mode: 0o644},
+		".claude/skills/memora/scripts/install.sh":    {Content: installer, Mode: 0o755},
 	}
 	manifest := Manifest{
 		Version: Version, CanonicalDigest: digest(canonicalSkill), ProtocolDigest: digest(contract),
@@ -74,6 +80,19 @@ func Build(canonicalDirectory string) (Bundle, error) {
 	}
 	files["manifest.json"] = File{Content: append(encoded, '\n'), Mode: 0o644}
 	return Bundle{Files: files, Manifest: manifest}, nil
+}
+
+func readRepositoryLicenses(canonicalDirectory string) ([]byte, []byte, error) {
+	root := filepath.Clean(filepath.Join(canonicalDirectory, "..", ".."))
+	license, err := os.ReadFile(filepath.Join(root, "LICENSE"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read repository license: %w", err)
+	}
+	commercialLicense, err := os.ReadFile(filepath.Join(root, "COMMERCIAL-LICENSE.md"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read commercial license notice: %w", err)
+	}
+	return license, commercialLicense, nil
 }
 
 func CanonicalBody(skill string) string {

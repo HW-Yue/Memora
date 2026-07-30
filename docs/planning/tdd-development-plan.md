@@ -2,7 +2,7 @@
 
 状态：执行中。
 
-当前进度：F00–F46 与 Phase A/B/C 退出测试已完成；下一项为 F47 macOS Release 制品。
+当前进度：F00–F47 与 Phase A/B/C 退出测试已完成；下一项为 F48 GitHub Release 自动化。
 
 ## 产品目标
 

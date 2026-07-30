@@ -1,11 +1,21 @@
 {
   "version": "memora.codex-adapter/v1",
-  "canonical_digest": "5b385a8f7272b52ab9ab592e576086ebd5710240798a98ae1d27acd2583a6a63",
+  "canonical_digest": "f8c60e3dd476e6106ad4ebc6cc63d84d69e85eed8caaaf17f8cad92c019b60e1",
   "protocol_digest": "be094492dc7cd3ed31ad0f342e2dd870a5d2048c7b2558945ff382d32abdbed5",
   "files": [
     {
+      "path": ".agents/skills/memora/COMMERCIAL-LICENSE.md",
+      "sha256": "0e0cf4a48f5c92cc82747c49db6bcc21eb1dec6e4fa6013c73e37aef0f302d9e",
+      "mode": "0644"
+    },
+    {
+      "path": ".agents/skills/memora/LICENSE",
+      "sha256": "54e89a89385415f9caac468483cfc8c93d2b3327df14c7799409a9a706a1a262",
+      "mode": "0644"
+    },
+    {
       "path": ".agents/skills/memora/SKILL.md",
-      "sha256": "5b385a8f7272b52ab9ab592e576086ebd5710240798a98ae1d27acd2583a6a63",
+      "sha256": "f8c60e3dd476e6106ad4ebc6cc63d84d69e85eed8caaaf17f8cad92c019b60e1",
       "mode": "0644"
     },
     {
@@ -20,7 +30,7 @@
     },
     {
       "path": ".agents/skills/memora/scripts/install.sh",
-      "sha256": "9f211ac12fe0065e9d4049c8b22db71d384b5f02705c24f0819b9d893c596f8d",
+      "sha256": "52b8104b79a06ffecd4fe7bd482d6488675676a85085baccad13ffd1bb7e1083",
       "mode": "0755"
     },
     {

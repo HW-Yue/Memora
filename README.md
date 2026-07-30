@@ -2,7 +2,7 @@
 
 Memora 是由 AI 自主建模、通过版本化 MSQL 读写的本地个人数据库。
 
-项目当前处于架构设计和端到端原型准备阶段。计划中的本地 `memora` daemon 长期承载数据库 Instance、统一 MSQL 执行引擎和文件 Page 的 Buffer Pool；Codex/Claude Code 按 Memora Skill 通过 CLI 连接 daemon：
+项目当前处于端到端原型与发行准备阶段。本地 `memora` daemon 长期承载数据库 Instance 和统一 MSQL 执行引擎；Codex/Claude Code 按 Memora Skill 通过 CLI 连接 daemon：
 
 ```text
 memora --stdio        为外部 Agent 提供长驻 JSONL 会话
@@ -16,7 +16,7 @@ memora daemon         管理本地常驻服务
 
 ## 当前实现状态
 
-开发按 [TDD 开发总计划](./docs/planning/tdd-development-plan.md) 推进。当前 CLI 骨架提供：
+开发按 [TDD 开发总计划](./docs/planning/tdd-development-plan.md) 推进。当前 CLI 提供 Instance/daemon、MSQL query/exec、Skill 写入与 Schema 计划、资料吸收、Database Package、Wiki 导出和诊断链路。基础入口包括：
 
 ```text
 memora help
@@ -37,4 +37,17 @@ go test ./...
 go build -o /tmp/memora ./cmd/memora
 ```
 
-README 顶部列出的其他命令属于后续 feature，尚未实现。
+正式 macOS 双架构制品由确定性 Builder 生成，tracked worktree 必须干净：
+
+```bash
+./scripts/release.sh 0.1.0 /absolute/output
+./scripts/smoke-release.sh /absolute/output 0.1.0
+```
+
+## 许可
+
+个人学习、研究、娱乐、兴趣项目及其他非商业用途可依据
+[PolyForm Noncommercial 1.0.0](./LICENSE) 免费使用、修改和分发 Memora。
+任何商业用途均需事先取得单独的书面付费商业许可证；示例与联系入口见
+[商业授权说明](./COMMERCIAL-LICENSE.md)。因此本项目是 source-available，
+不是 OSI 定义的开源软件。
