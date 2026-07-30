@@ -189,6 +189,35 @@ func TestRuntimeAndHostContractsContainNoRetiredSemanticRetrieval(t *testing.T) 
 	}
 }
 
+func TestPersonalFreeCommercialPaidLicenseShipsEverywhere(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	files := []string{
+		"LICENSE", "COMMERCIAL-LICENSE.md",
+		"adapters/codex/.agents/skills/memora/LICENSE",
+		"adapters/codex/.agents/skills/memora/COMMERCIAL-LICENSE.md",
+		"adapters/claude-code/.claude/skills/memora/LICENSE",
+		"adapters/claude-code/.claude/skills/memora/COMMERCIAL-LICENSE.md",
+	}
+	for _, name := range files {
+		content, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Errorf("read %s: %v", name, err)
+			continue
+		}
+		text := string(content)
+		if !strings.Contains(text, "commercial") && !strings.Contains(text, "Commercial") {
+			t.Errorf("%s omits commercial-use terms", name)
+		}
+	}
+	license, _ := os.ReadFile(filepath.Join(root, "LICENSE"))
+	for _, required := range []string{"PolyForm Noncommercial License 1.0.0", "Personal Uses", "Commercial use requires a separate paid commercial license"} {
+		if !strings.Contains(string(license), required) {
+			t.Errorf("root license omits %q", required)
+		}
+	}
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, current, _, ok := runtime.Caller(0)

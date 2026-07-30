@@ -61,36 +61,44 @@ type Example struct {
 	MSQL    string `json:"msql,omitempty"`
 }
 
+type ProviderBoundary struct {
+	Owner          string   `json:"owner"`
+	EndpointPolicy string   `json:"endpoint_policy"`
+	Credentials    string   `json:"credentials"`
+	Protocols      []string `json:"protocols"`
+}
+
 type Contract struct {
-	Version                            string    `json:"version"`
-	Source                             string    `json:"source"`
-	MSQLASTVersion                     string    `json:"msql_ast_version"`
-	ResultVersion                      string    `json:"result_version"`
-	AuthorizationVersion               string    `json:"authorization_version"`
-	ConflictViewVersion                string    `json:"conflict_view_version"`
-	ConflictResolutionVersion          string    `json:"conflict_resolution_version"`
-	AssimilationEventVersion           string    `json:"assimilation_event_version"`
-	AssimilationReceiptVersion         string    `json:"assimilation_receipt_version"`
-	AssimilationSubmissionVersion      string    `json:"assimilation_submission_version"`
-	AssimilationReviewVersion          string    `json:"assimilation_review_version"`
-	SourceReceiptVersion               string    `json:"source_receipt_version"`
-	SemanticHealthVersion              string    `json:"semantic_health_version"`
-	MaintenanceRequestVersion          string    `json:"maintenance_request_version"`
-	MaintenanceReceiptVersion          string    `json:"maintenance_receipt_version"`
-	FeedbackEventVersion               string    `json:"feedback_event_version"`
-	FeedbackReceiptVersion             string    `json:"feedback_receipt_version"`
-	FeedbackConfirmationVersion        string    `json:"feedback_confirmation_version"`
-	FeedbackConfirmationReceiptVersion string    `json:"feedback_confirmation_receipt_version"`
-	BootstrapScript                    string    `json:"bootstrap_script"`
-	InstallConsent                     string    `json:"install_consent"`
-	SupportedInstallOS                 []string  `json:"supported_install_os"`
-	SupportedInstallArch               []string  `json:"supported_install_arch"`
-	AllowedCommands                    []string  `json:"allowed_commands"`
-	PhysicalAccess                     string    `json:"physical_access"`
-	ConflictPolicy                     string    `json:"conflict_policy"`
-	Workflows                          []string  `json:"workflows"`
-	Budgets                            Budgets   `json:"budgets"`
-	Examples                           []Example `json:"examples"`
+	Version                            string           `json:"version"`
+	Source                             string           `json:"source"`
+	MSQLASTVersion                     string           `json:"msql_ast_version"`
+	ResultVersion                      string           `json:"result_version"`
+	AuthorizationVersion               string           `json:"authorization_version"`
+	ConflictViewVersion                string           `json:"conflict_view_version"`
+	ConflictResolutionVersion          string           `json:"conflict_resolution_version"`
+	AssimilationEventVersion           string           `json:"assimilation_event_version"`
+	AssimilationReceiptVersion         string           `json:"assimilation_receipt_version"`
+	AssimilationSubmissionVersion      string           `json:"assimilation_submission_version"`
+	AssimilationReviewVersion          string           `json:"assimilation_review_version"`
+	SourceReceiptVersion               string           `json:"source_receipt_version"`
+	SemanticHealthVersion              string           `json:"semantic_health_version"`
+	MaintenanceRequestVersion          string           `json:"maintenance_request_version"`
+	MaintenanceReceiptVersion          string           `json:"maintenance_receipt_version"`
+	FeedbackEventVersion               string           `json:"feedback_event_version"`
+	FeedbackReceiptVersion             string           `json:"feedback_receipt_version"`
+	FeedbackConfirmationVersion        string           `json:"feedback_confirmation_version"`
+	FeedbackConfirmationReceiptVersion string           `json:"feedback_confirmation_receipt_version"`
+	BootstrapScript                    string           `json:"bootstrap_script"`
+	InstallConsent                     string           `json:"install_consent"`
+	SupportedInstallOS                 []string         `json:"supported_install_os"`
+	SupportedInstallArch               []string         `json:"supported_install_arch"`
+	AllowedCommands                    []string         `json:"allowed_commands"`
+	PhysicalAccess                     string           `json:"physical_access"`
+	ConflictPolicy                     string           `json:"conflict_policy"`
+	ProviderBoundary                   ProviderBoundary `json:"provider_boundary"`
+	Workflows                          []string         `json:"workflows"`
+	Budgets                            Budgets          `json:"budgets"`
+	Examples                           []Example        `json:"examples"`
 }
 
 type Bundle struct {
@@ -168,6 +176,12 @@ func (bundle Bundle) Validate() error {
 	requireEqual("install_consent", contract.InstallConsent, "required")
 	requireEqual("physical_access", contract.PhysicalAccess, PhysicalAccessForbidden)
 	requireEqual("conflict_policy", contract.ConflictPolicy, ConflictAskUserBeforeMutation)
+	requireEqual("provider_boundary.owner", contract.ProviderBoundary.Owner, "host")
+	requireEqual("provider_boundary.endpoint_policy", contract.ProviderBoundary.EndpointPolicy, "host-configured")
+	requireEqual("provider_boundary.credentials", contract.ProviderBoundary.Credentials, "never-passed-to-memora")
+	if strings.Join(contract.ProviderBoundary.Protocols, ",") != "openai-compatible,anthropic-compatible" {
+		violations = append(violations, "provider_boundary.protocols must be openai-compatible,anthropic-compatible")
+	}
 	if strings.Join(contract.SupportedInstallOS, ",") != "darwin" {
 		violations = append(violations, "supported_install_os must be exactly darwin")
 	}

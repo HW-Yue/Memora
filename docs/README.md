@@ -41,6 +41,7 @@
 
 - [AI 自主权与约束](./agent/autonomy.md) — 自主建模、风险等级和引擎不变量。
 - [Canonical Skill v1](./agent/canonical-skill-v1.md) — F28 的唯一宿主规则源、版本 lint、冲突边界和上下文预算。
+- [宿主模型与 CC Switch 兼容边界](./agent/host-provider-compatibility.md) — Provider 由宿主管理，兼容自定义 OpenAI/Anthropic 协议地址且密钥不进入 Memora。
 - [Skill 查询流程 v1](./agent/skill-query-v1.md) — F30 历史实现与 Table 级逐层 Route 目标状态机。
 - [Skill 写入流程 v1](./agent/skill-write-v1.md) — F31 的七种语义决策、Mutation Plan、Policy、短事务和紧凑收据。
 - [Skill Schema 生命周期 v1](./agent/skill-schema-lifecycle-v1.md) — F32 的同义 Schema 复用、受限 DDL、影响预览和补偿回滚。
@@ -103,6 +104,7 @@
 
 - [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
 - [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
+- [F72 AI-native 用户故事门](./planning/f72-ai-native-story-gate.md) — 全部产品故事、实际 MSQL、proof 文件、宿主与许可的最终验收。
 - [F52 原生文件格式开工门](./planning/f52-native-format-gate.md) — 下一 Feature 的故事、格式、边界与待确认项。
 - [开发与验证路线](./planning/roadmap.md) — 先验证 AI-native 体验，再进入完整存储内核。
 - [TDD 开发总计划](./planning/tdd-development-plan.md) — 按独立 feature branch/commit 推进，测试先行并设置阶段质量门。

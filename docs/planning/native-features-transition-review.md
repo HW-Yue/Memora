@@ -2,7 +2,7 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F71 已完成；F72 继续推进。
+实现进度：F62–F72 已完成。
 
 ## F62 Transaction Frame
 
@@ -124,6 +124,11 @@ runtime、Canonical Skill、宿主适配产物和 benchmark，阻止这些路径
 - 证据：实际 MSQL、每层 Route Frame、最终 Row/Schema/Route、用户回复；
 - 禁止：Vector/cosine 基线替代故事验收；
 - 完成：所有目标 `US-*` PASS，未通过项不得包装为已发布能力。
+
+实现结果：`internal/storygate` 将产品宪章全部故事绑定到实际 MSQL 和当前 proof
+文件，并由测试检查完整性。主旅程、宿主 Provider 边界、无旧检索扫描和个人
+免费/商业付费许可一并进入发布证据；详细矩阵见
+[F72 AI-native 用户故事门](./f72-ai-native-story-gate.md)。
 
 ## 继续后置
 

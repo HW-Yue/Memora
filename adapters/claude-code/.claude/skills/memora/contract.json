@@ -35,6 +35,12 @@
   ],
   "physical_access": "forbidden",
   "conflict_policy": "ask_user_before_mutation",
+  "provider_boundary": {
+    "owner": "host",
+    "endpoint_policy": "host-configured",
+    "credentials": "never-passed-to-memora",
+    "protocols": ["openai-compatible", "anthropic-compatible"]
+  },
   "workflows": [
     "discover",
     "query",

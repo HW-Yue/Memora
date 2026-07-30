@@ -21,6 +21,13 @@ For every Database-specific `query` or `exec`, include one
 user-authorized Database names or stable IDs. Never widen or omit that scope to
 recover from `permission_denied`.
 
+The model Provider belongs to the host, not Memora. An OpenAI-compatible host
+may use any user-configured compatible base URL and model, including a Kimi
+endpoint exposed through CC Switch; it must never assume `openai.com`. A Claude
+Code host may likewise use its CC Switch/Anthropic-compatible configuration.
+Never pass Provider base URLs, API keys, or bearer tokens to `memora`, its
+database, logs, receipts, exports, or command input.
+
 ## Install once
 
 If `memora version --json` is unavailable or older than the version bundled with
