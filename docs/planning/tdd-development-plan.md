@@ -2,7 +2,7 @@
 
 状态：执行中。
 
-当前进度：F00–F43 与 Phase A/B/C 退出测试已完成；下一项为 F44 Database Pack/Open/Install。
+当前进度：F00–F44 与 Phase A/B/C 退出测试已完成；下一项为 F45 Wiki 确定性导出。
 
 ## 产品目标
 

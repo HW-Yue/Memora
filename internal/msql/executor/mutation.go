@@ -25,6 +25,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return Output{}, err
 	}
 	switch {
+	case statement.Package != nil:
+		return engine.executePackage(ctx, statement.Package, bound)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		return engine.showHistory(ctx, statement, bound)
 	case statement.Show != nil && statement.Show.Object == "RELATIONS":

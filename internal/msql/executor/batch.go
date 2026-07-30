@@ -38,13 +38,22 @@ type BatchSession struct {
 }
 
 func NewBatchSession(ctx context.Context, dictionary Catalog, rows *row.Service) *BatchSession {
+	return NewBatchSessionWithPackages(ctx, dictionary, rows, nil)
+}
+
+func NewBatchSessionWithPackages(
+	ctx context.Context,
+	dictionary Catalog,
+	rows *row.Service,
+	packages PackageManager,
+) *BatchSession {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	sessionContext, cancel := context.WithCancel(ctx)
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
-		autocommit: New(dictionary, rows), rows: rows,
+		autocommit: NewWithPackages(dictionary, rows, packages), rows: rows,
 	}
 }
 
@@ -307,7 +316,8 @@ func retryable(code result.Code) bool {
 func mutationStatement(statement ast.Statement) bool {
 	return statement.Insert != nil || statement.Update != nil || statement.Delete != nil ||
 		statement.Restore != nil || statement.Relate != nil || statement.Unrelate != nil ||
-		statement.CreateRoute != nil || statement.RenameRoute != nil || statement.DeleteRoute != nil
+		statement.CreateRoute != nil || statement.RenameRoute != nil || statement.DeleteRoute != nil ||
+		(statement.Package != nil && statement.Package.Action == "INSTALL")
 }
 
 func spanSource(source string, span lexer.Span, fallback string) string {
@@ -338,5 +348,5 @@ func parserResultCode(err *parser.Error) result.Code {
 func mutationKind(kind string) bool {
 	return kind == "INSERT" || kind == "UPDATE" || kind == "DELETE" || kind == "RESTORE" ||
 		kind == "RELATE" || kind == "UNRELATE" || kind == "CREATE_ROUTE" ||
-		kind == "RENAME_ROUTE" || kind == "DELETE_ROUTE"
+		kind == "RENAME_ROUTE" || kind == "DELETE_ROUTE" || kind == "INSTALL_PACKAGE"
 }

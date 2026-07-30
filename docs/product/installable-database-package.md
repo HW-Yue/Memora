@@ -1,6 +1,6 @@
 # 可安装的独立语义数据库
 
-状态：产品形态方向已确认；包格式、扩展名和最终命令仍待原型验证。
+状态：产品形态已确认；F44 已冻结 v1 包格式和最终命令，升级/签名仍待后续 feature。
 
 ## 产品定义
 
@@ -18,18 +18,19 @@ Memora 的基本可分发对象不是聊天记录、Markdown 目录或向量索�
 
 ## 三种开箱即用方式
 
-以下命令名是 CLI 候选，不代表已经实现；每个命令都必须转换为对应的 MSQL 管理语句，再经过统一 Parser、Policy 和执行器：
+以下 CLI 已实现；每个命令都转换为对应的 MSQL 管理语句，再经过统一 Parser 和执行器：
 
 ```text
 Codex/Claude + Memora Skill    进入当前 Instance 的全局问答
 memora exec <msql>             执行 Skill 生成的确定性操作
 
-memora pack work_x -o work_x.<package>
-memora install work_x.<package>
-memora open work_x.<package>   以独立、默认只读方式直接问答
+memora pack work_x --by Alice -o work_x.memora-db
+memora install work_x.memora-db --trusted
+memora open work_x.memora-db   校验并只读审阅 manifest
 ```
 
-对应的 MSQL 采用独立声明式语句，例如 `PACK DATABASE ... TO ...`、`INSTALL PACKAGE ...` 和 `OPEN PACKAGE ... READ ONLY`，不使用通用 `CALL` 包装。
+对应的 MSQL 是 `PACK DATABASE ... BY :author`、`INSTALL PACKAGE :package TRUSTED` 和
+`OPEN PACKAGE :package READ ONLY`；包字节始终参数绑定，不使用路径或通用 `CALL` 包装。
 
 - `install` 把一个库纳入本地 Instance，之后可参与全局路由；
 - `open` 不导入个人 Instance，适合审阅、演示和一次性问答；
@@ -88,10 +89,10 @@ memora open work_x.<package>   以独立、默认只读方式直接问答
 - 包冲突、损坏、版本不兼容和不可信内容都有明确失败结果；
 - 安装、直接打开和全局问答都由本地 daemon 统一执行。
 
-## 未决问题
+## F44 后未决问题
 
-- 包扩展名、容器格式、签名和发布仓库；
-- `open` 是否允许产生独立 sidecar，还是必须完全只读；
+- 包签名、商业发布仓库和来源撤销；
+- `open` 的一次性数据问答 runtime；F44 只提供无副作用 manifest/完整性审阅；
 - revision 历史、Undo 信息和附件型 Source Receipt 的携带范围；
 - 安装升级是替换、三方 merge 还是始终 fork；
 - 商业数据库包的授权、撤销和离线使用模型。
@@ -99,5 +100,6 @@ memora open work_x.<package>   以独立、默认只读方式直接问答
 ## 关联
 
 - [AI-native 产品契约](./ai-native-contract.md)
+- [Database Package v1](./database-package-v1.md)
 - [可选内置 Agent Runtime](../agent/embedded-agent-runtime.md)
 - [Instance、Database 与 Table](../storage/instance-database-table.md)

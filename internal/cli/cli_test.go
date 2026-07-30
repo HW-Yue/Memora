@@ -251,6 +251,98 @@ func TestRunFeedbackPassesEventAndConfirmationToDaemon(t *testing.T) {
 	}
 }
 
+func TestRunDatabasePackageCommandsUseMSQLAndSafeFiles(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	packagePath := filepath.Join(home, "work.memora-db")
+	var sources []string
+	var inputs [][]executor.StatementInput
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(_ context.Context, _ string, source string, statements []executor.StatementInput) (result.Envelope, error) {
+			sources = append(sources, source)
+			inputs = append(inputs, statements)
+			statement := result.NewStatement(0, "PACKAGE", source)
+			switch len(sources) {
+			case 1:
+				statement.Rows = []result.Row{{"package": `{"version":"fixture"}`, "package_sha256": "abc"}}
+			case 2:
+				statement.Rows = []result.Row{{"name": "work", "read_only": true}}
+			default:
+				statement.Rows = []result.Row{{"name": "work", "package_sha256": "abc"}}
+				statement.AffectedRows = 1
+			}
+			return result.NewEnvelope("package-cli", statement), nil
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunWithDependencies([]string{
+		"pack", `work"quoted`, "--by", "Alice", "--output", packagePath, "--data-dir", dataDir,
+	}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK || stderr.Len() != 0 {
+		t.Fatalf("pack code = %d, stdout = %s, stderr = %s", code, stdout.String(), stderr.String())
+	}
+	if sources[0] != `PACK DATABASE "work""quoted" BY :author` ||
+		inputs[0][0].Parameters.Named["author"] != "Alice" {
+		t.Fatalf("pack MSQL = %q, %#v", sources[0], inputs[0])
+	}
+	if encoded, err := os.ReadFile(packagePath); err != nil || string(encoded) != `{"version":"fixture"}` {
+		t.Fatalf("package file = %q, %v", encoded, err)
+	}
+	info, err := os.Stat(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("package mode = %v", info.Mode())
+	}
+
+	stdout.Reset()
+	code = RunWithDependencies([]string{"open", packagePath, "--data-dir", dataDir}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK || sources[1] != "OPEN PACKAGE :package READ ONLY" ||
+		inputs[1][0].Parameters.Named["package"] != `{"version":"fixture"}` {
+		t.Fatalf("open code = %d, source = %q, input = %#v", code, sources[1], inputs[1])
+	}
+
+	stdout.Reset()
+	code = RunWithDependencies([]string{"install", packagePath, "--trusted", "--data-dir", dataDir}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK || sources[2] != "INSTALL PACKAGE :package TRUSTED" {
+		t.Fatalf("install code = %d, source = %q", code, sources[2])
+	}
+}
+
+func TestRunDatabasePackageRequiresTrustAndDoesNotOverwrite(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	path := filepath.Join(home, "existing.memora-db")
+	if err := os.WriteFile(path, []byte("preserve"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(_ context.Context, _ string, source string, _ []executor.StatementInput) (result.Envelope, error) {
+			statement := result.NewStatement(0, "PACK_DATABASE", source)
+			statement.Rows = []result.Row{{"package": "replace", "package_sha256": "hash"}}
+			return result.NewEnvelope("package-cli", statement), nil
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	if code := RunWithDependencies([]string{"install", path, "--data-dir", dataDir}, &stdout, &stderr, BuildInfo{}, dependencies); code != ExitUsage {
+		t.Fatalf("untrusted install code = %d", code)
+	}
+	stderr.Reset()
+	if code := RunWithDependencies([]string{"pack", "work", "--by", "Alice", "-o", path, "--data-dir", dataDir}, &stdout, &stderr, BuildInfo{}, dependencies); code != ExitFailure {
+		t.Fatalf("overwrite pack code = %d", code)
+	}
+	if encoded, err := os.ReadFile(path); err != nil || string(encoded) != "preserve" {
+		t.Fatalf("existing package = %q, %v", encoded, err)
+	}
+}
+
 func TestRunAssimilateSubmitsReviewAndReloadsSourceReceipt(t *testing.T) {
 	t.Parallel()
 

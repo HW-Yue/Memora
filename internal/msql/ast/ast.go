@@ -33,6 +33,7 @@ type Statement struct {
 	RenameRoute *RenameRouteStatement `json:"rename_route,omitempty"`
 	DeleteRoute *DeleteRouteStatement `json:"delete_route,omitempty"`
 	OpenRoute   *OpenRouteStatement   `json:"open_route,omitempty"`
+	Package     *PackageStatement     `json:"package,omitempty"`
 	Transaction *TransactionStatement `json:"transaction,omitempty"`
 }
 
@@ -185,6 +186,15 @@ type OpenRouteStatement struct {
 	Limit    *Expression `json:"limit"`
 }
 
+type PackageStatement struct {
+	Action   string      `json:"action"`
+	Database Name        `json:"database,omitempty"`
+	Author   *Expression `json:"author,omitempty"`
+	Value    *Expression `json:"value,omitempty"`
+	ReadOnly bool        `json:"read_only,omitempty"`
+	Trusted  bool        `json:"trusted,omitempty"`
+}
+
 type TransactionStatement struct {
 	Action string `json:"action"`
 }
@@ -280,6 +290,9 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.OpenRoute.Database)
 		appendExpression(statement.OpenRoute.Path)
 		appendExpression(statement.OpenRoute.Limit)
+	case statement.Package != nil:
+		appendExpression(statement.Package.Author)
+		appendExpression(statement.Package.Value)
 	}
 	return parameters
 }

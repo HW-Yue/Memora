@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/binder"
@@ -53,6 +54,13 @@ type Engine struct {
 	catalog       Catalog
 	catalogBinder *binder.Catalog
 	rows          Rows
+	packages      PackageManager
+}
+
+type PackageManager interface {
+	Pack(context.Context, string, string) ([]byte, dbpackage.Manifest, error)
+	Open([]byte) (dbpackage.Opened, error)
+	Install(context.Context, []byte, dbpackage.InstallOptions) (dbpackage.InstallReceipt, error)
 }
 
 type Parameters struct {
@@ -127,6 +135,12 @@ func New(dictionary Catalog, rows Rows) *Engine {
 	if service, ok := dictionary.(binder.CatalogService); ok {
 		engine.catalogBinder = binder.NewCatalog(service)
 	}
+	return engine
+}
+
+func NewWithPackages(dictionary Catalog, rows Rows, packages PackageManager) *Engine {
+	engine := New(dictionary, rows)
+	engine.packages = packages
 	return engine
 }
 

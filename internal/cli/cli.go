@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
@@ -44,8 +46,11 @@ Commands:
   feedback   Record feedback or confirm an auditable revision
   help       Show this help
   init       Initialize a local instance
+  install    Install an explicitly trusted database package
   maintain   Report and retry low-risk semantic maintenance
   mutate     Execute a validated Mutation Plan
+  open       Inspect a database package read-only
+  pack       Export one portable database package
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
   reflect    Ingest an explicit conversation event
@@ -120,6 +125,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runInit(args[1:], stdout, stderr, dependencies)
 	case "mutate":
 		return runMutate(args[1:], stdout, stderr, dependencies)
+	case "pack", "open", "install":
+		return runDatabasePackage(args[0], args[1:], stdout, stderr, dependencies)
 	case "maintain":
 		return runMaintain(args[1:], stdout, stderr, dependencies)
 	case "parse":
@@ -136,6 +143,149 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runDatabasePackage(command string, args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var subject, output, author string
+	trusted := false
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--output", "-o":
+			if command != "pack" || index+1 >= len(args) {
+				return usageError(stderr, "--output is valid for pack and requires a path")
+			}
+			output = args[index+1]
+			index++
+		case "--by":
+			if command != "pack" || index+1 >= len(args) {
+				return usageError(stderr, "--by is valid for pack and requires an author declaration")
+			}
+			author = args[index+1]
+			index++
+		case "--trusted":
+			if command != "install" {
+				return usageError(stderr, "--trusted is only valid for install")
+			}
+			trusted = true
+		default:
+			if subject != "" {
+				return usageError(stderr, command+" accepts exactly one Database name or package path")
+			}
+			subject = args[index]
+		}
+	}
+	if subject == "" {
+		return usageError(stderr, command+" requires a Database name or package path")
+	}
+	if command == "pack" && (output == "" || author == "") {
+		return usageError(stderr, "pack requires --output PATH and --by AUTHOR")
+	}
+	if command == "install" && !trusted {
+		return usageError(stderr, "install requires explicit --trusted consent")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	execute := dependencies.ExecuteMSQL
+	if execute == nil {
+		execute = daemon.Execute
+	}
+	ctx := context.Background()
+	var source string
+	var statements []executor.StatementInput
+	if command == "pack" {
+		source = "PACK DATABASE " + quoteMSQLIdentifier(subject) + " BY :author"
+		statements = []executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"author": author}}}}
+	} else {
+		encoded, err := os.ReadFile(subject)
+		if err != nil {
+			return commandError(stderr, "read database package", err)
+		}
+		source = "OPEN PACKAGE :package READ ONLY"
+		if command == "install" {
+			source = "INSTALL PACKAGE :package TRUSTED"
+		}
+		statements = []executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"package": string(encoded)}}}}
+	}
+	envelope, err := execute(ctx, dataDir, source, statements)
+	if err != nil {
+		return commandError(stderr, command+" database package", err)
+	}
+	if !envelope.OK {
+		if err := json.NewEncoder(stdout).Encode(envelope); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitFailure
+	}
+	if command != "pack" {
+		if err := json.NewEncoder(stdout).Encode(envelope); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	if len(envelope.Results) != 1 || len(envelope.Results[0].Rows) != 1 {
+		return commandError(stderr, "pack database package", errors.New("MSQL response did not contain one package"))
+	}
+	encoded, ok := envelope.Results[0].Rows[0]["package"].(string)
+	if !ok || encoded == "" {
+		return commandError(stderr, "pack database package", errors.New("MSQL response package is invalid"))
+	}
+	if err := writePackageFile(output, []byte(encoded)); err != nil {
+		return commandError(stderr, "write database package", err)
+	}
+	return writeJSON(stdout, stderr, map[string]any{
+		"path": output, "package_sha256": envelope.Results[0].Rows[0]["package_sha256"],
+	})
+}
+
+func quoteMSQLIdentifier(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func writePackageFile(path string, content []byte) error {
+	if _, err := os.Stat(path); err == nil {
+		return errors.New("output path already exists")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	directory := filepath.Dir(path)
+	temporary, err := os.CreateTemp(directory, ".memora-package-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer func() { _ = os.Remove(temporaryPath) }()
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, path)
+}
+
+func writeJSON(stdout, stderr io.Writer, value any) int {
+	if err := json.NewEncoder(stdout).Encode(value); err != nil {
+		return writeFailure(stderr, err)
+	}
+	return ExitOK
 }
 
 func runFeedback(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {

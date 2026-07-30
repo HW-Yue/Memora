@@ -1,6 +1,6 @@
 # MSQL 标准语言
 
-状态：协议定位已确认；F11 核心单语句语法已冻结，完整 v0 Grammar 尚未冻结。
+状态：协议定位已确认；核心语法和 F44 包管理语句已冻结，完整 v0 Grammar 尚未冻结。
 
 ## 定位
 
@@ -39,15 +39,16 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 管理：PACK、INSTALL、OPEN、EXPORT、DOCTOR、REINDEX；
 - 检索：`MATCH(...) AGAINST(...)`；
 
-Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。候选写法：
+Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。F44 已冻结的写法：
 
 ```sql
-PACK DATABASE work_x TO 'work_x.memora';
-INSTALL PACKAGE 'work_x.memora';
-OPEN PACKAGE 'work_x.memora' READ ONLY;
+PACK DATABASE work_x BY :author;
+OPEN PACKAGE :package READ ONLY;
+INSTALL PACKAGE :package TRUSTED;
 ```
 
-关键字、选项和返回格式仍需在 v0 Grammar 中冻结。
+包内容通过参数绑定进入执行器。`READ ONLY` 和 `TRUSTED` 是强制安全子句；这些语句只能
+autocommit，显式事务中不直接执行。返回格式见 [Database Package v1](../product/database-package-v1.md)。
 
 已知 Database 和 Table 后，全文与语义候选检索采用 MySQL 风格的 `MATCH(...) AGAINST(...)` 表达式。它只是一层 MSQL 语法契约，不绑定 MySQL 的存储实现：Planner 并行查询 Agent 词项 posting 和低权重机械分词/N-gram posting，按配置权重融合，只返回候选数据项定位和评分信号。主 Agent 随后按定位使用普通 `SELECT` 回表读取 Row。`MATCH` 是否使用 `*` 表达整条数据项范围仍待 Grammar 冻结。
 

@@ -11,8 +11,11 @@ Commands:
   feedback   Record feedback or confirm an auditable revision
   help       Show this help
   init       Initialize a local instance
+  install    Install an explicitly trusted database package
   maintain   Report and retry low-risk semantic maintenance
   mutate     Execute a validated Mutation Plan
+  open       Inspect a database package read-only
+  pack       Export one portable database package
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
   reflect    Ingest an explicit conversation event

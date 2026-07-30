@@ -9,6 +9,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/conversation"
+	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
@@ -349,7 +350,9 @@ func (handler *databaseHandler) session(id string) (*executor.BatchSession, bool
 	if session := handler.sessions[id]; session != nil {
 		return session, true
 	}
-	session := executor.NewBatchSession(handler.context, handler.dictionary, handler.rows)
+	session := executor.NewBatchSessionWithPackages(
+		handler.context, handler.dictionary, handler.rows, dbpackage.New(handler.store),
+	)
 	handler.sessions[id] = session
 	return session, true
 }
