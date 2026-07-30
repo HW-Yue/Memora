@@ -109,8 +109,8 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 				}},
 				Mutation: executor.MutationOptions{
 					ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
-					IndexTerms: []string{}, RouteLeafIDs: []string{},
-					Actor: "agent:e2e", Source: "e2e:update", Reason: "refine decision",
+					RouteLeafIDs: []string{},
+					Actor:        "agent:e2e", Source: "e2e:update", Reason: "refine decision",
 				},
 			},
 		}},

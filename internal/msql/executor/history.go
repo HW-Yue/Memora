@@ -93,7 +93,6 @@ func (engine *Engine) restore(
 			ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 			ExpectedRevision:      options.ExpectedRevision,
 			Metadata:              mutationMetadata(options),
-			IndexTerms:            options.IndexTerms,
 			RouteLeafIDs:          options.RouteLeafIDs,
 		},
 	)

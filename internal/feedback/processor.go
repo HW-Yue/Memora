@@ -192,7 +192,7 @@ func (processor *Processor) undo(ctx context.Context, confirmation Confirmation,
 			Mutation: executor.MutationOptions{
 				ExpectedSchemaVersion: undo.ExpectedSchemaVersion, ExpectedRevision: confirmation.ExpectedRevision,
 				MaxAffectedRows: 1, Actor: confirmation.Actor, Source: confirmation.SourceEventID, Reason: reason,
-				IndexTerms: undo.IndexTerms, RouteLeafIDs: undo.RouteLeafIDs,
+				RouteLeafIDs: undo.RouteLeafIDs,
 			},
 		}},
 	}}
@@ -302,11 +302,11 @@ func validateAction(confirmation Confirmation, event Event) error {
 		}
 		undo := confirmation.Undo
 		if undo.TargetRevision == 0 || undo.TargetRevision >= confirmation.ExpectedRevision || undo.ExpectedSchemaVersion == 0 ||
-			undo.IndexTerms == nil || undo.RouteLeafIDs == nil {
-			return feedbackError(result.CodeValidation, "undo requires an earlier revision, schema guard, and complete index and Route snapshots")
+			undo.RouteLeafIDs == nil {
+			return feedbackError(result.CodeValidation, "undo requires an earlier revision, schema guard, and a complete Route snapshot")
 		}
-		if len(undo.IndexTerms) > 64 || len(undo.RouteLeafIDs) > 32 {
-			return feedbackError(result.CodeValidation, "undo index or Route snapshot exceeds the Policy limit")
+		if len(undo.RouteLeafIDs) > 32 {
+			return feedbackError(result.CodeValidation, "undo Route snapshot exceeds the Policy limit")
 		}
 	default:
 		return feedbackError(result.CodeValidation, "unsupported confirmation action %q", confirmation.Action)

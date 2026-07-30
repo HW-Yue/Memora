@@ -11,11 +11,6 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 		parameters int
 	}{
 		{
-			source:     "CREATE ROUTE ROOT FOR DATABASE :database PURPOSE :purpose",
-			kind:       "CREATE_ROUTE",
-			parameters: 2,
-		},
-		{
 			source:     "CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE :purpose",
 			kind:       "CREATE_ROUTE",
 			parameters: 1,
@@ -56,19 +51,9 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			parameters: 2,
 		},
 		{
-			source:     "SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit",
-			kind:       "SHOW",
-			parameters: 4,
-		},
-		{
 			source:     "OPEN ROUTE :route LIMIT :limit",
 			kind:       "OPEN_ROUTE",
 			parameters: 2,
-		},
-		{
-			source:     "OPEN ROUTE FROM DATABASE :database AT :path LIMIT :limit",
-			kind:       "OPEN_ROUTE",
-			parameters: 3,
 		},
 	}
 	for _, test := range tests {
@@ -89,13 +74,13 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 	t.Parallel()
 
 	for _, source := range []string{
+		"CREATE ROUTE ROOT FOR DATABASE :database PURPOSE :purpose",
 		"CREATE ROUTE ROOT FOR DATABASE :database",
 		"CREATE ROUTE UNDER :parent NAME :name PURPOSE :purpose",
 		"ALTER ROUTE :route RENAME",
 		"DELETE ROUTE",
 		"SHOW ROUTES FROM TABLE work.notes LIMIT 10",
 		"OPEN ROUTE :route",
-		"OPEN ROUTE FROM DATABASE :database AT :path",
 	} {
 		if _, err := Parse(source); err == nil {
 			t.Fatalf("Parse(%q) succeeded", source)

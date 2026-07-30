@@ -6,7 +6,7 @@
     {
       "index": 0,
       "statement": "SHOW_ROUTES",
-      "source": "SHOW ROUTES FROM DATABASE work AT '/'",
+      "source": "SHOW ROUTES FROM TABLE work.notes AT ROOT",
       "status": "succeeded",
       "columns": [],
       "rows": [

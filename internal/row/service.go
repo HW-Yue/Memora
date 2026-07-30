@@ -10,16 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/HW-Yue/Memora/internal/agentindex"
 	"github.com/HW-Yue/Memora/internal/catalog"
-	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/history"
-	"github.com/HW-Yue/Memora/internal/mechanicalindex"
-	"github.com/HW-Yue/Memora/internal/reindex"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
-	"github.com/HW-Yue/Memora/internal/search"
 	"github.com/HW-Yue/Memora/internal/store"
 	"github.com/google/uuid"
 )
@@ -56,32 +51,23 @@ func (policy RelationPolicyFunc) AllowRelation(
 }
 
 type Options struct {
-	IDs             IDSource
-	Clock           Clock
-	RelationIDs     relation.IDSource
-	RelationPolicy  RelationPolicy
-	AgentIndex      agentindex.Options
-	MechanicalIndex mechanicalindex.Options
-	Router          router.Options
-	Discovery       discovery.Options
-	Search          search.Options
+	IDs            IDSource
+	Clock          Clock
+	RelationIDs    relation.IDSource
+	RelationPolicy RelationPolicy
+	Router         router.Options
 }
 
 type Service struct {
-	store            store.Store
-	catalog          Catalog
-	history          *history.Service
-	agentIndex       *agentindex.Service
-	mechanicalIndex  *mechanicalindex.Service
-	relations        *relation.Service
-	routes           *router.Service
-	reindex          *reindex.Service
-	ids              IDSource
-	clock            Clock
-	relationPolicy   RelationPolicy
-	searchOptions    search.Options
-	discoveryOptions discovery.Options
-	mu               sync.Mutex
+	store          store.Store
+	catalog        Catalog
+	history        *history.Service
+	relations      *relation.Service
+	routes         *router.Service
+	ids            IDSource
+	clock          Clock
+	relationPolicy RelationPolicy
+	mu             sync.Mutex
 }
 
 func New(database store.Store, dictionary Catalog, options Options) *Service {
@@ -101,15 +87,11 @@ func New(database store.Store, dictionary Catalog, options Options) *Service {
 	}
 	return &Service{
 		store: database, catalog: dictionary, history: history.New(database),
-		agentIndex:      agentindex.New(database, options.AgentIndex),
-		mechanicalIndex: mechanicalindex.New(database, options.MechanicalIndex),
 		relations: relation.New(database, relation.Options{
 			IDs: options.RelationIDs, Clock: options.Clock,
 		}),
-		routes:  router.New(database, options.Router),
-		reindex: reindex.New(),
-		ids:     options.IDs, clock: options.Clock, relationPolicy: options.RelationPolicy,
-		searchOptions: options.Search, discoveryOptions: options.Discovery,
+		routes: router.New(database, options.Router),
+		ids:    options.IDs, clock: options.Clock, relationPolicy: options.RelationPolicy,
 	}
 }
 

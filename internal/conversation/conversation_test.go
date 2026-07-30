@@ -158,7 +158,7 @@ func mutationPlan(eventID, database string) skillwrite.Plan {
 				Mutation: executor.MutationOptions{
 					ExpectedSchemaVersion: 1, MaxAffectedRows: 1, Actor: "agent:test",
 					Source: eventID, Reason: "capture stable conversation conclusion",
-					IndexTerms: []string{"decision"}, RouteLeafIDs: []string{},
+					RouteLeafIDs: []string{},
 				},
 			},
 		}},

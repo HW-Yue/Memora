@@ -93,18 +93,6 @@ func TestOpenIsReadOnlyAndTrustedInstallPreservesAuthorityWithoutDerivedIndexes(
 	if err != nil || len(history) != 2 {
 		t.Fatalf("installed history = %#v, %v", history, err)
 	}
-	if postings, err := rows.LookupAgentTerm(ctx, "db_work", "portable", 10); err != nil || len(postings) != 0 {
-		t.Fatalf("derived agent index was installed: %#v, %v", postings, err)
-	}
-	if postings, err := rows.LookupMechanicalTerm(ctx, "db_work", "portable", 10); err != nil || len(postings) != 0 {
-		t.Fatalf("derived mechanical index was installed: %#v, %v", postings, err)
-	}
-	if err := rows.RebuildMechanicalIndex(ctx, "work", "notes", "row_note"); err != nil {
-		t.Fatal(err)
-	}
-	if postings, err := rows.LookupMechanicalTerm(ctx, "db_work", "portable", 10); err != nil || len(postings) != 1 {
-		t.Fatalf("rebuilt mechanical index = %#v, %v", postings, err)
-	}
 }
 
 func TestInstallRejectsUntrustedDamagedAndConflictingPackages(t *testing.T) {
@@ -220,11 +208,11 @@ func seedSource(t *testing.T, ctx context.Context, databaseStore store.Store) {
 		IDs:   &idSource{values: []string{"note", "secret"}},
 		Clock: fixedClock{value: time.Date(2026, 7, 30, 8, 0, 0, 0, time.UTC)},
 	})
-	created, err := rows.Insert(ctx, "work", "notes", map[string]any{"body": "portable knowledge"}, row.WriteOptions{ExpectedSchemaVersion: 1, IndexTerms: []string{"portable"}})
+	created, err := rows.Insert(ctx, "work", "notes", map[string]any{"body": "portable knowledge"}, row.WriteOptions{ExpectedSchemaVersion: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rows.Update(ctx, "work", "notes", created.ID, map[string]any{"body": "portable knowledge revised"}, row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, IndexTerms: []string{"portable"}}); err != nil {
+	if _, err := rows.Update(ctx, "work", "notes", created.ID, map[string]any{"body": "portable knowledge revised"}, row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := rows.Insert(ctx, "private", "secrets", map[string]any{"text": "private-only-secret"}, row.WriteOptions{ExpectedSchemaVersion: 1}); err != nil {

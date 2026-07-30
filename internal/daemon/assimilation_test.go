@@ -217,7 +217,7 @@ func daemonInsertPlan(eventID, planID, moduleID, title string) skillwrite.Plan {
 				Mutation: executor.MutationOptions{
 					ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
 					Actor: "agent:host", Source: eventID, Reason: reason,
-					IndexTerms: []string{"reviewed"}, RouteLeafIDs: []string{},
+					RouteLeafIDs: []string{},
 				},
 			},
 		}},

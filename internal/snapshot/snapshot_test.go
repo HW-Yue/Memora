@@ -26,11 +26,7 @@ func TestLogicalSnapshotRoundTripPreservesAuthorityAndRebuildsOnlyLogicalIndexes
 		t.Fatal(err)
 	}
 	defer sourceStore.Close()
-	sourceRows, databaseID, firstID, secondID, relationID := seedDatabase(t, ctx, sourceStore)
-	sourceAgent, err := sourceRows.LookupAgentTerm(ctx, databaseID, "revised", 10)
-	if err != nil || len(sourceAgent) != 1 {
-		t.Fatalf("source agent index = %#v, %v", sourceAgent, err)
-	}
+	_, _, firstID, secondID, relationID := seedDatabase(t, ctx, sourceStore)
 	exported, err := snapshot.New(sourceStore).Export(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -75,17 +71,6 @@ func TestLogicalSnapshotRoundTripPreservesAuthorityAndRebuildsOnlyLogicalIndexes
 		t.Fatalf("relation history = %#v, %v", relationHistory, err)
 	}
 
-	targetAgent, err := targetRows.LookupAgentTerm(ctx, databaseID, "revised", 10)
-	if err != nil || len(targetAgent) != 0 {
-		t.Fatalf("derived agent index was imported = %#v, %v", targetAgent, err)
-	}
-	if err := targetRows.RebuildMechanicalIndex(ctx, "work", "notes", firstID); err != nil {
-		t.Fatal(err)
-	}
-	mechanical, err := targetRows.LookupMechanicalTerm(ctx, databaseID, "revised", 10)
-	if err != nil || len(mechanical) != 1 || mechanical[0].RowID != firstID {
-		t.Fatalf("rebuilt mechanical index = %#v, %v", mechanical, err)
-	}
 	reexported, err := snapshot.New(targetStore).Export(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -210,16 +195,14 @@ func seedDatabase(
 	first, err := service.Insert(ctx, "work", "notes", map[string]any{
 		"title": "initial",
 	}, row.WriteOptions{
-		ExpectedSchemaVersion: 1, IndexTerms: []string{"initial"},
-	})
+		ExpectedSchemaVersion: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	second, err := service.Insert(ctx, "work", "notes", map[string]any{
 		"title": "second",
 	}, row.WriteOptions{
-		ExpectedSchemaVersion: 1, IndexTerms: []string{"second"},
-	})
+		ExpectedSchemaVersion: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +210,7 @@ func seedDatabase(
 		"title": "revised",
 	}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
-		IndexTerms: []string{"revised"}, RouteLeafIDs: []string{},
+		RouteLeafIDs: []string{},
 	}); err != nil {
 		t.Fatal(err)
 	}

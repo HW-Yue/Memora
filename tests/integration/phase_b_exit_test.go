@@ -78,35 +78,22 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	seed, err := service.Insert(ctx, "work", "notes", map[string]any{
 		"title": "seed index marker",
 	}, row.WriteOptions{
-		ExpectedSchemaVersion: 1, IndexTerms: []string{"seed-semantic"},
-		RouteLeafIDs: []string{leaf1.ID},
+		ExpectedSchemaVersion: 1, RouteLeafIDs: []string{leaf1.ID},
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if postings, err := service.LookupAgentTerm(ctx, "db_work", "seed-semantic", 10); err != nil || len(postings) != 1 {
-		t.Fatalf("seed Agent index = %#v, %v", postings, err)
-	}
-	if postings, err := service.LookupMechanicalTerm(ctx, "db_work", "seed", 10); err != nil || len(postings) != 1 {
-		t.Fatalf("seed mechanical index = %#v, %v", postings, err)
 	}
 	if locators, _, err := service.ListRouterLeaf(ctx, leaf1.ID, 10); err != nil || len(locators) != 1 {
 		t.Fatalf("seed Router index = %#v, %v", locators, err)
 	}
 
-	dropDerivedIndexes(t, ctx, databaseStore)
-	if postings, err := service.LookupAgentTerm(ctx, "db_work", "seed-semantic", 10); err != nil || len(postings) != 0 {
-		t.Fatalf("Agent index survived drop = %#v, %v", postings, err)
-	}
-	if postings, err := service.LookupMechanicalTerm(ctx, "db_work", "seed", 10); err != nil || len(postings) != 0 {
-		t.Fatalf("mechanical index survived drop = %#v, %v", postings, err)
-	}
+	dropRouterIndex(t, ctx, databaseStore)
 	if _, err := service.GetRouterNode(ctx, root1.ID); err == nil {
 		t.Fatal("Router tree survived drop")
 	}
 
 	_, leaf2 := phaseBRoute(t, ctx, service, "db_work")
-	rebuilt, err := service.Update(ctx, "work", "notes", seed.ID, map[string]any{
+	_, err = service.Update(ctx, "work", "notes", seed.ID, map[string]any{
 		"title": "rebuilt exit marker",
 	}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
@@ -114,24 +101,12 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim, err := service.ClaimReindex(ctx, "phase-b", time.Minute)
-	if err != nil {
+	if _, err := service.Update(ctx, "work", "notes", seed.ID, map[string]any{
+		"title": "rebuilt routed exit marker",
+	}, row.WriteOptions{
+		ExpectedSchemaVersion: 1, ExpectedRevision: 2, RouteLeafIDs: []string{leaf2.ID},
+	}); err != nil {
 		t.Fatal(err)
-	}
-	if err := service.CompleteReindex(
-		ctx, claim, []string{"rebuilt-semantic"}, []string{leaf2.ID},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.RebuildMechanicalIndex(ctx, "work", "notes", seed.ID); err != nil {
-		t.Fatal(err)
-	}
-	matched, err := service.Match(
-		ctx, "db_work", "tbl_notes", "rebuilt exit marker",
-		[]string{"rebuilt-semantic"}, 10,
-	)
-	if err != nil || len(matched.Matches) != 1 || matched.Matches[0].RowID != seed.ID {
-		t.Fatalf("rebuilt MATCH = %#v, %v", matched, err)
 	}
 	if locators, _, err := service.ListRouterLeaf(ctx, leaf2.ID, 10); err != nil || len(locators) != 1 || locators[0].RowID != seed.ID {
 		t.Fatalf("rebuilt Router = %#v, %v", locators, err)
@@ -145,7 +120,7 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 		"title": "transaction update",
 	}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
-		IndexTerms: []string{"transaction"}, RouteLeafIDs: []string{leaf2.ID},
+		RouteLeafIDs: []string{leaf2.ID},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,8 +128,7 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	inserted, err := transaction.Insert(ctx, "work", "notes", map[string]any{
 		"title": "transaction insert",
 	}, row.WriteOptions{
-		ExpectedSchemaVersion: 1, IndexTerms: []string{"transaction"},
-		RouteLeafIDs: []string{leaf2.ID},
+		ExpectedSchemaVersion: 1, RouteLeafIDs: []string{leaf2.ID},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +147,7 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 		"title": "must roll back",
 	}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
-		IndexTerms: []string{"rollback"}, RouteLeafIDs: []string{leaf2.ID},
+		RouteLeafIDs: []string{leaf2.ID},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -206,12 +180,6 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	persisted, err := reopened.Get(ctx, "work", "notes", inserted.ID)
 	if err != nil || persisted.Values["title"] != "transaction insert" {
 		t.Fatalf("reopened inserted Row = %#v, %v", persisted, err)
-	}
-	if matches, err := reopened.Match(
-		ctx, "db_work", "tbl_notes", "rebuilt exit marker",
-		[]string{"rebuilt-semantic"}, 10,
-	); err != nil || len(matches.Matches) != 1 || matches.Matches[0].RowID != rebuilt.ID {
-		t.Fatalf("reopened MATCH = %#v, %v", matches, err)
 	}
 }
 
@@ -292,7 +260,7 @@ func phaseBRoute(
 	return root, leaf
 }
 
-func dropDerivedIndexes(t *testing.T, ctx context.Context, database store.Store) {
+func dropRouterIndex(t *testing.T, ctx context.Context, database store.Store) {
 	t.Helper()
 	tx, err := database.Begin(ctx, store.ReadWrite)
 	if err != nil {
@@ -300,8 +268,6 @@ func dropDerivedIndexes(t *testing.T, ctx context.Context, database store.Store)
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, bucket := range []string{
-		"agent_index_snapshots", "agent_index_versions", "agent_index_postings",
-		"mechanical_index_snapshots", "mechanical_index_versions", "mechanical_index_postings",
 		"router_nodes", "router_paths", "router_children",
 		"router_leaf_members", "router_row_memberships",
 	} {

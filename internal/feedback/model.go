@@ -62,7 +62,6 @@ const (
 type Undo struct {
 	TargetRevision        uint64   `json:"target_revision"`
 	ExpectedSchemaVersion uint64   `json:"expected_schema_version"`
-	IndexTerms            []string `json:"index_terms"`
 	RouteLeafIDs          []string `json:"route_leaf_ids"`
 }
 

@@ -91,7 +91,7 @@ func TestReflectHandlerCommitsStableDeltaOnceThroughMSQL(t *testing.T) {
 				Mutation: executor.MutationOptions{
 					ExpectedSchemaVersion: 1, MaxAffectedRows: 1, Actor: "agent:test",
 					Source: "stable-event", Reason: "stable decision",
-					IndexTerms: []string{"route", "locator"}, RouteLeafIDs: []string{},
+					RouteLeafIDs: []string{},
 				},
 			},
 		}},

@@ -95,8 +95,6 @@ func statementDatabaseNames(statement ast.Statement) []string {
 	case statement.Relate != nil:
 		appendQualifiedTable(statement.Relate.SourceTable)
 		appendQualifiedTable(statement.Relate.TargetTable)
-	case statement.Match != nil:
-		appendQualifiedTable(statement.Match.Table)
 	case statement.Package != nil && statement.Package.Action == "PACK":
 		appendDatabase(statement.Package.Database)
 	}

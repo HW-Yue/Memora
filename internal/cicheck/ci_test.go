@@ -1,6 +1,7 @@
 package cicheck_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -132,6 +133,59 @@ func TestGitHubReleaseWorkflowIsTagOnlyAndLeastPrivilege(t *testing.T) {
 	}
 	if strings.Index(workflow, "contents: write") < strings.Index(workflow, "publish:") {
 		t.Error("Release workflow grants write permission before the publish job")
+	}
+}
+
+func TestRuntimeAndHostContractsContainNoRetiredSemanticRetrieval(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	forbidden := []string{
+		"MAT" + "CH ",
+		"FROM DATA" + "BASE",
+		"cos" + "ine",
+		"vec" + "tor",
+		"embed" + "ding",
+		"query" + "_terms",
+		"index" + "_terms",
+		"agent" + "index",
+		"mechanical" + "index",
+		"retry" + "_reindex",
+		"charN" + "Gram",
+	}
+	for _, directory := range []string{"cmd", "internal", "skills", "adapters", "benchmarks", "scripts"} {
+		err := filepath.WalkDir(filepath.Join(root, directory), func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || path == filepath.Join(root, "internal", "cicheck", "ci_test.go") {
+				return nil
+			}
+			switch filepath.Ext(path) {
+			case ".go", ".json", ".md", ".sh", ".yaml", ".rules", ".golden":
+			default:
+				return nil
+			}
+			content, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return readErr
+			}
+			lower := strings.ToLower(string(content))
+			for _, token := range forbidden {
+				candidate := token
+				if token != "MATCH " && token != "FROM DATABASE" {
+					candidate = strings.ToLower(token)
+				}
+				if strings.Contains(string(content), candidate) ||
+					(token != "MATCH " && token != "FROM DATABASE" && strings.Contains(lower, candidate)) {
+					return fmt.Errorf("%s contains retired retrieval token %q", path, token)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

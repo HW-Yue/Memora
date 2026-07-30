@@ -12,9 +12,7 @@ import (
 	"unicode"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
-	"github.com/HW-Yue/Memora/internal/reindex"
 	"github.com/HW-Yue/Memora/internal/result"
-	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/store"
 )
@@ -51,14 +49,10 @@ func (service *Service) Report(ctx context.Context) (Report, error) {
 	sort.Slice(databases, func(left, right int) bool { return databases[left].ID < databases[right].ID })
 	issues := []Issue{}
 	truncated := false
-	databaseNames := map[string]string{}
-	tableNames := map[string][2]string{}
 	for _, database := range databases {
-		databaseNames[database.ID] = database.Name
 		tables := append([]catalog.Table{}, database.Tables...)
 		sort.Slice(tables, func(left, right int) bool { return tables[left].ID < tables[right].ID })
 		for _, table := range tables {
-			tableNames[table.ID] = [2]string{database.Name, table.Name}
 			issues = append(issues, synonymousColumnIssues(database, table)...)
 			rows, more, listErr := service.source.ListPage(ctx, database.Name, table.Name, maximumRowsPerTable)
 			if listErr != nil {
@@ -70,33 +64,6 @@ func (service *Service) Report(ctx context.Context) (Report, error) {
 				issues = append(issues, issue)
 			}
 		}
-		routerIssues, routerTruncated, routerErr := service.routerIssues(ctx, database)
-		if routerErr != nil {
-			return Report{}, routerErr
-		}
-		issues = append(issues, routerIssues...)
-		truncated = truncated || routerTruncated
-	}
-	tasks, err := service.source.ListReindexTasks(ctx)
-	if err != nil {
-		return Report{}, healthError(result.CodeInternal, "list pending reindex: %v", err)
-	}
-	for _, task := range tasks {
-		if task.State == reindex.StateCompleted {
-			continue
-		}
-		names := tableNames[task.TableID]
-		autoFix := task.State == reindex.StateFailed
-		severity, action := SeverityReviewRequired, "inspect_reindex"
-		if autoFix {
-			severity, action = SeverityLowRisk, "retry_reindex"
-		}
-		issues = append(issues, newIssue(Issue{
-			Kind: KindPendingReindex, Severity: severity, AutoFix: autoFix, Action: action,
-			DatabaseID: task.DatabaseID, Database: choose(names[0], databaseNames[task.DatabaseID]),
-			TableID: task.TableID, Table: names[1], RowID: task.RowID,
-			ObjectIDs: []string{task.RowID}, Count: 1,
-		}))
 	}
 	sortIssues(issues)
 	if len(issues) > maximumIssues {
@@ -151,7 +118,7 @@ func (service *Service) Maintain(ctx context.Context, request Request) (Receipt,
 			return Receipt{}, healthError(result.CodeValidation, "maintenance issue IDs must exist and be deduplicated")
 		}
 		seen[id] = true
-		if !issue.AutoFix || issue.Kind != KindPendingReindex || issue.Action != "retry_reindex" {
+		if !issue.AutoFix {
 			return Receipt{}, healthError(result.CodePermissionDenied, "issue %q requires review and cannot be auto-fixed", id)
 		}
 		selected[index] = issue
@@ -159,15 +126,6 @@ func (service *Service) Maintain(ctx context.Context, request Request) (Receipt,
 	receipt := Receipt{
 		Version: ReceiptVersion, RequestID: request.RequestID, Status: "noop",
 		ReportHash: report.Hash, Actions: []Action{},
-	}
-	for _, issue := range selected {
-		if err := service.source.RetryReindex(ctx, issue.DatabaseID, issue.TableID, issue.RowID); err != nil {
-			return Receipt{}, healthError(result.CodeInternal, "retry reindex %q: %v", issue.ID, err)
-		}
-		receipt.Actions = append(receipt.Actions, Action{
-			IssueID: issue.ID, Action: issue.Action,
-			Target: issue.DatabaseID + "/" + issue.TableID + "/" + issue.RowID, Status: "completed",
-		})
 	}
 	if len(receipt.Actions) > 0 {
 		receipt.Status = "completed"
@@ -237,52 +195,6 @@ func staleDescriptionIssue(database catalog.Database, table catalog.Table, rows 
 		DatabaseID: database.ID, Database: database.Name, TableID: table.ID, Table: table.Name,
 		ObjectIDs: []string{table.ID}, Count: 1,
 	}), true
-}
-
-func (service *Service) routerIssues(ctx context.Context, database catalog.Database) ([]Issue, bool, error) {
-	root, err := service.source.ResolveRouterPath(ctx, database.ID, "/")
-	if err != nil {
-		if hasCode(err, result.CodeNotFound) {
-			return nil, false, nil
-		}
-		return nil, false, healthError(result.CodeInternal, "resolve Router root: %v", err)
-	}
-	issues, queue, truncated := []Issue{}, []router.Node{root}, false
-	for len(queue) > 0 {
-		node := queue[0]
-		queue = queue[1:]
-		if node.Kind == router.KindLeaf {
-			locators, more, listErr := service.source.ListRouterLeaf(ctx, node.ID, 100)
-			if listErr != nil {
-				return nil, false, healthError(result.CodeInternal, "list Router leaf: %v", listErr)
-			}
-			truncated = truncated || more
-			if len(locators) >= 100 || more {
-				issues = append(issues, newIssue(Issue{
-					Kind: KindRouterLeaf, Severity: SeverityReviewRequired, Action: "review_router_split",
-					DatabaseID: database.ID, Database: database.Name,
-					ObjectIDs: []string{node.ID}, Count: len(locators),
-				}))
-			}
-			continue
-		}
-		children, next, listErr := service.source.ListRouterChildren(ctx, node.ID, "", 100)
-		if listErr != nil {
-			return nil, false, healthError(result.CodeInternal, "list Router children: %v", listErr)
-		}
-		if next != "" {
-			truncated = true
-		}
-		if len(children) >= 12 || next != "" {
-			issues = append(issues, newIssue(Issue{
-				Kind: KindRouterChildren, Severity: SeverityReviewRequired, Action: "review_router_split",
-				DatabaseID: database.ID, Database: database.Name,
-				ObjectIDs: []string{node.ID}, Count: len(children),
-			}))
-		}
-		queue = append(queue, children...)
-	}
-	return issues, truncated, nil
 }
 
 func validateRequest(request Request) error {

@@ -53,51 +53,6 @@ func TestScopedMSQLAcceptsStableDatabaseID(t *testing.T) {
 	}
 }
 
-func TestScopedRouterRejectsDynamicDatabaseAndRouteIDOutsideAuthorization(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	subject, _, closeStore := queryFixture(t, ctx)
-	defer closeStore()
-	created, err := execute(ctx, subject,
-		"CREATE ROUTE ROOT FOR DATABASE :database PURPOSE :purpose",
-		executor.Parameters{Named: map[string]any{
-			"database": "work", "purpose": "Work Router",
-		}},
-		executor.MutationOptions{MaxAffectedRows: 1},
-	)
-	if err != nil || len(created.Rows) != 1 {
-		t.Fatalf("CREATE ROUTE error = %v, output = %#v", err, created)
-	}
-	routeID, _ := created.Rows[0]["route_id"].(string)
-	scoped := security.WithAuthorization(ctx, security.Authorization{
-		Version: security.AuthorizationVersion, Actor: "agent:host",
-		AuthorizedDatabases: []string{"private"},
-	})
-	for _, test := range []struct {
-		source     string
-		parameters executor.Parameters
-	}{
-		{
-			source: "SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit",
-			parameters: executor.Parameters{Named: map[string]any{
-				"database": "work", "path": "/", "cursor": "", "limit": int64(1),
-			}},
-		},
-		{
-			source: "OPEN ROUTE :route LIMIT :limit",
-			parameters: executor.Parameters{Named: map[string]any{
-				"route": routeID, "limit": int64(1),
-			}},
-		},
-	} {
-		_, err := execute(scoped, subject, test.source, test.parameters, executor.MutationOptions{})
-		if code(err) != "permission_denied" {
-			t.Fatalf("%s error = %v", test.source, err)
-		}
-	}
-}
-
 func TestScopedCatalogDiscoveryAndRelationsDoNotLeakOtherDatabases(t *testing.T) {
 	t.Parallel()
 

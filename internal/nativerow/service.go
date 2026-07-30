@@ -16,7 +16,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
-	"github.com/HW-Yue/Memora/internal/search"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/google/uuid"
 )
@@ -65,9 +64,6 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	}
 	if options.ExpectedSchemaVersion != table.SchemaVersion {
 		return row.Row{}, serviceFailure(result.CodeRevisionConflict, "schema version conflicts with native catalog", ErrRevisionConflict)
-	}
-	if len(options.IndexTerms) > 0 {
-		return row.Row{}, ErrUnsupported
 	}
 	bound, err := bindValues(table, values)
 	if err != nil {
@@ -285,7 +281,7 @@ func containsRoute(values []string, target string) bool {
 }
 
 func (service *Service) mutationTarget(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (catalog.Table, row.Row, error) {
-	if len(options.IndexTerms) > 0 || len(options.RouteLeafIDs) > 0 {
+	if len(options.RouteLeafIDs) > 0 {
 		return catalog.Table{}, row.Row{}, ErrUnsupported
 	}
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
@@ -441,9 +437,6 @@ func (service *Service) relationEndpoint(ctx context.Context, endpoint row.Relat
 		return relation.Endpoint{}, serviceFailure(result.CodeNotFound, "relation endpoint Row was not found", err)
 	}
 	return relation.Endpoint{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID}, nil
-}
-func (service *Service) Match(context.Context, string, string, string, []string, int) (search.Result, error) {
-	return search.Result{}, ErrUnsupported
 }
 func (service *Service) CreateRouterRoot(context.Context, string, string) (router.Node, error) {
 	return router.Node{}, ErrUnsupported

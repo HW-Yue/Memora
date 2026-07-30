@@ -150,9 +150,6 @@ func (transaction *Transaction) Restore(
 	targetRevision uint64,
 	options WriteOptions,
 ) (Row, error) {
-	if err := transaction.validateIndexTerms(options.IndexTerms); err != nil {
-		return Row{}, err
-	}
 	table, err := transaction.tableForWrite(ctx, databaseName, tableName, options)
 	if err != nil {
 		return Row{}, stableError(err)
@@ -195,51 +192,11 @@ func (transaction *Transaction) Restore(
 		return Row{}, stableError(err)
 	}
 	if stored.State == StateDeleted {
-		if _, err := transaction.service.agentIndex.InvalidateIn(
-			ctx, transaction.tx, agentIndexLocator(stored),
-		); err != nil {
-			return Row{}, stableError(err)
-		}
-	} else if options.IndexTerms == nil {
-		if _, err := transaction.service.agentIndex.InvalidateIn(
-			ctx, transaction.tx, agentIndexLocator(stored),
-		); err != nil {
-			return Row{}, stableError(err)
-		}
-	} else if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
-		return Row{}, err
-	}
-	if stored.State == StateDeleted {
-		if _, err := transaction.service.mechanicalIndex.InvalidateIn(
-			ctx, transaction.tx, mechanicalIndexLocator(stored),
-		); err != nil {
-			return Row{}, stableError(err)
-		}
-	} else if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
-		return Row{}, err
-	}
-	if stored.State == StateDeleted {
 		if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
 			return Row{}, err
 		}
-	} else if options.RouteLeafIDs == nil {
-		if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
-			return Row{}, err
-		}
-	} else if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
-		return Row{}, err
-	}
-	if stored.State == StateDeleted {
-		if err := transaction.clearReindex(ctx, stored); err != nil {
-			return Row{}, err
-		}
-	} else {
-		needAgent, needRouter := options.IndexTerms == nil, options.RouteLeafIDs == nil
-		if needAgent || needRouter {
-			if err := transaction.enqueueReindex(ctx, stored, needAgent, needRouter); err != nil {
-				return Row{}, err
-			}
-		} else if err := transaction.clearReindex(ctx, stored); err != nil {
+	} else if options.RouteLeafIDs != nil {
+		if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
 			return Row{}, err
 		}
 	}

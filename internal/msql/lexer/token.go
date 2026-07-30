@@ -54,7 +54,7 @@ var keywords = map[string]struct{}{
 	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LIMIT": {}, "MATCH": {},
 	"NOT": {}, "NULL": {}, "OF": {}, "ON": {}, "OPEN": {}, "OR": {},
 	"ONLY": {}, "ORDER": {}, "PACK": {}, "PACKAGE": {}, "PROFILE": {}, "PURGE": {}, "PURPOSE": {}, "READ": {},
-	"REINDEX": {}, "RENAME": {}, "RESTORE": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "ROW": {},
+	"RENAME": {}, "RESTORE": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "ROW": {},
 	"SCOPE": {}, "SELECT": {}, "SEMANTICS": {}, "SET": {}, "SHOW": {}, "START": {},
 	"COLUMN": {}, "COLUMNS": {}, "TABLE": {}, "TABLES": {}, "TO": {},
 	"TRANSACTION": {}, "TRUE": {}, "TRUSTED": {}, "UPDATE": {}, "VALUES": {}, "WHERE": {}, "WIKI": {},

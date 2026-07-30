@@ -2,7 +2,7 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F70 已完成；F71–F72 继续按顺序推进。
+实现进度：F62–F71 已完成；F72 继续推进。
 
 ## F62 Transaction Frame
 
@@ -112,6 +112,11 @@ locator → 精确 RowID SELECT；Route Frame 支持 cursor/limit，空层、权
 - 可保留的精确/字面查询必须有独立名称，不能自动兜底语义导航；
 - 测试：仓库扫描、Canonical Skill、CLI/e2e 均无隐藏 fallback；
 - 完成：实现与产品宪章不再存在双架构。
+
+实现结果：删除旧语义检索语法、融合 Planner、Agent/机械倒排服务、后台 reindex、
+字符相似度评测实现和旧发布报告；Database 级 Route path 不再能由 Parser/Executor
+访问。Mutation 只维护 Table Router membership，不再接收语义词项快照。CI 会扫描
+runtime、Canonical Skill、宿主适配产物和 benchmark，阻止这些路径重新进入代码。
 
 ## F72 AI-native 用户故事门
 

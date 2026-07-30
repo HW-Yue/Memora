@@ -118,11 +118,8 @@ func validateStep(step Step, plan Plan) (string, []string, error) {
 		if kind == "UPDATE" && options.ExpectedRevision == 0 {
 			return "", nil, fmt.Errorf("UPDATE requires expected revision")
 		}
-		if options.IndexTerms == nil || options.RouteLeafIDs == nil {
-			return "", nil, fmt.Errorf("row mutation requires complete index and Route snapshots")
-		}
-		if err := validateSnapshot(options.IndexTerms, 64, "index terms"); err != nil {
-			return "", nil, err
+		if options.RouteLeafIDs == nil {
+			return "", nil, fmt.Errorf("row mutation requires a complete Route snapshot")
 		}
 		if err := validateSnapshot(options.RouteLeafIDs, 32, "Route memberships"); err != nil {
 			return "", nil, err

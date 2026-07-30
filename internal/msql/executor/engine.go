@@ -14,7 +14,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
-	"github.com/HW-Yue/Memora/internal/search"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
 )
@@ -41,13 +40,10 @@ type Rows interface {
 	DeleteRelation(context.Context, string, uint64) (relation.Relation, error)
 	ListOutgoingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
 	ListIncomingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
-	Match(context.Context, string, string, string, []string, int) (search.Result, error)
-	CreateRouterRoot(context.Context, string, string) (router.Node, error)
 	CreateRouterNode(context.Context, string, router.NodeDefinition) (router.Node, error)
 	RenameRouterNode(context.Context, string, string, uint64) (router.Node, error)
 	DeleteRouterNode(context.Context, string, uint64) (uint64, error)
 	GetRouterNode(context.Context, string) (router.Node, error)
-	ResolveRouterPath(context.Context, string, string) (router.Node, error)
 	ListRouterChildren(context.Context, string, string, int) ([]router.Node, string, error)
 	ListRouterLeaf(context.Context, string, int) ([]router.Locator, bool, error)
 }
@@ -82,7 +78,6 @@ type MutationOptions struct {
 	Actor                 string   `json:"actor,omitempty"`
 	Source                string   `json:"source,omitempty"`
 	Reason                string   `json:"reason,omitempty"`
-	IndexTerms            []string `json:"index_terms,omitempty"`
 	RouteLeafIDs          []string `json:"route_leaf_ids,omitempty"`
 }
 
@@ -96,7 +91,6 @@ func (options MutationOptions) MarshalJSON() ([]byte, error) {
 		Actor                 string    `json:"actor,omitempty"`
 		Source                string    `json:"source,omitempty"`
 		Reason                string    `json:"reason,omitempty"`
-		IndexTerms            *[]string `json:"index_terms,omitempty"`
 		RouteLeafIDs          *[]string `json:"route_leaf_ids,omitempty"`
 	}
 	wire := wireOptions{
@@ -106,9 +100,6 @@ func (options MutationOptions) MarshalJSON() ([]byte, error) {
 		Actor:                 options.Actor,
 		Source:                options.Source,
 		Reason:                options.Reason,
-	}
-	if options.IndexTerms != nil {
-		wire.IndexTerms = &options.IndexTerms
 	}
 	if options.RouteLeafIDs != nil {
 		wire.RouteLeafIDs = &options.RouteLeafIDs

@@ -58,7 +58,7 @@ func TestConfirmedUndoCreatesAuditableCompensationRevisionAndCannotBlindlyReplay
 		FeedbackEventID: event.EventID, SourceEventID: "user-confirm-undo", Actor: "agent:test",
 		Instruction: "restore the prior verified title", Action: feedback.ActionUndo,
 		ExpectedRevision: current.Revision, AuthorizedDatabases: []string{"work"},
-		Undo: &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, IndexTerms: []string{"first"}, RouteLeafIDs: []string{}},
+		Undo: &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, RouteLeafIDs: []string{}},
 	}
 	receipt, err := processor.Confirm(ctx, confirmation)
 	if err != nil || receipt.Status != "confirmed" || receipt.NewRevision == nil || *receipt.NewRevision != 3 ||
@@ -103,7 +103,7 @@ func TestFeedbackAndConfirmationRejectStaleOrUnconfirmedMutationBeforeWrites(t *
 		FeedbackEventID: useful.EventID, SourceEventID: "user-confirm", Actor: "agent:test",
 		Instruction: "undo anyway", Action: feedback.ActionUndo, ExpectedRevision: current.Revision,
 		AuthorizedDatabases: []string{"work"},
-		Undo:                &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, IndexTerms: []string{}, RouteLeafIDs: []string{}},
+		Undo:                &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, RouteLeafIDs: []string{}},
 	}
 	_, err = processor.Confirm(ctx, confirmation)
 	assertCode(t, err, result.CodePermissionDenied)
@@ -132,7 +132,7 @@ func TestConfirmedRevisionPlanCannotTargetAnotherRow(t *testing.T) {
 			ID: "revise", Kind: "UPDATE", Target: "another-row", MSQL: "UPDATE work.notes SET title = :title WHERE row_id = :row",
 			Input: executor.StatementInput{
 				Parameters: executor.Parameters{Named: map[string]any{"row": "another-row", "title": "unsafe"}},
-				Mutation:   executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: current.Revision, MaxAffectedRows: 1, Actor: "agent:test", Source: "user-cross-row", Reason: "feedback feedback-cross-row: revise", IndexTerms: []string{}, RouteLeafIDs: []string{}},
+				Mutation:   executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: current.Revision, MaxAffectedRows: 1, Actor: "agent:test", Source: "user-cross-row", Reason: "feedback feedback-cross-row: revise", RouteLeafIDs: []string{}},
 			},
 		}},
 		Verify: []skillwrite.Check{{ID: "verify", MSQL: "SELECT row_id FROM work.notes WHERE row_id = :row LIMIT 1", Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"row": "another-row"}}}, ExpectRows: &one}},
@@ -169,15 +169,15 @@ func feedbackFixture(t *testing.T) (context.Context, *feedback.Processor, *row.S
 	rows := row.New(database, dictionary, row.Options{})
 	first, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "first"}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, Metadata: row.WriteMetadata{Actor: "agent:test", Source: "seed-1", Reason: "first"},
-		IndexTerms: []string{"first"}, RouteLeafIDs: []string{},
+		RouteLeafIDs: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	current, err := rows.Update(ctx, "work", "notes", first.ID, map[string]any{"title": "wrong"}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
-		Metadata:   row.WriteMetadata{Actor: "agent:test", Source: "seed-2", Reason: "wrong update"},
-		IndexTerms: []string{"wrong"}, RouteLeafIDs: []string{},
+		Metadata:     row.WriteMetadata{Actor: "agent:test", Source: "seed-2", Reason: "wrong update"},
+		RouteLeafIDs: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)

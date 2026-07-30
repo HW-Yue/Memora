@@ -67,8 +67,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.relate(ctx, statement.Relate, bound, options)
 	case statement.Unrelate != nil:
 		return engine.unrelate(ctx, statement.Unrelate, bound, options)
-	case statement.Match != nil:
-		return engine.match(ctx, statement.Match, bound)
 	default:
 		return Output{}, unsupported(statement)
 	}
@@ -110,7 +108,6 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 	inserted, err := engine.rows.Insert(ctx, databaseName, tableName, values, datarow.WriteOptions{
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		Metadata:              mutationMetadata(options),
-		IndexTerms:            options.IndexTerms,
 		RouteLeafIDs:          options.RouteLeafIDs,
 	})
 	if err != nil {
@@ -154,7 +151,6 @@ func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, b
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		ExpectedRevision:      options.ExpectedRevision,
 		Metadata:              mutationMetadata(options),
-		IndexTerms:            options.IndexTerms,
 		RouteLeafIDs:          options.RouteLeafIDs,
 	})
 	if err != nil {

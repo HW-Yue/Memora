@@ -5,9 +5,7 @@ import (
 	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
-	"github.com/HW-Yue/Memora/internal/reindex"
 	"github.com/HW-Yue/Memora/internal/result"
-	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
@@ -22,9 +20,6 @@ type Kind string
 const (
 	KindDuplicateRow      Kind = "duplicate_row"
 	KindSynonymousColumns Kind = "synonymous_columns"
-	KindRouterChildren    Kind = "router_children_capacity"
-	KindRouterLeaf        Kind = "router_leaf_capacity"
-	KindPendingReindex    Kind = "pending_reindex"
 	KindStaleDescription  Kind = "stale_description"
 )
 
@@ -95,11 +90,6 @@ type Receipt struct {
 type Source interface {
 	ShowDatabases(context.Context) ([]catalog.Database, error)
 	ListPage(context.Context, string, string, int) ([]row.Row, bool, error)
-	ResolveRouterPath(context.Context, string, string) (router.Node, error)
-	ListRouterChildren(context.Context, string, string, int) ([]router.Node, string, error)
-	ListRouterLeaf(context.Context, string, int) ([]router.Locator, bool, error)
-	ListReindexTasks(context.Context) ([]reindex.Task, error)
-	RetryReindex(context.Context, string, string, string) error
 }
 
 type Error struct {

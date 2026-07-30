@@ -48,22 +48,6 @@ func (engine *Engine) createRoute(
 		if err != nil {
 			return Output{}, normalizeError(err)
 		}
-	case "ROOT":
-		databaseName, err := routerString(statement.Database, bound, "Router Database")
-		if err != nil {
-			return Output{}, err
-		}
-		if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
-			return Output{}, err
-		}
-		database, err := engine.catalog.DescribeDatabase(ctx, databaseName)
-		if err != nil {
-			return Output{}, normalizeError(err)
-		}
-		created, err = engine.rows.CreateRouterRoot(ctx, database.ID, purpose)
-		if err != nil {
-			return Output{}, normalizeError(err)
-		}
 	case "CHILD":
 		parentID, err := routerString(statement.Parent, bound, "Router parent ID")
 		if err != nil {
@@ -181,7 +165,7 @@ func (engine *Engine) showRoutes(
 		}
 		nodes, next, err = tableRows.ListTableRouterRoots(ctx, table.DatabaseID, table.ID, cursor, limit)
 	} else {
-		parent, err := engine.resolveRouterNode(ctx, show.RouteMode, show.RouteDB, show.Route, bound)
+		parent, err := engine.resolveRouterNode(ctx, show.Route, bound)
 		if err != nil {
 			return Output{}, err
 		}
@@ -218,13 +202,7 @@ func (engine *Engine) openRoute(
 	if err != nil {
 		return Output{}, err
 	}
-	routeExpression := statement.Route
-	if statement.Mode == "PATH" {
-		routeExpression = statement.Path
-	}
-	node, err := engine.resolveRouterNode(
-		ctx, statement.Mode, statement.Database, routeExpression, bound,
-	)
+	node, err := engine.resolveRouterNode(ctx, statement.Route, bound)
 	if err != nil {
 		return Output{}, err
 	}
@@ -257,47 +235,21 @@ func (engine *Engine) openRoute(
 
 func (engine *Engine) resolveRouterNode(
 	ctx context.Context,
-	mode string,
-	databaseExpression, routeExpression *ast.Expression,
+	routeExpression *ast.Expression,
 	bound bindings,
 ) (router.Node, error) {
-	switch mode {
-	case "ID":
-		routeID, err := routerString(routeExpression, bound, "Router node ID")
-		if err != nil {
-			return router.Node{}, err
-		}
-		node, err := engine.rows.GetRouterNode(ctx, routeID)
-		if err != nil {
-			return router.Node{}, normalizeError(err)
-		}
-		if err := engine.authorizeDatabaseReference(ctx, node.DatabaseID); err != nil {
-			return router.Node{}, err
-		}
-		return node, nil
-	case "PATH":
-		databaseName, err := routerString(
-			databaseExpression, bound, "Router Database",
-		)
-		if err != nil {
-			return router.Node{}, err
-		}
-		if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
-			return router.Node{}, err
-		}
-		path, err := routerString(routeExpression, bound, "Router path")
-		if err != nil {
-			return router.Node{}, err
-		}
-		database, err := engine.catalog.DescribeDatabase(ctx, databaseName)
-		if err != nil {
-			return router.Node{}, normalizeError(err)
-		}
-		node, err := engine.rows.ResolveRouterPath(ctx, database.ID, path)
-		return node, normalizeError(err)
-	default:
-		return router.Node{}, executeError(result.CodeValidation, "Router locator mode is invalid")
+	routeID, err := routerString(routeExpression, bound, "Router node ID")
+	if err != nil {
+		return router.Node{}, err
 	}
+	node, err := engine.rows.GetRouterNode(ctx, routeID)
+	if err != nil {
+		return router.Node{}, normalizeError(err)
+	}
+	if err := engine.authorizeDatabaseReference(ctx, node.DatabaseID); err != nil {
+		return router.Node{}, err
+	}
+	return node, nil
 }
 
 func (engine *Engine) authorizeRouterID(ctx context.Context, routeID string) error {

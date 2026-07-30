@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/HW-Yue/Memora/internal/agentindex"
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/relation"
@@ -120,9 +119,6 @@ func (transaction *Transaction) Insert(
 	values map[string]any,
 	options WriteOptions,
 ) (Row, error) {
-	if err := transaction.validateIndexTerms(options.IndexTerms); err != nil {
-		return Row{}, err
-	}
 	table, err := transaction.tableForWrite(ctx, databaseName, tableName, options)
 	if err != nil {
 		return Row{}, stableError(err)
@@ -162,12 +158,6 @@ func (transaction *Transaction) Insert(
 	if err := saveIndex(ctx, transaction.tx, table.ID, index); err != nil {
 		return Row{}, stableError(err)
 	}
-	if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
-		return Row{}, err
-	}
-	if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
-		return Row{}, err
-	}
 	if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
 		return Row{}, err
 	}
@@ -186,9 +176,6 @@ func (transaction *Transaction) Update(
 ) (Row, error) {
 	if len(changes) == 0 {
 		return Row{}, rowError(result.CodeValidation, "UPDATE requires at least one changed column")
-	}
-	if err := transaction.validateIndexTerms(options.IndexTerms); err != nil {
-		return Row{}, err
 	}
 	table, err := transaction.tableForWrite(ctx, databaseName, tableName, options)
 	if err != nil {
@@ -223,32 +210,10 @@ func (transaction *Transaction) Update(
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
 		return Row{}, stableError(err)
 	}
-	if options.IndexTerms == nil {
-		if _, err := transaction.service.agentIndex.InvalidateIn(
-			ctx, transaction.tx, agentIndexLocator(stored),
-		); err != nil {
-			return Row{}, stableError(err)
-		}
-	} else if err := transaction.replaceAgentIndex(ctx, stored, options.IndexTerms); err != nil {
-		return Row{}, err
-	}
-	if err := transaction.replaceMechanicalIndex(ctx, table, stored); err != nil {
-		return Row{}, err
-	}
-	if options.RouteLeafIDs == nil {
-		if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
+	if options.RouteLeafIDs != nil {
+		if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
 			return Row{}, err
 		}
-	} else if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
-		return Row{}, err
-	}
-	needAgent, needRouter := options.IndexTerms == nil, options.RouteLeafIDs == nil
-	if needAgent || needRouter {
-		if err := transaction.enqueueReindex(ctx, stored, needAgent, needRouter); err != nil {
-			return Row{}, err
-		}
-	} else if err := transaction.clearReindex(ctx, stored); err != nil {
-		return Row{}, err
 	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationUpdate, options.Metadata); err != nil {
 		return Row{}, err
@@ -297,20 +262,7 @@ func (transaction *Transaction) Delete(
 	if err := transaction.invalidateRelations(ctx, relationEndpoint(stored), commitSequence); err != nil {
 		return Row{}, err
 	}
-	if _, err := transaction.service.agentIndex.InvalidateIn(
-		ctx, transaction.tx, agentIndexLocator(stored),
-	); err != nil {
-		return Row{}, stableError(err)
-	}
-	if _, err := transaction.service.mechanicalIndex.InvalidateIn(
-		ctx, transaction.tx, mechanicalIndexLocator(stored),
-	); err != nil {
-		return Row{}, stableError(err)
-	}
 	if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
-		return Row{}, err
-	}
-	if err := transaction.clearReindex(ctx, stored); err != nil {
 		return Row{}, err
 	}
 	if err := putStored(ctx, transaction.tx, stored); err != nil {
@@ -321,34 +273,6 @@ func (transaction *Transaction) Delete(
 	}
 	projected, err := project(table, stored)
 	return projected, stableError(err)
-}
-
-func (transaction *Transaction) validateIndexTerms(terms []string) error {
-	if terms == nil {
-		return nil
-	}
-	return stableError(transaction.service.agentIndex.ValidateTerms(terms))
-}
-
-func (transaction *Transaction) replaceAgentIndex(
-	ctx context.Context,
-	stored storedRow,
-	terms []string,
-) error {
-	if terms == nil {
-		return nil
-	}
-	_, err := transaction.service.agentIndex.ReplaceIn(
-		ctx, transaction.tx, agentIndexLocator(stored), terms,
-	)
-	return stableError(err)
-}
-
-func agentIndexLocator(stored storedRow) agentindex.Locator {
-	return agentindex.Locator{
-		DatabaseID: stored.DatabaseID, TableID: stored.TableID,
-		RowID: stored.ID, Revision: stored.Revision,
-	}
 }
 
 func (transaction *Transaction) tableForWrite(

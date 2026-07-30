@@ -59,13 +59,13 @@ func TestCodexAdapterCleanEnvironmentRunsCoreSkillJourney(t *testing.T) {
 		{ID: "deduplicate", Command: "query", MSQL: "SELECT row_id FROM work.notes WHERE title = :title LIMIT 1", Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"title": "Route results are locators"}}}},
 		{ID: "insert", Command: "exec", MSQL: "INSERT INTO work.notes (title) VALUES (:title)", Input: executor.StatementInput{
 			Parameters: executor.Parameters{Named: map[string]any{"title": "Route results are locators"}},
-			Mutation:   executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1, Actor: "agent:codex", Source: "codex-turn-1", Reason: "stable user decision", IndexTerms: []string{"route", "locator"}, RouteLeafIDs: []string{}},
+			Mutation:   executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1, Actor: "agent:codex", Source: "codex-turn-1", Reason: "stable user decision", RouteLeafIDs: []string{}},
 		}},
 		{ID: "query", Command: "query", MSQL: "SELECT title, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1", Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"row": "row_one"}}}},
 		{ID: "pre-revise", Command: "query", MSQL: "SELECT title, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1", Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"row": "row_one"}}}},
 		{ID: "revise", Command: "exec", MSQL: "UPDATE work.notes SET title = :title WHERE row_id = :row", Input: executor.StatementInput{
 			Parameters: executor.Parameters{Named: map[string]any{"row": "row_one", "title": "Route results are locators, never evidence"}},
-			Mutation:   executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1, Actor: "agent:codex", Source: "codex-turn-3", Reason: "user clarified conclusion", IndexTerms: []string{"route", "locator", "evidence"}, RouteLeafIDs: []string{}},
+			Mutation:   executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1, Actor: "agent:codex", Source: "codex-turn-3", Reason: "user clarified conclusion", RouteLeafIDs: []string{}},
 		}},
 		{ID: "conflict-current", Command: "query", MSQL: "SELECT title, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1", Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"row": "row_one"}}}},
 		{ID: "conflict-history", Command: "query", MSQL: "SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10", Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{"row": "row_one"}}}},

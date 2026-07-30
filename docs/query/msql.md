@@ -1,7 +1,7 @@
 # MSQL 标准语言
 
-状态：协议定位已确认；Table 级 Router 目标语法待实现。F21/F22 的 MATCH 与
-Database 级 Router 语法只作历史兼容说明，不是最终查询主路径。
+状态：协议定位已确认；F70 已实现 Table 级逐层 Router 语法，F71 已删除旧语义
+检索语法与 Database 级 Route path。
 
 ## 定位
 

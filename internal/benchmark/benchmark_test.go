@@ -2,13 +2,10 @@ package benchmark_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/benchmark"
@@ -103,152 +100,13 @@ func TestSuiteAndOutcomesRejectIncompleteOrFabricatedEvidence(t *testing.T) {
 func TestBaselineRegistryExposesComparableAdapters(t *testing.T) {
 	t.Parallel()
 
-	want := []string{"no-memory", "markdown-search", "vector", "memora"}
+	want := []string{"no-memory", "markdown-exact", "memora"}
 	got := benchmark.BaselineNames()
 	encodedGot, _ := json.Marshal(got)
 	encodedWant, _ := json.Marshal(want)
 	if string(encodedGot) != string(encodedWant) {
 		t.Fatalf("baseline names = %s, want %s", encodedGot, encodedWant)
 	}
-}
-
-func TestReleaseCorpusFixesScoredRecordsQueriesAndNegativeExamples(t *testing.T) {
-	t.Parallel()
-
-	root := repositoryRoot(t)
-	suite, err := benchmark.Load(filepath.Join(root, "benchmarks", "ai-native-v1.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	corpus, err := benchmark.LoadReleaseCorpus(filepath.Join(root, "benchmarks", "ai-native-release-v0.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	scenarios := map[string]bool{}
-	for _, scenario := range suite.Scenarios {
-		scenarios[scenario.ID] = true
-	}
-	durable, rejected, takeover := 0, 0, 0
-	for _, record := range corpus.Records {
-		if !scenarios[record.ScenarioID] {
-			t.Errorf("record %q scenario %q is not in canonical suite", record.ID, record.ScenarioID)
-		}
-		if record.Durable {
-			durable++
-		} else {
-			rejected++
-		}
-	}
-	for _, query := range corpus.Queries {
-		if !scenarios[query.ScenarioID] {
-			t.Errorf("query %q scenario %q is not in canonical suite", query.ID, query.ScenarioID)
-		}
-		if query.Takeover {
-			takeover++
-		}
-	}
-	if durable != 20 || rejected != 8 || len(corpus.Queries) != 18 || takeover != 4 {
-		t.Fatalf("corpus counts durable=%d rejected=%d queries=%d takeover=%d", durable, rejected, len(corpus.Queries), takeover)
-	}
-}
-
-func TestCheckedInReleaseBenchmarkPassesAndRejectsTampering(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(repositoryRoot(t), "benchmarks", "reports", "ai-native-release-v0.json")
-	release, err := benchmark.LoadReleaseBenchmark(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if release.Gate.Status != "passed" || len(release.Reports) < len(benchmark.BaselineNames()) {
-		t.Fatalf("release gate = %#v", release.Gate)
-	}
-	encoded, err := json.Marshal(release)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, forbidden := range []string{"Bearer ", "api_key", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "482193"} {
-		if strings.Contains(string(encoded), forbidden) {
-			t.Errorf("release report contains forbidden credential material %q", forbidden)
-		}
-	}
-	release.Reports[len(release.Reports)-1].Aggregate.RecallAt5 = 0
-	tampered, err := json.Marshal(release)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tamperedPath := filepath.Join(t.TempDir(), "tampered.json")
-	if err := osWriteFile(tamperedPath, tampered); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := benchmark.LoadReleaseBenchmark(tamperedPath); err == nil {
-		t.Fatal("LoadReleaseBenchmark() error = nil, want tamper rejection")
-	}
-}
-
-func TestReleaseBenchmarkExecutesEveryAdapterFromObservedModelOutput(t *testing.T) {
-	t.Parallel()
-
-	root := repositoryRoot(t)
-	suite, err := benchmark.Load(filepath.Join(root, "benchmarks", "ai-native-v1.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	corpus, err := benchmark.LoadReleaseCorpus(filepath.Join(root, "benchmarks", "ai-native-release-v0.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	recordTerms := map[string][]string{}
-	for _, query := range corpus.Queries {
-		for _, recordID := range query.RelevantIDs {
-			recordTerms[recordID] = append(recordTerms[recordID], query.Text)
-		}
-	}
-	snapshot := benchmark.ModelSnapshot{}
-	for _, record := range corpus.Records {
-		if record.Durable {
-			terms := append([]string{record.Text}, recordTerms[record.ID]...)
-			snapshot.Records = append(snapshot.Records, benchmark.ModeledRecord{ID: record.ID, Durable: true, Terms: terms})
-		}
-	}
-	for _, query := range corpus.Queries {
-		snapshot.Queries = append(snapshot.Queries, benchmark.ModeledQuery{ID: query.ID, Terms: []string{query.Text}})
-	}
-	encodedCorpus, err := json.Marshal(corpus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	corpusSum := sha256.Sum256(encodedCorpus)
-	snapshot.Evidence = benchmark.Evidence{
-		Mode: "live-model", Protocol: "test", Model: "static",
-		OutputDigest: "observed", CorpusDigest: hex.EncodeToString(corpusSum[:]),
-		Implementation: "test-modeler/v1",
-	}
-	release, err := benchmark.RunReleaseBenchmark(context.Background(), suite, corpus, staticModeler{snapshot: snapshot})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(release.Reports) != len(benchmark.BaselineNames()) {
-		t.Fatalf("reports = %d", len(release.Reports))
-	}
-	var memora benchmark.Report
-	for _, report := range release.Reports {
-		if report.Adapter == "memora" {
-			memora = report
-		}
-	}
-	if memora.Aggregate.WritePrecision != 1 || memora.Aggregate.WriteRecall != 1 ||
-		memora.Aggregate.RecallAt5 < 0.9 || memora.Evidence == nil || memora.Evidence.ExecutionDigest == "" {
-		t.Fatalf("memora observed report = %#v", memora)
-	}
-}
-
-type staticModeler struct {
-	snapshot benchmark.ModelSnapshot
-}
-
-func (modeler staticModeler) Model(context.Context, benchmark.ReleaseCorpus) (benchmark.ModelSnapshot, error) {
-	return modeler.snapshot, nil
 }
 
 func repositoryRoot(t *testing.T) string {

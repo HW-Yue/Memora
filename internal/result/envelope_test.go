@@ -22,7 +22,7 @@ func TestEnvelopeGolden(t *testing.T) {
 		}),
 		"failure": NewEnvelope("req-failure", FailedStatement(0, "UPDATE", "UPDATE notes SET body = ?", CodeValueTooLong, "body exceeds its 1200 character limit", false)),
 		"truncated": func() Envelope {
-			statement := NewStatement(0, "SHOW_ROUTES", "SHOW ROUTES FROM DATABASE work AT '/'")
+			statement := NewStatement(0, "SHOW_ROUTES", "SHOW ROUTES FROM TABLE work.notes AT ROOT")
 			statement.Rows = []Row{{"route": "/architecture"}}
 			statement.Truncated = true
 			statement.NextCursor = "cursor-2"

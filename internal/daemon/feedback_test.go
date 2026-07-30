@@ -35,15 +35,15 @@ func TestFeedbackHandlerRecordsWithoutMutationAndConfirmsUndo(t *testing.T) {
 	rows := row.New(database, dictionary, row.Options{})
 	first, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "first"}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, Metadata: row.WriteMetadata{Actor: "agent:test", Source: "seed-1", Reason: "seed"},
-		IndexTerms: []string{"first"}, RouteLeafIDs: []string{},
+		RouteLeafIDs: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	current, err := rows.Update(ctx, "work", "notes", first.ID, map[string]any{"title": "wrong"}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
-		Metadata:   row.WriteMetadata{Actor: "agent:test", Source: "seed-2", Reason: "wrong"},
-		IndexTerms: []string{"wrong"}, RouteLeafIDs: []string{},
+		Metadata:     row.WriteMetadata{Actor: "agent:test", Source: "seed-2", Reason: "wrong"},
+		RouteLeafIDs: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestFeedbackHandlerRecordsWithoutMutationAndConfirmsUndo(t *testing.T) {
 		FeedbackEventID: event.EventID, SourceEventID: "user-confirm-daemon", Actor: "agent:test",
 		Instruction: "restore first title", Action: feedback.ActionUndo, ExpectedRevision: 2,
 		AuthorizedDatabases: []string{"work"},
-		Undo:                &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, IndexTerms: []string{"first"}, RouteLeafIDs: []string{}},
+		Undo:                &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, RouteLeafIDs: []string{}},
 	}
 	confirmationPayload, _ := json.Marshal(confirmation)
 	encoded, err = handler.Handle(ctx, session, ipc.Request{

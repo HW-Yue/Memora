@@ -858,7 +858,7 @@ func runExecute(
 				if !queryStatement(statement.Kind) {
 					return usageError(
 						stderr,
-						"query only accepts SHOW, DESCRIBE, SELECT, MATCH, or OPEN ROUTE",
+						"query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE",
 					)
 				}
 			}
@@ -961,7 +961,7 @@ func runMutate(
 
 func queryStatement(kind string) bool {
 	switch kind {
-	case "SHOW", "DESCRIBE", "SELECT", "MATCH", "OPEN_ROUTE":
+	case "SHOW", "DESCRIBE", "SELECT", "OPEN_ROUTE":
 		return true
 	default:
 		return false

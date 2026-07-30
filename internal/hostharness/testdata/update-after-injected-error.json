@@ -3,7 +3,7 @@
   "name": "update-after-injected-error",
   "turns": [
     {
-      "user": "Remember that Route and MATCH results are locators only.",
+      "user": "Remember that Route results are locators only.",
       "actions": [
         {
           "call": {
@@ -32,11 +32,7 @@
                 "max_affected_rows": 1,
                 "actor": "agent:harness",
                 "source": "conversation:turn-1",
-                "reason": "capture routing rule",
-                "index_terms": [
-                  "route",
-                  "locator"
-                ]
+                "reason": "capture routing rule"
               }
             }
           },
@@ -55,7 +51,7 @@
               "parameters": {
                 "named": {
                   "row": "row_one",
-                  "title": "Route and MATCH results are locators only"
+                  "title": "Route results are locators only"
                 }
               },
               "mutation": {
@@ -64,12 +60,7 @@
                 "max_affected_rows": 1,
                 "actor": "agent:harness",
                 "source": "conversation:turn-1",
-                "reason": "refine routing rule",
-                "index_terms": [
-                  "route",
-                  "match",
-                  "locator"
-                ]
+                "reason": "refine routing rule"
               }
             }
           },
@@ -92,7 +83,7 @@
               "parameters": {
                 "named": {
                   "row": "row_one",
-                  "title": "Route and MATCH results are locators only"
+                  "title": "Route results are locators only"
                 }
               },
               "mutation": {
@@ -101,12 +92,7 @@
                 "max_affected_rows": 1,
                 "actor": "agent:harness",
                 "source": "conversation:turn-1",
-                "reason": "refine routing rule",
-                "index_terms": [
-                  "route",
-                  "match",
-                  "locator"
-                ]
+                "reason": "refine routing rule"
               }
             }
           },
@@ -134,7 +120,7 @@
             "rows": 1,
             "row_contains": {
               "row_id": "row_one",
-              "title": "Route and MATCH results are locators only"
+              "title": "Route results are locators only"
             }
           }
         }
@@ -174,11 +160,7 @@
           "max_affected_rows": 1,
           "actor": "agent:harness",
           "source": "conversation:turn-1",
-          "reason": "capture routing rule",
-          "index_terms": [
-            "route",
-            "locator"
-          ]
+          "reason": "capture routing rule"
         }
       }
     },
@@ -190,7 +172,7 @@
         "parameters": {
           "named": {
             "row": "row_one",
-            "title": "Route and MATCH results are locators only"
+            "title": "Route results are locators only"
           }
         },
         "mutation": {
@@ -199,12 +181,7 @@
           "max_affected_rows": 1,
           "actor": "agent:harness",
           "source": "conversation:turn-1",
-          "reason": "refine routing rule",
-          "index_terms": [
-            "route",
-            "match",
-            "locator"
-          ]
+          "reason": "refine routing rule"
         }
       }
     },
@@ -216,7 +193,7 @@
         "parameters": {
           "named": {
             "row": "row_one",
-            "title": "Route and MATCH results are locators only"
+            "title": "Route results are locators only"
           }
         },
         "mutation": {
@@ -225,12 +202,7 @@
           "max_affected_rows": 1,
           "actor": "agent:harness",
           "source": "conversation:turn-1",
-          "reason": "refine routing rule",
-          "index_terms": [
-            "route",
-            "match",
-            "locator"
-          ]
+          "reason": "refine routing rule"
         }
       }
     },
@@ -266,7 +238,7 @@
         "rows": 1,
         "row_contains": {
           "row_id": "row_one",
-          "title": "Route and MATCH results are locators only"
+          "title": "Route results are locators only"
         }
       }
     }

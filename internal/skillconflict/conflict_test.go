@@ -274,7 +274,7 @@ func mutationOptions(revision uint64) executor.MutationOptions {
 	return executor.MutationOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: revision, MaxAffectedRows: 1,
 		Actor: "agent:host", Source: "user-decision-1", Reason: "Use the user-approved routing truth",
-		IndexTerms: []string{"routing", "locator"}, RouteLeafIDs: []string{},
+		RouteLeafIDs: []string{},
 	}
 }
 

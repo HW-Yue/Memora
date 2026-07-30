@@ -8,9 +8,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/ipc"
-	"github.com/HW-Yue/Memora/internal/reindex"
 	"github.com/HW-Yue/Memora/internal/result"
-	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
 )
@@ -90,19 +88,4 @@ func (source *daemonHealthSource) ShowDatabases(ctx context.Context) ([]catalog.
 }
 func (source *daemonHealthSource) ListPage(ctx context.Context, database, table string, limit int) ([]row.Row, bool, error) {
 	return source.rows.ListPage(ctx, database, table, limit)
-}
-func (source *daemonHealthSource) ResolveRouterPath(ctx context.Context, databaseID, path string) (router.Node, error) {
-	return source.rows.ResolveRouterPath(ctx, databaseID, path)
-}
-func (source *daemonHealthSource) ListRouterChildren(ctx context.Context, parentID, cursor string, limit int) ([]router.Node, string, error) {
-	return source.rows.ListRouterChildren(ctx, parentID, cursor, limit)
-}
-func (source *daemonHealthSource) ListRouterLeaf(ctx context.Context, leafID string, limit int) ([]router.Locator, bool, error) {
-	return source.rows.ListRouterLeaf(ctx, leafID, limit)
-}
-func (source *daemonHealthSource) ListReindexTasks(ctx context.Context) ([]reindex.Task, error) {
-	return source.rows.ListReindexTasks(ctx)
-}
-func (source *daemonHealthSource) RetryReindex(ctx context.Context, databaseID, tableID, rowID string) error {
-	return source.rows.RetryReindex(ctx, databaseID, tableID, rowID)
 }

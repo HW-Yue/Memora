@@ -289,7 +289,6 @@ func (value *journey) summarizeProject() ([]byte, int, error) {
 		"mutation": map[string]any{
 			"expected_schema_version": 1,
 			"max_affected_rows":       1,
-			"index_terms":             []string{"memora", "local", "personal database", "MSQL"},
 			"route_leaf_ids":          []string{},
 			"actor":                   "agent:clean-machine",
 			"source":                  "acceptance:project-summary",

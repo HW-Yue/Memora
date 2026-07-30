@@ -102,7 +102,6 @@ func TestMutationPolicyRejectsMissingPreflightOrSemanticSnapshots(t *testing.T) 
 		mutate func(*skillwrite.Plan)
 	}{
 		{"missing preflight", func(plan *skillwrite.Plan) { plan.Preflight = nil }},
-		{"missing index snapshot", func(plan *skillwrite.Plan) { plan.Steps[0].Input.Mutation.IndexTerms = nil }},
 		{"missing route snapshot", func(plan *skillwrite.Plan) { plan.Steps[0].Input.Mutation.RouteLeafIDs = nil }},
 		{"missing provenance", func(plan *skillwrite.Plan) { plan.Steps[0].Input.Mutation.Reason = "" }},
 		{"too many steps", func(plan *skillwrite.Plan) {
@@ -122,7 +121,7 @@ func TestMutationPolicyRejectsMissingPreflightOrSemanticSnapshots(t *testing.T) 
 	}
 }
 
-func TestReviseCommitsRowAndAgentIndexSnapshotBeforeVerification(t *testing.T) {
+func TestReviseCommitsRowAndRouteSnapshotBeforeVerification(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -157,7 +156,7 @@ func TestReviseCommitsRowAndAgentIndexSnapshotBeforeVerification(t *testing.T) {
 			Mutation: executor.MutationOptions{
 				ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
 				Actor: "agent:setup", Source: "test:setup", Reason: "fixture",
-				IndexTerms: []string{"old-term"}, RouteLeafIDs: []string{},
+				RouteLeafIDs: []string{},
 			},
 		}},
 	})
@@ -175,7 +174,6 @@ func TestReviseCommitsRowAndAgentIndexSnapshotBeforeVerification(t *testing.T) {
 		},
 	}}
 	plan.Steps[0].Input.Parameters.Named["title"] = "revised"
-	plan.Steps[0].Input.Mutation.IndexTerms = []string{"new-term"}
 	plan.Verify = []skillwrite.Check{{
 		ID:         "verify-current",
 		MSQL:       "SELECT title, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1",
@@ -199,14 +197,6 @@ func TestReviseCommitsRowAndAgentIndexSnapshotBeforeVerification(t *testing.T) {
 	current, err := rows.Get(ctx, "work", "notes", "row_one")
 	if err != nil || current.Revision != 2 || current.Values["title"] != "revised" {
 		t.Fatalf("current Row = %#v, %v", current, err)
-	}
-	newPostings, err := rows.LookupAgentTerm(ctx, current.DatabaseID, "new-term", 10)
-	if err != nil || len(newPostings) != 1 || newPostings[0].Revision != 2 {
-		t.Fatalf("new index snapshot = %#v, %v", newPostings, err)
-	}
-	oldPostings, err := rows.LookupAgentTerm(ctx, current.DatabaseID, "old-term", 10)
-	if err != nil || len(oldPostings) != 0 {
-		t.Fatalf("old index snapshot = %#v, %v", oldPostings, err)
 	}
 }
 
@@ -239,13 +229,11 @@ func mutationPlan(decision skillwrite.Decision) skillwrite.Plan {
 	deleteStep := mutationStep("delete", "DELETE", "row_two",
 		"DELETE FROM work.notes WHERE row_id = :row",
 		map[string]any{"row": "row_two"}, 1)
-	deleteStep.Input.Mutation.IndexTerms = nil
 	deleteStep.Input.Mutation.RouteLeafIDs = nil
 	relate := mutationStep("relate", "RELATE", "row_one->row_two",
 		"RELATE work.notes ROW :source TO work.notes ROW :target TYPE :type",
 		map[string]any{"source": "row_one", "target": "row_two", "type": "supports"}, 0)
 	relate.Input.Mutation.ExpectedSchemaVersion = 0
-	relate.Input.Mutation.IndexTerms = nil
 	relate.Input.Mutation.RouteLeafIDs = nil
 
 	switch decision {
@@ -273,7 +261,7 @@ func mutationStep(id, kind, target, source string, named map[string]any, revisio
 			Mutation: executor.MutationOptions{
 				ExpectedSchemaVersion: 1, ExpectedRevision: revision, MaxAffectedRows: 1,
 				Actor: "agent:test", Source: "conversation:event-1", Reason: "capture verified decision",
-				IndexTerms: []string{"decision", "routing"}, RouteLeafIDs: []string{},
+				RouteLeafIDs: []string{},
 			},
 		},
 	}

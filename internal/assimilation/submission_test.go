@@ -290,11 +290,10 @@ func submissionPlan(sourceEventID, id string, decision skillwrite.Decision, targ
 	}
 	mutation := executor.MutationOptions{
 		ExpectedSchemaVersion: 1, MaxAffectedRows: 1, Actor: plan.Actor,
-		Source: sourceEventID, Reason: plan.Reason, IndexTerms: []string{"reviewed"}, RouteLeafIDs: []string{},
+		Source: sourceEventID, Reason: plan.Reason, RouteLeafIDs: []string{},
 	}
 	if decision == skillwrite.DecisionRelate {
 		mutation.ExpectedSchemaVersion = 0
-		mutation.IndexTerms = nil
 		mutation.RouteLeafIDs = nil
 		plan.Steps = []skillwrite.Step{{
 			ID: "relate", Kind: "RELATE", Target: target,

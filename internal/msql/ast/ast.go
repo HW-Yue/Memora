@@ -28,7 +28,6 @@ type Statement struct {
 	Restore     *RestoreStatement     `json:"restore,omitempty"`
 	Relate      *RelateStatement      `json:"relate,omitempty"`
 	Unrelate    *UnrelateStatement    `json:"unrelate,omitempty"`
-	Match       *MatchStatement       `json:"match,omitempty"`
 	CreateRoute *CreateRouteStatement `json:"create_route,omitempty"`
 	RenameRoute *RenameRouteStatement `json:"rename_route,omitempty"`
 	DeleteRoute *DeleteRouteStatement `json:"delete_route,omitempty"`
@@ -60,7 +59,6 @@ type ShowStatement struct {
 	Route     *Expression `json:"route,omitempty"`
 	Cursor    *Expression `json:"cursor,omitempty"`
 	RouteMode string      `json:"route_mode,omitempty"`
-	RouteDB   *Expression `json:"route_database,omitempty"`
 }
 
 type DescribeStatement struct {
@@ -154,16 +152,8 @@ type UnrelateStatement struct {
 	Relation *Expression `json:"relation"`
 }
 
-type MatchStatement struct {
-	Table Name        `json:"table"`
-	Query *Expression `json:"query"`
-	Terms *Expression `json:"terms"`
-	Limit *Expression `json:"limit"`
-}
-
 type CreateRouteStatement struct {
 	Mode     string      `json:"mode"`
-	Database *Expression `json:"database,omitempty"`
 	Table    *Name       `json:"table,omitempty"`
 	Parent   *Expression `json:"parent,omitempty"`
 	Name     *Expression `json:"name,omitempty"`
@@ -181,11 +171,9 @@ type DeleteRouteStatement struct {
 }
 
 type OpenRouteStatement struct {
-	Mode     string      `json:"mode"`
-	Route    *Expression `json:"route,omitempty"`
-	Database *Expression `json:"database,omitempty"`
-	Path     *Expression `json:"path,omitempty"`
-	Limit    *Expression `json:"limit"`
+	Mode  string      `json:"mode"`
+	Route *Expression `json:"route"`
+	Limit *Expression `json:"limit"`
 }
 
 type PackageStatement struct {
@@ -273,12 +261,7 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Relate.Description)
 	case statement.Unrelate != nil:
 		appendExpression(statement.Unrelate.Relation)
-	case statement.Match != nil:
-		appendExpression(statement.Match.Query)
-		appendExpression(statement.Match.Terms)
-		appendExpression(statement.Match.Limit)
 	case statement.CreateRoute != nil:
-		appendExpression(statement.CreateRoute.Database)
 		appendExpression(statement.CreateRoute.Parent)
 		appendExpression(statement.CreateRoute.Name)
 		appendExpression(statement.CreateRoute.NodeKind)
@@ -289,14 +272,11 @@ func (document Document) Parameters() []Parameter {
 	case statement.DeleteRoute != nil:
 		appendExpression(statement.DeleteRoute.Route)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
-		appendExpression(statement.Show.RouteDB)
 		appendExpression(statement.Show.Route)
 		appendExpression(statement.Show.Cursor)
 		appendExpression(statement.Show.Limit)
 	case statement.OpenRoute != nil:
 		appendExpression(statement.OpenRoute.Route)
-		appendExpression(statement.OpenRoute.Database)
-		appendExpression(statement.OpenRoute.Path)
 		appendExpression(statement.OpenRoute.Limit)
 	case statement.Package != nil:
 		appendExpression(statement.Package.Author)

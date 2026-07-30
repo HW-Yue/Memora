@@ -91,7 +91,7 @@ func TestRun(t *testing.T) {
 			name:       "query rejects mutation",
 			args:       []string{"query", "UPDATE work.notes SET title = 'unsafe'"},
 			wantCode:   2,
-			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, MATCH, or OPEN ROUTE\n",
+			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE\n",
 		},
 		{
 			name:       "mutate requires plan",
@@ -287,7 +287,7 @@ func TestRunFeedbackPassesEventAndConfirmationToDaemon(t *testing.T) {
 		Version: feedback.ConfirmationVersion, ConfirmationID: "confirm-cli", FeedbackEventID: event.EventID,
 		SourceEventID: "user-confirm-cli", Actor: "agent:test", Instruction: "restore", Action: feedback.ActionUndo,
 		ExpectedRevision: 2, AuthorizedDatabases: []string{"work"},
-		Undo: &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, IndexTerms: []string{}, RouteLeafIDs: []string{}},
+		Undo: &feedback.Undo{TargetRevision: 1, ExpectedSchemaVersion: 1, RouteLeafIDs: []string{}},
 	}
 	eventJSON, _ := json.Marshal(event)
 	confirmationJSON, _ := json.Marshal(confirmation)

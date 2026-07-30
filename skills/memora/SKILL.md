@@ -272,12 +272,10 @@ Treat `memora.semantic-health/v1` issues as deterministic candidates, not facts.
 SELECT duplicate Rows before proposing MERGE, inspect synonymous fields before a
 Schema plan, and request review before Router splits or description rewrites.
 
-The only v1 auto-fix is `retry_reindex` on an issue explicitly marked
-`low_risk` and `auto_fix=true`. Submit its issue ID with the exact report hash in
-`memora.maintenance-request/v1`; stop on a revision conflict. Never place a
-review-required issue in that request. Return the bounded
-`memora.maintenance-receipt/v1` and do not claim that a retry already rebuilt
-the index.
+Semantic-health findings are review-only in v1. Do not submit a maintenance
+mutation for them automatically. Use the normal Schema, Router, or Row mutation
+flow after the AI has inspected the affected logical objects and the user has
+approved any broad or destructive change.
 
 ```sh
 memora maintain --report
