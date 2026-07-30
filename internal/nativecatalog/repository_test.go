@@ -111,6 +111,45 @@ func TestCatalogWriteRejectsWrongParent(t *testing.T) {
 	}
 }
 
+func TestCatalogMutationAppendsAndReadsLatestSchemaVersion(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := New(file)
+	first := catalogFixture()
+	if err := repository.Write(first); err != nil {
+		t.Fatal(err)
+	}
+	second := catalogFixture()
+	second[0].SchemaVersion++
+	second[0].UpdatedAt = second[0].UpdatedAt.Add(time.Minute)
+	second[0].Name = "Memora 知识库"
+	second[0].Aliases = append(second[0].Aliases, first[0].Name)
+	if err := repository.Write(second); err != nil {
+		t.Fatalf("Write(updated) error = %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := nativestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	got, err := New(reopened).Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, second) {
+		t.Fatalf("Read() = %#v, want latest %#v", got, second)
+	}
+}
+
 func catalogFixture() []catalog.Database {
 	created := time.Date(2026, 7, 30, 10, 11, 12, 123456789, time.UTC)
 	updated := created.Add(2 * time.Hour)

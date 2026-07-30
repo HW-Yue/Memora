@@ -1,9 +1,11 @@
 package nativecatalog
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -28,7 +30,7 @@ func (repository *Repository) Write(databases []catalog.Database) error {
 		if err != nil {
 			return err
 		}
-		if err := repository.file.Put(nativestore.ObjectKindDatabase, recordSchemaVersion, database.ID, payload); err != nil {
+		if err := repository.putVersion(nativestore.ObjectKindDatabase, database.ID, database.SchemaVersion, payload); err != nil {
 			return fmt.Errorf("write database %q: %w", database.ID, err)
 		}
 		for tableIndex, table := range database.Tables {
@@ -36,7 +38,7 @@ func (repository *Repository) Write(databases []catalog.Database) error {
 			if err != nil {
 				return err
 			}
-			if err := repository.file.Put(nativestore.ObjectKindTable, recordSchemaVersion, table.ID, payload); err != nil {
+			if err := repository.putVersion(nativestore.ObjectKindTable, table.ID, table.SchemaVersion, payload); err != nil {
 				return fmt.Errorf("write table %q: %w", table.ID, err)
 			}
 			for columnIndex, column := range table.Columns {
@@ -44,13 +46,63 @@ func (repository *Repository) Write(databases []catalog.Database) error {
 				if err != nil {
 					return err
 				}
-				if err := repository.file.Put(nativestore.ObjectKindColumn, recordSchemaVersion, column.ID, payload); err != nil {
+				if err := repository.putVersion(nativestore.ObjectKindColumn, column.ID, column.SchemaVersion, payload); err != nil {
 					return fmt.Errorf("write column %q: %w", column.ID, err)
 				}
 			}
 		}
 	}
 	return nil
+}
+
+func (repository *Repository) putVersion(kind nativestore.ObjectKind, id string, version uint64, payload []byte) error {
+	ids, err := repository.file.IDs(kind)
+	if err != nil {
+		return err
+	}
+	latest := uint64(0)
+	for _, recordID := range ids {
+		if recordID != id && !strings.HasPrefix(recordID, id+"@") {
+			continue
+		}
+		existing, err := repository.file.Get(kind, recordID)
+		if err != nil {
+			return err
+		}
+		fields, err := decodeFields(existing)
+		if err != nil {
+			return err
+		}
+		logicalID, err := fields.text(1)
+		if err != nil || logicalID != id {
+			continue
+		}
+		fieldID := uint16(10)
+		if kind == nativestore.ObjectKindDatabase {
+			fieldID = 8
+		}
+		existingVersion, err := fields.uint64(fieldID)
+		if err != nil {
+			return err
+		}
+		if existingVersion == version {
+			if bytes.Equal(existing, payload) {
+				return nil
+			}
+			return fmt.Errorf("%w: object %q changes without schema version", ErrInvalid, id)
+		}
+		if existingVersion > latest {
+			latest = existingVersion
+		}
+	}
+	if latest >= version {
+		return fmt.Errorf("%w: object %q schema version is stale", ErrInvalid, id)
+	}
+	recordID := id
+	if latest > 0 {
+		recordID = fmt.Sprintf("%s@%020d", id, version)
+	}
+	return repository.file.Put(kind, recordSchemaVersion, recordID, payload)
 }
 
 func (repository *Repository) Read() ([]catalog.Database, error) {
@@ -132,16 +184,23 @@ func (repository *Repository) readDatabases() ([]databaseRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]databaseRecord, 0, len(ids))
-	for _, id := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindDatabase, id)
+	latest := make(map[string]databaseRecord)
+	for _, recordID := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindDatabase, recordID)
 		if err != nil {
 			return nil, err
 		}
 		record, err := decodeDatabase(payload)
-		if err != nil || record.value.ID != id {
-			return nil, fmt.Errorf("%w: decode database %q", ErrCorrupt, id)
+		if err != nil {
+			return nil, fmt.Errorf("%w: decode database %q", ErrCorrupt, recordID)
 		}
+		current, ok := latest[record.value.ID]
+		if !ok || record.value.SchemaVersion > current.value.SchemaVersion {
+			latest[record.value.ID] = record
+		}
+	}
+	result := make([]databaseRecord, 0, len(latest))
+	for _, record := range latest {
 		result = append(result, record)
 	}
 	return result, nil
@@ -152,16 +211,23 @@ func (repository *Repository) readTables() ([]tableRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]tableRecord, 0, len(ids))
-	for _, id := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindTable, id)
+	latest := make(map[string]tableRecord)
+	for _, recordID := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindTable, recordID)
 		if err != nil {
 			return nil, err
 		}
 		record, err := decodeTable(payload)
-		if err != nil || record.value.ID != id {
-			return nil, fmt.Errorf("%w: decode table %q", ErrCorrupt, id)
+		if err != nil {
+			return nil, fmt.Errorf("%w: decode table %q", ErrCorrupt, recordID)
 		}
+		current, ok := latest[record.value.ID]
+		if !ok || record.value.SchemaVersion > current.value.SchemaVersion {
+			latest[record.value.ID] = record
+		}
+	}
+	result := make([]tableRecord, 0, len(latest))
+	for _, record := range latest {
 		result = append(result, record)
 	}
 	return result, nil
@@ -172,16 +238,23 @@ func (repository *Repository) readColumns() ([]columnRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]columnRecord, 0, len(ids))
-	for _, id := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindColumn, id)
+	latest := make(map[string]columnRecord)
+	for _, recordID := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindColumn, recordID)
 		if err != nil {
 			return nil, err
 		}
 		record, err := decodeColumn(payload)
-		if err != nil || record.value.ID != id {
-			return nil, fmt.Errorf("%w: decode column %q", ErrCorrupt, id)
+		if err != nil {
+			return nil, fmt.Errorf("%w: decode column %q", ErrCorrupt, recordID)
 		}
+		current, ok := latest[record.value.ID]
+		if !ok || record.value.SchemaVersion > current.value.SchemaVersion {
+			latest[record.value.ID] = record
+		}
+	}
+	result := make([]columnRecord, 0, len(latest))
+	for _, record := range latest {
 		result = append(result, record)
 	}
 	return result, nil
