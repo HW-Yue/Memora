@@ -1,6 +1,6 @@
 # 原生极简存储格式
 
-状态：F52 第一闭环已实现；`Put → Close → Reopen → Get` 已通过，事务与恢复后置。
+状态：F52–F62 已实现；typed objects 与事务发布已闭环，崩溃尾恢复待 F63。
 
 ## 当前唯一目标
 
@@ -26,11 +26,14 @@ SQLite 文件，也不切换 daemon 默认后端。
 
 ## Bootstrap v0 文件
 
-文件只包含一个 Header 和连续 Record Frame：
+文件包含一个 Header、独立 Record，以及由 BEGIN/COMMIT 包围的事务 Record：
 
 ```text
 File Header
 Record Frame
+Transaction BEGIN
+Record Frame ...
+Transaction COMMIT(digest)
 Record Frame
 ...
 ```
@@ -61,6 +64,7 @@ Open(path) → File
 Put(object_kind, schema_version, stable_id, payload)
 Get(object_kind, stable_id) → payload
 Close()
+Begin() → Transaction[Put, Commit, Rollback]
 ```
 
 - v0 只允许单进程、单 writer；
@@ -69,6 +73,8 @@ Close()
 - `Open` 顺序扫描完整 Record，建立 ID → file offset 内存表；
 - `Get` 按 offset 读取并校验 kind、ID、长度和 payload CRC；
 - `Close` 只负责关闭文件；F52 不承诺掉电 durability。
+- F62 在 COMMIT 后一次发布事务内全部 Record；缺少 COMMIT 的完整事务重开后不可见；
+- F62 尚不执行 fsync，也不修复半条物理 Record，这些属于 F63。
 
 ## 错误边界
 
@@ -80,11 +86,9 @@ Close()
 
 ## 后续闭环
 
-1. **F52 字节闭环**：写测试 Record，close/reopen 后按 ID 读回；
-2. **F53 逻辑闭环**：用同一格式写入真实 Catalog 与 Row typed payload；
-3. **F54 产品最小闭环**：MSQL `CREATE/INSERT → restart → SELECT by RowID`；
-4. **F55 业务接宽**：Update/Delete/History/Relation/Table Router；
-5. **F56 正确性增强**：再增加事务原子性、fsync 边界和崩溃恢复。
+F53a–F61 已完成 Catalog、Row、MSQL CRUD、History、Relation 与 Table Router；
+F62 已增加事务帧。F63 继续实现 fsync 边界、尾部截断和崩溃恢复，之后才允许
+跨对象 mutation 使用事务原子发布。
 
 后续版本可以改变物理 format version，但必须提供明确迁移；不能为了避免升级而把
 F52 重新膨胀成完整内核。

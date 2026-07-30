@@ -1,8 +1,11 @@
 package native
 
 import (
+	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -52,6 +55,11 @@ const (
 	ObjectKindRouteMembership ObjectKind = 9
 )
 
+const (
+	objectKindTransactionBegin  ObjectKind = 0xfffe
+	objectKindTransactionCommit ObjectKind = 0xffff
+)
+
 type File struct {
 	file    *os.File
 	kind    FileKind
@@ -68,6 +76,21 @@ type recordMeta struct {
 	payloadOffset int64
 	payloadLength uint32
 	payloadCRC    uint32
+}
+
+type bufferedRecord struct {
+	kind    ObjectKind
+	schema  uint32
+	id      string
+	payload []byte
+}
+
+type Transaction struct {
+	file    *File
+	id      string
+	records []bufferedRecord
+	keys    map[recordKey]struct{}
+	closed  bool
 }
 
 type fileHeader struct {
@@ -164,38 +187,114 @@ func (f *File) Put(kind ObjectKind, schemaVersion uint32, id string, payload []b
 	if err := validateRecord(kind, schemaVersion, id, len(payload)); err != nil {
 		return err
 	}
+	if kind == objectKindTransactionBegin || kind == objectKindTransactionCommit {
+		return fmt.Errorf("%w: reserved transaction kind", ErrInvalidArgument)
+	}
 	key := recordKey{kind: kind, id: id}
 	if _, exists := f.records[key]; exists {
 		return ErrDuplicateID
 	}
 
-	encodedHeader := encodeRecordHeader(recordHeader{
-		recordLength:  uint32(recordHeaderSize + len(id) + len(payload)),
-		kind:          kind,
-		schema:        schemaVersion,
-		idLength:      uint32(len(id)),
-		payloadLength: uint32(len(payload)),
-		payloadCRC:    crc32.ChecksumIEEE(payload),
-	})
-	offset, err := f.file.Seek(0, io.SeekEnd)
+	meta, err := f.appendRecord(kind, schemaVersion, id, payload)
 	if err != nil {
-		return fmt.Errorf("seek native store file: %w", err)
+		return err
 	}
-	if err := writeFull(f.file, encodedHeader[:]); err != nil {
-		return fmt.Errorf("write native record header: %w", err)
+	f.records[key] = meta
+	return nil
+}
+
+func (f *File) Begin() (*Transaction, error) {
+	if f == nil || f.closed {
+		return nil, ErrClosed
 	}
-	if err := writeFull(f.file, []byte(id)); err != nil {
-		return fmt.Errorf("write native record ID: %w", err)
+	var idBytes [16]byte
+	if _, err := rand.Read(idBytes[:]); err != nil {
+		return nil, fmt.Errorf("generate transaction ID: %w", err)
 	}
-	if err := writeFull(f.file, payload); err != nil {
-		return fmt.Errorf("write native record payload: %w", err)
+	return &Transaction{file: f, id: hex.EncodeToString(idBytes[:]), keys: make(map[recordKey]struct{})}, nil
+}
+
+func (transaction *Transaction) Put(kind ObjectKind, schemaVersion uint32, id string, payload []byte) error {
+	if transaction == nil || transaction.closed || transaction.file == nil || transaction.file.closed {
+		return ErrClosed
 	}
-	f.records[key] = recordMeta{
-		payloadOffset: offset + recordHeaderSize + int64(len(id)),
-		payloadLength: uint32(len(payload)),
-		payloadCRC:    crc32.ChecksumIEEE(payload),
+	if kind == objectKindTransactionBegin || kind == objectKindTransactionCommit {
+		return fmt.Errorf("%w: reserved transaction kind", ErrInvalidArgument)
+	}
+	if err := validateRecord(kind, schemaVersion, id, len(payload)); err != nil {
+		return err
+	}
+	key := recordKey{kind: kind, id: id}
+	if _, exists := transaction.file.records[key]; exists {
+		return ErrDuplicateID
+	}
+	if _, exists := transaction.keys[key]; exists {
+		return ErrDuplicateID
+	}
+	transaction.keys[key] = struct{}{}
+	transaction.records = append(transaction.records, bufferedRecord{kind: kind, schema: schemaVersion, id: id, payload: append([]byte(nil), payload...)})
+	return nil
+}
+
+func (transaction *Transaction) Commit() error {
+	if transaction == nil || transaction.closed || transaction.file == nil || transaction.file.closed {
+		return ErrClosed
+	}
+	transaction.closed = true
+	if _, err := transaction.file.appendRecord(objectKindTransactionBegin, 1, transaction.id, nil); err != nil {
+		return err
+	}
+	digest := sha256.New()
+	metas := make(map[recordKey]recordMeta, len(transaction.records))
+	for _, record := range transaction.records {
+		encoded := encodeRecord(record.kind, record.schema, record.id, record.payload)
+		_, _ = digest.Write(encoded)
+		meta, err := transaction.file.appendEncoded(encoded, len(record.id), len(record.payload), crc32.ChecksumIEEE(record.payload))
+		if err != nil {
+			return err
+		}
+		metas[recordKey{kind: record.kind, id: record.id}] = meta
+	}
+	if _, err := transaction.file.appendRecord(objectKindTransactionCommit, 1, transaction.id, digest.Sum(nil)); err != nil {
+		return err
+	}
+	for key, meta := range metas {
+		transaction.file.records[key] = meta
 	}
 	return nil
+}
+
+func (transaction *Transaction) Rollback() error {
+	if transaction == nil || transaction.closed {
+		return ErrClosed
+	}
+	transaction.closed = true
+	transaction.records = nil
+	return nil
+}
+
+func (f *File) appendRecord(kind ObjectKind, schema uint32, id string, payload []byte) (recordMeta, error) {
+	encoded := encodeRecord(kind, schema, id, payload)
+	return f.appendEncoded(encoded, len(id), len(payload), crc32.ChecksumIEEE(payload))
+}
+
+func (f *File) appendEncoded(encoded []byte, idLength, payloadLength int, payloadCRC uint32) (recordMeta, error) {
+	offset, err := f.file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return recordMeta{}, fmt.Errorf("seek native store file: %w", err)
+	}
+	if err := writeFull(f.file, encoded); err != nil {
+		return recordMeta{}, fmt.Errorf("write native record: %w", err)
+	}
+	return recordMeta{payloadOffset: offset + recordHeaderSize + int64(idLength), payloadLength: uint32(payloadLength), payloadCRC: payloadCRC}, nil
+}
+
+func encodeRecord(kind ObjectKind, schema uint32, id string, payload []byte) []byte {
+	header := encodeRecordHeader(recordHeader{recordLength: uint32(recordHeaderSize + len(id) + len(payload)), kind: kind, schema: schema, idLength: uint32(len(id)), payloadLength: uint32(len(payload)), payloadCRC: crc32.ChecksumIEEE(payload)})
+	encoded := make([]byte, 0, len(header)+len(id)+len(payload))
+	encoded = append(encoded, header[:]...)
+	encoded = append(encoded, id...)
+	return append(encoded, payload...)
 }
 
 func (f *File) Get(kind ObjectKind, id string) ([]byte, error) {
@@ -239,6 +338,12 @@ func (f *File) Close() error {
 }
 
 func (f *File) scan(fileSize int64) error {
+	type pendingTransaction struct {
+		id      string
+		records map[recordKey]recordMeta
+		digest  []byte
+	}
+	var pending *pendingTransaction
 	for offset := int64(fileHeaderSize); offset < fileSize; {
 		if fileSize-offset < recordHeaderSize {
 			return fmt.Errorf("%w: incomplete record header at offset %d", ErrCorrupt, offset)
@@ -275,10 +380,47 @@ func (f *File) scan(fileSize int64) error {
 		if crc32.ChecksumIEEE(payload) != header.payloadCRC {
 			return fmt.Errorf("%w: payload CRC mismatch at offset %d", ErrCorrupt, offset)
 		}
-		f.records[key] = recordMeta{
+		meta := recordMeta{
 			payloadOffset: payloadOffset,
 			payloadLength: header.payloadLength,
 			payloadCRC:    header.payloadCRC,
+		}
+		switch header.kind {
+		case objectKindTransactionBegin:
+			if pending != nil || len(payload) != 0 {
+				return fmt.Errorf("%w: invalid transaction BEGIN", ErrCorrupt)
+			}
+			pending = &pendingTransaction{id: string(id), records: make(map[recordKey]recordMeta)}
+		case objectKindTransactionCommit:
+			if pending == nil || pending.id != string(id) || len(payload) != sha256.Size {
+				return fmt.Errorf("%w: invalid transaction COMMIT", ErrCorrupt)
+			}
+			want := sha256.Sum256(pending.digest)
+			if !bytes.Equal(payload, want[:]) {
+				return fmt.Errorf("%w: transaction digest mismatch", ErrCorrupt)
+			}
+			for recordKey, recordMeta := range pending.records {
+				f.records[recordKey] = recordMeta
+			}
+			pending = nil
+		default:
+			if pending == nil {
+				if _, exists := f.records[key]; exists {
+					return fmt.Errorf("%w: duplicate record ID %q", ErrCorrupt, string(id))
+				}
+				f.records[key] = meta
+			} else {
+				if _, exists := f.records[key]; exists {
+					return fmt.Errorf("%w: duplicate record ID %q", ErrCorrupt, string(id))
+				}
+				if _, exists := pending.records[key]; exists {
+					return fmt.Errorf("%w: duplicate transaction record ID %q", ErrCorrupt, string(id))
+				}
+				pending.records[key] = meta
+				pending.digest = append(pending.digest, encoded[:]...)
+				pending.digest = append(pending.digest, id...)
+				pending.digest = append(pending.digest, payload...)
+			}
 		}
 		offset += int64(header.recordLength)
 	}
