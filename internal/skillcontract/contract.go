@@ -79,6 +79,10 @@ type Contract struct {
 	FeedbackReceiptVersion             string    `json:"feedback_receipt_version"`
 	FeedbackConfirmationVersion        string    `json:"feedback_confirmation_version"`
 	FeedbackConfirmationReceiptVersion string    `json:"feedback_confirmation_receipt_version"`
+	BootstrapScript                    string    `json:"bootstrap_script"`
+	InstallConsent                     string    `json:"install_consent"`
+	SupportedInstallOS                 []string  `json:"supported_install_os"`
+	SupportedInstallArch               []string  `json:"supported_install_arch"`
 	AllowedCommands                    []string  `json:"allowed_commands"`
 	PhysicalAccess                     string    `json:"physical_access"`
 	ConflictPolicy                     string    `json:"conflict_policy"`
@@ -157,8 +161,16 @@ func (bundle Bundle) Validate() error {
 	requireEqual("feedback_receipt_version", contract.FeedbackReceiptVersion, feedback.ReceiptVersion)
 	requireEqual("feedback_confirmation_version", contract.FeedbackConfirmationVersion, feedback.ConfirmationVersion)
 	requireEqual("feedback_confirmation_receipt_version", contract.FeedbackConfirmationReceiptVersion, feedback.ConfirmationReceiptVersion)
+	requireEqual("bootstrap_script", contract.BootstrapScript, "scripts/install.sh")
+	requireEqual("install_consent", contract.InstallConsent, "required")
 	requireEqual("physical_access", contract.PhysicalAccess, PhysicalAccessForbidden)
 	requireEqual("conflict_policy", contract.ConflictPolicy, ConflictAskUserBeforeMutation)
+	if strings.Join(contract.SupportedInstallOS, ",") != "darwin" {
+		violations = append(violations, "supported_install_os must be exactly darwin")
+	}
+	if strings.Join(contract.SupportedInstallArch, ",") != "arm64,amd64" {
+		violations = append(violations, "supported_install_arch must be exactly arm64,amd64")
+	}
 
 	violations = append(violations, validateCommands(contract.AllowedCommands)...)
 	violations = append(violations, validateWorkflows(contract.Workflows)...)
@@ -247,6 +259,7 @@ func validateMarkdown(markdown string) []string {
 	for _, heading := range []string{
 		"# Memora Canonical Skill",
 		"## Discover",
+		"## Install once",
 		"## Query and summarize",
 		"## Write",
 		"## Assimilate sources",

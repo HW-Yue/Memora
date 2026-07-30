@@ -17,6 +17,10 @@
   "feedback_receipt_version": "memora.feedback-receipt/v1",
   "feedback_confirmation_version": "memora.feedback-confirmation/v1",
   "feedback_confirmation_receipt_version": "memora.feedback-confirmation-receipt/v1",
+  "bootstrap_script": "scripts/install.sh",
+  "install_consent": "required",
+  "supported_install_os": ["darwin"],
+  "supported_install_arch": ["arm64", "amd64"],
   "allowed_commands": [
     "assimilate",
     "doctor",

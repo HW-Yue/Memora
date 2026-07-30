@@ -16,6 +16,26 @@ Never inspect, edit, copy, or infer state from physical database, index, journal
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
 
+## Install once
+
+If `memora version --json` is unavailable or older than the version bundled with
+this Skill, explain that installation downloads or compiles a local executable,
+show the binary and Instance destinations, and ask the user for explicit
+authorization. After approval, resolve this Skill's own directory and run:
+
+```sh
+/bin/sh "<skill-directory>/scripts/install.sh" --yes
+```
+
+The bootstrap supports only macOS arm64/amd64. It prefers a version-pinned HTTPS
+Release, verifies the exact SHA-256 entry and staged binary version, and replaces
+an old binary only after verification. A checksum, archive, or version mismatch
+is a hard failure and must never fall back. Only an unavailable Release may fall
+back to a fixed Go module tag or an explicit local source directory. Do not ask
+for sudo, change the install script, bypass `--yes`, or claim success until its
+idempotent init, daemon start, and doctor checks finish. If offline without a
+local source tree and Go toolchain, report the recoverable blocker.
+
 ## Discover
 
 Start a new task or stale Route Frame with bounded discovery. Inspect databases,

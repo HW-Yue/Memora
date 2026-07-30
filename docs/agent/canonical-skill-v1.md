@@ -1,6 +1,6 @@
 # Canonical Skill v1
 
-状态：F28 已冻结基础宿主契约；F30–F38 已扩展查询、写入、Schema、会话、资料吸收、语义维护与反馈修订流程。
+状态：F28 已冻结基础宿主契约；F30–F39 已扩展查询、写入、Schema、会话、资料吸收、语义维护、反馈修订与首次安装流程。
 
 ## 唯一来源
 
@@ -22,6 +22,8 @@
 
 每次 CI 都解析契约中的 MSQL 示例，并校验 Skill 中出现的是同一组命令。
 版本或语法变化必须显式更新契约和 golden，不能让宿主提示静默漂移。
+首次安装例外只允许相邻 `scripts/install.sh`；必须先获得用户授权，并在替换
+binary 前校验 Release checksum 和版本，安装后通过 doctor。
 
 ## 稳定流程
 
@@ -75,3 +77,4 @@ Skill 禁止读取或修改物理数据库、索引、日志、Page 和 Instance
 - [资料独立复核与提交 v1](./assimilation-review-v1.md)
 - [语义数据库健康维护 v1](./semantic-health-v1.md)
 - [反馈、修订与逻辑 Undo v1](./feedback-revision-v1.md)
+- [Skill 首次安全安装 v1](./safe-bootstrap-v1.md)

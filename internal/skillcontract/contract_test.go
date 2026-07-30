@@ -59,6 +59,12 @@ func TestCanonicalSkillContract(t *testing.T) {
 	if got, want := bundle.Contract.FeedbackConfirmationVersion, feedback.ConfirmationVersion; got != want {
 		t.Fatalf("feedback confirmation version = %q, want %q", got, want)
 	}
+	if bundle.Contract.BootstrapScript != "scripts/install.sh" || bundle.Contract.InstallConsent != "required" {
+		t.Fatalf("bootstrap contract = %q, %q", bundle.Contract.BootstrapScript, bundle.Contract.InstallConsent)
+	}
+	if _, err := os.Stat(filepath.Join(repositoryRoot(t), "skills", "memora", bundle.Contract.BootstrapScript)); err != nil {
+		t.Fatalf("bootstrap script is missing: %v", err)
+	}
 
 	for _, example := range bundle.Contract.Examples {
 		if example.MSQL == "" {
