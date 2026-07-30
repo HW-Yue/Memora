@@ -80,6 +80,9 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	if err := service.repository.Write(value); err != nil {
 		return row.Row{}, err
 	}
+	if err := service.repository.AppendHistory(value, history.OperationInsert, options.Metadata, now); err != nil {
+		return row.Row{}, err
+	}
 	return project(table, value), nil
 }
 
@@ -176,6 +179,9 @@ func (service *Service) Update(ctx context.Context, databaseName, tableName, row
 	if err := service.repository.WriteRevision(updated); err != nil {
 		return row.Row{}, revisionError(err)
 	}
+	if err := service.repository.AppendHistory(updated, history.OperationUpdate, options.Metadata, updated.UpdatedAt); err != nil {
+		return row.Row{}, err
+	}
 	return project(table, updated), nil
 }
 func (service *Service) Delete(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (row.Row, error) {
@@ -190,6 +196,9 @@ func (service *Service) Delete(ctx context.Context, databaseName, tableName, row
 	deleted.UpdatedAt = service.clock.Now().UTC()
 	if err := service.repository.WriteRevision(deleted); err != nil {
 		return row.Row{}, revisionError(err)
+	}
+	if err := service.repository.AppendHistory(deleted, history.OperationDelete, options.Metadata, deleted.UpdatedAt); err != nil {
+		return row.Row{}, err
 	}
 	return project(table, deleted), nil
 }
@@ -232,14 +241,29 @@ func cloneStableValues(values map[string]any) map[string]any {
 	}
 	return cloned
 }
-func (service *Service) AsOfRevision(context.Context, string, string, string, uint64) (row.Row, error) {
-	return row.Row{}, ErrUnsupported
+func (service *Service) AsOfRevision(ctx context.Context, databaseName, tableName, rowID string, revision uint64) (row.Row, error) {
+	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return row.Row{}, err
+	}
+	value, err := service.repository.ReadRevision(rowID, revision)
+	if err != nil {
+		return row.Row{}, err
+	}
+	if value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
+		return row.Row{}, serviceFailure(result.CodeNotFound, "historical Row was not found in requested table", nil)
+	}
+	return project(table, value), nil
 }
 func (service *Service) AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error) {
 	return row.Row{}, ErrUnsupported
 }
-func (service *Service) HistoryPage(context.Context, string, string, string, int) ([]history.Record, bool, error) {
-	return nil, false, ErrUnsupported
+func (service *Service) HistoryPage(ctx context.Context, databaseName, tableName, rowID string, limit int) ([]history.Record, bool, error) {
+	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return nil, false, err
+	}
+	return service.repository.History(table.DatabaseID, table.ID, rowID, limit)
 }
 func (service *Service) Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error) {
 	return row.Row{}, ErrUnsupported

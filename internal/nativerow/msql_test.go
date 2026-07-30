@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
@@ -132,6 +134,64 @@ func TestNativeUpdateDeleteMSQLUseExpectedRevision(t *testing.T) {
 	tombstone, err := New(reopened).ReadIncludingDeleted("row_first")
 	if err != nil || tombstone.Revision != 3 || tombstone.State != "deleted" {
 		t.Fatalf("tombstone = %#v, %v", tombstone, err)
+	}
+}
+
+func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 30, 16, 0, 0, 0, time.UTC)
+	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{
+		IDs: &testIDs{values: []string{"database", "table", "title"}}, Clock: testClock{value: now},
+	})
+	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{Name: "work", Purpose: "Work", Scope: "Projects"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{Name: "notes", Purpose: "Notes", RowSemantics: "One note", Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT(20)", Purpose: "Title"}}}); err != nil {
+		t.Fatal(err)
+	}
+	rows := NewService(New(file), dictionary, ServiceOptions{IDs: &testIDs{values: []string{"first"}}, Clock: testClock{value: now.Add(time.Minute)}})
+	inserted, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "initial"}, row.WriteOptions{ExpectedSchemaVersion: 1, Metadata: row.WriteMetadata{Actor: "agent:writer", Source: "conversation", Reason: "remember"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "revised"}, row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, Metadata: row.WriteMetadata{Actor: "agent:editor", Source: "feedback", Reason: "correct"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rows.Delete(ctx, "work", "notes", inserted.ID, row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 2, Metadata: row.WriteMetadata{Actor: "agent:editor", Source: "feedback", Reason: "remove"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := nativestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	dictionary = nativecatalog.NewService(nativecatalog.New(reopened), nativecatalog.ServiceOptions{})
+	rows = NewService(New(reopened), dictionary, ServiceOptions{})
+	engine := executor.New(dictionary, rows)
+	shown := executeMSQL(t, ctx, engine,
+		"SHOW HISTORY FROM work.notes FOR ROW :row_id LIMIT 10",
+		executor.Parameters{Named: map[string]any{"row_id": inserted.ID}}, executor.MutationOptions{},
+	)
+	if len(shown.Rows) != 3 || shown.Rows[0]["operation"] != "DELETE" || shown.Rows[1]["operation"] != "UPDATE" || shown.Rows[2]["actor"] != "agent:writer" {
+		t.Fatalf("SHOW HISTORY rows = %#v", shown.Rows)
+	}
+	atFirst := executeMSQL(t, ctx, engine,
+		"SELECT title, revision FROM work.notes AS OF REVISION 1 WHERE row_id = :row_id LIMIT 1",
+		executor.Parameters{Named: map[string]any{"row_id": inserted.ID}}, executor.MutationOptions{},
+	)
+	if len(atFirst.Rows) != 1 || atFirst.Rows[0]["title"] != "initial" || atFirst.Rows[0]["revision"] != uint64(1) {
+		t.Fatalf("AS OF REVISION rows = %#v", atFirst.Rows)
 	}
 }
 
