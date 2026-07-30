@@ -99,6 +99,8 @@ func packageColumns(names ...string) []result.Column {
 		typeName := "TEXT"
 		if name == "read_only" {
 			typeName = "BOOLEAN"
+		} else if name == "object_count" {
+			typeName = "INTEGER"
 		}
 		columns = append(columns, result.Column{Name: name, Type: typeName})
 	}

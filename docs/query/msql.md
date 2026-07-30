@@ -1,6 +1,6 @@
 # MSQL 标准语言
 
-状态：协议定位已确认；核心语法和 F44 包管理语句已冻结，完整 v0 Grammar 尚未冻结。
+状态：协议定位已确认；核心语法、F44 包管理和 F45 Wiki 导出语句已冻结，完整 v0 Grammar 尚未冻结。
 
 ## 定位
 
@@ -49,6 +49,14 @@ INSTALL PACKAGE :package TRUSTED;
 
 包内容通过参数绑定进入执行器。`READ ONLY` 和 `TRUSTED` 是强制安全子句；这些语句只能
 autocommit，显式事务中不直接执行。返回格式见 [Database Package v1](../product/database-package-v1.md)。
+
+F45 已冻结单向 Wiki 导出：
+
+```sql
+EXPORT WIKI TO :path PROFILE :profile;
+```
+
+CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得插值进 MSQL；目标必须是绝对规范化路径。语句只允许 autocommit，不读取或回流 Vault 中的人类编辑。投影、稳定路径、manifest 与增量规则见 [Obsidian Wiki 导出](../export/obsidian-wiki.md)。
 
 已知 Database 和 Table 后，全文与语义候选检索采用 MySQL 风格的 `MATCH(...) AGAINST(...)` 表达式。它只是一层 MSQL 语法契约，不绑定 MySQL 的存储实现：Planner 并行查询 Agent 词项 posting 和低权重机械分词/N-gram posting，按配置权重融合，只返回候选数据项定位和评分信号。主 Agent 随后按定位使用普通 `SELECT` 回表读取 Row。`MATCH` 是否使用 `*` 表达整条数据项范围仍待 Grammar 冻结。
 

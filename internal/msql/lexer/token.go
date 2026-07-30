@@ -53,10 +53,10 @@ var keywords = map[string]struct{}{
 	"EXPLAIN": {}, "EXPORT": {}, "FALSE": {}, "FOR": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
 	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LIMIT": {}, "MATCH": {},
 	"NOT": {}, "NULL": {}, "OF": {}, "ON": {}, "OPEN": {}, "OR": {},
-	"ONLY": {}, "ORDER": {}, "PACK": {}, "PACKAGE": {}, "PURGE": {}, "PURPOSE": {}, "READ": {},
+	"ONLY": {}, "ORDER": {}, "PACK": {}, "PACKAGE": {}, "PROFILE": {}, "PURGE": {}, "PURPOSE": {}, "READ": {},
 	"REINDEX": {}, "RENAME": {}, "RESTORE": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "ROW": {},
 	"SCOPE": {}, "SELECT": {}, "SEMANTICS": {}, "SET": {}, "SHOW": {}, "START": {},
 	"COLUMN": {}, "COLUMNS": {}, "TABLE": {}, "TABLES": {}, "TO": {},
-	"TRANSACTION": {}, "TRUE": {}, "TRUSTED": {}, "UPDATE": {}, "VALUES": {}, "WHERE": {},
+	"TRANSACTION": {}, "TRUE": {}, "TRUSTED": {}, "UPDATE": {}, "VALUES": {}, "WHERE": {}, "WIKI": {},
 	"RELATE": {}, "UNRELATE": {},
 }

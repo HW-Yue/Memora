@@ -89,7 +89,7 @@
 
 ## 导出与调研
 
-- [Obsidian Wiki 导出](./export/obsidian-wiki.md) — 数据库快照到 Markdown/Wikilink。
+- [Obsidian Wiki 导出 v1](./export/obsidian-wiki.md) — F45 的稳定 ID 页面、跨库 Wikilink、Export Profile 与增量 manifest。
 - [市场调研入口](./research/competitors.md) — Agent 记忆、AI 数据库、直接竞品与市场空白。
 - [Agent 记忆与个人知识产品](./research/market-memory-systems.md) — Mem0、Letta、Graphiti、Basic Memory、Memvid 等。
 - [AI 数据库与检索基础设施](./research/market-databases.md) — seekdb、Memoria、HelixDB、LanceDB、Chroma、Qdrant 等。

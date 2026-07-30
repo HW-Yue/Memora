@@ -97,6 +97,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseMatch()
 	case parser.matchWord("PACK"):
 		statement, err = parser.parsePackDatabase()
+	case parser.matchWord("EXPORT"):
+		statement, err = parser.parseExportWiki()
 	case parser.matchWord("OPEN"):
 		if parser.checkWord("PACKAGE") {
 			statement, err = parser.parseOpenPackage()
@@ -953,6 +955,29 @@ func (parser *parser) parsePackDatabase() (ast.Statement, error) {
 	}
 	return ast.Statement{Kind: "PACK_DATABASE", Package: &ast.PackageStatement{
 		Action: "PACK", Database: database, Author: &author,
+	}}, nil
+}
+
+func (parser *parser) parseExportWiki() (ast.Statement, error) {
+	if _, err := parser.expectWord("WIKI"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("TO"); err != nil {
+		return ast.Statement{}, err
+	}
+	path, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("PROFILE"); err != nil {
+		return ast.Statement{}, err
+	}
+	profile, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "EXPORT_WIKI", Export: &ast.ExportStatement{
+		Format: "WIKI", Path: &path, Profile: &profile,
 	}}, nil
 }
 

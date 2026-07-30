@@ -343,6 +343,40 @@ func TestRunDatabasePackageRequiresTrustAndDoesNotOverwrite(t *testing.T) {
 	}
 }
 
+func TestRunWikiExportUsesMSQLWithBoundProfile(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	vault := filepath.Join(home, "vault")
+	profilePath := filepath.Join(home, "profile.json")
+	profile := `{"version":"memora.wiki-profile/v1","tables":{}}`
+	if err := os.WriteFile(profilePath, []byte(profile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(_ context.Context, gotDataDir, source string, statements []executor.StatementInput) (result.Envelope, error) {
+			called = true
+			if gotDataDir != dataDir || source != "EXPORT WIKI TO :path PROFILE :profile" ||
+				statements[0].Parameters.Named["path"] != vault || statements[0].Parameters.Named["profile"] != profile {
+				t.Fatalf("export call = %q, %q, %#v", gotDataDir, source, statements)
+			}
+			statement := result.NewStatement(0, "EXPORT_WIKI", source)
+			statement.Rows = []result.Row{{"path": vault, "object_count": int64(2)}}
+			return result.NewEnvelope("wiki-cli", statement), nil
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunWithDependencies([]string{
+		"export", "--wiki", vault, "--profile", profilePath, "--data-dir", dataDir,
+	}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK || !called || stderr.Len() != 0 || !strings.Contains(stdout.String(), `"object_count":2`) {
+		t.Fatalf("export code = %d, called = %v, stdout = %s, stderr = %s", code, called, stdout.String(), stderr.String())
+	}
+}
+
 func TestRunAssimilateSubmitsReviewAndReloadsSourceReceipt(t *testing.T) {
 	t.Parallel()
 

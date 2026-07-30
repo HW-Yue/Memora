@@ -17,6 +17,19 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	if statement.Select != nil {
 		return engine.Query(ctx, statement, parameters)
 	}
+	if statement.Package != nil || statement.Export != nil {
+		if engine == nil {
+			return Output{}, executeError(result.CodeInternal, "management engine is not configured")
+		}
+		bound, err := bindParameters(statement, parameters)
+		if err != nil {
+			return Output{}, err
+		}
+		if statement.Package != nil {
+			return engine.executePackage(ctx, statement.Package, bound)
+		}
+		return engine.executeWikiExport(ctx, statement.Export, bound)
+	}
 	if engine == nil || engine.catalog == nil || engine.rows == nil {
 		return Output{}, executeError(result.CodeInternal, "mutation engine is not configured")
 	}
@@ -25,8 +38,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return Output{}, err
 	}
 	switch {
-	case statement.Package != nil:
-		return engine.executePackage(ctx, statement.Package, bound)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		return engine.showHistory(ctx, statement, bound)
 	case statement.Show != nil && statement.Show.Object == "RELATIONS":

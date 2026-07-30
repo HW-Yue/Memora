@@ -43,6 +43,7 @@ Commands:
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
+  export     Export a deterministic Obsidian Wiki
   feedback   Record feedback or confirm an auditable revision
   help       Show this help
   init       Initialize a local instance
@@ -119,6 +120,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runDoctor(args[1:], stdout, stderr, dependencies)
 	case "exec", "query":
 		return runExecute(args[0], args[1:], stdout, stderr, dependencies)
+	case "export":
+		return runWikiExport(args[1:], stdout, stderr, dependencies)
 	case "feedback":
 		return runFeedback(args[1:], stdout, stderr, dependencies)
 	case "init":
@@ -143,6 +146,69 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runWikiExport(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var root, profilePath string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--wiki":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--wiki requires an absolute Vault path")
+			}
+			root = args[index+1]
+			index++
+		case "--profile":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--profile requires a JSON file")
+			}
+			profilePath = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown export option: %q", args[index]))
+		}
+	}
+	if root == "" || profilePath == "" {
+		return usageError(stderr, "export requires --wiki VAULT and --profile PROFILE.json")
+	}
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return usageError(stderr, "--wiki must be an absolute normalized path")
+	}
+	profile, err := os.ReadFile(profilePath)
+	if err != nil {
+		return commandError(stderr, "read Wiki Export Profile", err)
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	execute := dependencies.ExecuteMSQL
+	if execute == nil {
+		execute = daemon.Execute
+	}
+	envelope, err := execute(
+		context.Background(), dataDir, "EXPORT WIKI TO :path PROFILE :profile",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{
+			"path": root, "profile": string(profile),
+		}}}},
+	)
+	if err != nil {
+		return commandError(stderr, "export Wiki", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(envelope); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if !envelope.OK {
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func runDatabasePackage(command string, args []string, stdout, stderr io.Writer, dependencies Dependencies) int {

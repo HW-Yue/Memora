@@ -17,6 +17,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 	"github.com/HW-Yue/Memora/internal/store"
+	"github.com/HW-Yue/Memora/internal/wikiexport"
 )
 
 type executePayload struct {
@@ -350,8 +351,9 @@ func (handler *databaseHandler) session(id string) (*executor.BatchSession, bool
 	if session := handler.sessions[id]; session != nil {
 		return session, true
 	}
-	session := executor.NewBatchSessionWithPackages(
-		handler.context, handler.dictionary, handler.rows, dbpackage.New(handler.store),
+	session := executor.NewBatchSessionWithManagement(
+		handler.context, handler.dictionary, handler.rows,
+		dbpackage.New(handler.store), wikiexport.New(handler.store),
 	)
 	handler.sessions[id] = session
 	return session, true

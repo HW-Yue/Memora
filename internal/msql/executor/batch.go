@@ -47,13 +47,23 @@ func NewBatchSessionWithPackages(
 	rows *row.Service,
 	packages PackageManager,
 ) *BatchSession {
+	return NewBatchSessionWithManagement(ctx, dictionary, rows, packages, nil)
+}
+
+func NewBatchSessionWithManagement(
+	ctx context.Context,
+	dictionary Catalog,
+	rows *row.Service,
+	packages PackageManager,
+	wiki WikiExporter,
+) *BatchSession {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	sessionContext, cancel := context.WithCancel(ctx)
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
-		autocommit: NewWithPackages(dictionary, rows, packages), rows: rows,
+		autocommit: NewWithManagement(dictionary, rows, packages, wiki), rows: rows,
 	}
 }
 

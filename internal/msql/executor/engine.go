@@ -15,6 +15,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/search"
+	"github.com/HW-Yue/Memora/internal/wikiexport"
 )
 
 const maxQueryScan = 1000
@@ -55,12 +56,17 @@ type Engine struct {
 	catalogBinder *binder.Catalog
 	rows          Rows
 	packages      PackageManager
+	wiki          WikiExporter
 }
 
 type PackageManager interface {
 	Pack(context.Context, string, string) ([]byte, dbpackage.Manifest, error)
 	Open([]byte) (dbpackage.Opened, error)
 	Install(context.Context, []byte, dbpackage.InstallOptions) (dbpackage.InstallReceipt, error)
+}
+
+type WikiExporter interface {
+	Export(context.Context, string, wikiexport.Profile) (wikiexport.Manifest, error)
 }
 
 type Parameters struct {
@@ -139,8 +145,12 @@ func New(dictionary Catalog, rows Rows) *Engine {
 }
 
 func NewWithPackages(dictionary Catalog, rows Rows, packages PackageManager) *Engine {
+	return NewWithManagement(dictionary, rows, packages, nil)
+}
+
+func NewWithManagement(dictionary Catalog, rows Rows, packages PackageManager, wiki WikiExporter) *Engine {
 	engine := New(dictionary, rows)
-	engine.packages = packages
+	engine.packages, engine.wiki = packages, wiki
 	return engine
 }
 

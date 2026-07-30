@@ -34,6 +34,7 @@ type Statement struct {
 	DeleteRoute *DeleteRouteStatement `json:"delete_route,omitempty"`
 	OpenRoute   *OpenRouteStatement   `json:"open_route,omitempty"`
 	Package     *PackageStatement     `json:"package,omitempty"`
+	Export      *ExportStatement      `json:"export,omitempty"`
 	Transaction *TransactionStatement `json:"transaction,omitempty"`
 }
 
@@ -195,6 +196,12 @@ type PackageStatement struct {
 	Trusted  bool        `json:"trusted,omitempty"`
 }
 
+type ExportStatement struct {
+	Format  string      `json:"format"`
+	Path    *Expression `json:"path"`
+	Profile *Expression `json:"profile"`
+}
+
 type TransactionStatement struct {
 	Action string `json:"action"`
 }
@@ -293,6 +300,9 @@ func (document Document) Parameters() []Parameter {
 	case statement.Package != nil:
 		appendExpression(statement.Package.Author)
 		appendExpression(statement.Package.Value)
+	case statement.Export != nil:
+		appendExpression(statement.Export.Path)
+		appendExpression(statement.Export.Profile)
 	}
 	return parameters
 }

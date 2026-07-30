@@ -86,6 +86,7 @@
 82. Router、Agent 倒排和机械倒排各自维护独立 generation；Database 的 `indexes/manifest` 原子记录当前启用组合及覆盖 commit sequence，查询开始时固定一次。单类索引重建不复制其他索引，发布前旁路写入和校验，旧 generation 等读者释放后回收。
 83. 数据库不内置 `candidate/disputed` 等语义冲突状态，也不理解、裁决或自动合并互相矛盾的内容。引擎只检测 revision、锁、唯一键、外键、类型等机械冲突并结构化报错；Skill 负责查询并向用户并列展示语义冲突，得到用户指示后重新生成 SQL 写入。
 84. AI-native 的产品验收以“AI 持续维护、用户只处理例外”为准，而不是以是否内置 LLM、Vector 或 SQL 扩展为准。用户提供自然对话或资料后，AI 自主发现已有数据并完成忽略、写入、修订、拆分、合并、Schema/Router 维护和验证；语义冲突、高风险、越权与不可恢复操作才请求用户介入。自动维护只能覆盖已授权且实际交给 Memora 的输入，因此必须建设稳定输入入口，不能假设 Skill 能看见所有宿主活动。
+85. Wiki v1 以 `database_id/table_id/row_id.md` 作为稳定路径；rename 不移动页面，跨库关系使用 Vault 根目录下的完整稳定相对 Wikilink。增量 manifest 只拥有自己登记的页面，不删除用户新增文件；v1 不生成 slug、redirect、Router/MOC，也不回流 Markdown 编辑。
 
 ## 尚需验证
 

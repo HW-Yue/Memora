@@ -10,7 +10,7 @@
 
 提交：`feat(F44): package portable databases`
 
-## F45 Wiki 确定性导出
+## F45 Wiki 确定性导出（已完成）
 
 先测：相同 snapshot 输出哈希一致、稳定链接、rename、删除、跨库关系和增量导出。
 

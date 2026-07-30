@@ -72,10 +72,9 @@
 
 ## Gate 6：Wiki 与可携带性
 
-37. 文件名采用纯 ID 还是 `slug--short-id`，移动后是否生成 redirect stub？
-38. Export Profile 怎样由自主 Schema 自动生成和校验？
-39. 是否永远保持单向导出，还是以后支持显式 diff/plan 导入？
-40. 跨 Database 关系和部分 Route 导出怎样生成稳定 Wikilink？
+37. Export Profile 怎样由自主 Schema 自动生成、持久化和迁移？
+38. 是否永远保持单向导出，还是以后支持显式 diff/plan 导入？
+39. Router/MOC 和部分 Route 导出怎样表达，跨范围链接怎样降级？
 
 ## Gate 7：可演化配置（最后讨论）
 
