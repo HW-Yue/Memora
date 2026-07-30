@@ -1,6 +1,7 @@
 # Phase B 退出验收
 
-状态：2026-07-30 已通过。
+状态：2026-07-30 机械闭环测试曾通过；不再代表语义查询产品门通过。F21–F23
+与 Database 级 Router 只作历史证据，必须按产品宪章返工。
 
 ## 固定数据集
 
@@ -52,6 +53,8 @@ go test -tags=e2e ./tests/e2e \
 ./scripts/ci.sh
 ```
 
-## 结论
+## 当前结论
 
-Phase B 的 Catalog、Row、History、Relation、Router、混合倒排、pending reindex、generation manifest、logical snapshot 和本地垂直链路形成可迁移闭环。下一阶段进入 F28 Canonical Skill，不提前替换 SQLite Store。
+Catalog、Row、History、Relation、snapshot、IPC 与重启证据仍有效。混合倒排、
+MATCH 和 Database 级 Router 只证明旧代码可执行，不证明产品形态正确；不得
+据此继续推进 F52。

@@ -18,15 +18,15 @@
 
 ## 首批配置对象
 
-- Database 级 Agent/机械检索权重；
-- Database 级 `query_terms` 与 `index_terms` 预算；
-- Database 级 Router 分支、字符和候选预算；
-- Database 级 Router 增量/子树/整库重建阈值与 compaction 策略；
-- Database 级 Context Pack 与检索扫描预算；
+- Table 级 Router 分支、深度、字符、叶子 locator 和 Route Frame 预算；
+- Table 级 Router 增量/子树/generation 重建阈值与 compaction 策略；
+- 查询回表 Row 数、关系遍历和输出预算；
 - Column 级文本最大字符数，启动默认值 1200；
 - 后续经验证适合自治的 alias、关系扩展和缓存策略。
 
-文档中的 `0.8/0.2`、`12/32`、`24/64`、`1200` 等都是启动配置，不是隐藏的永久代码常量。但“存入数据库”不等于“建库后都允许修改”。
+既有 `0.8/0.2`、`query_terms`、`index_terms` 配置属于已撤销混合检索原型，
+不进入新 Database。`1200` 等仍有效的数值是启动配置，不是隐藏的永久代码常量。
+但“存入数据库”不等于“建库后都允许修改”。
 
 ## 生命周期分类待定
 

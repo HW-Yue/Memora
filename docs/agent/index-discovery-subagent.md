@@ -1,6 +1,7 @@
 # 索引发现 Sub-agent
 
-状态：F23 已冻结定位 Schema、确定性融合与启动预算。
+状态：历史设计。产品目标改为主 AI 直接按 MSQL 逐层导航 Table 级 Router；
+倒排融合与 query_terms 路径已撤销。
 
 ## 职责
 

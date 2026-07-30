@@ -1,10 +1,15 @@
 # Router Tree v1
 
-状态：F22 已完成 Router 树、Row membership 与 MSQL 管理/遍历闭环。
+状态：F22 历史实现说明。当前实现以 Database 为 root；产品目标已改为 Table
+为 root，见 [AI-native 产品宪章](../product/ai-native-product-charter.md)。
+在完成迁移前，本文件不能作为最终查询协议或 Feature 完成证据。
 
 ## 系统对象
 
-每个 Database 有一个统一 Router root。节点使用稳定 `route_...` ID，包含 database/parent、name/aliases/path、kind、purpose、revision 和 deleted。
+F22 当前实现中，每个 Database 有一个统一 Router root。节点使用稳定
+`route_...` ID，包含 database/parent、name/aliases/path、kind、purpose、
+revision 和 deleted。目标架构要求每个 Table 拥有独立 root，Database 只通过
+`SHOW TABLES` 提供表级发现，不能继续让一棵整库树混合不同 Row 语义。
 
 Router 是系统派生索引，不是 AI 自建业务表。内部按稳定 ID 引用；Agent 使用 `/项目/memora/存储引擎` 等路径。name 是最多 64 字符的 Unicode 小写路径段，允许字母、数字、`-`、`_`；purpose 必填且最多 800 字符。
 
@@ -32,6 +37,8 @@ child 按 name 稳定排序，页大小为 1–100。cursor 是绑定 parent ID 
 
 ## MSQL
 
+以下是当前已实现的 Database 级历史语法，不是最终目标：
+
 所有动态值都使用 literal/parameter，不接受字符串插值：
 
 ```sql
@@ -48,6 +55,17 @@ OPEN ROUTE :leaf LIMIT :limit;
 CREATE 返回新节点的稳定 ID、path、kind、purpose 和 revision。ALTER/DELETE 要求结构化 `expected_revision`；三种写操作都要求 `max_affected_rows`。SHOW 返回节点元数据和可继续读取的 `next_cursor`；空 cursor 表示第一页。OPEN 只接受 leaf，结果严格为 Database/Table/Row/revision locator，不返回业务正文。
 
 Database name 先绑定 Catalog stable ID；因此新会话可从 `/` 冷启动，不需要预先记住 root ID。上述写操作参加普通显式 Batch 事务，任一写失败时节点、路径和 membership 一起回滚。
+
+目标语法从 `DESCRIBE TABLE` 后进入：
+
+```sql
+SHOW ROUTES FROM TABLE :qualified_table AT ROOT LIMIT :limit;
+SHOW ROUTES UNDER :parent CURSOR :cursor LIMIT :limit;
+OPEN ROUTE :leaf LIMIT :limit;
+```
+
+迁移必须保留稳定 RowID、revision、membership 原子性和有界 cursor，并给现有
+Database 级树提供显式转换或拒绝路径。
 
 ## 关联
 

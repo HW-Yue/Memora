@@ -1,6 +1,6 @@
 # 尚未确认的问题
 
-更新时间：2026-07-29。按“会不会让产品方向失败”排序，不按实现章节排序。
+更新时间：2026-07-30。按“会不会让产品方向失败”排序，不按实现章节排序。
 
 ## 决策分工
 
@@ -26,19 +26,21 @@
 
 3. 不保存原始对话和大资料后，怎样独立证明吸收没有遗漏或曲解？
 4. Mutation Agent 判断“值得长期保存”的 precision/recall 能否达到可用水平？
-5. 每个 Database 的 Agent `0.8`、机械 N-gram `0.2` 初始权重，以及 Router、alias 和关系信号，怎样归一化和校准才能在无 Embedding 时达到召回门槛？
+5. Table 级 Router 的节点语义、fan-out、深度和 leaf membership 怎样由 AI
+维护，才能让同义意图在不使用相似度评分时稳定到达正确 RowID？
 6. AI 连续自主建模后，怎样发现同义 Database/Table/Column 和结构熵增？
 7. 文本 Column 启动默认 1200 字符的可演化上限怎样适配代码、表格和复杂论证，并让 Agent 正确选择切分或调整 Schema？
-8. Codex/Claude Skill 的 Context Pack 怎样既短又保留足够证据和不确定性？
+8. Codex/Claude Skill 的 Route Frame 怎样既短又保留足够路径证据和不确定性？
 9. Skill 查询的延迟、token 和费用能否优于 Markdown/搜索基线？
 
 ## Gate 2：Agent 与协议
 
 10. 第一版只提供 CLI+Skill，还是同时提供很薄的 MCP adapter？
 11. MSQL v0 的正式 EBNF 和首批语句边界是什么？
-12. SHOW/DESCRIBE/ROUTE、MATCH、历史和关系遍历在统一 envelope 中的字段是什么？
+12. SHOW/DESCRIBE/ROUTE、历史和关系遍历在统一 envelope 中的字段是什么？
 16. 多 Database 增长时根目录怎样保持短小且不漏掉冷库？
-16.1 Router 内部 fan-out、叶子 ID 容量、最大深度、beam width、子树/整库重建阈值、generation 验收和语义 split/merge 协议是什么？
+16.1 Router 内部 fan-out、叶子 ID 容量、最大深度、分支回退、子树/Table
+重建阈值、generation 验收和语义 split/merge 协议是什么？
 
 ## Gate 3：数据治理
 
@@ -84,4 +86,6 @@
 
 ## 下一步
 
-先解决 Gate 0～2 并执行 [质量 benchmark](../product/quality-model.md)，再冻结 Page 格式。底层参数不是当前最大风险。
+先解决 Gate 0～2 并执行按用户故事重做的
+[质量 benchmark](../product/quality-model.md)，再决定是否冻结 Page 格式。
+底层参数不是当前最大风险。

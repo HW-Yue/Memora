@@ -12,7 +12,7 @@ v0 由 Codex/Claude Code 按 Canonical Skill 生成 MSQL，并调用本地 daemo
 
 ```text
 自然语言
-  → memora ask
+→ memora ask
   → Agent Loop
   → MSQL Request ─┐
                   ├→ Lexer/Parser → Binder → Policy → Planner
@@ -51,7 +51,7 @@ actor、权限、预算和审批状态可以不同，但语法解析、AST、类
 ```text
 接收意图
 → 恢复紧凑 Query Workspace
-→ 让模型生成 query_terms 并选择下一条 MSQL
+→ 让模型读取当前 Route Frame 并选择下一条 MSQL
 → 通过 ExecuteMSQL 执行
 → 读取稳定 JSON 结果或错误
 → 继续、修正、请求批准或结束
@@ -61,11 +61,14 @@ actor、权限、预算和审批状态可以不同，但语法解析、AST、类
 
 循环必须有确定性的最大步数、token、时间、返回字符、扫描行数和修改行数。达到预算时显式返回 `truncated` 或 `budget_exhausted`，不能无限自治。
 
-查询采用两阶段分工。内置 Runtime 先以隔离的索引发现 Sub-agent 逐层发现 Database、Route 和 Table，并融合倒排与关系信号，只返回候选数据项定位；主 Agent 再根据定位生成 MSQL `SELECT` 回表读取真实 Row。发现结果不能包含正文，也不能直接作为最终答案。
+查询采用两阶段分工。内置 Runtime 依次发现 Database、Table、Schema 和 Table
+顶层 Route，再逐层选择有限子节点，直到叶子只返回候选 RowID；主 Agent 根据
+定位生成 MSQL `SELECT` 回表读取真实 Row。发现结果不能包含正文，也不能直接
+作为最终答案。
 
-执行 `MATCH(...) AGAINST(...)` 时，Query Agent 按 Query Skill 为当前意图输出去重后的 `query_terms: string[]`，可以补充原问题未出现的同义词、旧名称、缩写和跨语言别名，用于 Agent 词项通道；引擎同时从原始问题生成机械词项，用于机械通道。两路结果按目标 Database 的 Search Weight Profile 融合。
-
-Skill 规定生成行为和格式，但不是唯一约束层。Runtime 校验 JSON Schema、数量和长度，Data Dictionary 提供已知 alias，MSQL 负责正式传递，Policy 强制查询预算。`query_terms` 启动预算为 12 个、启动 Policy 上限为 32 个；两者存于 Database 配置，建库后是否允许 AI 调优留到配置生命周期设计。
+Runtime 校验每层节点数、最大深度、叶子 locator 和回表预算。Data Dictionary
+提供已知 alias，MSQL 负责正式传递，Policy 强制权限与预算。Runtime 不生成
+`query_terms` 交给评分器，也不执行 MATCH/Vector/cosine 降级。
 
 ## 一个 Runtime，多种能力配置
 

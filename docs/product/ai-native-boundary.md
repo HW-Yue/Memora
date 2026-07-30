@@ -1,6 +1,6 @@
 # AI-native 产品边界
 
-状态：方向已形成，仍需端到端原型验证。
+状态：方向已形成；受 [AI-native 产品宪章](./ai-native-product-charter.md)约束，仍需端到端原型验证。
 
 ## 定义
 
@@ -42,12 +42,13 @@ AI 不能操作 Page、offset、物理索引或 Redo Log。
 
 - 不是文档仓库或 PDF 阅读器；
 - 不是传统 RAG 的 chunk + embedding 管线；
-- 第一版不依赖向量 API；
+- 不采用 Embedding、向量数据库、余弦/距离相似度或其伪装形式；
 - 不是让 AI 直接读写数据库物理文件；
 - 不是只能 `add/search/delete` 的记忆投递箱。
 
 ## 关联
 
+- [AI-native 产品宪章](./ai-native-product-charter.md)
 - [AI-native 产品契约](./ai-native-contract.md)
 - [质量模型与验收](./quality-model.md)
 - [资料吸收](../data/assimilation.md)

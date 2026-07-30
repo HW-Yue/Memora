@@ -1,6 +1,7 @@
 # Index Discovery v1
 
-状态：F23 已冻结第一版确定性发现 Planner。
+状态：历史实现，产品方向已撤销。full path、query_terms、MATCH 与关系融合不再
+是查询主路径；目标见[语义树检索质量链路](./retrieval-quality.md)。
 
 ## 输入与边界
 

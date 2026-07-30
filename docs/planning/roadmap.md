@@ -32,14 +32,16 @@ memora open
 memora doctor
 ```
 
-包含：本地 daemon 与 IPC、统一 MSQL 执行核心、文件 Page Buffer Pool、Data Dictionary、Database/Table/Column、Semantic Row、revision、关系、Agent 词项与机械 N-gram 混合倒排、Router、稳定 JSON 错误。底层可以是临时简化实现，但协议和测试不可一次性抛弃。
+包含：本地 daemon 与 IPC、统一 MSQL 执行核心、Data Dictionary、
+Database/Table/Column、Semantic Row、revision、关系、Table 级 Router 和稳定
+JSON 错误。底层可以是可替换的简化实现，但不得定义上层产品协议。
 
 退出条件：自然对话能够自主建模、SQL 取数、精确修订并导出 Wiki；一个逻辑 Database 可以打包、校验、安装和只读直接问答。
 
 ## Phase 2：Agent 集成
 
-- 完成 Canonical Skill 的 read/write 流程、有界 Context Pack 和 Mutation Receipt；
-- 实现索引发现 Sub-agent 的逐层导航、混合倒排评分、定位返回和主 Agent SQL 回表；
+- 完成 Canonical Skill 的 read/write 流程、有界 Route Frame 和 Mutation Receipt；
+- 实现 AI 对 Table 级语义树的逐层 MSQL 导航、RowID 返回和 SQL 回表；
 - 实现 Router membership 反向索引、`pending_reindex` 队列、tombstone，以及 Row/子树/Database 三级重建与原子切换；
 - 完成 Query Workspace 生命周期、daemon 生命周期、交互 CLI 和 `--stdio` bridge；
 - 发布供外部 Agent 调用 `memora exec` 的 Canonical Skill；
@@ -55,11 +57,12 @@ memora doctor
 - Schema 查重、alias、merge/rename/migration；
 - 记录 worthiness、split/merge、contradiction 和 supersede；
 - 资料吸收 inventory、coverage 和 source receipt；
-- Router + Agent 词项 + 机械 N-gram + graph 融合排序；
+- Row/Schema/关系与 Table 级语义树的一致性维护和局部优化；
 - memory feedback 和可审计修订候选；
-- 与 Basic Memory、Mem0/Vector baseline 做对照。
+- 与人工 Markdown 整理、字面搜索和传统精确查询做用户负担对照。
 
-退出条件：连续 50 次以上自主建模不出现未报告的结构熵增；无向量召回和冷启动接管通过质量门槛。
+退出条件：连续 50 次以上自主建模不出现未报告的结构熵增；逐层语义树召回、
+Row 拆分重组和冷启动接管通过产品故事门。
 
 ## Phase 4：存储内核
 
@@ -84,7 +87,7 @@ memora doctor
 
 ## 不提前做
 
-- 在检索实验前实现完整 HNSW；
+- 实现任何 HNSW、Embedding、Vector/cosine 或等价相似度路径；
 - 在协议未稳定前优化磁盘格式；
 - 在 source fidelity 未解决前批量吸收重要资料；
 - 在 Schema 健康测试前允许无约束自动迁移；

@@ -1,6 +1,7 @@
 # 数据库查询 Sub-agent
 
-状态：宿主侧兼容设计。默认查询的候选发现职责已由独立的索引发现 Sub-agent 规格取代。
+状态：历史候选。v0 不要求宿主支持 sub-agent；若以后保留，也必须执行与主 AI
+相同的 Table 级逐层 MSQL 流程，不能使用 MATCH/相似度旁路。
 
 ## 目标
 
@@ -11,7 +12,7 @@ Main Agent
   → query intent + scope hint + result budget
   → Memora Query Agent（独立上下文）
       → SHOW / DESCRIBE / ROUTE
-      → SELECT / MATCH / JOIN
+      → SELECT / JOIN
       → 必要时修正 SQL
   ← bounded Context Pack
 ```
@@ -39,9 +40,8 @@ Query Agent：
 - 只读；
 - 加载完整 Memora Query Skill 和 MSQL 语法；
 - 自己发现数据库和 Schema，不猜字段；
-- 按 Query Skill 为当前意图输出去重后的 `query_terms: string[]`，允许加入原问题未出现的同义词、旧名称、缩写和跨语言别名；
-- `query_terms` 启动预算为 12 个、启动 Policy 上限为 32 个；两者按 Database 配置，建库后可变性待定；
-- 通过 Router、倒排和关系完成查询；
+- 从 Table 顶层 Router 开始逐层读取有限分支；
+- 通过 Router 获得 RowID，需要时回表后再沿明确关系查询；
 - 只通过 SQL 获取数据；
 - 不返回导航过程、完整索引或调试日志。
 

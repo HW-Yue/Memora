@@ -1,6 +1,7 @@
 # MSQL 标准语言
 
-状态：协议定位已确认；核心语法、F44 包管理和 F45 Wiki 导出语句已冻结，完整 v0 Grammar 尚未冻结。
+状态：协议定位已确认；Table 级 Router 目标语法待实现。F21/F22 的 MATCH 与
+Database 级 Router 语法只作历史兼容说明，不是最终查询主路径。
 
 ## 定位
 
@@ -19,11 +20,12 @@ Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop
 ```sql
 SHOW INSTANCE;
 SHOW DATABASES;
-DESCRIBE DATABASE project_memora COMPACT;
-SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit;
-OPEN ROUTE FROM DATABASE :database AT :path LIMIT :limit;
+SHOW TABLES FROM project_memora COMPACT;
 DESCRIBE TABLE project_memora.design_topics COMPACT;
-SELECT ... LIMIT 5;
+SHOW ROUTES FROM TABLE project_memora.design_topics AT ROOT LIMIT 12;
+SHOW ROUTES UNDER :route_id LIMIT 12;
+OPEN ROUTE :leaf_id LIMIT 20;
+SELECT ... WHERE row_id = :row_id LIMIT 1;
 ```
 
 MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dictionary 的正式发现接口。第一版不要求实现 `information_schema` 查询视图；底层仍由同一套自描述 Data Dictionary 提供结果。
@@ -39,7 +41,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 历史：SHOW HISTORY、AS OF REVISION/COMMIT_SEQUENCE、RESTORE 补偿；
 - 关系：RELATE、SHOW RELATIONS、UNRELATE；
 - 管理：PACK、INSTALL、OPEN、EXPORT、DOCTOR、REINDEX；
-- 检索：`MATCH(...) AGAINST(...)`；
+- 显式字面检索：是否保留历史 `MATCH` 语法待架构对账，不能作为语义主路径；
 
 Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。F44 已冻结的写法：
 
@@ -60,23 +62,21 @@ EXPORT WIKI TO :path PROFILE :profile;
 
 CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得插值进 MSQL；目标必须是绝对规范化路径。语句只允许 autocommit，不读取或回流 Vault 中的人类编辑。投影、稳定路径、manifest 与增量规则见 [Obsidian Wiki 导出](../export/obsidian-wiki.md)。
 
-已知 Database 和 Table 后，全文与语义候选检索采用 MySQL 风格的 `MATCH(...) AGAINST(...)` 表达式。它只是一层 MSQL 语法契约，不绑定 MySQL 的存储实现：Planner 并行查询 Agent 词项 posting 和低权重机械分词/N-gram posting，按配置权重融合，只返回候选数据项定位和评分信号。主 Agent 随后按定位使用普通 `SELECT` 回表读取 Row。`MATCH` 是否使用 `*` 表达整条数据项范围仍待 Grammar 冻结。
-
-两路得分先各自归一化，再按 Database 配置融合。新建 Database 启动配置使用 Agent `0.8`、机械 `0.2`。AI 调权接口必须生成声明式 MSQL，例如候选语法 `ALTER DATABASE work_x SET SEARCH WEIGHTS (...)`，再经过 Parser、Policy 和 revision 校验；不能直接修改引擎配置。具体参数名和数值范围仍待 Grammar 冻结。
-
-Query Agent 按 Query Skill 为每次语义检索输出去重后的 `query_terms: string[]`，允许加入原问题未出现的同义词、旧名称、缩写和跨语言别名，用于 Agent 词项通道；引擎同时从原始查询文本生成机械词项。启动预算为 12 个、启动 Policy 上限为 32 个，两者作为 Database 配置持久化；建库后是否允许修改留到配置生命周期设计。`query_terms` 怎样通过 `MATCH ... AGAINST` 的参数绑定传入，仍待 v0 Grammar 冻结，不能通过绕过 MSQL 的私有检索接口传递。
+语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
+所选 Table 的短 Route 节点，直到叶子得到 RowID。aliases、旧名称和关系是可读
+数据库内容，由 AI 在判断或明确 SQL filter 中使用，不进入隐藏相似度融合。
 
 ## 强制规则
 
 - 实际数据只能通过 SQL 查询；
 - Route 只返回导航元数据；
-- MATCH、倒排和关系候选接口只返回数据项定位与评分信号，主 Agent 必须再用 SELECT 回表；
+- Route 叶子只返回数据项定位，主 Agent 必须再用 SELECT 回表；
 - 所有 CLI 管理操作必须映射为 MSQL，不能直接调用旁路引擎接口；
 - 长文本使用参数绑定；
 - 查询必须有结果和输出预算；
 - 更新应带 expected revision；
 - Row 必须能按稳定 `row_id` 使用 SELECT、UPDATE 和 DELETE 精确操作；
-- Row、物理索引、机械 posting、Agent 词项和 Router membership 的变更必须在同一事务中原子可见或显式标记待重建；
+- Row、物理索引和 Router membership 的变更必须在同一事务中原子可见或显式标记待重建；
 - Parser/AST 验证完整 SQL，正则不负责语法正确性；
 - 响应使用稳定 JSON envelope 和错误码。
 
@@ -84,17 +84,24 @@ F15 已把 `expected_schema_version`、`expected_revision` 和 `max_affected_row
 
 F18 已冻结参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`。关系结果只返回结构化边与稳定 Row 定位；业务内容仍必须使用 SELECT 回表。语法和事务边界见 [MSQL Relationships v1](./msql-relationships.md)。
 
-F21 已冻结 `MATCH database.table QUERY :raw_query TERMS :query_terms LIMIT :limit`。两路 posting 独立归一化并按配置融合，只返回稳定 locator 与评分；详见 [MATCH Fusion v1](./match-fusion-v1.md)。
-
-F22 已冻结参数化 Router 管理与遍历。CREATE 返回稳定节点身份；ALTER/DELETE 使用 expected revision；SHOW 通过不透明 cursor 分页；OPEN 只返回 locator。ID 与 Database/path 两种定位形式及事务边界见 [Router Tree v1](./router-tree-v1.md)。
+F21 的 `MATCH database.table QUERY ... TERMS ...` 是已撤销主路径的历史实现，
+不得继续扩展语义评分。F22 已实现参数化 Router 管理与遍历，但 root 仍是
+Database；迁移差距见 [Router Tree v1](./router-tree-v1.md)。
 
 文本值超过目标 Column 当前配置的字符上限时，INSERT、UPDATE、MERGE 等写入返回稳定的字段超限错误；文本 Column 启动默认上限为 1200 个字符。引擎不自动截断，调用方可以切分后重试，也可以通过声明式 DDL 调整该 Column 的类型或上限；所有变更都经过 Policy 和 revision 校验。
 
-普通 SQL 负责业务 Row 修改；Agent 生成的完整 `index_terms` 和 Route membership 也必须由声明式 MSQL 语句或 UPDATE 扩展正式提交，不能通过私有 API 旁路写索引。具体 Grammar 待冻结。逻辑 DELETE 默认保留 revision 和 History Store；不可恢复的 PURGE 是独立高风险语句。
+普通 SQL 负责业务 Row 修改；Agent 生成的完整 Route membership 也必须由
+声明式 MSQL 语句或 UPDATE 扩展正式提交，不能通过私有 API 旁路写索引。具体
+Grammar 待冻结。逻辑 DELETE 默认保留 revision 和 History Store；不可恢复的
+PURGE 是独立高风险语句。
 
-普通 UPDATE 未提供新语义索引快照时不得失败：引擎使旧 Agent posting/Router membership 立即失效，将新 revision 标记为 `pending_reindex`，并由 daemon 异步重建。查询期间可以使用机械索引和 SQL 精确读取，但不能使用旧语义索引冒充当前结果。
+普通 UPDATE 未提供新语义 membership 时，引擎使旧 Router membership 立即
+失效，将新 revision 标记为 `pending_reindex`，由宿主 AI 后续维护。期间可以
+通过稳定 RowID 和精确 SQL 读取，但不能用旧 Route 冒充当前语义定位。
 
-Router/倒排的 Row、子树或 Database 重建必须映射为 MSQL `REINDEX` 类声明式语句。整库重建在新 generation 中进行，验证后原子切换 active generation；命令的正式对象范围和 Grammar 待冻结。少量修改只能走增量路径，不能无条件启动整库重建。
+Router 的 Row、子树或 Table generation 重建必须映射为 MSQL `REINDEX` 类
+声明式语句。重建在新 generation 中进行，验证后原子切换；少量修改只能走
+增量路径，不能无条件启动整表重建。
 
 ## 统一响应
 
@@ -123,7 +130,7 @@ Skill 应包含：
 - 参数绑定；
 - 输出 Schema；
 - 错误恢复表；
-- `query_terms` 的生成、同义扩展、去重和预算规则；
+- 逐层 Database/Table/Route 发现、选择和 Route Frame 预算规则；
 - 上下文缓存规则；
 - 禁止直接读取物理文件、猜 Schema 或强制覆盖冲突。
 
@@ -133,8 +140,8 @@ Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
 
 - MSQL v0 首批冻结哪些 SQL 语句和 Memora 扩展？
 - 多语句批次的整体输出预算是什么？
-- 数据项级语义词项在 `MATCH` 中怎样表达作用范围？
-- `query_terms` 怎样通过参数绑定进入 `MATCH ... AGAINST`？
+- 历史 MATCH 是否删除，或只保留为显式字面检索？
+- Table 级 Route DDL、迁移和 generation 语法怎样冻结？
 - 自研 Parser 还是基于现有 Go SQL Parser？
 
 ## 关联

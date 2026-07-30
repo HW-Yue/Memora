@@ -1,6 +1,6 @@
 # AI-native 产品契约
 
-状态：方向性规格；用于约束产品，而不是宣传文案。
+状态：方向性规格；受 [AI-native 产品宪章](./ai-native-product-charter.md)约束。
 
 ## 核心定义
 
@@ -69,7 +69,7 @@ Router、Data Dictionary、候选和错误输出都有硬预算。v0 查询由 C
 
 ### 9. 配置可演化
 
-影响语义质量和使用效果的参数不能作为不可见代码常量写死。字段长度、Agent/机械检索权重、词项预算、Router 与 Context Pack 预算等都应作为数据库内可读、可版本化的配置。
+影响语义质量和使用效果的参数不能作为不可见代码常量写死。字段长度、Router 分支与 Route Frame 预算等都应作为数据库内可读、可版本化的配置。
 
 文档中的数值是启动默认值，不是永久真理。但配置是否在建库后冻结、只能迁移、允许用户修改或允许 AI 优化，必须逐项定义，推迟到最后阶段讨论。任何被允许的变更都必须说明原因、带 expected revision、经过 Policy、可以审计和回滚。Page 格式、事务原子性、权限上限、校验和等物理正确性与安全不变量不属于 AI 自适应配置。
 
@@ -96,19 +96,19 @@ v0 的 AI 来自 Codex/Claude Code 等外部宿主；未来若增加内置 Runti
 
 引擎内部不调用 LLM 决定物理行为，AI 也不接触物理地址。
 
-## 第一版无向量策略
+## 永久无向量边界
 
-第一版不依赖 Embedding API。语义能力由以下组合提供：
+Memora 的语义发现不采用 Embedding、向量数据库、余弦/距离相似度或其伪装形式，评测和降级路径也不例外。语义能力来自：
 
 ```text
-AI 写入可读标题、摘要、别名和 Router
-+ Agent 语义词项与低权重机械 N-gram 混合倒排
-+ 结构化 SQL filter
-+ 关系正反向遍历
-+ Query Agent 对自然语言意图做关键词扩展
+AI 维护可读的 Table 级多层语义树
++ AI 用 MSQL 逐层选择有限分支
++ 叶子只返回 RowID
++ 结构化 SQL filter 与关系遍历
++ 最终 SELECT 回表
 ```
 
-Embedding 未来只能作为可删除、可重建的派生索引，不能成为数据库可读性的前提。
+既有混合倒排实现只可作为待审计的历史原型，不能继续充当主查询路径或已完成产品能力。
 
 ## 反例测试
 
@@ -120,11 +120,12 @@ Embedding 未来只能作为可删除、可重建的派生索引，不能成为�
 - 数据库没有可读的 purpose、Schema 说明和 Router；
 - 旧索引长期塞在 system prompt；
 - 修改没有 revision、来源或回滚路径；
-- 换模型后因无法重建向量而无法使用；
+- 实现、benchmark 或兜底路径仍依赖向量/余弦匹配；
 - 自动整理造成错误后无法解释和恢复。
 
 ## 关联
 
+- [AI-native 产品宪章](./ai-native-product-charter.md)
 - [AI-native 产品边界](./ai-native-boundary.md)
 - [Mutation Agent](../agent/database-mutation-agent.md)
 - [质量模型与验收](./quality-model.md)

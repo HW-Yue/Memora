@@ -18,6 +18,7 @@
 
 ## 产品与数据
 
+- [AI-native 产品宪章](./product/ai-native-product-charter.md) — 最终产品形态、AI 标准操作流程、用户故事和永久边界。
 - [AI-native 产品边界](./product/ai-native-boundary.md) — AI 负责语义建模，引擎负责物理正确性。
 - [AI-native 产品契约](./product/ai-native-contract.md) — 什么才算真正由 AI 自主管理的数据库。
 - [AI-native 可演化配置](./product/adaptive-configuration.md) — 默认值进入数据库；冻结、迁移和 AI 优化边界留到最后阶段确定。
@@ -31,8 +32,8 @@
 - [Row Store v1](./data/row-store-v1.md) — F15 的稳定 Row 身份、Column ID 编码、Schema/revision 校验与逻辑删除契约。
 - [History Store v1](./data/history-store-v1.md) — F17 的追加式语义 revision、commit sequence、provenance 与补偿边界。
 - [Relationship Store v1](./data/relationship-store-v1.md) — F18 的结构化关系、revision、双向索引与完整性边界。
-- [Agent Inverted Index v1](./data/agent-index-v1.md) — F19 的完整词项快照、posting、revision 失效与 24/64 预算。
-- [Mechanical Inverted Index v1](./data/mechanical-index-v1.md) — F20 的中英 tokenizer、N-gram、空间预算、来源隔离与重建。
+- [Agent Inverted Index v1](./data/agent-index-v1.md) — F19 历史实现；不再作为语义查询主路径。
+- [Mechanical Inverted Index v1](./data/mechanical-index-v1.md) — F20 历史字面索引实现；保留与否待架构对账。
 - [Pending Reindex v1](./data/pending-reindex-v1.md) — F24 的语义索引立即失效、durable queue、lease、重试与 revision guard。
 - [资料吸收](./data/assimilation.md) — 外部资料临时读取，吸收后不保存原文。
 
@@ -40,7 +41,7 @@
 
 - [AI 自主权与约束](./agent/autonomy.md) — 自主建模、风险等级和引擎不变量。
 - [Canonical Skill v1](./agent/canonical-skill-v1.md) — F28 的唯一宿主规则源、版本 lint、冲突边界和上下文预算。
-- [Skill 查询流程 v1](./agent/skill-query-v1.md) — F30 的发现、Route/MATCH、SELECT 回表、evidence 和可恢复终态。
+- [Skill 查询流程 v1](./agent/skill-query-v1.md) — F30 历史实现与 Table 级逐层 Route 目标状态机。
 - [Skill 写入流程 v1](./agent/skill-write-v1.md) — F31 的七种语义决策、Mutation Plan、Policy、短事务和紧凑收据。
 - [Skill Schema 生命周期 v1](./agent/skill-schema-lifecycle-v1.md) — F32 的同义 Schema 复用、受限 DDL、影响预览和补偿回滚。
 - [Conversation Delta 交接 v1](./agent/conversation-delta-v1.md) — F33 的显式事件、幂等去重、checkpoint 和缺失上下文处理。
@@ -51,7 +52,7 @@
 - [反馈、修订与逻辑 Undo v1](./agent/feedback-revision-v1.md) — F38 的五类反馈收据、显式确认和补偿 revision。
 - [Skill 首次安全安装 v1](./agent/safe-bootstrap-v1.md) — F39 的显式授权、Release 校验、源码回退和 doctor 验收。
 - [可选内置 Agent Runtime](./agent/embedded-agent-runtime.md) — v0 后候选；第一版由 Codex/Claude Code 按 Skill 调用统一 MSQL 核心。
-- [索引发现 Sub-agent](./agent/index-discovery-subagent.md) — 逐层导航并融合倒排，只返回数据项定位，主 Agent 再用 SQL 取数。
+- [索引发现 Sub-agent](./agent/index-discovery-subagent.md) — 已撤销混合融合设计的历史说明。
 - [数据库查询 Sub-agent](./agent/database-query-subagent.md) — 旧首选方案；保留为宿主侧兼容方式。
 - [数据库 Mutation Agent](./agent/database-mutation-agent.md) — Skill 写入职责、维护选择和收据设计。
 - [MSQL](./query/msql.md) — 标准化发现、查询、修改和事务语言。
@@ -64,11 +65,11 @@
 - [MSQL Mutation Executor v1](./query/msql-mutation.md) — F15e 的参数化 CRUD、expected revision、影响行数预算与零插值边界。
 - [MSQL History v1](./query/msql-history.md) — F17c 的 AS OF、SHOW HISTORY、RESTORE 补偿与事务回滚语义。
 - [MSQL Relationships v1](./query/msql-relationships.md) — F18c 的参数化关系创建、双向发现、逻辑删除与 Batch 语义。
-- [MATCH Fusion v1](./query/match-fusion-v1.md) — F21 的双通道独立归一化、0.8/0.2 权重、稳定排序与 locator-only 输出。
-- [Router Tree v1](./query/router-tree-v1.md) — F22 的稳定节点、多叉路径、多叶 membership、容量和遍历 cursor。
-- [Index Discovery v1](./query/index-discovery-v1.md) — F23 的 Route、倒排、关系确定性融合、预算与 locator-only 输出。
+- [MATCH Fusion v1](./query/match-fusion-v1.md) — 已撤销的 F21 混合评分历史实现。
+- [Router Tree v1](./query/router-tree-v1.md) — F22 Database 级历史实现与 Table 级迁移差距。
+- [Index Discovery v1](./query/index-discovery-v1.md) — 已撤销的 F23 候选融合历史实现。
 - [MSQL Result Envelope v1](./query/result-envelope.md) — 单条/批量统一结果、稳定错误码、warning 与截断兼容规则。
-- [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 多层多叉语义树逐层找到叶子数据项 ID，再与倒排和关系候选融合。
+- [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 每个 Table 一棵多层语义树，AI 逐层找到叶子 RowID。
 - [无向量检索质量链路](./query/retrieval-quality.md) — 从逐层发现、候选融合、返回定位到主 Agent SQL 回表的完整流程。
 - [上下文生命周期](./query/context-lifecycle.md) — 当前重点：索引缓存、污染、失效和平台限制。
 - [Query Workspace 与缓存边界](./query/working-set-cache.md) — 区分 Agent 临时状态、物理 Page 缓存和查询结果缓存。
@@ -98,6 +99,7 @@
 
 ## 计划
 
+- [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
 - [开发与验证路线](./planning/roadmap.md) — 先验证 AI-native 体验，再进入完整存储内核。
 - [TDD 开发总计划](./planning/tdd-development-plan.md) — 按独立 feature branch/commit 推进，测试先行并设置阶段质量门。
 - [Phase A 退出验收](./planning/phase-a-exit-evidence.md) — 干净 datadir 下 CLI、daemon、并发 MSQL parse、重启和全量门禁证据。
@@ -112,7 +114,7 @@
 - [Codex Adapter v1](./development/codex-adapter-v1.md) — F40 从 Canonical Skill 确定性派生 Codex metadata、命令规则与 e2e fixture。
 - [Claude Code Adapter v1](./development/claude-code-adapter-v1.md) — F41 的 `.claude/skills` 包装、turn 级命令权限与跨宿主 digest 兼容。
 - [AI-native Benchmark v1](./development/ai-native-benchmark-v1.md) — F42 的五类可重放旅程、八维评分、baseline adapter 与确定性报告。
-- [AI-native 发布门 v1](./development/ai-native-release-gate-v1.md) — F51 的固定语料、真实 Kimi 观测、五类对照、阈值与防篡改报告。
+- [AI-native 发布门 v1](./development/ai-native-release-gate-v1.md) — 已撤销的 F51 历史评测及失效原因。
 - [安全与隐私门 v1](./development/security-privacy-gate-v1.md) — F46 的 Database scope、外部路径、approval、审计脱敏与 doctor 检查。
 - [macOS Release 制品 v1](./development/macos-release-artifacts-v1.md) — F47 的双架构 Mach-O、可复现归档、版本 manifest、checksum 与 smoke 契约。
 - [GitHub Release 自动化 v1](./development/github-release-automation-v1.md) — F48 的签名 tag 门、最小权限、双架构 smoke、Skill bundle 与 draft 发布契约。

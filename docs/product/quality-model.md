@@ -1,6 +1,7 @@
 # AI-native 质量模型与验收
 
-状态：F51 已完成首轮真实 benchmark 校准；数据集外仍需持续扩展验证。
+状态：产品指标方向有效；F51 的 Vector/cosine 评测结论已撤销，发布门待按
+[AI-native 产品宪章](./ai-native-product-charter.md)重做。
 
 F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1](../development/ai-native-benchmark-v1.md)。
 
@@ -30,7 +31,7 @@ F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1]
 
 ## 首轮候选门槛
 
-以下原型目标已由 F51 v0 固定为发布门，不是数据集外的最终承诺：
+以下是候选产品目标，尚未由有效发布门确认：
 
 - 写入选择 precision ≥ 95%，宁可漏掉低价值内容，不污染长期库；
 - 自建查询集 Recall@5 ≥ 90%，并单独统计同义表达和跨项目干扰；
@@ -59,9 +60,10 @@ F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1]
 
 让另一个模型只通过 CLI/Skill 接手，测试能否找到正确 Database、理解 Schema 并继续修改。
 
-### 无向量召回
+### 语义树召回
 
-查询故意使用与原文不同的同义表达，比较 Router+Agent 词项+机械 N-gram+关系与 Vector baseline 的差距，并校准两路索引权重。
+查询故意使用与原文不同的同义表达，测试 AI 能否从 Database、Table 和顶层
+Route 开始逐层选择，在有界 Route Frame 内得到正确 RowID 并回表。
 
 ## 对照组
 
@@ -70,10 +72,10 @@ F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1]
 - Markdown 全文搜索；
 - SQLite FTS/BM25；
 - Basic Memory 或同类 Markdown+MCP；
-- Mem0/Vector memory；
-- Memora 去掉 Router、关系或 LRU 的消融版本。
+- 传统数据库按精确字段与 ID 查询；
+- Memora 去掉 Router、关系或有界 Route Frame 的消融版本。
 
-Vector 产品只作为评测基线，不意味着第一版引入其运行依赖。
+评测工具本身也禁止实现 Vector、Embedding、cosine 或等价距离匹配。
 
 ## 质量反馈闭环
 
@@ -88,10 +90,9 @@ useful / irrelevant / stale / wrong / incomplete
 
 ## 发布门槛
 
-只有当端到端 Agent 体验优于“Markdown + 搜索”基线时，才进入完整自研存储内核阶段。只有当无向量方案在核心场景达到门槛时，才把“无 Embedding 依赖”升级为正式产品承诺。
-F51 已用固定 Adapter 和同一评分器生成首轮真实可审计结果并通过门槛，具体证据见
-[AI-native 发布门 v1](../development/ai-native-release-gate-v1.md)。当前 Vector
-是明确标注的本地稀疏向量，不等同于商业 dense embedding 全面对照。
+进入完整自研存储内核前，必须先证明 AI 能用 Table 级语义树和逐层 MSQL 完成
+端到端维护，并优于“用户手工整理 Markdown + 字面搜索”的工作负担。F51 不满足
+该条件，撤销记录见 [AI-native 发布门 v1](../development/ai-native-release-gate-v1.md)。
 
 ## 关联
 

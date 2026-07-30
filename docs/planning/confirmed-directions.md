@@ -10,11 +10,13 @@
 6. Route 只导航，实际数据只能通过 SQL 查询；
 7. 语义记录是短小完整的知识模块，目标约 800 字；文本 Column 各自声明可演化的字符上限，启动默认值为 1200，超限必须报错并由 Agent 切分或调整 Schema，禁止静默截断；
 8. 不保存完整大文档、图片和机械 chunk；资料仅临时读取并吸收；
-9. 第一版不依赖向量 API；
-10. 检索结合语义 Router、倒排索引和关系图；
+9. 全架构禁止使用 Embedding、向量数据库、余弦/距离相似度或其伪装形式，包含产品实现、评测基线和降级路径；
+10. 检索主路径是 AI 对 Table 级语义 Router 的逐层 SQL 导航；关系只在回表后按明确需要扩展，不参与隐藏的相似度融合；
 11. 修改带 revision，保留历史并处理并发冲突；
 12. 动态索引不进入长期 system prompt；
-13. 数据库查询采用两阶段链路：索引发现步骤逐层导航并融合倒排和关系信号，只返回候选数据项定位；主 Agent 再按定位生成 MSQL `SELECT` 读取真实数据；
+13. 数据库查询采用两阶段链路：AI 从 Database、Table、Schema 和顶层 Route
+逐层导航，叶子只返回候选 RowID；主 Agent 再按 RowID 生成 MSQL `SELECT`
+读取真实数据；
 14. 可导出为带 `[[Wikilink]]` 的 Obsidian Wiki；
 15. Wiki 是单向派生快照，不是第一阶段的真相源；
 16. 设计文档按主题拆分，归档不作为日常上下文；
@@ -50,17 +52,25 @@
 46. 没有显式事务时，每条写语句都是独立 autocommit 单元；一条失败不阻止批次中的其他独立语句继续执行，每条语句分别返回成功或结构化错误。
 47. 常规 SQL、事务、autocommit 和批处理行为默认参考 MySQL；只有 Memora 独有能力或明确产品理由才偏离，并在 MSQL 规格中记录差异。
 48. 显式事务因写失败自动回滚后，事务块内剩余语句和 `COMMIT` 标记为未执行或已回滚，但同一批次中事务块之后的独立语句继续执行。
-49. 已知 Database 和 Table 后，全文与语义候选检索采用 `MATCH(...) AGAINST(...)`；该语法由 Memora Planner 编译为自有倒排索引查询计划，不依赖或复用 MySQL 内核。
-50. 语义倒排索引以数据项为粒度：Agent 从一条 Row 的任意字段挑选有发现价值的词并输出结构化词项集合，引擎将其维护为 `term → row_id + revision` posting；Agent 不直接操作物理索引结构。
-51. 第一版采用混合倒排索引：Agent 词项负责语义精度，机械分词/N-gram 作为可关闭、可删除并重建的低权重字面召回兜底；两路来源分别计分，融合权重可配置并通过 benchmark 校准。
-52. Agent 词项与机械词项的融合权重以 Database 为单位持久化，配置带 revision、可审计并随数据库包迁移；若生命周期策略允许 AI 调整，也只能通过声明式 MSQL，不提供旁路调权接口。
-53. 新建 Database 的混合倒排启动权重为 Agent `0.8`、机械 `0.2`；查询时两路得分先各自归一化再融合，该权重是可演化配置，具体归一化方法和后续调权由 benchmark 验证。
-54. Agent 为每条 Row 输出去重后的 `index_terms: string[]`；词项不带逐词权重或来源 Column，`row_id`、`revision` 和 posting 来源由引擎自动关联。
-55. Row 每次产生新 revision 时，Agent 重新输出完整 `index_terms` 快照；引擎在同一事务中原子替换上一 revision 的全部 Agent posting，不使用词项增删 diff。
-56. Query Agent 为语义检索输出去重后的 `query_terms: string[]`，查询 Agent 词项通道；引擎从原始问题生成机械词项并查询机械通道，两路按目标 Database 的 Search Weight Profile 融合。
-57. Query Skill 规定 `query_terms` 的生成规则，允许补充同义词、旧名称、缩写和跨语言别名；Runtime 校验结构与预算，Data Dictionary 提供已知 alias，MSQL 承载正式操作，不能只依靠 Skill 自律。
-58. `query_terms` 启动预算为 12 个、启动 Policy 上限为 32 个；两者是 Database 级可演化配置，当前超限查询返回结构化错误。
-59. 每条 Row 的 `index_terms` 启动预算为 24 个、启动 Policy 上限为 64 个；两者是 Database 级可演化配置，Agent 词项保持高价值，不允许用机械拆词填满语义通道。
+49. F19–F23 的 `MATCH`、Agent 词项、机械 N-gram 和固定权重融合属于历史原型，
+不再是语义查询主路径，也不能作为产品完成证据。
+50. 语义发现的权威派生索引改为 Table 级 Router Tree；内部节点保存可读范围，
+叶子保存 `row_id + revision` locator，Agent 不操作物理索引结构。
+51. 禁止设置或调优“Agent/机械/Vector”语义相似度融合权重。
+52. 允许保留传统数据库所需的精确键、唯一键、范围和显式字面查找索引，但它们
+不能伪装成语义匹配，也不能替代 AI 逐层 Route 导航。
+53. Router fan-out、叶子容量、输出长度和 Route Frame 属于可读、可版本化配置；
+它们控制预算，不对自然语言计算相似度。
+54. Row 写入必须提交完整 Route membership 快照或进入明确的待语义维护状态。
+55. Row 每次产生新 revision 时，旧 Route membership 立即失效；新 membership
+通过 expected revision 原子启用。
+56. Query Agent 不生成 `query_terms` 交给评分器；它读取短节点描述并显式选择
+下一层 Route。
+57. aliases 和旧名称属于 Data Dictionary、Schema、Row 或 Route 的可读数据，
+由 AI 在导航和 SQL filter 中使用。
+58. 查询预算按每层节点数、最大深度、叶子 locator 数和回表 Row 数表达。
+59. 既有倒排代码、配置和文档必须在架构对账中决定删除、降级为显式字面能力或
+迁移；未完成对账前不得继续扩展。
 60. 字符长度限制属于 Column 约束，不设置统一的 Row 级 1200 字符上限；文本 Column 启动默认上限为 1200 个字符，可由用户或 AI 通过 MSQL 演化，超限写入返回结构化错误且不截断。
 61. 影响语义质量的数值必须成为数据库内可读、可版本化、可审计的配置，而不是不可见的永久代码常量；但“配置入库”不等于“建库后可修改”，冻结、迁移、用户可调和 AI 可优化的分类与条件推迟到最后阶段讨论。
 62. 索引发现结果不能包含业务正文或直接作为答案；Route、Agent 词项、机械词项和关系只负责候选与评分，最终数据必须由主 Agent 按返回定位通过 SQL 回表读取。
@@ -71,9 +81,16 @@
 67. 事务隔离参考 MySQL/InnoDB：默认 `REPEATABLE READ`，首版支持 `READ COMMITTED`；一致性读、`FOR SHARE` / `FOR UPDATE` 锁定读以及 gap/next-key lock 的防幻读边界按 InnoDB 语义设计。
 68. Redo Log 与 Binlog 的原子一致性参考 MySQL 内部两阶段提交：Redo prepare、Binlog 持久化、Redo commit；并用 Group Commit 合并多个事务的日志刷盘，同时保持 commit sequence 与 Binlog 顺序一致。它不是跨设备分布式事务。
 69. 物理 MVCC 参考 InnoDB，采用“最新 Record + Undo version chain”：更新前写 Undo，旧快照沿 roll pointer 重建，安全后由 Purge 回收。长期语义 revision 进入独立 History Store，不能依赖事务 Undo。
-70. Router 正式定义为 Agent 语义目录索引：由多层多叉树组成，内部节点提供短语义分支，叶子节点保存有限的数据项 ID/locator；同一 `row_id` 可被多个叶子引用但不复制 Row。索引发现 Sub-agent 逐层查到候选 ID，再与 Agent 词项、机械词项和关系候选融合评分，主 Agent 最终按 ID 用 SQL 回表。
+70. Router 正式定义为 Agent 语义目录索引：每个 Table 拥有一棵多层多叉树，
+内部节点提供短语义分支，叶子节点保存有限的数据项 ID/locator；同一 `row_id`
+可被多个叶子引用但不复制 Row。AI 逐层查到候选 ID，最终按 ID 用 SQL 回表，
+不经过隐藏候选融合评分。
 71. 稳定 `row_id` 是 Row 的永久逻辑身份；正文、Schema、Router 归属和索引重建都不能改变它。Row 必须能通过 MSQL/SQL 精确 SELECT、UPDATE 和逻辑 DELETE；修改时当前 Record、物理索引、机械 posting、Agent 词项、Router 引用、历史和 Binlog 原子更新或显式进入待重建状态，禁止留下静默陈旧索引。
-72. 普通 SQL UPDATE 不因缺少新 Agent 索引而失败：旧 Agent posting 和所有 Router membership 立即 tombstone，新 revision 标记 `pending_reindex`，机械索引立即可用，daemon 后台按 expected revision 重建。Router/倒排支持新 generation 旁路构建、校验后原子切换和旧 generation compaction；`row_id → memberships` 反向索引保证 DELETE/SPLIT/MERGE 能失效全部叶子引用。
+72. 普通 SQL UPDATE 不因缺少新语义 membership 而留下错误可见索引：所有旧
+membership 立即 tombstone，新 revision 标记 `pending_reindex`；宿主 AI 后续按
+expected revision 重建。Router 支持新 generation 旁路构建、校验后原子切换和
+旧 generation compaction；`row_id → memberships` 反向索引保证
+DELETE/SPLIT/MERGE 能失效全部叶子引用。
 73. Router 维护分为 Row 增量、局部子树重建和 Database generation 重建；少量变更不得触发全量。整库触发由 Database 配置中的最小脏 Row 数与全局脏比例共同判断，并可因索引规则/格式不兼容升级或完整性失败强制触发；阈值不写死，启动值由 benchmark 决定。
 74. 第一阶段只开发和支持 macOS，不同时承担 Linux/Windows 的目录、服务管理和兼容测试成本；跨平台支持以后按独立里程碑进入。
 75. Instance 磁盘目录层次参考 MySQL：一个 Instance 根数据目录，Redo、Undo、Binlog 等事务日志集中管理，各逻辑 Database 使用独立子目录；具体文件格式仍为 Memora 自有格式，不追求兼容 MySQL 文件。
@@ -85,13 +102,38 @@
 81. 长期语义 revision 使用 Database 级共享的追加式 History Store，按 commit sequence 滚动 segment，并以 `table_id + row_id + revision` 定位；Row 跨表移动、拆分、合并或 Table 改名不搬迁旧历史。History 是权威数据，不采用 Undo 的 Purge 生命周期。
 82. Router、Agent 倒排和机械倒排各自维护独立 generation；Database 的 `indexes/manifest` 原子记录当前启用组合及覆盖 commit sequence，查询开始时固定一次。单类索引重建不复制其他索引，发布前旁路写入和校验，旧 generation 等读者释放后回收。
 83. 数据库不内置 `candidate/disputed` 等语义冲突状态，也不理解、裁决或自动合并互相矛盾的内容。引擎只检测 revision、锁、唯一键、外键、类型等机械冲突并结构化报错；Skill 负责查询并向用户并列展示语义冲突，得到用户指示后重新生成 SQL 写入。
-84. AI-native 的产品验收以“AI 持续维护、用户只处理例外”为准，而不是以是否内置 LLM、Vector 或 SQL 扩展为准。用户提供自然对话或资料后，AI 自主发现已有数据并完成忽略、写入、修订、拆分、合并、Schema/Router 维护和验证；语义冲突、高风险、越权与不可恢复操作才请求用户介入。自动维护只能覆盖已授权且实际交给 Memora 的输入，因此必须建设稳定输入入口，不能假设 Skill 能看见所有宿主活动。
+84. AI-native 的产品验收以“AI 持续维护、用户只处理例外”为准。用户提供自然
+对话或资料后，AI 自主发现已有数据并完成忽略、写入、修订、拆分、合并、
+Schema/Router 维护和验证；语义冲突、高风险、越权与不可恢复操作才请求用户
+介入。自动维护只能覆盖已授权且实际交给 Memora 的输入，因此必须建设稳定输入
+入口，不能假设 Skill 能看见所有宿主活动。
 85. Wiki v1 以 `database_id/table_id/row_id.md` 作为稳定路径；rename 不移动页面，跨库关系使用 Vault 根目录下的完整稳定相对 Wikilink。增量 manifest 只拥有自己登记的页面，不删除用户新增文件；v1 不生成 slug、redirect、Router/MOC，也不回流 Markdown 编辑。
 86. v0 的最终信任边界是当前 macOS 用户；宿主 Agent 的结构化 MSQL input 必须用 `memora.authorization/v1` 声明 actor 和 Database scope。Policy 在静态 SQL、动态 Route、关系、Pack 与 Wiki 上强制该 scope；Install 另需绑定 package SHA-256 的显式 approval。daemon 审计只保存有界元数据与 payload hash，并与逻辑 Database snapshot/package 分离。
 87. Memora 采用 PolyForm Noncommercial 1.0.0 与独立付费商业许可的双许可证模式：个人及其他非商业用途可免费使用、修改与依许可分发；任何商业用途必须事先取得版权所有者另行签署的书面付费许可。项目属于 source-available，不宣称为 OSI Open Source。
 88. GitHub Release 只由已验证签名的 annotated 稳定 SemVer tag 触发；tag target 必须位于 `main`，重复 Release 必须失败。测试、构建和双架构 smoke 只读，只有其后最终 publish job 获得 `contents: write`；Release 固定同时分发双架构制品与带完整许可的确定性 Skill bundle。
 89. Instance format 必须区分 current、upgrade-required、newer-format、corrupt 与 migration-incomplete；普通 init/daemon/数据命令不得静默迁移或降级。升级先输出只读计划，再经独立显式批准创建完整性备份和 journal；中断后只能从 journal 绑定或用户明确选择的已验证同 Instance 备份恢复。安装授权不等于升级或回滚授权，宿主 Adapter 不隐式放行 `upgrade --apply` 与 `doctor repair`。
-90. 正式 GitHub Release 在 publish 前必须分别于原生 macOS arm64/amd64 隔离 HOME 中，从 publication 内 Canonical Skill 经显式批准和 HTTPS/checksum 安装开始，完成 init、daemon、doctor、固定项目摘要写入、重启查询与最终健康检查。每个架构的版本化报告绑定 version、commit、完整步骤和脱敏诊断包 hash；任一缺失、失败、损坏或绑定不符都阻断发布。该旅程验证产品链路，不替代 F51 的真实 AI 质量评测。
+90. 正式 GitHub Release 在 publish 前必须分别于原生 macOS arm64/amd64 隔离
+HOME 中，从 publication 内 Canonical Skill 经显式批准和 HTTPS/checksum 安装
+开始，完成 init、daemon、doctor、固定项目摘要写入、重启查询与最终健康检查。
+每个架构的版本化报告绑定 version、commit、完整步骤和脱敏诊断包 hash；任一
+缺失、失败、损坏或绑定不符都阻断发布。该旅程验证安装链路，不替代按产品用户
+故事重做的 AI 质量门。
+91. [AI-native 产品宪章](../product/ai-native-product-charter.md)是产品方向最高层
+约束；旧 Feature 或规格与其冲突时，先标记撤销/待迁移，不以“已经实现”为由保留。
+92. AI 是逻辑数据库的首要用户和日常 DBA；确定性引擎负责物理正确性。人主要
+提供目标、资料、授权和例外裁决，不负责日常 Schema 与索引维护。
+93. 标准发现顺序为 `SHOW DATABASES → SHOW TABLES → DESCRIBE TABLE →
+SHOW ROUTES/UNDER → OPEN ROUTE → SELECT by RowID`；MSQL 是 Memora 的 SQL
+方言名称，不代表另一个相似度系统。
+94. AI 的 `Route Frame` 是有界语义工作集，与缓存 Page 的物理 Buffer Pool
+严格分离；两者可以共同提升速度，但不得共享语义职责。
+95. AI 负责 Row split/merge 和语义树优化；正文、关系、历史、反向 membership
+和受影响上层 Route 必须在一个可回滚 Mutation Plan 中保持一致。
+96. 所有 Feature 实施前和合入前都必须通过
+[产品与用户故事门禁](./feature-product-gate.md)。持久化后端、查询主路径、
+索引算法、Provider 或许可等架构选择必须事前向用户明确披露并获得确认。
+97. F51 的发布门结论因使用字符向量/cosine 且未验证逐层 AI 导航而撤销；F52
+及后续原生内核 Feature 暂停，先完成架构对账和新的故事级质量门。
 
 ## 尚需验证
 

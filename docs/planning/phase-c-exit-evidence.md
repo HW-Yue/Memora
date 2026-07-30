@@ -1,6 +1,7 @@
 # Phase C 退出验收
 
-状态：已通过。
+状态：机械宿主兼容证据曾通过；F30 查询旅程和 F42/F51 质量链已失效，因此不再
+代表当前产品故事门通过。
 
 ## 自动化证据
 
@@ -22,8 +23,8 @@ Codex 和 Claude Code 可通过同一逻辑 Instance、MSQL 和 Result 契约工
 Agent 不读取旧聊天也有固定冷启动旅程；冲突展示不裁决；用户无需为 Memora
 另配模型 API Key。Phase C 可以退出，进入发行与 package 阶段。
 
-这不是 AI-native 发布质量达标声明。F42 只冻结数据与评分器，真实 baseline
-结果和阈值仍必须在 F51 通过后，才允许进入原生内核实现。
+这不是 AI-native 发布质量达标声明。F42/F51 包含被禁止的 Vector/cosine 和
+非逐层查询路径；必须按产品用户故事重做，原生内核 Feature 当前暂停。
 
 ## 复现
 

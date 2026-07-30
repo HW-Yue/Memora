@@ -1,125 +1,113 @@
 # Agent 语义目录索引（Router）
 
-状态：F22 已冻结 Router；F23 已冻结 Route、倒排和一跳关系的确定性发现融合。
+状态：目标架构已确认；现有 F22 Database 级实现待迁移为 Table 级。
 
-## 目标
+## 定义
 
-Router 是给 Agent 阅读的多层语义目录索引。索引发现 Sub-agent 从根节点逐层选择一个或多个相关分支，直到叶子节点取得候选数据项 ID；它不读取业务正文或物理 Page。
+Router 是给 AI 阅读的多层多叉语义目录树。它不是 B+ Tree、文件目录、Vector
+Index 或候选评分器。每个 Table 有自己的 root，因为只有 Table 定义了叶子 Row
+的共同语义和 Schema。
 
 ```text
-Router Root
-├── 项目
-│   ├── Memora
-│   │   ├── 存储引擎 → [row_id...]
-│   │   ├── MSQL     → [row_id...]
-│   │   └── 检索设计 → [row_id...]
-│   └── 其他项目
-├── 人物
-└── 决策
+Database: project_memora
+└── Table: decisions
+    ├── 产品边界
+    │   ├── AI 与引擎职责 → [row_id...]
+    │   └── 永久非目标     → [row_id...]
+    ├── 查询流程
+    └── 存储与恢复
 ```
 
-Router 是 Memora 专有的 Agent 索引，不是 B+ Tree、文件目录或 MySQL Router。代码和协议可以简称 Router，对用户解释时优先称“Agent 语义目录索引”。
+Database 只负责将 AI 导向 Table；Table 的 Data Dictionary 说明一条 Row 代表
+什么；Router 再把 AI 从 Table 导向有限 RowID。
 
-## Router Page
+## 节点与 membership
 
 内部节点只包含：
 
-- 当前逻辑路径和一句话用途；
+- stable route ID、parent ID、name、aliases 和 revision；
+- 一句话 purpose、范围边界和可选导航提示；
 - 启动预算约 8～12 个子分支；
-- 每个子分支一句话 scope；
-- 可选的相关 Database/Table scope；
-- 可选查询提示；
-- Schema/Route revision。
+- snapshot、cursor 和 `truncated`。
 
-叶子节点使用同样的短说明，但把子分支替换为有限数量的稳定 locator，固定携带 Database、Table、Row ID 和 revision。
-
-同一 `row_id` 可以同时出现在多个语义相关的叶子节点中；叶子只保存引用，不复制 Row。Row 内容或归属变化时，Agent 通过 MSQL 提交完整 Route membership 快照，引擎在同一事务中增加、移动或删除所有叶子引用。逻辑 DELETE 后不得继续作为活跃 Router 候选。
-
-启动候选预算为 300～500 个中文字、Policy 上限约 800 字。分支数和字符预算属于 Database Route Profile；若后续生命周期策略允许调整，只能通过 MSQL、Policy 和 revision 修改。Router 不返回完整业务记录。
-
-## 三路检索
+叶子把子分支替换为有限 locator：
 
 ```text
-Semantic Router：理解性导航
-Inverted Index：Agent 词项为主、机械 N-gram 低权重兜底的全局召回
-Relation Graph：扩展结构和语义邻居
+table_id + row_id + row_revision + membership_revision
 ```
 
-Router 候选与倒排、关系候选融合后只输出数据项定位，最终仍由 SQL 选择和读取语义记录。
+同一 Row 可属于多个叶子，但正文只存一份。引擎维护
+`row_id → memberships` 反向索引，因此 revise、delete、split 和 merge 不需要
+扫描整棵树即可失效旧引用。
 
-默认由索引发现 Sub-agent 逐层读取 Router，并与两路倒排和关系信号融合，只向主 Agent 返回候选数据项定位。主 Agent 再按定位执行 SQL；Router 或倒排结果本身不能返回正文。
+## AI 导航
 
-## 语义分裂
+AI 必须显式执行：
 
-物理 Page 满时引擎自动 split。Router 内部节点 fan-out 或叶子 ID 数超过配置预算时，引擎只能报告语义 overflow；怎样命名新分支、移动 ID 和保持语义完整必须由 AI 决定并通过事务修改。引擎负责树结构、引用完整性、版本和原子切换。
+```sql
+SHOW DATABASES COMPACT;
+SHOW TABLES FROM project_memora COMPACT;
+DESCRIBE TABLE project_memora.decisions COMPACT;
+SHOW ROUTES FROM TABLE project_memora.decisions AT ROOT LIMIT 12;
+SHOW ROUTES UNDER :route_id LIMIT 12;
+OPEN ROUTE :leaf_id LIMIT 20;
+SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
+```
+
+每次返回一层，AI 根据用户意图和节点可读描述选择下一层。当前路径、候选子节点、
+预算与 snapshot 构成 `Route Frame`；它随查询结束丢弃，不写入长期 system
+prompt，也不等同于物理 Buffer Pool。
+
+Router/OPEN 只返回节点或 locator，不能返回正文、生成答案或自动退化为
+Embedding、cosine、全库扫描和混合相似度排名。
+
+## 语义维护
+
+物理 Page 满时由引擎自动 split；语义节点拥挤或含混时，引擎只报告结构事实，
+由 AI 决定怎样命名、拆分、合并和移动 membership。
+
+维护粒度：
+
+1. Row 增量：替换单 Row 的完整 membership；
+2. 局部子树：处理 overflow、错挂、歧义或语义漂移；
+3. Table generation：规则/格式升级或完整性失败时旁路重建。
+
+全量重建不能就地清空当前树：
+
+```text
+generation N 继续查询
+→ 构建并校验 N+1
+→ 原子切换
+→ 旧读者释放后回收 N
+```
+
+所有维护通过带 expected revision 的 MSQL 和 Mutation Plan 执行；少量变化不得
+触发整库或整表重建。
 
 ## Row 修改、拆分与删除
 
-Router membership 至少绑定：
+- revise：旧 revision 的全部 membership 立即不可见，新快照原子启用；
+- delete：保留历史，清除全部活跃 membership；
+- split：创建多个语义完整 Row，重分配关系和 membership，必要时修改上层节点，
+  原 Row 标记 superseded；
+- merge：创建或修订合并目标，保留来源映射，清除被合并 Row 的活跃引用；
+- 缺少 AI 维护结果：写入可进入明确 `pending_reindex`，不能继续暴露旧语义定位。
 
-```text
-router_generation + leaf_id + row_id + row_revision + status
-```
+split/merge 只改正文而不改上层 Route，属于完整性失败。
 
-引擎另外维护 `row_id → memberships` 反向索引。因此 UPDATE、DELETE、SPLIT 或 MERGE 不需要扫描整棵树，就能找到该 Row 在所有叶子中的引用并立即写入 tombstone。
+## 实现差距
 
-普通 SQL UPDATE 如果没有同时提供新的 Agent 词项和 Route membership，仍然提交业务 Row、物理索引和机械索引，但必须：
+F22 当前使用统一 Database root 和绝对 path；F23/F30 又叠加 MATCH 与候选融合。
+这些代码是历史原型，不符合当前主路径。迁移 Feature 必须：
 
-1. 立即让旧 revision 的 Agent posting 和全部 Router 引用不可见；
-2. 把新 revision 标记为 `pending_reindex`；
-3. 由 daemon 异步调用 Agent 生成完整词项和多叶子 membership；
-4. 通过带 expected revision 的 MSQL 原子启用；
-5. 若 Row 再次变化，则丢弃过期结果并重新排队。
-
-逻辑 DELETE 保留 Row 历史，但从所有活跃发现索引中消失。SPLIT 将原 Row 标记为 superseded/deleted，清除其活跃引用，再为新 Row 分配各自稳定 ID 并重新索引。
-
-## 可重建 generation
-
-Router 是派生索引，不是真相源，但少量变化绝不能触发整库重建。维护分为三级：
-
-1. Row 增量：默认路径，只删除该 `row_id` 的旧 membership 并写入新 membership；
-2. 子树重建：某个叶子/分支的 tombstone、overflow 或语义漂移超过本地阈值时，只重建该子树；
-3. Database generation 重建：变化已广泛分布、全局脏比例超过阈值、索引规则/格式不兼容升级或完整性校验失败时使用。
-
-整库触发不使用一个写死的绝对条数，而由 Database 的 Router Maintenance Profile 判断：
-
-```text
-dirty_rows >= full_rebuild_min_rows
-AND dirty_rows / active_rows >= full_rebuild_ratio
-```
-
-局部子树使用自己的 `subtree_dirty_ratio`、tombstone ratio 和 overflow 条件。启动值通过 benchmark 确定并写入数据库配置，后续是否允许 AI 优化留到配置生命周期阶段。
-
-全量重建不能就地清空当前树，而是：
-
-```text
-active generation N 继续查询
-→ 后台构建 generation N+1
-→ 校验结构、版本和 Row 覆盖
-→ 原子切换 active generation
-→ 等旧读者结束后回收 N
-```
-
-重建输入来自当前有效 Row、Schema、关系和 Agent 索引规则。索引 generation 必须支持失败回滚；旧 generation 和 tombstone 最终由 compaction 物理清理。Row、子树、Database 三种作用域的触发、观察和取消都必须映射为声明式 MSQL，不能通过私有运维旁路。
-
-## 内部身份与外部路径
-
-- 内部使用稳定 route/object ID；
-- Agent 使用 `/project/memora/indexing` 等语义路径；
-- 同一导航会话可使用 `@1` 等短句柄；
-- 重命名路径不能改变内部身份；
-- 旧路径可作为别名或 redirect。
-
-## 未决问题
-
-- Router 如何自动发现内容变化并提示需要重组？
-- 根目录数据库很多时如何避免 `SHOW DATABASES` 自身变长？
-- generation 切换前的覆盖率、重复率和质量验收门槛；
-- `subtree_dirty_ratio`、`full_rebuild_min_rows` 和 `full_rebuild_ratio` 的启动值；
+- 建立每 Table 独立 root 和发现语法；
+- 将旧 Database 树显式转换或拒绝，不能静默猜测归属；
+- 删除 Query Skill 对完整 path、`query_terms` 和 MATCH fallback 的依赖；
+- 保留稳定 RowID、revision、cursor、权限和事务语义；
+- 用 `US-COLD`、`US-READ`、`US-SPLIT` 端到端验收。
 
 ## 关联
 
-- [MSQL](./msql.md)
-- [无向量检索质量链路](./retrieval-quality.md)
-- [上下文生命周期](./context-lifecycle.md)
-- [物理与检索索引](../storage/indexing.md)
+- [AI-native 产品宪章](../product/ai-native-product-charter.md)
+- [语义树检索质量链路](./retrieval-quality.md)
+- [Router Tree v1 历史实现](./router-tree-v1.md)

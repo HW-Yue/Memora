@@ -1,6 +1,8 @@
 # AI-native 发布门 v1
 
-状态：F51 已实现并通过首轮真实评测。
+状态：已撤销（2026-07-30）。F51 使用字符向量与 cosine，并让 Memora Adapter
+走混合候选评分，不符合 [AI-native 产品宪章](../product/ai-native-product-charter.md)。
+本文仅保留历史审计，不能证明发布门通过，也不能授权进入 F52。
 
 ## 固定输入
 
@@ -30,7 +32,7 @@ daemon Config，也不保存 key。模型只提交值得写入的候选并为记
 该 Vector 对照只证明固定本地向量算法下的差异。由于本次 CC Switch/Kimi 模型列表
 没有 embedding 模型，报告不得外推为对商业 dense embedding 服务的全面胜出。
 
-## 发布阈值
+## 当时使用的阈值（现已失效）
 
 Memora 必须同时满足：
 
@@ -45,7 +47,7 @@ Memora 必须同时满足：
 模型网络调用只在显式受控运行时发生。普通 CI 不重放付费请求，只校验已提交报告的
 suite/corpus/evidence/report/bundle hash、固定阈值和无凭据内容；任一篡改都阻断。
 
-## 首轮证据
+## 历史运行记录（无产品通过效力）
 
 `benchmarks/reports/ai-native-release-v0.json` 由 CC Switch 中的 Kimi 凭据通过
 OpenAI-compatible 协议、`moonshot-v1-8k` 生成：
@@ -57,8 +59,8 @@ OpenAI-compatible 协议、`moonshot-v1-8k` 生成：
 - SQLite FTS Recall@5 为 0.944，但无关 Row 率为 0.811；
 - 本地稀疏 Vector Recall@5 为 0.167。
 
-这份结果允许进入 F52 原生格式契约；它不代表数据集外的模型质量承诺。扩大语料、
-加入 dense embedding 和第二模型复核仍是后续 benchmark 工作。
+这份结果不再允许进入 F52。报告、执行器和验证器必须在架构对账中移出当前发布门；
+后续评测禁止加入 dense/sparse embedding、字符向量、cosine 或等价距离匹配。
 
 ## 复现
 

@@ -1,6 +1,7 @@
 # MATCH Fusion v1
 
-状态：F21a/F21b 已冻结双通道归一化、权重、排序、真实索引 source 与 MSQL Grammar。
+状态：历史实现，产品方向已撤销。双通道评分不得再作为语义主路径；本文只用于
+代码迁移和删除审计，受 [AI-native 产品宪章](../product/ai-native-product-charter.md)约束。
 
 ## 输入
 

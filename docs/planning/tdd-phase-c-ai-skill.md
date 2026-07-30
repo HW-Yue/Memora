@@ -20,9 +20,12 @@
 
 ## F30 Skill 查询流程
 
-先测：问题依次触发发现、MATCH/Route、SELECT；索引结果不能直接回答；无结果、截断和权限错误能恢复。
+状态：历史实现待替换。full Route path、query_terms 和 MATCH fallback 已撤销。
 
-开发：在 Skill 中定义有界查询状态机、query_terms、回表规则、来源定位和停止条件。
+返工先测：问题依次触发 Database、Table、Schema、逐层 Table Route、RowID
+和 SELECT；每层 Route Frame 有界；无结果、回退、截断和权限错误能恢复。
+
+开发：在 Skill 中定义逐层语义树状态机、回表规则、来源定位和停止条件。
 
 提交：`feat(F30): query Memora through skill`
 

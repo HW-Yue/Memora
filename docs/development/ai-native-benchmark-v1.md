@@ -1,6 +1,7 @@
 # AI-native Benchmark v1
 
-状态：F42 场景与报告格式已冻结；F51 已固定阈值并提交首轮真实 baseline 证据。
+状态：F42 的场景与评分器仍可作历史测试资产；F51 证据已撤销。当前 Adapter
+集合包含被禁止的 Vector/cosine 路径，不能产生产品发布证据，需按产品宪章重做。
 
 ## 数据集
 
@@ -33,14 +34,15 @@ validation code 拒绝，不能把未知分母包装成满分。
 
 ## Adapter 与报告
 
-统一 Adapter 名称为 no-memory、markdown-search、sqlite-fts、vector 和 memora。
-F42 提供可注入 Scripted Adapter，真实 baseline 只能替换执行层，不能自定义
-评分公式。`memora.ai-benchmark-report/v1` 包含 suite/adapter、逐场景原始计数、
+历史格式的 Adapter 名称为 no-memory、markdown-search、sqlite-fts、vector 和
+memora；其中 vector 以及依赖混合相似候选的 memora Adapter 均已失效。F42 提供
+的 Scripted Adapter 只能用于评分器回归，不能作为当前产品旅程。历史
+`memora.ai-benchmark-report/v1` 包含 suite/adapter、逐场景原始计数、
 派生指标、宿主等价性与去除自身 hash 后计算的确定性 SHA-256。
 
-F51 的可执行语料、Provider 边界、五个真实执行层、阈值和已签报告见
-[AI-native 发布门 v1](./ai-native-release-gate-v1.md)。Scripted Adapter 仍只用于
-评分器单测，不能产生发布门证据。
+撤销原因见 [AI-native 发布门 v1](./ai-native-release-gate-v1.md)。新版本必须改为
+Table 级语义树逐层 SQL 旅程，按 `US-COLD`、`US-READ`、`US-SPLIT` 等故事验收，
+且不实现任何 Vector baseline。
 
 ## 关联
 

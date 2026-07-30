@@ -58,15 +58,29 @@
 
 提交：`test(F50): verify zero-to-first-memory journey`
 
-## F51 AI-native 发布门（已完成）
+## F51 AI-native 发布门（结论已撤销）
 
-先测：与无记忆、Markdown 搜索、SQLite FTS 和 Vector baseline 比较 write precision、Recall@5、接管率和上下文成本。
+历史实现包含字符向量与 cosine，对 Memora 的路径也不是 AI 逐层 SQL 导航，
+违反产品宪章。代码和报告只作待清理的审计材料，不能作为通过证据。
 
-开发：固定 v0 数据集和阈值；生成可审计 benchmark 报告。未达标不进入原生内核。
+返工必须从 `US-COLD`、`US-READ`、`US-INSERT`、`US-UPDATE`、`US-DELETE`、
+`US-SPLIT` 等真实旅程出发，
+固定每一步 MSQL、Route Frame 和最终数据库状态；禁止 Vector baseline。
 
-提交：`test(F51): enforce AI-native release gate`
+原提交：`test(F51): enforce AI-native release gate`（不再代表 Feature 完成）
 
-## F52 原生格式契约
+## F52–F61 原生内核（暂停并待重排）
+
+在以下条件同时满足前，不继续实施：
+
+- 产品宪章与现有 Router/MATCH/Skill 查询主路径完成架构对账；
+- Table 级语义树逐层 SQL 旅程有真实端到端证据；
+- F51 按新门禁重做并通过；
+- SQLite 原型的保留或退出路径已向用户披露并确认。
+
+下列条目保留为候选技术拆分，不代表已批准的下一步顺序。
+
+## F52 原生格式契约（候选）
 
 先测：Page/Record golden、checksum、endianness、未知版本拒绝、逻辑 snapshot round-trip 和随机 decode 不崩溃。
 
@@ -74,7 +88,7 @@
 
 提交：`feat(F52): define native storage format v1`
 
-## F53 Page 与 Buffer Pool
+## F53 Page 与 Buffer Pool（候选）
 
 先测：分配/回收、page split、LRU young/old、pin、脏页、并发访问、磁盘满和 checksum 损坏。
 
@@ -82,7 +96,7 @@
 
 提交：`feat(F53): persist pages through buffer pool`
 
-## F54 B+ Tree 与 Record
+## F54 B+ Tree 与 Record（候选）
 
 先测：随机插删改、split/merge、范围扫描、重复键、overflow、重启和模型校验。
 
@@ -90,7 +104,7 @@
 
 提交：`feat(F54): store records in native B+ trees`
 
-## F55 锁、MVCC 与 Undo
+## F55 锁、MVCC 与 Undo（候选）
 
 先测：RR/RC 可见性、并发写、FOR UPDATE、回滚、长快照、死锁和 Purge 安全点。
 
@@ -98,7 +112,7 @@
 
 提交：`feat(F55): provide native MVCC and undo`
 
-## F56 Redo 与崩溃恢复
+## F56 Redo 与崩溃恢复（候选）
 
 先测：每个 WAL 边界 kill -9、partial page、torn write、重复恢复和未提交事务回滚。
 
@@ -106,7 +120,7 @@
 
 提交：`feat(F56): recover native storage with redo`
 
-## F57 Binlog 与提交协议
+## F57 Binlog 与提交协议（候选）
 
 先测：Redo prepare/Binlog/Redo commit 各故障点、Group Commit 顺序、GTID 幂等和重放。
 
@@ -114,15 +128,16 @@
 
 提交：`feat(F57): commit durable row binlog`
 
-## F58 原生语义索引
+## F58 原生语义索引（候选）
 
 先测：Posting Run、tombstone、generation manifest、事务可见、后台重建、崩溃发布和 GC。
 
-开发：把 Router/Agent/机械索引从原型 Store 迁到原生索引文件，保持上层 contract 不变。
+开发：把经产品门确认的 Table 级 Router 索引迁到原生索引文件，保持上层
+MSQL contract 不变；不迁移被撤销的向量或混合匹配主路径。
 
 提交：`feat(F58): migrate semantic indexes to native runs`
 
-## F59 Compaction 与维护
+## F59 Compaction 与维护（候选）
 
 先测：History 不被 Purge、Undo 安全回收、旧 generation reader、空间上限、暂停恢复和 I/O 限流。
 
@@ -130,7 +145,7 @@
 
 提交：`feat(F59): compact native storage safely`
 
-## F60 原型到原生迁移
+## F60 原型到原生迁移（候选）
 
 先测：真实 v0 fixture 迁移后 Row/history/relation/Router 查询等价；中断可恢复；原文件保留到验证成功。
 
@@ -138,7 +153,7 @@
 
 提交：`feat(F60): migrate prototype instances to native engine`
 
-## F61 原生内核发布门
+## F61 原生内核发布门（候选）
 
 先测：长时间并发、故障注入、fuzz、恢复、格式兼容、性能和 AI-native 全套回归。
 
