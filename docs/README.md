@@ -46,6 +46,7 @@
 - [Skill 语义冲突交互 v1](./agent/skill-conflict-v1.md) — F34 的并列来源/revision 差异、用户决议和 Mutation Plan 绑定。
 - [资料清单与覆盖 v1](./agent/assimilation-coverage-v1.md) — F35 的临时 inventory、窗口去重、未读范围和中断恢复。
 - [资料独立复核与提交 v1](./agent/assimilation-review-v1.md) — F36 的隔离复核、语义提交门禁、来源锚点和 Source Receipt。
+- [语义数据库健康维护 v1](./agent/semantic-health-v1.md) — F37 的确定性健康报告、风险分级和低风险 reindex retry。
 - [可选内置 Agent Runtime](./agent/embedded-agent-runtime.md) — v0 后候选；第一版由 Codex/Claude Code 按 Skill 调用统一 MSQL 核心。
 - [索引发现 Sub-agent](./agent/index-discovery-subagent.md) — 逐层导航并融合倒排，只返回数据项定位，主 Agent 再用 SQL 取数。
 - [数据库查询 Sub-agent](./agent/database-query-subagent.md) — 旧首选方案；保留为宿主侧兼容方式。

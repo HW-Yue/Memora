@@ -1,5 +1,6 @@
 assimilation-status	memora assimilate --event '{"version":"memora.assimilation-event/v1","event_id":"book-status-2","task_id":"book-task","workspace":"project-memora","kind":"status"}'
 assimilation-receipt	memora assimilate --receipt book-submit-1
+semantic-health	memora maintain --report
 doctor	memora doctor
 discover-databases	memora query "SHOW DATABASES"
 discover-schema	memora query "DESCRIBE TABLE work.notes COMPACT"

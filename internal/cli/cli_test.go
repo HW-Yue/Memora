@@ -97,6 +97,18 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: mutate requires --plan JSON\n",
 		},
 		{
+			name:       "maintain requires one operation",
+			args:       []string{"maintain"},
+			wantCode:   2,
+			wantStderr: "memora: maintain requires exactly one of --report or --request\n",
+		},
+		{
+			name:       "maintain rejects unknown request field",
+			args:       []string{"maintain", "--request", `{"content":"unsafe"}`},
+			wantCode:   2,
+			wantStderr: "memora: --request must be one strict Maintenance Request JSON object\n",
+		},
+		{
 			name:       "mutate rejects unknown plan field",
 			args:       []string{"mutate", "--plan", `{"surprise":true}`},
 			wantCode:   2,

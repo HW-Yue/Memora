@@ -148,6 +148,9 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 	if request.Method == "assimilation.receipt" {
 		return handler.handleSourceReceipt(ctx, request)
 	}
+	if request.Method == "semantic_health.report" || request.Method == "semantic_health.maintain" {
+		return handler.handleSemanticHealth(ctx, request)
+	}
 	if request.Method == "conversation.reflect" {
 		return handler.handleReflect(ctx, session, request)
 	}

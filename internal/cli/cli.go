@@ -19,6 +19,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/semantichealth"
 	"github.com/HW-Yue/Memora/internal/skillschema"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 )
@@ -41,6 +42,7 @@ Commands:
   exec       Execute MSQL through the local daemon
   help       Show this help
   init       Initialize a local instance
+  maintain   Report and retry low-risk semantic maintenance
   mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
@@ -85,6 +87,8 @@ type Dependencies struct {
 	Assimilate         func(context.Context, string, assimilation.Event) (assimilation.Receipt, error)
 	SubmitAssimilation func(context.Context, string, assimilation.Submission) (assimilation.SourceReceipt, error)
 	GetSourceReceipt   func(context.Context, string, string) (assimilation.SourceReceipt, error)
+	SemanticHealth     func(context.Context, string) (semantichealth.Report, error)
+	Maintain           func(context.Context, string, semantichealth.Request) (semantichealth.Receipt, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -110,6 +114,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runInit(args[1:], stdout, stderr, dependencies)
 	case "mutate":
 		return runMutate(args[1:], stdout, stderr, dependencies)
+	case "maintain":
+		return runMaintain(args[1:], stdout, stderr, dependencies)
 	case "parse":
 		return runParse(args[1:], stdout, stderr, dependencies)
 	case "reflect":
@@ -247,6 +253,71 @@ func runAssimilate(
 	}
 	if receipt.Status == assimilation.StatusIncomplete {
 		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runMaintain(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var requestJSON string
+	report := false
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--report":
+			report = true
+		case "--request":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--request requires a JSON object")
+			}
+			requestJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown maintain option: %q", args[index]))
+		}
+	}
+	if report == (requestJSON != "") {
+		return usageError(stderr, "maintain requires exactly one of --report or --request")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if report {
+		inspect := dependencies.SemanticHealth
+		if inspect == nil {
+			inspect = daemon.SemanticHealth
+		}
+		value, err := inspect(context.Background(), dataDir)
+		if err != nil {
+			return commandError(stderr, "inspect semantic health", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(value); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	var request semantichealth.Request
+	decoder := json.NewDecoder(bytes.NewBufferString(requestJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--request must be one strict Maintenance Request JSON object")
+	}
+	maintain := dependencies.Maintain
+	if maintain == nil {
+		maintain = daemon.Maintain
+	}
+	receipt, err := maintain(context.Background(), dataDir, request)
+	if err != nil {
+		return commandError(stderr, "maintain semantic database", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
 	}
 	return ExitOK
 }

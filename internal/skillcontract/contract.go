@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/semantichealth"
 	"github.com/HW-Yue/Memora/internal/skillconflict"
 )
 
@@ -33,6 +34,7 @@ var requiredWorkflows = []string{
 	"request_user",
 	"receipt",
 	"reflect",
+	"maintain",
 }
 
 var forbiddenMarkdownTokens = []string{
@@ -68,6 +70,9 @@ type Contract struct {
 	AssimilationSubmissionVersion string    `json:"assimilation_submission_version"`
 	AssimilationReviewVersion     string    `json:"assimilation_review_version"`
 	SourceReceiptVersion          string    `json:"source_receipt_version"`
+	SemanticHealthVersion         string    `json:"semantic_health_version"`
+	MaintenanceRequestVersion     string    `json:"maintenance_request_version"`
+	MaintenanceReceiptVersion     string    `json:"maintenance_receipt_version"`
 	AllowedCommands               []string  `json:"allowed_commands"`
 	PhysicalAccess                string    `json:"physical_access"`
 	ConflictPolicy                string    `json:"conflict_policy"`
@@ -139,6 +144,9 @@ func (bundle Bundle) Validate() error {
 	requireEqual("assimilation_submission_version", contract.AssimilationSubmissionVersion, assimilation.SubmissionVersion)
 	requireEqual("assimilation_review_version", contract.AssimilationReviewVersion, assimilation.ReviewVersion)
 	requireEqual("source_receipt_version", contract.SourceReceiptVersion, assimilation.SourceReceiptVersion)
+	requireEqual("semantic_health_version", contract.SemanticHealthVersion, semantichealth.ReportVersion)
+	requireEqual("maintenance_request_version", contract.MaintenanceRequestVersion, semantichealth.RequestVersion)
+	requireEqual("maintenance_receipt_version", contract.MaintenanceReceiptVersion, semantichealth.ReceiptVersion)
 	requireEqual("physical_access", contract.PhysicalAccess, PhysicalAccessForbidden)
 	requireEqual("conflict_policy", contract.ConflictPolicy, ConflictAskUserBeforeMutation)
 
@@ -165,7 +173,7 @@ func (bundle Bundle) RenderCommandExamples() string {
 func validateCommands(commands []string) []string {
 	want := map[string]bool{
 		"assimilate": false, "doctor": false, "query": false, "exec": false,
-		"mutate": false, "schema": false, "reflect": false,
+		"mutate": false, "schema": false, "reflect": false, "maintain": false,
 	}
 	var violations []string
 	for _, command := range commands {

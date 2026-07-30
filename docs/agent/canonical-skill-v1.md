@@ -1,6 +1,6 @@
 # Canonical Skill v1
 
-状态：F28 已冻结基础宿主契约；F30–F36 已扩展查询、写入、Schema、会话、语义冲突与资料吸收流程。
+状态：F28 已冻结基础宿主契约；F30–F37 已扩展查询、写入、Schema、会话、资料吸收与语义维护流程。
 
 ## 唯一来源
 
@@ -16,7 +16,8 @@
 - `memora.semantic-conflict/v1` 和 `memora.conflict-resolution/v1`；
 - `memora.assimilation-event/v1` 和 `memora.assimilation-receipt/v1`；
 - `memora.assimilation-submission/v1`、`memora.assimilation-review/v1` 和 `memora.source-receipt/v1`；
-- `memora assimilate/doctor/query/exec/mutate/schema/reflect` 七个逻辑入口。
+- `memora.semantic-health/v1`、`memora.maintenance-request/v1` 和 `memora.maintenance-receipt/v1`；
+- `memora assimilate/doctor/query/exec/maintain/mutate/schema/reflect` 八个逻辑入口。
 
 每次 CI 都解析契约中的 MSQL 示例，并校验 Skill 中出现的是同一组命令。
 版本或语法变化必须显式更新契约和 golden，不能让宿主提示静默漂移。
@@ -44,6 +45,8 @@ Row/revision，再转换为 IGNORE、REVISE 或 MERGE Plan。
 coverage_complete 不等于语义吸收成功。
 资料提交还必须通过隔离复核、完整 anchor、关键事实和未决冲突门禁；只有
 committed Source Receipt 才表示吸收成功，中断写入必须按 in_doubt 恢复。
+健康维护只自动 retry failed pending_reindex；其余候选必须复核，不能静默改事实、
+Schema 或 Router。
 
 ## 安全与上下文预算
 
@@ -67,3 +70,4 @@ Skill 禁止读取或修改物理数据库、索引、日志、Page 和 Instance
 - [Skill 语义冲突交互 v1](./skill-conflict-v1.md)
 - [资料清单与覆盖 v1](./assimilation-coverage-v1.md)
 - [资料独立复核与提交 v1](./assimilation-review-v1.md)
+- [语义数据库健康维护 v1](./semantic-health-v1.md)

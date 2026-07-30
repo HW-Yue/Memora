@@ -10,7 +10,7 @@ and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
 Only use the `memora assimilate`, `memora doctor`, `memora query`, `memora exec`,
-`memora mutate`, `memora schema`, and `memora reflect` interfaces.
+`memora maintain`, `memora mutate`, `memora schema`, and `memora reflect` interfaces.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -212,6 +212,25 @@ create a database-level candidate/disputed state, or silently pick a winner.
 
 Also ask before irreversible, privacy-reducing, permission-expanding, or broadly
 destructive operations.
+
+## Maintain semantic health
+
+Run `memora maintain --report` only when the user asks or at an explicit
+conversation checkpoint; do not assume a hidden hook or scan after every turn.
+Treat `memora.semantic-health/v1` issues as deterministic candidates, not facts.
+SELECT duplicate Rows before proposing MERGE, inspect synonymous fields before a
+Schema plan, and request review before Router splits or description rewrites.
+
+The only v1 auto-fix is `retry_reindex` on an issue explicitly marked
+`low_risk` and `auto_fix=true`. Submit its issue ID with the exact report hash in
+`memora.maintenance-request/v1`; stop on a revision conflict. Never place a
+review-required issue in that request. Return the bounded
+`memora.maintenance-receipt/v1` and do not claim that a retry already rebuilt
+the index.
+
+```sh
+memora maintain --report
+```
 
 ## Return a receipt
 
