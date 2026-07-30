@@ -2,7 +2,7 @@
 
 状态：已批准；每项都不承诺事务、掉电安全或并发。
 
-实现进度：F53a、F53b、F54、F55 已完成；后续项仍按本文件门禁推进。
+实现进度：F53a–F56 已完成；后续项仍按本文件门禁推进。
 
 ## F53a Typed Payload Round-trip
 
@@ -41,6 +41,7 @@
 
 ## F56 Native Catalog MSQL
 
+- 拆分：F56a Catalog schema revision、F56b typed service、F56c MSQL/Schema evolution；
 - 故事：`US-COLD`、`US-SCHEMA`；
 - 旅程：`CREATE DATABASE/TABLE → close/reopen → SHOW DATABASES/TABLES → DESCRIBE`；
 - 接口：业务层依赖 typed Catalog repository，不依赖 offset 或文件名；

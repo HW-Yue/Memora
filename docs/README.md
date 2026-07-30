@@ -101,7 +101,7 @@
 ## 计划
 
 - [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
-- [原生闭环后续 Feature Review 稿](./planning/native-features-review.md) — F53–F72 的候选拆分、依赖、闭环与 Review 重点。
+- [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
 - [F52 原生文件格式开工门](./planning/f52-native-format-gate.md) — 下一 Feature 的故事、格式、边界与待确认项。
 - [开发与验证路线](./planning/roadmap.md) — 先验证 AI-native 体验，再进入完整存储内核。
 - [TDD 开发总计划](./planning/tdd-development-plan.md) — 按独立 feature branch/commit 推进，测试先行并设置阶段质量门。
