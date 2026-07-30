@@ -164,6 +164,7 @@ type MatchStatement struct {
 type CreateRouteStatement struct {
 	Mode     string      `json:"mode"`
 	Database *Expression `json:"database,omitempty"`
+	Table    *Name       `json:"table,omitempty"`
 	Parent   *Expression `json:"parent,omitempty"`
 	Name     *Expression `json:"name,omitempty"`
 	NodeKind *Expression `json:"node_kind,omitempty"`

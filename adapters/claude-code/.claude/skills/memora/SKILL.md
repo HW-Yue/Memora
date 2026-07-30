@@ -71,35 +71,40 @@ fits; do not invent a table from a name alone.
 ```sh
 memora doctor
 memora query "SHOW DATABASES"
+memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW TABLES FROM work COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "DESCRIBE TABLE work.notes COMPACT"
-memora query --input '{"parameters":{"named":{"database":"work","path":"/","cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit"
+memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
 ```
 
 ## Query and summarize
 
-Expand the user's intent into a short, deduplicated `terms` list. Route or MATCH
-may return only locators; never answer from those candidates. Select projected
-semantic fields by Row ID, then summarize only the returned rows. Report empty,
-truncated, stale, or permission-limited results instead of filling gaps.
+Compare the user's intent with the bounded Route descriptions returned by each
+call. Choose a node explicitly, request only its immediate children, and repeat
+until a leaf is reached. `OPEN ROUTE` returns locators only; never answer from
+those candidates. Select projected semantic fields by Row ID, then summarize
+only the returned rows. Report empty, truncated, stale, or permission-limited
+results instead of inventing a fallback.
 
 Use this bounded state machine:
 
 ```text
-SHOW DATABASES → DESCRIBE TABLE
-→ optional OPEN ROUTE (empty/not found falls back)
-→ MATCH
+SHOW DATABASES → SHOW TABLES → DESCRIBE TABLE
+→ SHOW ROUTES FROM TABLE ... AT ROOT
+→ choose one node → SHOW ROUTES UNDER ... (repeat as needed)
+→ OPEN ROUTE on a leaf
 → validate database/table/Row/revision locators
 → SELECT projected fields + row_id + revision
 → answer only from revision-matched SELECT rows
 ```
 
-Generate 1–32 non-empty, case-insensitively deduplicated query terms. Use an
-existing Route only when it plausibly scopes the question. Do not broaden a
-permission denial. If a selected Row changed, discard it and refresh discovery
+Do not synthesize query terms, similarity scores, or a full path. Select one
+layer from the descriptions actually returned by the database. Do not broaden
+a permission denial. If a selected Row changed, discard it and refresh discovery
 at most once when it can materially affect the answer.
 
 ```sh
-memora query --input '{"parameters":{"named":{"query":"routing design","terms":["routing","router","路由"],"limit":24}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "MATCH work.notes QUERY :query TERMS :terms LIMIT :limit"
+memora query --input '{"parameters":{"named":{"parent":"route_architecture","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES UNDER :parent LIMIT :limit"
+memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":24}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "OPEN ROUTE :leaf LIMIT :limit"
 memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
 
@@ -125,20 +130,20 @@ Discover → query existing rows → plan → validate → execute → verify
 Choose IGNORE, INSERT, REVISE, MERGE, SPLIT, MOVE, or RELATE before generating
 MSQL. Prefer revising an existing semantic module over appending a duplicate.
 Use parameters, expected schema/revision, a maximum affected-row count, actor,
-source, reason, complete semantic index terms, and current route memberships.
+source, reason, and the complete current Route leaf membership snapshot.
 Keep transactions short and verify the returned revision and logical row.
 
 Build one `memora.mutation-plan/v1` object. Every decision includes at least one
 read-only preflight with explicit Row expectations. IGNORE has no steps. INSERT,
 REVISE, MOVE, and RELATE have one step; MERGE is one UPDATE plus DELETE steps;
 SPLIT is one UPDATE plus INSERT steps. Keep at most eight steps. Every INSERT or
-UPDATE supplies the complete deduplicated `index_terms` and `route_leaf_ids`
-snapshots, including explicit empty arrays. Submit the plan through `mutate` so
+UPDATE supplies the complete `route_leaf_ids` snapshot, including an explicit
+empty array. Submit the plan through `mutate` so
 Policy validation occurs before any Tool call and multi-step changes share one
 short transaction.
 
 ```sh
-memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"index_terms":["routing","locator"],"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
+memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
 memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decision":"IGNORE","database":"work","table":"notes","actor":"agent:host","source_event_id":"conversation:event-7","reason":"existing Row already captures it","authorized_databases":["work"],"preflight":[{"id":"duplicate-check","msql":"SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1","input":{"parameters":{"named":{"row":"row_01"}}},"expect_rows":1}],"steps":[],"verify":[]}'
 ```
 

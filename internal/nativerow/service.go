@@ -11,6 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
@@ -65,7 +66,7 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	if options.ExpectedSchemaVersion != table.SchemaVersion {
 		return row.Row{}, serviceFailure(result.CodeRevisionConflict, "schema version conflicts with native catalog", ErrRevisionConflict)
 	}
-	if len(options.IndexTerms) > 0 || len(options.RouteLeafIDs) > 0 {
+	if len(options.IndexTerms) > 0 {
 		return row.Row{}, ErrUnsupported
 	}
 	bound, err := bindValues(table, values)
@@ -82,10 +83,25 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 		return row.Row{}, err
 	}
 	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now}
-	if err := service.repository.Write(value); err != nil {
+	transaction, err := service.repository.file.Begin()
+	if err != nil {
 		return row.Row{}, err
 	}
-	if err := service.repository.AppendHistory(value, history.OperationInsert, options.Metadata, now); err != nil {
+	defer func() { _ = transaction.Rollback() }()
+	if err := service.repository.StageSnapshotRow(transaction, value, table); err != nil {
+		return row.Row{}, err
+	}
+	if err := service.repository.StageHistory(transaction, value, history.OperationInsert, options.Metadata, now); err != nil {
+		return row.Row{}, err
+	}
+	routes := nativerouter.New(service.repository.file)
+	for _, leafID := range options.RouteLeafIDs {
+		membership := router.Membership{LeafID: leafID, MembershipRevision: 1, Locator: router.Locator{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID, Revision: value.Revision}}
+		if err := routes.StageMembership(transaction, membership); err != nil {
+			return row.Row{}, err
+		}
+	}
+	if err := transaction.Commit(); err != nil {
 		return row.Row{}, err
 	}
 	return project(table, value), nil
@@ -185,10 +201,7 @@ func (service *Service) Update(ctx context.Context, databaseName, tableName, row
 	}
 	updated.SchemaVersion = table.SchemaVersion
 	updated.UpdatedAt = service.clock.Now().UTC()
-	if err := service.repository.WriteRevision(updated); err != nil {
-		return row.Row{}, revisionError(err)
-	}
-	if err := service.repository.AppendHistory(updated, history.OperationUpdate, options.Metadata, updated.UpdatedAt); err != nil {
+	if err := service.commitRowRevision(updated, history.OperationUpdate, options.Metadata, options.RouteLeafIDs); err != nil {
 		return row.Row{}, err
 	}
 	return project(table, updated), nil
@@ -207,13 +220,68 @@ func (service *Service) Delete(ctx context.Context, databaseName, tableName, row
 	deleted.SchemaVersion = table.SchemaVersion
 	deleted.State = row.StateDeleted
 	deleted.UpdatedAt = service.clock.Now().UTC()
-	if err := service.repository.WriteRevision(deleted); err != nil {
-		return row.Row{}, revisionError(err)
-	}
-	if err := service.repository.AppendHistory(deleted, history.OperationDelete, options.Metadata, deleted.UpdatedAt); err != nil {
+	emptyRoutes := []string{}
+	if err := service.commitRowRevision(deleted, history.OperationDelete, options.Metadata, emptyRoutes); err != nil {
 		return row.Row{}, err
 	}
 	return project(table, deleted), nil
+}
+
+func (service *Service) commitRowRevision(value row.Row, operation history.Operation, metadata row.WriteMetadata, desired []string) error {
+	transaction, err := service.repository.file.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := service.repository.StageRevision(transaction, value); err != nil {
+		return revisionError(err)
+	}
+	if err := service.repository.StageHistory(transaction, value, operation, metadata, value.UpdatedAt); err != nil {
+		return err
+	}
+	routes := nativerouter.New(service.repository.file)
+	current, err := routes.Memberships(value.ID)
+	if err != nil {
+		return err
+	}
+	if desired == nil {
+		desired = make([]string, 0, len(current))
+		for _, membership := range current {
+			desired = append(desired, membership.LeafID)
+		}
+	}
+	wanted := map[string]bool{}
+	for _, leafID := range desired {
+		if wanted[leafID] {
+			return fmt.Errorf("duplicate Route membership %q", leafID)
+		}
+		wanted[leafID] = true
+	}
+	for _, membership := range current {
+		delete(wanted, membership.LeafID)
+		membership.MembershipRevision++
+		membership.Revision = value.Revision
+		membership.Deleted = !containsRoute(desired, membership.LeafID)
+		if err := routes.StageMembership(transaction, membership); err != nil {
+			return err
+		}
+	}
+	for leafID := range wanted {
+		membership := router.Membership{LeafID: leafID, MembershipRevision: 1, Locator: router.Locator{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID, Revision: value.Revision}}
+		if err := routes.StageMembership(transaction, membership); err != nil {
+			return err
+		}
+	}
+	return transaction.Commit()
+}
+
+func containsRoute(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (service *Service) mutationTarget(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (catalog.Table, row.Row, error) {
@@ -380,26 +448,131 @@ func (service *Service) Match(context.Context, string, string, string, []string,
 func (service *Service) CreateRouterRoot(context.Context, string, string) (router.Node, error) {
 	return router.Node{}, ErrUnsupported
 }
-func (service *Service) CreateRouterNode(context.Context, string, router.NodeDefinition) (router.Node, error) {
-	return router.Node{}, ErrUnsupported
+func (service *Service) CreateTableRouterRoot(ctx context.Context, databaseName, tableName, purpose string) (router.Node, error) {
+	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return router.Node{}, err
+	}
+	id, err := service.ids.Next()
+	if err != nil || strings.TrimSpace(id) == "" {
+		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
+	}
+	return nativerouter.New(service.repository.file).CreateRoot("route_"+id, table.DatabaseID, table.ID, purpose)
 }
-func (service *Service) RenameRouterNode(context.Context, string, string, uint64) (router.Node, error) {
-	return router.Node{}, ErrUnsupported
+func (service *Service) ListTableRouterRoots(_ context.Context, databaseID, tableID, cursor string, limit int) ([]router.Node, string, error) {
+	if limit < 1 || limit > 100 {
+		return nil, "", fmt.Errorf("invalid Table Router limit")
+	}
+	routes := nativerouter.New(service.repository.file)
+	roots := routes.Roots(tableID)
+	if len(roots) != 1 || roots[0].DatabaseID != databaseID || roots[0].Deleted {
+		return nil, "", nativestore.ErrNotFound
+	}
+	return routes.ShowUnder(roots[0].ID, cursor, limit)
 }
-func (service *Service) DeleteRouterNode(context.Context, string, uint64) (uint64, error) {
-	return 0, ErrUnsupported
+func (service *Service) CreateRouterNode(_ context.Context, parentID string, definition router.NodeDefinition) (router.Node, error) {
+	id, err := service.ids.Next()
+	if err != nil || strings.TrimSpace(id) == "" {
+		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
+	}
+	return nativerouter.New(service.repository.file).CreateChild("route_"+id, parentID, definition.Name, definition.Kind, definition.Purpose)
 }
-func (service *Service) GetRouterNode(context.Context, string) (router.Node, error) {
-	return router.Node{}, ErrUnsupported
+func (service *Service) RenameRouterNode(_ context.Context, id, name string, expected uint64) (router.Node, error) {
+	routes := nativerouter.New(service.repository.file)
+	current, err := routes.Get(id)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if current.Revision != expected || current.Kind == router.KindRoot || strings.TrimSpace(name) == "" {
+		return router.Node{}, ErrRevisionConflict
+	}
+	parent, err := routes.Get(current.ParentID)
+	if err != nil {
+		return router.Node{}, err
+	}
+	current.Name, current.Path, current.Revision = name, strings.TrimSuffix(parent.Path, "/")+"/"+name, current.Revision+1
+	transaction, err := service.repository.file.Begin()
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := routes.StageNode(transaction, current); err != nil {
+		return router.Node{}, err
+	}
+	return current, transaction.Commit()
 }
-func (service *Service) ResolveRouterPath(context.Context, string, string) (router.Node, error) {
-	return router.Node{}, ErrUnsupported
+func (service *Service) DeleteRouterNode(_ context.Context, id string, expected uint64) (uint64, error) {
+	routes := nativerouter.New(service.repository.file)
+	current, err := routes.Get(id)
+	if err != nil {
+		return 0, err
+	}
+	if current.Revision != expected || len(routes.Children(id)) > 0 {
+		return 0, ErrRevisionConflict
+	}
+	current.Revision, current.Deleted = current.Revision+1, true
+	transaction, err := service.repository.file.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := routes.StageNode(transaction, current); err != nil {
+		return 0, err
+	}
+	return current.Revision, transaction.Commit()
 }
-func (service *Service) ListRouterChildren(context.Context, string, string, int) ([]router.Node, string, error) {
-	return nil, "", ErrUnsupported
+func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node, error) {
+	value, err := nativerouter.New(service.repository.file).Get(id)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if value.Deleted {
+		return router.Node{}, nativestore.ErrNotFound
+	}
+	return value, nil
 }
-func (service *Service) ListRouterLeaf(context.Context, string, int) ([]router.Locator, bool, error) {
-	return nil, false, ErrUnsupported
+func (service *Service) ResolveRouterPath(_ context.Context, databaseID, path string) (router.Node, error) {
+	routes := nativerouter.New(service.repository.file)
+	databases, err := nativecatalog.New(service.repository.file).Read()
+	if err != nil {
+		return router.Node{}, err
+	}
+	for _, database := range databases {
+		if database.ID != databaseID {
+			continue
+		}
+		for _, table := range database.Tables {
+			for _, root := range routes.Roots(table.ID) {
+				if root.Path == path {
+					return root, nil
+				}
+				if value, ok := findRoutePath(routes, root.ID, path); ok {
+					return value, nil
+				}
+			}
+		}
+	}
+	return router.Node{}, nativestore.ErrNotFound
+}
+func (service *Service) ListRouterChildren(_ context.Context, parentID, cursor string, limit int) ([]router.Node, string, error) {
+	return nativerouter.New(service.repository.file).ShowUnder(parentID, cursor, limit)
+}
+func (service *Service) ListRouterLeaf(_ context.Context, leafID string, limit int) ([]router.Locator, bool, error) {
+	return nativerouter.New(service.repository.file).Open(leafID, limit)
+}
+
+func findRoutePath(routes *nativerouter.Repository, parentID, path string) (router.Node, bool) {
+	for _, child := range routes.Children(parentID) {
+		if child.Path == path {
+			return child, true
+		}
+		if child.Kind != router.KindLeaf {
+			if value, ok := findRoutePath(routes, child.ID, path); ok {
+				return value, true
+			}
+		}
+	}
+	return router.Node{}, false
 }
 
 type uuidSource struct{}

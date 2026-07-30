@@ -12,6 +12,11 @@ import (
 	"github.com/HW-Yue/Memora/internal/security"
 )
 
+type tableRouterRows interface {
+	CreateTableRouterRoot(context.Context, string, string, string) (router.Node, error)
+	ListTableRouterRoots(context.Context, string, string, string, int) ([]router.Node, string, error)
+}
+
 func (engine *Engine) createRoute(
 	ctx context.Context,
 	statement *ast.CreateRouteStatement,
@@ -27,6 +32,22 @@ func (engine *Engine) createRoute(
 	}
 	var created router.Node
 	switch statement.Mode {
+	case "TABLE_ROOT":
+		if statement.Table == nil {
+			return Output{}, executeError(result.CodeValidation, "Table Router root requires a Table")
+		}
+		databaseName, tableName, _, err := engine.bindTable(ctx, *statement.Table)
+		if err != nil {
+			return Output{}, err
+		}
+		tableRows, ok := engine.rows.(tableRouterRows)
+		if !ok {
+			return Output{}, executeError(result.CodeUnsupported, "Table Router is not supported by this backend")
+		}
+		created, err = tableRows.CreateTableRouterRoot(ctx, databaseName, tableName, purpose)
+		if err != nil {
+			return Output{}, normalizeError(err)
+		}
 	case "ROOT":
 		databaseName, err := routerString(statement.Database, bound, "Router Database")
 		if err != nil {
@@ -129,26 +150,43 @@ func (engine *Engine) showRoutes(
 	bound bindings,
 ) (Output, error) {
 	show := statement.Show
-	if show == nil || show.Route == nil || show.Cursor == nil || show.Limit == nil {
+	if show == nil || show.Limit == nil || (show.RouteMode != "TABLE_ROOT" && show.Route == nil) {
 		return Output{}, executeError(result.CodeValidation, "SHOW ROUTES is incomplete")
 	}
-	cursor, err := routerString(show.Cursor, bound, "Router cursor")
-	if err != nil {
-		return Output{}, err
+	cursor := ""
+	if show.Cursor != nil {
+		var err error
+		cursor, err = routerString(show.Cursor, bound, "Router cursor")
+		if err != nil {
+			return Output{}, err
+		}
 	}
 	limit, err := routerLimit(show.Limit, bound, "SHOW ROUTES LIMIT")
 	if err != nil {
 		return Output{}, err
 	}
-	parent, err := engine.resolveRouterNode(
-		ctx, show.RouteMode, show.RouteDB, show.Route, bound,
-	)
-	if err != nil {
-		return Output{}, err
+	var nodes []router.Node
+	var next string
+	if show.RouteMode == "TABLE_ROOT" {
+		if show.Table == nil {
+			return Output{}, executeError(result.CodeValidation, "SHOW ROUTES requires a Table")
+		}
+		_, _, table, err := engine.bindTable(ctx, *show.Table)
+		if err != nil {
+			return Output{}, err
+		}
+		tableRows, ok := engine.rows.(tableRouterRows)
+		if !ok {
+			return Output{}, executeError(result.CodeUnsupported, "Table Router is not supported by this backend")
+		}
+		nodes, next, err = tableRows.ListTableRouterRoots(ctx, table.DatabaseID, table.ID, cursor, limit)
+	} else {
+		parent, err := engine.resolveRouterNode(ctx, show.RouteMode, show.RouteDB, show.Route, bound)
+		if err != nil {
+			return Output{}, err
+		}
+		nodes, next, err = engine.rows.ListRouterChildren(ctx, parent.ID, cursor, limit)
 	}
-	nodes, next, err := engine.rows.ListRouterChildren(
-		ctx, parent.ID, cursor, limit,
-	)
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}

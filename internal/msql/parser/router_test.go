@@ -16,6 +16,11 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			parameters: 2,
 		},
 		{
+			source:     "CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE :purpose",
+			kind:       "CREATE_ROUTE",
+			parameters: 1,
+		},
+		{
 			source:     "CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
 			kind:       "CREATE_ROUTE",
 			parameters: 4,
@@ -34,6 +39,21 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			source:     "SHOW ROUTES UNDER :parent CURSOR :cursor LIMIT :limit",
 			kind:       "SHOW",
 			parameters: 3,
+		},
+		{
+			source:     "SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT :limit",
+			kind:       "SHOW",
+			parameters: 1,
+		},
+		{
+			source:     "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit",
+			kind:       "SHOW",
+			parameters: 2,
+		},
+		{
+			source:     "SHOW ROUTES UNDER :parent LIMIT :limit",
+			kind:       "SHOW",
+			parameters: 2,
 		},
 		{
 			source:     "SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit",
@@ -73,8 +93,7 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 		"CREATE ROUTE UNDER :parent NAME :name PURPOSE :purpose",
 		"ALTER ROUTE :route RENAME",
 		"DELETE ROUTE",
-		"SHOW ROUTES UNDER :parent LIMIT 10",
-		"SHOW ROUTES FROM DATABASE :database AT :path LIMIT 10",
+		"SHOW ROUTES FROM TABLE work.notes LIMIT 10",
 		"OPEN ROUTE :route",
 		"OPEN ROUTE FROM DATABASE :database AT :path",
 	} {

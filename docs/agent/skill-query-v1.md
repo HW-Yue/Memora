@@ -1,7 +1,7 @@
 # Skill 查询流程 v1
 
-状态：F30 历史实现说明；其中 full Route path + MATCH fallback 已被产品宪章
-取代。目标状态机必须改为 AI 逐层选择 Table Route，不能视为当前完成契约。
+状态：F70 当前契约。F30 的 full Route path 与检索 fallback 已被取代；AI
+逐层选择 Table Route，并只对叶子返回的 Row locator 执行精确回表。
 
 ## 输入与职责
 

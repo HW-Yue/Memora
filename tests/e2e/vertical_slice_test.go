@@ -44,11 +44,24 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	if databaseID, _ := ddl.Results[0].Rows[0]["database_id"].(string); databaseID == "" {
 		t.Fatalf("DDL database identity = %#v", ddl.Results[0].Rows)
 	}
+	rootRoute := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(nil, map[string]any{"max_affected_rows": 1}),
+		"CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Notes Router'")
+	rootID, _ := rootRoute.Results[0].Rows[0]["route_id"].(string)
+	branchRoute := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"parent": rootID, "name": "architecture", "kind": "branch", "purpose": "Architecture knowledge"}, map[string]any{"max_affected_rows": 1}),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose")
+	branchID, _ := branchRoute.Results[0].Rows[0]["route_id"].(string)
+	leafRoute := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"parent": branchID, "name": "storage", "kind": "leaf", "purpose": "Storage decisions"}, map[string]any{"max_affected_rows": 1}),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose")
+	leafID, _ := leafRoute.Results[0].Rows[0]["route_id"].(string)
 
 	inserted := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
 		"--input", statementInput(nil, map[string]any{
 			"expected_schema_version": 1, "max_affected_rows": 1,
-			"actor": "agent:e2e", "source": "e2e:insert", "reason": "capture decision",
+			"route_leaf_ids": []string{leafID},
+			"actor":          "agent:e2e", "source": "e2e:insert", "reason": "capture decision",
 		}),
 		"INSERT INTO work.notes (title) VALUES ('generation manifest')")
 	if inserted.Results[0].Revision == nil || *inserted.Results[0].Revision != 1 {
@@ -62,6 +75,19 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		t.Fatalf("SELECT envelope = %#v", selected)
 	}
 	rowID, _ := selected.Results[0].Rows[0]["row_id"].(string)
+	top := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12")
+	children := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"route": branchID}, nil),
+		"SHOW ROUTES UNDER :route LIMIT 12")
+	opened := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 20")
+	if len(top.Results[0].Rows) != 1 || top.Results[0].Rows[0]["route_id"] != branchID ||
+		len(children.Results[0].Rows) != 1 || children.Results[0].Rows[0]["route_id"] != leafID ||
+		len(opened.Results[0].Rows) != 1 || opened.Results[0].Rows[0]["row_id"] != rowID {
+		t.Fatalf("Table Router navigation = top %#v, children %#v, open %#v", top, children, opened)
+	}
 
 	expectedRow := 1
 	mutationPlan := skillwrite.Plan{

@@ -21,11 +21,9 @@ const (
 )
 
 type Request struct {
-	Question       string
 	Database       string
 	Table          string
-	RoutePath      string
-	QueryTerms     []string
+	SelectedRoutes []string
 	Projections    []string
 	CandidateLimit int
 	SelectLimit    int
@@ -121,8 +119,25 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 		return report, nil
 	}
 
+	tables, err := runner.call(ctx, &report, Call{
+		ID: "query-02-tables", Command: "query", Statement: "SHOW_TABLES",
+		MSQL: "SHOW TABLES FROM " + quoteIdentifier(request.Database) + " COMPACT",
+	})
+	if err != nil {
+		return report, err
+	}
+	if stop, err := recoverFailure(&report, tables); err != nil {
+		return report, err
+	} else if stop {
+		return report, nil
+	}
+	if findIdentity(tables, "name", request.Table, "table_id") == "" {
+		report.Status = StatusNoResults
+		return report, nil
+	}
+
 	description, err := runner.call(ctx, &report, Call{
-		ID: "query-02-describe", Command: "query", Statement: "DESCRIBE",
+		ID: "query-03-describe", Command: "query", Statement: "DESCRIBE",
 		MSQL: "DESCRIBE TABLE " + qualified + " COMPACT",
 	})
 	if err != nil {
@@ -139,56 +154,64 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 		return report, nil
 	}
 
-	var candidates result.Envelope
-	if request.RoutePath != "" {
-		candidates, err = runner.call(ctx, &report, Call{
-			ID: "query-03-route", Command: "query", Statement: "OPEN_ROUTE",
-			MSQL: "OPEN ROUTE FROM DATABASE :database AT :path LIMIT :limit",
-			Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
-				"database": request.Database, "path": request.RoutePath, "limit": int64(request.CandidateLimit),
-			}}},
-		})
-		if err != nil {
-			return report, err
-		}
-		switch code := failureCode(candidates); code {
-		case result.CodePermissionDenied:
-			_, _ = recoverFailure(&report, candidates)
-			return report, nil
-		case result.CodeNotFound, result.CodeOutputTruncated:
-			report.Warnings = append(report.Warnings, result.Notice{
-				Code: code, Message: "Route lookup did not return usable locators; falling back to MATCH",
-			})
-			candidates = result.Envelope{}
-		case "":
-			if resultRowCount(candidates) == 0 {
-				candidates = result.Envelope{}
-				break
-			}
-			report.Truncated = candidates.Truncated
-		default:
-			return report, queryError(code, "Route lookup failed")
-		}
+	frame, err := runner.call(ctx, &report, Call{
+		ID: "query-04-routes-root", Command: "query", Statement: "SHOW_ROUTES",
+		MSQL: "SHOW ROUTES FROM TABLE " + qualified + " AT ROOT LIMIT :limit",
+		Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
+			"limit": int64(12),
+		}}},
+	})
+	if err != nil {
+		return report, err
 	}
-	if candidates.Version == "" {
-		candidates, err = runner.call(ctx, &report, Call{
-			ID: "query-04-match", Command: "query", Statement: "MATCH",
-			MSQL: "MATCH " + qualified + " QUERY :query TERMS :terms LIMIT :limit",
+	if stop, err := recoverFailure(&report, frame); err != nil {
+		return report, err
+	} else if stop {
+		return report, nil
+	}
+	report.Truncated = frame.Truncated
+	for index, routeID := range request.SelectedRoutes {
+		if !containsRoute(frame, routeID) {
+			report.Status = StatusNoResults
+			return report, nil
+		}
+		if index == len(request.SelectedRoutes)-1 {
+			break
+		}
+		frame, err = runner.call(ctx, &report, Call{
+			ID: fmt.Sprintf("query-%02d-routes-under", index+5), Command: "query", Statement: "SHOW_ROUTES",
+			MSQL: "SHOW ROUTES UNDER :parent LIMIT :limit",
 			Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
-				"query": request.Question, "terms": append([]string{}, request.QueryTerms...),
-				"limit": int64(request.CandidateLimit),
+				"parent": routeID, "limit": int64(12),
 			}}},
 		})
 		if err != nil {
 			return report, err
 		}
-		if stop, err := recoverFailure(&report, candidates); err != nil {
+		if stop, err := recoverFailure(&report, frame); err != nil {
 			return report, err
 		} else if stop {
 			return report, nil
 		}
-		report.Truncated = candidates.Truncated
+		report.Truncated = report.Truncated || frame.Truncated
 	}
+	leafID := request.SelectedRoutes[len(request.SelectedRoutes)-1]
+	candidates, err := runner.call(ctx, &report, Call{
+		ID: "query-open-route", Command: "query", Statement: "OPEN_ROUTE",
+		MSQL: "OPEN ROUTE :leaf LIMIT :limit",
+		Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
+			"leaf": leafID, "limit": int64(request.CandidateLimit),
+		}}},
+	})
+	if err != nil {
+		return report, err
+	}
+	if stop, err := recoverFailure(&report, candidates); err != nil {
+		return report, err
+	} else if stop {
+		return report, nil
+	}
+	report.Truncated = report.Truncated || candidates.Truncated
 
 	locators := extractLocators(candidates, databaseID, tableID)
 	report.CandidateCount = len(locators)
@@ -202,7 +225,7 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 	}
 	for index, locator := range locators {
 		selected, err := runner.call(ctx, &report, Call{
-			ID:      fmt.Sprintf("query-%02d-select-%s", index+5, locator.rowID),
+			ID:      fmt.Sprintf("query-%02d-select-%s", index+6+len(request.SelectedRoutes), locator.rowID),
 			Command: "query", Statement: "SELECT",
 			MSQL: selectMSQL(qualified, request.Projections),
 			Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
@@ -298,23 +321,31 @@ func extractLocators(envelope result.Envelope, databaseID, tableID string) []loc
 	return values
 }
 
+func containsRoute(envelope result.Envelope, routeID string) bool {
+	if len(envelope.Results) == 0 {
+		return false
+	}
+	for _, row := range envelope.Results[0].Rows {
+		if value, _ := row["route_id"].(string); value == routeID {
+			return true
+		}
+	}
+	return false
+}
+
 func validateRequest(request Request) error {
-	if strings.TrimSpace(request.Question) == "" ||
-		strings.TrimSpace(request.Database) == "" ||
+	if strings.TrimSpace(request.Database) == "" ||
 		strings.TrimSpace(request.Table) == "" {
-		return queryError(result.CodeValidation, "question, database, and table are required")
+		return queryError(result.CodeValidation, "database and table are required")
 	}
-	if request.RoutePath != "" && !strings.HasPrefix(request.RoutePath, "/") {
-		return queryError(result.CodeValidation, "route path must be absolute")
-	}
-	if len(request.QueryTerms) == 0 || len(request.QueryTerms) > 32 {
-		return queryError(result.CodeValidation, "query terms must contain 1 to 32 values")
+	if len(request.SelectedRoutes) == 0 || len(request.SelectedRoutes) > 8 {
+		return queryError(result.CodeValidation, "selected routes must contain 1 to 8 Route IDs")
 	}
 	seen := map[string]bool{}
-	for _, term := range request.QueryTerms {
-		normalized := strings.ToLower(strings.TrimSpace(term))
+	for _, routeID := range request.SelectedRoutes {
+		normalized := strings.TrimSpace(routeID)
 		if normalized == "" || seen[normalized] {
-			return queryError(result.CodeValidation, "query terms must be non-empty and deduplicated")
+			return queryError(result.CodeValidation, "selected Route IDs must be non-empty and deduplicated")
 		}
 		seen[normalized] = true
 	}

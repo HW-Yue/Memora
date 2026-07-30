@@ -1,7 +1,7 @@
 # Agent 语义目录索引（Router）
 
 状态：目标架构已确认；F61 已实现 Table 级原生物理闭环，F65 已实现 reshape
-原子维护，MSQL/AI 主路切换待 F70。
+原子维护，F70 已将 MSQL、Canonical Skill 和宿主查询主路切换到逐层导航。
 
 ## 定义
 

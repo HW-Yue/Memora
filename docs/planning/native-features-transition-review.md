@@ -2,7 +2,7 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F69 已完成；F70–F72 继续按顺序推进。
+实现进度：F62–F70 已完成；F71–F72 继续按顺序推进。
 
 ## F62 Transaction Frame
 
@@ -99,6 +99,12 @@ reader 只存在于 `compat/sqlite-migrator` 独立 module，不能被主 binary
 - 测试：真实 Codex/Claude-compatible transcript、Route Frame 预算、回退与权限；
 - 不做：MATCH、query_terms、Vector/cosine、全库 prompt 扫描；
 - 完成：AI 主查询只走 Table 语义树和 RowID 回表。
+
+实现结果：新增 Table 级 MSQL：`SHOW ROUTES FROM TABLE ... AT ROOT`、
+`SHOW ROUTES UNDER ...`、`OPEN ROUTE ...`。Canonical Skill、Codex/Claude Code
+适配产物和宿主查询状态机统一执行 Database → Table → Schema → 逐层 Route →
+locator → 精确 RowID SELECT；Route Frame 支持 cursor/limit，空层、权限拒绝或
+无效选择会显式停止，不转入另一套语义检索。
 
 ## F71 删除旧检索主路
 
