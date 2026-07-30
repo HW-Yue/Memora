@@ -38,11 +38,13 @@ F83 定位见
 | Feature | 用户结果 | 完成门 |
 | --- | --- | --- |
 | F88 Real Host Run Protocol | Codex、Claude、Kimi 等由宿主实际运行统一任务 | Memora 不接收 Key；自定义 OpenAI-compatible 地址可由宿主使用 |
-| F89 No-vector Quality Benchmark v2 | 得到真实 Recall、误写、Schema 熵、调用数、token、延迟和费用 | Table Route 实际选择产生原始证据，禁止 scripted counts 冒充 |
+| F89 No-vector Route Benchmark v2 | 得到各模型在不同 fanout/depth/歧义度下的能力曲线与共同安全 fanout | 真实模型逐层选择；逐层/端到端分桶计数、失败证据、token/延迟/费用可复算；禁止 scripted/Vector |
 | F90 Story Gate v2 | 每个 `US-*` 都由相符旅程验收 | 修正 F80 的宽松映射；未覆盖故事明确 `INCOMPLETE` |
 
 F88 不内置 Provider。宿主负责模型与 CC Switch 配置，Memora 只验证 MSQL、Route
 Trace、结果和收据。
+F89 详细实验矩阵见
+[无向量语义 Route Benchmark v2](../development/no-vector-route-benchmark-v2.md)。
 
 ## Milestone A：语义自治
 

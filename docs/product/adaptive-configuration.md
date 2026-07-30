@@ -20,7 +20,7 @@
 
 - 当前原生 authority 的 Router 分支、叶子 locator、SELECT 扫描/返回和
   Route Frame 预算已进入 `query_budgets`；
-- Table 级 Router 深度、字符与更细粒度覆盖仍待后续证据；
+- Table 级 Router fanout、深度和字符预算由 F89 的真实模型能力曲线提供证据；
 - Table 级 Router 增量/子树/generation 重建阈值与 compaction 策略；
 - 查询回表 Row 数、关系遍历和输出预算；
 - Column 级文本最大字符数，启动默认值 1200；
@@ -64,6 +64,7 @@ RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision;
 
 启动默认值是 Route children 12、locator 24、SELECT scan 1000、SELECT rows 10、
 Route Frame nodes 12。引擎另保留不可由配置突破的资源安全上限。
+其中 12 只是当前启动默认值，不代表模型准确率已经证明它最优或安全。
 完整 revision 链进入 logical snapshot，因此复制、迁移和 Database package 不会
 悄悄退回宿主默认值。
 

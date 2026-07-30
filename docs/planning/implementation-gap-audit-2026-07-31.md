@@ -21,7 +21,7 @@ Story Gate 与具体实现；不把历史归档或已撤销的 Vector/MATCH 路�
 | 领域 | 当前已经有 | 尚未实现 |
 | --- | --- | --- |
 | 真实 AI 用户旅程 | Codex/Claude adapter 与脚本化 F80 Story Gate | 真实 Codex、Claude、Kimi 等模型从自然语言自主选择 Database/Table/Route、决定 worthiness、Schema、split/merge，并验证回答质量 |
-| AI-native 质量门 | 八维计分结构、固定场景和脚本 Adapter | 不含 Vector 的 Table Router 实际 Adapter；真实模型 Recall、误写率、Schema 熵增、token、调用数、延迟和跨宿主对照 |
+| AI-native 质量门 | 八维计分结构、固定场景和脚本 Adapter | 不含 Vector 的真实 Table Router Adapter；fanout/depth/歧义度能力曲线、逐层准确率、共同安全 fanout、token/调用数/延迟和跨模型对照 |
 | 持续输入入口 | 显式 `memora reflect` delta/checkpoint/session_end | 宿主可稳定触发的“值得写”判断与会话交接；当前 adapter 只安装 Skill，不保证看见所有宿主活动 |
 | 语义 DBA | 手工 Route CRUD、原子 reshape、重复 Row/同义字段/陈旧描述报告 | Router 容量、错挂、漏挂、歧义、导航失败和结构熵检查；基于真实证据生成局部优化计划 |
 | 自动维护 | `maintain --report/request` 协议和幂等收据 | 当前实现没有会产生 `auto_fix=true` 的 Issue，`Maintain` 不生成实际 Action；文档所述 Router capacity 与 pending reindex retry 未接入当前代码 |

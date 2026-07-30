@@ -180,6 +180,9 @@ daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原�
 107. Binlog 第一用途是 Admin 中按 commit sequence 可视化数据、Schema、Route
 节点和 membership 的已提交变化；它是事务级逻辑变化流。复制、PITR、GTID 和
 多设备同步可以以后复用，但不能主导 F83 的首版事件格式。
+108. F89 Benchmark 必须用真实模型测试 Route 每层 fanout、树深和语义歧义度，
+报告逐层准确率、最终 RowID 成功率及不同 host/model 的安全 fanout。共享数据库
+采用目标模型集合的共同可靠范围，不建立按模型分叉的权威语义树。
 
 ## 尚需验证
 

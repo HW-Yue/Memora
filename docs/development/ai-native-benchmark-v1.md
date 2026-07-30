@@ -2,6 +2,7 @@
 
 状态：F42 的场景与评分器仍可作历史测试资产；F51 证据已撤销。当前 Adapter
 集合包含被禁止的 Vector/cosine 路径，不能产生产品发布证据，需按产品宪章重做。
+当前继任讨论稿见[无向量语义 Route Benchmark v2](./no-vector-route-benchmark-v2.md)。
 
 ## 数据集
 
