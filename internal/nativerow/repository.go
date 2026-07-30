@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -19,8 +20,9 @@ import (
 const recordSchemaVersion = 1
 
 var (
-	ErrCorrupt = errors.New("native row record is corrupt")
-	ErrInvalid = errors.New("native row value is invalid")
+	ErrCorrupt          = errors.New("native row record is corrupt")
+	ErrInvalid          = errors.New("native row value is invalid")
+	ErrRevisionConflict = errors.New("native row revision conflicts with latest")
 )
 
 type Repository struct{ file *nativestore.File }
@@ -28,6 +30,26 @@ type Repository struct{ file *nativestore.File }
 func New(file *nativestore.File) *Repository { return &Repository{file: file} }
 
 func (repository *Repository) Write(value row.Row) error {
+	if value.Revision != 1 || value.State != row.StateLive {
+		return fmt.Errorf("%w: initial row must be live revision 1", ErrInvalid)
+	}
+	return repository.writeRecord(value, value.ID)
+}
+
+func (repository *Repository) WriteRevision(value row.Row) error {
+	latest, err := repository.ReadIncludingDeleted(value.ID)
+	if err != nil {
+		return err
+	}
+	if latest.State == row.StateDeleted || value.Revision != latest.Revision+1 ||
+		value.DatabaseID != latest.DatabaseID || value.TableID != latest.TableID ||
+		!value.CreatedAt.Equal(latest.CreatedAt) {
+		return ErrRevisionConflict
+	}
+	return repository.writeRecord(value, revisionRecordID(value.ID, value.Revision))
+}
+
+func (repository *Repository) writeRecord(value row.Row, recordID string) error {
 	table, err := repository.table(value.DatabaseID, value.TableID)
 	if err != nil {
 		return err
@@ -40,33 +62,86 @@ func (repository *Repository) Write(value row.Row) error {
 	if err != nil {
 		return err
 	}
-	if err := repository.file.Put(nativestore.ObjectKindRow, recordSchemaVersion, value.ID, payload); err != nil {
+	if err := repository.file.Put(nativestore.ObjectKindRow, recordSchemaVersion, recordID, payload); err != nil {
 		return fmt.Errorf("write row %q: %w", value.ID, err)
 	}
 	return nil
 }
 
 func (repository *Repository) Read(id string) (row.Row, error) {
+	value, err := repository.ReadIncludingDeleted(id)
+	if err != nil {
+		return row.Row{}, err
+	}
+	if value.State == row.StateDeleted {
+		return row.Row{}, nativestore.ErrNotFound
+	}
+	return value, nil
+}
+
+func (repository *Repository) ReadIncludingDeleted(id string) (row.Row, error) {
 	if repository == nil || repository.file == nil || id == "" {
 		return row.Row{}, fmt.Errorf("%w: native file and RowID are required", ErrInvalid)
 	}
-	payload, err := repository.file.Get(nativestore.ObjectKindRow, id)
+	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	if err != nil {
+		return row.Row{}, err
+	}
+	var latest row.Row
+	found := false
+	for _, recordID := range ids {
+		if recordID != id && !strings.HasPrefix(recordID, id+"@") {
+			continue
+		}
+		value, err := repository.readRecord(recordID)
+		if err != nil {
+			return row.Row{}, err
+		}
+		if value.ID == id && (!found || value.Revision > latest.Revision) {
+			latest, found = value, true
+		}
+	}
+	if !found {
+		return row.Row{}, nativestore.ErrNotFound
+	}
+	return latest, nil
+}
+
+func (repository *Repository) ReadRevision(id string, revision uint64) (row.Row, error) {
+	if id == "" || revision == 0 {
+		return row.Row{}, fmt.Errorf("%w: RowID and revision are required", ErrInvalid)
+	}
+	return repository.readRecord(revisionRecordID(id, revision))
+}
+
+func (repository *Repository) readRecord(recordID string) (row.Row, error) {
+	payload, err := repository.file.Get(nativestore.ObjectKindRow, recordID)
 	if err != nil {
 		return row.Row{}, err
 	}
 	value, err := decode(payload)
-	if err != nil || value.ID != id {
-		return row.Row{}, fmt.Errorf("%w: decode row %q", ErrCorrupt, id)
+	if err != nil {
+		return row.Row{}, fmt.Errorf("%w: decode row record %q", ErrCorrupt, recordID)
+	}
+	if revisionRecordID(value.ID, value.Revision) != recordID {
+		return row.Row{}, fmt.Errorf("%w: row record identity mismatch", ErrCorrupt)
 	}
 	table, err := repository.table(value.DatabaseID, value.TableID)
 	if err != nil {
-		return row.Row{}, fmt.Errorf("%w: row %q has invalid catalog reference", ErrCorrupt, id)
+		return row.Row{}, fmt.Errorf("%w: row %q has invalid catalog reference", ErrCorrupt, value.ID)
 	}
 	normalized, err := normalize(value, table)
 	if err != nil {
-		return row.Row{}, fmt.Errorf("%w: row %q fails catalog validation", ErrCorrupt, id)
+		return row.Row{}, fmt.Errorf("%w: row %q fails catalog validation", ErrCorrupt, value.ID)
 	}
 	return normalized, nil
+}
+
+func revisionRecordID(id string, revision uint64) string {
+	if revision == 1 {
+		return id
+	}
+	return id + "@" + fmt.Sprintf("%020d", revision)
 }
 
 func (repository *Repository) table(databaseID, tableID string) (catalog.Table, error) {
@@ -92,7 +167,7 @@ func (repository *Repository) table(databaseID, tableID string) (catalog.Table, 
 
 func normalize(value row.Row, table catalog.Table) (row.Row, error) {
 	if value.ID == "" || value.DatabaseID == "" || value.TableID == "" ||
-		value.Revision != 1 || value.State != row.StateLive ||
+		value.Revision == 0 || (value.State != row.StateLive && value.State != row.StateDeleted) ||
 		value.CreatedAt.IsZero() || value.UpdatedAt.IsZero() || value.SchemaVersion != table.SchemaVersion {
 		return row.Row{}, fmt.Errorf("%w: invalid identity, state, revision, timestamps, or schema", ErrInvalid)
 	}

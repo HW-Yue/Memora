@@ -1,6 +1,7 @@
 package nativerow
 
 import (
+	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -92,6 +93,77 @@ func TestDecodeRowRejectsEveryTruncation(t *testing.T) {
 			t.Fatalf("decode(payload[:%d]) unexpectedly succeeded", length)
 		}
 	}
+}
+
+func TestLatestRevisionAndTombstoneSurviveReopen(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogValue, first := rowFixture()
+	repository := New(file)
+	if err := nativecatalog.New(file).Write(catalogValue); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Write(first); err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.Revision = 2
+	second.UpdatedAt = first.UpdatedAt.Add(time.Minute)
+	second.Values = cloneValues(first.Values)
+	second.Values["col_text"] = "更新内容"
+	if err := repository.WriteRevision(second); err != nil {
+		t.Fatalf("WriteRevision(2) error = %v", err)
+	}
+	if err := repository.WriteRevision(second); !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("stale WriteRevision() error = %v, want ErrRevisionConflict", err)
+	}
+	deleted := second
+	deleted.Revision = 3
+	deleted.State = row.StateDeleted
+	deleted.UpdatedAt = second.UpdatedAt.Add(time.Minute)
+	if err := repository.WriteRevision(deleted); err != nil {
+		t.Fatalf("WriteRevision(tombstone) error = %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := nativestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	repository = New(reopened)
+	if _, err := repository.Read(first.ID); !errors.Is(err, nativestore.ErrNotFound) {
+		t.Fatalf("Read(tombstone) error = %v, want ErrNotFound", err)
+	}
+	gotLatest, err := repository.ReadIncludingDeleted(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotLatest, deleted) {
+		t.Fatalf("latest = %#v, want tombstone %#v", gotLatest, deleted)
+	}
+	gotSecond, err := repository.ReadRevision(first.ID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotSecond, second) {
+		t.Fatalf("revision 2 = %#v, want %#v", gotSecond, second)
+	}
+}
+
+func cloneValues(values map[string]any) map[string]any {
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func rowFixture() ([]catalog.Database, row.Row) {
