@@ -77,7 +77,11 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 		return row.Row{}, fmt.Errorf("allocate RowID: %w", err)
 	}
 	now := service.clock.Now().UTC()
-	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now}
+	sequence, err := service.repository.NextCommitSequence()
+	if err != nil {
+		return row.Row{}, err
+	}
+	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now}
 	if err := service.repository.Write(value); err != nil {
 		return row.Row{}, err
 	}
@@ -175,6 +179,10 @@ func (service *Service) Update(ctx context.Context, databaseName, tableName, row
 		updated.Values[columnID] = value
 	}
 	updated.Revision++
+	updated.CommitSequence, err = service.repository.NextCommitSequence()
+	if err != nil {
+		return row.Row{}, err
+	}
 	updated.SchemaVersion = table.SchemaVersion
 	updated.UpdatedAt = service.clock.Now().UTC()
 	if err := service.repository.WriteRevision(updated); err != nil {
@@ -192,6 +200,10 @@ func (service *Service) Delete(ctx context.Context, databaseName, tableName, row
 	}
 	deleted := current
 	deleted.Revision++
+	deleted.CommitSequence, err = service.repository.NextCommitSequence()
+	if err != nil {
+		return row.Row{}, err
+	}
 	deleted.SchemaVersion = table.SchemaVersion
 	deleted.State = row.StateDeleted
 	deleted.UpdatedAt = service.clock.Now().UTC()
@@ -298,7 +310,11 @@ func (service *Service) Relate(ctx context.Context, definition row.RelationDefin
 		return relation.Relation{}, fmt.Errorf("allocate relation ID: %w", err)
 	}
 	now := service.clock.Now().UTC()
-	created := relation.Relation{Version: relation.Version, ID: "rel_" + id, Source: source, Type: definition.Type, Target: target, Description: definition.Description, Revision: 1, State: relation.StateLive, CreatedAt: now, UpdatedAt: now}
+	sequence, err := service.repository.NextCommitSequence()
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	created := relation.Relation{Version: relation.Version, ID: "rel_" + id, Source: source, Type: definition.Type, Target: target, Description: definition.Description, Revision: 1, CommitSequence: sequence, State: relation.StateLive, CreatedAt: now, UpdatedAt: now}
 	if err := service.repository.PutRelation(created); err != nil {
 		return relation.Relation{}, err
 	}
@@ -321,6 +337,10 @@ func (service *Service) DeleteRelation(_ context.Context, id string, expected ui
 	}
 	deleted := current
 	deleted.Revision++
+	deleted.CommitSequence, err = service.repository.NextCommitSequence()
+	if err != nil {
+		return relation.Relation{}, err
+	}
 	deleted.State = relation.StateDeleted
 	deleted.UpdatedAt = service.clock.Now().UTC()
 	if err := service.repository.PutRelation(deleted); err != nil {

@@ -69,6 +69,7 @@ func (service *NativeService) nativeDocument() (snapshot.LogicalDocument, error)
 	if err != nil {
 		return snapshot.LogicalDocument{}, err
 	}
+	normalizeCatalogForSnapshot(databases)
 	catalogJSON, err := json.Marshal(struct {
 		Version   string             `json:"version"`
 		Databases []catalog.Database `json:"databases"`
@@ -135,7 +136,7 @@ func (service *NativeService) Import(encoded []byte) error {
 	if json.Unmarshal(migrated.Catalog, &catalogValue) != nil {
 		return nativeError(result.CodeValidation, "logical snapshot Catalog is invalid")
 	}
-	normalizeCatalogSlices(catalogValue.Databases)
+	normalizeCatalogForSnapshot(catalogValue.Databases)
 	tables := map[string]catalog.Table{}
 	for _, database := range catalogValue.Databases {
 		for _, table := range database.Tables {
@@ -358,20 +359,20 @@ func nativeFingerprint(encoded []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func normalizeCatalogSlices(databases []catalog.Database) {
+func normalizeCatalogForSnapshot(databases []catalog.Database) {
 	for databaseIndex := range databases {
 		database := &databases[databaseIndex]
-		if len(database.Aliases) == 0 {
-			database.Aliases = nil
+		if database.Aliases == nil {
+			database.Aliases = []string{}
 		}
 		for tableIndex := range database.Tables {
 			table := &database.Tables[tableIndex]
-			if len(table.Aliases) == 0 {
-				table.Aliases = nil
+			if table.Aliases == nil {
+				table.Aliases = []string{}
 			}
 			for columnIndex := range table.Columns {
-				if len(table.Columns[columnIndex].Aliases) == 0 {
-					table.Columns[columnIndex].Aliases = nil
+				if table.Columns[columnIndex].Aliases == nil {
+					table.Columns[columnIndex].Aliases = []string{}
 				}
 			}
 		}

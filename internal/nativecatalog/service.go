@@ -146,7 +146,28 @@ func (service *Service) read(ctx context.Context) ([]catalog.Database, error) {
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	return service.repository.Read()
+	databases, err := service.repository.Read()
+	if err != nil {
+		return nil, err
+	}
+	for databaseIndex := range databases {
+		database := &databases[databaseIndex]
+		if database.Aliases == nil {
+			database.Aliases = []string{}
+		}
+		for tableIndex := range database.Tables {
+			table := &database.Tables[tableIndex]
+			if table.Aliases == nil {
+				table.Aliases = []string{}
+			}
+			for columnIndex := range table.Columns {
+				if table.Columns[columnIndex].Aliases == nil {
+					table.Columns[columnIndex].Aliases = []string{}
+				}
+			}
+		}
+	}
+	return databases, nil
 }
 
 func (service *Service) mutate(ctx context.Context, change func(*[]catalog.Database) error) error {

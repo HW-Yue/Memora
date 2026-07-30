@@ -238,6 +238,25 @@ func (repository *Repository) AllRows() ([]row.Row, error) {
 	return result, nil
 }
 
+func (repository *Repository) NextCommitSequence() (uint64, error) {
+	rows, err := repository.AllRows()
+	if err != nil {
+		return 0, err
+	}
+	var latest uint64
+	for _, value := range rows {
+		latest = max(latest, value.CommitSequence)
+	}
+	relations, err := repository.AllRelationVersions()
+	if err != nil {
+		return 0, err
+	}
+	for _, value := range relations {
+		latest = max(latest, value.CommitSequence)
+	}
+	return latest + 1, nil
+}
+
 func (repository *Repository) StageSnapshotRow(transaction *nativestore.Transaction, value row.Row, table catalog.Table) error {
 	if transaction == nil {
 		return fmt.Errorf("%w: transaction is required", ErrInvalid)

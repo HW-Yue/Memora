@@ -2,7 +2,7 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F66 已完成；F67–F72 继续按顺序推进。
+实现进度：F62–F67 已完成；F68–F72 继续按顺序推进。
 
 ## F62 Transaction Frame
 
@@ -61,6 +61,12 @@ authority，避免返回陈旧快照。
 - 覆盖：Catalog、CRUD、History、Relation、Router、restart；
 - 不做：双写真实用户数据、不比较 SQLite 内部文件；
 - 完成：差异为零或每一项偏差已获明确批准。
+
+实现结果：固定 MSQL corpus 对两个后端执行 Catalog、INSERT、UPDATE、History、
+Relation 与精确 RowID SELECT，逐条比较 executor envelope，并在双后端 restart 后
+复查读路径和 logical snapshot canonical hash。native 现与旧后端使用同一
+commit sequence 语义。旧 Database Router 不作为 parity 目标：它已被产品决策
+取代，Table Router 的原生重开测试由 F61 覆盖，MSQL 主路由 F70 接入。
 
 ## F68 默认切换与显式迁移
 
