@@ -1,6 +1,10 @@
 package row
 
-import "time"
+import (
+	"time"
+
+	"github.com/HW-Yue/Memora/internal/history"
+)
 
 type State string
 
@@ -31,9 +35,13 @@ type WriteOptions struct {
 }
 
 type WriteMetadata struct {
-	Actor  string
-	Source string
-	Reason string
+	Actor             string
+	Source            string
+	SourceKind        history.SourceKind
+	SourceReceiptID   string
+	SourceLocator     string
+	SourceContentHash string
+	Reason            string
 }
 
 // ReshapeOptions is the complete semantic-index snapshot for an atomic

@@ -317,7 +317,9 @@ func (transaction *Transaction) appendHistory(
 		SchemaVersion: stored.SchemaVersion, Revision: stored.Revision,
 		CommitSequence: stored.CommitSequence, Operation: operation,
 		State: string(stored.State), Values: stored.Values,
-		Actor: metadata.Actor, Source: metadata.Source, Reason: metadata.Reason,
+		Actor: metadata.Actor, Source: metadata.Source, SourceKind: metadata.SourceKind,
+		SourceReceiptID: metadata.SourceReceiptID, SourceLocator: metadata.SourceLocator,
+		SourceContentHash: metadata.SourceContentHash, Reason: metadata.Reason,
 		CreatedAt: stored.CreatedAt, UpdatedAt: stored.UpdatedAt, RecordedAt: stored.UpdatedAt,
 	}))
 }
@@ -331,6 +333,9 @@ func normalizedMetadata(metadata WriteMetadata) WriteMetadata {
 	}
 	if strings.TrimSpace(metadata.Reason) == "" {
 		metadata.Reason = "row mutation"
+	}
+	if metadata.SourceKind == "" {
+		metadata.SourceKind = history.SourceConversationAssertion
 	}
 	return metadata
 }

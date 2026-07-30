@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
 )
@@ -23,15 +24,16 @@ const (
 )
 
 type taskState struct {
-	Version    string                `json:"version"`
-	TaskID     string                `json:"task_id"`
-	Workspace  string                `json:"workspace"`
-	Revision   uint64                `json:"revision"`
-	Inventory  Inventory             `json:"inventory"`
-	Coverage   map[string][]interval `json:"coverage"`
-	Windows    map[string]string     `json:"windows"`
-	Checkpoint *Checkpoint           `json:"checkpoint,omitempty"`
-	Complete   bool                  `json:"complete"`
+	Version         string                `json:"version"`
+	TaskID          string                `json:"task_id"`
+	Workspace       string                `json:"workspace"`
+	Revision        uint64                `json:"revision"`
+	Inventory       Inventory             `json:"inventory"`
+	Coverage        map[string][]interval `json:"coverage"`
+	Windows         map[string]string     `json:"windows"`
+	Checkpoint      *Checkpoint           `json:"checkpoint,omitempty"`
+	Complete        bool                  `json:"complete"`
+	ReviewChallenge string                `json:"review_challenge,omitempty"`
 }
 
 type eventRecord struct {
@@ -151,6 +153,11 @@ func (processor *Processor) Process(ctx context.Context, event Event) (Receipt, 
 		if !state.Complete {
 			state.Complete = true
 			state.Revision++
+			state.ReviewChallenge = sha256Digest([]byte(fmt.Sprintf(
+				"%s\x00%s\x00%d\x00%s\x00%s",
+				state.TaskID, event.EventID, state.Revision,
+				state.Inventory.Source.ContentHash, eventDigest(event),
+			)))
 			writeTask = true
 		}
 	case KindClear:
@@ -239,6 +246,10 @@ func validateInventory(inventory Inventory) error {
 	if !validShort(inventory.Source.ID, 200) || !validShort(inventory.Source.Title, 200) ||
 		!validShort(inventory.Source.Locator, 1000) || !validDigest(inventory.Source.ContentHash) {
 		return assimilationError(result.CodeValidation, "source identity, locator, and SHA-256 are required and bounded")
+	}
+	if inventory.Source.Kind != history.SourceDocumentAnchor &&
+		inventory.Source.Kind != history.SourceRepositoryAnchor {
+		return assimilationError(result.CodeValidation, "assimilation source kind must be document_anchor or repository_anchor")
 	}
 	if len(inventory.Units) == 0 || len(inventory.Units) > maximumUnits {
 		return assimilationError(result.CodeValidation, "inventory requires 1 to %d units", maximumUnits)
@@ -351,7 +362,7 @@ func buildReceipt(event Event, state taskState, status Status, duplicate bool) R
 		CoveredUnits: coveredUnits, TotalUnits: totalUnits,
 		CoveredExtent: coveredExtent, TotalExtent: totalExtent,
 		UnreadCount: len(unread), Unread: append([]UnreadRange{}, visible...), UnreadTruncated: truncated,
-		Checkpoint: checkpoint,
+		Checkpoint: checkpoint, ReviewChallenge: state.ReviewChallenge,
 	}
 }
 

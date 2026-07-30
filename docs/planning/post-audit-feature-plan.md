@@ -52,6 +52,8 @@
 - 对从资料产生的事实要求 Source Receipt，普通 INSERT 不伪装成已复核事实；
 - reviewer 隔离不能只靠两个自报 context ID；
 - 覆盖：US-ASSIMILATE、US-CONFLICT、准确性原则。
+- 状态：已实现；History 区分 assertion/anchor/reviewed，Assimilation 自动注入
+  Source Receipt 证据；复核要求不同 reviewer 与引擎 challenge-bound artifact。
 
 ## F79 数据库内可演化配置
 

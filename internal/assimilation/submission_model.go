@@ -1,8 +1,13 @@
 package assimilation
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"sort"
 
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 )
@@ -62,6 +67,9 @@ type Review struct {
 	KeyFactsVerified       bool          `json:"key_facts_verified"`
 	ConflictsChecked       bool          `json:"conflicts_checked"`
 	RawContentAbsent       bool          `json:"raw_content_absent"`
+	Challenge              string        `json:"challenge"`
+	FindingsDigest         string        `json:"findings_digest"`
+	ArtifactDigest         string        `json:"artifact_digest"`
 }
 
 type Submission struct {
@@ -106,20 +114,39 @@ type KeyFactReceipt struct {
 }
 
 type SourceReceipt struct {
-	Version               string           `json:"version"`
-	SubmissionID          string           `json:"submission_id"`
-	TaskID                string           `json:"task_id"`
-	Workspace             string           `json:"workspace"`
-	Status                SubmissionStatus `json:"status"`
-	Replayed              bool             `json:"replayed"`
-	Source                Source           `json:"source"`
-	CoverageRevision      uint64           `json:"coverage_revision"`
-	Author                string           `json:"author"`
-	Reviewer              string           `json:"reviewer"`
-	Impacts               []SourceImpact   `json:"impacts"`
-	KeyFacts              []KeyFactReceipt `json:"key_facts"`
-	UnresolvedConflictIDs []string         `json:"unresolved_conflict_ids,omitempty"`
-	Warnings              []result.Notice  `json:"warnings"`
+	Version               string             `json:"version"`
+	SubmissionID          string             `json:"submission_id"`
+	TaskID                string             `json:"task_id"`
+	Workspace             string             `json:"workspace"`
+	Status                SubmissionStatus   `json:"status"`
+	Replayed              bool               `json:"replayed"`
+	Source                Source             `json:"source"`
+	CoverageRevision      uint64             `json:"coverage_revision"`
+	Author                string             `json:"author"`
+	Reviewer              string             `json:"reviewer"`
+	SourceStrength        history.SourceKind `json:"source_strength"`
+	ReviewArtifactDigest  string             `json:"review_artifact_digest"`
+	Impacts               []SourceImpact     `json:"impacts"`
+	KeyFacts              []KeyFactReceipt   `json:"key_facts"`
+	UnresolvedConflictIDs []string           `json:"unresolved_conflict_ids,omitempty"`
+	Warnings              []result.Notice    `json:"warnings"`
+}
+
+func ReviewArtifactDigest(review Review) string {
+	copyReview := review
+	copyReview.ArtifactDigest = ""
+	copyReview.CheckedModuleIDs = sortedStrings(copyReview.CheckedModuleIDs)
+	copyReview.CheckedRelationshipIDs = sortedStrings(copyReview.CheckedRelationshipIDs)
+	copyReview.CheckedKeyFactIDs = sortedStrings(copyReview.CheckedKeyFactIDs)
+	encoded, _ := json.Marshal(copyReview)
+	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func sortedStrings(values []string) []string {
+	cloned := append([]string{}, values...)
+	sort.Strings(cloned)
+	return cloned
 }
 
 type SubmissionError struct {

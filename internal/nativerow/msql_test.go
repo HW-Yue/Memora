@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +69,34 @@ func TestNativeInsertAndExactSelectMSQLSurviveReopen(t *testing.T) {
 	)
 	if len(missing.Rows) != 0 {
 		t.Fatalf("missing SELECT rows = %#v", missing.Rows)
+	}
+	defaultHistory := executeMSQL(t, ctx, engine,
+		"SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10",
+		executor.Parameters{Named: map[string]any{"row": rowID}}, executor.MutationOptions{},
+	)
+	if defaultHistory.Rows[0]["source_kind"] != "conversation_assertion" ||
+		defaultHistory.Rows[0]["source_receipt_id"] != "" {
+		t.Fatalf("ordinary INSERT provenance = %#v", defaultHistory.Rows)
+	}
+	reviewed := executeMSQL(t, ctx, engine,
+		"INSERT INTO work.notes (title, optional) VALUES (:title, :optional)",
+		executor.Parameters{Named: map[string]any{"title": "reviewed", "optional": nil}},
+		executor.MutationOptions{
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
+			Actor: "agent:review", Source: "submission-1", Reason: "reviewed import",
+			SourceKind: "reviewed_source", SourceReceiptID: "submission-1",
+			SourceLocator:     "fixture/book.md",
+			SourceContentHash: "sha256:" + strings.Repeat("a", 64),
+		},
+	)
+	reviewedID, _ := reviewed.Rows[0]["row_id"].(string)
+	reviewedHistory := executeMSQL(t, ctx, engine,
+		"SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10",
+		executor.Parameters{Named: map[string]any{"row": reviewedID}}, executor.MutationOptions{},
+	)
+	if reviewedHistory.Rows[0]["source_kind"] != "reviewed_source" ||
+		reviewedHistory.Rows[0]["source_receipt_id"] != "submission-1" {
+		t.Fatalf("reviewed INSERT provenance = %#v", reviewedHistory.Rows)
 	}
 }
 

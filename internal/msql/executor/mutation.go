@@ -2,9 +2,12 @@ package executor
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/result"
 	datarow "github.com/HW-Yue/Memora/internal/row"
@@ -35,6 +38,11 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	}
 	if engine == nil || engine.catalog == nil || engine.rows == nil {
 		return Output{}, executeError(result.CodeInternal, "mutation engine is not configured")
+	}
+	if mutationStatement(statement) {
+		if err := validateSourceProvenance(options); err != nil {
+			return Output{}, err
+		}
 	}
 	bound, err := bindParameters(statement, parameters)
 	if err != nil {
@@ -76,6 +84,37 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	default:
 		return Output{}, unsupported(statement)
 	}
+}
+
+func validateSourceProvenance(options MutationOptions) error {
+	switch options.SourceKind {
+	case "", history.SourceConversationAssertion:
+		if options.SourceReceiptID != "" || options.SourceLocator != "" || options.SourceContentHash != "" {
+			return executeError(result.CodeValidation, "conversation assertion cannot claim anchored or reviewed source evidence")
+		}
+	case history.SourceDocumentAnchor, history.SourceRepositoryAnchor:
+		if strings.TrimSpace(options.SourceLocator) == "" || !validSHA256(options.SourceContentHash) ||
+			options.SourceReceiptID != "" {
+			return executeError(result.CodeValidation, "anchored source requires locator and SHA-256 but no review receipt")
+		}
+	case history.SourceReviewed:
+		if strings.TrimSpace(options.SourceReceiptID) == "" || strings.TrimSpace(options.SourceLocator) == "" ||
+			!validSHA256(options.SourceContentHash) {
+			return executeError(result.CodeValidation, "reviewed source requires receipt ID, locator, and SHA-256")
+		}
+	default:
+		return executeError(result.CodeValidation, "source_kind is not supported")
+	}
+	return nil
+}
+
+func validSHA256(value string) bool {
+	value = strings.TrimPrefix(value, "sha256:")
+	if len(value) != 64 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32
 }
 
 func (engine *Engine) reshape(
@@ -456,5 +495,13 @@ func emptyMutationOutput() Output {
 }
 
 func mutationMetadata(options MutationOptions) datarow.WriteMetadata {
-	return datarow.WriteMetadata{Actor: options.Actor, Source: options.Source, Reason: options.Reason}
+	kind := options.SourceKind
+	if kind == "" {
+		kind = history.SourceConversationAssertion
+	}
+	return datarow.WriteMetadata{
+		Actor: options.Actor, Source: options.Source, SourceKind: kind,
+		SourceReceiptID: options.SourceReceiptID, SourceLocator: options.SourceLocator,
+		SourceContentHash: options.SourceContentHash, Reason: options.Reason,
+	}
 }

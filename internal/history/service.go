@@ -71,6 +71,9 @@ func (service *Service) ReserveCommitSequence(ctx context.Context, tx store.Tx) 
 
 func (service *Service) AppendIn(ctx context.Context, tx store.Tx, record Record) error {
 	record.Version = Version
+	if record.SourceKind == "" {
+		record.SourceKind = SourceConversationAssertion
+	}
 	if err := validateRecord(record); err != nil {
 		return err
 	}
@@ -268,6 +271,14 @@ func validateRecord(record Record) error {
 	if strings.TrimSpace(record.Actor) == "" || strings.TrimSpace(record.Source) == "" ||
 		strings.TrimSpace(record.Reason) == "" {
 		return historyError(result.CodeValidation, "history provenance is incomplete")
+	}
+	if record.SourceKind == "" {
+		record.SourceKind = SourceConversationAssertion
+	}
+	switch record.SourceKind {
+	case SourceConversationAssertion, SourceDocumentAnchor, SourceRepositoryAnchor, SourceReviewed:
+	default:
+		return historyError(result.CodeValidation, "history source kind is invalid")
 	}
 	return nil
 }

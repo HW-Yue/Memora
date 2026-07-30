@@ -3,6 +3,7 @@ package assimilation
 import (
 	"fmt"
 
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 )
 
@@ -34,10 +35,11 @@ const (
 )
 
 type Source struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Locator     string `json:"locator"`
-	ContentHash string `json:"content_hash"`
+	ID          string             `json:"id"`
+	Title       string             `json:"title"`
+	Locator     string             `json:"locator"`
+	ContentHash string             `json:"content_hash"`
+	Kind        history.SourceKind `json:"kind"`
 }
 
 type Unit struct {
@@ -112,6 +114,7 @@ type Receipt struct {
 	Unread          []UnreadRange `json:"unread"`
 	UnreadTruncated bool          `json:"unread_truncated"`
 	Checkpoint      *Checkpoint   `json:"checkpoint,omitempty"`
+	ReviewChallenge string        `json:"review_challenge,omitempty"`
 }
 
 type Error struct {

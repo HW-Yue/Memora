@@ -241,7 +241,8 @@ func inventoryEvent(eventID string) assimilation.Event {
 		Workspace: "project-memora", Kind: assimilation.KindInventory,
 		Inventory: &assimilation.Inventory{
 			Source: assimilation.Source{
-				ID: "source-book", Title: "Architecture Book", Locator: "book.pdf", ContentHash: digest("0"),
+				ID: "source-book", Title: "Architecture Book", Locator: "book.pdf",
+				ContentHash: digest("0"), Kind: "document_anchor",
 			},
 			Units: []assimilation.Unit{
 				{ID: "source", Kind: assimilation.UnitSource, Label: "Architecture Book"},

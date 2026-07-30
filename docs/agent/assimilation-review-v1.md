@@ -1,6 +1,7 @@
 # 资料独立复核与提交 v1
 
-状态：F36 实现规格，已冻结。
+状态：F36 实现规格；F78 已增加来源强度和 challenge-bound review，旧的
+“仅比较 context ID”门已被取代。
 
 ## 提交对象
 
@@ -26,10 +27,14 @@ SHA-256 和 anchor。
 
 ## 独立复核门禁
 
-复核可以由另一 Agent 完成，也可以由同一 Agent 在隔离上下文中完成。v1 不
-强制不同模型，但要求 reviewer context 与 draft context 不同，并绑定相同草稿
-哈希、覆盖 revision，以及完整的模块、关系和关键事实 ID 集合。复核者必须
-显式确认 anchor、关键数字、冲突检查和“未保存原文”四项。
+复核必须由不同于 draft author 的 reviewer 身份完成，且 reviewer context 与
+draft context 不同。coverage 完成后，引擎发出一次 challenge；review artifact
+必须把 challenge、相同草稿哈希、覆盖 revision、完整模块/关系/关键事实 ID
+集合、findings digest，以及 anchor、关键数字、冲突和“未保存原文”四项检查
+绑定进统一 SHA-256。只提交两个自报 context ID 不再通过。
+
+引擎验证 challenge 和 artifact 的一致性；真正启动独立上下文由宿主负责。没有
+可信宿主签名时，不把隐藏上下文隔离描述成密码学可证明事实。
 
 任一必读范围未覆盖、复核拒绝/漏项、anchor 越界或计划 provenance 不一致时，
 Memora 在任何 Tool 写调用前拒绝提交。存在未决冲突时返回 `needs_user`，宿主按
@@ -52,6 +57,7 @@ preflight、revision guard 和 verify 继续由既有 Policy 校验。
 `memora.source-receipt/v1` 只长期保存并返回：
 
 - 来源 ID、标题、短 locator 和内容 SHA-256；
+- 原始来源 kind、`reviewed_source` 强度和 review artifact digest；
 - task/submission、覆盖 revision、作者和 reviewer；
 - 模块/关系对应的 plan、decision、逻辑对象、revision/commit sequence；
 - 关键事实的 value SHA-256 与短 source anchor；

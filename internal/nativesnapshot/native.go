@@ -157,6 +157,9 @@ func (service *NativeService) Import(encoded []byte) error {
 		if json.Unmarshal(raw, &historyRows[index]) != nil {
 			return nativeError(result.CodeValidation, "logical snapshot History is invalid")
 		}
+		if historyRows[index].SourceKind == "" {
+			historyRows[index].SourceKind = history.SourceConversationAssertion
+		}
 		rowVersions[historyRows[index].RowID] = append(rowVersions[historyRows[index].RowID], historyRows[index])
 	}
 	for id, latest := range current {
@@ -184,7 +187,11 @@ func (service *NativeService) Import(encoded []byte) error {
 			if err := service.rows.StageSnapshotRow(transaction, value, table); err != nil {
 				return err
 			}
-			if err := service.rows.StageHistory(transaction, value, record.Operation, row.WriteMetadata{Actor: record.Actor, Source: record.Source, Reason: record.Reason}, record.RecordedAt); err != nil {
+			if err := service.rows.StageHistory(transaction, value, record.Operation, row.WriteMetadata{
+				Actor: record.Actor, Source: record.Source, SourceKind: record.SourceKind,
+				SourceReceiptID: record.SourceReceiptID, SourceLocator: record.SourceLocator,
+				SourceContentHash: record.SourceContentHash, Reason: record.Reason,
+			}, record.RecordedAt); err != nil {
 				return err
 			}
 		}

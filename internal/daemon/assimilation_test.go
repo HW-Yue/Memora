@@ -34,7 +34,8 @@ func TestAssimilationHandlerPersistsTemporaryCoverageAcrossSessions(t *testing.T
 		Workspace: "repo", Kind: assimilation.KindInventory,
 		Inventory: &assimilation.Inventory{
 			Source: assimilation.Source{
-				ID: "book", Title: "Book", Locator: "book.pdf", ContentHash: daemonDigest("a"),
+				ID: "book", Title: "Book", Locator: "book.pdf",
+				ContentHash: daemonDigest("a"), Kind: "document_anchor",
 			},
 			Units: []assimilation.Unit{
 				{ID: "source", Kind: assimilation.UnitSource, Label: "Book"},
@@ -82,7 +83,10 @@ func TestAssimilationSubmissionCommitsReviewedModulesRelationshipAndReloadableRe
 		Version: assimilation.EventVersion, EventID: "daemon-review-inventory", TaskID: "daemon-book",
 		Workspace: "repo", Kind: assimilation.KindInventory,
 		Inventory: &assimilation.Inventory{
-			Source: assimilation.Source{ID: "fixture-book", Title: "Fixture Book", Locator: "fixture/book.md", ContentHash: daemonDigest("b")},
+			Source: assimilation.Source{
+				ID: "fixture-book", Title: "Fixture Book", Locator: "fixture/book.md",
+				ContentHash: daemonDigest("b"), Kind: "document_anchor",
+			},
 			Units: []assimilation.Unit{
 				{ID: "source", Kind: assimilation.UnitSource, Label: "Fixture Book"},
 				{ID: "chapter", ParentID: "source", Kind: assimilation.UnitChapter, Label: "Chapter", Extent: 2},
@@ -123,8 +127,10 @@ func TestAssimilationSubmissionCommitsReviewedModulesRelationshipAndReloadableRe
 			CheckedModuleIDs: []string{"module-one", "module-two"}, CheckedRelationshipIDs: []string{"supports"},
 			CheckedKeyFactIDs: []string{"fact-two"}, AnchorsVerified: true, KeyFactsVerified: true,
 			ConflictsChecked: true, RawContentAbsent: true,
+			Challenge: finished.ReviewChallenge, FindingsDigest: daemonDigest("f"),
 		},
 	}
+	submission.Review.ArtifactDigest = assimilation.ReviewArtifactDigest(submission.Review)
 	receipt := invokeSubmission(t, ctx, handler, "submit-session", submission)
 	if receipt.Status != assimilation.SubmissionCommitted || len(receipt.Impacts) != 3 {
 		t.Fatalf("Source Receipt = %#v", receipt)
@@ -138,6 +144,13 @@ func TestAssimilationSubmissionCommitsReviewedModulesRelationshipAndReloadableRe
 		current, err := rows.Get(ctx, "work", "notes", rowID)
 		if err != nil || current.Revision != 1 || current.Values["title"] != title {
 			t.Fatalf("reviewed Row %q = %#v, %v", rowID, current, err)
+		}
+		records, _, historyErr := rows.HistoryPage(ctx, "work", "notes", rowID, 10)
+		if historyErr != nil || len(records) != 1 ||
+			records[0].SourceKind != "reviewed_source" ||
+			records[0].SourceReceiptID != submissionID ||
+			records[0].SourceLocator != "fixture/book.md" {
+			t.Fatalf("reviewed Row History %q = %#v, %v", rowID, records, historyErr)
 		}
 	}
 	batch, _ := handler.session("submit-session")

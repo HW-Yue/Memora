@@ -171,7 +171,9 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		"--input", statementInput(map[string]any{"row": rowID}, nil),
 		"SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10")
 	if len(history.Results[0].Rows) != 2 ||
-		history.Results[0].Rows[0]["revision"] != float64(2) {
+		history.Results[0].Rows[0]["revision"] != float64(2) ||
+		history.Results[0].Rows[0]["source_kind"] != "conversation_assertion" ||
+		history.Results[0].Rows[0]["source_receipt_id"] != "" {
 		t.Fatalf("SHOW HISTORY envelope = %#v", history)
 	}
 	openedAfterUpdate := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,

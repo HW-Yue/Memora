@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 	"github.com/HW-Yue/Memora/internal/store"
@@ -39,9 +40,10 @@ type submissionRecord struct {
 }
 
 type coverageSnapshot struct {
-	Revision uint64
-	Source   Source
-	Units    map[string]Unit
+	Revision        uint64
+	Source          Source
+	Units           map[string]Unit
+	ReviewChallenge string
 }
 
 func (processor *Processor) Submit(
@@ -96,7 +98,8 @@ func (processor *Processor) Submit(
 	runner := skillwrite.New(tool)
 	moduleObjects := make(map[string]string, len(submission.Modules))
 	for _, module := range submission.Modules {
-		report, runErr := runner.Run(ctx, module.Plan)
+		plan := withReviewedSource(module.Plan, submission.SubmissionID, snapshot.Source)
+		report, runErr := runner.Run(ctx, plan)
 		if runErr != nil {
 			return processor.completeInDoubt(ctx, submission.SubmissionID, digest, base, runErr)
 		}
@@ -115,6 +118,7 @@ func (processor *Processor) Submit(
 		if bindErr != nil {
 			return processor.completeInDoubt(ctx, submission.SubmissionID, digest, base, bindErr)
 		}
+		plan = withReviewedSource(plan, submission.SubmissionID, snapshot.Source)
 		report, runErr := runner.Run(ctx, plan)
 		if runErr != nil {
 			return processor.completeInDoubt(ctx, submission.SubmissionID, digest, base, runErr)
@@ -137,6 +141,17 @@ func (processor *Processor) Submit(
 		return SourceReceipt{}, err
 	}
 	return base, nil
+}
+
+func withReviewedSource(plan skillwrite.Plan, receiptID string, source Source) skillwrite.Plan {
+	plan.Steps = append([]skillwrite.Step{}, plan.Steps...)
+	for index := range plan.Steps {
+		plan.Steps[index].Input.Mutation.SourceKind = history.SourceReviewed
+		plan.Steps[index].Input.Mutation.SourceReceiptID = receiptID
+		plan.Steps[index].Input.Mutation.SourceLocator = source.Locator
+		plan.Steps[index].Input.Mutation.SourceContentHash = source.ContentHash
+	}
+	return plan
 }
 
 func (processor *Processor) SourceReceipt(ctx context.Context, submissionID string) (SourceReceipt, error) {
@@ -248,7 +263,7 @@ func validateSubmission(submission Submission, snapshot coverageSnapshot) error 
 	if err := validateConflictIDs(submission.UnresolvedConflictIDs); err != nil {
 		return err
 	}
-	return validateReview(submission, moduleIDs, relationshipIDs, factIDs)
+	return validateReview(submission, moduleIDs, relationshipIDs, factIDs, snapshot.ReviewChallenge)
 }
 
 func validateRelationshipPlanBindings(relationship SemanticRelationship) error {
@@ -363,12 +378,17 @@ func validateAnchor(anchor SourceAnchor, snapshot coverageSnapshot) error {
 	return nil
 }
 
-func validateReview(submission Submission, modules, relationships, facts []string) error {
+func validateReview(submission Submission, modules, relationships, facts []string, challenge string) error {
 	review := submission.Review
 	if review.Version != ReviewVersion || !validShort(review.Reviewer, 200) || !validShort(review.ContextID, 200) ||
-		review.ContextID == submission.DraftContextID || review.DraftDigest != submission.DraftDigest ||
+		review.Reviewer == submission.Author || review.ContextID == submission.DraftContextID ||
+		review.DraftDigest != submission.DraftDigest ||
 		review.CoverageRevision != submission.CoverageRevision || review.Verdict != ReviewAccepted {
 		return submissionError(result.CodeValidation, "review identity, isolated context, draft, coverage revision, or verdict is invalid")
+	}
+	if !validDigest(challenge) || review.Challenge != challenge || !validDigest(review.FindingsDigest) ||
+		review.ArtifactDigest != ReviewArtifactDigest(review) {
+		return submissionError(result.CodeValidation, "review is not bound to the engine challenge and complete review artifact")
 	}
 	if !review.AnchorsVerified || !review.KeyFactsVerified || !review.ConflictsChecked || !review.RawContentAbsent {
 		return submissionError(result.CodeValidation, "review must verify anchors, key facts, conflicts, and raw-content absence")
@@ -418,7 +438,10 @@ func (processor *Processor) coverageSnapshot(ctx context.Context, taskID, worksp
 	for _, unit := range state.Inventory.Units {
 		units[unit.ID] = unit
 	}
-	return coverageSnapshot{Revision: state.Revision, Source: state.Inventory.Source, Units: units}, nil
+	return coverageSnapshot{
+		Revision: state.Revision, Source: state.Inventory.Source, Units: units,
+		ReviewChallenge: state.ReviewChallenge,
+	}, nil
 }
 
 func (processor *Processor) lookupSubmission(ctx context.Context, id, digest string) (SourceReceipt, bool, error) {
@@ -527,7 +550,9 @@ func sourceReceiptBase(submission Submission, source Source) SourceReceipt {
 		Version: SourceReceiptVersion, SubmissionID: submission.SubmissionID, TaskID: submission.TaskID,
 		Workspace: submission.Workspace, Source: source, CoverageRevision: submission.CoverageRevision,
 		Author: submission.Author, Reviewer: submission.Review.Reviewer,
-		Impacts: []SourceImpact{}, KeyFacts: []KeyFactReceipt{}, Warnings: []result.Notice{},
+		SourceStrength:       history.SourceReviewed,
+		ReviewArtifactDigest: submission.Review.ArtifactDigest,
+		Impacts:              []SourceImpact{}, KeyFacts: []KeyFactReceipt{}, Warnings: []result.Notice{},
 	}
 }
 

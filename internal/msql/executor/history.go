@@ -48,6 +48,10 @@ func (engine *Engine) showHistory(
 			{Name: "row_state", Type: "TEXT"},
 			{Name: "actor", Type: "TEXT"},
 			{Name: "source", Type: "TEXT"},
+			{Name: "source_kind", Type: "TEXT"},
+			{Name: "source_receipt_id", Type: "TEXT", Nullable: true},
+			{Name: "source_locator", Type: "TEXT", Nullable: true},
+			{Name: "source_content_hash", Type: "TEXT", Nullable: true},
 			{Name: "reason", Type: "TEXT"},
 			{Name: "updated_at", Type: "TIMESTAMP"},
 		},
@@ -59,7 +63,10 @@ func (engine *Engine) showHistory(
 			"row_id": record.RowID, "revision": record.Revision,
 			"commit_sequence": record.CommitSequence, "schema_version": record.SchemaVersion,
 			"operation": string(record.Operation), "row_state": record.State,
-			"actor": record.Actor, "source": record.Source, "reason": record.Reason,
+			"actor": record.Actor, "source": record.Source,
+			"source_kind": string(record.SourceKind), "source_receipt_id": record.SourceReceiptID,
+			"source_locator": record.SourceLocator, "source_content_hash": record.SourceContentHash,
+			"reason":     record.Reason,
 			"updated_at": record.UpdatedAt,
 		})
 	}

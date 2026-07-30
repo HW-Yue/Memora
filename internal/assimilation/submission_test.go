@@ -21,10 +21,10 @@ func TestReviewedLongFormSubmissionWritesModulesRelationsAndCompactSourceReceipt
 	t.Parallel()
 
 	ctx := context.Background()
-	database, processor, revision := completedCoverage(t, ctx)
+	database, processor, revision, challenge := completedCoverage(t, ctx)
 	defer database.Close()
 	tool := &submissionTool{}
-	submission := reviewedSubmission(revision)
+	submission := reviewedSubmission(revision, challenge)
 
 	receipt, err := processor.Submit(ctx, submission, tool)
 	if err != nil {
@@ -33,6 +33,8 @@ func TestReviewedLongFormSubmissionWritesModulesRelationsAndCompactSourceReceipt
 	if receipt.Version != assimilation.SourceReceiptVersion ||
 		receipt.Status != assimilation.SubmissionCommitted || receipt.Replayed ||
 		receipt.Source.ID != "book" || receipt.Source.ContentHash != digest("b") ||
+		receipt.SourceStrength != "reviewed_source" ||
+		receipt.ReviewArtifactDigest != submission.Review.ArtifactDigest ||
 		len(receipt.Impacts) != 3 || len(receipt.KeyFacts) != 1 {
 		t.Fatalf("source receipt = %#v", receipt)
 	}
@@ -60,6 +62,22 @@ func TestReviewedLongFormSubmissionWritesModulesRelationsAndCompactSourceReceipt
 	if firstCalls != 9 {
 		t.Fatalf("tool calls = %d, want 9", firstCalls)
 	}
+	for _, call := range tool.calls {
+		if call.Phase != skillwrite.PhaseMutation {
+			continue
+		}
+		for _, input := range call.Request.Statements {
+			if input.Mutation.Source == "" {
+				continue
+			}
+			if input.Mutation.SourceKind != "reviewed_source" ||
+				input.Mutation.SourceReceiptID != submission.SubmissionID ||
+				input.Mutation.SourceLocator != "fixture/book.md" ||
+				input.Mutation.SourceContentHash != digest("b") {
+				t.Fatalf("reviewed mutation provenance = %#v", input.Mutation)
+			}
+		}
+	}
 
 	replayed, err := processor.Submit(ctx, submission, tool)
 	if err != nil || !replayed.Replayed || len(tool.calls) != firstCalls {
@@ -86,7 +104,7 @@ func TestSubmissionGatesCoverageReviewAnchorsPlansAndConflictsBeforeWrites(t *te
 	t.Parallel()
 
 	ctx := context.Background()
-	database, processor, revision := completedCoverage(t, ctx)
+	database, processor, revision, challenge := completedCoverage(t, ctx)
 	defer database.Close()
 
 	tests := []struct {
@@ -99,6 +117,21 @@ func TestSubmissionGatesCoverageReviewAnchorsPlansAndConflictsBeforeWrites(t *te
 			name: "review context is not isolated",
 			change: func(value *assimilation.Submission) {
 				value.Review.ContextID = value.DraftContextID
+			},
+			wantCode: result.CodeValidation,
+		},
+		{
+			name: "reviewer is draft author",
+			change: func(value *assimilation.Submission) {
+				value.Review.Reviewer = value.Author
+			},
+			wantCode: result.CodeValidation,
+		},
+		{
+			name: "review challenge is self reported",
+			change: func(value *assimilation.Submission) {
+				value.Review.Challenge = digest("8")
+				value.Review.ArtifactDigest = assimilation.ReviewArtifactDigest(value.Review)
 			},
 			wantCode: result.CodeValidation,
 		},
@@ -135,7 +168,7 @@ func TestSubmissionGatesCoverageReviewAnchorsPlansAndConflictsBeforeWrites(t *te
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tool := &submissionTool{}
-			value := reviewedSubmission(revision)
+			value := reviewedSubmission(revision, challenge)
 			value.SubmissionID += "-" + strings.ReplaceAll(tt.name, " ", "-")
 			for index := range value.Modules {
 				rebindPlan(&value.Modules[index].Plan, value.SubmissionID)
@@ -180,7 +213,7 @@ func TestSubmissionRequiresCoverageCompleteAndDoesNotBlindlyReplayInDoubtWrites(
 		t.Fatal(err)
 	}
 	tool := &submissionTool{}
-	_, err = processor.Submit(ctx, reviewedSubmission(created.Revision), tool)
+	_, err = processor.Submit(ctx, reviewedSubmission(created.Revision, digest("9")), tool)
 	assertCode(t, err, result.CodeRevisionConflict)
 	if len(tool.calls) != 0 {
 		t.Fatalf("incomplete coverage made %d Tool calls", len(tool.calls))
@@ -199,7 +232,7 @@ func TestSubmissionRequiresCoverageCompleteAndDoesNotBlindlyReplayInDoubtWrites(
 	if err != nil {
 		t.Fatal(err)
 	}
-	submission := reviewedSubmission(finished.Revision)
+	submission := reviewedSubmission(finished.Revision, finished.ReviewChallenge)
 	tool.failMutation = 2
 	receipt, err := processor.Submit(ctx, submission, tool)
 	if err != nil || receipt.Status != assimilation.SubmissionInDoubt {
@@ -212,7 +245,7 @@ func TestSubmissionRequiresCoverageCompleteAndDoesNotBlindlyReplayInDoubtWrites(
 	}
 }
 
-func completedCoverage(t *testing.T, ctx context.Context) (interface{ Close() error }, *assimilation.Processor, uint64) {
+func completedCoverage(t *testing.T, ctx context.Context) (interface{ Close() error }, *assimilation.Processor, uint64, string) {
 	t.Helper()
 	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "review.db"))
 	if err != nil {
@@ -223,7 +256,10 @@ func completedCoverage(t *testing.T, ctx context.Context) (interface{ Close() er
 		Version: assimilation.EventVersion, EventID: "review-inventory", TaskID: "book-task",
 		Workspace: "project-memora", Kind: assimilation.KindInventory,
 		Inventory: &assimilation.Inventory{
-			Source: assimilation.Source{ID: "book", Title: "Fixture Book", Locator: "fixture/book.md", ContentHash: digest("b")},
+			Source: assimilation.Source{
+				ID: "book", Title: "Fixture Book", Locator: "fixture/book.md",
+				ContentHash: digest("b"), Kind: "document_anchor",
+			},
 			Units: []assimilation.Unit{
 				{ID: "source", Kind: assimilation.UnitSource, Label: "Fixture Book"},
 				{ID: "chapter", ParentID: "source", Kind: assimilation.UnitChapter, Label: "Chapter", Anchor: "chapter-1", Extent: 2},
@@ -246,10 +282,10 @@ func completedCoverage(t *testing.T, ctx context.Context) (interface{ Close() er
 	if err != nil {
 		t.Fatal(err)
 	}
-	return database, processor, finished.Revision
+	return database, processor, finished.Revision, finished.ReviewChallenge
 }
 
-func reviewedSubmission(revision uint64) assimilation.Submission {
+func reviewedSubmission(revision uint64, challenge string) assimilation.Submission {
 	submissionID := "book-submit-1"
 	modules := []assimilation.SemanticModule{
 		{ID: "module-routing", Anchors: []assimilation.SourceAnchor{{UnitID: "chapter", Start: 0, End: 1}}, Plan: submissionPlan(submissionID, "plan-routing", skillwrite.DecisionInsert, "row-routing")},
@@ -260,7 +296,7 @@ func reviewedSubmission(revision uint64) assimilation.Submission {
 		Anchors: []assimilation.SourceAnchor{{UnitID: "chapter", Start: 0, End: 2}},
 		Plan:    submissionPlan(submissionID, "plan-supports", skillwrite.DecisionRelate, "row-routing->row-retention"),
 	}}
-	return assimilation.Submission{
+	submission := assimilation.Submission{
 		Version: assimilation.SubmissionVersion, SubmissionID: submissionID,
 		TaskID: "book-task", Workspace: "project-memora", CoverageRevision: revision,
 		Author: "agent:host", DraftContextID: "draft-context", DraftDigest: digest("e"),
@@ -275,8 +311,11 @@ func reviewedSubmission(revision uint64) assimilation.Submission {
 			CheckedModuleIDs:       []string{"module-routing", "module-retention"},
 			CheckedRelationshipIDs: []string{"relationship-supports"}, CheckedKeyFactIDs: []string{"fact-retention"},
 			AnchorsVerified: true, KeyFactsVerified: true, ConflictsChecked: true, RawContentAbsent: true,
+			Challenge: challenge, FindingsDigest: digest("7"),
 		},
 	}
+	submission.Review.ArtifactDigest = assimilation.ReviewArtifactDigest(submission.Review)
+	return submission
 }
 
 func submissionPlan(sourceEventID, id string, decision skillwrite.Decision, target string) skillwrite.Plan {

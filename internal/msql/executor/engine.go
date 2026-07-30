@@ -77,34 +77,42 @@ type Parameters struct {
 }
 
 type MutationOptions struct {
-	ExpectedSchemaVersion  uint64            `json:"expected_schema_version,omitempty"`
-	ExpectedRevision       uint64            `json:"expected_revision,omitempty"`
-	SourceRevisions        map[string]uint64 `json:"source_revisions,omitempty"`
-	MaxAffectedRows        uint64            `json:"max_affected_rows,omitempty"`
-	Actor                  string            `json:"actor,omitempty"`
-	Source                 string            `json:"source,omitempty"`
-	Reason                 string            `json:"reason,omitempty"`
-	RouteLeafIDs           []string          `json:"route_leaf_ids,omitempty"`
-	TargetRouteLeafIDs     [][]string        `json:"target_route_leaf_ids,omitempty"`
-	RelationTargetOrdinals map[string]int    `json:"relation_target_ordinals,omitempty"`
-	RouteUpdates           []row.RouteUpdate `json:"route_updates,omitempty"`
+	ExpectedSchemaVersion  uint64             `json:"expected_schema_version,omitempty"`
+	ExpectedRevision       uint64             `json:"expected_revision,omitempty"`
+	SourceRevisions        map[string]uint64  `json:"source_revisions,omitempty"`
+	MaxAffectedRows        uint64             `json:"max_affected_rows,omitempty"`
+	Actor                  string             `json:"actor,omitempty"`
+	Source                 string             `json:"source,omitempty"`
+	Reason                 string             `json:"reason,omitempty"`
+	SourceKind             history.SourceKind `json:"source_kind,omitempty"`
+	SourceReceiptID        string             `json:"source_receipt_id,omitempty"`
+	SourceLocator          string             `json:"source_locator,omitempty"`
+	SourceContentHash      string             `json:"source_content_hash,omitempty"`
+	RouteLeafIDs           []string           `json:"route_leaf_ids,omitempty"`
+	TargetRouteLeafIDs     [][]string         `json:"target_route_leaf_ids,omitempty"`
+	RelationTargetOrdinals map[string]int     `json:"relation_target_ordinals,omitempty"`
+	RouteUpdates           []row.RouteUpdate  `json:"route_updates,omitempty"`
 }
 
 type Authorization = security.Authorization
 
 func (options MutationOptions) MarshalJSON() ([]byte, error) {
 	type wireOptions struct {
-		ExpectedSchemaVersion  uint64            `json:"expected_schema_version,omitempty"`
-		ExpectedRevision       uint64            `json:"expected_revision,omitempty"`
-		SourceRevisions        map[string]uint64 `json:"source_revisions,omitempty"`
-		MaxAffectedRows        uint64            `json:"max_affected_rows,omitempty"`
-		Actor                  string            `json:"actor,omitempty"`
-		Source                 string            `json:"source,omitempty"`
-		Reason                 string            `json:"reason,omitempty"`
-		RouteLeafIDs           *[]string         `json:"route_leaf_ids,omitempty"`
-		TargetRouteLeafIDs     *[][]string       `json:"target_route_leaf_ids,omitempty"`
-		RelationTargetOrdinals map[string]int    `json:"relation_target_ordinals,omitempty"`
-		RouteUpdates           []row.RouteUpdate `json:"route_updates,omitempty"`
+		ExpectedSchemaVersion  uint64             `json:"expected_schema_version,omitempty"`
+		ExpectedRevision       uint64             `json:"expected_revision,omitempty"`
+		SourceRevisions        map[string]uint64  `json:"source_revisions,omitempty"`
+		MaxAffectedRows        uint64             `json:"max_affected_rows,omitempty"`
+		Actor                  string             `json:"actor,omitempty"`
+		Source                 string             `json:"source,omitempty"`
+		Reason                 string             `json:"reason,omitempty"`
+		SourceKind             history.SourceKind `json:"source_kind,omitempty"`
+		SourceReceiptID        string             `json:"source_receipt_id,omitempty"`
+		SourceLocator          string             `json:"source_locator,omitempty"`
+		SourceContentHash      string             `json:"source_content_hash,omitempty"`
+		RouteLeafIDs           *[]string          `json:"route_leaf_ids,omitempty"`
+		TargetRouteLeafIDs     *[][]string        `json:"target_route_leaf_ids,omitempty"`
+		RelationTargetOrdinals map[string]int     `json:"relation_target_ordinals,omitempty"`
+		RouteUpdates           []row.RouteUpdate  `json:"route_updates,omitempty"`
 	}
 	wire := wireOptions{
 		ExpectedSchemaVersion:  options.ExpectedSchemaVersion,
@@ -114,6 +122,10 @@ func (options MutationOptions) MarshalJSON() ([]byte, error) {
 		Actor:                  options.Actor,
 		Source:                 options.Source,
 		Reason:                 options.Reason,
+		SourceKind:             options.SourceKind,
+		SourceReceiptID:        options.SourceReceiptID,
+		SourceLocator:          options.SourceLocator,
+		SourceContentHash:      options.SourceContentHash,
 		RelationTargetOrdinals: options.RelationTargetOrdinals,
 		RouteUpdates:           options.RouteUpdates,
 	}
