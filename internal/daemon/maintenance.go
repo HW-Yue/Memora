@@ -82,7 +82,7 @@ func handlerHealthSource(handler *databaseHandler) (*daemonHealthSource, bool) {
 	dictionary, ok := handler.dictionary.(interface {
 		ShowDatabases(context.Context) ([]catalog.Database, error)
 	})
-	return &daemonHealthSource{catalog: dictionary, rows: handler.rows}, ok
+	return &daemonHealthSource{catalog: dictionary, rows: handler.legacyRows}, ok && handler.legacyRows != nil
 }
 
 func (source *daemonHealthSource) ShowDatabases(ctx context.Context) ([]catalog.Database, error) {

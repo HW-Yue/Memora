@@ -91,6 +91,16 @@ func TestRunReleasesLeaseAfterCancellation(t *testing.T) {
 	if !state.Running {
 		t.Fatalf("ready state = %#v, want running", state)
 	}
+	envelope, err := Execute(context.Background(), dataDir, "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", nil)
+	if err != nil || !envelope.OK {
+		t.Fatalf("native daemon CREATE DATABASE = %#v, %v", envelope, err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "databases", "database.memora")); err != nil {
+		t.Fatalf("native authority was not created: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "databases", "prototype.sqlite")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new daemon created legacy authority: %v", err)
+	}
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("Run() error = %v", err)

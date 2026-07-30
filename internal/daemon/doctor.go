@@ -42,7 +42,7 @@ func (handler *databaseHandler) doctor(ctx context.Context) (DoctorReport, error
 	if err != nil {
 		return DoctorReport{}, err
 	}
-	encoded, err := snapshot.New(handler.store).Export(ctx)
+	encoded, err := handler.export(ctx)
 	if err != nil {
 		return DoctorReport{}, err
 	}

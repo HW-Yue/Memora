@@ -10,9 +10,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/ipc"
-	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativemigration"
+	"github.com/HW-Yue/Memora/internal/nativerow"
+	"github.com/HW-Yue/Memora/internal/nativesnapshot"
 	"github.com/HW-Yue/Memora/internal/security"
 	sqlitestore "github.com/HW-Yue/Memora/internal/store/sqlite"
 	"golang.org/x/sys/unix"
@@ -137,23 +139,27 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		_ = listener.Close()
 		_ = os.Remove(socketPath)
 	}()
-	databaseDirectory := filepath.Join(dataDir, "databases")
-	if err := os.MkdirAll(databaseDirectory, 0o700); err != nil {
-		return fmt.Errorf("create prototype database directory: %w", err)
-	}
-	databaseStore, err := sqlitestore.Open(filepath.Join(databaseDirectory, "prototype.sqlite"))
+	migration, err := nativemigration.OpenDefault(ctx, dataDir)
 	if err != nil {
+		return err
+	}
+	nativeFile := migration.File
+	auxiliaryStore, err := sqlitestore.Open(filepath.Join(dataDir, "system", "auxiliary.sqlite"))
+	if err != nil {
+		_ = nativeFile.Close()
 		return err
 	}
 	securityStore, err := sqlitestore.Open(filepath.Join(dataDir, "system", "security.sqlite"))
 	if err != nil {
-		_ = databaseStore.Close()
+		_ = nativeFile.Close()
+		_ = auxiliaryStore.Close()
 		return err
 	}
-	dictionary := catalog.New(databaseStore, catalog.Options{})
-	rows := row.New(databaseStore, dictionary, row.Options{})
-	handler := newDatabaseHandlerWithSecurity(
-		ctx, dictionary, rows, databaseStore, security.New(securityStore, security.Options{}),
+	dictionary := nativecatalog.NewService(nativecatalog.New(nativeFile), nativecatalog.ServiceOptions{})
+	rows := nativerow.NewService(nativerow.New(nativeFile), dictionary, nativerow.ServiceOptions{})
+	handler := newNativeDatabaseHandler(
+		ctx, dictionary, rows, auxiliaryStore, security.New(securityStore, security.Options{}),
+		func(context.Context) ([]byte, error) { return nativesnapshot.NewNative(nativeFile).Export() },
 	)
 	server := ipc.NewServer(handler)
 	if ready != nil {
@@ -162,15 +168,16 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		case <-ctx.Done():
 			_ = server.Close()
 			_ = handler.Close()
-			return errors.Join(databaseStore.Close(), securityStore.Close())
+			return errors.Join(nativeFile.Close(), auxiliaryStore.Close(), securityStore.Close())
 		}
 	}
 	serveErr := server.Serve(ctx, listener)
 	serverErr := server.Close()
 	handlerErr := handler.Close()
-	storeErr := databaseStore.Close()
+	storeErr := nativeFile.Close()
+	auxiliaryStoreErr := auxiliaryStore.Close()
 	securityStoreErr := securityStore.Close()
-	return errors.Join(serveErr, serverErr, handlerErr, storeErr, securityStoreErr)
+	return errors.Join(serveErr, serverErr, handlerErr, storeErr, auxiliaryStoreErr, securityStoreErr)
 }
 
 func (lease *Lease) Close() error {

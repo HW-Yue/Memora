@@ -22,6 +22,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
+	"github.com/HW-Yue/Memora/internal/snapshot"
 	"github.com/HW-Yue/Memora/internal/store"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
 )
@@ -35,8 +36,10 @@ type databaseHandler struct {
 	mu         sync.Mutex
 	context    context.Context
 	dictionary executor.Catalog
-	rows       *row.Service
+	rows       executor.Rows
+	legacyRows *row.Service
 	store      store.Store
+	export     func(context.Context) ([]byte, error)
 	security   *security.Service
 	sessions   map[string]*executor.BatchSession
 	closed     bool
@@ -61,9 +64,24 @@ func newDatabaseHandlerWithSecurity(
 	securityService *security.Service,
 ) *databaseHandler {
 	return &databaseHandler{
-		context: ctx, dictionary: dictionary, rows: rows, store: database,
+		context: ctx, dictionary: dictionary, rows: rows, legacyRows: rows, store: database,
+		export: func(callContext context.Context) ([]byte, error) {
+			return snapshot.New(database).Export(callContext)
+		},
 		security: securityService, sessions: make(map[string]*executor.BatchSession),
 	}
+}
+
+func newNativeDatabaseHandler(
+	ctx context.Context,
+	dictionary executor.Catalog,
+	rows executor.Rows,
+	auxiliary store.Store,
+	securityService *security.Service,
+	export func(context.Context) ([]byte, error),
+) *databaseHandler {
+	return &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, store: auxiliary,
+		export: export, security: securityService, sessions: make(map[string]*executor.BatchSession)}
 }
 
 func Execute(
@@ -339,6 +357,9 @@ func (handler *databaseHandler) handleFeedback(
 	session ipc.Session,
 	request ipc.Request,
 ) (json.RawMessage, error) {
+	if handler.legacyRows == nil {
+		return nil, &feedback.Error{Code: result.CodeUnsupported, Message: "feedback state has not migrated to the native authority"}
+	}
 	batch, ok := handler.session(session.ID)
 	if !ok {
 		return nil, &feedback.Error{Code: result.CodeInvalidRequest, Message: "MSQL daemon session is closed"}
@@ -346,7 +367,7 @@ func (handler *databaseHandler) handleFeedback(
 	tool := skillwrite.ToolFunc(func(callContext context.Context, call skillwrite.Call) (result.Envelope, error) {
 		return batch.Execute(callContext, call.Request), nil
 	})
-	processor := feedback.New(handler.store, handler.rows, tool)
+	processor := feedback.New(handler.store, handler.legacyRows, tool)
 	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
@@ -508,9 +529,14 @@ func (handler *databaseHandler) session(id string) (*executor.BatchSession, bool
 		return session, true
 	}
 	session := executor.NewBatchSessionWithManagement(
-		handler.context, handler.dictionary, handler.rows,
-		dbpackage.New(handler.store), wikiexport.New(handler.store),
+		handler.context, handler.dictionary, handler.rows, nil, nil,
 	)
+	if handler.legacyRows != nil {
+		session = executor.NewBatchSessionWithManagement(
+			handler.context, handler.dictionary, handler.rows,
+			dbpackage.New(handler.store), wikiexport.New(handler.store),
+		)
+	}
 	handler.sessions[id] = session
 	return session, true
 }

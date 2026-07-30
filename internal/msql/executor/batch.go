@@ -33,20 +33,20 @@ type BatchSession struct {
 	context    context.Context
 	cancel     context.CancelFunc
 	autocommit *Engine
-	rows       *row.Service
+	rows       Rows
 	active     *row.Transaction
 	aborted    bool
 	closed     bool
 }
 
-func NewBatchSession(ctx context.Context, dictionary Catalog, rows *row.Service) *BatchSession {
+func NewBatchSession(ctx context.Context, dictionary Catalog, rows Rows) *BatchSession {
 	return NewBatchSessionWithPackages(ctx, dictionary, rows, nil)
 }
 
 func NewBatchSessionWithPackages(
 	ctx context.Context,
 	dictionary Catalog,
-	rows *row.Service,
+	rows Rows,
 	packages PackageManager,
 ) *BatchSession {
 	return NewBatchSessionWithManagement(ctx, dictionary, rows, packages, nil)
@@ -55,7 +55,7 @@ func NewBatchSessionWithPackages(
 func NewBatchSessionWithManagement(
 	ctx context.Context,
 	dictionary Catalog,
-	rows *row.Service,
+	rows Rows,
 	packages PackageManager,
 	wiki WikiExporter,
 ) *BatchSession {
@@ -142,7 +142,17 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 				))
 				continue
 			}
-			transaction, beginErr := session.rows.BeginTransaction(session.context)
+			transactional, ok := session.rows.(interface {
+				BeginTransaction(context.Context) (*row.Transaction, error)
+			})
+			if !ok {
+				results = append(results, failedStatement(
+					index, statement.Kind, source, result.CodeUnsupported,
+					"explicit transactions are not supported by this backend",
+				))
+				continue
+			}
+			transaction, beginErr := transactional.BeginTransaction(session.context)
 			if beginErr != nil {
 				results = append(results, statementFailure(index, statement.Kind, source, beginErr))
 				continue

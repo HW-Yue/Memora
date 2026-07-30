@@ -2,7 +2,7 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F67 已完成；F68–F72 继续按顺序推进。
+实现进度：F62–F68 已完成；F69–F72 继续按顺序推进。
 
 ## F62 Transaction Frame
 
@@ -74,6 +74,13 @@ commit sequence 语义。旧 Database Router 不作为 parity 目标：它已被
 - 新 Instance 默认创建 `.memora`；旧实例输出只读计划、备份、迁移、回读后切换；
 - 测试：中断、重复执行、空间不足、校验失败和原文件保留；
 - 完成：daemon 默认运行于 native，但仍可回滚到迁移前备份。
+
+实现结果：新 daemon 的主 authority 固定为 `databases/database.memora`，MSQL
+Catalog/Row 直接使用 typed native repositories。检测到旧 `prototype.sqlite` 时，
+先创建只读保留的 byte-for-byte backup，再经 logical snapshot 导入临时 native、
+回读比较 canonical hash，最后原子 rename；取消和校验失败不发布，重复执行直接
+打开已验证 native。F68 仍让 security/assimilation 的非 authority 辅助状态暂存在
+system SQLite；它们在 F69 移出 SQLite，不能被误认为主数据库回退。
 
 ## F69 删除 SQLite
 

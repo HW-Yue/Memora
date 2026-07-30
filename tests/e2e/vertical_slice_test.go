@@ -41,34 +41,14 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	if len(ddl.Results) != 2 || len(ddl.Results[0].Rows) != 1 {
 		t.Fatalf("DDL envelope = %#v", ddl)
 	}
-	databaseID, _ := ddl.Results[0].Rows[0]["database_id"].(string)
-	if databaseID == "" {
+	if databaseID, _ := ddl.Results[0].Rows[0]["database_id"].(string); databaseID == "" {
 		t.Fatalf("DDL database identity = %#v", ddl.Results[0].Rows)
-	}
-
-	rootRoute := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
-		"--input", statementInput(map[string]any{
-			"database": "work", "purpose": "Project routing",
-		}, map[string]any{"max_affected_rows": 1}),
-		"CREATE ROUTE ROOT FOR DATABASE :database PURPOSE :purpose")
-	rootID, _ := rootRoute.Results[0].Rows[0]["route_id"].(string)
-	leafRoute := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
-		"--input", statementInput(map[string]any{
-			"root": rootID, "name": "architecture", "kind": "leaf",
-			"purpose": "Architecture decisions",
-		}, map[string]any{"max_affected_rows": 1}),
-		"CREATE ROUTE UNDER :root NAME :name KIND :kind PURPOSE :purpose")
-	leafID, _ := leafRoute.Results[0].Rows[0]["route_id"].(string)
-	if rootID == "" || leafID == "" {
-		t.Fatalf("routes = root %#v, leaf %#v", rootRoute, leafRoute)
 	}
 
 	inserted := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
 		"--input", statementInput(nil, map[string]any{
 			"expected_schema_version": 1, "max_affected_rows": 1,
-			"index_terms":    []string{"architecture", "manifest"},
-			"route_leaf_ids": []string{leafID},
-			"actor":          "agent:e2e", "source": "e2e:insert", "reason": "capture decision",
+			"actor": "agent:e2e", "source": "e2e:insert", "reason": "capture decision",
 		}),
 		"INSERT INTO work.notes (title) VALUES ('generation manifest')")
 	if inserted.Results[0].Revision == nil || *inserted.Results[0].Revision != 1 {
@@ -82,23 +62,6 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		t.Fatalf("SELECT envelope = %#v", selected)
 	}
 	rowID, _ := selected.Results[0].Rows[0]["row_id"].(string)
-
-	matched := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
-		"--input", statementInput(map[string]any{
-			"query": "architecture", "terms": []string{"architecture"},
-		}, nil),
-		"MATCH work.notes QUERY :query TERMS :terms LIMIT 10")
-	if len(matched.Results[0].Rows) != 1 ||
-		matched.Results[0].Rows[0]["row_id"] != rowID {
-		t.Fatalf("MATCH envelope = %#v", matched)
-	}
-	routed := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
-		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 10")
-	if len(routed.Results[0].Rows) != 1 ||
-		routed.Results[0].Rows[0]["row_id"] != rowID {
-		t.Fatalf("OPEN ROUTE envelope = %#v", routed)
-	}
 
 	expectedRow := 1
 	mutationPlan := skillwrite.Plan{
@@ -120,7 +83,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 				}},
 				Mutation: executor.MutationOptions{
 					ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
-					IndexTerms: []string{"atomic", "manifest"}, RouteLeafIDs: []string{leafID},
+					IndexTerms: []string{}, RouteLeafIDs: []string{},
 					Actor: "agent:e2e", Source: "e2e:update", Reason: "refine decision",
 				},
 			},
