@@ -4,6 +4,7 @@ Usage:
   memora <command> [options]
 
 Commands:
+  assimilate  Track temporary source inventory and coverage
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon

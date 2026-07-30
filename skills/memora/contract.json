@@ -5,7 +5,10 @@
   "result_version": "memora.result/v1",
   "conflict_view_version": "memora.semantic-conflict/v1",
   "conflict_resolution_version": "memora.conflict-resolution/v1",
+  "assimilation_event_version": "memora.assimilation-event/v1",
+  "assimilation_receipt_version": "memora.assimilation-receipt/v1",
   "allowed_commands": [
+    "assimilate",
     "doctor",
     "query",
     "exec",
@@ -34,6 +37,10 @@
     "context_characters": 12000
   },
   "examples": [
+    {
+      "name": "assimilation-status",
+      "command": "memora assimilate --event '{\"version\":\"memora.assimilation-event/v1\",\"event_id\":\"book-status-2\",\"task_id\":\"book-task\",\"workspace\":\"project-memora\",\"kind\":\"status\"}'"
+    },
     {
       "name": "doctor",
       "command": "memora doctor"

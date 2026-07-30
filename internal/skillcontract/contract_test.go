@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -35,6 +36,12 @@ func TestCanonicalSkillContract(t *testing.T) {
 	}
 	if got, want := bundle.Contract.ConflictResolutionVersion, skillconflict.ResolutionVersion; got != want {
 		t.Fatalf("conflict resolution version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.AssimilationEventVersion, assimilation.EventVersion; got != want {
+		t.Fatalf("assimilation event version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.AssimilationReceiptVersion, assimilation.ReceiptVersion; got != want {
+		t.Fatalf("assimilation receipt version = %q, want %q", got, want)
 	}
 
 	for _, example := range bundle.Contract.Examples {
@@ -76,7 +83,7 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 	if got := bundle.Contract.ConflictPolicy; got != skillcontract.ConflictAskUserBeforeMutation {
 		t.Fatalf("conflict policy = %q, want %q", got, skillcontract.ConflictAskUserBeforeMutation)
 	}
-	foundCommands := map[string]bool{"schema": false, "reflect": false}
+	foundCommands := map[string]bool{"schema": false, "reflect": false, "assimilate": false}
 	for _, command := range bundle.Contract.AllowedCommands {
 		if _, tracked := foundCommands[command]; tracked {
 			foundCommands[command] = true

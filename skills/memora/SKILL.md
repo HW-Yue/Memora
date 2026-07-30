@@ -9,8 +9,8 @@ Use this single source for stable host behavior. It targets `memora.msql.ast/v1`
 and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
-Only use the `memora doctor`, `memora query`, `memora exec`, `memora mutate`,
-`memora schema`, and `memora reflect` interfaces.
+Only use the `memora assimilate`, `memora doctor`, `memora query`, `memora exec`,
+`memora mutate`, `memora schema`, and `memora reflect` interfaces.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -97,11 +97,29 @@ memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decisi
 
 ## Assimilate sources
 
-Treat documents and media as temporary host input. Inventory their structure,
-track coverage, read bounded windows, compare with existing rows, independently
-review proposed changes, and commit complete semantic modules plus compact source
-anchors. Do not persist original files, mechanical chunks, or unverified claims.
-If coverage or review is incomplete, report the assimilation as incomplete.
+Treat documents and media as temporary host input. Start one
+`memora.assimilation-event/v1` inventory with a source ID, bounded title/locator,
+content SHA-256, and parent-linked source, directory, chapter, page, table, and
+attachment units. Give each readable unit a normalized half-open extent; mark a
+unit optional only when omission is intentional. Do not place source text in a
+label, locator, anchor, event, or database Row.
+
+Read bounded windows and send only unit ID, `[start,end)`, and window SHA-256.
+Memora merges overlaps and treats an identical window as a no-op. Save an active
+unit, offset, bounded host cursor, and last window event before interruption.
+Use a `status` event after restart or context loss to recover the checkpoint and
+unread ranges; do not depend on old chat history.
+
+Call `finish` only after inventory traversal. An `incomplete` receipt is a hard
+failure: continue from its unread ranges and never report successful absorption.
+`coverage_complete` means only that F36 review and semantic submission may
+begin; it does not mean knowledge was written. After a successful later commit
+or explicit cancellation, call `clear` to remove temporary Memora state. Never
+delete or modify the user's source file.
+
+```sh
+memora assimilate --event '{"version":"memora.assimilation-event/v1","event_id":"book-status-2","task_id":"book-task","workspace":"project-memora","kind":"status"}'
+```
 
 ## Evolve schemas
 

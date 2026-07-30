@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -56,18 +57,20 @@ type Example struct {
 }
 
 type Contract struct {
-	Version                   string    `json:"version"`
-	Source                    string    `json:"source"`
-	MSQLASTVersion            string    `json:"msql_ast_version"`
-	ResultVersion             string    `json:"result_version"`
-	ConflictViewVersion       string    `json:"conflict_view_version"`
-	ConflictResolutionVersion string    `json:"conflict_resolution_version"`
-	AllowedCommands           []string  `json:"allowed_commands"`
-	PhysicalAccess            string    `json:"physical_access"`
-	ConflictPolicy            string    `json:"conflict_policy"`
-	Workflows                 []string  `json:"workflows"`
-	Budgets                   Budgets   `json:"budgets"`
-	Examples                  []Example `json:"examples"`
+	Version                    string    `json:"version"`
+	Source                     string    `json:"source"`
+	MSQLASTVersion             string    `json:"msql_ast_version"`
+	ResultVersion              string    `json:"result_version"`
+	ConflictViewVersion        string    `json:"conflict_view_version"`
+	ConflictResolutionVersion  string    `json:"conflict_resolution_version"`
+	AssimilationEventVersion   string    `json:"assimilation_event_version"`
+	AssimilationReceiptVersion string    `json:"assimilation_receipt_version"`
+	AllowedCommands            []string  `json:"allowed_commands"`
+	PhysicalAccess             string    `json:"physical_access"`
+	ConflictPolicy             string    `json:"conflict_policy"`
+	Workflows                  []string  `json:"workflows"`
+	Budgets                    Budgets   `json:"budgets"`
+	Examples                   []Example `json:"examples"`
 }
 
 type Bundle struct {
@@ -128,6 +131,8 @@ func (bundle Bundle) Validate() error {
 	requireEqual("result_version", contract.ResultVersion, result.Version)
 	requireEqual("conflict_view_version", contract.ConflictViewVersion, skillconflict.ViewVersion)
 	requireEqual("conflict_resolution_version", contract.ConflictResolutionVersion, skillconflict.ResolutionVersion)
+	requireEqual("assimilation_event_version", contract.AssimilationEventVersion, assimilation.EventVersion)
+	requireEqual("assimilation_receipt_version", contract.AssimilationReceiptVersion, assimilation.ReceiptVersion)
 	requireEqual("physical_access", contract.PhysicalAccess, PhysicalAccessForbidden)
 	requireEqual("conflict_policy", contract.ConflictPolicy, ConflictAskUserBeforeMutation)
 
@@ -153,7 +158,7 @@ func (bundle Bundle) RenderCommandExamples() string {
 
 func validateCommands(commands []string) []string {
 	want := map[string]bool{
-		"doctor": false, "query": false, "exec": false,
+		"assimilate": false, "doctor": false, "query": false, "exec": false,
 		"mutate": false, "schema": false, "reflect": false,
 	}
 	var violations []string

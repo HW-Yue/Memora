@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/config"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/daemon"
@@ -34,6 +35,7 @@ Usage:
   memora <command> [options]
 
 Commands:
+  assimilate  Track temporary source inventory and coverage
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
@@ -79,7 +81,8 @@ type Dependencies struct {
 		string,
 		[]executor.StatementInput,
 	) (result.Envelope, error)
-	Reflect func(context.Context, string, conversation.Event) (conversation.Receipt, error)
+	Reflect    func(context.Context, string, conversation.Event) (conversation.Receipt, error)
+	Assimilate func(context.Context, string, assimilation.Event) (assimilation.Receipt, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -95,6 +98,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return writeText(stdout, stderr, helpText)
 	case "daemon":
 		return runDaemon(args[1:], stdout, stderr, dependencies)
+	case "assimilate":
+		return runAssimilate(args[1:], stdout, stderr, dependencies)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, dependencies)
 	case "exec", "query":
@@ -117,6 +122,64 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runAssimilate(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var eventJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--event":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--event requires a JSON object")
+			}
+			if eventJSON != "" {
+				return usageError(stderr, "--event may only be specified once")
+			}
+			eventJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown assimilate option: %q", args[index]))
+		}
+	}
+	if eventJSON == "" {
+		return usageError(stderr, "assimilate requires --event JSON")
+	}
+	var event assimilation.Event
+	decoder := json.NewDecoder(bytes.NewBufferString(eventJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--event must be one strict Assimilation Event JSON object")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	process := dependencies.Assimilate
+	if process == nil {
+		process = daemon.Assimilate
+	}
+	receipt, err := process(context.Background(), dataDir, event)
+	if err != nil {
+		return commandError(stderr, "record assimilation coverage", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if receipt.Status == assimilation.StatusIncomplete {
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func runReflect(

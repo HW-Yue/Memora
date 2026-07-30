@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
@@ -79,6 +80,21 @@ func Reflect(ctx context.Context, dataDir string, event conversation.Event) (con
 	return receipt, err
 }
 
+func Assimilate(ctx context.Context, dataDir string, event assimilation.Event) (assimilation.Receipt, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return assimilation.Receipt{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return assimilation.Receipt{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var receipt assimilation.Receipt
+	err = client.Call(ctx, "assimilation.record", event, &receipt)
+	return receipt, err
+}
+
 func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session, request ipc.Request) (json.RawMessage, error) {
 	if request.Method == "doctor" {
 		report, err := handler.doctor(ctx)
@@ -86,6 +102,9 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 			return nil, err
 		}
 		return json.Marshal(report)
+	}
+	if request.Method == "assimilation.record" {
+		return handler.handleAssimilation(ctx, request)
 	}
 	if request.Method == "conversation.reflect" {
 		return handler.handleReflect(ctx, session, request)
@@ -111,6 +130,23 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 		RequestID: request.RequestID, Source: payload.Source, Statements: payload.Statements,
 	})
 	return json.Marshal(envelope)
+}
+
+func (handler *databaseHandler) handleAssimilation(
+	ctx context.Context,
+	request ipc.Request,
+) (json.RawMessage, error) {
+	var event assimilation.Event
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, &assimilation.Error{Code: result.CodeInvalidRequest, Message: "assimilation event payload is invalid"}
+	}
+	receipt, err := assimilation.New(handler.store).Process(ctx, event)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(receipt)
 }
 
 func (handler *databaseHandler) handleReflect(

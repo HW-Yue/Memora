@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
@@ -114,6 +115,18 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: --plan must be one strict Schema Plan JSON object\n",
 		},
 		{
+			name:       "assimilate requires event",
+			args:       []string{"assimilate"},
+			wantCode:   2,
+			wantStderr: "memora: assimilate requires --event JSON\n",
+		},
+		{
+			name:       "assimilate rejects raw content field",
+			args:       []string{"assimilate", "--event", `{"content":"raw source text"}`},
+			wantCode:   2,
+			wantStderr: "memora: --event must be one strict Assimilation Event JSON object\n",
+		},
+		{
 			name:       "reflect requires event",
 			args:       []string{"reflect"},
 			wantCode:   2,
@@ -145,6 +158,49 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunAssimilateFailsWhenRequiredRangesRemainUnread(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	event := assimilation.Event{
+		Version: assimilation.EventVersion, EventID: "finish-cli", TaskID: "book-task",
+		Workspace: "project", Kind: assimilation.KindFinish, ExpectedRevision: 3,
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		Assimilate: func(_ context.Context, gotDataDir string, got assimilation.Event) (assimilation.Receipt, error) {
+			called = true
+			if gotDataDir != dataDir || got.EventID != event.EventID {
+				t.Fatalf("assimilate = %q, %#v", gotDataDir, got)
+			}
+			return assimilation.Receipt{
+				Version: assimilation.ReceiptVersion, EventID: got.EventID, TaskID: got.TaskID,
+				Status: assimilation.StatusIncomplete, Revision: 3,
+				UnreadCount: 1, Unread: []assimilation.UnreadRange{{UnitID: "chapter", Start: 2, End: 4}},
+			}, nil
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := RunWithDependencies(
+		[]string{"assimilate", "--data-dir", dataDir, "--event", string(encoded)},
+		&stdout, &stderr, BuildInfo{}, dependencies,
+	)
+	if code != ExitFailure || !called || stderr.Len() != 0 {
+		t.Fatalf("assimilate code=%d called=%t stderr=%q", code, called, &stderr)
+	}
+	var receipt assimilation.Receipt
+	if err := json.Unmarshal(stdout.Bytes(), &receipt); err != nil || receipt.Status != assimilation.StatusIncomplete {
+		t.Fatalf("receipt = %#v, %v", receipt, err)
 	}
 }
 
