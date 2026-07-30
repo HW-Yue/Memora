@@ -2,6 +2,8 @@
 
 状态：首轮候选指标。目标值必须由真实 benchmark 校准。
 
+F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1](../development/ai-native-benchmark-v1.md)。
+
 ## 原则
 
 效果好不能只看“搜到了没有”。Memora 的完整质量链是：
@@ -87,6 +89,7 @@ useful / irrelevant / stale / wrong / incomplete
 ## 发布门槛
 
 只有当端到端 Agent 体验优于“Markdown + 搜索”基线时，才进入完整自研存储内核阶段。只有当无向量方案在核心场景达到门槛时，才把“无 Embedding 依赖”升级为正式产品承诺。
+具体阈值不在 F42 伪造；F51 必须用固定 Adapter 和同一评分器产生真实可审计结果。
 
 ## 关联
 

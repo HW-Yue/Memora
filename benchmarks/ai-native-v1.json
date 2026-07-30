@@ -1,0 +1,106 @@
+{
+  "version": "memora.ai-benchmark/v1",
+  "id": "ai-native-v1",
+  "scenarios": [
+    {
+      "id": "multi-project-50",
+      "kind": "multi_project",
+      "hosts": ["codex", "claude-code"],
+      "turns": [
+        {"id":"mp-01","project":"memora","intent":"record architecture decision","expected":"write one scoped decision"},
+        {"id":"mp-02","project":"garden","intent":"ask watering schedule","expected":"no cross-project rows"},
+        {"id":"mp-03","project":"memora","intent":"query Router contract","expected":"return selected evidence"},
+        {"id":"mp-04","project":"finance","intent":"mention transient stock price","expected":"do not persist transient value"},
+        {"id":"mp-05","project":"garden","intent":"record perennial preference","expected":"write one preference"},
+        {"id":"mp-06","project":"memora","intent":"clarify MSQL boundary","expected":"revise existing decision"},
+        {"id":"mp-07","project":"books","intent":"discuss unread title","expected":"do not claim assimilation"},
+        {"id":"mp-08","project":"garden","intent":"query soil note","expected":"select garden only"},
+        {"id":"mp-09","project":"memora","intent":"record test rule","expected":"write one scoped rule"},
+        {"id":"mp-10","project":"finance","intent":"ask absent budget","expected":"report no matching row"},
+        {"id":"mp-11","project":"books","intent":"record reading goal","expected":"write one goal"},
+        {"id":"mp-12","project":"memora","intent":"query index weights","expected":"cite row revision"},
+        {"id":"mp-13","project":"garden","intent":"correct plant name","expected":"revision guarded update"},
+        {"id":"mp-14","project":"finance","intent":"greeting","expected":"ignore"},
+        {"id":"mp-15","project":"memora","intent":"switch route","expected":"drop stale route frame"},
+        {"id":"mp-16","project":"books","intent":"query reading goal","expected":"select books only"},
+        {"id":"mp-17","project":"garden","intent":"record stable location","expected":"write one location"},
+        {"id":"mp-18","project":"memora","intent":"mention build output","expected":"ignore transient output"},
+        {"id":"mp-19","project":"finance","intent":"record durable risk tolerance","expected":"write one preference"},
+        {"id":"mp-20","project":"books","intent":"revise reading goal","expected":"revise existing goal"},
+        {"id":"mp-21","project":"memora","intent":"ask history behavior","expected":"select verified decision"},
+        {"id":"mp-22","project":"garden","intent":"ask unrelated architecture","expected":"report no garden match"},
+        {"id":"mp-23","project":"finance","intent":"query risk tolerance","expected":"select finance only"},
+        {"id":"mp-24","project":"books","intent":"mention page quote","expected":"do not persist raw quote"},
+        {"id":"mp-25","project":"memora","intent":"record privacy boundary","expected":"write one policy"},
+        {"id":"mp-26","project":"garden","intent":"revise watering schedule","expected":"revision guarded update"},
+        {"id":"mp-27","project":"finance","intent":"ask current price","expected":"report missing current data"},
+        {"id":"mp-28","project":"books","intent":"query author relation","expected":"follow structured relation"},
+        {"id":"mp-29","project":"memora","intent":"query privacy boundary","expected":"cite exact row"},
+        {"id":"mp-30","project":"garden","intent":"greeting","expected":"ignore"},
+        {"id":"mp-31","project":"finance","intent":"record savings policy","expected":"write one policy"},
+        {"id":"mp-32","project":"books","intent":"correct author","expected":"revision guarded update"},
+        {"id":"mp-33","project":"memora","intent":"record export decision","expected":"write one decision"},
+        {"id":"mp-34","project":"garden","intent":"query stable location","expected":"select garden only"},
+        {"id":"mp-35","project":"finance","intent":"query savings policy","expected":"select finance only"},
+        {"id":"mp-36","project":"books","intent":"ask unread chapter","expected":"report incomplete coverage"},
+        {"id":"mp-37","project":"memora","intent":"revise export decision","expected":"revise existing decision"},
+        {"id":"mp-38","project":"garden","intent":"record seasonal observation","expected":"ignore transient observation"},
+        {"id":"mp-39","project":"finance","intent":"conflicting risk statement","expected":"escalate conflict"},
+        {"id":"mp-40","project":"books","intent":"record durable theme","expected":"write semantic module"},
+        {"id":"mp-41","project":"memora","intent":"query export decision","expected":"select current revision"},
+        {"id":"mp-42","project":"garden","intent":"query plant relation","expected":"return locator then select"},
+        {"id":"mp-43","project":"finance","intent":"switch project","expected":"drop prior route frame"},
+        {"id":"mp-44","project":"books","intent":"query durable theme","expected":"cite source anchor"},
+        {"id":"mp-45","project":"memora","intent":"record release boundary","expected":"write one decision"},
+        {"id":"mp-46","project":"garden","intent":"correct location","expected":"revision guarded update"},
+        {"id":"mp-47","project":"finance","intent":"retain conflict choice","expected":"ignore mutation"},
+        {"id":"mp-48","project":"books","intent":"query author and theme","expected":"bounded multi-row select"},
+        {"id":"mp-49","project":"memora","intent":"checkpoint","expected":"persist compact route frame"},
+        {"id":"mp-50","project":"garden","intent":"take over without chat","expected":"rediscover and answer"}
+      ]
+    },
+    {
+      "id": "repeated-revisions",
+      "kind": "revision",
+      "hosts": ["codex", "claude-code"],
+      "turns": [
+        {"id":"rev-1","intent":"insert initial decision","expected":"revision 1"},
+        {"id":"rev-2","intent":"revise exact row","expected":"revision 2"},
+        {"id":"rev-3","intent":"submit stale update","expected":"revision conflict"},
+        {"id":"rev-4","intent":"confirm logical undo","expected":"COMPENSATE revision 3"}
+      ]
+    },
+    {
+      "id": "book-assimilation",
+      "kind": "assimilation",
+      "hosts": ["codex", "claude-code"],
+      "turns": [
+        {"id":"book-1","intent":"inventory source units","expected":"bounded metadata only"},
+        {"id":"book-2","intent":"record coverage windows","expected":"complete required ranges"},
+        {"id":"book-3","intent":"draft semantic modules","expected":"no raw source content"},
+        {"id":"book-4","intent":"independent review","expected":"verify anchors and key facts"},
+        {"id":"book-5","intent":"commit source receipt","expected":"committed and traceable"}
+      ]
+    },
+    {
+      "id": "cold-start-takeover",
+      "kind": "cold_start",
+      "hosts": ["codex", "claude-code"],
+      "turns": [
+        {"id":"cold-1","intent":"start without prior chat","expected":"discover databases"},
+        {"id":"cold-2","intent":"find current project decision","expected":"route match then select"},
+        {"id":"cold-3","intent":"continue revision","expected":"guard current revision"}
+      ]
+    },
+    {
+      "id": "host-switch",
+      "kind": "host_switch",
+      "hosts": ["codex", "claude-code"],
+      "turns": [
+        {"id":"host-1","intent":"Codex writes decision","expected":"shared logical row"},
+        {"id":"host-2","intent":"Claude Code queries decision","expected":"same row and revision"},
+        {"id":"host-3","intent":"Claude Code revises and Codex reads","expected":"same MSQL result"}
+      ]
+    }
+  ]
+}

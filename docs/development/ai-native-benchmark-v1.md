@@ -1,0 +1,46 @@
+# AI-native Benchmark v1
+
+状态：F42 场景与报告格式已冻结；阈值和真实 baseline 结果留给 F51。
+
+## 数据集
+
+`benchmarks/ai-native-v1.json` 使用 `memora.ai-benchmark/v1`，固定五类旅程：
+
+- 多项目 50 轮交替，覆盖稳定写入、瞬时忽略、跨库隔离和 checkpoint；
+- 连续修订、陈旧写冲突和 COMPENSATE undo；
+- 书籍 inventory、coverage、语义模块、独立复核和 Source Receipt；
+- 新 Agent 不读旧聊天的冷启动接管；
+- Codex 写/Claude Code 读写及反向读取的宿主切换。
+
+每个 turn 只保存测试意图和可观察预期，不保存真实用户资料或模型输出。Suite
+严格解码、ID 去重并绑定 digest，增删场景会改变报告身份。
+
+## 八类质量维度
+
+Adapter 必须返回原始成功数/总数，Runner 统一计算：
+
+1. 记忆选择：write precision/recall；
+2. 资料吸收：coverage、claim accuracy、anchor traceability；
+3. Schema：duplicate rate；
+4. 检索：Recall@5、MRR、nDCG；
+5. 上下文：平均字符、工具调用和无关 Row 率；
+6. 修改：unintended-row 与 revision-conflict capture；
+7. 接管：cold-start success 和跨宿主等价；
+8. 引擎：recovery、index consistency 和 deterministic export。
+
+成功数不能超过对应总数，排名 milli-score 不能超过查询数；违反时用稳定
+validation code 拒绝，不能把未知分母包装成满分。
+
+## Adapter 与报告
+
+统一 Adapter 名称为 no-memory、markdown-search、sqlite-fts、vector 和 memora。
+F42 提供可注入 Scripted Adapter，后续真实 baseline 只能替换执行层，不能自定义
+评分公式。`memora.ai-benchmark-report/v1` 包含 suite/adapter、逐场景原始计数、
+派生指标、宿主等价性与去除自身 hash 后计算的确定性 SHA-256。
+
+## 关联
+
+- [AI-native 质量模型与验收](../product/quality-model.md)
+- [Scripted Host Harness v1](./scripted-host-harness-v1.md)
+- [Codex Adapter v1](./codex-adapter-v1.md)
+- [Claude Code Adapter v1](./claude-code-adapter-v1.md)
