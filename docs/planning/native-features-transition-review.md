@@ -2,7 +2,7 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F65 已完成；F66–F72 继续按顺序推进。
+实现进度：F62–F66 已完成；F67–F72 继续按顺序推进。
 
 ## F62 Transaction Frame
 
@@ -47,6 +47,12 @@ revision 与 membership revision。引擎只校验形状和引用，不推断怎
 - 测试：未知字段、空目标、重复 ID、悬空引用、失败无部分导入；
 - 不做：读取真实用户默认 datadir；
 - 完成：SQLite 与原生之间有后端无关的安全桥。
+
+实现结果：新增后端中立的 LogicalDocument API 和 native snapshot bridge。导入先
+完整校验 Catalog、Row/History、Relation 引用与连续 revision，再用单一原生事务
+发布；空目标、重复导入和悬空引用稳定失败。未发生 authority 修改时，未知顶层及
+嵌套字段通过原始 logical source 保持 canonical hash；修改后只输出当前 typed
+authority，避免返回陈旧快照。
 
 ## F67 SQLite/Native Shadow Parity
 

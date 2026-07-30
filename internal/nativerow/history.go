@@ -89,6 +89,28 @@ func (repository *Repository) History(databaseID, tableID, rowID string, limit i
 	return result, more, nil
 }
 
+func (repository *Repository) AllHistory() ([]history.Record, error) {
+	rows, err := repository.AllRows()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]history.Record, 0)
+	for _, value := range rows {
+		records, _, err := repository.History(value.DatabaseID, value.TableID, value.ID, 1000)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, records...)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].RowID == result[right].RowID {
+			return result[left].Revision < result[right].Revision
+		}
+		return result[left].RowID < result[right].RowID
+	})
+	return result, nil
+}
+
 func normalizedMetadata(value row.WriteMetadata) row.WriteMetadata {
 	if value.Actor == "" {
 		value.Actor = "system:direct-api"

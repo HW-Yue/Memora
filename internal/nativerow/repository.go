@@ -213,6 +213,46 @@ func (repository *Repository) List(databaseID, tableID string, limit int) ([]row
 	return result, false, nil
 }
 
+func (repository *Repository) AllRows() ([]row.Row, error) {
+	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	if err != nil {
+		return nil, err
+	}
+	logical := map[string]struct{}{}
+	for _, recordID := range ids {
+		value, err := repository.readRecord(recordID)
+		if err != nil {
+			return nil, err
+		}
+		logical[value.ID] = struct{}{}
+	}
+	result := make([]row.Row, 0, len(logical))
+	for id := range logical {
+		value, err := repository.ReadIncludingDeleted(id)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].ID < result[right].ID })
+	return result, nil
+}
+
+func (repository *Repository) StageSnapshotRow(transaction *nativestore.Transaction, value row.Row, table catalog.Table) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	normalized, err := normalize(value, table)
+	if err != nil {
+		return err
+	}
+	payload, err := encode(normalized, table)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRow, recordSchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
+}
+
 func (repository *Repository) readRecord(recordID string) (row.Row, error) {
 	payload, err := repository.file.Get(nativestore.ObjectKindRow, recordID)
 	if err != nil {

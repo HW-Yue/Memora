@@ -107,6 +107,43 @@ func (repository *Repository) ListRelations(endpoint relation.Endpoint, outgoing
 	return result, nil
 }
 
+func (repository *Repository) AllRelationVersions() ([]relation.Relation, error) {
+	ids, err := repository.file.IDs(nativestore.ObjectKindRelation)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]relation.Relation, 0, len(ids))
+	for _, recordID := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindRelation, recordID)
+		if err != nil {
+			return nil, err
+		}
+		value, err := decodeRelation(payload)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].ID == result[right].ID {
+			return result[left].Revision < result[right].Revision
+		}
+		return result[left].ID < result[right].ID
+	})
+	return result, nil
+}
+
+func (repository *Repository) StageSnapshotRelation(transaction *nativestore.Transaction, value relation.Relation) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	payload, err := encodeRelation(value)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRelation, relationSchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
+}
+
 func encodeRelation(value relation.Relation) ([]byte, error) {
 	texts := []string{value.ID, value.Source.DatabaseID, value.Source.TableID, value.Source.RowID, value.Type, value.Target.DatabaseID, value.Target.TableID, value.Target.RowID, value.Description, string(value.State)}
 	size := 2 + 8*5

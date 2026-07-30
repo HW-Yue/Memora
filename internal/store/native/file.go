@@ -53,6 +53,7 @@ const (
 	ObjectKindRelation        ObjectKind = 7
 	ObjectKindRoute           ObjectKind = 8
 	ObjectKindRouteMembership ObjectKind = 9
+	ObjectKindSnapshotMeta    ObjectKind = 10
 )
 
 const (

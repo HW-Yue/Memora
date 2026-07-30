@@ -93,6 +93,8 @@ F62 已增加事务帧，F63 已完成 fsync 与崩溃尾恢复。F64 已让 Row
 Relation 和 Route membership 可由同一 Mutation Plan 原子发布。
 F65 进一步让 split/merge 的多个 Row、History、Relation、Route 和 membership
 在同一事务内发布，并用 `superseded` 保留来源历史。
+F66 增加 logical snapshot 与 native typed authority 之间的原子导入/确定性导出，
+作为旧后端迁移桥；snapshot metadata 不是运行时真相源。
 
 后续版本可以改变物理 format version，但必须提供明确迁移；不能为了避免升级而把
 F52 重新膨胀成完整内核。

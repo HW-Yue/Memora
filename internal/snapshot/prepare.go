@@ -189,8 +189,8 @@ func prepare(value document) (preparedDocument, error) {
 func validRow(value rowHeader, layout catalogLayout) bool {
 	databaseID, exists := layout.tableDatabase[value.TableID]
 	return cleanID(value.ID) && exists && value.DatabaseID == databaseID &&
-		value.SchemaVersion > 0 && value.Revision > 0 && value.CommitSequence > 0 &&
-		(value.State == "live" || value.State == "deleted") && value.Values != nil &&
+		value.SchemaVersion > 0 && value.Revision > 0 &&
+		(value.State == "live" || value.State == "deleted" || value.State == "superseded") && value.Values != nil &&
 		!value.CreatedAt.IsZero() && !value.UpdatedAt.IsZero() &&
 		!value.UpdatedAt.Before(value.CreatedAt)
 }
@@ -198,15 +198,16 @@ func validRow(value rowHeader, layout catalogLayout) bool {
 func validHistory(value history.Record) bool {
 	if value.Version != history.Version || !cleanID(value.DatabaseID) ||
 		!cleanID(value.TableID) || !cleanID(value.RowID) ||
-		value.SchemaVersion == 0 || value.Revision == 0 || value.CommitSequence == 0 ||
-		(value.State != "live" && value.State != "deleted") || value.Values == nil ||
+		value.SchemaVersion == 0 || value.Revision == 0 ||
+		(value.State != "live" && value.State != "deleted" && value.State != "superseded") || value.Values == nil ||
 		value.CreatedAt.IsZero() || value.UpdatedAt.IsZero() || value.RecordedAt.IsZero() ||
 		!cleanID(value.Actor) || !cleanID(value.Source) || !cleanID(value.Reason) {
 		return false
 	}
 	switch value.Operation {
 	case history.OperationInsert, history.OperationUpdate,
-		history.OperationDelete, history.OperationCompensate:
+		history.OperationDelete, history.OperationCompensate,
+		history.OperationSplit, history.OperationMerge:
 		return true
 	default:
 		return false
@@ -216,7 +217,7 @@ func validHistory(value history.Record) bool {
 func validRelation(value relation.Relation, rows map[string]string) bool {
 	if value.Version != relation.Version || !strings.HasPrefix(value.ID, "rel_") ||
 		!cleanID(strings.TrimPrefix(value.ID, "rel_")) ||
-		value.Revision == 0 || value.CommitSequence == 0 ||
+		value.Revision == 0 ||
 		(value.State != relation.StateLive && value.State != relation.StateDeleted) ||
 		value.CreatedAt.IsZero() || value.UpdatedAt.IsZero() ||
 		!cleanID(value.Type) || !validEndpoint(value.Source, rows) ||

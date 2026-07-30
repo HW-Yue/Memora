@@ -55,6 +55,44 @@ func (repository *Repository) Write(databases []catalog.Database) error {
 	return nil
 }
 
+// StageSnapshot writes a validated Catalog into an empty native snapshot transaction.
+func (repository *Repository) StageSnapshot(transaction *nativestore.Transaction, databases []catalog.Database) error {
+	if repository == nil || repository.file == nil || transaction == nil {
+		return fmt.Errorf("%w: native file and transaction are required", ErrInvalid)
+	}
+	if err := validateCatalog(databases); err != nil {
+		return err
+	}
+	for databaseIndex, database := range databases {
+		payload, err := encodeDatabase(database, uint64(databaseIndex))
+		if err != nil {
+			return err
+		}
+		if err := transaction.Put(nativestore.ObjectKindDatabase, recordSchemaVersion, database.ID, payload); err != nil {
+			return err
+		}
+		for tableIndex, table := range database.Tables {
+			payload, err = encodeTable(table, uint64(tableIndex))
+			if err != nil {
+				return err
+			}
+			if err := transaction.Put(nativestore.ObjectKindTable, recordSchemaVersion, table.ID, payload); err != nil {
+				return err
+			}
+			for columnIndex, column := range table.Columns {
+				payload, err = encodeColumn(column, table.ID, uint64(columnIndex))
+				if err != nil {
+					return err
+				}
+				if err := transaction.Put(nativestore.ObjectKindColumn, recordSchemaVersion, column.ID, payload); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (repository *Repository) putVersion(kind nativestore.ObjectKind, id string, version uint64, payload []byte) error {
 	ids, err := repository.file.IDs(kind)
 	if err != nil {
