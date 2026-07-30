@@ -11,6 +11,8 @@ const (
 	OperationUpdate     Operation = "UPDATE"
 	OperationDelete     Operation = "DELETE"
 	OperationCompensate Operation = "COMPENSATE"
+	OperationSplit      Operation = "SPLIT"
+	OperationMerge      Operation = "MERGE"
 )
 
 type Record struct {

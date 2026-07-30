@@ -5,8 +5,9 @@ import "time"
 type State string
 
 const (
-	StateLive    State = "live"
-	StateDeleted State = "deleted"
+	StateLive       State = "live"
+	StateDeleted    State = "deleted"
+	StateSuperseded State = "superseded"
 )
 
 type Row struct {

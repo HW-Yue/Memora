@@ -2,7 +2,7 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F64 已完成；F65–F72 继续按顺序推进。
+实现进度：F62–F65 已完成；F66–F72 继续按顺序推进。
 
 ## F62 Transaction Frame
 
@@ -35,6 +35,10 @@
 - 测试：2→1、1→2、多 membership、失败全回滚、历史可追溯；
 - 不做：引擎自动决定怎样拆分，决策仍由 AI；
 - 完成：产品宪章中的 split/merge 闭环成立。
+
+实现结果：AI 提交显式 reshape plan；引擎在一个事务中发布来源 Row 的
+`superseded` revision、新目标 Row、SPLIT/MERGE History、Relation、Route 节点
+revision 与 membership revision。引擎只校验形状和引用，不推断怎样拆分或合并。
 
 ## F66 Native Snapshot Import/Export
 

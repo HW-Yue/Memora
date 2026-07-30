@@ -36,6 +36,31 @@ func (repository *Repository) Write(value row.Row) error {
 	return repository.writeRecord(value, value.ID)
 }
 
+func (repository *Repository) StageInitial(transaction *nativestore.Transaction, value row.Row) error {
+	if transaction == nil || value.Revision != 1 || value.State != row.StateLive {
+		return fmt.Errorf("%w: transaction and live revision 1 are required", ErrInvalid)
+	}
+	if _, err := repository.ReadIncludingDeleted(value.ID); !errors.Is(err, nativestore.ErrNotFound) {
+		if err == nil {
+			return ErrRevisionConflict
+		}
+		return err
+	}
+	table, err := repository.table(value.DatabaseID, value.TableID)
+	if err != nil {
+		return err
+	}
+	normalized, err := normalize(value, table)
+	if err != nil {
+		return err
+	}
+	payload, err := encode(normalized, table)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRow, recordSchemaVersion, value.ID, payload)
+}
+
 func (repository *Repository) WriteRevision(value row.Row) error {
 	if err := repository.validateRevision(value); err != nil {
 		return err
@@ -70,7 +95,7 @@ func (repository *Repository) validateRevision(value row.Row) error {
 	if err != nil {
 		return err
 	}
-	if latest.State == row.StateDeleted || value.Revision != latest.Revision+1 ||
+	if latest.State != row.StateLive || value.Revision != latest.Revision+1 ||
 		value.DatabaseID != latest.DatabaseID || value.TableID != latest.TableID ||
 		!value.CreatedAt.Equal(latest.CreatedAt) {
 		return ErrRevisionConflict
@@ -102,7 +127,7 @@ func (repository *Repository) Read(id string) (row.Row, error) {
 	if err != nil {
 		return row.Row{}, err
 	}
-	if value.State == row.StateDeleted {
+	if value.State == row.StateDeleted || value.State == row.StateSuperseded {
 		return row.Row{}, nativestore.ErrNotFound
 	}
 	return value, nil
@@ -241,7 +266,7 @@ func (repository *Repository) table(databaseID, tableID string) (catalog.Table, 
 
 func normalize(value row.Row, table catalog.Table) (row.Row, error) {
 	if value.ID == "" || value.DatabaseID == "" || value.TableID == "" ||
-		value.Revision == 0 || (value.State != row.StateLive && value.State != row.StateDeleted) ||
+		value.Revision == 0 || (value.State != row.StateLive && value.State != row.StateDeleted && value.State != row.StateSuperseded) ||
 		value.CreatedAt.IsZero() || value.UpdatedAt.IsZero() || value.SchemaVersion != table.SchemaVersion {
 		return row.Row{}, fmt.Errorf("%w: invalid identity, state, revision, timestamps, or schema", ErrInvalid)
 	}

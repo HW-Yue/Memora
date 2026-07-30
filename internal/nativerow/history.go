@@ -144,7 +144,7 @@ func decodeHistory(payload []byte) (historyMetadata, error) {
 		}
 	}
 	operation := history.Operation(values[1])
-	if input.offset != len(payload) || (operation != history.OperationInsert && operation != history.OperationUpdate && operation != history.OperationDelete && operation != history.OperationCompensate) {
+	if input.offset != len(payload) || (operation != history.OperationInsert && operation != history.OperationUpdate && operation != history.OperationDelete && operation != history.OperationCompensate && operation != history.OperationSplit && operation != history.OperationMerge) {
 		return historyMetadata{}, fmt.Errorf("%w: invalid history payload", ErrCorrupt)
 	}
 	return historyMetadata{rowID: values[0], revision: revision, operation: operation, actor: values[2], source: values[3], reason: values[4], recordedAt: time.Unix(0, recorded).UTC()}, nil

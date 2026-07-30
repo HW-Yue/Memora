@@ -1,6 +1,7 @@
 # Agent 语义目录索引（Router）
 
-状态：目标架构已确认；F61 已实现 Table 级原生物理闭环，MSQL/AI 主路切换待 F70。
+状态：目标架构已确认；F61 已实现 Table 级原生物理闭环，F65 已实现 reshape
+原子维护，MSQL/AI 主路切换待 F70。
 
 ## 定义
 
@@ -94,6 +95,10 @@ generation N 继续查询
 - 缺少 AI 维护结果：写入可进入明确 `pending_reindex`，不能继续暴露旧语义定位。
 
 split/merge 只改正文而不改上层 Route，属于完整性失败。
+
+F65 已将 Row、History、Relation、上层 Route revision 和 membership revision
+纳入同一原生事务。AI 必须显式给出目标 Row 和结构调整；引擎不使用相似度或
+隐藏规则代替语义决策。
 
 ## 实现差距
 

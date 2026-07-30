@@ -1,6 +1,7 @@
 # 原生极简存储格式
 
-状态：F52–F63 已实现；typed objects、事务发布、fsync 与崩溃尾恢复已闭环。
+状态：F52–F65 已实现；typed objects、事务发布、fsync、崩溃尾恢复和跨对象
+reshape 已闭环。
 
 ## 当前唯一目标
 
@@ -90,6 +91,8 @@ Begin() → Transaction[Put, Commit, Rollback]
 F53a–F61 已完成 Catalog、Row、MSQL CRUD、History、Relation 与 Table Router；
 F62 已增加事务帧，F63 已完成 fsync 与崩溃尾恢复。F64 已让 Row、History、
 Relation 和 Route membership 可由同一 Mutation Plan 原子发布。
+F65 进一步让 split/merge 的多个 Row、History、Relation、Route 和 membership
+在同一事务内发布，并用 `superseded` 保留来源历史。
 
 后续版本可以改变物理 format version，但必须提供明确迁移；不能为了避免升级而把
 F52 重新膨胀成完整内核。

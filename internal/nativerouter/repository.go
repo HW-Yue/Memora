@@ -80,6 +80,25 @@ func (repository *Repository) StageMembership(transaction *nativestore.Transacti
 	return transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload)
 }
 
+func (repository *Repository) StageNode(transaction *nativestore.Transaction, value router.Node) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	latest, err := repository.Get(value.ID)
+	if err != nil {
+		return err
+	}
+	if latest.Deleted || value.Revision != latest.Revision+1 || value.DatabaseID != latest.DatabaseID ||
+		value.TableID != latest.TableID || value.ParentID != latest.ParentID || value.Kind != latest.Kind {
+		return fmt.Errorf("%w: route revision conflicts with latest", ErrInvalid)
+	}
+	payload, err := encodeNode(value)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(value.ID, value.Revision), payload)
+}
+
 func (repository *Repository) validateMembership(value router.Membership) error {
 	leafID, locator, membershipRevision := value.LeafID, value.Locator, value.MembershipRevision
 	leaf, err := repository.Get(leafID)
@@ -101,15 +120,32 @@ func membershipRecordID(value router.Membership) string {
 }
 
 func (repository *Repository) Get(id string) (router.Node, error) {
-	payload, err := repository.file.Get(nativestore.ObjectKindRoute, id)
+	ids, err := repository.file.IDs(nativestore.ObjectKindRoute)
 	if err != nil {
 		return router.Node{}, err
 	}
-	value, err := decodeNode(payload)
-	if err != nil || value.ID != id {
-		return router.Node{}, fmt.Errorf("%w: route identity mismatch", ErrCorrupt)
+	var latest router.Node
+	found := false
+	for _, recordID := range ids {
+		if recordID != id && !strings.HasPrefix(recordID, id+"@") {
+			continue
+		}
+		payload, err := repository.file.Get(nativestore.ObjectKindRoute, recordID)
+		if err != nil {
+			return router.Node{}, err
+		}
+		value, err := decodeNode(payload)
+		if err != nil || value.ID != id || nodeRecordID(value.ID, value.Revision) != recordID {
+			return router.Node{}, fmt.Errorf("%w: route identity mismatch", ErrCorrupt)
+		}
+		if !found || value.Revision > latest.Revision {
+			latest, found = value, true
+		}
 	}
-	return value, nil
+	if !found {
+		return router.Node{}, nativestore.ErrNotFound
+	}
+	return latest, nil
 }
 
 func (repository *Repository) Roots(tableID string) []router.Node {
@@ -206,7 +242,14 @@ func (repository *Repository) putNode(value router.Node) error {
 	if err != nil {
 		return err
 	}
-	return repository.file.Put(nativestore.ObjectKindRoute, schemaVersion, value.ID, payload)
+	return repository.file.Put(nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(value.ID, value.Revision), payload)
+}
+
+func nodeRecordID(id string, revision uint64) string {
+	if revision == 1 {
+		return id
+	}
+	return fmt.Sprintf("%s@%020d", id, revision)
 }
 
 func (repository *Repository) nodes() ([]router.Node, error) {
@@ -214,8 +257,20 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]router.Node, 0, len(ids))
+	logicalIDs := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindRoute, id)
+		if err != nil {
+			return nil, err
+		}
+		value, err := decodeNode(payload)
+		if err != nil {
+			return nil, err
+		}
+		logicalIDs[value.ID] = struct{}{}
+	}
+	result := make([]router.Node, 0, len(logicalIDs))
+	for id := range logicalIDs {
 		value, err := repository.Get(id)
 		if err != nil {
 			return nil, err
