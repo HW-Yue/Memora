@@ -2,6 +2,7 @@ package nativerow
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/result"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
@@ -67,17 +69,87 @@ func TestNativeInsertAndExactSelectMSQLSurviveReopen(t *testing.T) {
 	}
 }
 
+func TestNativeUpdateDeleteMSQLUseExpectedRevision(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 30, 15, 0, 0, 0, time.UTC)
+	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{
+		IDs: &testIDs{values: []string{"database", "table", "title"}}, Clock: testClock{value: now},
+	})
+	rows := NewService(New(file), dictionary, ServiceOptions{IDs: &testIDs{values: []string{"first"}}, Clock: testClock{value: now.Add(time.Minute)}})
+	engine := executor.New(dictionary, rows)
+	executeMSQL(t, ctx, engine, "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(20) NOT NULL PURPOSE 'Title')", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "INSERT INTO work.notes (title) VALUES ('first')", executor.Parameters{}, executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1})
+
+	updated := executeMSQL(t, ctx, engine,
+		"UPDATE work.notes SET title = :title WHERE row_id = :row_id",
+		executor.Parameters{Named: map[string]any{"title": "second", "row_id": "row_first"}},
+		executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1},
+	)
+	if updated.Revision == nil || *updated.Revision != 2 {
+		t.Fatalf("UPDATE revision = %#v", updated.Revision)
+	}
+	_, err = runMSQL(ctx, engine,
+		"UPDATE work.notes SET title = 'stale' WHERE row_id = 'row_first'", executor.Parameters{},
+		executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1},
+	)
+	var stable interface{ StableCode() string }
+	if !errors.As(err, &stable) || stable.StableCode() != string(result.CodeRevisionConflict) {
+		t.Fatalf("stale UPDATE error = %v", err)
+	}
+	deleted := executeMSQL(t, ctx, engine,
+		"DELETE FROM work.notes WHERE row_id = 'row_first'", executor.Parameters{},
+		executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 2, MaxAffectedRows: 1},
+	)
+	if deleted.Revision == nil || *deleted.Revision != 3 {
+		t.Fatalf("DELETE revision = %#v", deleted.Revision)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := nativestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	dictionary = nativecatalog.NewService(nativecatalog.New(reopened), nativecatalog.ServiceOptions{})
+	rows = NewService(New(reopened), dictionary, ServiceOptions{})
+	selected := executeMSQL(t, ctx, executor.New(dictionary, rows),
+		"SELECT title FROM work.notes WHERE row_id = 'row_first' LIMIT 1",
+		executor.Parameters{}, executor.MutationOptions{},
+	)
+	if len(selected.Rows) != 0 {
+		t.Fatalf("SELECT after DELETE = %#v", selected.Rows)
+	}
+	tombstone, err := New(reopened).ReadIncludingDeleted("row_first")
+	if err != nil || tombstone.Revision != 3 || tombstone.State != "deleted" {
+		t.Fatalf("tombstone = %#v, %v", tombstone, err)
+	}
+}
+
 func executeMSQL(t *testing.T, ctx context.Context, engine *executor.Engine, source string, parameters executor.Parameters, options executor.MutationOptions) executor.Output {
 	t.Helper()
-	document, err := parser.Parse(source)
-	if err != nil {
-		t.Fatalf("Parse(%q) error = %v", source, err)
-	}
-	output, err := engine.Execute(ctx, document.Statement, parameters, options)
+	output, err := runMSQL(ctx, engine, source, parameters, options)
 	if err != nil {
 		t.Fatalf("Execute(%q) error = %v", source, err)
 	}
 	return output
+}
+
+func runMSQL(ctx context.Context, engine *executor.Engine, source string, parameters executor.Parameters, options executor.MutationOptions) (executor.Output, error) {
+	document, err := parser.Parse(source)
+	if err != nil {
+		return executor.Output{}, err
+	}
+	return engine.Execute(ctx, document.Statement, parameters, options)
 }
 
 type testIDs struct {

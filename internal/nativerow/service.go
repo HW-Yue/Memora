@@ -156,11 +156,81 @@ func serviceFailure(code result.Code, message string, cause error) error {
 	return &ServiceError{Code: code, Message: message, Cause: cause}
 }
 
-func (service *Service) Update(context.Context, string, string, string, map[string]any, row.WriteOptions) (row.Row, error) {
-	return row.Row{}, ErrUnsupported
+func (service *Service) Update(ctx context.Context, databaseName, tableName, rowID string, changes map[string]any, options row.WriteOptions) (row.Row, error) {
+	table, current, err := service.mutationTarget(ctx, databaseName, tableName, rowID, options)
+	if err != nil {
+		return row.Row{}, err
+	}
+	bound, err := bindValues(table, changes)
+	if err != nil {
+		return row.Row{}, err
+	}
+	updated := current
+	updated.Values = cloneStableValues(current.Values)
+	for columnID, value := range bound {
+		updated.Values[columnID] = value
+	}
+	updated.Revision++
+	updated.SchemaVersion = table.SchemaVersion
+	updated.UpdatedAt = service.clock.Now().UTC()
+	if err := service.repository.WriteRevision(updated); err != nil {
+		return row.Row{}, revisionError(err)
+	}
+	return project(table, updated), nil
 }
-func (service *Service) Delete(context.Context, string, string, string, row.WriteOptions) (row.Row, error) {
-	return row.Row{}, ErrUnsupported
+func (service *Service) Delete(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (row.Row, error) {
+	table, current, err := service.mutationTarget(ctx, databaseName, tableName, rowID, options)
+	if err != nil {
+		return row.Row{}, err
+	}
+	deleted := current
+	deleted.Revision++
+	deleted.SchemaVersion = table.SchemaVersion
+	deleted.State = row.StateDeleted
+	deleted.UpdatedAt = service.clock.Now().UTC()
+	if err := service.repository.WriteRevision(deleted); err != nil {
+		return row.Row{}, revisionError(err)
+	}
+	return project(table, deleted), nil
+}
+
+func (service *Service) mutationTarget(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (catalog.Table, row.Row, error) {
+	if len(options.IndexTerms) > 0 || len(options.RouteLeafIDs) > 0 {
+		return catalog.Table{}, row.Row{}, ErrUnsupported
+	}
+	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return catalog.Table{}, row.Row{}, err
+	}
+	current, err := service.repository.Read(rowID)
+	if err != nil {
+		if errors.Is(err, nativestore.ErrNotFound) {
+			return catalog.Table{}, row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), err)
+		}
+		return catalog.Table{}, row.Row{}, err
+	}
+	if current.DatabaseID != table.DatabaseID || current.TableID != table.ID {
+		return catalog.Table{}, row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found in requested table", rowID), nil)
+	}
+	if options.ExpectedSchemaVersion != table.SchemaVersion || options.ExpectedRevision != current.Revision {
+		return catalog.Table{}, row.Row{}, serviceFailure(result.CodeRevisionConflict, "row or schema revision conflicts with latest", ErrRevisionConflict)
+	}
+	return table, current, nil
+}
+
+func revisionError(err error) error {
+	if errors.Is(err, ErrRevisionConflict) {
+		return serviceFailure(result.CodeRevisionConflict, "row revision conflicts with latest", err)
+	}
+	return err
+}
+
+func cloneStableValues(values map[string]any) map[string]any {
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 func (service *Service) AsOfRevision(context.Context, string, string, string, uint64) (row.Row, error) {
 	return row.Row{}, ErrUnsupported
