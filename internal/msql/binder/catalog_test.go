@@ -43,6 +43,12 @@ func TestCatalogBinderExecutesDiscoveryAndDDLByStableIdentity(t *testing.T) {
 	if len(tables.Tables[0].Columns) != 0 {
 		t.Fatalf("SHOW TABLES expanded nested columns: %#v", tables)
 	}
+	compactTable := execute(t, ctx, subject, "DESCRIBE TABLE work.notes COMPACT")
+	if compactTable.Table == nil || len(compactTable.Table.Columns) != 0 ||
+		len(compactTable.Table.ColumnSummaries) != 2 ||
+		compactTable.Table.ColumnSummaries[1].MaxCharacters != 1200 {
+		t.Fatalf("DESCRIBE TABLE COMPACT = %#v", compactTable)
+	}
 	column := execute(t, ctx, subject, "DESCRIBE COLUMN work.notes.title COMPACT")
 	if column.Column == nil || column.Column.ID != "col_title" || column.Column.Nullable {
 		t.Fatalf("DESCRIBE COLUMN = %#v", column)

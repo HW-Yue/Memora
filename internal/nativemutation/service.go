@@ -177,11 +177,16 @@ func (service *Service) reshapeRouteNodes(updates []row.RouteUpdate) ([]router.N
 			return nil, reshapeError(result.CodeRevisionConflict, "Route %q revision conflicts with latest", update.RouteID)
 		}
 		purpose := strings.TrimSpace(update.Purpose)
-		if purpose == "" {
-			return nil, reshapeError(result.CodeValidation, "Route update purpose is required")
+		if purpose == "" && update.Synopsis == nil {
+			return nil, reshapeError(result.CodeValidation, "Route update purpose or synopsis is required")
+		}
+		if purpose != "" {
+			current.Purpose = purpose
+		}
+		if update.Synopsis != nil {
+			current.Synopsis = *update.Synopsis
 		}
 		current.Revision++
-		current.Purpose = purpose
 		nodes = append(nodes, current)
 	}
 	return nodes, nil

@@ -31,6 +31,7 @@ type Statement struct {
 	Unrelate    *UnrelateStatement    `json:"unrelate,omitempty"`
 	CreateRoute *CreateRouteStatement `json:"create_route,omitempty"`
 	RenameRoute *RenameRouteStatement `json:"rename_route,omitempty"`
+	UpdateRoute *UpdateRouteStatement `json:"update_route,omitempty"`
 	DeleteRoute *DeleteRouteStatement `json:"delete_route,omitempty"`
 	OpenRoute   *OpenRouteStatement   `json:"open_route,omitempty"`
 	Package     *PackageStatement     `json:"package,omitempty"`
@@ -63,9 +64,10 @@ type ShowStatement struct {
 }
 
 type DescribeStatement struct {
-	Object  string `json:"object"`
-	Name    Name   `json:"name"`
-	Compact bool   `json:"compact,omitempty"`
+	Object  string      `json:"object"`
+	Name    Name        `json:"name"`
+	Compact bool        `json:"compact,omitempty"`
+	Route   *Expression `json:"route,omitempty"`
 }
 
 type CreateStatement struct {
@@ -168,11 +170,17 @@ type CreateRouteStatement struct {
 	Name     *Expression `json:"name,omitempty"`
 	NodeKind *Expression `json:"node_kind,omitempty"`
 	Purpose  *Expression `json:"purpose"`
+	Synopsis *Expression `json:"synopsis,omitempty"`
 }
 
 type RenameRouteStatement struct {
 	Route *Expression `json:"route"`
 	Name  *Expression `json:"name"`
+}
+
+type UpdateRouteStatement struct {
+	Route    *Expression `json:"route"`
+	Synopsis *Expression `json:"synopsis"`
 }
 
 type DeleteRouteStatement struct {
@@ -241,6 +249,8 @@ func (document Document) Parameters() []Parameter {
 		}
 		appendExpression(statement.Select.Where)
 		appendExpression(statement.Select.Limit)
+	case statement.Describe != nil && statement.Describe.Object == "ROUTE":
+		appendExpression(statement.Describe.Route)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		appendExpression(statement.Show.Row)
 		appendExpression(statement.Show.Limit)
@@ -284,9 +294,13 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.CreateRoute.Name)
 		appendExpression(statement.CreateRoute.NodeKind)
 		appendExpression(statement.CreateRoute.Purpose)
+		appendExpression(statement.CreateRoute.Synopsis)
 	case statement.RenameRoute != nil:
 		appendExpression(statement.RenameRoute.Route)
 		appendExpression(statement.RenameRoute.Name)
+	case statement.UpdateRoute != nil:
+		appendExpression(statement.UpdateRoute.Route)
+		appendExpression(statement.UpdateRoute.Synopsis)
 	case statement.DeleteRoute != nil:
 		appendExpression(statement.DeleteRoute.Route)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":

@@ -41,6 +41,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return Output{}, err
 	}
 	switch {
+	case statement.Describe != nil && statement.Describe.Object == "ROUTE":
+		return engine.describeRoute(ctx, statement.Describe, bound)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		return engine.showHistory(ctx, statement, bound)
 	case statement.Show != nil && statement.Show.Object == "RELATIONS":
@@ -51,6 +53,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.createRoute(ctx, statement.CreateRoute, bound, options)
 	case statement.RenameRoute != nil:
 		return engine.renameRoute(ctx, statement.RenameRoute, bound, options)
+	case statement.UpdateRoute != nil:
+		return engine.updateRouteSynopsis(ctx, statement.UpdateRoute, bound, options)
 	case statement.DeleteRoute != nil:
 		return engine.deleteRoute(ctx, statement.DeleteRoute, bound, options)
 	case statement.OpenRoute != nil:

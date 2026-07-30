@@ -148,6 +148,14 @@ func (binder *Catalog) describe(ctx context.Context, describe *ast.DescribeState
 		}
 		table, err := binder.service.DescribeTable(ctx, names[0], names[1])
 		if describe.Compact {
+			table.ColumnSummaries = make([]dictionary.ColumnSummary, 0, len(table.Columns))
+			for _, column := range table.Columns {
+				table.ColumnSummaries = append(table.ColumnSummaries, dictionary.ColumnSummary{
+					ID: column.ID, Name: column.Name, Type: column.Type,
+					MaxCharacters: column.MaxCharacters, Nullable: column.Nullable,
+					Purpose: column.Purpose,
+				})
+			}
 			table.Columns = []dictionary.Column{}
 		}
 		return CatalogResult{Object: "TABLE", Table: &table}, catalogError(err)

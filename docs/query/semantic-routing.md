@@ -1,7 +1,7 @@
 # Agent 语义目录索引（Router）
 
-状态：目标架构已确认；F61 已实现 Table 级原生物理闭环，F65 已实现 reshape
-原子维护，F70 已将 MSQL、Canonical Skill 和宿主查询主路切换到逐层导航。
+状态：已实现；F70 将主路切换到 Table 级逐层导航，F76 暴露原子 reshape，
+F77 增加按需中间 Route synopsis。
 
 ## 定义
 
@@ -24,10 +24,11 @@ Database 只负责将 AI 导向 Table；Table 的 Data Dictionary 说明一条 R
 
 ## 节点与 membership
 
-内部节点只包含：
+内部节点包含：
 
 - stable route ID、parent ID、name、aliases 和 revision；
-- 一句话 purpose、范围边界和可选导航提示；
+- 默认返回的一句话 purpose；
+- 可选、版本化、按需读取的 synopsis；它描述私有子树边界，不作为事实答案；
 - 启动预算约 8～12 个子分支；
 - snapshot、cursor 和 `truncated`。
 
@@ -59,6 +60,10 @@ SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 预算与 snapshot 构成 `Route Frame`；它随查询结束丢弃，不写入长期 system
 prompt，也不等同于物理 Buffer Pool。
 
+默认 `SHOW ROUTES` 不携带较长 synopsis。只有相邻 purpose 无法稳定区分时，AI
+才执行 `DESCRIBE ROUTE :route_id` 按需读取；详细预算和内容边界见
+[中间 Route Synopsis](./route-synopsis.md)。
+
 Router/OPEN 只返回节点或 locator，不能返回正文、生成答案或自动退化为
 Embedding、cosine、全库扫描和混合相似度排名。
 
@@ -87,12 +92,13 @@ generation N 继续查询
 
 ## Row 修改、拆分与删除
 
-- revise：旧 revision 的全部 membership 立即不可见，新快照原子启用；
+- revise：显式新 snapshot 时替换 membership；未提供时保留 membership 并原子
+  推进 locator revision；
 - delete：保留历史，清除全部活跃 membership；
 - split：创建多个语义完整 Row，重分配关系和 membership，必要时修改上层节点，
   原 Row 标记 superseded；
 - merge：创建或修订合并目标，保留来源映射，清除被合并 Row 的活跃引用；
-- 缺少 AI 维护结果：写入可进入明确 `pending_reindex`，不能继续暴露旧语义定位。
+- 语义边界实际变化却缺少新 snapshot：Agent 必须补全后再提交，不能让引擎猜测。
 
 split/merge 只改正文而不改上层 Route，属于完整性失败。
 
@@ -100,16 +106,8 @@ F65 已将 Row、History、Relation、上层 Route revision 和 membership revis
 纳入同一原生事务。AI 必须显式给出目标 Row 和结构调整；引擎不使用相似度或
 隐藏规则代替语义决策。
 
-## 实现差距
-
-F22 当前使用统一 Database root 和绝对 path；F23/F30 又叠加 MATCH 与候选融合。
-这些代码是历史原型，不符合当前主路径。迁移 Feature 必须：
-
-- 建立每 Table 独立 root 和发现语法；
-- 将旧 Database 树显式转换或拒绝，不能静默猜测归属；
-- 删除 Query Skill 对完整 path、`query_terms` 和 MATCH fallback 的依赖；
-- 保留稳定 RowID、revision、cursor、权限和事务语义；
-- 用 `US-COLD`、`US-READ`、`US-SPLIT` 端到端验收。
+F71 已删除旧 Database Route、MATCH、query terms、向量和相似度 fallback；
+Table Router、稳定 RowID、revision、cursor 与公开 SPLIT/MERGE 是当前唯一主路。
 
 ## 关联
 

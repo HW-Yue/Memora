@@ -45,18 +45,28 @@ type Database struct {
 }
 
 type Table struct {
-	ID            string    `json:"table_id"`
-	DatabaseID    string    `json:"database_id"`
-	Name          string    `json:"name"`
-	Aliases       []string  `json:"aliases"`
-	Purpose       string    `json:"purpose"`
-	Scope         string    `json:"scope,omitempty"`
-	AntiScope     string    `json:"anti_scope,omitempty"`
-	RowSemantics  string    `json:"row_semantics"`
-	SchemaVersion uint64    `json:"schema_version"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	Columns       []Column  `json:"columns"`
+	ID              string          `json:"table_id"`
+	DatabaseID      string          `json:"database_id"`
+	Name            string          `json:"name"`
+	Aliases         []string        `json:"aliases"`
+	Purpose         string          `json:"purpose"`
+	Scope           string          `json:"scope,omitempty"`
+	AntiScope       string          `json:"anti_scope,omitempty"`
+	RowSemantics    string          `json:"row_semantics"`
+	SchemaVersion   uint64          `json:"schema_version"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+	Columns         []Column        `json:"columns"`
+	ColumnSummaries []ColumnSummary `json:"column_summaries,omitempty"`
+}
+
+type ColumnSummary struct {
+	ID            string `json:"column_id"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	MaxCharacters int    `json:"max_characters,omitempty"`
+	Nullable      bool   `json:"nullable"`
+	Purpose       string `json:"purpose"`
 }
 
 type Column struct {

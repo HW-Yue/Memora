@@ -535,7 +535,7 @@ func (service *Service) relationEndpoint(ctx context.Context, endpoint row.Relat
 func (service *Service) CreateRouterRoot(context.Context, string, string) (router.Node, error) {
 	return router.Node{}, ErrUnsupported
 }
-func (service *Service) CreateTableRouterRoot(ctx context.Context, databaseName, tableName, purpose string) (router.Node, error) {
+func (service *Service) CreateTableRouterRoot(ctx context.Context, databaseName, tableName, purpose, synopsis string) (router.Node, error) {
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return router.Node{}, err
@@ -544,7 +544,7 @@ func (service *Service) CreateTableRouterRoot(ctx context.Context, databaseName,
 	if err != nil || strings.TrimSpace(id) == "" {
 		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
 	}
-	return nativerouter.New(service.repository.file).CreateRoot("route_"+id, table.DatabaseID, table.ID, purpose)
+	return nativerouter.New(service.repository.file).CreateRootWithSynopsis("route_"+id, table.DatabaseID, table.ID, purpose, synopsis)
 }
 func (service *Service) ListTableRouterRoots(_ context.Context, databaseID, tableID, cursor string, limit int) ([]router.Node, string, error) {
 	if limit < 1 || limit > 100 {
@@ -562,7 +562,9 @@ func (service *Service) CreateRouterNode(_ context.Context, parentID string, def
 	if err != nil || strings.TrimSpace(id) == "" {
 		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
 	}
-	return nativerouter.New(service.repository.file).CreateChild("route_"+id, parentID, definition.Name, definition.Kind, definition.Purpose)
+	return nativerouter.New(service.repository.file).CreateChildWithSynopsis(
+		"route_"+id, parentID, definition.Name, definition.Kind, definition.Purpose, definition.Synopsis,
+	)
 }
 func (service *Service) RenameRouterNode(_ context.Context, id, name string, expected uint64) (router.Node, error) {
 	routes := nativerouter.New(service.repository.file)
@@ -578,6 +580,26 @@ func (service *Service) RenameRouterNode(_ context.Context, id, name string, exp
 		return router.Node{}, err
 	}
 	current.Name, current.Path, current.Revision = name, strings.TrimSuffix(parent.Path, "/")+"/"+name, current.Revision+1
+	transaction, err := service.repository.file.Begin()
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := routes.StageNode(transaction, current); err != nil {
+		return router.Node{}, err
+	}
+	return current, transaction.Commit()
+}
+func (service *Service) UpdateRouterSynopsis(_ context.Context, id, synopsis string, expected uint64) (router.Node, error) {
+	routes := nativerouter.New(service.repository.file)
+	current, err := routes.Get(id)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if current.Revision != expected {
+		return router.Node{}, ErrRevisionConflict
+	}
+	current.Synopsis, current.Revision = synopsis, current.Revision+1
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
 		return router.Node{}, err

@@ -961,7 +961,7 @@ func runMutate(
 
 func queryStatement(kind string) bool {
 	switch kind {
-	case "SHOW", "DESCRIBE", "SELECT", "OPEN_ROUTE":
+	case "SHOW", "DESCRIBE", "DESCRIBE_ROUTE", "SELECT", "OPEN_ROUTE":
 		return true
 	default:
 		return false

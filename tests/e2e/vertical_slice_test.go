@@ -46,13 +46,24 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	if databaseID, _ := ddl.Results[0].Rows[0]["database_id"].(string); databaseID == "" {
 		t.Fatalf("DDL database identity = %#v", ddl.Results[0].Rows)
 	}
+	compactTable := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"DESCRIBE TABLE work.notes COMPACT")
+	summaries, _ := compactTable.Results[0].Rows[0]["column_summaries"].([]any)
+	columns, _ := compactTable.Results[0].Rows[0]["columns"].([]any)
+	if len(summaries) != 1 || len(columns) != 0 {
+		t.Fatalf("compact Table schema = %#v", compactTable)
+	}
 	rootRoute := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
 		"--input", statementInput(nil, map[string]any{"max_affected_rows": 1}),
 		"CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Notes Router'")
 	rootID, _ := rootRoute.Results[0].Rows[0]["route_id"].(string)
 	branchRoute := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
-		"--input", statementInput(map[string]any{"parent": rootID, "name": "architecture", "kind": "branch", "purpose": "Architecture knowledge"}, map[string]any{"max_affected_rows": 1}),
-		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose")
+		"--input", statementInput(map[string]any{
+			"parent": rootID, "name": "architecture", "kind": "branch",
+			"purpose":  "Architecture knowledge",
+			"synopsis": "Contains current private decisions about storage, manifests, and atomic publication; excludes unrelated project administration.",
+		}, map[string]any{"max_affected_rows": 1}),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose SYNOPSIS :synopsis")
 	branchID, _ := branchRoute.Results[0].Rows[0]["route_id"].(string)
 	leafRoute := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"parent": branchID, "name": "storage", "kind": "leaf", "purpose": "Storage decisions"}, map[string]any{"max_affected_rows": 1}),
@@ -89,6 +100,28 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		len(children.Results[0].Rows) != 1 || children.Results[0].Rows[0]["route_id"] != leafID ||
 		len(opened.Results[0].Rows) != 1 || opened.Results[0].Rows[0]["row_id"] != rowID {
 		t.Fatalf("Table Router navigation = top %#v, children %#v, open %#v", top, children, opened)
+	}
+	if _, leaked := top.Results[0].Rows[0]["synopsis"]; leaked {
+		t.Fatalf("default Route frame leaked on-demand synopsis = %#v", top)
+	}
+	describedBranch := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"route": branchID}, nil),
+		"DESCRIBE ROUTE :route")
+	if len(describedBranch.Results[0].Rows) != 1 ||
+		describedBranch.Results[0].Rows[0]["synopsis"] != "Contains current private decisions about storage, manifests, and atomic publication; excludes unrelated project administration." {
+		t.Fatalf("DESCRIBE ROUTE = %#v", describedBranch)
+	}
+	updatedSynopsis := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{
+				"route":    branchID,
+				"synopsis": "Current private architecture decisions, their accepted boundaries, and storage publication constraints.",
+			},
+			map[string]any{"expected_revision": 1, "max_affected_rows": 1},
+		),
+		"ALTER ROUTE :route SET SYNOPSIS :synopsis")
+	if updatedSynopsis.Results[0].Revision == nil || *updatedSynopsis.Results[0].Revision != 2 {
+		t.Fatalf("ALTER ROUTE synopsis = %#v", updatedSynopsis)
 	}
 
 	expectedRow := 1
@@ -278,8 +311,9 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 				"target_route_leaf_ids":    [][]string{{leafID}, {leafID}},
 				"relation_target_ordinals": map[string]int{relationID: 1},
 				"route_updates": []map[string]any{{
-					"route_id": branchID, "expected_revision": 1,
-					"purpose": "Architecture knowledge split into atomic subjects",
+					"route_id": branchID, "expected_revision": 2,
+					"purpose":  "Architecture knowledge split into atomic subjects",
+					"synopsis": "Two current private architecture subjects with separate semantic boundaries and one explicit relation owner.",
 				}},
 				"actor": "agent:e2e", "source": "e2e:split", "reason": "separate semantic subjects",
 			},
@@ -301,7 +335,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	branchAfterSplit := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12")
 	if len(branchAfterSplit.Results[0].Rows) != 1 ||
-		branchAfterSplit.Results[0].Rows[0]["revision"] != float64(2) ||
+		branchAfterSplit.Results[0].Rows[0]["revision"] != float64(3) ||
 		branchAfterSplit.Results[0].Rows[0]["purpose"] != "Architecture knowledge split into atomic subjects" {
 		t.Fatalf("upper Route after SPLIT = %#v", branchAfterSplit)
 	}
@@ -322,8 +356,9 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 				"source_revisions":      map[string]uint64{firstID: 1, secondID: 1},
 				"target_route_leaf_ids": [][]string{{leafID}},
 				"route_updates": []map[string]any{{
-					"route_id": branchID, "expected_revision": 2,
-					"purpose": "Architecture knowledge with verified semantic boundaries",
+					"route_id": branchID, "expected_revision": 3,
+					"purpose":  "Architecture knowledge with verified semantic boundaries",
+					"synopsis": "Current private architecture knowledge after verified recombination; source Rows remain only in History.",
 				}},
 				"actor": "agent:e2e", "source": "e2e:merge", "reason": "recombine verified boundary",
 			},
@@ -344,9 +379,16 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	branchAfterMerge := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12")
 	if len(branchAfterMerge.Results[0].Rows) != 1 ||
-		branchAfterMerge.Results[0].Rows[0]["revision"] != float64(3) ||
+		branchAfterMerge.Results[0].Rows[0]["revision"] != float64(4) ||
 		branchAfterMerge.Results[0].Rows[0]["purpose"] != "Architecture knowledge with verified semantic boundaries" {
 		t.Fatalf("upper Route after MERGE = %#v", branchAfterMerge)
+	}
+	describedAfterMerge := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"route": branchID}, nil),
+		"DESCRIBE ROUTE :route")
+	if describedAfterMerge.Results[0].Rows[0]["revision"] != float64(4) ||
+		describedAfterMerge.Results[0].Rows[0]["synopsis"] != "Current private architecture knowledge after verified recombination; source Rows remain only in History." {
+		t.Fatalf("on-demand synopsis after MERGE = %#v", describedAfterMerge)
 	}
 	mergedRelation := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"row": mergedID}, nil),

@@ -11,9 +11,10 @@ const (
 )
 
 type NodeDefinition struct {
-	Name    string
-	Kind    Kind
-	Purpose string
+	Name     string
+	Kind     Kind
+	Purpose  string
+	Synopsis string
 }
 
 type Node struct {
@@ -27,6 +28,7 @@ type Node struct {
 	Path       string   `json:"path"`
 	Kind       Kind     `json:"kind"`
 	Purpose    string   `json:"purpose"`
+	Synopsis   string   `json:"synopsis,omitempty"`
 	Revision   uint64   `json:"revision"`
 	Deleted    bool     `json:"deleted"`
 }

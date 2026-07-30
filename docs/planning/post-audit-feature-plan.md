@@ -43,6 +43,8 @@
 - branch 可保存版本化、约 300–1000 字符的 `synopsis`，只在含混时显式读取；
 - synopsis 描述当前私有子树的 scope、anti-scope 和选择提示，不作为事实答案；
 - 覆盖：US-COLD、US-READ、US-HUMAN。
+- 状态：已实现；COMPACT 返回 Column summaries，默认 Route Frame 不含 synopsis，
+  `DESCRIBE/ALTER ROUTE` 按需读写，reshape 可同事务更新 synopsis。
 
 ## F78 来源强度与真实隔离复核
 

@@ -12,7 +12,8 @@ import (
 )
 
 func (engine *Engine) catalogStatement(statement ast.Statement) bool {
-	if statement.Create != nil || statement.Alter != nil || statement.Describe != nil {
+	if statement.Create != nil || statement.Alter != nil ||
+		(statement.Describe != nil && statement.Describe.Object != "ROUTE") {
 		return true
 	}
 	if statement.Show == nil {

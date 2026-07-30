@@ -150,7 +150,8 @@ func (service *Service) CreateNodeIn(
 		Version: Version, ID: id, DatabaseID: parent.DatabaseID,
 		ParentID: parent.ID, Name: definition.Name, Aliases: []string{},
 		Path: path, Kind: definition.Kind,
-		Purpose: strings.TrimSpace(definition.Purpose), Revision: 1,
+		Purpose:  strings.TrimSpace(definition.Purpose),
+		Synopsis: strings.TrimSpace(definition.Synopsis), Revision: 1,
 	}
 	if err := putNode(ctx, tx, node); err != nil {
 		return Node{}, err
@@ -585,7 +586,13 @@ func validateDefinition(definition NodeDefinition) error {
 	if err := validateName(definition.Name); err != nil {
 		return err
 	}
-	return validatePurpose(definition.Purpose)
+	if err := validatePurpose(definition.Purpose); err != nil {
+		return err
+	}
+	if !utf8.ValidString(definition.Synopsis) || utf8.RuneCountInString(definition.Synopsis) > 1000 {
+		return routerError(result.CodeValidation, "Router synopsis must contain at most 1000 characters")
+	}
+	return nil
 }
 
 func validateName(name string) error {

@@ -49,9 +49,10 @@ type ReshapeOptions struct {
 }
 
 type RouteUpdate struct {
-	RouteID          string `json:"route_id"`
-	ExpectedRevision uint64 `json:"expected_revision"`
-	Purpose          string `json:"purpose"`
+	RouteID          string  `json:"route_id"`
+	ExpectedRevision uint64  `json:"expected_revision"`
+	Purpose          string  `json:"purpose,omitempty"`
+	Synopsis         *string `json:"synopsis,omitempty"`
 }
 
 type storedRow struct {

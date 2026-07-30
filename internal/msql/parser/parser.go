@@ -291,8 +291,16 @@ func (parser *parser) parseDescribe() (ast.Statement, error) {
 		describe.Object = "TABLE"
 	case parser.matchWord("COLUMN"):
 		describe.Object = "COLUMN"
+	case parser.matchWord("ROUTE"):
+		describe.Object = "ROUTE"
+		route, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		describe.Route = &route
+		return ast.Statement{Kind: "DESCRIBE_ROUTE", Describe: describe}, nil
 	default:
-		return ast.Statement{}, parser.unexpected("DATABASE, TABLE, or COLUMN")
+		return ast.Statement{}, parser.unexpected("DATABASE, TABLE, COLUMN, or ROUTE")
 	}
 	name, err := parser.parseName()
 	if err != nil {
@@ -467,7 +475,7 @@ func (parser *parser) parseColumnDefinition() (ast.ColumnDefinition, error) {
 
 func (parser *parser) parseAlter() (ast.Statement, error) {
 	if parser.matchWord("ROUTE") {
-		return parser.parseRenameRoute()
+		return parser.parseAlterRoute()
 	}
 	alter := &ast.AlterStatement{}
 	switch {
@@ -940,26 +948,45 @@ func (parser *parser) parseCreateRoute() (ast.Statement, error) {
 		return ast.Statement{}, err
 	}
 	statement.Purpose = &purpose
+	if parser.matchWord("SYNOPSIS") {
+		synopsis, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Synopsis = &synopsis
+	}
 	return ast.Statement{Kind: "CREATE_ROUTE", CreateRoute: statement}, nil
 }
 
-func (parser *parser) parseRenameRoute() (ast.Statement, error) {
+func (parser *parser) parseAlterRoute() (ast.Statement, error) {
 	route, err := parser.parseExpression(1)
 	if err != nil {
 		return ast.Statement{}, err
 	}
-	if _, err := parser.expectWord("RENAME"); err != nil {
+	if parser.matchWord("RENAME") {
+		if _, err := parser.expectWord("TO"); err != nil {
+			return ast.Statement{}, err
+		}
+		name, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		return ast.Statement{Kind: "RENAME_ROUTE", RenameRoute: &ast.RenameRouteStatement{
+			Route: &route, Name: &name,
+		}}, nil
+	}
+	if _, err := parser.expectWord("SET"); err != nil {
 		return ast.Statement{}, err
 	}
-	if _, err := parser.expectWord("TO"); err != nil {
+	if _, err := parser.expectWord("SYNOPSIS"); err != nil {
 		return ast.Statement{}, err
 	}
-	name, err := parser.parseExpression(1)
+	synopsis, err := parser.parseExpression(1)
 	if err != nil {
 		return ast.Statement{}, err
 	}
-	return ast.Statement{Kind: "RENAME_ROUTE", RenameRoute: &ast.RenameRouteStatement{
-		Route: &route, Name: &name,
+	return ast.Statement{Kind: "UPDATE_ROUTE", UpdateRoute: &ast.UpdateRouteStatement{
+		Route: &route, Synopsis: &synopsis,
 	}}, nil
 }
 

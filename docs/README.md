@@ -83,6 +83,7 @@
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
 - [Binlog 与多设备同步基础](./storage/binlog-and-sync.md) — 已提交逻辑变更流，为增量同步和时间点恢复保留基础。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
+- [中间 Route Synopsis](./query/route-synopsis.md) — 可选私有子树总结、按需读取预算及随 reshape 原子更新规则。
 - [Index Generation Manifest v1](./storage/generation-manifest-v1.md) — F25 的三类独立 generation、原子发布、query pin 与 GC。
 - [Logical Snapshot v1](./storage/logical-snapshot-v1.md) — F26 的后端无关逻辑备份、兼容迁移、未知字段和确定性哈希。
 - [SQLite 兼容迁移边界](./storage/sqlite-compatibility-migration.md) — 旧 reader 隔离于独立工具，主程序拒绝静默回退。

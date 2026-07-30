@@ -24,6 +24,7 @@ SHOW TABLES FROM project_memora COMPACT;
 DESCRIBE TABLE project_memora.design_topics COMPACT;
 SHOW ROUTES FROM TABLE project_memora.design_topics AT ROOT LIMIT 12;
 SHOW ROUTES UNDER :route_id LIMIT 12;
+DESCRIBE ROUTE :route_id; -- 仅当短 purpose 无法稳定选择时
 OPEN ROUTE :leaf_id LIMIT 20;
 SELECT ... WHERE row_id = :row_id LIMIT 1;
 ```
@@ -65,6 +66,9 @@ CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得�
 语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
 所选 Table 的短 Route 节点，直到叶子得到 RowID。aliases、旧名称和关系是可读
 数据库内容，由 AI 在判断或明确 SQL filter 中使用，不进入隐藏相似度融合。
+`SHOW ROUTES` 默认只返回短 purpose；可选的 0–1000 字符 synopsis 只通过
+`DESCRIBE ROUTE` 按需读取，并用 revision-guarded
+`ALTER ROUTE :route SET SYNOPSIS :synopsis` 更新。
 
 AI 已明确语义边界后，使用公开 reshape 语句，而不是把普通 UPDATE/INSERT/DELETE
 拼成伪原子操作：

@@ -16,14 +16,24 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			parameters: 1,
 		},
 		{
-			source:     "CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
+			source:     "CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose SYNOPSIS :synopsis",
 			kind:       "CREATE_ROUTE",
-			parameters: 4,
+			parameters: 5,
 		},
 		{
 			source:     "ALTER ROUTE :route RENAME TO :name",
 			kind:       "RENAME_ROUTE",
 			parameters: 2,
+		},
+		{
+			source:     "ALTER ROUTE :route SET SYNOPSIS :synopsis",
+			kind:       "UPDATE_ROUTE",
+			parameters: 2,
+		},
+		{
+			source:     "DESCRIBE ROUTE :route",
+			kind:       "DESCRIBE_ROUTE",
+			parameters: 1,
 		},
 		{
 			source:     "DELETE ROUTE :route",

@@ -13,8 +13,12 @@ import (
 )
 
 type tableRouterRows interface {
-	CreateTableRouterRoot(context.Context, string, string, string) (router.Node, error)
+	CreateTableRouterRoot(context.Context, string, string, string, string) (router.Node, error)
 	ListTableRouterRoots(context.Context, string, string, string, int) ([]router.Node, string, error)
+}
+
+type routeSynopsisRows interface {
+	UpdateRouterSynopsis(context.Context, string, string, uint64) (router.Node, error)
 }
 
 func (engine *Engine) createRoute(
@@ -30,6 +34,13 @@ func (engine *Engine) createRoute(
 	if err != nil {
 		return Output{}, err
 	}
+	synopsis := ""
+	if statement.Synopsis != nil {
+		synopsis, err = routerString(statement.Synopsis, bound, "Router synopsis")
+		if err != nil {
+			return Output{}, err
+		}
+	}
 	var created router.Node
 	switch statement.Mode {
 	case "TABLE_ROOT":
@@ -44,7 +55,7 @@ func (engine *Engine) createRoute(
 		if !ok {
 			return Output{}, executeError(result.CodeUnsupported, "Table Router is not supported by this backend")
 		}
-		created, err = tableRows.CreateTableRouterRoot(ctx, databaseName, tableName, purpose)
+		created, err = tableRows.CreateTableRouterRoot(ctx, databaseName, tableName, purpose, synopsis)
 		if err != nil {
 			return Output{}, normalizeError(err)
 		}
@@ -65,7 +76,7 @@ func (engine *Engine) createRoute(
 			return Output{}, err
 		}
 		created, err = engine.rows.CreateRouterNode(ctx, parentID, router.NodeDefinition{
-			Name: name, Kind: router.Kind(strings.ToLower(kind)), Purpose: purpose,
+			Name: name, Kind: router.Kind(strings.ToLower(kind)), Purpose: purpose, Synopsis: synopsis,
 		})
 		if err != nil {
 			return Output{}, normalizeError(err)
@@ -74,6 +85,62 @@ func (engine *Engine) createRoute(
 		return Output{}, executeError(result.CodeValidation, "CREATE ROUTE mode is invalid")
 	}
 	return routerNodeMutationOutput(created), nil
+}
+
+func (engine *Engine) describeRoute(
+	ctx context.Context,
+	statement *ast.DescribeStatement,
+	bound bindings,
+) (Output, error) {
+	if statement == nil || statement.Route == nil {
+		return Output{}, executeError(result.CodeValidation, "DESCRIBE ROUTE is incomplete")
+	}
+	node, err := engine.resolveRouterNode(ctx, statement.Route, bound)
+	if err != nil {
+		return Output{}, err
+	}
+	row := routeResult(node)
+	row["synopsis"] = node.Synopsis
+	return Output{
+		Columns: []result.Column{
+			{Name: "route_id", Type: "ID"}, {Name: "parent_id", Type: "ID", Nullable: true},
+			{Name: "path", Type: "TEXT"}, {Name: "name", Type: "TEXT"},
+			{Name: "kind", Type: "TEXT"}, {Name: "purpose", Type: "TEXT"},
+			{Name: "synopsis", Type: "TEXT", Nullable: true}, {Name: "revision", Type: "INTEGER"},
+		},
+		Rows: []result.Row{row},
+	}, nil
+}
+
+func (engine *Engine) updateRouteSynopsis(
+	ctx context.Context,
+	statement *ast.UpdateRouteStatement,
+	bound bindings,
+	options MutationOptions,
+) (Output, error) {
+	if err := validateRouterMutationOptions(options, true); err != nil {
+		return Output{}, err
+	}
+	routeID, err := routerString(statement.Route, bound, "Router node ID")
+	if err != nil {
+		return Output{}, err
+	}
+	if err := engine.authorizeRouterID(ctx, routeID); err != nil {
+		return Output{}, err
+	}
+	synopsis, err := routerString(statement.Synopsis, bound, "Router synopsis")
+	if err != nil {
+		return Output{}, err
+	}
+	service, ok := engine.rows.(routeSynopsisRows)
+	if !ok {
+		return Output{}, executeError(result.CodeUnsupported, "Route synopsis is not supported by this backend")
+	}
+	updated, err := service.UpdateRouterSynopsis(ctx, routeID, synopsis, options.ExpectedRevision)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return routerNodeMutationOutput(updated), nil
 }
 
 func (engine *Engine) renameRoute(

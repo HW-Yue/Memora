@@ -85,7 +85,7 @@ func validateCheck(check Check) error {
 		return fmt.Errorf("check must contain one valid MSQL statement")
 	}
 	switch batch.Statements[0].Kind {
-	case "SHOW", "DESCRIBE", "SELECT", "MATCH", "OPEN_ROUTE":
+	case "SHOW", "DESCRIBE", "DESCRIBE_ROUTE", "SELECT", "MATCH", "OPEN_ROUTE":
 		return nil
 	default:
 		return fmt.Errorf("check contains mutation %q", batch.Statements[0].Kind)

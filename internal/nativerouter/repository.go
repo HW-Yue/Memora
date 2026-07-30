@@ -24,19 +24,30 @@ type Repository struct{ file *nativestore.File }
 func New(file *nativestore.File) *Repository { return &Repository{file: file} }
 
 func (repository *Repository) CreateRoot(id, databaseID, tableID, purpose string) (router.Node, error) {
+	return repository.CreateRootWithSynopsis(id, databaseID, tableID, purpose, "")
+}
+
+func (repository *Repository) CreateRootWithSynopsis(id, databaseID, tableID, purpose, synopsis string) (router.Node, error) {
 	if id == "" || databaseID == "" || tableID == "" || purpose == "" {
 		return router.Node{}, fmt.Errorf("%w: root identity and purpose are required", ErrInvalid)
+	}
+	if err := validateSynopsis(synopsis); err != nil {
+		return router.Node{}, err
 	}
 	for _, root := range repository.Roots(tableID) {
 		if !root.Deleted {
 			return router.Node{}, fmt.Errorf("%w: Table already has a root", ErrInvalid)
 		}
 	}
-	value := router.Node{Version: router.Version, ID: id, DatabaseID: databaseID, TableID: tableID, Name: "root", Aliases: []string{}, Path: "/", Kind: router.KindRoot, Purpose: purpose, Revision: 1}
+	value := router.Node{Version: router.Version, ID: id, DatabaseID: databaseID, TableID: tableID, Name: "root", Aliases: []string{}, Path: "/", Kind: router.KindRoot, Purpose: purpose, Synopsis: synopsis, Revision: 1}
 	return value, repository.putNode(value)
 }
 
 func (repository *Repository) CreateChild(id, parentID, name string, kind router.Kind, purpose string) (router.Node, error) {
+	return repository.CreateChildWithSynopsis(id, parentID, name, kind, purpose, "")
+}
+
+func (repository *Repository) CreateChildWithSynopsis(id, parentID, name string, kind router.Kind, purpose, synopsis string) (router.Node, error) {
 	parent, err := repository.Get(parentID)
 	if err != nil {
 		return router.Node{}, err
@@ -44,13 +55,16 @@ func (repository *Repository) CreateChild(id, parentID, name string, kind router
 	if id == "" || name == "" || purpose == "" || parent.Kind == router.KindLeaf || (kind != router.KindBranch && kind != router.KindLeaf) {
 		return router.Node{}, fmt.Errorf("%w: invalid child definition", ErrInvalid)
 	}
+	if err := validateSynopsis(synopsis); err != nil {
+		return router.Node{}, err
+	}
 	for _, sibling := range repository.Children(parentID) {
 		if strings.EqualFold(sibling.Name, name) {
 			return router.Node{}, fmt.Errorf("%w: duplicate sibling name", ErrInvalid)
 		}
 	}
 	path := strings.TrimSuffix(parent.Path, "/") + "/" + name
-	value := router.Node{Version: router.Version, ID: id, DatabaseID: parent.DatabaseID, TableID: parent.TableID, ParentID: parent.ID, Name: name, Aliases: []string{}, Path: path, Kind: kind, Purpose: purpose, Revision: 1}
+	value := router.Node{Version: router.Version, ID: id, DatabaseID: parent.DatabaseID, TableID: parent.TableID, ParentID: parent.ID, Name: name, Aliases: []string{}, Path: path, Kind: kind, Purpose: purpose, Synopsis: synopsis, Revision: 1}
 	return value, repository.putNode(value)
 }
 
@@ -91,6 +105,9 @@ func (repository *Repository) StageNode(transaction *nativestore.Transaction, va
 	if latest.Deleted || value.Revision != latest.Revision+1 || value.DatabaseID != latest.DatabaseID ||
 		value.TableID != latest.TableID || value.ParentID != latest.ParentID || value.Kind != latest.Kind {
 		return fmt.Errorf("%w: route revision conflicts with latest", ErrInvalid)
+	}
+	if err := validateSynopsis(value.Synopsis); err != nil {
+		return err
 	}
 	payload, err := encodeNode(value)
 	if err != nil {
@@ -348,6 +365,10 @@ func encodeNode(value router.Node) ([]byte, error) {
 			return nil, err
 		}
 	}
+	encoded, err = appendText(encoded, value.Synopsis)
+	if err != nil {
+		return nil, err
+	}
 	return encoded, nil
 }
 
@@ -371,10 +392,24 @@ func decodeNode(payload []byte) (router.Node, error) {
 	}
 	aliases, err := input.moreTexts(int(count))
 	kind := router.Kind(texts[6])
-	if err != nil || input.offset != len(payload) || revision == 0 || (kind != router.KindRoot && kind != router.KindBranch && kind != router.KindLeaf) {
+	if err != nil || revision == 0 || (kind != router.KindRoot && kind != router.KindBranch && kind != router.KindLeaf) {
 		return router.Node{}, ErrCorrupt
 	}
-	return router.Node{Version: router.Version, ID: texts[0], DatabaseID: texts[1], TableID: texts[2], ParentID: texts[3], Name: texts[4], Aliases: aliases, Path: texts[5], Kind: kind, Purpose: texts[7], Revision: revision, Deleted: deleted == 1}, nil
+	synopsis := ""
+	if input.offset < len(payload) {
+		synopsis, err = input.text()
+	}
+	if err != nil || input.offset != len(payload) {
+		return router.Node{}, ErrCorrupt
+	}
+	return router.Node{Version: router.Version, ID: texts[0], DatabaseID: texts[1], TableID: texts[2], ParentID: texts[3], Name: texts[4], Aliases: aliases, Path: texts[5], Kind: kind, Purpose: texts[7], Synopsis: synopsis, Revision: revision, Deleted: deleted == 1}, nil
+}
+
+func validateSynopsis(value string) error {
+	if !utf8.ValidString(value) || utf8.RuneCountInString(value) > 1000 {
+		return fmt.Errorf("%w: Route synopsis exceeds 1000 characters", ErrInvalid)
+	}
+	return nil
 }
 
 func encodeMembership(value router.Membership) ([]byte, error) {
