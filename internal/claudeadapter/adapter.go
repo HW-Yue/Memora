@@ -1,4 +1,4 @@
-package codexadapter
+package claudeadapter
 
 import (
 	"crypto/sha256"
@@ -8,11 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/HW-Yue/Memora/internal/skillcontract"
 )
 
-const Version = "memora.codex-adapter/v1"
+const Version = "memora.claude-code-adapter/v1"
 
 type File struct {
 	Content []byte
@@ -40,12 +41,16 @@ type ManifestFile struct {
 func Build(canonicalDirectory string) (Bundle, error) {
 	canonical, err := skillcontract.Load(canonicalDirectory)
 	if err != nil {
-		return Bundle{}, fmt.Errorf("build Codex adapter: %w", err)
+		return Bundle{}, fmt.Errorf("build Claude Code adapter: %w", err)
 	}
 	if err := canonical.Validate(); err != nil {
-		return Bundle{}, fmt.Errorf("build Codex adapter: %w", err)
+		return Bundle{}, fmt.Errorf("build Claude Code adapter: %w", err)
 	}
-	skill := []byte(canonical.Markdown)
+	canonicalSkill := []byte(canonical.Markdown)
+	skill, err := addClaudeFrontmatter(canonical.Markdown)
+	if err != nil {
+		return Bundle{}, err
+	}
 	contract, err := os.ReadFile(filepath.Join(canonicalDirectory, "contract.json"))
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read canonical contract: %w", err)
@@ -55,43 +60,71 @@ func Build(canonicalDirectory string) (Bundle, error) {
 		return Bundle{}, fmt.Errorf("read canonical bootstrap: %w", err)
 	}
 	files := map[string]File{
-		".agents/skills/memora/SKILL.md":           {Content: skill, Mode: 0o644},
-		".agents/skills/memora/contract.json":      {Content: contract, Mode: 0o644},
-		".agents/skills/memora/scripts/install.sh": {Content: installer, Mode: 0o755},
-		".agents/skills/memora/agents/openai.yaml": {Content: []byte(openAIMetadata), Mode: 0o644},
-		".codex/rules/memora.rules":                {Content: []byte(commandRules), Mode: 0o644},
+		".claude/skills/memora/SKILL.md":           {Content: []byte(skill), Mode: 0o644},
+		".claude/skills/memora/contract.json":      {Content: contract, Mode: 0o644},
+		".claude/skills/memora/scripts/install.sh": {Content: installer, Mode: 0o755},
 	}
-	manifest := Manifest{Version: Version, CanonicalDigest: digest(skill), ProtocolDigest: digest(contract), Files: manifestFiles(files)}
+	manifest := Manifest{
+		Version: Version, CanonicalDigest: digest(canonicalSkill), ProtocolDigest: digest(contract),
+		Files: manifestFiles(files),
+	}
 	encoded, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		return Bundle{}, fmt.Errorf("encode Codex adapter manifest: %w", err)
+		return Bundle{}, fmt.Errorf("encode Claude Code adapter manifest: %w", err)
 	}
 	files["manifest.json"] = File{Content: append(encoded, '\n'), Mode: 0o644}
 	return Bundle{Files: files, Manifest: manifest}, nil
 }
 
+func CanonicalBody(skill string) string {
+	if !strings.HasPrefix(skill, "---\n") {
+		return skill
+	}
+	end := strings.Index(skill[4:], "\n---\n")
+	if end < 0 {
+		return skill
+	}
+	return skill[4+end+5:]
+}
+
+func addClaudeFrontmatter(skill string) (string, error) {
+	if !strings.HasPrefix(skill, "---\n") {
+		return "", fmt.Errorf("canonical Skill has no YAML frontmatter")
+	}
+	end := strings.Index(skill[4:], "\n---\n")
+	if end < 0 {
+		return "", fmt.Errorf("canonical Skill frontmatter is incomplete")
+	}
+	position := 4 + end
+	allowed := "\nallowed-tools: " + strings.Join([]string{
+		"Bash(memora assimilate *)", "Bash(memora doctor *)", "Bash(memora exec *)",
+		"Bash(memora feedback *)", "Bash(memora maintain *)", "Bash(memora mutate *)",
+		"Bash(memora query *)", "Bash(memora reflect *)", "Bash(memora schema *)",
+	}, " ")
+	return skill[:position] + allowed + skill[position:], nil
+}
+
 func (bundle Bundle) Install(root string) error {
 	if !filepath.IsAbs(root) {
-		return fmt.Errorf("install Codex adapter: destination must be absolute")
+		return fmt.Errorf("install Claude Code adapter: destination must be absolute")
 	}
-	paths := sortedPaths(bundle.Files)
-	for _, relative := range paths {
+	for _, relative := range sortedPaths(bundle.Files) {
 		file := bundle.Files[relative]
 		path := filepath.Join(root, filepath.FromSlash(relative))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return fmt.Errorf("create Codex adapter directory: %w", err)
+			return fmt.Errorf("create Claude Code adapter directory: %w", err)
 		}
 		temporary := path + ".tmp"
 		if err := os.WriteFile(temporary, file.Content, file.Mode); err != nil {
-			return fmt.Errorf("write Codex adapter file %q: %w", relative, err)
+			return fmt.Errorf("write Claude Code adapter file %q: %w", relative, err)
 		}
 		if err := os.Chmod(temporary, file.Mode); err != nil {
 			_ = os.Remove(temporary)
-			return fmt.Errorf("set Codex adapter mode %q: %w", relative, err)
+			return fmt.Errorf("set Claude Code adapter mode %q: %w", relative, err)
 		}
 		if err := os.Rename(temporary, path); err != nil {
 			_ = os.Remove(temporary)
-			return fmt.Errorf("publish Codex adapter file %q: %w", relative, err)
+			return fmt.Errorf("publish Claude Code adapter file %q: %w", relative, err)
 		}
 	}
 	return nil
@@ -103,14 +136,14 @@ func (bundle Bundle) Compare(root string) error {
 		path := filepath.Join(root, filepath.FromSlash(relative))
 		got, err := os.ReadFile(path)
 		if err != nil {
-			return fmt.Errorf("Codex adapter artifact %q: %w", relative, err)
+			return fmt.Errorf("Claude Code adapter artifact %q: %w", relative, err)
 		}
 		if string(got) != string(want.Content) {
-			return fmt.Errorf("Codex adapter artifact %q drifted from generator", relative)
+			return fmt.Errorf("Claude Code adapter artifact %q drifted from generator", relative)
 		}
 		info, err := os.Stat(path)
 		if err != nil || info.Mode().Perm() != want.Mode.Perm() {
-			return fmt.Errorf("Codex adapter artifact %q mode drifted", relative)
+			return fmt.Errorf("Claude Code adapter artifact %q mode drifted", relative)
 		}
 	}
 	return nil
@@ -139,31 +172,3 @@ func digest(content []byte) string {
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:])
 }
-
-const openAIMetadata = `interface:
-  display_name: "Memora"
-  short_description: "Query and maintain an auditable local personal database"
-  default_prompt: "Use Memora to discover, query, or maintain my local semantic database."
-
-policy:
-  allow_implicit_invocation: true
-`
-
-const commandRules = `# Generated by the Memora Codex adapter. Bootstrap remains approval-gated.
-prefix_rule(
-    pattern = ["memora", ["assimilate", "doctor", "exec", "feedback", "maintain", "mutate", "query", "reflect", "schema"]],
-    decision = "allow",
-    justification = "Memora commands are constrained by the canonical Skill, MSQL guards, and local Policy.",
-    match = [
-        "memora doctor",
-        "memora query SHOW DATABASES",
-        "memora mutate --plan {}",
-        "memora feedback --event {}",
-    ],
-    not_match = [
-        "memora init",
-        "memora daemon start",
-        "/bin/sh install.sh --yes",
-    ],
-)
-`

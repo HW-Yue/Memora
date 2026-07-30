@@ -1,0 +1,122 @@
+{
+  "version": "memora.skill/v1",
+  "source": "SKILL.md",
+  "msql_ast_version": "memora.msql.ast/v1",
+  "result_version": "memora.result/v1",
+  "conflict_view_version": "memora.semantic-conflict/v1",
+  "conflict_resolution_version": "memora.conflict-resolution/v1",
+  "assimilation_event_version": "memora.assimilation-event/v1",
+  "assimilation_receipt_version": "memora.assimilation-receipt/v1",
+  "assimilation_submission_version": "memora.assimilation-submission/v1",
+  "assimilation_review_version": "memora.assimilation-review/v1",
+  "source_receipt_version": "memora.source-receipt/v1",
+  "semantic_health_version": "memora.semantic-health/v1",
+  "maintenance_request_version": "memora.maintenance-request/v1",
+  "maintenance_receipt_version": "memora.maintenance-receipt/v1",
+  "feedback_event_version": "memora.feedback-event/v1",
+  "feedback_receipt_version": "memora.feedback-receipt/v1",
+  "feedback_confirmation_version": "memora.feedback-confirmation/v1",
+  "feedback_confirmation_receipt_version": "memora.feedback-confirmation-receipt/v1",
+  "bootstrap_script": "scripts/install.sh",
+  "install_consent": "required",
+  "supported_install_os": ["darwin"],
+  "supported_install_arch": ["arm64", "amd64"],
+  "allowed_commands": [
+    "assimilate",
+    "doctor",
+    "query",
+    "exec",
+    "mutate",
+    "schema",
+    "reflect",
+    "maintain",
+    "feedback"
+  ],
+  "physical_access": "forbidden",
+  "conflict_policy": "ask_user_before_mutation",
+  "workflows": [
+    "discover",
+    "query",
+    "summarize",
+    "write",
+    "assimilate",
+    "conflict",
+    "request_user",
+    "receipt",
+    "reflect",
+    "maintain",
+    "feedback"
+  ],
+  "budgets": {
+    "route_rows": 12,
+    "candidate_rows": 24,
+    "select_rows": 10,
+    "receipt_characters": 2000,
+    "context_characters": 12000
+  },
+  "examples": [
+    {
+      "name": "assimilation-status",
+      "command": "memora assimilate --event '{\"version\":\"memora.assimilation-event/v1\",\"event_id\":\"book-status-2\",\"task_id\":\"book-task\",\"workspace\":\"project-memora\",\"kind\":\"status\"}'"
+    },
+    {
+      "name": "assimilation-receipt",
+      "command": "memora assimilate --receipt book-submit-1"
+    },
+    {
+      "name": "semantic-health",
+      "command": "memora maintain --report"
+    },
+    {
+      "name": "record-feedback",
+      "command": "memora feedback --event '{\"version\":\"memora.feedback-event/v1\",\"event_id\":\"feedback-10\",\"kind\":\"wrong\",\"actor\":\"agent:host\",\"reason\":\"user says the summary is wrong\",\"target\":{\"database\":\"work\",\"table\":\"notes\",\"row_id\":\"row_01\",\"revision\":2}}'"
+    },
+    {
+      "name": "doctor",
+      "command": "memora doctor"
+    },
+    {
+      "name": "discover-databases",
+      "command": "memora query \"SHOW DATABASES\"",
+      "msql": "SHOW DATABASES"
+    },
+    {
+      "name": "discover-schema",
+      "command": "memora query \"DESCRIBE TABLE work.notes COMPACT\"",
+      "msql": "DESCRIBE TABLE work.notes COMPACT"
+    },
+    {
+      "name": "route",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"database\":\"work\",\"path\":\"/\",\"cursor\":\"\",\"limit\":12}}}' \"SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit\"",
+      "msql": "SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit"
+    },
+    {
+      "name": "match",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"query\":\"routing design\",\"terms\":[\"routing\",\"router\",\"路由\"],\"limit\":24}}}' \"MATCH work.notes QUERY :query TERMS :terms LIMIT :limit\"",
+      "msql": "MATCH work.notes QUERY :query TERMS :terms LIMIT :limit"
+    },
+    {
+      "name": "select",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"limit\":10}}}' \"SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit\"",
+      "msql": "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
+    },
+    {
+      "name": "write",
+      "command": "memora exec --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"summary\":\"Route results are locators only\"}},\"mutation\":{\"expected_schema_version\":1,\"expected_revision\":2,\"max_affected_rows\":1,\"index_terms\":[\"routing\",\"locator\"],\"route_leaf_ids\":[\"route_query\"],\"actor\":\"agent:host\",\"source\":\"conversation:event-7\",\"reason\":\"refine verified conclusion\"}}' \"UPDATE work.notes SET summary = :summary WHERE row_id = :row\"",
+      "msql": "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
+    },
+    {
+      "name": "ignore-plan",
+      "command": "memora mutate --plan '{\"version\":\"memora.mutation-plan/v1\",\"id\":\"plan-7\",\"decision\":\"IGNORE\",\"database\":\"work\",\"table\":\"notes\",\"actor\":\"agent:host\",\"source_event_id\":\"conversation:event-7\",\"reason\":\"existing Row already captures it\",\"authorized_databases\":[\"work\"],\"preflight\":[{\"id\":\"duplicate-check\",\"msql\":\"SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1\",\"input\":{\"parameters\":{\"named\":{\"row\":\"row_01\"}}},\"expect_rows\":1}],\"steps\":[],\"verify\":[]}'",
+      "msql": "SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1"
+    },
+    {
+      "name": "ensure-schema",
+      "command": "memora schema --plan '{\"version\":\"memora.schema-plan/v1\",\"id\":\"schema-8\",\"actor\":\"agent:host\",\"source_event_id\":\"conversation:event-8\",\"reason\":\"new durable project domain\",\"authorized_databases\":[\"work\"],\"ensure\":{\"database\":{\"name\":\"work\",\"purpose\":\"Project knowledge\",\"scope\":\"Reviewed projects\"},\"database_synonyms\":[\"projects\"],\"table\":{\"name\":\"notes\",\"purpose\":\"Durable decisions\",\"row_semantics\":\"One reviewed decision\",\"columns\":[{\"name\":\"title\",\"type\":\"TEXT(200)\",\"nullable\":false,\"purpose\":\"Decision title\"}]},\"table_synonyms\":[\"decisions\"]}}'"
+    },
+    {
+      "name": "checkpoint-conversation",
+      "command": "memora reflect --event '{\"version\":\"memora.conversation-event/v1\",\"event_id\":\"checkpoint-9\",\"session_id\":\"host-session-2\",\"kind\":\"checkpoint\",\"workspace\":\"project-memora\",\"authorized_databases\":[\"work\"],\"checkpoint\":{\"active_database\":\"work\",\"route_path\":\"/architecture\",\"last_event_id\":\"event-8\"}}'"
+    }
+  ]
+}

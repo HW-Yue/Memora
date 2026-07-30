@@ -1,6 +1,7 @@
 {
   "version": "memora.codex-adapter/v1",
   "canonical_digest": "ab4015162ade4867ffbd1fd656ee9ef5389ccc4608c1c6403c003038d37c628a",
+  "protocol_digest": "d1b18e5e9c60c261d7d2899ac231abd20164668ee02e35fc9b5afef02df14cc8",
   "files": [
     {
       "path": ".agents/skills/memora/SKILL.md",
