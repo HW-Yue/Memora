@@ -66,11 +66,12 @@ F80 能证明“公开二进制 + 两套 adapter + 同一 MSQL 机械旅程”�
 
 ## 建议的讨论顺序
 
-1. 先补真实模型与无向量质量 benchmark，确认 AI 是否真的找得准、写得对、成本可接受；
-2. 再讨论语义 DBA：Router 质量诊断、导航失败反馈和局部优化计划；
-3. 再补完整 Schema 演化与 Row 迁移；
-4. 再确定持续输入入口、风险 Policy、多库发现与 Query Workspace；
-5. 完成 package 问答、备份恢复、正式发行等产品化能力；
-6. 最后由规模与故障数据决定 compaction、Page/B+ Tree/Buffer Pool、MVCC/Redo/Binlog 的进入顺序。
+1. 先建设本地可视化、只读接口和 Route Trace，让用户与开发者看到真实状态；
+2. 再补真实模型与无向量质量 benchmark，确认 AI 是否找得准、写得对、成本可接受；
+3. 再讨论语义 DBA：Router 质量诊断、导航失败反馈和局部优化计划；
+4. 再补完整 Schema 演化与 Row 迁移；
+5. 再确定持续输入入口、风险 Policy、多库发现与 Query Workspace；
+6. 完成 package 问答、备份恢复、正式发行等产品化能力；
+7. 最后由规模与故障数据决定 compaction、Page/B+ Tree/Buffer Pool、MVCC/Redo/Binlog 的进入顺序。
 
 任何后续 Feature 都需单独形成待批准计划，用户明确授权后才实现。
