@@ -73,14 +73,16 @@ type daemonHealthSource struct {
 	catalog interface {
 		ShowDatabases(context.Context) ([]catalog.Database, error)
 	}
-	rows *row.Service
+	rows interface {
+		ListPage(context.Context, string, string, int) ([]row.Row, bool, error)
+	}
 }
 
 func handlerHealthSource(handler *databaseHandler) (*daemonHealthSource, bool) {
 	dictionary, ok := handler.dictionary.(interface {
 		ShowDatabases(context.Context) ([]catalog.Database, error)
 	})
-	return &daemonHealthSource{catalog: dictionary, rows: handler.legacyRows}, ok && handler.legacyRows != nil
+	return &daemonHealthSource{catalog: dictionary, rows: handler.rows}, ok && handler.rows != nil
 }
 
 func (source *daemonHealthSource) ShowDatabases(ctx context.Context) ([]catalog.Database, error) {

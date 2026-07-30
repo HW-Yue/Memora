@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/semantichealth"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 )
 
@@ -200,10 +202,61 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		restoredRoute.Results[0].Rows[0]["revision"] != float64(4) {
 		t.Fatalf("Route after RESTORE = restore %#v, route %#v", restored, restoredRoute)
 	}
+	feedbackEvent := feedback.Event{
+		Version: feedback.EventVersion, EventID: "e2e-feedback-wrong",
+		Kind: feedback.KindWrong, Actor: "user:e2e",
+		Reason: "the restored wording is not the confirmed revision",
+		Target: feedback.Target{Database: "work", Table: "notes", RowID: rowID, Revision: 4},
+	}
+	encodedFeedback, err := json.Marshal(feedbackEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var feedbackReceipt feedback.Receipt
+	e2eJSON(t, root, &feedbackReceipt, binary,
+		"feedback", "--data-dir", dataDir, "--event", string(encodedFeedback))
+	if feedbackReceipt.Status != "recorded" || feedbackReceipt.Target.Revision != 4 {
+		t.Fatalf("Feedback Receipt = %#v", feedbackReceipt)
+	}
+	confirmation := feedback.Confirmation{
+		Version: feedback.ConfirmationVersion, ConfirmationID: "e2e-confirm-undo",
+		FeedbackEventID: feedbackEvent.EventID, SourceEventID: "e2e:user-confirmation",
+		Actor: "agent:e2e", Instruction: "restore the last confirmed wording",
+		Action: feedback.ActionUndo, ExpectedRevision: 4,
+		AuthorizedDatabases: []string{"work"},
+		Undo: &feedback.Undo{
+			TargetRevision: 2, ExpectedSchemaVersion: 1, RouteLeafIDs: []string{leafID},
+		},
+	}
+	encodedConfirmation, err := json.Marshal(confirmation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var confirmationReceipt feedback.ConfirmationReceipt
+	e2eJSON(t, root, &confirmationReceipt, binary,
+		"feedback", "--data-dir", dataDir, "--confirmation", string(encodedConfirmation))
+	if confirmationReceipt.Status != "confirmed" || !confirmationReceipt.Verified ||
+		confirmationReceipt.NewRevision == nil || *confirmationReceipt.NewRevision != 5 ||
+		confirmationReceipt.RestoredRevision == nil || *confirmationReceipt.RestoredRevision != 2 {
+		t.Fatalf("Feedback Confirmation Receipt = %#v", confirmationReceipt)
+	}
+	openedAfterFeedback := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 20")
+	if len(openedAfterFeedback.Results[0].Rows) != 1 ||
+		openedAfterFeedback.Results[0].Rows[0]["row_id"] != rowID ||
+		openedAfterFeedback.Results[0].Rows[0]["revision"] != float64(5) {
+		t.Fatalf("Route after feedback undo = %#v", openedAfterFeedback)
+	}
+	var health semantichealth.Report
+	e2eJSON(t, root, &health, binary, "maintain", "--data-dir", dataDir, "--report")
+	if health.Status != "healthy" || health.Hash == "" || health.IssueCount != 0 {
+		t.Fatalf("native semantic health = %#v", health)
+	}
 	var doctor doctorOutput
 	e2eJSON(t, root, &doctor, binary, "doctor", "--data-dir", dataDir)
 	if doctor.Status != "healthy" || doctor.Databases != 1 ||
-		doctor.Rows != 1 || doctor.History != 4 || doctor.SnapshotHash == "" {
+		doctor.Rows != 1 || doctor.History != 5 || doctor.SnapshotHash == "" {
 		t.Fatalf("final doctor = %#v", doctor)
 	}
 }

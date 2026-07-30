@@ -25,6 +25,8 @@
 - 目标：移除 `legacyRows` 依赖，接入原生 Rows/Catalog；
 - 覆盖：US-CORRECT、US-DBA；
 - 门：feedback record/confirm 与 health report 在发行二进制可运行。
+- 状态：已实现；CLI E2E 覆盖 feedback record、确认撤销、Route 再发现与
+  semantic health report。
 
 ## F76 公开 Split/Merge/Route Reshape
 

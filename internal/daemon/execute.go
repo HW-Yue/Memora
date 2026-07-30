@@ -357,9 +357,6 @@ func (handler *databaseHandler) handleFeedback(
 	session ipc.Session,
 	request ipc.Request,
 ) (json.RawMessage, error) {
-	if handler.legacyRows == nil {
-		return nil, &feedback.Error{Code: result.CodeUnsupported, Message: "feedback state has not migrated to the native authority"}
-	}
 	batch, ok := handler.session(session.ID)
 	if !ok {
 		return nil, &feedback.Error{Code: result.CodeInvalidRequest, Message: "MSQL daemon session is closed"}
@@ -367,7 +364,7 @@ func (handler *databaseHandler) handleFeedback(
 	tool := skillwrite.ToolFunc(func(callContext context.Context, call skillwrite.Call) (result.Envelope, error) {
 		return batch.Execute(callContext, call.Request), nil
 	})
-	processor := feedback.New(handler.store, handler.legacyRows, tool)
+	processor := feedback.New(handler.store, handler.rows, tool)
 	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
