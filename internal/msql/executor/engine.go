@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -68,6 +69,34 @@ type MutationOptions struct {
 	Reason                string   `json:"reason,omitempty"`
 	IndexTerms            []string `json:"index_terms,omitempty"`
 	RouteLeafIDs          []string `json:"route_leaf_ids,omitempty"`
+}
+
+func (options MutationOptions) MarshalJSON() ([]byte, error) {
+	type wireOptions struct {
+		ExpectedSchemaVersion uint64    `json:"expected_schema_version,omitempty"`
+		ExpectedRevision      uint64    `json:"expected_revision,omitempty"`
+		MaxAffectedRows       uint64    `json:"max_affected_rows,omitempty"`
+		Actor                 string    `json:"actor,omitempty"`
+		Source                string    `json:"source,omitempty"`
+		Reason                string    `json:"reason,omitempty"`
+		IndexTerms            *[]string `json:"index_terms,omitempty"`
+		RouteLeafIDs          *[]string `json:"route_leaf_ids,omitempty"`
+	}
+	wire := wireOptions{
+		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
+		ExpectedRevision:      options.ExpectedRevision,
+		MaxAffectedRows:       options.MaxAffectedRows,
+		Actor:                 options.Actor,
+		Source:                options.Source,
+		Reason:                options.Reason,
+	}
+	if options.IndexTerms != nil {
+		wire.IndexTerms = &options.IndexTerms
+	}
+	if options.RouteLeafIDs != nil {
+		wire.RouteLeafIDs = &options.RouteLeafIDs
+	}
+	return json.Marshal(wire)
 }
 
 type Output struct {

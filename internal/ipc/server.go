@@ -134,6 +134,8 @@ func responseError(err error) *ResponseError {
 		code = "cancelled"
 	} else if errors.Is(err, context.DeadlineExceeded) {
 		code = "deadline_exceeded"
+	} else if stable, ok := err.(interface{ StableCode() string }); ok {
+		code = stable.StableCode()
 	}
 	return &ResponseError{Code: code, Message: err.Error()}
 }

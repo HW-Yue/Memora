@@ -1,6 +1,6 @@
 # 数据库 Mutation Agent
 
-状态：F31 已实现首个 Skill 写入协议；会话事件交接和语义冲突交互由后续 feature 完成。
+状态：F31/F33 已实现 Skill 写入和显式会话事件交接；语义冲突交互由后续 feature 完成。
 
 ## 目标
 
@@ -123,8 +123,6 @@ RELATE      只新增或修正关系
 
 ## 待验证
 
-- Codex/Claude 怎样稳定提供 conversation delta 和 session event ID；
-- 写入在每轮、稳定结论出现时、compaction 前还是会话结束时触发；
 - “值得写”分类器的 precision/recall；
 - Skill 的语义冲突展示和用户指令回填协议是否足够清晰；
 - Mutation Receipt 是否需要包含用户可读 diff。
@@ -132,6 +130,7 @@ RELATE      只新增或修正关系
 ## 关联
 
 - [Skill 写入流程 v1](./skill-write-v1.md)
+- [Conversation Delta 交接 v1](./conversation-delta-v1.md)
 - [AI 自主权与约束](./autonomy.md)
 - [数据库查询 Sub-agent](./database-query-subagent.md)
 - [AI-native 产品契约](../product/ai-native-contract.md)

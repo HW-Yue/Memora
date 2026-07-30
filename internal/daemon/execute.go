@@ -7,10 +7,12 @@ import (
 	"io"
 	"sync"
 
+	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/skillwrite"
 	"github.com/HW-Yue/Memora/internal/store"
 )
 
@@ -62,6 +64,21 @@ func Execute(
 	return envelope, err
 }
 
+func Reflect(ctx context.Context, dataDir string, event conversation.Event) (conversation.Receipt, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return conversation.Receipt{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return conversation.Receipt{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var receipt conversation.Receipt
+	err = client.Call(ctx, "conversation.reflect", event, &receipt)
+	return receipt, err
+}
+
 func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session, request ipc.Request) (json.RawMessage, error) {
 	if request.Method == "doctor" {
 		report, err := handler.doctor(ctx)
@@ -69,6 +86,9 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 			return nil, err
 		}
 		return json.Marshal(report)
+	}
+	if request.Method == "conversation.reflect" {
+		return handler.handleReflect(ctx, session, request)
 	}
 	if request.Method != "msql.execute" {
 		return handleRequest(ctx, session, request)
@@ -91,6 +111,31 @@ func (handler *databaseHandler) Handle(ctx context.Context, session ipc.Session,
 		RequestID: request.RequestID, Source: payload.Source, Statements: payload.Statements,
 	})
 	return json.Marshal(envelope)
+}
+
+func (handler *databaseHandler) handleReflect(
+	ctx context.Context,
+	session ipc.Session,
+	request ipc.Request,
+) (json.RawMessage, error) {
+	var event conversation.Event
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, &conversation.Error{Code: result.CodeInvalidRequest, Message: "conversation event payload is invalid"}
+	}
+	batch, ok := handler.session(session.ID)
+	if !ok {
+		return nil, &conversation.Error{Code: result.CodeInvalidRequest, Message: "MSQL daemon session is closed"}
+	}
+	tool := skillwrite.ToolFunc(func(callContext context.Context, call skillwrite.Call) (result.Envelope, error) {
+		return batch.Execute(callContext, call.Request), nil
+	})
+	receipt, err := conversation.New(conversation.NewJournal(handler.store), tool).Process(ctx, event)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(receipt)
 }
 
 func (handler *databaseHandler) SessionClosed(_ context.Context, session ipc.Session) error {

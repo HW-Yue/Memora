@@ -8,7 +8,8 @@
     "query",
     "exec",
     "mutate",
-    "schema"
+    "schema",
+    "reflect"
   ],
   "physical_access": "forbidden",
   "conflict_policy": "ask_user_before_mutation",
@@ -19,7 +20,8 @@
     "write",
     "assimilate",
     "request_user",
-    "receipt"
+    "receipt",
+    "reflect"
   ],
   "budgets": {
     "route_rows": 12,
@@ -71,6 +73,10 @@
     {
       "name": "ensure-schema",
       "command": "memora schema --plan '{\"version\":\"memora.schema-plan/v1\",\"id\":\"schema-8\",\"actor\":\"agent:host\",\"source_event_id\":\"conversation:event-8\",\"reason\":\"new durable project domain\",\"authorized_databases\":[\"work\"],\"ensure\":{\"database\":{\"name\":\"work\",\"purpose\":\"Project knowledge\",\"scope\":\"Reviewed projects\"},\"database_synonyms\":[\"projects\"],\"table\":{\"name\":\"notes\",\"purpose\":\"Durable decisions\",\"row_semantics\":\"One reviewed decision\",\"columns\":[{\"name\":\"title\",\"type\":\"TEXT(200)\",\"nullable\":false,\"purpose\":\"Decision title\"}]},\"table_synonyms\":[\"decisions\"]}}'"
+    },
+    {
+      "name": "checkpoint-conversation",
+      "command": "memora reflect --event '{\"version\":\"memora.conversation-event/v1\",\"event_id\":\"checkpoint-9\",\"session_id\":\"host-session-2\",\"kind\":\"checkpoint\",\"workspace\":\"project-memora\",\"authorized_databases\":[\"work\"],\"checkpoint\":{\"active_database\":\"work\",\"route_path\":\"/architecture\",\"last_event_id\":\"event-8\"}}'"
     }
   ]
 }

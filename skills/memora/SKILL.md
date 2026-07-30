@@ -10,7 +10,7 @@ and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
 Only use the `memora doctor`, `memora query`, `memora exec`, `memora mutate`,
-and `memora schema` interfaces.
+`memora schema`, and `memora reflect` interfaces.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -120,6 +120,31 @@ successful schema change. Ask the user before an irreversible or broad change.
 
 ```sh
 memora schema --plan '{"version":"memora.schema-plan/v1","id":"schema-8","actor":"agent:host","source_event_id":"conversation:event-8","reason":"new durable project domain","authorized_databases":["work"],"ensure":{"database":{"name":"work","purpose":"Project knowledge","scope":"Reviewed projects"},"database_synonyms":["projects"],"table":{"name":"notes","purpose":"Durable decisions","row_semantics":"One reviewed decision","columns":[{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title"}]},"table_synonyms":["decisions"]}}'
+```
+
+## Reflect conversation deltas
+
+Call `memora reflect` explicitly when a stable conclusion is ready, the user asks
+to remember it, before a host compaction checkpoint, or when the host can signal
+session end. Do not assume a hidden lifecycle hook and do not invoke it after
+every message. Mark greetings, transient reasoning, and duplicates as `ignore`;
+attach one validated Mutation Plan to at most one `persist` delta per event.
+
+Use a host-stable `event_id`, session ID, workspace, and authorized Database set.
+The Mutation Plan provenance must equal the event ID and cannot expand that
+authorization. Retrying identical content returns the stored receipt without a
+Tool call; reusing an ID for different content is a revision conflict. An event
+left in progress by interruption is in doubt and requires recovery instead of a
+blind retry. A `needs_context` receipt means the host must restore the missing
+Database or plan before writing.
+
+Checkpoint events store only active Database, Route path, and last event ID;
+they replace the same session's prior checkpoint during project switches.
+Session-end events explicitly clear it. Never put raw conversation text in the
+event journal or checkpoint.
+
+```sh
+memora reflect --event '{"version":"memora.conversation-event/v1","event_id":"checkpoint-9","session_id":"host-session-2","kind":"checkpoint","workspace":"project-memora","authorized_databases":["work"],"checkpoint":{"active_database":"work","route_path":"/architecture","last_event_id":"event-8"}}'
 ```
 
 ## Request the user

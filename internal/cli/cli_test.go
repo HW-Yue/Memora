@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillschema"
@@ -112,6 +113,18 @@ func TestRun(t *testing.T) {
 			wantCode:   2,
 			wantStderr: "memora: --plan must be one strict Schema Plan JSON object\n",
 		},
+		{
+			name:       "reflect requires event",
+			args:       []string{"reflect"},
+			wantCode:   2,
+			wantStderr: "memora: reflect requires --event JSON\n",
+		},
+		{
+			name:       "reflect rejects unknown event field",
+			args:       []string{"reflect", "--event", `{"surprise":true}`},
+			wantCode:   2,
+			wantStderr: "memora: --event must be one strict Conversation Event JSON object\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -132,6 +145,49 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunReflectPassesExplicitEventToDaemon(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	event := conversation.Event{
+		Version: conversation.EventVersion, EventID: "checkpoint-cli", SessionID: "session-cli",
+		Kind: conversation.KindCheckpoint, Workspace: "repo", AuthorizedDatabases: []string{"work"},
+		Checkpoint: &conversation.Checkpoint{ActiveDatabase: "work", LastEventID: "event-before"},
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		Reflect: func(_ context.Context, gotDataDir string, got conversation.Event) (conversation.Receipt, error) {
+			called = true
+			if gotDataDir != dataDir || got.EventID != event.EventID {
+				t.Fatalf("reflect = %q, %#v", gotDataDir, got)
+			}
+			return conversation.Receipt{
+				Version: conversation.ReceiptVersion, EventID: got.EventID, SessionID: got.SessionID,
+				Status: conversation.StatusCheckpointed, Mutations: []skillwrite.Receipt{}, Missing: []string{},
+			}, nil
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := RunWithDependencies(
+		[]string{"reflect", "--data-dir", dataDir, "--event", string(encoded)},
+		&stdout, &stderr, BuildInfo{}, dependencies,
+	)
+	if code != ExitOK || !called || stderr.Len() != 0 {
+		t.Fatalf("reflect code=%d called=%t stderr=%q", code, called, &stderr)
+	}
+	var receipt conversation.Receipt
+	if err := json.Unmarshal(stdout.Bytes(), &receipt); err != nil || receipt.Status != conversation.StatusCheckpointed {
+		t.Fatalf("receipt = %#v, %v", receipt, err)
 	}
 }
 

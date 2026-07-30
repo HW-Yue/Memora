@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/HW-Yue/Memora/internal/config"
+	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/daemon"
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
@@ -41,6 +42,7 @@ Commands:
   mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
+  reflect    Ingest an explicit conversation event
   schema     Execute a validated Schema Plan
   version    Show build version
 
@@ -77,6 +79,7 @@ type Dependencies struct {
 		string,
 		[]executor.StatementInput,
 	) (result.Envelope, error)
+	Reflect func(context.Context, string, conversation.Event) (conversation.Receipt, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -102,6 +105,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runMutate(args[1:], stdout, stderr, dependencies)
 	case "parse":
 		return runParse(args[1:], stdout, stderr, dependencies)
+	case "reflect":
+		return runReflect(args[1:], stdout, stderr, dependencies)
 	case "schema":
 		return runSchema(args[1:], stdout, stderr, dependencies)
 	case "version":
@@ -112,6 +117,65 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runReflect(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var eventJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--event":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--event requires a JSON object")
+			}
+			if eventJSON != "" {
+				return usageError(stderr, "--event may only be specified once")
+			}
+			eventJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown reflect option: %q", args[index]))
+		}
+	}
+	if eventJSON == "" {
+		return usageError(stderr, "reflect requires --event JSON")
+	}
+	var event conversation.Event
+	decoder := json.NewDecoder(bytes.NewBufferString(eventJSON))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--event must be one strict Conversation Event JSON object")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	reflectEvent := dependencies.Reflect
+	if reflectEvent == nil {
+		reflectEvent = daemon.Reflect
+	}
+	receipt, err := reflectEvent(context.Background(), dataDir, event)
+	if err != nil {
+		return commandError(stderr, "reflect conversation event", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if receipt.Status == conversation.StatusNeedsContext {
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func runSchema(
