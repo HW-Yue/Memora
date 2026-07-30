@@ -114,6 +114,51 @@ func (repository *Repository) ReadRevision(id string, revision uint64) (row.Row,
 	return repository.readRecord(revisionRecordID(id, revision))
 }
 
+func (repository *Repository) List(databaseID, tableID string, limit int) ([]row.Row, bool, error) {
+	if limit < 1 || limit > 1000 {
+		return nil, false, fmt.Errorf("%w: limit must be between 1 and 1000", ErrInvalid)
+	}
+	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	if err != nil {
+		return nil, false, err
+	}
+	logicalIDs := make(map[string]struct{})
+	for _, recordID := range ids {
+		payload, err := repository.file.Get(nativestore.ObjectKindRow, recordID)
+		if err != nil {
+			return nil, false, err
+		}
+		value, err := decode(payload)
+		if err != nil {
+			return nil, false, err
+		}
+		logicalIDs[value.ID] = struct{}{}
+	}
+	sorted := make([]string, 0, len(logicalIDs))
+	for id := range logicalIDs {
+		sorted = append(sorted, id)
+	}
+	sort.Strings(sorted)
+	result := make([]row.Row, 0, limit)
+	for _, id := range sorted {
+		value, err := repository.Read(id)
+		if errors.Is(err, nativestore.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		if value.DatabaseID != databaseID || value.TableID != tableID {
+			continue
+		}
+		if len(result) == limit {
+			return result, true, nil
+		}
+		result = append(result, value)
+	}
+	return result, false, nil
+}
+
 func (repository *Repository) readRecord(recordID string) (row.Row, error) {
 	payload, err := repository.file.Get(nativestore.ObjectKindRow, recordID)
 	if err != nil {
