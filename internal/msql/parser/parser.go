@@ -88,7 +88,11 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 	case parser.matchWord("DELETE"):
 		statement, err = parser.parseDelete()
 	case parser.matchWord("RESTORE"):
-		statement, err = parser.parseRestore()
+		if parser.matchWord("CONFIGURATION") {
+			statement, err = parser.parseRestoreConfiguration()
+		} else {
+			statement, err = parser.parseRestore()
+		}
 	case parser.matchWord("SPLIT"):
 		statement, err = parser.parseSplit()
 	case parser.matchWord("MERGE"):
@@ -141,6 +145,19 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 	switch {
 	case parser.matchWord("INSTANCE"):
 		show.Object = "INSTANCE"
+	case parser.matchWord("CONFIGURATION"):
+		show.Object = "CONFIGURATION"
+		if parser.matchWord("HISTORY") {
+			show.Direction = "HISTORY"
+			if _, err := parser.expectWord("LIMIT"); err != nil {
+				return ast.Statement{}, err
+			}
+			limit, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Limit = &limit
+		}
 	case parser.matchWord("DATABASES"):
 		show.Object = "DATABASES"
 	case parser.matchWord("TABLES"):
@@ -276,7 +293,7 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		}
 		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, DATABASES, TABLES, COLUMNS, HISTORY, RELATIONS, or ROUTES")
+		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, TABLES, COLUMNS, HISTORY, RELATIONS, or ROUTES")
 	}
 	show.Compact = parser.matchWord("COMPACT")
 	return ast.Statement{Kind: "SHOW", Show: show}, nil
@@ -477,6 +494,9 @@ func (parser *parser) parseAlter() (ast.Statement, error) {
 	if parser.matchWord("ROUTE") {
 		return parser.parseAlterRoute()
 	}
+	if parser.matchWord("CONFIGURATION") {
+		return parser.parseAlterConfiguration()
+	}
 	alter := &ast.AlterStatement{}
 	switch {
 	case parser.matchWord("DATABASE"):
@@ -534,6 +554,42 @@ func (parser *parser) parseAlter() (ast.Statement, error) {
 		return ast.Statement{}, parser.unexpected("ADD COLUMN or RENAME")
 	}
 	return ast.Statement{Kind: "ALTER", Alter: alter}, nil
+}
+
+func (parser *parser) parseAlterConfiguration() (ast.Statement, error) {
+	if _, err := parser.expectWord("QUERY_BUDGETS"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("SET"); err != nil {
+		return ast.Statement{}, err
+	}
+	value := &ast.ConfigurationStatement{Action: "ALTER", Key: "QUERY_BUDGETS"}
+	fields := []struct {
+		name string
+		set  func(*ast.Expression)
+	}{
+		{"ROUTE_CHILDREN", func(expression *ast.Expression) { value.RouteChildren = expression }},
+		{"OPEN_LOCATORS", func(expression *ast.Expression) { value.OpenLocators = expression }},
+		{"SELECT_SCAN", func(expression *ast.Expression) { value.SelectScan = expression }},
+		{"SELECT_ROWS", func(expression *ast.Expression) { value.SelectRows = expression }},
+		{"ROUTE_FRAME_NODES", func(expression *ast.Expression) { value.RouteFrameNodes = expression }},
+	}
+	for index, field := range fields {
+		if index > 0 {
+			if _, err := parser.expectKind(lexer.KindComma, ","); err != nil {
+				return ast.Statement{}, err
+			}
+		}
+		if _, err := parser.expectWord(field.name); err != nil {
+			return ast.Statement{}, err
+		}
+		expression, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		field.set(&expression)
+	}
+	return ast.Statement{Kind: "ALTER_CONFIGURATION", Configuration: value}, nil
 }
 
 func (parser *parser) parseSelect() (ast.Statement, error) {
@@ -740,6 +796,28 @@ func (parser *parser) parseRestore() (ast.Statement, error) {
 	return ast.Statement{Kind: "RESTORE", Restore: &ast.RestoreStatement{
 		Table: table, Row: &rowExpression, Revision: &revision,
 	}}, nil
+}
+
+func (parser *parser) parseRestoreConfiguration() (ast.Statement, error) {
+	if _, err := parser.expectWord("QUERY_BUDGETS"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("TO"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("REVISION"); err != nil {
+		return ast.Statement{}, err
+	}
+	revision, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{
+		Kind: "RESTORE_CONFIGURATION",
+		Configuration: &ast.ConfigurationStatement{
+			Action: "RESTORE", Key: "QUERY_BUDGETS", TargetRevision: &revision,
+		},
+	}, nil
 }
 
 func (parser *parser) parseSplit() (ast.Statement, error) {

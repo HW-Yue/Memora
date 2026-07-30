@@ -399,6 +399,51 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		mergedRelation.Results[0].Rows[0]["target_row_id"] != anchorID {
 		t.Fatalf("relation after MERGE = %#v", mergedRelation)
 	}
+	initialConfiguration := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"SHOW CONFIGURATION")
+	if initialConfiguration.Results[0].Rows[0]["revision"] != float64(1) ||
+		initialConfiguration.Results[0].Rows[0]["select_rows"] != float64(10) {
+		t.Fatalf("initial database configuration = %#v", initialConfiguration)
+	}
+	tightenedConfiguration := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(nil, map[string]any{
+			"expected_revision": 1, "actor": "agent:e2e", "reason": "exercise persisted query budgets",
+		}),
+		"ALTER CONFIGURATION QUERY_BUDGETS SET ROUTE_CHILDREN 1, OPEN_LOCATORS 1, "+
+			"SELECT_SCAN 2, SELECT_ROWS 1, ROUTE_FRAME_NODES 2")
+	if tightenedConfiguration.Results[0].Revision == nil ||
+		*tightenedConfiguration.Results[0].Revision != 2 {
+		t.Fatalf("tightened database configuration = %#v", tightenedConfiguration)
+	}
+	failedOutput, failedErr := e2eRun(root, binary, "query", "--data-dir", dataDir,
+		"SELECT row_id FROM work.notes LIMIT 2")
+	var budgetFailure result.Envelope
+	if failedErr == nil || json.Unmarshal([]byte(failedOutput), &budgetFailure) != nil ||
+		budgetFailure.OK || len(budgetFailure.Results) != 1 ||
+		budgetFailure.Results[0].Error == nil ||
+		budgetFailure.Results[0].Error.Code != result.CodeValidation {
+		t.Fatalf("configured SELECT budget was not enforced: err=%v output=%s", failedErr, failedOutput)
+	}
+	e2eCommand(t, root, binary, "daemon", "stop", "--data-dir", dataDir)
+	e2eCommand(t, root, binary, "daemon", "start", "--data-dir", dataDir)
+	reopenedConfiguration := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"SHOW CONFIGURATION")
+	if reopenedConfiguration.Results[0].Rows[0]["revision"] != float64(2) ||
+		reopenedConfiguration.Results[0].Rows[0]["select_rows"] != float64(1) {
+		t.Fatalf("reopened database configuration = %#v", reopenedConfiguration)
+	}
+	restoredConfiguration := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"revision": 1}, map[string]any{
+			"expected_revision": 2, "actor": "agent:e2e", "reason": "restore accepted defaults",
+		}),
+		"RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision")
+	if restoredConfiguration.Results[0].Revision == nil ||
+		*restoredConfiguration.Results[0].Revision != 3 ||
+		restoredConfiguration.Results[0].Rows[0]["restored_revision"] != float64(1) {
+		t.Fatalf("restored database configuration = %#v", restoredConfiguration)
+	}
+	e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"SELECT row_id FROM work.notes LIMIT 10")
 	var doctor doctorOutput
 	e2eJSON(t, root, &doctor, binary, "doctor", "--data-dir", dataDir)
 	if doctor.Status != "healthy" || doctor.Databases != 1 ||

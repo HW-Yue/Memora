@@ -88,6 +88,13 @@ type Runner struct {
 	tool Tool
 }
 
+type runtimeBudgets struct {
+	routeChildren   int
+	openLocators    int
+	selectRows      int
+	routeFrameNodes int
+}
+
 func New(tool Tool) *Runner {
 	return &Runner{tool: tool}
 }
@@ -103,7 +110,8 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 	qualified := quoteIdentifier(request.Database) + "." + quoteIdentifier(request.Table)
 
 	discovery, err := runner.call(ctx, &report, Call{
-		ID: "query-01-discover", Command: "query", Statement: "SHOW", MSQL: "SHOW DATABASES",
+		ID: "query-01-discover", Command: "query", Statement: "SHOW_CONFIGURATION_DATABASES",
+		MSQL: "SHOW CONFIGURATION; SHOW DATABASES",
 	})
 	if err != nil {
 		return report, err
@@ -113,7 +121,11 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 	} else if stop {
 		return report, nil
 	}
-	databaseID := findIdentity(discovery, "name", request.Database, "database_id")
+	budgets, ok := queryRuntimeBudgets(discovery)
+	if !ok {
+		return report, queryError(result.CodeInternal, "query configuration result is incomplete")
+	}
+	databaseID := findIdentityAt(discovery, 1, "name", request.Database, "database_id")
 	if databaseID == "" {
 		report.Status = StatusNoResults
 		return report, nil
@@ -154,11 +166,13 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 		return report, nil
 	}
 
+	frameRemaining := budgets.routeFrameNodes
+	routeLimit := min(12, budgets.routeChildren, frameRemaining)
 	frame, err := runner.call(ctx, &report, Call{
 		ID: "query-04-routes-root", Command: "query", Statement: "SHOW_ROUTES",
 		MSQL: "SHOW ROUTES FROM TABLE " + qualified + " AT ROOT LIMIT :limit",
 		Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
-			"limit": int64(12),
+			"limit": int64(routeLimit),
 		}}},
 	})
 	if err != nil {
@@ -170,6 +184,7 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 		return report, nil
 	}
 	report.Truncated = frame.Truncated
+	frameRemaining -= resultRowCount(frame)
 	for index, routeID := range request.SelectedRoutes {
 		if !containsRoute(frame, routeID) {
 			report.Status = StatusNoResults
@@ -178,11 +193,16 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 		if index == len(request.SelectedRoutes)-1 {
 			break
 		}
+		if frameRemaining < 1 {
+			report.Status, report.Truncated = StatusNoResults, true
+			return report, nil
+		}
+		routeLimit = min(12, budgets.routeChildren, frameRemaining)
 		frame, err = runner.call(ctx, &report, Call{
 			ID: fmt.Sprintf("query-%02d-routes-under", index+5), Command: "query", Statement: "SHOW_ROUTES",
 			MSQL: "SHOW ROUTES UNDER :parent LIMIT :limit",
 			Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
-				"parent": routeID, "limit": int64(12),
+				"parent": routeID, "limit": int64(routeLimit),
 			}}},
 		})
 		if err != nil {
@@ -194,13 +214,14 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 			return report, nil
 		}
 		report.Truncated = report.Truncated || frame.Truncated
+		frameRemaining -= resultRowCount(frame)
 	}
 	leafID := request.SelectedRoutes[len(request.SelectedRoutes)-1]
 	candidates, err := runner.call(ctx, &report, Call{
 		ID: "query-open-route", Command: "query", Statement: "OPEN_ROUTE",
 		MSQL: "OPEN ROUTE :leaf LIMIT :limit",
 		Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
-			"leaf": leafID, "limit": int64(request.CandidateLimit),
+			"leaf": leafID, "limit": int64(min(request.CandidateLimit, budgets.openLocators)),
 		}}},
 	})
 	if err != nil {
@@ -219,8 +240,9 @@ func (runner *Runner) Run(ctx context.Context, request Request) (Report, error) 
 		report.Status = StatusNoResults
 		return report, nil
 	}
-	if len(locators) > request.SelectLimit {
-		locators = locators[:request.SelectLimit]
+	selectLimit := min(request.SelectLimit, budgets.selectRows)
+	if len(locators) > selectLimit {
+		locators = locators[:selectLimit]
 		report.Truncated = true
 	}
 	for index, locator := range locators {
@@ -373,10 +395,14 @@ func validateRequest(request Request) error {
 }
 
 func findIdentity(envelope result.Envelope, nameField, name, idField string) string {
-	if len(envelope.Results) == 0 {
+	return findIdentityAt(envelope, 0, nameField, name, idField)
+}
+
+func findIdentityAt(envelope result.Envelope, resultIndex int, nameField, name, idField string) string {
+	if resultIndex < 0 || resultIndex >= len(envelope.Results) {
 		return ""
 	}
-	for _, row := range envelope.Results[0].Rows {
+	for _, row := range envelope.Results[resultIndex].Rows {
 		rowName, _ := row[nameField].(string)
 		id, _ := row[idField].(string)
 		if strings.EqualFold(rowName, name) && id != "" {
@@ -384,6 +410,35 @@ func findIdentity(envelope result.Envelope, nameField, name, idField string) str
 		}
 	}
 	return ""
+}
+
+func queryRuntimeBudgets(envelope result.Envelope) (runtimeBudgets, bool) {
+	if len(envelope.Results) < 2 || len(envelope.Results[0].Rows) != 1 {
+		return runtimeBudgets{}, false
+	}
+	row := envelope.Results[0].Rows[0]
+	routeChildren, routeOK := unsigned(row["route_children"])
+	openLocators, openOK := unsigned(row["open_locators"])
+	selectRows, selectOK := unsigned(row["select_rows"])
+	routeFrameNodes, frameOK := unsigned(row["route_frame_nodes"])
+	if !routeOK || !openOK || !selectOK || !frameOK ||
+		routeChildren == 0 || openLocators == 0 || selectRows == 0 || routeFrameNodes == 0 {
+		return runtimeBudgets{}, false
+	}
+	return runtimeBudgets{
+		routeChildren: int(routeChildren), openLocators: int(openLocators),
+		selectRows: int(selectRows), routeFrameNodes: int(routeFrameNodes),
+	}, true
+}
+
+func min(values ...int) int {
+	value := values[0]
+	for _, candidate := range values[1:] {
+		if candidate < value {
+			value = candidate
+		}
+	}
+	return value
 }
 
 func recoverFailure(report *Report, envelope result.Envelope) (bool, error) {

@@ -1,7 +1,8 @@
 # MSQL 标准语言
 
 状态：协议定位已确认；F70 已实现 Table 级逐层 Router 语法，F71 已删除旧语义
-检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE。
+检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE，F79 已实现
+版本化查询预算配置。
 
 ## 定位
 
@@ -19,7 +20,7 @@ Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop
 
 ```sql
 SHOW INSTANCE;
-SHOW DATABASES;
+SHOW CONFIGURATION; SHOW DATABASES; -- 同一 request，不增加宿主往返
 SHOW TABLES FROM project_memora COMPACT;
 DESCRIBE TABLE project_memora.design_topics COMPACT;
 SHOW ROUTES FROM TABLE project_memora.design_topics AT ROOT LIMIT 12;
@@ -42,6 +43,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 历史：SHOW HISTORY、AS OF REVISION/COMMIT_SEQUENCE、RESTORE 补偿；
 - 关系：RELATE、SHOW RELATIONS、UNRELATE；
 - 管理：PACK、INSTALL、OPEN、EXPORT、DOCTOR、REINDEX；
+- 配置：SHOW CONFIGURATION/HISTORY、ALTER CONFIGURATION、RESTORE CONFIGURATION；
 - 显式字面检索：是否保留历史 `MATCH` 语法待架构对账，不能作为语义主路径；
 
 Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。F44 已冻结的写法：
@@ -85,6 +87,21 @@ mutation options 同时提交来源 revision、每个目标的完整 Route snaps
 `relation_target_ordinals` 明确每条关系归属哪个目标。引擎不猜拆分边界，只在一个
 原生事务里发布 superseded 来源、新目标、History、关系、上层 Route revision 和
 memberships。
+
+查询预算通过同一 MSQL 发现和修改，不允许宿主直接改进程变量：
+
+```sql
+SHOW CONFIGURATION;
+SHOW CONFIGURATION HISTORY LIMIT :limit;
+ALTER CONFIGURATION QUERY_BUDGETS SET
+  ROUTE_CHILDREN :routes, OPEN_LOCATORS :locators, SELECT_SCAN :scan,
+  SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame;
+RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision;
+```
+
+ALTER/RESTORE 的结构化 mutation options 必须包含 expected revision、actor 和
+reason。ALTER 是完整替换，避免遗漏字段继承了哪个旧值不清楚；RESTORE 追加补偿
+revision。首批配置只控制查询/上下文预算，不覆盖权限、事务或格式安全上限。
 
 ## 强制规则
 

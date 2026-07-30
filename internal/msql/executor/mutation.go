@@ -49,6 +49,12 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return Output{}, err
 	}
 	switch {
+	case statement.Show != nil && statement.Show.Object == "CONFIGURATION":
+		return engine.showConfiguration(ctx, statement.Show, bound)
+	case statement.Configuration != nil && statement.Configuration.Action == "ALTER":
+		return engine.alterConfiguration(ctx, statement.Configuration, bound, options)
+	case statement.Configuration != nil && statement.Configuration.Action == "RESTORE":
+		return engine.restoreConfiguration(ctx, statement.Configuration, bound, options)
 	case statement.Describe != nil && statement.Describe.Object == "ROUTE":
 		return engine.describeRoute(ctx, statement.Describe, bound)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":

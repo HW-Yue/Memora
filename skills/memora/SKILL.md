@@ -76,7 +76,7 @@ fits; do not invent a table from a name alone.
 
 ```sh
 memora doctor
-memora query "SHOW DATABASES"
+memora query "SHOW CONFIGURATION; SHOW DATABASES"
 memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW TABLES FROM work COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "DESCRIBE TABLE work.notes COMPACT"
 memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
@@ -94,7 +94,7 @@ results instead of inventing a fallback.
 Use this bounded state machine:
 
 ```text
-SHOW DATABASES → SHOW TABLES → DESCRIBE TABLE
+SHOW CONFIGURATION + SHOW DATABASES → SHOW TABLES → DESCRIBE TABLE
 → SHOW ROUTES FROM TABLE ... AT ROOT
 → choose one node → SHOW ROUTES UNDER ... (repeat as needed)
 → OPEN ROUTE on a leaf
@@ -114,8 +114,11 @@ memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":24}
 memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
 
-Keep at most 12 Router rows, 24 candidate locators, 10 selected rows, and 12,000
-characters of combined working context. Follow cursors only while another page
+Read the current `query_budgets` row before navigation. The bundled 12 Router
+rows, 24 candidate locators, 10 selected rows, and 12,000 context characters are
+startup ceilings, not permission to exceed a smaller database revision. Use the
+smaller of the bundled ceiling and current `route_children`, `open_locators`,
+`select_rows`, and `route_frame_nodes`. Follow cursors only while another page
 can materially change the answer. Drop the Route Frame when its schema or route
 revision is stale, the topic changes, or the task ends.
 

@@ -9,6 +9,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativeconfig"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/relation"
@@ -34,6 +35,7 @@ type Service struct {
 	rows    *nativerow.Repository
 	routes  *nativerouter.Repository
 	commit  *Coordinator
+	config  *nativeconfig.Service
 }
 
 func NewService(
@@ -42,8 +44,45 @@ func NewService(
 	rows *nativerow.Repository,
 	routes *nativerouter.Repository,
 	coordinator *Coordinator,
+	configurations ...*nativeconfig.Service,
 ) *Service {
-	return &Service{Service: base, catalog: dictionary, rows: rows, routes: routes, commit: coordinator}
+	service := &Service{Service: base, catalog: dictionary, rows: rows, routes: routes, commit: coordinator}
+	if len(configurations) > 0 {
+		service.config = configurations[0]
+	}
+	return service
+}
+
+func (service *Service) CurrentQueryBudgets(context.Context) (nativeconfig.Revision, error) {
+	if service == nil || service.config == nil {
+		return nativeconfig.Revision{}, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
+	}
+	return service.config.Current()
+}
+
+func (service *Service) QueryBudgetHistory(context.Context) ([]nativeconfig.Revision, error) {
+	if service == nil || service.config == nil {
+		return nil, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
+	}
+	return service.config.History()
+}
+
+func (service *Service) UpdateQueryBudgets(
+	_ context.Context, budgets nativeconfig.QueryBudgets, expected uint64, actor, reason string,
+) (nativeconfig.Revision, error) {
+	if service == nil || service.config == nil {
+		return nativeconfig.Revision{}, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
+	}
+	return service.config.Update(budgets, expected, actor, reason)
+}
+
+func (service *Service) RestoreQueryBudgets(
+	_ context.Context, target, expected uint64, actor, reason string,
+) (nativeconfig.Revision, error) {
+	if service == nil || service.config == nil {
+		return nativeconfig.Revision{}, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
+	}
+	return service.config.Restore(target, expected, actor, reason)
 }
 
 func (service *Service) Split(

@@ -15,28 +15,29 @@ type Batch struct {
 }
 
 type Statement struct {
-	Kind        string                `json:"kind"`
-	Span        lexer.Span            `json:"-"`
-	Show        *ShowStatement        `json:"show,omitempty"`
-	Describe    *DescribeStatement    `json:"describe,omitempty"`
-	Create      *CreateStatement      `json:"create,omitempty"`
-	Alter       *AlterStatement       `json:"alter,omitempty"`
-	Select      *SelectStatement      `json:"select,omitempty"`
-	Insert      *InsertStatement      `json:"insert,omitempty"`
-	Update      *UpdateStatement      `json:"update,omitempty"`
-	Delete      *DeleteStatement      `json:"delete,omitempty"`
-	Restore     *RestoreStatement     `json:"restore,omitempty"`
-	Reshape     *ReshapeStatement     `json:"reshape,omitempty"`
-	Relate      *RelateStatement      `json:"relate,omitempty"`
-	Unrelate    *UnrelateStatement    `json:"unrelate,omitempty"`
-	CreateRoute *CreateRouteStatement `json:"create_route,omitempty"`
-	RenameRoute *RenameRouteStatement `json:"rename_route,omitempty"`
-	UpdateRoute *UpdateRouteStatement `json:"update_route,omitempty"`
-	DeleteRoute *DeleteRouteStatement `json:"delete_route,omitempty"`
-	OpenRoute   *OpenRouteStatement   `json:"open_route,omitempty"`
-	Package     *PackageStatement     `json:"package,omitempty"`
-	Export      *ExportStatement      `json:"export,omitempty"`
-	Transaction *TransactionStatement `json:"transaction,omitempty"`
+	Kind          string                  `json:"kind"`
+	Span          lexer.Span              `json:"-"`
+	Show          *ShowStatement          `json:"show,omitempty"`
+	Describe      *DescribeStatement      `json:"describe,omitempty"`
+	Create        *CreateStatement        `json:"create,omitempty"`
+	Alter         *AlterStatement         `json:"alter,omitempty"`
+	Select        *SelectStatement        `json:"select,omitempty"`
+	Insert        *InsertStatement        `json:"insert,omitempty"`
+	Update        *UpdateStatement        `json:"update,omitempty"`
+	Delete        *DeleteStatement        `json:"delete,omitempty"`
+	Restore       *RestoreStatement       `json:"restore,omitempty"`
+	Reshape       *ReshapeStatement       `json:"reshape,omitempty"`
+	Relate        *RelateStatement        `json:"relate,omitempty"`
+	Unrelate      *UnrelateStatement      `json:"unrelate,omitempty"`
+	CreateRoute   *CreateRouteStatement   `json:"create_route,omitempty"`
+	RenameRoute   *RenameRouteStatement   `json:"rename_route,omitempty"`
+	UpdateRoute   *UpdateRouteStatement   `json:"update_route,omitempty"`
+	DeleteRoute   *DeleteRouteStatement   `json:"delete_route,omitempty"`
+	OpenRoute     *OpenRouteStatement     `json:"open_route,omitempty"`
+	Configuration *ConfigurationStatement `json:"configuration,omitempty"`
+	Package       *PackageStatement       `json:"package,omitempty"`
+	Export        *ExportStatement        `json:"export,omitempty"`
+	Transaction   *TransactionStatement   `json:"transaction,omitempty"`
 }
 
 type Identifier struct {
@@ -193,6 +194,17 @@ type OpenRouteStatement struct {
 	Limit *Expression `json:"limit"`
 }
 
+type ConfigurationStatement struct {
+	Action          string      `json:"action"`
+	Key             string      `json:"key"`
+	RouteChildren   *Expression `json:"route_children,omitempty"`
+	OpenLocators    *Expression `json:"open_locators,omitempty"`
+	SelectScan      *Expression `json:"select_scan,omitempty"`
+	SelectRows      *Expression `json:"select_rows,omitempty"`
+	RouteFrameNodes *Expression `json:"route_frame_nodes,omitempty"`
+	TargetRevision  *Expression `json:"target_revision,omitempty"`
+}
+
 type PackageStatement struct {
 	Action   string      `json:"action"`
 	Database Name        `json:"database,omitempty"`
@@ -251,6 +263,8 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Select.Limit)
 	case statement.Describe != nil && statement.Describe.Object == "ROUTE":
 		appendExpression(statement.Describe.Route)
+	case statement.Show != nil && statement.Show.Object == "CONFIGURATION":
+		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		appendExpression(statement.Show.Row)
 		appendExpression(statement.Show.Limit)
@@ -310,6 +324,13 @@ func (document Document) Parameters() []Parameter {
 	case statement.OpenRoute != nil:
 		appendExpression(statement.OpenRoute.Route)
 		appendExpression(statement.OpenRoute.Limit)
+	case statement.Configuration != nil:
+		appendExpression(statement.Configuration.RouteChildren)
+		appendExpression(statement.Configuration.OpenLocators)
+		appendExpression(statement.Configuration.SelectScan)
+		appendExpression(statement.Configuration.SelectRows)
+		appendExpression(statement.Configuration.RouteFrameNodes)
+		appendExpression(statement.Configuration.TargetRevision)
 	case statement.Package != nil:
 		appendExpression(statement.Package.Author)
 		appendExpression(statement.Package.Value)

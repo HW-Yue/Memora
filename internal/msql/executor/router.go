@@ -212,7 +212,11 @@ func (engine *Engine) showRoutes(
 			return Output{}, err
 		}
 	}
-	limit, err := routerLimit(show.Limit, bound, "SHOW ROUTES LIMIT")
+	budgets, err := engine.queryBudgets(ctx)
+	if err != nil {
+		return Output{}, err
+	}
+	limit, err := engine.routerLimit(ctx, show.Limit, bound, "SHOW ROUTES LIMIT", budgets.RouteChildren)
 	if err != nil {
 		return Output{}, err
 	}
@@ -265,7 +269,11 @@ func (engine *Engine) openRoute(
 	statement *ast.OpenRouteStatement,
 	bound bindings,
 ) (Output, error) {
-	limit, err := routerLimit(statement.Limit, bound, "OPEN ROUTE LIMIT")
+	budgets, err := engine.queryBudgets(ctx)
+	if err != nil {
+		return Output{}, err
+	}
+	limit, err := engine.routerLimit(ctx, statement.Limit, bound, "OPEN ROUTE LIMIT", budgets.OpenLocators)
 	if err != nil {
 		return Output{}, err
 	}
@@ -346,10 +354,12 @@ func routerString(
 	return relationshipString(expression, catalog.Table{}, bound, label)
 }
 
-func routerLimit(
+func (engine *Engine) routerLimit(
+	_ context.Context,
 	expression *ast.Expression,
 	bound bindings,
 	label string,
+	maximum int,
 ) (int, error) {
 	value, err := historyPositiveInteger(
 		expression, catalog.Table{}, bound, label,
@@ -357,8 +367,8 @@ func routerLimit(
 	if err != nil {
 		return 0, err
 	}
-	if value > 100 {
-		return 0, executeError(result.CodeValidation, label+" must be between 1 and 100")
+	if value > uint64(maximum) {
+		return 0, executeError(result.CodeValidation, fmt.Sprintf("%s must be between 1 and configured maximum %d", label, maximum))
 	}
 	return int(value), nil
 }

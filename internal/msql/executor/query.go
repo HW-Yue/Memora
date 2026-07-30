@@ -45,8 +45,12 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		return Output{}, err
 	}
 	limit, ok := integerValue(limitValue)
-	if !ok || limit < 1 || limit > maxQueryScan {
-		return Output{}, executeError(result.CodeValidation, fmt.Sprintf("LIMIT must be between 1 and %d", maxQueryScan))
+	budgets, err := engine.queryBudgets(ctx)
+	if err != nil {
+		return Output{}, err
+	}
+	if !ok || limit < 1 || limit > int64(budgets.SelectRows) {
+		return Output{}, executeError(result.CodeValidation, fmt.Sprintf("LIMIT must be between 1 and configured select_rows %d", budgets.SelectRows))
 	}
 	projections, err := bindProjections(table, selectStatement.Projections)
 	if err != nil {
@@ -104,7 +108,7 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 			return Output{}, normalizeError(getErr)
 		}
 	} else {
-		candidates, hasMore, err = engine.rows.ListPage(ctx, databaseName, tableName, maxQueryScan)
+		candidates, hasMore, err = engine.rows.ListPage(ctx, databaseName, tableName, budgets.SelectScan)
 		if err != nil {
 			return Output{}, normalizeError(err)
 		}

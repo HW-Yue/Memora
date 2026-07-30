@@ -84,8 +84,8 @@
     },
     {
       "name": "discover-databases",
-      "command": "memora query \"SHOW DATABASES\"",
-      "msql": "SHOW DATABASES"
+      "command": "memora query \"SHOW CONFIGURATION; SHOW DATABASES\"",
+      "msql": "SHOW CONFIGURATION; SHOW DATABASES"
     },
     {
       "name": "discover-tables",

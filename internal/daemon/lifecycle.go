@@ -12,6 +12,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativeconfig"
 	"github.com/HW-Yue/Memora/internal/nativemigration"
 	"github.com/HW-Yue/Memora/internal/nativemutation"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
@@ -160,10 +161,18 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 	dictionary := nativecatalog.NewService(nativecatalog.New(nativeFile), nativecatalog.ServiceOptions{})
 	rowRepository := nativerow.New(nativeFile)
 	routeRepository := nativerouter.New(nativeFile)
+	configuration, err := nativeconfig.New(nativeFile)
+	if err != nil {
+		_ = nativeFile.Close()
+		_ = auxiliaryStore.Close()
+		_ = securityStore.Close()
+		return err
+	}
 	rowService := nativerow.NewService(rowRepository, dictionary, nativerow.ServiceOptions{})
 	rows := nativemutation.NewService(
 		rowService, dictionary, rowRepository, routeRepository,
 		nativemutation.New(nativeFile, rowRepository, routeRepository),
+		configuration,
 	)
 	handler := newNativeDatabaseHandler(
 		ctx, dictionary, rows, auxiliaryStore, security.New(securityStore, security.Options{}),

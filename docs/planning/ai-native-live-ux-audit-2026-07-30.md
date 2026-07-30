@@ -64,6 +64,10 @@ DESCRIBE。三层 Route 的一次真实读取共 9 个 CLI 调用、约 9.9 KiB 
 Route 12、locator 24、SELECT 10 和上下文 12000 等预算仍位于 Skill contract/
 代码常量，没有 Database 内可发现、版本化、审计和回滚的配置对象。
 
+修复状态：F79 已将 Route children、locator、SELECT scan/rows 和 Route Frame
+nodes 写入原生 `query_budgets` revision 链，并接入公开 MSQL、真实执行路径、
+补偿恢复和 daemon 重启验收。审计总状态仍等待 F80 真实发行故事门后统一更新。
+
 ## 结论与重新验收条件
 
 当前已证明“原生 INSERT + 逐层 Route + RowID SELECT”最小读写闭环，但不能称为

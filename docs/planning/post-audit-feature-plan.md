@@ -60,6 +60,9 @@
 - Route、locator、SELECT 和上下文预算进入可发现、版本化配置；
 - 变更带 expected revision、actor、reason 和回滚目标；
 - 覆盖：AI-native 产品契约第九项。
+- 状态：已实现；原生 `query_budgets` 提供当前值与完整 History，公开 MSQL 支持
+  revision-guarded 完整替换和补偿恢复；SELECT/Route/locator 真实执行路径读取
+  当前 revision，重启验收覆盖持久化与约束生效。
 
 ## F80 真实发行故事门
 

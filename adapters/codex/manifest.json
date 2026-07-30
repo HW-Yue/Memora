@@ -1,7 +1,7 @@
 {
   "version": "memora.codex-adapter/v1",
-  "canonical_digest": "3fc068e9c1062da0d9650b5aaef26de49acc933bbbbbea571b6f99c27bfab9ba",
-  "protocol_digest": "7fc7dce5cb04bfc33d2b30df8dea03f882b067e2be1afe9c112c01404763c287",
+  "canonical_digest": "ef3cbac8783a83f55c042e0dd3ec56da6233901a559d450f8a46e376fad34a4e",
+  "protocol_digest": "d81095b670739101e7b011bb81146ed39a70ff6125ae2e95d1bd47c8184266c9",
   "files": [
     {
       "path": ".agents/skills/memora/COMMERCIAL-LICENSE.md",
@@ -15,7 +15,7 @@
     },
     {
       "path": ".agents/skills/memora/SKILL.md",
-      "sha256": "3fc068e9c1062da0d9650b5aaef26de49acc933bbbbbea571b6f99c27bfab9ba",
+      "sha256": "ef3cbac8783a83f55c042e0dd3ec56da6233901a559d450f8a46e376fad34a4e",
       "mode": "0644"
     },
     {
@@ -25,7 +25,7 @@
     },
     {
       "path": ".agents/skills/memora/contract.json",
-      "sha256": "7fc7dce5cb04bfc33d2b30df8dea03f882b067e2be1afe9c112c01404763c287",
+      "sha256": "d81095b670739101e7b011bb81146ed39a70ff6125ae2e95d1bd47c8184266c9",
       "mode": "0644"
     },
     {

@@ -13,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/logical"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativeconfig"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -57,7 +58,11 @@ func (service *NativeService) Export() ([]byte, error) {
 			return append([]byte(nil), source.Source...), nil
 		}
 		if previous, decodeErr := snapshot.DecodeLogical(source.Source); decodeErr == nil {
-			value.Unknown = previous.Unknown
+			for key, raw := range previous.Unknown {
+				if _, current := value.Unknown[key]; !current {
+					value.Unknown[key] = raw
+				}
+			}
 			return snapshot.EncodeLogical(value)
 		}
 	}
@@ -90,6 +95,17 @@ func (service *NativeService) nativeDocument() (snapshot.LogicalDocument, error)
 		return snapshot.LogicalDocument{}, err
 	}
 	value := snapshot.LogicalDocument{Catalog: catalogJSON, Rows: []json.RawMessage{}, History: []json.RawMessage{}, RelationNow: []json.RawMessage{}, RelationPast: []json.RawMessage{}, Unknown: map[string]json.RawMessage{}}
+	configuration, err := nativeconfig.Existing(service.file).History()
+	if err != nil {
+		return snapshot.LogicalDocument{}, err
+	}
+	if len(configuration) > 0 {
+		raw, marshalErr := json.Marshal(configuration)
+		if marshalErr != nil {
+			return snapshot.LogicalDocument{}, marshalErr
+		}
+		value.Unknown[nativeconfig.SnapshotKey] = raw
+	}
 	for _, item := range rows {
 		raw, _ := json.Marshal(item)
 		value.Rows = append(value.Rows, raw)
@@ -220,11 +236,24 @@ func (service *NativeService) Import(encoded []byte) error {
 			return err
 		}
 	}
+	if raw, ok := migrated.Unknown[nativeconfig.SnapshotKey]; ok {
+		var configuration []nativeconfig.Revision
+		if json.Unmarshal(raw, &configuration) != nil {
+			return nativeError(result.CodeValidation, "logical snapshot query budget configuration is invalid")
+		}
+		if err := nativeconfig.Existing(service.file).StageHistory(transaction, configuration); err != nil {
+			return err
+		}
+	}
 	canonical, err := snapshot.EncodeLogical(migrated)
 	if err != nil {
 		return err
 	}
-	projected, err := buildProjectedDocument(catalogValue.Databases, current, historyRows, relationVersions)
+	projectedUnknown := map[string]json.RawMessage{}
+	if raw, ok := migrated.Unknown[nativeconfig.SnapshotKey]; ok {
+		projectedUnknown[nativeconfig.SnapshotKey] = raw
+	}
+	projected, err := buildProjectedDocument(catalogValue.Databases, current, historyRows, relationVersions, projectedUnknown)
 	if err != nil {
 		return err
 	}
@@ -236,7 +265,7 @@ func (service *NativeService) Import(encoded []byte) error {
 }
 
 func (service *NativeService) requireEmpty() error {
-	for kind := nativestore.ObjectKindDatabase; kind <= nativestore.ObjectKindSnapshotMeta; kind++ {
+	for kind := nativestore.ObjectKindDatabase; kind <= nativestore.ObjectKindConfiguration; kind++ {
 		ids, err := service.file.IDs(kind)
 		if err != nil {
 			return err
@@ -309,12 +338,18 @@ func nativeValues(values map[string]any, table catalog.Table) (map[string]any, e
 	return converted, nil
 }
 
-func buildProjectedDocument(databases []catalog.Database, rows map[string]row.Row, records []history.Record, relations []relation.Relation) ([]byte, error) {
+func buildProjectedDocument(
+	databases []catalog.Database,
+	rows map[string]row.Row,
+	records []history.Record,
+	relations []relation.Relation,
+	unknown map[string]json.RawMessage,
+) ([]byte, error) {
 	catalogJSON, _ := json.Marshal(struct {
 		Version   string             `json:"version"`
 		Databases []catalog.Database `json:"databases"`
 	}{catalog.Version, databases})
-	value := snapshot.LogicalDocument{Catalog: catalogJSON, Rows: []json.RawMessage{}, History: []json.RawMessage{}, RelationNow: []json.RawMessage{}, RelationPast: []json.RawMessage{}, Unknown: map[string]json.RawMessage{}}
+	value := snapshot.LogicalDocument{Catalog: catalogJSON, Rows: []json.RawMessage{}, History: []json.RawMessage{}, RelationNow: []json.RawMessage{}, RelationPast: []json.RawMessage{}, Unknown: unknown}
 	ids := make([]string, 0, len(rows))
 	for id := range rows {
 		ids = append(ids, id)

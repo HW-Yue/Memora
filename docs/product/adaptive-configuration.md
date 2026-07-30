@@ -1,6 +1,6 @@
 # AI-native 可演化配置
 
-状态：配置入库原则已确认；可变性边界和 AI 优化策略推迟到最后阶段讨论。
+状态：F79 已实现首批查询预算；自动优化策略仍推迟到最后阶段讨论。
 
 ## 原则
 
@@ -18,7 +18,9 @@
 
 ## 首批配置对象
 
-- Table 级 Router 分支、深度、字符、叶子 locator 和 Route Frame 预算；
+- 当前原生 authority 的 Router 分支、叶子 locator、SELECT 扫描/返回和
+  Route Frame 预算已进入 `query_budgets`；
+- Table 级 Router 深度、字符与更细粒度覆盖仍待后续证据；
 - Table 级 Router 增量/子树/generation 重建阈值与 compaction 策略；
 - 查询回表 Row 数、关系遍历和输出预算；
 - Column 级文本最大字符数，启动默认值 1200；
@@ -39,6 +41,31 @@
 - 属于引擎或安全不变量，数据库不能覆盖。
 
 在分类冻结前，不承诺 AI 能自动修改任何配置，也不把“可配置”与“可自治优化”视为同义词。
+
+F79 的 `query_budgets` 暂归为“允许显式运行时修改”：必须完整替换五项预算，
+提交 expected revision、actor 和 reason。它不代表 AI 获得无证据自动调参权限。
+
+```sql
+SHOW CONFIGURATION;
+SHOW CONFIGURATION HISTORY LIMIT :limit;
+ALTER CONFIGURATION QUERY_BUDGETS SET
+  ROUTE_CHILDREN :routes,
+  OPEN_LOCATORS :locators,
+  SELECT_SCAN :scan,
+  SELECT_ROWS :rows,
+  ROUTE_FRAME_NODES :frame;
+RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision;
+```
+
+恢复会追加一个新的补偿 revision，并记录 `restored_revision`；不会删除历史或把
+当前指针静默倒退。引擎读取当前 revision 约束 `SHOW ROUTES`、`OPEN ROUTE` 和
+`SELECT`。`route_frame_nodes` 由宿主 Skill 在跨语句 Route Frame 中执行，
+数据库负责给所有宿主返回同一当前值。
+
+启动默认值是 Route children 12、locator 24、SELECT scan 1000、SELECT rows 10、
+Route Frame nodes 12。引擎另保留不可由配置突破的资源安全上限。
+完整 revision 链进入 logical snapshot，因此复制、迁移和 Database package 不会
+悄悄退回宿主默认值。
 
 ## 配置记录
 
