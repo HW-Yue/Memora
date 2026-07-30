@@ -3,7 +3,8 @@
 状态：执行中。
 
 当前进度：F00–F50 与 Phase A/B/C 退出测试已有实现；F51 结论已撤销。
-当前先执行产品宪章、Table 级语义树和现有实现的架构对账，F52 暂停。
+当前下一项为 F52 原生极简文件格式；随后接通现有逻辑层、迁移并删除 SQLite，
+再完成 Table 级语义树产品对账。
 
 ## 产品目标
 
@@ -21,18 +22,16 @@ Codex / Claude Code 安装 Skill
 
 ## 实现顺序
 
-1. 冻结可测试契约并建立 Go 测试骨架；
-2. 完成本地 daemon、MSQL 和可替换原型存储；
-3. 完成 Table 级语义树逐层 SQL 导航、历史和索引维护；
-4. 完成由 Skill 编排的 AI 维护、资料吸收与 Codex/Claude 适配；
-5. 完成 GitHub Release、安装、升级和干净机器验收；
-6. 通过产品故事门与新的 AI-native 质量门后，再决定自研存储内核顺序。
+1. 冻结 `.memora` Header、事务 Frame 和 typed logical record；
+2. 实现追加式原生文件、提交、恢复和损坏拒绝；
+3. 持久化 Catalog、Row、History、Relation 与 Table Router；
+4. 接通现有 MSQL/服务层，迁移旧数据并删除 SQLite；
+5. 完成 Table 级语义树逐层 SQL 导航和 AI 维护旅程；
+6. 通过产品故事门后，再以实测证据决定 Page/B+ Tree/MVCC 等优化。
 
-当前原型后端采用 SQLite，只允许位于 `Store` 适配层后。该选择没有在实施前
-充分向用户披露，不能自动视为最终架构授权。MSQL Parser、事务外部语义、Data
-Dictionary、稳定 ID、revision、Router、索引协议和 JSON envelope 都属于 Memora
-契约，不得泄漏 SQLite SQL、查询计划或文件格式。是否保留、替换以及替换顺序
-须通过独立架构 Feature 再确认。
+SQLite 已进入退出流程，只作为迁移来源临时保留，不再新增依赖或能力。具体顺序
+见 [ADR-0003](../decisions/0003-native-minimal-store-first.md)。MSQL、Data
+Dictionary、稳定 ID、revision、Router 和 Result Envelope 不因后端迁移改变。
 
 详细 feature：
 
@@ -99,7 +98,7 @@ Dictionary、稳定 ID、revision、Router、索引协议和 JSON envelope 都�
 ## 阶段质量门
 
 - G1：CLI/daemon/MSQL 契约稳定，重启后数据不丢；
-- G2：SQL、Router、倒排、revision 和后台重建形成完整数据闭环；
+- G2：原生文件、SQL、Table Router、revision 和恢复形成完整数据闭环；
 - G3：Codex/Claude Skill 能自动维护项目与资料，冲突只展示不裁决；
 - G4：干净 macOS 从 Release 安装，50 轮自治和冷启动接管达标；
 - G5：原生内核通过崩溃恢复与迁移测试，才替换原型后端。

@@ -70,12 +70,13 @@
 - [Index Discovery v1](./query/index-discovery-v1.md) — 已撤销的 F23 候选融合历史实现。
 - [MSQL Result Envelope v1](./query/result-envelope.md) — 单条/批量统一结果、稳定错误码、warning 与截断兼容规则。
 - [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 每个 Table 一棵多层语义树，AI 逐层找到叶子 RowID。
-- [无向量检索质量链路](./query/retrieval-quality.md) — 从逐层发现、候选融合、返回定位到主 Agent SQL 回表的完整流程。
+- [语义树检索质量链路](./query/retrieval-quality.md) — AI 从 Table Router 逐层导航到 RowID，再 SQL 回表。
 - [上下文生命周期](./query/context-lifecycle.md) — 当前重点：索引缓存、污染、失效和平台限制。
 - [Query Workspace 与缓存边界](./query/working-set-cache.md) — 区分 Agent 临时状态、物理 Page 缓存和查询结果缓存。
 
 ## 存储
 
+- [原生极简存储格式](./storage/native-minimal-store.md) — 当前优先：文件位置、Header、事务 Frame、逻辑 Record 与恢复边界。
 - [存储引擎术语](./storage/terminology.md) — 与 MySQL/InnoDB 对齐的标准命名和 Memora 独有概念。
 - [Buffer Pool](./storage/buffer-pool.md) — daemon 中缓存文件 Page，最近访问的 Page 按 LRU 或近似算法保留与淘汰。
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
@@ -100,6 +101,7 @@
 ## 计划
 
 - [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
+- [F52 原生文件格式开工门](./planning/f52-native-format-gate.md) — 下一 Feature 的故事、格式、边界与待确认项。
 - [开发与验证路线](./planning/roadmap.md) — 先验证 AI-native 体验，再进入完整存储内核。
 - [TDD 开发总计划](./planning/tdd-development-plan.md) — 按独立 feature branch/commit 推进，测试先行并设置阶段质量门。
 - [Phase A 退出验收](./planning/phase-a-exit-evidence.md) — 干净 datadir 下 CLI、daemon、并发 MSQL parse、重启和全量门禁证据。
@@ -121,8 +123,9 @@
 - [干净机器验收 v1](./development/clean-machine-acceptance-v1.md) — F50 的隔离 HOME、Skill HTTPS 安装、首条记忆、重启查询、诊断包与双架构发布阻断报告。
 - [进程配置与宿主边界](./development/process-configuration.md) — 非秘密启动配置的优先级，以及不接收 Codex/Claude 模型密钥的边界。
 - [本地 IPC 协议](./development/ipc-protocol.md) — 长度前缀 JSON、协议版本、并发请求和连接级 Session 生命周期。
-- [ADR-0001：SQLite 原型 Store](./decisions/0001-prototype-store.md) — 用可替换 CGO-free 后端先验证产品，原生内核通过质量门后再替换。
+- [ADR-0001：SQLite 原型 Store](./decisions/0001-prototype-store.md) — 已被 ADR-0003 取代的历史原型决策。
 - [ADR-0002：v0 不内置 Agent Runtime](./decisions/0002-defer-embedded-agent.md) — F43 基于 Skill 覆盖审计 defer Provider/ask loop，并冻结重新开启条件。
+- [ADR-0003：原生极简 Store 优先](./decisions/0003-native-minimal-store-first.md) — 先自有文件格式，再接现有逻辑层并迁出 SQLite。
 
 ## 文档规模约束
 

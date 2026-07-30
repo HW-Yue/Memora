@@ -1,6 +1,7 @@
 # Database 物理目录
 
-状态：Database、Table、History、派生索引目录及 generation manifest 生命周期已确认；文件编码和滚动参数待验证。
+状态：原 Tablespace/History/index generation 布局已后置。当前极简目标由
+[原生极简存储格式](./native-minimal-store.md)取代；本文保留未来拆分候选。
 
 ## 稳定目录身份
 

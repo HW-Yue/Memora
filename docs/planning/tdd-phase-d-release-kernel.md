@@ -1,166 +1,123 @@
-# Phase D：发行、质量门与原生内核
+# Phase D：原生极简底座、迁移与产品对账
 
-目标：先交付可安全安装的 macOS 产品；AI-native 质量达标后，再用原生内核替换原型 Store。
+目标：先让 Memora 拥有自己的最小持久化格式，再接现有逻辑层、迁出 SQLite，
+之后完成 Table 级语义树产品旅程。顺序由
+[ADR-0003](../decisions/0003-native-minimal-store-first.md)确定。
 
-## F44 Database Pack/Open/Install（已完成）
+## 已有发行能力 F44–F50
 
-先测：pack 哈希、只读 open、install、同 ID/同名冲突、不可信包、损坏包和索引删除重建。
-
-开发：实现版本化 package manifest 与 MSQL 管理语句；包不携带代码和密钥。
-
-提交：`feat(F44): package portable databases`
-
-## F45 Wiki 确定性导出（已完成）
-
-先测：相同 snapshot 输出哈希一致、稳定链接、rename、删除、跨库关系和增量导出。
-
-开发：实现单向 Export Profile；第一版不回流人类编辑。
-
-提交：`feat(F45): export deterministic Obsidian wiki`
-
-## F46 安全与隐私门（已完成）
-
-先测：数据库 scope、外部模型禁用、路径穿越、日志脱敏、恶意 package 文本和高风险审批绕过。
-
-开发：完成 Policy enforcement、审计日志和 doctor 安全检查。
-
-提交：`feat(F46): enforce local privacy boundaries`
-
-## F47 macOS Release 制品（已完成）
-
-先测：arm64/amd64 二进制在干净 VM 启动；版本可追踪；checksum、损坏下载和 Gatekeeper 提示可诊断。
-
-开发：构建压缩包、SHA-256 清单、许可、版本元数据和可复现构建说明。
-
-提交：`build(F47): produce macOS release artifacts`
-
-## F48 GitHub Release 自动化（已完成）
-
-先测：tag 规则、重复发布、缺失制品、checksum 不匹配和 release smoke；PR 不得发布。
-
-开发：GitHub Actions 在签名 tag 上测试、构建、生成 Release notes、上传制品与 Skill bundle。
-
-提交：`ci(F48): publish verified GitHub releases`
-
-## F49 升级与回滚（已完成）
-
-先测：旧 binary/新 datadir、新 binary/旧 datadir、中断迁移、备份恢复和不支持降级。
-
-开发：实现 format compatibility check、迁移计划、备份点和 `doctor repair` 的安全边界。
-
-提交：`feat(F49): upgrade instances transactionally`
-
-## F50 干净机器验收（已完成）
-
-先测：全新 macOS 用户只安装 Skill，授权后下载 Release、init、启动 daemon、总结项目、重启再查询。
-
-开发：自动化 VM 流程、安装诊断包和发布阻断报告。
-
-提交：`test(F50): verify zero-to-first-memory journey`
+Database Package、Wiki 导出、安全门、macOS 制品、GitHub Release、格式升级和
+干净机器验收已有实现。它们的机械测试可保留，但涉及 SQLite 路径、旧 Router
+或旧查询旅程的 fixture 必须随原生迁移更新。
 
 ## F51 AI-native 发布门（结论已撤销）
 
-历史实现包含字符向量与 cosine，对 Memora 的路径也不是 AI 逐层 SQL 导航，
-违反产品宪章。代码和报告只作待清理的审计材料，不能作为通过证据。
+历史实现包含字符向量/cosine，且没有验证 AI 逐层 SQL 导航。代码和报告只作
+待清理审计材料，不能授权后续产品发布。
 
-返工必须从 `US-COLD`、`US-READ`、`US-INSERT`、`US-UPDATE`、`US-DELETE`、
-`US-SPLIT` 等真实旅程出发，
-固定每一步 MSQL、Route Frame 和最终数据库状态；禁止 Vector baseline。
+## F52 原生 Header、Frame 与 typed field
 
-原提交：`test(F51): enforce AI-native release gate`（不再代表 Feature 完成）
+目标故事：`US-ENGINE`、`US-RECOVER`、`US-DEVELOPER`。
 
-## F52–F61 原生内核（暂停并待重排）
+先测：固定 golden bytes、endianness、CRC、未知版本、非法长度、每字节截断、
+Unicode、确定性编码和 fuzz decode 不 panic/不超额分配。
 
-在以下条件同时满足前，不继续实施：
+开发：实现 `.memora` File Header、Transaction Frame Header、typed logical field
+codec 和稳定错误；本 Feature 不接业务模块、不引入 Page/B+ Tree。
 
-- 产品宪章与现有 Router/MATCH/Skill 查询主路径完成架构对账；
-- Table 级语义树逐层 SQL 旅程有真实端到端证据；
-- F51 按新门禁重做并通过；
-- SQLite 原型的保留或退出路径已向用户披露并确认。
+提交：`feat(F52): define minimal native file format`
 
-下列条目保留为候选技术拆分，不代表已批准的下一步顺序。
+## F53 追加式事务文件
 
-## F52 原生格式契约（候选）
+目标故事：`US-ENGINE`、`US-RECOVER`。
 
-先测：Page/Record golden、checksum、endianness、未知版本拒绝、逻辑 snapshot round-trip 和随机 decode 不崩溃。
+先测：BEGIN/Record/COMMIT、单 writer、多 reader、fsync、reopen、无 COMMIT 尾部、
+partial frame、已提交区损坏、排他锁、只读打开和故障注入。
 
-开发：冻结 format v1、Page/Extent/Tablespace 编码和升级 ADR。
+开发：实现 append、commit、scan/recover 和有界 current-offset map。事务只有完整
+COMMIT 才可见；不单独实现 Redo/Undo/MVCC。
 
-提交：`feat(F52): define native storage format v1`
+提交：`feat(F53): persist native transaction frames`
 
-## F53 Page 与 Buffer Pool（候选）
+## F54 原生逻辑记录仓库
 
-先测：分配/回收、page split、LRU young/old、pin、脏页、并发访问、磁盘满和 checksum 损坏。
+目标故事：`US-INSERT`、`US-UPDATE`、`US-DELETE`、`US-SPLIT`、`US-ENGINE`。
 
-开发：实现 file-per-table Tablespace、Page manager、Buffer Pool 和 Page Cleaner。
+先测：Catalog、Row revision、History、Relation、Table Route node/membership、
+tombstone、expected revision、引用完整性和 reopen 后等价。
 
-提交：`feat(F53): persist pages through buffer pool`
+开发：把稳定逻辑对象编码为 typed record；维护 stable ID → offset、Route child、
+membership 和反向 membership 内存目录。禁止 generic SQLite schema 泄漏进格式。
 
-## F54 B+ Tree 与 Record（候选）
+提交：`feat(F54): store native logical records`
 
-先测：随机插删改、split/merge、范围扫描、重复键、overflow、重启和模型校验。
+## F55 接通现有 MSQL 与服务层
 
-开发：实现 Clustered/Secondary B+ Tree、稳定 row locator 和 Record 编码。
+目标故事：`US-COLD`、`US-READ`、`US-INSERT`、`US-UPDATE`、`US-DELETE`。
 
-提交：`feat(F54): store records in native B+ trees`
+先测：同一组 Catalog/CRUD/History/Relation/Route contract 分别跑旧迁移来源与
+原生仓库；MSQL 创建、重启、按 RowID 查询、修订和删除的最终 logical snapshot
+相同。
 
-## F55 锁、MVCC 与 Undo（候选）
+开发：增加原生 repository adapter，逐步让业务层从 generic bucket `Store` 迁到
+typed repository；MSQL、Policy 和 Result Envelope 不因后端改变。
 
-先测：RR/RC 可见性、并发写、FOR UPDATE、回滚、长快照、死锁和 Purge 安全点。
+提交：`feat(F55): run Memora services on native store`
 
-开发：实现 transaction ID、commit sequence、锁管理和 Undo version chain。
+## F56 SQLite → 原生迁移与默认切换
 
-提交：`feat(F55): provide native MVCC and undo`
+目标故事：`US-RECOVER`、`US-HUMAN`、`US-ENGINE`。
 
-## F56 Redo 与崩溃恢复（候选）
+先测：真实 `prototype.sqlite`/`security.sqlite` fixture 导出、空原生目标导入、
+canonical hash、双重回读、中断恢复、重复执行和失败保留原文件。
 
-先测：每个 WAL 边界 kill -9、partial page、torn write、重复恢复和未提交事务回滚。
+开发：提供只读迁移计划、备份、临时原生文件、校验后原子切换；新 Instance 默认
+创建 `.memora`，旧 SQLite 仅触发显式迁移。
 
-开发：实现 WAL、LSN、checkpoint、doublewrite/等价保护和恢复状态机。
+提交：`feat(F56): migrate prototype stores to native files`
 
-提交：`feat(F56): recover native storage with redo`
+## F57 删除 SQLite 与旧物理命名
 
-## F57 Binlog 与提交协议（候选）
+目标故事：`US-DEVELOPER`、`US-HUMAN`。
 
-先测：Redo prepare/Binlog/Redo commit 各故障点、Group Commit 顺序、GTID 幂等和重放。
+先测：仓库不导入 SQLite driver，不生成 `.sqlite`/SQLite WAL，不含默认
+`prototype.sqlite`/`security.sqlite` 路径；原生安装、升级、doctor 和 package
+旅程全绿。
 
-开发：实现 Row-based Binlog、内部两阶段提交和同步保留位点。
+开发：删除 `internal/store/sqlite`、`modernc.org/sqlite`、SQLite benchmark
+执行器、耦合 fixture 和已被替换的文档；迁移工具若仍需读取旧文件，隔离为独立
+可删除的兼容制品，不进入主 binary。
 
-提交：`feat(F57): commit durable row binlog`
+提交：`refactor(F57): retire SQLite prototype storage`
 
-## F58 原生语义索引（候选）
+## F58 Table 级语义树接通
 
-先测：Posting Run、tombstone、generation manifest、事务可见、后台重建、崩溃发布和 GC。
+目标故事：`US-COLD`、`US-READ`、`US-DBA`、`US-SPLIT`、`US-OPTIMIZE`。
 
-开发：把经产品门确认的 Table 级 Router 索引迁到原生索引文件，保持上层
-MSQL contract 不变；不迁移被撤销的向量或混合匹配主路径。
+先测：每 Table 独立 root、逐层 MSQL、RowID leaf、split/merge 上层变更、旧
+Database Router 迁移/拒绝和无 MATCH/Vector fallback。
 
-提交：`feat(F58): migrate semantic indexes to native runs`
+开发：把当前 Database Router 与 Skill Query 改为产品宪章规定的 Table 级主路径，
+底层记录直接使用 F54 的 Route node/membership。
 
-## F59 Compaction 与维护（候选）
+提交：`feat(F58): navigate table semantic trees`
 
-先测：History 不被 Purge、Undo 安全回收、旧 generation reader、空间上限、暂停恢复和 I/O 限流。
+## F59 新 AI-native 产品门
 
-开发：实现 Purge、compaction、generation GC、后台调度和可观测状态。
+按全部相关 `US-*` 重做真实宿主旅程，固定每一步 MSQL、Route Frame、最终原生
+文件状态和用户输出。禁止 Vector/cosine 评测或全库 prompt 扫描。
 
-提交：`feat(F59): compact native storage safely`
+提交：`test(F59): enforce AI-native user stories`
 
-## F60 原型到原生迁移（候选）
+## F60+ 证据驱动的物理优化
 
-先测：真实 v0 fixture 迁移后 Row/history/relation/Router 查询等价；中断可恢复；原文件保留到验证成功。
+只有 F52–F59 的容量、启动、随机读取、并发或空间数据证明需要时，才分别规划
+checkpoint、compaction、Page/Buffer Pool、B+ Tree、MVCC、Undo/Redo 和 Binlog。
+每项单独过产品门，不能整体照搬传统数据库路线。
 
-开发：实现 logical snapshot 导入、双重校验、原子切换和回滚工具。
+## Phase D 退出条件
 
-提交：`feat(F60): migrate prototype instances to native engine`
-
-## F61 原生内核发布门（候选）
-
-先测：长时间并发、故障注入、fuzz、恢复、格式兼容、性能和 AI-native 全套回归。
-
-开发：切换默认 Store，保留只读迁移工具；发布兼容矩阵和恢复手册。
-
-提交：`feat(F61): make native engine production default`
-
-## Phase D 退出测试
-
-用户可从 GitHub Release 安装稳定 v0；升级不会丢数据。原生内核只有在产品质量与存储正确性两套门禁同时通过后才成为默认。
+- 新 Instance 只产生 Memora 自有持久化文件；
+- 旧 SQLite 可安全迁移且主程序不再依赖 SQLite；
+- MSQL CRUD、History、Relation、Table Router、重启和损坏拒绝运行于原生底座；
+- AI 用户故事与物理正确性两套门都通过。

@@ -73,34 +73,54 @@
 迁移；未完成对账前不得继续扩展。
 60. 字符长度限制属于 Column 约束，不设置统一的 Row 级 1200 字符上限；文本 Column 启动默认上限为 1200 个字符，可由用户或 AI 通过 MSQL 演化，超限写入返回结构化错误且不截断。
 61. 影响语义质量的数值必须成为数据库内可读、可版本化、可审计的配置，而不是不可见的永久代码常量；但“配置入库”不等于“建库后可修改”，冻结、迁移、用户可调和 AI 可优化的分类与条件推迟到最后阶段讨论。
-62. 索引发现结果不能包含业务正文或直接作为答案；Route、Agent 词项、机械词项和关系只负责候选与评分，最终数据必须由主 Agent 按返回定位通过 SQL 回表读取。
-63. Buffer Pool 整体参考 MySQL/InnoDB：所有 Database 共用 Instance 级池，以 Page/Frame 缓存数据、B+ Tree、倒排 posting 和系统页；使用 young/old midpoint LRU、后台 Page Cleaner、自适应刷脏，并可保存热 Page 标识供重启后台预热。并发分片不作为 Database 隔离，Query Workspace 与物理缓存严格分离。
+62. 索引发现结果不能包含业务正文或直接作为答案；Route 只负责逐层导航并在
+叶子返回 RowID，最终数据必须由主 Agent 按定位通过 SQL 回表读取。
+63. 第一版原生底座只建立 stable ID/offset、Route child 和 membership 的有界
+内存目录，不实现物理 Page Buffer Pool。AI Route Frame 与任何物理缓存始终分离；
+Page/Buffer Pool 只有实测需要时才独立设计。
 64. 对 MySQL/InnoDB 已有成熟实现且不与 Memora 的 AI-native 边界冲突的常规数据库机制，不逐项重新发明；讨论时先用一个范围明确的是非题确认是否参考 MySQL，再只讨论 Memora 必须偏离的部分。
-65. 第一版持久化协议纳入独立的 Row-based Binlog：Redo 负责本机崩溃恢复，Binlog 按稳定逻辑 ID 保存已提交事务造成的 Row 变化，不在远端重新执行原始 MSQL 或 Agent 决策；它为未来多设备增量同步、订阅和时间点恢复服务，但设备身份、传输、幂等、环路和冲突解决另行设计。
-66. 每次事务必须有本地 transaction ID；MVCC 另外使用 commit sequence 判断可见性。Binlog 的 global transaction ID 跨设备保留原始来源与序号，不能与本地 transaction ID、commit sequence、Row revision 或 Redo LSN 共用。
-67. 事务隔离参考 MySQL/InnoDB：默认 `REPEATABLE READ`，首版支持 `READ COMMITTED`；一致性读、`FOR SHARE` / `FOR UPDATE` 锁定读以及 gap/next-key lock 的防幻读边界按 InnoDB 语义设计。
-68. Redo Log 与 Binlog 的原子一致性参考 MySQL 内部两阶段提交：Redo prepare、Binlog 持久化、Redo commit；并用 Group Commit 合并多个事务的日志刷盘，同时保持 commit sequence 与 Binlog 顺序一致。它不是跨设备分布式事务。
-69. 物理 MVCC 参考 InnoDB，采用“最新 Record + Undo version chain”：更新前写 Undo，旧快照沿 roll pointer 重建，安全后由 Purge 回收。长期语义 revision 进入独立 History Store，不能依赖事务 Undo。
+65. 原生 v1 使用权威 append-only Transaction Frame，不建立独立 Redo、Undo 或
+Binlog；完整 COMMIT + fsync 是首个 durability 边界，未提交崩溃尾部不可见。
+66. 每次事务使用本地 transaction ID 和单调 commit sequence；二者与 Row
+revision 分离。GTID、LSN 和跨设备位点在真正实现对应能力时另行增加。
+67. 原生 v1 先支持单 writer、多 reader 和已提交 snapshot；更多 SQL isolation、
+record/gap lock 与死锁检测以后按真实并发需求独立设计。
+68. 原生 v1 不做 Redo/Binlog 两阶段提交或 Group Commit；一个 `.memora` 文件内
+连续事务帧和一次 commit fsync 提供最小原子提交。
+69. 长期语义 revision 作为 typed History record 持久化；第一版不实现物理
+MVCC/Undo/Purge，不能用它们解释尚不存在的恢复语义。
 70. Router 正式定义为 Agent 语义目录索引：每个 Table 拥有一棵多层多叉树，
 内部节点提供短语义分支，叶子节点保存有限的数据项 ID/locator；同一 `row_id`
 可被多个叶子引用但不复制 Row。AI 逐层查到候选 ID，最终按 ID 用 SQL 回表，
 不经过隐藏候选融合评分。
-71. 稳定 `row_id` 是 Row 的永久逻辑身份；正文、Schema、Router 归属和索引重建都不能改变它。Row 必须能通过 MSQL/SQL 精确 SELECT、UPDATE 和逻辑 DELETE；修改时当前 Record、物理索引、机械 posting、Agent 词项、Router 引用、历史和 Binlog 原子更新或显式进入待重建状态，禁止留下静默陈旧索引。
+71. 稳定 `row_id` 是 Row 的永久逻辑身份；正文、Schema、Router 归属和物理格式
+变化都不能改变它。Row 必须能通过 MSQL 精确 SELECT、UPDATE 和逻辑 DELETE；
+当前 revision、History、关系和 Router membership 在同一逻辑事务中更新或显式
+进入待维护状态，禁止静默陈旧引用。
 72. 普通 SQL UPDATE 不因缺少新语义 membership 而留下错误可见索引：所有旧
 membership 立即 tombstone，新 revision 标记 `pending_reindex`；宿主 AI 后续按
 expected revision 重建。Router 支持新 generation 旁路构建、校验后原子切换和
 旧 generation compaction；`row_id → memberships` 反向索引保证
 DELETE/SPLIT/MERGE 能失效全部叶子引用。
-73. Router 维护分为 Row 增量、局部子树重建和 Database generation 重建；少量变更不得触发全量。整库触发由 Database 配置中的最小脏 Row 数与全局脏比例共同判断，并可因索引规则/格式不兼容升级或完整性失败强制触发；阈值不写死，启动值由 benchmark 决定。
+73. Router 维护分为 Row membership 增量、局部子树调整和 Table 级重建；少量
+变化不得触发整表。独立 generation 与 compaction 只有数据证明需要时再实现。
 74. 第一阶段只开发和支持 macOS，不同时承担 Linux/Windows 的目录、服务管理和兼容测试成本；跨平台支持以后按独立里程碑进入。
-75. Instance 磁盘目录层次参考 MySQL：一个 Instance 根数据目录，Redo、Undo、Binlog 等事务日志集中管理，各逻辑 Database 使用独立子目录；具体文件格式仍为 Memora 自有格式，不追求兼容 MySQL 文件。
+75. 下一阶段优先实现 Memora 原生极简 Store，不再以“先完整复刻 MySQL/InnoDB
+物理栈”为顺序；先冻结文件、事务帧、typed logical record、校验和恢复。
 76. macOS 用户级默认 datadir 为 `~/Library/Application Support/Memora/instances/default/`，通过系统用户目录 API 解析；可重建缓存和日志分别进入 `~/Library/Caches/Memora/`、`~/Library/Logs/Memora/`，数据库文件不得放入 Caches。允许显式绝对路径覆盖，但默认不使用项目目录、同步盘或需要 sudo 的 `/usr/local`。
-77. Instance datadir 顶层固定为 `instance.meta`、`system/`、`databases/`、`redo/`、`undo/`、`binlog/` 和 `tmp/`：系统数据、逻辑库和三类日志分离；只有 `tmp/` 可作为未完成后台工作的可丢弃中间状态，其他目录不得按缓存清理。
+77. 极简 datadir 目标只包含 `instance.meta`、`system/system.memora`、每库
+`databases/db_<id>/database.memora` 与 `tmp/`；首版不创建 redo/undo/binlog、
+Tablespace 或独立索引目录。
 78. `databases/` 下每个逻辑库的物理子目录使用不可变 `database_id`，可读名称只由 Data Dictionary 映射；rename、同名库、包安装和设备同步都不能依赖或触发目录改名，ID 的具体编码仍待确定。
-79. 每个 Database 子目录固定分为 `data/`、`history/` 与 `indexes/`：前两者保存当前权威 Row/系统记录和长期语义 revision，不得被 REINDEX 删除；`indexes/router/` 与 `indexes/inverted/` 保存可丢弃 generation，必须能从权威数据和索引规则重建。
-80. User Table 参考 MySQL file-per-table 思路使用独立 Tablespace，物理目录按不可变 `table_id` 命名；Tablespace 保存当前 Row、聚簇索引和普通二级 B+ Tree，并可滚动多个 Data File。Table rename 不移动目录，跨表事务继续使用 Instance 级日志。
-81. 长期语义 revision 使用 Database 级共享的追加式 History Store，按 commit sequence 滚动 segment，并以 `table_id + row_id + revision` 定位；Row 跨表移动、拆分、合并或 Table 改名不搬迁旧历史。History 是权威数据，不采用 Undo 的 Purge 生命周期。
-82. Router、Agent 倒排和机械倒排各自维护独立 generation；Database 的 `indexes/manifest` 原子记录当前启用组合及覆盖 commit sequence，查询开始时固定一次。单类索引重建不复制其他索引，发布前旁路写入和校验，旧 generation 等读者释放后回收。
+79. `database.memora` 第一版以追加式已提交 Transaction Frame 统一保存 Catalog、
+Row revision、History、Relation、Table Route node/membership 和配置；逻辑类型
+不能退化为 SQLite schema、Go struct dump 或无语义 bucket 文件格式。
+80. 第一版不做 per-table Tablespace、B+ Tree、固定 Page 或物理 Buffer Pool；
+打开文件时重建 stable ID、Route child 和 membership 的有界内存定位目录。
+81. 长期语义 History 是权威 record，append-only compaction 不得丢弃；它与
+事务帧的崩溃尾部处理分工明确，不依赖 Undo Purge。
+82. Page、B+ Tree、checkpoint、Buffer Pool、MVCC、Undo/Redo、Binlog 和独立
+index generation 全部以后按实测瓶颈单独立项，不能预先固化进 format v1。
 83. 数据库不内置 `candidate/disputed` 等语义冲突状态，也不理解、裁决或自动合并互相矛盾的内容。引擎只检测 revision、锁、唯一键、外键、类型等机械冲突并结构化报错；Skill 负责查询并向用户并列展示语义冲突，得到用户指示后重新生成 SQL 写入。
 84. AI-native 的产品验收以“AI 持续维护、用户只处理例外”为准。用户提供自然
 对话或资料后，AI 自主发现已有数据并完成忽略、写入、修订、拆分、合并、
@@ -132,8 +152,13 @@ SHOW ROUTES/UNDER → OPEN ROUTE → SELECT by RowID`；MSQL 是 Memora 的 SQL
 96. 所有 Feature 实施前和合入前都必须通过
 [产品与用户故事门禁](./feature-product-gate.md)。持久化后端、查询主路径、
 索引算法、Provider 或许可等架构选择必须事前向用户明确披露并获得确认。
-97. F51 的发布门结论因使用字符向量/cosine 且未验证逐层 AI 导航而撤销；F52
-及后续原生内核 Feature 暂停，先完成架构对账和新的故事级质量门。
+97. F51 的发布门结论因使用字符向量/cosine 且未验证逐层 AI 导航而撤销。
+98. 原生底座顺序改为 F52 格式 → F53 事务文件 → F54 typed repository →
+F55 接现有服务 → F56 迁移/切默认 → F57 删除 SQLite → F58 Table Router →
+F59 新产品门；详见 [ADR-0003](../decisions/0003-native-minimal-store-first.md)。
+99. SQLite 只作为迁移来源临时保留；原生 snapshot 等价、回读和回滚证据完成后，
+删除 driver、`internal/store/sqlite`、`.sqlite` 文件名和测试耦合。Unix socket/IPC
+是否删除属于另一决策，在用户明确确认前不能与 SQLite 清理混为一件事。
 
 ## 尚需验证
 

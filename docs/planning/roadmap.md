@@ -1,6 +1,6 @@
 # 开发与验证路线
 
-状态：长期路线讨论稿。顺序按产品风险，而不是按数据库教科书章节。
+状态：长期路线讨论稿。当前先完成原生极简底座；顺序按产品风险，而不是按数据库教科书章节。
 
 ## Phase 0：定义和实验材料
 
@@ -64,17 +64,21 @@ JSON 错误。底层可以是可替换的简化实现，但不得定义上层产
 退出条件：连续 50 次以上自主建模不出现未报告的结构熵增；逐层语义树召回、
 Row 拆分重组和冷启动接管通过产品故事门。
 
-## Phase 4：存储内核
+## Phase 4：原生极简存储底座（当前优先）
 
-产品体验成立后再实现：
+先实现：
 
-- Tablespace、Data File、Page、Extent、Segment；
-- 最新 Record Store、Undo version chain、History Store、B+ Tree 和 Posting Run；
-- Buffer Pool、锁、MVCC、Undo Log、Redo Log、逻辑 Binlog 和恢复；
-- 多进程协调、compaction、校验、备份、Binlog 增量重放和故障注入；
-- format version 与迁移工具。
+- `.memora` Header、事务 Frame、typed logical record 和 CRC；
+- append-only commit、fsync、reopen、崩溃尾部忽略和损坏拒绝；
+- Catalog、Row revision、History、Relation 与 Table Router 持久化；
+- 现有 MSQL 接入、SQLite snapshot 迁移、回读验证与默认切换；
+- 删除主程序中的 SQLite driver、文件名和测试耦合。
 
-退出条件：事务、崩溃恢复、索引原子可见和跨版本兼容测试通过。
+退出条件：新 Instance 只使用自有文件；旧数据可迁移；CRUD、History、Relation、
+Table Router、重启和损坏拒绝全部运行于原生底座。
+
+Page、B+ Tree、Buffer Pool、MVCC、Undo/Redo 和 Binlog 不再作为一次性“大内核”
+实现；只有原生底座的实测数据证明需要时才逐项进入后续 Phase。
 
 ## Phase 5：个人数据库产品化
 

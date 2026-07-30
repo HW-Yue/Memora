@@ -1,6 +1,7 @@
 # macOS Instance 数据目录
 
-状态：默认路径、顶层目录、`instance.meta` v2、v1 升级和 daemon 运行文件已实现。
+状态：默认路径与 `instance.meta` v2 已实现；持久文件目标已改为极简原生布局，
+当前 SQLite/运行文件说明仅代表待迁移实现。
 
 ## 平台范围
 
@@ -47,24 +48,23 @@ memora init --data-dir /absolute/path
 
 覆盖路径必须是绝对路径，并经过所有权、权限、可写性、文件系统能力和“未嵌套在另一个 Instance 中”的校验。项目当前目录、Git 仓库、iCloud Drive、Dropbox 等同步目录不能成为无提示默认值。
 
-## Instance 顶层目录
+## Instance 顶层目录目标
 
 默认 Instance 采用固定职责边界：
 
 ```text
 default/
-├── instance.meta   Instance 身份和启动所需最小元数据
-├── system/         Data Dictionary、系统表和 Instance 级内部数据
-├── databases/      每个逻辑 Database 的独立子目录
-├── redo/           集中式 Redo Log
-├── undo/           集中式 Undo tablespace
-├── binlog/         Row-based Binlog、索引和位点元数据
-└── tmp/            重建、排序、compaction 等可丢弃中间文件
+├── instance.meta
+├── system/system.memora
+├── databases/db_<stable-id>/database.memora
+└── tmp/
 ```
 
-这些目录由 daemon 创建和管理，用户与 Agent 不直接编辑。删除 `tmp/` 只能损失未完成的可重试后台工作；其他目录均属于数据库持久状态，不能当缓存清理。
+这些文件由引擎创建和管理，用户与 Agent 不直接编辑。第一阶段不创建独立
+redo/undo/binlog 或 Tablespace 目录；以后只有实测证明需要才增加。
 
-`databases/` 下使用稳定 `database_id`，每库再分权威 data/history 与可重建 index generation。完整布局见 [Database 物理目录](./database-file-layout.md)。
+`databases/` 下使用稳定 `database_id`；每库先只有一个权威
+`database.memora`。完整格式见[原生极简存储格式](./native-minimal-store.md)。
 
 ## instance.meta v2
 
@@ -75,13 +75,15 @@ magic[8] | format_version u32 | page_size u32
 created_at_unix_nano i64 | instance_uuid[16] | crc32 u32
 ```
 
-整数使用 little-endian；v1 默认 Page Size 为 16 KiB。文件权限为 `0600`，Instance 和固定子目录为 `0700`。
+整数使用 little-endian。现有 `page_size` 字段在极简格式阶段只作旧格式兼容保留，
+不能迫使 `.memora` v1 使用 Page；后续通过 Instance format migration 决定是否
+移除或重新定义。文件权限为 `0600`，Instance 和固定子目录为 `0700`。
 
 初始化先在同目录写临时文件并 `fsync`，再用不覆盖既有目标的 hard-link 原子发布，最后同步目录。两个进程同时首次初始化时只有一个 UUID 成为正式身份，另一方读取胜出的完整文件。重复 `memora init` 保持原身份；长度、magic、Page Size 或 CRC 错误都拒绝启动，绝不自动覆盖。v1 返回明确的 upgrade-required 状态，高于 v2 的格式返回 newer-format，不能都误报成损坏；迁移与回滚见 [Instance Format 升级与回滚 v1](./instance-format-upgrade-v1.md)。
 
 ## daemon 运行文件
 
-F07 使用：
+当前待迁移实现使用：
 
 ```text
 system/daemon.lock
@@ -95,13 +97,14 @@ F46 起，`security.sqlite` 独立保存只含元数据和 payload hash 的 daem
 
 Unix socket 不放入 datadir，避免自定义深层路径超过 macOS `AF_UNIX` 上限。它位于仅当前用户可访问的临时运行目录，文件名由规范化 datadir 稳定派生；具体协议与清理规则见 [本地 IPC 协议](../development/ipc-protocol.md)。
 
-## MySQL 参考边界
+## 传统数据库参考边界
 
-Instance 内继续参考 MySQL 的结构原则：一个 datadir、集中式事务日志、每个逻辑 Database 的独立子目录。文件扩展名、Page 格式和恢复协议由 Memora 自己定义，不兼容 `.ibd`。
+只参考经过当前需求验证的正确性机制，不再先复制集中式事务日志、Tablespace、
+Page 或 `.ibd` 布局。Memora 的 `.memora` 格式和恢复协议独立定义。
 
 ## 尚未确认
 
-- 除运行文件与 `security.sqlite` 外，`system/` 后续内部文件名；
+- daemon lock/PID 与 `system.memora` 怎样分离运行态和持久态；
 - launchd 使用 LaunchAgent 还是其他用户级启动方式；
 - 备份、快照和导出包默认输出位置；
 - 自定义 datadir 位于外接盘或网络文件系统时的支持边界。

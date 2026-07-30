@@ -1,6 +1,7 @@
 # ADR-0001：SQLite 原型 Store
 
-状态：Accepted，F04。只适用于原型阶段。
+状态：Superseded by [ADR-0003](./0003-native-minimal-store-first.md)。SQLite 仅在
+原生迁移验证完成前作为只读迁移来源和兼容测试后端保留，不再扩展。
 
 ## 背景
 
@@ -48,4 +49,6 @@ F16c 起 daemon 将单个原型 Store 放在实例的 `databases/prototype.sqlit
 
 ## 替换条件
 
-只有 AI-native benchmark 达到发布门槛，才执行原生内核 Phase。若产品门槛未通过，继续优化 Skill、Schema 和检索质量，不因已经使用 SQLite 而提前扩写或永久固化其接口。
+原替换条件已被 ADR-0003 取代：先实现极简原生格式和 Store，再接现有逻辑层，
+完成 snapshot 等价、回读和回滚验证后删除 SQLite。产品质量门仍然必须通过，
+但不再阻止原生底座开工。

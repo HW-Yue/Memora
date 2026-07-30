@@ -4,7 +4,8 @@
 
 ## 迁移边界
 
-Logical Snapshot 是 SQLite 原型迁往原生内核的安全出口，不复制数据库文件、SQLite schema、rowid、WAL 或任一派生索引。v1 信封只保存：
+Logical Snapshot 是 SQLite 原型迁往 `.memora` 原生底座的安全出口，不复制数据库
+文件、SQLite schema、rowid、WAL 或任一派生索引。v1 信封只保存：
 
 ```text
 version = memora.logical-snapshot/v1
@@ -41,4 +42,4 @@ Row 定位、History revision、Relation 正反向定位、Agent、Router、机�
 - [Row Store v1](../data/row-store-v1.md)
 - [History Store v1](../data/history-store-v1.md)
 - [Relationship Store v1](../data/relationship-store-v1.md)
-- [SQLite 原型 Store ADR](../decisions/0001-prototype-store.md)
+- [原生极简 Store ADR](../decisions/0003-native-minimal-store-first.md)
