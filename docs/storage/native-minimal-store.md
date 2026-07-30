@@ -1,6 +1,6 @@
 # 原生极简存储格式
 
-状态：F52–F62 已实现；typed objects 与事务发布已闭环，崩溃尾恢复待 F63。
+状态：F52–F63 已实现；typed objects、事务发布、fsync 与崩溃尾恢复已闭环。
 
 ## 当前唯一目标
 
@@ -74,12 +74,13 @@ Begin() → Transaction[Put, Commit, Rollback]
 - `Get` 按 offset 读取并校验 kind、ID、长度和 payload CRC；
 - `Close` 只负责关闭文件；F52 不承诺掉电 durability。
 - F62 在 COMMIT 后一次发布事务内全部 Record；缺少 COMMIT 的完整事务重开后不可见；
-- F62 尚不执行 fsync，也不修复半条物理 Record，这些属于 F63。
+- F63 在数据帧和 COMMIT 间设置 fsync 边界；重开会截断未提交事务或半写尾部；
+- 已完成 Record 的 CRC 或已完成 COMMIT 的 transaction digest 损坏仍拒绝打开。
 
 ## 错误边界
 
 - magic、版本、长度、ID、CRC 或重复 ID 不合法时返回稳定错误；
-- 文件中存在半条 Record 时拒绝打开，不尝试截断或修复；
+- 文件尾存在半条 Record 或未提交事务时恢复到最后完整发布边界并截断；
 - decoder 必须先校验长度上限，再分配内存；
 - 不识别的 format version 拒绝打开；
 - 这些是读取正确性检查，不是崩溃恢复。
@@ -87,8 +88,8 @@ Begin() → Transaction[Put, Commit, Rollback]
 ## 后续闭环
 
 F53a–F61 已完成 Catalog、Row、MSQL CRUD、History、Relation 与 Table Router；
-F62 已增加事务帧。F63 继续实现 fsync 边界、尾部截断和崩溃恢复，之后才允许
-跨对象 mutation 使用事务原子发布。
+F62 已增加事务帧，F63 已完成 fsync 与崩溃尾恢复。F64 开始让 Row、History、
+Relation 和 Route membership 使用同一事务原子发布。
 
 后续版本可以改变物理 format version，但必须提供明确迁移；不能为了避免升级而把
 F52 重新膨胀成完整内核。

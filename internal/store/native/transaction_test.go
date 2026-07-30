@@ -3,6 +3,8 @@ package native
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -131,5 +133,115 @@ func TestOpenRejectsTransactionDigestMismatch(t *testing.T) {
 	}
 	if _, err := Open(path); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("Open(bad digest) error = %v, want ErrCorrupt", err)
+	}
+}
+
+func TestRecoveryTruncatesEveryPartialTransactionPrefix(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	path := filepath.Join(directory, "source.memora")
+	file, err := Create(path, FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Put(ObjectKindOpaque, 1, "baseline", []byte("safe")); err != nil {
+		t.Fatal(err)
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselineEnd := stat.Size()
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Put(ObjectKindOpaque, 1, "tx_a", []byte("A")); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Put(ObjectKindOpaque, 1, "tx_b", []byte("B")); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for length := baselineEnd; length < int64(len(data)); length++ {
+		length := length
+		t.Run(fmt.Sprintf("byte_%d", length), func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), "recovered.memora")
+			if err := os.WriteFile(target, data[:length], 0o600); err != nil {
+				t.Fatal(err)
+			}
+			opened, err := Open(target)
+			if err != nil {
+				t.Fatalf("Open() error = %v", err)
+			}
+			if got, err := opened.Get(ObjectKindOpaque, "baseline"); err != nil || string(got) != "safe" {
+				t.Fatalf("baseline = %q, %v", got, err)
+			}
+			if _, err := opened.Get(ObjectKindOpaque, "tx_a"); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("tx_a error = %v", err)
+			}
+			if err := opened.Close(); err != nil {
+				t.Fatal(err)
+			}
+			stat, err := os.Stat(target)
+			if err != nil || stat.Size() != baselineEnd {
+				t.Fatalf("recovered size = %v, %v; want %d", stat, err, baselineEnd)
+			}
+			reopened, err := Open(target)
+			if err != nil {
+				t.Fatalf("second Open() error = %v", err)
+			}
+			_ = reopened.Close()
+		})
+	}
+}
+
+func TestOpenRejectsCorruptionInsideCommittedTransaction(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := Create(path, FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("committed-unique-payload")
+	if err := transaction.Put(ObjectKindOpaque, 1, "committed", payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset := bytes.Index(data, payload)
+	if offset < 0 {
+		t.Fatal("committed payload not found")
+	}
+	data[offset] ^= 0xff
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Open(corrupt committed data) error = %v", err)
 	}
 }

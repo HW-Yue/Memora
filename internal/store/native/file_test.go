@@ -131,7 +131,7 @@ func TestRecordHeaderEncodingGolden(t *testing.T) {
 	}
 }
 
-func TestOpenRejectsEveryTruncatedPrefix(t *testing.T) {
+func TestOpenRecoversEveryTruncatedTail(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "source.memora")
@@ -161,11 +161,24 @@ func TestOpenRejectsEveryTruncatedPrefix(t *testing.T) {
 				t.Fatalf("WriteFile() error = %v", err)
 			}
 			opened, err := Open(truncatedPath)
-			if opened != nil {
-				_ = opened.Close()
+			if length < fileHeaderSize {
+				if opened != nil {
+					_ = opened.Close()
+				}
+				if err == nil {
+					t.Fatalf("Open(%d-byte header prefix) unexpectedly succeeded", length)
+				}
+				return
 			}
-			if err == nil {
-				t.Fatalf("Open(%d-byte prefix) unexpectedly succeeded", length)
+			if err != nil {
+				t.Fatalf("Open(%d-byte crash tail) error = %v", length, err)
+			}
+			if err := opened.Close(); err != nil {
+				t.Fatal(err)
+			}
+			stat, err := os.Stat(truncatedPath)
+			if err != nil || stat.Size() != fileHeaderSize {
+				t.Fatalf("recovered size = %v, %v", stat, err)
 			}
 		})
 	}

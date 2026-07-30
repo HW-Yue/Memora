@@ -61,10 +61,11 @@ const (
 )
 
 type File struct {
-	file    *os.File
-	kind    FileKind
-	records map[recordKey]recordMeta
-	closed  bool
+	file           *os.File
+	kind           FileKind
+	records        map[recordKey]recordMeta
+	recoveryOffset int64
+	closed         bool
 }
 
 type recordKey struct {
@@ -133,6 +134,9 @@ func Create(path string, kind FileKind) (*File, error) {
 	if err := writeFull(file, encoded[:]); err != nil {
 		return nil, fmt.Errorf("write native store header: %w", err)
 	}
+	if err := file.Sync(); err != nil {
+		return nil, fmt.Errorf("sync native store header: %w", err)
+	}
 
 	removeOnError = false
 	return &File{file: file, kind: kind, records: make(map[recordKey]recordMeta)}, nil
@@ -177,6 +181,15 @@ func openFile(file *os.File) (*File, error) {
 	if err := result.scan(stat.Size()); err != nil {
 		return nil, err
 	}
+	if result.recoveryOffset > 0 && result.recoveryOffset < stat.Size() {
+		if err := file.Truncate(result.recoveryOffset); err != nil {
+			return nil, fmt.Errorf("truncate native crash tail: %w", err)
+		}
+		if err := file.Sync(); err != nil {
+			return nil, fmt.Errorf("sync native crash recovery: %w", err)
+		}
+		result.recoveryOffset = 0
+	}
 	return result, nil
 }
 
@@ -198,6 +211,9 @@ func (f *File) Put(kind ObjectKind, schemaVersion uint32, id string, payload []b
 	meta, err := f.appendRecord(kind, schemaVersion, id, payload)
 	if err != nil {
 		return err
+	}
+	if err := f.file.Sync(); err != nil {
+		return fmt.Errorf("sync native record: %w", err)
 	}
 	f.records[key] = meta
 	return nil
@@ -255,8 +271,14 @@ func (transaction *Transaction) Commit() error {
 		}
 		metas[recordKey{kind: record.kind, id: record.id}] = meta
 	}
+	if err := transaction.file.file.Sync(); err != nil {
+		return fmt.Errorf("sync native transaction records: %w", err)
+	}
 	if _, err := transaction.file.appendRecord(objectKindTransactionCommit, 1, transaction.id, digest.Sum(nil)); err != nil {
 		return err
+	}
+	if err := transaction.file.file.Sync(); err != nil {
+		return fmt.Errorf("sync native transaction commit: %w", err)
 	}
 	for key, meta := range metas {
 		transaction.file.records[key] = meta
@@ -340,13 +362,19 @@ func (f *File) Close() error {
 func (f *File) scan(fileSize int64) error {
 	type pendingTransaction struct {
 		id      string
+		start   int64
 		records map[recordKey]recordMeta
 		digest  []byte
 	}
 	var pending *pendingTransaction
+	safeOffset := int64(fileHeaderSize)
 	for offset := int64(fileHeaderSize); offset < fileSize; {
 		if fileSize-offset < recordHeaderSize {
-			return fmt.Errorf("%w: incomplete record header at offset %d", ErrCorrupt, offset)
+			f.recoveryOffset = safeOffset
+			if pending != nil {
+				f.recoveryOffset = pending.start
+			}
+			return nil
 		}
 		var encoded [recordHeaderSize]byte
 		if _, err := f.file.ReadAt(encoded[:], offset); err != nil {
@@ -357,7 +385,11 @@ func (f *File) scan(fileSize int64) error {
 			return fmt.Errorf("record at offset %d: %w", offset, err)
 		}
 		if int64(header.recordLength) > fileSize-offset {
-			return fmt.Errorf("%w: incomplete record at offset %d", ErrCorrupt, offset)
+			f.recoveryOffset = safeOffset
+			if pending != nil {
+				f.recoveryOffset = pending.start
+			}
+			return nil
 		}
 
 		id := make([]byte, header.idLength)
@@ -390,7 +422,7 @@ func (f *File) scan(fileSize int64) error {
 			if pending != nil || len(payload) != 0 {
 				return fmt.Errorf("%w: invalid transaction BEGIN", ErrCorrupt)
 			}
-			pending = &pendingTransaction{id: string(id), records: make(map[recordKey]recordMeta)}
+			pending = &pendingTransaction{id: string(id), start: offset, records: make(map[recordKey]recordMeta)}
 		case objectKindTransactionCommit:
 			if pending == nil || pending.id != string(id) || len(payload) != sha256.Size {
 				return fmt.Errorf("%w: invalid transaction COMMIT", ErrCorrupt)
@@ -403,12 +435,14 @@ func (f *File) scan(fileSize int64) error {
 				f.records[recordKey] = recordMeta
 			}
 			pending = nil
+			safeOffset = offset + int64(header.recordLength)
 		default:
 			if pending == nil {
 				if _, exists := f.records[key]; exists {
 					return fmt.Errorf("%w: duplicate record ID %q", ErrCorrupt, string(id))
 				}
 				f.records[key] = meta
+				safeOffset = offset + int64(header.recordLength)
 			} else {
 				if _, exists := f.records[key]; exists {
 					return fmt.Errorf("%w: duplicate record ID %q", ErrCorrupt, string(id))
@@ -423,6 +457,9 @@ func (f *File) scan(fileSize int64) error {
 			}
 		}
 		offset += int64(header.recordLength)
+	}
+	if pending != nil {
+		f.recoveryOffset = pending.start
 	}
 	return nil
 }
