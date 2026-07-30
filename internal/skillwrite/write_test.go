@@ -94,6 +94,52 @@ func TestMergeAndSplitUseOneExplicitShortTransaction(t *testing.T) {
 	}
 }
 
+func TestCanonicalReshapeUsesOneAtomicMSQLStatement(t *testing.T) {
+	t.Parallel()
+
+	for _, decision := range []skillwrite.Decision{skillwrite.DecisionSplit, skillwrite.DecisionMerge} {
+		plan := mutationPlan(skillwrite.DecisionRevise)
+		plan.Decision = decision
+		options := executor.MutationOptions{
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 3,
+			Actor: plan.Actor, Source: plan.SourceEventID, Reason: plan.Reason,
+			TargetRouteLeafIDs: [][]string{{"route_a"}},
+		}
+		source := "MERGE work.notes ROWS (:first, :second) INTO (title) VALUES (:merged)"
+		parameters := map[string]any{"first": "row_one", "second": "row_two", "merged": "merged"}
+		if decision == skillwrite.DecisionSplit {
+			source = "SPLIT work.notes ROW :source INTO (title) VALUES (:first), (:second)"
+			parameters = map[string]any{"source": "row_one", "first": "first", "second": "second"}
+			options.ExpectedRevision = 1
+			options.TargetRouteLeafIDs = [][]string{{"route_a"}, {"route_b"}}
+		} else {
+			options.SourceRevisions = map[string]uint64{"row_one": 1, "row_two": 1}
+		}
+		plan.Steps = []skillwrite.Step{{
+			ID: "reshape", Kind: string(decision), Target: "row_source", MSQL: source,
+			Input: executor.StatementInput{
+				Parameters: executor.Parameters{Named: parameters}, Mutation: options,
+			},
+		}}
+		tool := &planTool{}
+		report, err := skillwrite.New(tool).Run(context.Background(), plan)
+		if err != nil {
+			t.Fatalf("%s Run() error = %v", decision, err)
+		}
+		mutation := callForPhase(t, tool.calls, skillwrite.PhaseMutation)
+		if strings.Contains(mutation.Request.Source, "BEGIN") {
+			t.Fatalf("%s public reshape was wrapped in another transaction: %q", decision, mutation.Request.Source)
+		}
+		wantChanges := 1
+		if decision == skillwrite.DecisionSplit {
+			wantChanges = 2
+		}
+		if len(report.Receipt.Changes) != wantChanges {
+			t.Fatalf("%s receipt = %#v", decision, report.Receipt)
+		}
+	}
+}
+
 func TestMutationPolicyRejectsMissingPreflightOrSemanticSnapshots(t *testing.T) {
 	t.Parallel()
 
@@ -287,7 +333,15 @@ func (tool *planTool) Invoke(_ context.Context, call skillwrite.Call) (result.En
 			value.Revision = &revision
 			sequence := uint64(7)
 			value.CommitSequence = &sequence
-			value.AffectedRows = 1
+			if statement.Kind == "SPLIT" {
+				value.AffectedRows = 3
+				value.Rows = []result.Row{{"row_id": "row_first"}, {"row_id": "row_second"}}
+			} else if statement.Kind == "MERGE" {
+				value.AffectedRows = 3
+				value.Rows = []result.Row{{"row_id": "row_merged"}}
+			} else {
+				value.AffectedRows = 1
+			}
 		}
 		results[index] = value
 	}

@@ -89,6 +89,10 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseDelete()
 	case parser.matchWord("RESTORE"):
 		statement, err = parser.parseRestore()
+	case parser.matchWord("SPLIT"):
+		statement, err = parser.parseSplit()
+	case parser.matchWord("MERGE"):
+		statement, err = parser.parseMerge()
 	case parser.matchWord("RELATE"):
 		statement, err = parser.parseRelate()
 	case parser.matchWord("UNRELATE"):
@@ -728,6 +732,105 @@ func (parser *parser) parseRestore() (ast.Statement, error) {
 	return ast.Statement{Kind: "RESTORE", Restore: &ast.RestoreStatement{
 		Table: table, Row: &rowExpression, Revision: &revision,
 	}}, nil
+}
+
+func (parser *parser) parseSplit() (ast.Statement, error) {
+	table, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("ROW"); err != nil {
+		return ast.Statement{}, err
+	}
+	source, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	reshape := &ast.ReshapeStatement{Mode: "SPLIT", Table: table, Sources: []ast.Expression{source}}
+	if err := parser.parseReshapeTargets(reshape); err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "SPLIT", Reshape: reshape}, nil
+}
+
+func (parser *parser) parseMerge() (ast.Statement, error) {
+	table, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("ROWS"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectKind(lexer.KindLeftParen, "("); err != nil {
+		return ast.Statement{}, err
+	}
+	reshape := &ast.ReshapeStatement{Mode: "MERGE", Table: table}
+	for {
+		source, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		reshape.Sources = append(reshape.Sources, source)
+		if !parser.matchKind(lexer.KindComma) {
+			break
+		}
+	}
+	if _, err := parser.expectKind(lexer.KindRightParen, ")"); err != nil {
+		return ast.Statement{}, err
+	}
+	if err := parser.parseReshapeTargets(reshape); err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "MERGE", Reshape: reshape}, nil
+}
+
+func (parser *parser) parseReshapeTargets(reshape *ast.ReshapeStatement) error {
+	if _, err := parser.expectWord("INTO"); err != nil {
+		return err
+	}
+	if _, err := parser.expectKind(lexer.KindLeftParen, "("); err != nil {
+		return err
+	}
+	for {
+		column, err := parser.parseIdentifier()
+		if err != nil {
+			return err
+		}
+		reshape.Columns = append(reshape.Columns, column)
+		if !parser.matchKind(lexer.KindComma) {
+			break
+		}
+	}
+	if _, err := parser.expectKind(lexer.KindRightParen, ")"); err != nil {
+		return err
+	}
+	if _, err := parser.expectWord("VALUES"); err != nil {
+		return err
+	}
+	for {
+		if _, err := parser.expectKind(lexer.KindLeftParen, "("); err != nil {
+			return err
+		}
+		var values []ast.Expression
+		for {
+			value, err := parser.parseExpression(1)
+			if err != nil {
+				return err
+			}
+			values = append(values, value)
+			if !parser.matchKind(lexer.KindComma) {
+				break
+			}
+		}
+		if _, err := parser.expectKind(lexer.KindRightParen, ")"); err != nil {
+			return err
+		}
+		reshape.Values = append(reshape.Values, values)
+		if !parser.matchKind(lexer.KindComma) {
+			break
+		}
+	}
+	return nil
 }
 
 func (parser *parser) parseRelate() (ast.Statement, error) {

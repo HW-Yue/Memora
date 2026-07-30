@@ -33,6 +33,8 @@
 - 目标：将原生 coordinator 暴露为版本化 MSQL/Skill Mutation Plan；
 - 覆盖：US-SPLIT、US-OPTIMIZE、US-ENGINE；
 - 门：source、targets、relations、上层 Route 和 memberships 原子改变。
+- 状态：已实现；公开 MSQL 与 Mutation Plan 均走原生 coordinator，E2E 覆盖
+  Split→关系迁移→上层 Route revision→Merge→Route 再发现，故障注入覆盖全回滚。
 
 ## F77 快速冷启动与按需 Route Synopsis
 

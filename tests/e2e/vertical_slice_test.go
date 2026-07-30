@@ -253,10 +253,113 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	if health.Status != "healthy" || health.Hash == "" || health.IssueCount != 0 {
 		t.Fatalf("native semantic health = %#v", health)
 	}
+	anchor := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(nil, map[string]any{
+			"expected_schema_version": 1, "max_affected_rows": 1,
+			"route_leaf_ids": []string{leafID},
+			"actor":          "agent:e2e", "source": "e2e:anchor", "reason": "reshape relation anchor",
+		}),
+		"INSERT INTO work.notes (title) VALUES ('reshape relation anchor')")
+	anchorID, _ := anchor.Results[0].Rows[0]["row_id"].(string)
+	related := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{"source": rowID, "target": anchorID, "type": "supports"},
+			map[string]any{"expected_schema_version": 1, "max_affected_rows": 1},
+		),
+		"RELATE work.notes ROW :source TO work.notes ROW :target TYPE :type")
+	relationID, _ := related.Results[0].Rows[0]["relation_id"].(string)
+	split := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{
+				"source": rowID, "first": "manifest atomicity", "second": "manifest generation",
+			},
+			map[string]any{
+				"expected_schema_version": 1, "expected_revision": 5, "max_affected_rows": 3,
+				"target_route_leaf_ids":    [][]string{{leafID}, {leafID}},
+				"relation_target_ordinals": map[string]int{relationID: 1},
+				"route_updates": []map[string]any{{
+					"route_id": branchID, "expected_revision": 1,
+					"purpose": "Architecture knowledge split into atomic subjects",
+				}},
+				"actor": "agent:e2e", "source": "e2e:split", "reason": "separate semantic subjects",
+			},
+		),
+		"SPLIT work.notes ROW :source INTO (title) VALUES (:first), (:second)")
+	if split.Results[0].AffectedRows != 3 || len(split.Results[0].Rows) != 2 {
+		t.Fatalf("SPLIT envelope = %#v", split)
+	}
+	firstID, _ := split.Results[0].Rows[0]["row_id"].(string)
+	secondID, _ := split.Results[0].Rows[1]["row_id"].(string)
+	splitRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 20")
+	if !routeContainsRevision(splitRoute, firstID, 1) ||
+		!routeContainsRevision(splitRoute, secondID, 1) ||
+		routeContainsRevision(splitRoute, rowID, 6) {
+		t.Fatalf("Route after SPLIT = %#v", splitRoute)
+	}
+	branchAfterSplit := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12")
+	if len(branchAfterSplit.Results[0].Rows) != 1 ||
+		branchAfterSplit.Results[0].Rows[0]["revision"] != float64(2) ||
+		branchAfterSplit.Results[0].Rows[0]["purpose"] != "Architecture knowledge split into atomic subjects" {
+		t.Fatalf("upper Route after SPLIT = %#v", branchAfterSplit)
+	}
+	inheritedRelation := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"row": firstID}, nil),
+		"SHOW RELATIONS FROM work.notes FOR ROW :row DIRECTION OUTGOING LIMIT 10")
+	if len(inheritedRelation.Results[0].Rows) != 1 ||
+		inheritedRelation.Results[0].Rows[0]["target_row_id"] != anchorID {
+		t.Fatalf("relation after SPLIT = %#v", inheritedRelation)
+	}
+	merge := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{
+				"first": firstID, "second": secondID, "merged": "atomic manifest generation",
+			},
+			map[string]any{
+				"expected_schema_version": 1, "max_affected_rows": 3,
+				"source_revisions":      map[string]uint64{firstID: 1, secondID: 1},
+				"target_route_leaf_ids": [][]string{{leafID}},
+				"route_updates": []map[string]any{{
+					"route_id": branchID, "expected_revision": 2,
+					"purpose": "Architecture knowledge with verified semantic boundaries",
+				}},
+				"actor": "agent:e2e", "source": "e2e:merge", "reason": "recombine verified boundary",
+			},
+		),
+		"MERGE work.notes ROWS (:first, :second) INTO (title) VALUES (:merged)")
+	if merge.Results[0].AffectedRows != 3 || len(merge.Results[0].Rows) != 1 {
+		t.Fatalf("MERGE envelope = %#v", merge)
+	}
+	mergedID, _ := merge.Results[0].Rows[0]["row_id"].(string)
+	mergedRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 20")
+	if !routeContainsRevision(mergedRoute, mergedID, 1) ||
+		routeContainsRevision(mergedRoute, firstID, 2) ||
+		routeContainsRevision(mergedRoute, secondID, 2) {
+		t.Fatalf("Route after MERGE = %#v", mergedRoute)
+	}
+	branchAfterMerge := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12")
+	if len(branchAfterMerge.Results[0].Rows) != 1 ||
+		branchAfterMerge.Results[0].Rows[0]["revision"] != float64(3) ||
+		branchAfterMerge.Results[0].Rows[0]["purpose"] != "Architecture knowledge with verified semantic boundaries" {
+		t.Fatalf("upper Route after MERGE = %#v", branchAfterMerge)
+	}
+	mergedRelation := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"row": mergedID}, nil),
+		"SHOW RELATIONS FROM work.notes FOR ROW :row DIRECTION OUTGOING LIMIT 10")
+	if len(mergedRelation.Results[0].Rows) != 1 ||
+		mergedRelation.Results[0].Rows[0]["target_row_id"] != anchorID {
+		t.Fatalf("relation after MERGE = %#v", mergedRelation)
+	}
 	var doctor doctorOutput
 	e2eJSON(t, root, &doctor, binary, "doctor", "--data-dir", dataDir)
 	if doctor.Status != "healthy" || doctor.Databases != 1 ||
-		doctor.Rows != 1 || doctor.History != 5 || doctor.SnapshotHash == "" {
+		doctor.Rows != 5 || doctor.History != 12 || doctor.Relations != 3 ||
+		doctor.SnapshotHash == "" {
 		t.Fatalf("final doctor = %#v", doctor)
 	}
 }
@@ -280,6 +383,18 @@ func statementInput(parameters, mutation map[string]any) string {
 	}
 	encoded, _ := json.Marshal(input)
 	return string(encoded)
+}
+
+func routeContainsRevision(envelope result.Envelope, rowID string, revision float64) bool {
+	if len(envelope.Results) != 1 {
+		return false
+	}
+	for _, value := range envelope.Results[0].Rows {
+		if value["row_id"] == rowID && value["revision"] == revision {
+			return true
+		}
+	}
+	return false
 }
 
 func e2eEnvelope(

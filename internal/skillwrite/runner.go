@@ -197,11 +197,14 @@ func mutationChanges(plan Plan, envelope result.Envelope) ([]Change, error) {
 	if len(envelope.Results) != len(plan.Steps)+2*offset {
 		return nil, mutationError(result.CodeInternal, "mutation result count does not match the plan")
 	}
-	changes := make([]Change, len(plan.Steps))
+	changes := make([]Change, 0, len(plan.Steps))
 	var commitSequence *uint64
 	for index, step := range plan.Steps {
 		statement := envelope.Results[index+offset]
-		if statement.Status != result.StatusSucceeded || statement.AffectedRows != 1 {
+		reshape := step.Kind == "SPLIT" || step.Kind == "MERGE"
+		if statement.Status != result.StatusSucceeded ||
+			(!reshape && statement.AffectedRows != 1) ||
+			(reshape && (statement.AffectedRows < 3 || len(statement.Rows) == 0)) {
 			return nil, mutationError(result.CodeInternal, "mutation step %q did not report one successful change", step.ID)
 		}
 		if statement.CommitSequence != nil {
@@ -221,10 +224,23 @@ func mutationChanges(plan Plan, envelope result.Envelope) ([]Change, error) {
 				objectID = value
 			}
 		}
-		changes[index] = Change{
+		if reshape {
+			for _, outputRow := range statement.Rows {
+				targetID, _ := outputRow["row_id"].(string)
+				if strings.TrimSpace(targetID) == "" {
+					return nil, mutationError(result.CodeInternal, "reshape step %q returned an invalid target RowID", step.ID)
+				}
+				changes = append(changes, Change{
+					Operation: step.Kind, Target: step.Target, ObjectID: targetID,
+					Revision: statement.Revision, CommitSequence: statement.CommitSequence,
+				})
+			}
+			continue
+		}
+		changes = append(changes, Change{
 			Operation: step.Kind, Target: step.Target, ObjectID: objectID,
 			Revision: statement.Revision, CommitSequence: statement.CommitSequence,
-		}
+		})
 	}
 	return changes, nil
 }

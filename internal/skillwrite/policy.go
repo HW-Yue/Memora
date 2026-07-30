@@ -102,12 +102,15 @@ func validateStep(step Step, plan Plan) (string, []string, error) {
 	if statement.Kind != kind {
 		return "", nil, fmt.Errorf("declared kind %q does not match MSQL kind %q", kind, statement.Kind)
 	}
-	if kind != "INSERT" && kind != "UPDATE" && kind != "DELETE" && kind != "RELATE" {
+	if kind != "INSERT" && kind != "UPDATE" && kind != "DELETE" && kind != "RELATE" &&
+		kind != "SPLIT" && kind != "MERGE" {
 		return "", nil, fmt.Errorf("unsupported mutation kind %q", kind)
 	}
 	options := step.Input.Mutation
-	if options.MaxAffectedRows != 1 ||
-		options.Actor != plan.Actor || options.Source != plan.SourceEventID || options.Reason != plan.Reason {
+	if options.Actor != plan.Actor || options.Source != plan.SourceEventID || options.Reason != plan.Reason {
+		return "", nil, fmt.Errorf("mutation guard or provenance does not match the plan")
+	}
+	if kind != "SPLIT" && kind != "MERGE" && options.MaxAffectedRows != 1 {
 		return "", nil, fmt.Errorf("mutation guard or provenance does not match the plan")
 	}
 	switch kind {
@@ -127,6 +130,24 @@ func validateStep(step Step, plan Plan) (string, []string, error) {
 	case "DELETE":
 		if options.ExpectedSchemaVersion == 0 || options.ExpectedRevision == 0 {
 			return "", nil, fmt.Errorf("DELETE requires expected schema and Row revisions")
+		}
+	case "SPLIT", "MERGE":
+		if options.ExpectedSchemaVersion == 0 || options.MaxAffectedRows < 3 {
+			return "", nil, fmt.Errorf("reshape requires schema guard and a bounded source/target budget")
+		}
+		if kind == "SPLIT" && options.ExpectedRevision == 0 {
+			return "", nil, fmt.Errorf("SPLIT requires expected source revision")
+		}
+		if kind == "MERGE" && len(options.SourceRevisions) < 2 {
+			return "", nil, fmt.Errorf("MERGE requires source revisions")
+		}
+		if len(options.TargetRouteLeafIDs) == 0 {
+			return "", nil, fmt.Errorf("reshape requires complete target Route snapshots")
+		}
+		for index, snapshot := range options.TargetRouteLeafIDs {
+			if err := validateSnapshot(snapshot, 32, fmt.Sprintf("target %d Route memberships", index+1)); err != nil {
+				return "", nil, err
+			}
 		}
 	}
 	databases := statementDatabases(statement)
@@ -159,9 +180,11 @@ func validateDecisionShape(decision Decision, kinds map[string]int, steps int) e
 	case DecisionRevise, DecisionMove:
 		valid = steps == 1 && kinds["UPDATE"] == 1
 	case DecisionMerge:
-		valid = steps >= 2 && kinds["UPDATE"] == 1 && kinds["DELETE"] == steps-1
+		valid = (steps == 1 && kinds["MERGE"] == 1) ||
+			(steps >= 2 && kinds["UPDATE"] == 1 && kinds["DELETE"] == steps-1)
 	case DecisionSplit:
-		valid = steps >= 2 && kinds["UPDATE"] == 1 && kinds["INSERT"] == steps-1
+		valid = (steps == 1 && kinds["SPLIT"] == 1) ||
+			(steps >= 2 && kinds["UPDATE"] == 1 && kinds["INSERT"] == steps-1)
 	case DecisionRelate:
 		valid = steps == 1 && kinds["RELATE"] == 1
 	}
@@ -182,6 +205,8 @@ func statementDatabases(statement ast.Statement) []string {
 		names = append(names, statement.Delete.Table)
 	case statement.Relate != nil:
 		names = append(names, statement.Relate.SourceTable, statement.Relate.TargetTable)
+	case statement.Reshape != nil:
+		names = append(names, statement.Reshape.Table)
 	}
 	values := make([]string, 0, len(names))
 	for _, name := range names {

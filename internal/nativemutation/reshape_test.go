@@ -1,15 +1,57 @@
 package nativemutation
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
+
+func TestPublicSplitFailureRollsBackRowsHistoryRelationsAndMemberships(t *testing.T) {
+	t.Parallel()
+
+	_, file, rows, routes, source, edge, membership := mutationFixture(t)
+	t.Cleanup(func() { _ = file.Close() })
+	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{})
+	base := nativerow.NewService(rows, dictionary, nativerow.ServiceOptions{})
+	service := NewService(base, dictionary, rows, routes, New(file, rows, routes))
+	_, err := service.Split(
+		context.Background(), "work", "notes", []string{source.ID},
+		[]map[string]any{{"title": "first"}, {"title": "second"}},
+		row.ReshapeOptions{
+			ExpectedSchemaVersion: 1, ExpectedRevision: 1,
+			TargetRouteLeafIDs:     [][]string{{membership.LeafID}, {"route_missing"}},
+			RelationTargetOrdinals: map[string]int{edge.ID: 1},
+			Metadata:               row.WriteMetadata{Actor: "agent:test", Source: "test", Reason: "rollback"},
+		},
+	)
+	if err == nil {
+		t.Fatal("Split() unexpectedly succeeded")
+	}
+	latest, readErr := rows.Read(source.ID)
+	if readErr != nil || latest.Revision != 1 || latest.State != row.StateLive {
+		t.Fatalf("source after rollback = %#v, %v", latest, readErr)
+	}
+	records, _, historyErr := rows.History(source.DatabaseID, source.TableID, source.ID, 10)
+	if historyErr != nil || len(records) != 1 {
+		t.Fatalf("history after rollback = %#v, %v", records, historyErr)
+	}
+	liveRelation, relationErr := rows.GetRelation(edge.ID, false)
+	if relationErr != nil || liveRelation.Revision != 1 {
+		t.Fatalf("relation after rollback = %#v, %v", liveRelation, relationErr)
+	}
+	locators, _, routeErr := routes.Open(membership.LeafID, 10)
+	if routeErr != nil || len(locators) != 1 || locators[0].RowID != source.ID {
+		t.Fatalf("Route after rollback = %#v, %v", locators, routeErr)
+	}
+}
 
 func TestSplitThenMergeUpdatesSemanticStructureAtomically(t *testing.T) {
 	t.Parallel()

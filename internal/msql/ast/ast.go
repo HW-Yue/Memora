@@ -26,6 +26,7 @@ type Statement struct {
 	Update      *UpdateStatement      `json:"update,omitempty"`
 	Delete      *DeleteStatement      `json:"delete,omitempty"`
 	Restore     *RestoreStatement     `json:"restore,omitempty"`
+	Reshape     *ReshapeStatement     `json:"reshape,omitempty"`
 	Relate      *RelateStatement      `json:"relate,omitempty"`
 	Unrelate    *UnrelateStatement    `json:"unrelate,omitempty"`
 	CreateRoute *CreateRouteStatement `json:"create_route,omitempty"`
@@ -137,6 +138,14 @@ type RestoreStatement struct {
 	Table    Name        `json:"table"`
 	Row      *Expression `json:"row"`
 	Revision *Expression `json:"revision"`
+}
+
+type ReshapeStatement struct {
+	Mode    string         `json:"mode"`
+	Table   Name           `json:"table"`
+	Sources []Expression   `json:"sources"`
+	Columns []Identifier   `json:"columns"`
+	Values  [][]Expression `json:"values"`
 }
 
 type RelateStatement struct {
@@ -254,6 +263,15 @@ func (document Document) Parameters() []Parameter {
 	case statement.Restore != nil:
 		appendExpression(statement.Restore.Row)
 		appendExpression(statement.Restore.Revision)
+	case statement.Reshape != nil:
+		for index := range statement.Reshape.Sources {
+			appendExpression(&statement.Reshape.Sources[index])
+		}
+		for row := range statement.Reshape.Values {
+			for column := range statement.Reshape.Values[row] {
+				appendExpression(&statement.Reshape.Values[row][column])
+			}
+		}
 	case statement.Relate != nil:
 		appendExpression(statement.Relate.SourceRow)
 		appendExpression(statement.Relate.TargetRow)

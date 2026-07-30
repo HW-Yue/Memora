@@ -48,6 +48,11 @@ type Rows interface {
 	ListRouterLeaf(context.Context, string, int) ([]router.Locator, bool, error)
 }
 
+type Reshaper interface {
+	Split(context.Context, string, string, []string, []map[string]any, row.ReshapeOptions) ([]row.Row, error)
+	Merge(context.Context, string, string, []string, []map[string]any, row.ReshapeOptions) ([]row.Row, error)
+}
+
 type Engine struct {
 	catalog       Catalog
 	catalogBinder *binder.Catalog
@@ -72,37 +77,51 @@ type Parameters struct {
 }
 
 type MutationOptions struct {
-	ExpectedSchemaVersion uint64   `json:"expected_schema_version,omitempty"`
-	ExpectedRevision      uint64   `json:"expected_revision,omitempty"`
-	MaxAffectedRows       uint64   `json:"max_affected_rows,omitempty"`
-	Actor                 string   `json:"actor,omitempty"`
-	Source                string   `json:"source,omitempty"`
-	Reason                string   `json:"reason,omitempty"`
-	RouteLeafIDs          []string `json:"route_leaf_ids,omitempty"`
+	ExpectedSchemaVersion  uint64            `json:"expected_schema_version,omitempty"`
+	ExpectedRevision       uint64            `json:"expected_revision,omitempty"`
+	SourceRevisions        map[string]uint64 `json:"source_revisions,omitempty"`
+	MaxAffectedRows        uint64            `json:"max_affected_rows,omitempty"`
+	Actor                  string            `json:"actor,omitempty"`
+	Source                 string            `json:"source,omitempty"`
+	Reason                 string            `json:"reason,omitempty"`
+	RouteLeafIDs           []string          `json:"route_leaf_ids,omitempty"`
+	TargetRouteLeafIDs     [][]string        `json:"target_route_leaf_ids,omitempty"`
+	RelationTargetOrdinals map[string]int    `json:"relation_target_ordinals,omitempty"`
+	RouteUpdates           []row.RouteUpdate `json:"route_updates,omitempty"`
 }
 
 type Authorization = security.Authorization
 
 func (options MutationOptions) MarshalJSON() ([]byte, error) {
 	type wireOptions struct {
-		ExpectedSchemaVersion uint64    `json:"expected_schema_version,omitempty"`
-		ExpectedRevision      uint64    `json:"expected_revision,omitempty"`
-		MaxAffectedRows       uint64    `json:"max_affected_rows,omitempty"`
-		Actor                 string    `json:"actor,omitempty"`
-		Source                string    `json:"source,omitempty"`
-		Reason                string    `json:"reason,omitempty"`
-		RouteLeafIDs          *[]string `json:"route_leaf_ids,omitempty"`
+		ExpectedSchemaVersion  uint64            `json:"expected_schema_version,omitempty"`
+		ExpectedRevision       uint64            `json:"expected_revision,omitempty"`
+		SourceRevisions        map[string]uint64 `json:"source_revisions,omitempty"`
+		MaxAffectedRows        uint64            `json:"max_affected_rows,omitempty"`
+		Actor                  string            `json:"actor,omitempty"`
+		Source                 string            `json:"source,omitempty"`
+		Reason                 string            `json:"reason,omitempty"`
+		RouteLeafIDs           *[]string         `json:"route_leaf_ids,omitempty"`
+		TargetRouteLeafIDs     *[][]string       `json:"target_route_leaf_ids,omitempty"`
+		RelationTargetOrdinals map[string]int    `json:"relation_target_ordinals,omitempty"`
+		RouteUpdates           []row.RouteUpdate `json:"route_updates,omitempty"`
 	}
 	wire := wireOptions{
-		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
-		ExpectedRevision:      options.ExpectedRevision,
-		MaxAffectedRows:       options.MaxAffectedRows,
-		Actor:                 options.Actor,
-		Source:                options.Source,
-		Reason:                options.Reason,
+		ExpectedSchemaVersion:  options.ExpectedSchemaVersion,
+		ExpectedRevision:       options.ExpectedRevision,
+		SourceRevisions:        options.SourceRevisions,
+		MaxAffectedRows:        options.MaxAffectedRows,
+		Actor:                  options.Actor,
+		Source:                 options.Source,
+		Reason:                 options.Reason,
+		RelationTargetOrdinals: options.RelationTargetOrdinals,
+		RouteUpdates:           options.RouteUpdates,
 	}
 	if options.RouteLeafIDs != nil {
 		wire.RouteLeafIDs = &options.RouteLeafIDs
+	}
+	if options.TargetRouteLeafIDs != nil {
+		wire.TargetRouteLeafIDs = &options.TargetRouteLeafIDs
 	}
 	return json.Marshal(wire)
 }

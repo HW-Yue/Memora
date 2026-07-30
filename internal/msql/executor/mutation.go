@@ -63,6 +63,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.delete(ctx, statement.Delete, bound, options)
 	case statement.Restore != nil:
 		return engine.restore(ctx, statement.Restore, bound, options)
+	case statement.Reshape != nil:
+		return engine.reshape(ctx, statement.Reshape, bound, options)
 	case statement.Relate != nil:
 		return engine.relate(ctx, statement.Relate, bound, options)
 	case statement.Unrelate != nil:
@@ -70,6 +72,113 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	default:
 		return Output{}, unsupported(statement)
 	}
+}
+
+func (engine *Engine) reshape(
+	ctx context.Context,
+	statement *ast.ReshapeStatement,
+	bound bindings,
+	options MutationOptions,
+) (Output, error) {
+	if statement == nil {
+		return Output{}, executeError(result.CodeValidation, "reshape statement is incomplete")
+	}
+	reshaper, ok := engine.rows.(Reshaper)
+	if !ok {
+		return Output{}, executeError(result.CodeUnsupported, "SPLIT/MERGE is not supported by this backend")
+	}
+	if options.ExpectedSchemaVersion == 0 {
+		return Output{}, executeError(result.CodeValidation, "reshape requires expected schema version")
+	}
+	databaseName, tableName, table, err := engine.bindTable(ctx, statement.Table)
+	if err != nil {
+		return Output{}, err
+	}
+	sourceIDs := make([]string, 0, len(statement.Sources))
+	for index := range statement.Sources {
+		sourceID, sourceErr := historyRowID(&statement.Sources[index], table, bound)
+		if sourceErr != nil {
+			return Output{}, sourceErr
+		}
+		sourceIDs = append(sourceIDs, sourceID)
+	}
+	if statement.Mode == "SPLIT" {
+		if len(sourceIDs) != 1 || len(statement.Values) != 2 || options.ExpectedRevision == 0 {
+			return Output{}, executeError(result.CodeValidation, "SPLIT requires one source revision and exactly two targets")
+		}
+	} else if statement.Mode == "MERGE" {
+		if len(sourceIDs) < 2 || len(statement.Values) != 1 {
+			return Output{}, executeError(result.CodeValidation, "MERGE requires at least two sources and exactly one target")
+		}
+		for _, sourceID := range sourceIDs {
+			if options.SourceRevisions[sourceID] == 0 {
+				return Output{}, executeError(result.CodeValidation, "MERGE requires source_revisions for every source RowID")
+			}
+		}
+	} else {
+		return Output{}, executeError(result.CodeValidation, "reshape mode is invalid")
+	}
+	affected := len(sourceIDs) + len(statement.Values)
+	if options.MaxAffectedRows < uint64(affected) || options.MaxAffectedRows > maxQueryScan {
+		return Output{}, affectedBudgetError(affected, options.MaxAffectedRows)
+	}
+	if len(options.TargetRouteLeafIDs) != len(statement.Values) {
+		return Output{}, executeError(result.CodeValidation, "reshape requires one complete Route snapshot per target")
+	}
+	columns, err := insertColumns(table, statement.Columns)
+	if err != nil {
+		return Output{}, err
+	}
+	targets := make([]map[string]any, 0, len(statement.Values))
+	for _, expressions := range statement.Values {
+		if len(expressions) != len(columns) {
+			return Output{}, executeError(result.CodeValidation, "reshape column and value counts differ")
+		}
+		values := make(map[string]any, len(columns))
+		for index := range expressions {
+			value, evaluateErr := evaluate(&expressions[index], table, nil, bound)
+			if evaluateErr != nil {
+				return Output{}, evaluateErr
+			}
+			normalized, validateErr := columns[index].Validate(value)
+			if validateErr != nil {
+				return Output{}, validateErr
+			}
+			values[columns[index].Name] = normalized
+		}
+		targets = append(targets, values)
+	}
+	reshapeOptions := datarow.ReshapeOptions{
+		ExpectedSchemaVersion:  options.ExpectedSchemaVersion,
+		ExpectedRevision:       options.ExpectedRevision,
+		SourceRevisions:        options.SourceRevisions,
+		TargetRouteLeafIDs:     options.TargetRouteLeafIDs,
+		RelationTargetOrdinals: options.RelationTargetOrdinals,
+		RouteUpdates:           options.RouteUpdates,
+		Metadata:               mutationMetadata(options),
+	}
+	var changed []datarow.Row
+	if statement.Mode == "SPLIT" {
+		changed, err = reshaper.Split(ctx, databaseName, tableName, sourceIDs, targets, reshapeOptions)
+	} else {
+		changed, err = reshaper.Merge(ctx, databaseName, tableName, sourceIDs, targets, reshapeOptions)
+	}
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	output := Output{
+		Columns:      []result.Column{{Name: "row_id", Type: "TEXT", Nullable: false}},
+		Rows:         make([]result.Row, 0, len(changed)),
+		AffectedRows: uint64(affected),
+	}
+	for _, value := range changed {
+		output.Rows = append(output.Rows, result.Row{"row_id": value.ID})
+	}
+	if len(changed) > 0 {
+		revision, sequence := changed[0].Revision, changed[0].CommitSequence
+		output.Revision, output.CommitSequence = &revision, &sequence
+	}
+	return output, nil
 }
 
 func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, bound bindings, options MutationOptions) (Output, error) {

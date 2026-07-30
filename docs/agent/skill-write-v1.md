@@ -1,6 +1,7 @@
 # Skill 写入流程 v1
 
-状态：F31 已冻结 Mutation Plan、Policy、短事务和收据协议。
+状态：F31 已冻结 Mutation Plan、Policy、短事务和收据协议；F76 已把
+SPLIT/MERGE 收敛为单条公开原子 MSQL。
 
 ## Mutation Plan
 
@@ -13,8 +14,9 @@ scope + actor + source_event_id + reason
 ```
 
 Plan 的 decision 为 IGNORE、INSERT、REVISE、MERGE、SPLIT、MOVE 或 RELATE。
-IGNORE 没有写步骤；INSERT/REVISE/MOVE/RELATE 各有一个；MERGE 是一个
-UPDATE 加一个或多个 DELETE；SPLIT 是一个 UPDATE 加一个或多个 INSERT。
+IGNORE 没有写步骤；INSERT/REVISE/MOVE/RELATE 各有一个；MERGE/SPLIT 各使用
+一条原子 `MERGE ... ROWS ...` / `SPLIT ... ROW ...`，不再由 Skill 拼接普通
+UPDATE/DELETE/INSERT。
 SUPERSEDE 在 v1 由具体 Schema 下的 REVISE/RELATE 表达，不新增物理动作。
 
 每个 Plan 至少有一条带明确 Row 预期的只读 preflight。非 IGNORE Plan 还
@@ -33,7 +35,8 @@ CLI 在任何 Tool 调用前严格解码并校验：
 - Plan 版本、ID、Database/Table、actor、source event 和 reason；
 - 目标 Database 位于 `authorized_databases`；
 - MSQL 动作与 decision 形状一致，Table 使用 Database 限定名；
-- 最多 8 个步骤，每步 `max_affected_rows = 1`；
+- 最多 8 个步骤；普通单 Row 步骤 `max_affected_rows = 1`，reshape 预算等于
+  有界来源与目标总数；
 - UPDATE/DELETE 带 expected schema/revision；
 - INSERT/UPDATE 带非 nil 的完整 Agent index 和 Route membership 快照；
 - index terms 最多 64 个、Route memberships 最多 32 个，均非空且去重。
@@ -49,7 +52,8 @@ CLI 在任何 Tool 调用前严格解码并校验：
 preflight query → one mutation batch → verify query → receipt
 ```
 
-单步使用 autocommit；MERGE/SPLIT 自动包进一个 `BEGIN ... COMMIT` Batch。
+单步使用 autocommit；MERGE/SPLIT 语句自身由原生 coordinator 原子提交，不再
+外包一层无法跨 authority 保证的 `BEGIN ... COMMIT`。
 daemon 的统一 BatchSession 再执行 Parser、guard、revision 和影响行数校验。
 Row、History、机械索引、Agent index、Route membership 和 pending_reindex
 继续由 Row transaction 原子更新，没有 Skill 专用 Store 旁路。

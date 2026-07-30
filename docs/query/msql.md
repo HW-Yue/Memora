@@ -1,7 +1,7 @@
 # MSQL 标准语言
 
 状态：协议定位已确认；F70 已实现 Table 级逐层 Router 语法，F71 已删除旧语义
-检索语法与 Database 级 Route path。
+检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE。
 
 ## 定位
 
@@ -35,7 +35,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 发现：SHOW INSTANCE/DATABASES/TABLES；
 - 描述：DESCRIBE DATABASE/TABLE；
 - 路由：SHOW ROUTES、OPEN ROUTE；
-- 数据：SELECT、INSERT、UPDATE、DELETE；
+- 数据：SELECT、INSERT、UPDATE、DELETE、SPLIT、MERGE；
 - Schema：CREATE/ALTER/DROP；
 - 事务：BEGIN、COMMIT、ROLLBACK、SET TRANSACTION ISOLATION LEVEL；
 - 历史：SHOW HISTORY、AS OF REVISION/COMMIT_SEQUENCE、RESTORE 补偿；
@@ -66,6 +66,22 @@ CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得�
 所选 Table 的短 Route 节点，直到叶子得到 RowID。aliases、旧名称和关系是可读
 数据库内容，由 AI 在判断或明确 SQL filter 中使用，不进入隐藏相似度融合。
 
+AI 已明确语义边界后，使用公开 reshape 语句，而不是把普通 UPDATE/INSERT/DELETE
+拼成伪原子操作：
+
+```sql
+SPLIT work.notes ROW :source
+  INTO (title, body) VALUES (:first_title, :first_body), (:second_title, :second_body);
+MERGE work.notes ROWS (:first, :second)
+  INTO (title, body) VALUES (:merged_title, :merged_body);
+```
+
+mutation options 同时提交来源 revision、每个目标的完整 Route snapshot、需要更新的
+上层 Route purpose；SPLIT 若来源存在关系，还必须用一基
+`relation_target_ordinals` 明确每条关系归属哪个目标。引擎不猜拆分边界，只在一个
+原生事务里发布 superseded 来源、新目标、History、关系、上层 Route revision 和
+memberships。
+
 ## 强制规则
 
 - 实际数据只能通过 SQL 查询；
@@ -95,9 +111,9 @@ Database；迁移差距见 [Router Tree v1](./router-tree-v1.md)。
 Grammar 待冻结。逻辑 DELETE 默认保留 revision 和 History Store；不可恢复的
 PURGE 是独立高风险语句。
 
-普通 UPDATE 未提供新语义 membership 时，引擎使旧 Router membership 立即
-失效，将新 revision 标记为 `pending_reindex`，由宿主 AI 后续维护。期间可以
-通过稳定 RowID 和精确 SQL 读取，但不能用旧 Route 冒充当前语义定位。
+普通 UPDATE 未提供 Route snapshot 时保留现有 membership，并将 locator revision
+与 Row revision 原子推进；提供 snapshot 时则以显式完整集合为准。需要改变语义
+边界时必须提供新 snapshot，不能让引擎根据正文自动猜测。
 
 Router 的 Row、子树或 Table generation 重建必须映射为 MSQL `REINDEX` 类
 声明式语句。重建在新 generation 中进行，验证后原子切换；少量修改只能走
