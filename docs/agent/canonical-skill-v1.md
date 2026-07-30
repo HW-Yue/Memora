@@ -1,6 +1,6 @@
 # Canonical Skill v1
 
-状态：F28 已冻结基础宿主契约；F30–F39 已扩展查询、写入、Schema、会话、资料吸收、语义维护、反馈修订与首次安装流程。
+状态：F28 已冻结基础宿主契约；F30–F40 已扩展稳定流程，并由同一来源生成 Codex 适配层。
 
 ## 唯一来源
 
@@ -78,3 +78,4 @@ Skill 禁止读取或修改物理数据库、索引、日志、Page 和 Instance
 - [语义数据库健康维护 v1](./semantic-health-v1.md)
 - [反馈、修订与逻辑 Undo v1](./feedback-revision-v1.md)
 - [Skill 首次安全安装 v1](./safe-bootstrap-v1.md)
+- [Codex Adapter v1](../development/codex-adapter-v1.md)

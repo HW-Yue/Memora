@@ -1,0 +1,7 @@
+interface:
+  display_name: "Memora"
+  short_description: "Query and maintain an auditable local personal database"
+  default_prompt: "Use Memora to discover, query, or maintain my local semantic database."
+
+policy:
+  allow_implicit_invocation: true
