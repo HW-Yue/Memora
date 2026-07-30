@@ -1,6 +1,8 @@
 # F72 AI-native 用户故事门
 
-状态：完成；2026-07-30。
+状态：结构门完成，但产品级 `PASS` 已由 2026-07-30
+[真实使用审计](./ai-native-live-ux-audit-2026-07-30.md)撤销。该门只能证明语法和
+proof 文件存在，不能证明公开 Skill/CLI 主旅程已接通。
 
 本门禁不使用相似度 benchmark。它把产品宪章中的每个 `US-*` 绑定到可解析的
 MSQL transcript 和仓库内实际执行该行为的测试；`internal/storygate` 会拒绝故事
@@ -55,6 +57,8 @@ OpenAI 官网；Claude Code 可走 CC Switch 的 Anthropic-compatible 配置。M
 
 ## 结论
 
-所有产品宪章目标故事均有当前代码证据，F72 完成后结论为 `PASS`。Page、B+
-Tree、Buffer Pool、MVCC、Undo/Redo 和并发内核仍是后置候选，不因本门禁自动
-进入路线。
+F72 的结构检查本身完成，但不能据此宣称所有产品故事通过。发行二进制实测发现
+UPDATE 无法携带非空 Route 快照、空快照会令 Row 不可发现，RESTORE、feedback
+与 semantic health 的原生公开路径也未接通。产品结论改为 `FAIL`，修复后必须用
+公开 Skill/CLI transcript 重新验收。Page、B+ Tree、Buffer Pool、MVCC、Undo/Redo
+和并发内核仍是后置候选，不因本门禁自动进入路线。

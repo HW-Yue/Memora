@@ -2,7 +2,8 @@
 
 状态：已批准；只有 F53a–F61 全部闭环后才开始。
 
-实现进度：F62–F72 已完成。
+实现进度：F62–F72 代码项已完成；F72 产品级 PASS 已被
+[真实使用审计](./ai-native-live-ux-audit-2026-07-30.md)撤销，公开主旅程仍需修复。
 
 ## F62 Transaction Frame
 
@@ -125,10 +126,10 @@ runtime、Canonical Skill、宿主适配产物和 benchmark，阻止这些路径
 - 禁止：Vector/cosine 基线替代故事验收；
 - 完成：所有目标 `US-*` PASS，未通过项不得包装为已发布能力。
 
-实现结果：`internal/storygate` 将产品宪章全部故事绑定到实际 MSQL 和当前 proof
-文件，并由测试检查完整性。主旅程、宿主 Provider 边界、无旧检索扫描和个人
-免费/商业付费许可一并进入发布证据；详细矩阵见
-[F72 AI-native 用户故事门](./f72-ai-native-story-gate.md)。
+实现结果：`internal/storygate` 将产品宪章故事绑定到可解析 MSQL 和 proof 文件，
+但没有执行这些 proof，也没有要求 mutation 后重新从 Route 顶层验证。该结构门
+保留，产品通过结论撤销；详细问题见
+[AI-native 真实使用审计](./ai-native-live-ux-audit-2026-07-30.md)。
 
 ## 继续后置
 
