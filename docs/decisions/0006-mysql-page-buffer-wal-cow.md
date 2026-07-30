@@ -1,6 +1,7 @@
 # ADR-0006：MySQL 式 Page/Buffer Pool/WAL，COW 用于 generation
 
-状态：Accepted，2026-07-31；用户授权技术细节由实现方决定，F81 仍未获开工授权。
+状态：Accepted，2026-07-31；用户授权技术细节由实现方决定，F81–F108 均须逐项
+Review，当前未获开工授权。
 
 ## 总体选择
 
@@ -61,7 +62,7 @@ index generation/root 切换。
 
 第一版不做 Group Commit；单 writer 下先保证顺序、故障注入和可解释恢复。
 
-F83 Change Log envelope 作为逻辑 Page Record 与业务变化进入同一 WAL transaction；
+F109 Change Log envelope 作为逻辑 Page Record 与业务变化进入同一 WAL transaction；
 它不是第二份独立 durability 日志，因此首版不需要 Redo/Binlog 两阶段提交。
 
 ## MVCC 与 Undo
@@ -84,15 +85,16 @@ dirty Page steal、in-place Row body 或多 writer，再单独引入 Undo/Purge�
 COW generation 失败不影响当前 root；它不代替普通事务 Redo，也不产生第二套
 RowID、History、Route 或 Change Log 语义。
 
-## F81 实施切片
+## 实施 Feature
 
-1. F81a：16 KiB Page Manager、checksum、space/page identity 与 Redo WAL/recovery；
-2. F81b：单实例 Buffer Pool、pin/latch、young/old LRU、dirty/flush ordering；
-3. F81c：通用 B+ Tree search/insert/delete/scan/split/merge/root grow/shrink；
-4. F81d：Catalog/current/version/Table key space，迁移、point-get 和 cursor；
-5. F81e：COW rebuild/root swap 骨架与全链路 crash fault injection。
+- F81–F86：Page、WAL stream/commit、recovery 与 checkpoint；
+- F87–F89：Buffer Pool loading/eviction 与 dirty flush；
+- F90–F97：B+ Tree codec、read、mutation 与持久 root；
+- F98–F102：Catalog/Row/version/Table cursor 与 MSQL point-get；
+- F103–F104：snapshot visibility 与精确对象写锁；
+- F105–F108：旧 Store 迁移、default switch 与 COW generation。
 
-每个切片必须单独测试并接入下一片，F81 总门通过前不能宣称新内核完成。
+每项独立 TDD、验收和合入；后一项不能替前一项补完成证据。
 
 ## 明确后置
 

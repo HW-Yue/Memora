@@ -1,6 +1,6 @@
 # Committed Change Log（Binlog）与未来同步
 
-状态：产品定位已确认；F83 事件契约与 MSQL 仍待用户 Review，未获实现授权。
+状态：产品定位已确认；F109/F113 事件契约与 MSQL 仍待用户 Review，未获实现授权。
 
 ## 第一用途
 
@@ -36,7 +36,7 @@ Binlog 不复制原始 prompt、隐藏推理或完整大正文。Row 详情和�
 Binlog 只包含已经提交的逻辑变化，并保留完整事务边界。回滚、未完成事务和 crash
 tail 不得产生可见事件。
 
-F81 后，Change Transaction Envelope 作为普通逻辑 Page Record，与 Row、Catalog、
+F109 中，Change Transaction Envelope 作为普通逻辑 Page Record，与 Row、Catalog、
 Route、membership 和 Relation Page 变化进入同一个 WAL transaction：
 
 ```text
@@ -50,7 +50,7 @@ private physical/logical write set
 Change Log 不作为第二个独立 durability 日志，因此首版不需要 Redo/Binlog 两阶段
 提交或 Group Commit。未来若为复制拆出独立流文件，再重新 Review 一致性协议。
 
-## F83 最小事件契约
+## F109 最小事件契约
 
 每个已提交事务形成一个有序 envelope：
 

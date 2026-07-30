@@ -20,7 +20,7 @@
 
 - 当前原生 authority 的 Router 分支、叶子 locator、SELECT 扫描/返回和
   Route Frame 预算已进入 `query_budgets`；
-- Table 级 Router fanout、深度和字符预算由 F89 的真实模型能力曲线提供证据；
+- Table 级 Router fanout、深度和字符预算由 F126 的真实模型能力曲线提供证据；
 - Table 级 Router 增量/子树/generation 重建阈值与 compaction 策略；
 - 查询回表 Row 数、关系遍历和输出预算；
 - Column 级文本最大字符数，启动默认值 1200；

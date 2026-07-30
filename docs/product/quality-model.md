@@ -65,7 +65,7 @@ F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1]
 查询故意使用与原文不同的同义表达，测试 AI 能否从 Database、Table 和顶层
 Route 开始逐层选择，在有界 Route Frame 内得到正确 RowID 并回表。
 
-不能只测试一个固定 fanout。F89 必须交叉测试每层候选数、树深、兄弟语义歧义度、
+不能只测试一个固定 fanout。F124–F126 必须交叉测试每层候选数、树深、兄弟语义歧义度、
 叶子 locator 数和中英文表达，并按真实 `host + model` 报告逐层准确率、端到端
 RowID 成功率与安全 fanout。共享 Database 的默认 fanout 取目标模型集合的可靠
 共同范围，不为每个模型维护不同权威语义树。

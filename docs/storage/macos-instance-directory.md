@@ -58,12 +58,12 @@ default/
 ├── system/auxiliary.memora
 ├── system/security.memora
 ├── databases/database.memora
-├── redo/                    F81 后的 Instance 级 WAL segments
+├── redo/                    F107 默认切换后的 Instance 级 WAL segments
 └── tmp/
 ```
 
 这些文件由引擎创建和管理，用户与 Agent 不直接编辑。当前实现尚未创建 `redo/`；
-F81 format migration 后由引擎管理。Undo、独立同步 Binlog 和完整 Tablespace 目录
+F83–F86 先冻结 WAL 协议，F107 默认切换后由引擎管理。Undo、独立同步 Binlog 和完整 Tablespace 目录
 继续后置。
 
 `databases/` 下使用稳定 `database_id`；每库先只有一个权威
@@ -78,7 +78,7 @@ magic[8] | format_version u32 | page_size u32
 created_at_unix_nano i64 | instance_uuid[16] | crc32 u32
 ```
 
-整数使用 little-endian。现有 `page_size` 在当前极简格式只作兼容保留；F81 format
+整数使用 little-endian。现有 `page_size` 在当前极简格式只作兼容保留；F107 format
 migration 后正式约束 Page 大小，默认 16 KiB。文件权限为 `0600`，Instance 和
 固定子目录为 `0700`。
 

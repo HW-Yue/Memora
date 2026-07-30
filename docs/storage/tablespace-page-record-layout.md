@@ -1,6 +1,7 @@
 # Tablespace、Page 与 Record 布局
 
-状态：B+ Tree、16 KiB Page、单实例 Buffer Pool 与 Redo WAL 已确认为 F81 必做；
+状态：B+ Tree、16 KiB Page、单实例 Buffer Pool 与 Redo WAL 已确认为 F81–F108
+逐项必做；
 完整 per-table Tablespace/Extent 仍是后置候选。见
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
@@ -18,11 +19,11 @@ Page 按 Extent 批量分配
 Segment 为具体索引或存储结构持有 Page/Extent
 ```
 
-Table/Row 是逻辑身份。F81 B+ Tree 将稳定 `row_id` 映射到当前/可见 immutable
+Table/Row 是逻辑身份。F90–F102 B+ Tree 将稳定 `row_id` 映射到当前/可见 immutable
 revision locator；长期语义 revision 进入独立 History。未来若采用 in-place Record
 与物理 Undo chain，仍不能与永久 History 混用。
 
-完整候选布局中，每个 User Table 使用不可变 `table_id` 的独立 Tablespace；F81
+完整候选布局中，每个 User Table 使用不可变 `table_id` 的独立 Tablespace；F81–F97
 是否先共用 Database space 由实现复杂度决定。当前 Row、聚簇索引和二级 B+ Tree
 可分配独立 Segment；Router physical generation 与业务 Row 身份保持分离。
 

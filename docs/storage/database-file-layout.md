@@ -1,7 +1,7 @@
 # Database 物理目录
 
 状态：B+ Tree 是必做主索引；本文的完整 Tablespace/History/独立 generation
-目录仍是后置候选。F81 可以先在当前 Database 物理边界内实现最小 Page/root。
+目录仍是后置候选。F81–F97 先在当前 Database 物理边界内实现 Page/root。
 
 ## 稳定目录身份
 

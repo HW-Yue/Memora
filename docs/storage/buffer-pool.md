@@ -1,6 +1,6 @@
 # Buffer Pool
 
-状态：F81 必须实现单实例 Buffer Pool v1；16 KiB Page、Redo WAL、young/old LRU、
+状态：F87–F89 逐项实现单实例 Buffer Pool v1；16 KiB Page、Redo WAL、young/old LRU、
 pin/latch 与 dirty/flush 顺序已确认，复杂扩展后置。见
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 

@@ -1,7 +1,7 @@
 # 语义树检索质量链路
 
 状态：产品目标已确认；F70/F71 已切到 Table 级 Router，真实模型的 fanout/depth
-能力仍待 F89 验证。
+能力仍待 F124–F126 验证。
 
 ## 目标
 
@@ -76,7 +76,7 @@ LIMIT 1;
 
 禁止以 Vector baseline、cosine 分数或对其胜负作为发布条件。对照可以使用无记忆、Markdown 人工整理、全文字面查找和传统数据库精确查询，但不能在 Memora 代码或评测工具中实现被禁止的语义匹配。
 
-F89 使用真实宿主模型在受控 fanout/depth 矩阵上逐层选择 Route ID；详细方法见
+F124–F126 使用真实宿主模型在受控 fanout/depth 矩阵上逐层选择 Route ID；详细方法见
 [无向量语义 Route Benchmark v2](../development/no-vector-route-benchmark-v2.md)。
 
 ## 必测故事

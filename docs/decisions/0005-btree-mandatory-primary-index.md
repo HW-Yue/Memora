@@ -1,7 +1,7 @@
 # ADR-0005：B+ Tree 是必做的持久化主索引
 
 状态：Accepted，2026-07-31；物理策略已由
-[ADR-0006](./0006-mysql-page-buffer-wal-cow.md) 细化，F81 仍未获实现授权。
+[ADR-0006](./0006-mysql-page-buffer-wal-cow.md) 细化，F81–F108 仍须逐项 Review。
 
 ## 背景
 
@@ -15,7 +15,7 @@ Map 可以加速热点，但不能代替持久化、有序、可扩展的主索�
 ## 决策
 
 1. B+ Tree 是 Memora 必做能力，不再以 benchmark 触发是否实现。
-2. F81 必须完成最小持久化 B+ Tree，并接通真实 RowID point-get 与 Table cursor。
+2. F90–F102 必须逐项完成持久化 B+ Tree，并接通真实 RowID point-get 与 Table cursor。
 3. 第一批至少覆盖这些逻辑 key space：
    - 当前 Row：`table_id + row_id → latest visible revision locator`；
    - Row 版本：`row_id + commit_sequence/revision → immutable record locator`；
@@ -29,13 +29,13 @@ Map 可以加速热点，但不能代替持久化、有序、可扩展的主索�
    root grow/shrink、checksum、重开和损坏拒绝。
 7. Row、History、Route 和 Change Log 的逻辑语义不因物理树改变。语义 Route Tree
    仍由 AI 导航，B+ Tree 只执行明确键和范围的机械定位。
-8. F82 的最小 MVCC 与精确对象写锁保持：reader 使用稳定 snapshot/root，writer
+8. F103/F104 的最小 MVCC 与精确对象写锁保持：reader 使用稳定 snapshot/root，writer
    原子发布数据 revision 与对应索引变化。
 
 ## 物理策略
 
-F81 使用 16 KiB Page、单实例 Buffer Pool 与 Redo WAL；普通 B+ Tree 更新走
-Page/WAL，COW 只用于 rebuild、compaction、snapshot 与 generation/root swap。
+F81–F97 使用 16 KiB Page、单实例 Buffer Pool 与 Redo WAL；普通 B+ Tree 更新走
+Page/WAL，F108 COW 用于 rebuild、compaction、snapshot 与 generation/root swap。
 具体编码和实现切片见 ADR-0006。
 
 仍需由实现测试确定 key prefix compression、Page fill factor、free-page 管理、

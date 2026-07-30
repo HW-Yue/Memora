@@ -1,6 +1,6 @@
 # 已形成的方向
 
-更新时间：2026-07-30。这里记录方向性结论，不代表实现已验证。
+更新时间：2026-07-31。这里记录方向性结论，不代表实现已验证。
 
 1. Memora 是 AI 自主建模和维护的个人数据库；
 2. AI 决定业务数据库、表、字段和语义关系；
@@ -176,18 +176,21 @@ snapshot commit sequence 实现最小可见性，不预先绑定物理 Undo/Redo
 daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原子发布。
 106. 第一阶段写锁按稳定对象 ID 加排他锁；autocommit 持有到语句终态，显式事务
 持有到 commit/rollback，普通 MVCC reader 不取该锁。冲突 fail-fast 还是有界
-等待仍需在 F82 Review 时确认。
+等待仍需在 F104 Review 时确认。
 107. Binlog 第一用途是 Admin 中按 commit sequence 可视化数据、Schema、Route
 节点和 membership 的已提交变化；它是事务级逻辑变化流。复制、PITR、GTID 和
-多设备同步可以以后复用，但不能主导 F83 的首版事件格式。
-108. F89 Benchmark 必须用真实模型测试 Route 每层 fanout、树深和语义歧义度，
+多设备同步可以以后复用，但不能主导 F109 的首版事件格式。
+108. F124–F126 Benchmark 必须用真实模型测试 Route 每层 fanout、树深和语义歧义度，
 报告逐层准确率、最终 RowID 成功率及不同 host/model 的安全 fanout。共享数据库
 采用目标模型集合的共同可靠范围，不建立按模型分叉的权威语义树。
 109. B+ Tree 是必做的持久化主索引，不再由规模 benchmark 决定是否实现；该结论
 取代 67、80、82 中仅针对早期极简闭环的 B+ Tree 后置边界。
-110. B+ Tree/Buffer Pool 细节由实现方参考 MySQL 决定：F81 使用 16 KiB Page、
-单实例 Buffer Pool 和 Redo WAL；普通 Page 更新走 WAL，COW 只用于 rebuild、
-compaction、snapshot 和 generation/root swap。复杂并发机制继续后置。
+110. B+ Tree/Buffer Pool 细节由实现方参考 MySQL 决定：F81–F108 逐项实现 16 KiB
+Page、单实例 Buffer Pool、Redo WAL、持久化 B+ Tree 与迁移；普通 Page 更新走
+WAL，COW 只用于 rebuild、compaction、snapshot 和 generation/root swap。
+111. F81 以后一个 Feature 只允许一个可独立 RED、验收、合入和回滚的主要结果；
+Milestone 不构成整批授权。严格执行 RED → GREEN → REFACTOR，恢复、并发和索引
+Feature 必须分别提供故障注入、race 或 reference-model 证据。
 
 ## 尚需验证
 

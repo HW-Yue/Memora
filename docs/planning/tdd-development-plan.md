@@ -1,10 +1,11 @@
 # TDD 开发总计划
 
-状态：执行中。
+状态：F00–F80 历史计划已执行；F81 以后按
+[小 Feature TDD 与合入协议](./feature-tdd-protocol.md)和
+[当前 Feature 规划](./next-feature-plan.md)执行。
 
-当前进度：F00–F50 与 Phase A/B/C 退出测试已有实现；F51 结论已撤销。
-F52 原生 Record Put/Get 已完成。当前下一项为 F53 真实 Catalog/Row Put/Get，
-F54 立即接通 MSQL INSERT/SELECT。事务与恢复在三个闭环之后实现。
+当前进度：F52–F80 已完成原生逻辑闭环；F51 的 Vector/cosine 结论已撤销。
+F81 是待 Review 的 16 KiB Page Codec，不自动授权 F82 Page File Manager。
 
 ## 产品目标
 
@@ -20,7 +21,7 @@ Codex / Claude Code 安装 Skill
 
 用户不管理 Schema、Router、索引或事务。Skill 只在语义冲突、高风险、越权和不可恢复操作时请求用户。
 
-## 实现顺序
+## 已完成的历史实现顺序
 
 1. 原生文件 Put → close/reopen → Get；
 2. 真实 Catalog/Row encode → write → reopen → decode；
@@ -28,6 +29,9 @@ Codex / Claude Code 安装 Skill
 4. 逐项接入 Update/Delete/History/Relation/Table Router；
 5. 在已接通闭环上增加事务与恢复，再迁移并删除 SQLite；
 6. 完成 Table 级语义树和产品故事门，按证据决定其他优化。
+
+F81 以后不继续扩充本节编号，权威顺序统一维护在
+[F81 之后的 Feature 规划](./next-feature-plan.md)。
 
 SQLite 已进入退出流程，只作为迁移来源临时保留，不再新增依赖或能力。具体顺序
 见 [ADR-0003](../decisions/0003-native-minimal-store-first.md)。MSQL、Data
@@ -41,6 +45,9 @@ Dictionary、稳定 ID、revision、Router 和 Result Envelope 不因后端迁�
 - [Phase D：发行、质量门与原生内核](./tdd-phase-d-release-kernel.md)
 
 ## 每个 Feature 的 TDD 循环
+
+本节保留总原则；RED 证据、测试类型和合入门以
+[小 Feature TDD 与合入协议](./feature-tdd-protocol.md)为准。
 
 每个 `Fxx` 严格执行：
 

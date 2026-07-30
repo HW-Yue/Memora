@@ -21,3 +21,12 @@
 - 不将完整大文档、PDF、图片或机械 chunk 作为 Memora 的持久化内容；AI 吸收外部资料后写入完整、可修改的语义模块。
 - 动态数据库索引不写入长期 system prompt；模型上下文只保留紧凑的当前 Route Frame。
 - Markdown/Obsidian Wiki 是数据库快照的确定性导出，不是第一阶段的真相源。
+
+## Feature 与 TDD
+
+- 一个 Feature 只允许一个主要结果；出现两个独立故障域、协议或验收旅程时，开工前拆分。
+- 所有 Feature 默认逐项 Review、授权、实现、验收和合入；Milestone 不构成整批实现授权。
+- 严格执行 RED → GREEN → REFACTOR：先确认测试因缺少目标能力失败，再写最小实现。
+- Page/WAL/B+ Tree/MVCC 等内核 Feature 必须有 corruption、reopen、fault injection、reference model 或 race 证据，不能只测 happy path。
+- 故意失败的测试不进入 `main`；每项完成时必须独立全绿、可构建、可回滚。
+- 详细规则见 `docs/planning/feature-tdd-protocol.md`。

@@ -105,9 +105,10 @@
 ## 计划
 
 - [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
+- [小 Feature TDD 与合入协议](./planning/feature-tdd-protocol.md) — F81 以后单一结果、RED/GREEN/REFACTOR、故障矩阵和逐项合入规则。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
-- [RowID 取数基础 Feature 计划](./planning/row-read-foundation-feature-plan.md) — 候选 F81/F82：持久化 B+ Tree 主索引、本地最小 MVCC 与精确对象写锁。
-- [数据可视化与本地观察接口计划](./planning/visual-inspection-feature-plan.md) — 候选 F83–F87：提交变化流、只读 MSQL、loopback API、Studio 与 Route Trace。
+- [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
+- [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
 - [F81 之后的 Feature 规划](./planning/next-feature-plan.md) — 取数基础、可视化、真实 AI 质量、语义自治、产品化和按数据触发的存储演进。
 - [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
 - [F72 AI-native 用户故事门](./planning/f72-ai-native-story-gate.md) — 全部产品故事、实际 MSQL、proof 文件、宿主与许可的最终验收。
@@ -129,7 +130,7 @@
 - [Codex Adapter v1](./development/codex-adapter-v1.md) — F40 从 Canonical Skill 确定性派生 Codex metadata、命令规则与 e2e fixture。
 - [Claude Code Adapter v1](./development/claude-code-adapter-v1.md) — F41 的 `.claude/skills` 包装、turn 级命令权限与跨宿主 digest 兼容。
 - [AI-native Benchmark v1](./development/ai-native-benchmark-v1.md) — F42 的五类可重放旅程、八维评分、baseline adapter 与确定性报告。
-- [无向量语义 Route Benchmark v2](./development/no-vector-route-benchmark-v2.md) — F89 的 fanout/depth/歧义度实验、真实模型能力曲线和共同安全 fanout。
+- [无向量语义 Route Benchmark v2](./development/no-vector-route-benchmark-v2.md) — F124–F126 的 corpus、真实模型运行、能力曲线和共同安全 fanout。
 - [AI-native 发布门 v1](./development/ai-native-release-gate-v1.md) — 已撤销的 F51 历史评测及失效原因。
 - [安全与隐私门 v1](./development/security-privacy-gate-v1.md) — F46 的 Database scope、外部路径、approval、审计脱敏与 doctor 检查。
 - [macOS Release 制品 v1](./development/macos-release-artifacts-v1.md) — F47 的双架构 Mach-O、可复现归档、版本 manifest、checksum 与 smoke 契约。
@@ -141,7 +142,7 @@
 - [ADR-0002：v0 不内置 Agent Runtime](./decisions/0002-defer-embedded-agent.md) — F43 基于 Skill 覆盖审计 defer Provider/ask loop，并冻结重新开启条件。
 - [ADR-0003：原生极简 Store 优先](./decisions/0003-native-minimal-store-first.md) — 先自有文件格式，再接现有逻辑层并迁出 SQLite。
 - [ADR-0004：RowID 快速目录与本地最小 MVCC](./decisions/0004-fast-row-directory-minimal-mvcc.md) — MVCC/写锁仍有效；内存目录与 B+ Tree 后置部分已被 ADR-0005 取代。
-- [ADR-0005：B+ Tree 是必做的持久化主索引](./decisions/0005-btree-mandatory-primary-index.md) — F81 接通 RowID/版本/Table 顺序的 B+ Tree；物理策略由 ADR-0006 细化。
+- [ADR-0005：B+ Tree 是必做的持久化主索引](./decisions/0005-btree-mandatory-primary-index.md) — F90–F102 接通持久化 B+ Tree 与真实 RowID 路径；物理策略由 ADR-0006 细化。
 - [ADR-0006：MySQL 式 Page/Buffer Pool/WAL，COW 用于 generation](./decisions/0006-mysql-page-buffer-wal-cow.md) — 16 KiB Page、单实例 Buffer Pool、Redo recovery 与限定 COW 职责。
 
 ## 文档规模约束

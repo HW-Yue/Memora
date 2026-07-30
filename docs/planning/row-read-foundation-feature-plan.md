@@ -1,120 +1,88 @@
-# RowID 取数基础 Feature 计划
+# 存储内核小 Feature 计划
 
-状态：讨论稿，待用户 Review；F81/F82 未获执行授权。
+状态：F81–F109 讨论稿，待用户逐项 Review；未获实现授权。
 
-## 用户结果
-
-AI 通过语义 Route 得到 RowID 后，Memora 像正常关系数据库按主键取数：全程纯代码、
-结果确定、速度不随全库 revision 数量线性退化。并发只覆盖本地个人数据库真正需要
-的 snapshot 正确性，不复制 InnoDB 的大规模并发实现。
-
-## 当前真实路径
+## 当前缺口与目标
 
 ```text
-SELECT ... WHERE row_id = :id
-→ Parser / Binder / Executor
-→ exactRowID fast-path
-→ DescribeTable：重读并组装全部 Database / Table / Column
-→ Row Service.Get
-→ Row Repository.Read
-→ IDs(ObjectKindRow)：复制并排序所有物理 Row record ID
-→ 匹配 row_id / row_id@revision，逐个 decode 选最新 revision
-→ File.Get：record_id → offset Map → ReadAt + CRC
+当前：exact RowID SQL → 重读 Catalog → 列举/排序全部 Row revision → offset Map
+目标：MSQL → B+ Tree → Buffer Pool → Page/Record
+写入：private write set → Redo WAL → committed view
+重建：COW generation → validate → root swap
 ```
 
-SQL 层已经避免扫描业务 Row；文件层也能 O(1) 找到指定物理 record。缺口位于中间：
-Schema 解析会重组全部 Catalog，逻辑 RowID 到最新可见 revision 也没有目录。因此
-当前主键点查同时受 Catalog 规模和全部 Row revision 数量影响。
-
-## MySQL 参考边界
-
-需要参考：
-
-- SQL 解析、绑定、执行计划与存储访问职责分层；
-- `row_id` 作为稳定主键，精确谓词走 point-get；
-- Schema/类型校验、投影、稳定错误和事务可见性；
-- delete、revision、commit、rollback 与 snapshot 的确定行为。
-
-第一阶段不复制：
-
-- InnoDB 的多级 Buffer Pool、复杂 latch 和后台线程；
-- 锁等待队列、gap/next-key lock、范围锁、死锁检测和锁升级；
-- doublewrite、change buffer、adaptive hash 与 Group Commit；首版用 WAL full-page
-  image + checksum 处理 torn Page；
-- 为尚未出现的范围查询规模预建复杂优化器。
-
-## F81 Persistent B+ Tree RowID Read Path
-
-实现通用持久化 B+ Tree，并建立至少四个逻辑 key space：
-
-```text
-catalog[database/table name, id] → current Schema revision locator
-current[table_id, row_id]        → latest visible revision locator
-version[row_id, sequence]        → immutable revision locator
-table[table_id, row_id]          → ordered live/tombstone state
-```
-
-内存 Catalog cache 和 Buffer Pool 只加速树访问，不是权威目录。daemon 重开从
-checkpoint/root 打开树并重放 WAL，不能扫描全部 Row Record 重建主索引。写事务
-只有在 Redo COMMIT durable 后才能发布数据 revision 与索引变化。
-
-目标读取路径：
-
-```text
-exact row_id plan
-→ Catalog B+ Tree/cache
-→ Row current/version B+ Tree
-→ Buffer Pool
-→ target Record ReadAt
-→ CRC / decode / Schema validate / project
-→ memora.result/v1
-```
-
-验收门：
-
-- 16 KiB Page、checksum、page LSN、Redo WAL、checkpoint 与 recovery 通过；
-- 单实例 Buffer Pool 的 pin/latch、young/old LRU、dirty/flush ordering 通过；
-- B+ Tree 支持 search/insert/delete、顺序遍历、split/merge 和 root grow/shrink；
-- Page checksum、root/manifest、close/reopen、损坏拒绝和 crash fault point 通过；
-- Database/Table/Schema 解析查 Catalog 树或缓存，不重读完整 Catalog；
-- current RowID Get 为 `O(log_B N)` Page 路径，不调用 `IDs(ObjectKindRow)`；
-- exact revision 与 as-of 只扫描该 Row 的版本 key range；
-- Table cursor 沿有序叶 Page 前进，不通过全对象 decode 去重；
-- insert/update/delete/supersede、事务尾损坏和 CRC 错误有确定测试；
-- benchmark 报告树高、Page 访问数、split/merge、冷/热点查、重启时间和内存。
-
-F81 按 Page/WAL → Buffer Pool → B+ Tree → 真实 key space → COW generation 骨架
-五个连续切片实施，详见
+物理决策见 [ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)和
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
-## F82 Local Minimal MVCC
+## Page 与 WAL
 
-在 F81 B+ Tree root/version key space 上增加最小 snapshot 可见性：
+| Feature | RED 先证明 | GREEN 的唯一结果 | 明确不做 |
+| --- | --- | --- | --- |
+| F81 Page Codec | golden 不能 round-trip；错 header/checksum 被接受 | 16 KiB Page 编解码与校验 | 文件 I/O、WAL |
+| F82 Page File Manager | 短读写/错 identity/reopen 返回错误结果 | 按 space/page identity 安全 ReadAt/WriteAt | cache、WAL |
+| F83 WAL Record Stream | 半条、错 CRC、乱序 LSN 被接受 | segment append/scan 与 durable offset | 事务 commit、recovery |
+| F84 WAL Durable Transaction | COMMIT 未 fsync 也报告成功 | transaction boundary 与 durable COMMIT | redo apply、checkpoint |
+| F85 Crash Recovery | 未提交尾部被重放；重复恢复改坏 Page | committed redo 幂等重放、FPI 修复 torn Page | checkpoint 回收 |
+| F86 Checkpoint | 回收仍被恢复需要的 WAL | 固定恢复起点并安全回收旧 segment | 后台自适应策略 |
 
-- 一个 daemon 串行发布写事务；
-- autocommit 语句在开始时捕获 committed sequence；
-- 显式事务在开始时固定 snapshot，并可读取自己的 staged writes；
-- 写 Row、Table/Schema、Route 或 membership 前取得对应稳定 ID 的排他写锁；
-- autocommit 持锁到语句终态，显式事务持锁到 commit/rollback；
-- Mutation Plan 将全部 lock key 排序后执行非等待 try-lock；
-- 锁冲突立即返回版本化的稳定 lock-conflict 错误，不建立等待队列或死锁环；
-- reader 只读到 snapshot 已提交的完整 revision；
-- expected revision 继续阻止 Agent 覆盖陈旧版本；
-- rollback 丢弃 staged writes；History 仍是永久语义历史，不充当 MVCC Undo。
+Page 强制 golden/seed corpus/corruption/reopen；WAL 强制覆盖每个 write/fsync fault
+point、truncate、bit flip、乱序与 subprocess crash。F84 完成前，任何业务写路径都
+不能切换到新 Store。
 
-验收门：
+## Buffer Pool
 
-- commit 前、commit 中途和 crash tail 都不能产生 partial read；
-- 长 reader 在新写提交后仍看到自己的稳定 snapshot；
-- 新 autocommit reader 看到最新 commit；
-- 显式事务 read-own-writes，rollback 后其他 reader 永远看不到该写；
-- 同一 Row 的陈旧 expected revision 返回稳定冲突；
-- 同一对象的并发写只能有一个成功取得写锁，不同对象不互相误锁；
-- 多对象 Mutation 不会留下部分锁或部分发布状态；
-- race test 与故障注入通过。
+| Feature | RED 先证明 | GREEN 的唯一结果 | 明确不做 |
+| --- | --- | --- | --- |
+| F87 Page Loading | 同 Page 重复 I/O；使用中被释放 | page table、single-flight、pin/unpin、latch | 淘汰、dirty |
+| F88 Eviction | pinned 被淘汰；扫描挤掉全部热点 | 有界 young/old LRU | dirty flush、分片 |
+| F89 Dirty Flush | WAL 未 durable 就刷 Page；dirty 被丢弃 | page LSN、flush list、WAL-before-data | 自适应 cleaner |
 
-## 后续升级触发器
+使用 fake pager 和可控调度验证确定性状态；受影响 package 必须通过 `-race`，容量
+测试必须证明 Frame 数不超过硬上限。
 
-B+ Tree、最小 Buffer Pool 与 WAL 不再等待 benchmark 才进入。后续数据只决定
-Secondary Index、完整 Tablespace/Extent、Buffer Pool 分片、compaction 或 Advanced
-MVCC/Undo/Redo 的实现顺序；升级不能改变 MSQL、RowID、Route locator 和 History。
+## B+ Tree
+
+| Feature | RED 先证明 | GREEN 的唯一结果 | 明确不做 |
+| --- | --- | --- | --- |
+| F90 Node Codec | 损坏节点/非法 slot 被接受 | internal/leaf codec 与 checker | 查找和 mutation |
+| F91 Point Search | 空树/多层/边界 key 定位错误 | root-to-leaf 精确查找 | range、mutation |
+| F92 Range Cursor | leaf link 续读重漏或越界 | 有界 forward cursor | mutation |
+| F93 Insert | 未满节点插入后顺序或替换错误 | 单节点 insert/update | split |
+| F94 Split | 满节点插入丢 key 或 separator 错 | leaf/internal split、root grow | delete |
+| F95 Delete | 删除后 key 仍可见或误删邻居 | key 删除与 tombstone handoff | rebalance |
+| F96 Rebalance | underflow 后叶链/占用/root 错 | borrow、merge、root shrink | 持久事务接线 |
+| F97 Durable Root | commit/reopen 丢 root 或 crash 不一致 | Buffer Pool/WAL/allocator/root 集成 | 业务 key space |
+
+F90–F97 使用手工 fixture、排序 reference model、保存 seed 的随机操作和每步不变量
+检查。F93/F95 的中间树只用于 package 内测试，不能在 F94/F96 完成前接业务路径。
+
+## 真实数据路径
+
+| Feature | RED 先证明 | 唯一结果 |
+| --- | --- | --- |
+| F98 Catalog Lookup | Describe 重读完整 Catalog | identity/name/alias/Schema revision 走树 |
+| F99 Current Row | RowID Get 扫其他 revision | current Row locator 走树 |
+| F100 Row Version | as-of/history 扫其他 Row | revision/sequence locator 走树 |
+| F101 Table Cursor | 分页 decode 全表且重漏 | live/tombstone Row 有序分页 |
+| F102 MSQL Point-Get | exact predicate 仍走旧 IDs | Executor 切新索引且 envelope 等价 |
+| F103 Snapshot Visibility | 长 reader 混入新 commit | statement/transaction snapshot 与 own writes |
+| F104 Write Lock | 同对象写同时通过 | 精确 Row/Schema/Route 排他锁，无 gap lock |
+| F105 Migration Reader | 旧 Store 不能确定枚举/计划 | 只读 inventory 与迁移 plan |
+| F106 Migration Apply | 中断得到混合 authority | apply/verify，失败恢复完整旧 Store |
+| F107 Default Switch | 新写仍可进入旧路径 | Page Store 成为唯一新 authority |
+| F108 COW Replacement | 失败 rebuild 改坏当前 root | build/validate/atomic root swap |
+| F109 Change Log | rollback 或半事务出现在时间线 | 同 WAL 事务的完整 change envelope |
+
+F98–F109 都覆盖 success、not-found/conflict/corruption、reopen 和上一 Feature 回归。
+不得保留旧全量扫描作为静默 fallback；F107 需用测试证明旧 authority 不可到达。
+
+## 每项 TDD 与合入
+
+1. Review 一项 Feature 的用户结果、依赖、RED matrix 和不做范围；
+2. 本地确认 RED 因能力缺失失败，不因编译、随机时间或坏 fixture 失败；
+3. 只写使当前 Feature GREEN 的最小实现；
+4. 运行 targeted、全量、race、vet、format 及对应 fault/fuzz-seed suite；
+5. 记录格式/恢复兼容证据，独立合入 `main`；
+6. 合入后才 Review 下一项。
+
+详细规则见[小 Feature TDD 与合入协议](./feature-tdd-protocol.md)。

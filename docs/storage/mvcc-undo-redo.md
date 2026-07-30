@@ -1,6 +1,7 @@
 # MVCC、Undo Log、Redo Log 与 Binlog 边界
 
-状态：本地最小 MVCC 与写锁有效；F81 增加 Redo WAL，物理 Undo 继续后置。见
+状态：本地最小 MVCC 与写锁方向有效；F83–F104 逐项接入 WAL、可见性和锁，物理
+Undo 继续后置。见
 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)和
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
@@ -22,7 +23,7 @@
 - 显式事务固定开始时的 snapshot，并读取自己的暂存写；
 - 写入前取得 Row、Table/Schema、Route 等明确对象的排他写锁；
 - autocommit 在语句终态释放锁，显式事务在 commit/rollback 后释放；
-- 多对象写按稳定 key 排序；首选非等待 try-lock，冲突策略待 F82 Review；
+- 多对象写按稳定 key 排序；首选非等待 try-lock，冲突策略待 F104 Review；
 - Row revision 先写入事务缓冲，只有完整 WAL COMMIT 后进入 B+ Tree committed view；
 - reader 依据 snapshot commit sequence 选择可见 immutable revision；
 - rollback 丢弃未发布记录，不需要用物理 Undo 恢复 in-place Page；
@@ -38,14 +39,14 @@ gap/next-key lock、范围锁、锁等待或死锁检测。
 
 - 历史 revision：给 Agent 查询“谁为什么改了什么”；
 - Undo Log：未来允许未提交 Page steal、in-place Row body 或多 writer 时再引入；
-- Redo Log：F81 必做的 Page WAL，保证 committed B+ Tree/Page 崩溃恢复。
+- Redo Log：F83–F89 必做的 Page WAL 与刷盘顺序，保证 committed B+ Tree/Page 崩溃恢复。
 
-当前 append-only Frame 仍是迁移前实现。F81 后 mutation 先形成私有 write set，
+当前 append-only Frame 仍是迁移前实现。F84 后的新 Page mutation 先形成私有 write set，
 Redo COMMIT fsync 后发布；未提交写不进入共享 Page，因此首版 rollback 可丢弃
 staged writes。未来事务 Undo 会被 Purge，仍不能承担永久 History；业务撤销继续
 创建补偿 revision。
 
-F83 Committed Change Log（Binlog）记录已提交事务的逻辑变化，第一用途是 Admin
+F109 Committed Change Log（Binlog）记录已提交事务的逻辑变化，第一用途是 Admin
 展示数据、Schema 与语义索引变化。change envelope 作为业务 Page Record，与
 相关 Page 变更进入同一 WAL transaction，因此首版不需要独立 Redo/Binlog 两阶段
 提交。未来同步与 PITR 可以复用该变化流，但必须单独 Review，详见
