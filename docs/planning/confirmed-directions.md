@@ -75,9 +75,9 @@
 61. 影响语义质量的数值必须成为数据库内可读、可版本化、可审计的配置，而不是不可见的永久代码常量；但“配置入库”不等于“建库后可修改”，冻结、迁移、用户可调和 AI 可优化的分类与条件推迟到最后阶段讨论。
 62. 索引发现结果不能包含业务正文或直接作为答案；Route 只负责逐层导航并在
 叶子返回 RowID，最终数据必须由主 Agent 按定位通过 SQL 回表读取。
-63. 第一版原生底座只建立 stable ID/offset、Route child 和 membership 的有界
-内存目录，不实现物理 Page Buffer Pool。AI Route Frame 与任何物理缓存始终分离；
-Page/Buffer Pool 只有实测需要时才独立设计。
+63. F52–F80 阶段只建立 stable ID/offset、Route child 和 membership 的有界
+内存目录，不实现物理 Page Buffer Pool。该阶段已结束；B+ Tree 后续边界由 109
+取代。AI Route Frame 与任何物理缓存始终分离。
 64. 对 MySQL/InnoDB 已有成熟实现且不与 Memora 的 AI-native 边界冲突的常规数据库机制，不逐项重新发明；讨论时先用一个范围明确的是非题确认是否参考 MySQL，再只讨论 Memora 必须偏离的部分。
 65. F52 原生 bootstrap 只实现单 Record append、close/reopen 和按稳定 ID Get；
 不建立事务帧、COMMIT、fsync durability 或崩溃恢复承诺。
@@ -115,12 +115,12 @@ Tablespace 或独立索引目录。
 79. `database.memora` 从单 Record Frame 起步：F52 只存测试 Record，F53 才存
 真实 Catalog/Row，F55 再逐项加入 History、Relation 和 Table Route。逻辑类型
 不能退化为 SQLite schema、Go struct dump 或无语义 bucket 文件格式。
-80. 第一版不做 per-table Tablespace、B+ Tree、固定 Page 或物理 Buffer Pool；
-打开文件时重建 stable ID、Route child 和 membership 的有界内存定位目录。
+80. F52–F80 阶段不做 per-table Tablespace、B+ Tree、固定 Page 或物理 Buffer
+Pool，打开文件时重建有界内存定位目录。该历史阶段边界已由 109 取代。
 81. 长期语义 History 接入后是权威 record，未来 compaction 不得丢弃；F52–F54
 不以尚未实现的 History、事务或 Undo 作为通过条件。
-82. Page、B+ Tree、checkpoint、Buffer Pool、MVCC、Undo/Redo、Binlog 和独立
-index generation 全部以后按实测瓶颈单独立项，不能预先固化进 format v1。
+82. F52–F80 阶段将 Page、B+ Tree、checkpoint、Buffer Pool、MVCC、Undo/Redo、
+Binlog 和独立 generation 后置。B+ Tree 与最小 MVCC 部分现由 102–109 取代。
 83. 数据库不内置 `candidate/disputed` 等语义冲突状态，也不理解、裁决或自动合并互相矛盾的内容。引擎只检测 revision、锁、唯一键、外键、类型等机械冲突并结构化报错；Skill 负责查询并向用户并列展示语义冲突，得到用户指示后重新生成 SQL 写入。
 84. AI-native 的产品验收以“AI 持续维护、用户只处理例外”为准。用户提供自然
 对话或资料后，AI 自主发现已有数据并完成忽略、写入、修订、拆分、合并、
@@ -164,12 +164,12 @@ F58 删除 SQLite → F59 Table Router → F60 产品门；详见
 历史顺序现已执行完毕，不再用于指示当前下一 Feature。
 101. Route 得到 RowID 后，取数必须是纯 Go 确定性数据库路径，不再调用 AI 或
 语义匹配。SQL/主键/事务可见性参考 MySQL，物理实现不要求复制 InnoDB。
-102. 精确 RowID 第一阶段使用 daemon 重开时可重建的内存 Row Directory：
-`row_id → latest committed revision → offset`，目标平均 O(1) 点查；当前
+102. 精确 RowID 必须使用持久化 B+ Tree 主索引，覆盖 current/version/Table
+顺序与 Catalog 定位；点查目标为 `O(log_B N)`。内存 Map 只能作为 cache，当前
 Repository 遍历全部 Row record ID 的实现只是待替换过渡层。
-103. 本地个人数据库按单 writer、少量 reader 设计；需要精确对象排他写锁，但
-B+ Tree、Page latch、gap/next-key lock、范围锁、锁等待、死锁检测、doublewrite
-和复杂后台线程只有实测需要才增加。
+103. 本地个人数据库按单 writer、少量 reader 设计；需要 B+ Tree 和精确对象排他
+写锁，但复杂 Page latch、gap/next-key lock、范围锁、锁等待、死锁检测、
+doublewrite 和复杂后台线程只有实测需要才增加。
 104. MVCC 作为正确性能力保留，但首版用 immutable revision、commit marker 和
 snapshot commit sequence 实现最小可见性，不预先绑定物理 Undo/Redo 方案。
 105. RowID 点查前的 Database/Table/Schema 解析也不能每次重读完整 Catalog；
@@ -183,6 +183,9 @@ daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原�
 108. F89 Benchmark 必须用真实模型测试 Route 每层 fanout、树深和语义歧义度，
 报告逐层准确率、最终 RowID 成功率及不同 host/model 的安全 fanout。共享数据库
 采用目标模型集合的共同可靠范围，不建立按模型分叉的权威语义树。
+109. B+ Tree 是必做的持久化主索引，不再由规模 benchmark 决定是否实现；该结论
+取代 67、80、82 中仅针对早期极简闭环的 B+ Tree 后置边界。Page/COW/Redo 和
+Buffer Pool 的具体物理方案仍须在 F81 开工前 Review。
 
 ## 尚需验证
 

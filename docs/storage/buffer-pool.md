@@ -1,6 +1,7 @@
 # Buffer Pool
 
-状态：整体机制确认参考 MySQL/InnoDB；具体容量和运行参数待实现验证。
+状态：B+ Tree 必须配有界 Page cache；是否在 F81 直接形成完整 Buffer Pool v1，
+以及 dirty Page/刷脏机制，仍待物理布局 Review。
 
 ## 定位
 
@@ -38,10 +39,11 @@ Agent 上一次查询读取过的 Page 因为最近被访问，通常会自然�
 
 新读入 Page 使用 midpoint insertion 进入 old 区，真正再次访问后才提升为 young，避免一次顺序扫描立即挤掉长期热点。分区比例、提升等待时间和扫描保护参数由 benchmark 调整，不写死为永久常量。
 
-## 写入与正确性
+## 写入与正确性候选
 
-- 修改先发生在内存 Page，并将其标记为 dirty；
-- dirty Page 刷回文件前必须满足 Redo/WAL 的持久化顺序；
+- 如果采用 in-place Page，修改先发生在内存并标记 dirty，刷回前必须满足
+  Redo/WAL 的持久化顺序；
+- 如果采用 Copy-on-Write，先写新 Page，再随事务原子发布新 root；
 - dirty Page 不能像 clean Page 一样直接丢弃；
 - 后台 Page Cleaner 参考 dirty Page 比例、Redo 生成速度和可用 I/O 做自适应刷脏；
 - daemon 崩溃后由数据文件和日志恢复，Buffer Pool 本身不是真相源；

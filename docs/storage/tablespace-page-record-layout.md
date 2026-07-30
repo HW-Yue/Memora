@@ -1,8 +1,8 @@
 # Tablespace、Page 与 Record 布局
 
-状态：后置候选，不是当前实现顺序。先完成
-[原生极简存储格式](./native-minimal-store.md)，只有实测证明需要随机 Page I/O
-与大型索引后才重新评估本设计。
+状态：B+ Tree 已确认为必做；本文的完整 per-table Tablespace/Extent/in-place
+Record 布局仍是后置候选。F81 只冻结 B+ Tree 所需的最小 Page/root/locator 子集，
+详见 [ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)。
 
 ## 核心分离
 
@@ -18,7 +18,9 @@ Page 按 Extent 批量分配
 Segment 为具体索引或存储结构持有 Page/Extent
 ```
 
-Table/Row 是逻辑身份，主数据结构中的 Record 保存当前版本。事务旧版本进入 Undo version chain，长期语义 revision 进入独立 History Store；二者不能混用。若最终保留 Row Directory，它只把稳定 `row_id` 映射到当前 Record。
+Table/Row 是逻辑身份。F81 B+ Tree 将稳定 `row_id` 映射到当前/可见 immutable
+revision locator；长期语义 revision 进入独立 History。未来若采用 in-place Record
+与物理 Undo chain，仍不能与永久 History 混用。
 
 每个 User Table 使用独立 Tablespace 目录，目录名来自不可变 `table_id`。Tablespace 可以由一个或多个滚动 Data File 承载；当前 Row、聚簇索引和普通二级 B+ Tree在其中共同分配 Segment。Router 和倒排 generation 属于 Database 的独立可重建索引目录，不进入 User Table Tablespace。
 

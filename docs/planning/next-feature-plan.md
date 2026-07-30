@@ -10,7 +10,7 @@
 
 | Feature | 用户结果 | 完成门 |
 | --- | --- | --- |
-| F81 Fast RowID Read Path | Route 得到 RowID 后，以纯 Go 主键路径直接解析 Schema 并读取最新可见 Row | Catalog/Row Directory 重启重建；当前点查平均 O(1)；revision/as-of 与 cursor 有确定测试；不引入 AI 或 B+ Tree |
+| F81 Persistent B+ Tree RowID Read Path | Route 得到 RowID 后，以持久化主索引解析 Schema、当前版本和有序 Table Row | 通用 B+ Tree、root/reopen、split/merge、checksum、`O(log_B N)` point-get、version range 与 leaf cursor 通过；内存 Map 仅作缓存 |
 | F82 Local Minimal MVCC & Write Locks | reader 不会看到半次 Mutation，同一逻辑对象不会被并发覆盖 | 单 writer 串行 commit、多 reader snapshot、read-own-writes、精确对象排他锁、rollback 与故障注入通过 |
 
 F81/F82 的逻辑接口见
@@ -77,7 +77,7 @@ Wiki 双向回流、内置 `memora ask` 和跨平台继续单独 Review，不自
 | Feature | 触发条件 | 边界 |
 | --- | --- | --- |
 | F101 Native Compaction & Open Checkpoint | append-only 空间或重启扫描超门槛 | 永久 History 与 Change Log 不丢失，崩溃时仍可回到旧 generation |
-| F102 Page/B+ Tree/Buffer Pool | Row 数、范围查询或 I/O 证明内存目录不足 | 不改变 MSQL、RowID 或 Route 语义 |
+| F102 Secondary Indexes & Buffer Pool Scaling | 精确字段/范围查询或 Page I/O 证明需要更多物理索引与缓存能力 | 复用 F81 B+ Tree；不改变 MSQL、RowID 或 Route 语义 |
 | F103 Advanced MVCC/Undo/Redo/Locks | 真实多 writer、in-place Page 或更强隔离需求成立 | F82 最小 snapshot 保持兼容；先冻结新用户故事再选物理算法 |
 | F104 Replication/PITR/Multi-device | 明确跨设备与时间点恢复产品需求 | 复用 F83 逻辑变化流；GTID、重放、冲突、加密和保留策略单独 Review |
 

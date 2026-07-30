@@ -1,6 +1,7 @@
 # ADR-0004：RowID 快速目录与本地最小 MVCC
 
-状态：Accepted，2026-07-31；实现 Feature 尚未批准。
+状态：部分被 [ADR-0005](./0005-btree-mandatory-primary-index.md) 取代。MVCC 与
+写锁边界继续有效；第 3–6 项的内存目录/O(1)/B+ Tree 后置结论不再有效。
 
 ## 背景
 
@@ -52,8 +53,8 @@ Memora 是本地个人数据库，常态是一个 daemon、单 writer、少量�
 instance、Page latch、doublewrite、change buffer、adaptive hash、Group Commit
 或多种可配置隔离级别。
 
-这些能力只有具体用户故事和 benchmark 证明需要时才单独 Review。未来增加 Page、
-Redo 或 Undo 不能改变 RowID、MSQL、Route locator 或 History 的产品语义。
+这些能力只有具体用户故事和 benchmark 证明需要时才单独 Review。未来增加 Redo、
+Undo 或完整 Tablespace 不能改变 RowID、MSQL、Route locator 或 History 语义。
 
 F82 当前首选多对象写按稳定 key 排序后非等待 try-lock，冲突立即返回，从而不建立
 等待环；这是待用户 Review 的实现策略，不属于本 ADR 已确认的产品边界。
@@ -64,4 +65,4 @@ F82 当前首选多对象写按稳定 key 排序后非等待 try-lock，冲突�
 - 本地低并发场景仍有明确 snapshot，不会读到半完成 Mutation；
 - 精确对象写锁阻止同一 Row 或结构被并发覆盖，而不阻塞普通 MVCC reader；
 - 文件格式继续简单、append-only、可校验和可重建；
-- 若未来规模需要 B+ Tree，Row Directory 接口可保持不变，只替换物理实现。
+- B+ Tree 已由 ADR-0005 提升为必做主索引；内存 Directory 只保留 cache 职责。

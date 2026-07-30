@@ -37,52 +37,52 @@ Schema 解析会重组全部 Catalog，逻辑 RowID 到最新可见 revision 也
 
 第一阶段不复制：
 
-- InnoDB Page、聚簇 B+ Tree 和多级 Buffer Pool；
+- InnoDB 的多级 Buffer Pool、复杂 latch 和后台线程；
 - 锁等待队列、gap/next-key lock、范围锁、死锁检测和锁升级；
 - doublewrite、change buffer、adaptive hash 与 Group Commit；
 - 为尚未出现的范围查询规模预建复杂优化器。
 
-## F81 Fast RowID Read Path
+## F81 Persistent B+ Tree RowID Read Path
 
-新增 Store 内部可替换的 Catalog/Row Directory，daemon 打开文件时从完整已提交
-事务重建：
+实现通用持久化 B+ Tree，并建立至少四个逻辑 key space：
 
 ```text
-database[name/alias]             → database metadata
-table[database, name/alias]      → table + current Schema metadata
-current[row_id]                  → latest committed revision meta
-revision[row_id, revision]       → record meta
-visible[row_id, commit_sequence] → 可见 revision 定位
-table[table_id]                  → 稳定顺序的 live row_id
+catalog[database/table name, id] → current Schema revision locator
+current[table_id, row_id]        → latest visible revision locator
+version[row_id, sequence]        → immutable revision locator
+table[table_id, row_id]          → ordered live/tombstone state
 ```
 
-写事务只有在 durable COMMIT 后才能原子发布目录变化。未完成事务、损坏事务和回滚
-不得进入目录；删除与 supersede 保留版本定位，但不进入当前 live 集合。
+内存 Catalog cache 和 Page cache 只加速树访问，不是权威目录。daemon 重开从已提交
+root/manifest 打开树，不能扫描全部 Row Record 重建主索引。写事务只有在 durable
+COMMIT 后才能原子发布数据 revision 与新索引 root。
 
 目标读取路径：
 
 ```text
 exact row_id plan
-→ Catalog Directory lookup
-→ Row Directory lookup
-→ one target ReadAt
+→ Catalog B+ Tree/cache
+→ Row current/version B+ Tree
+→ Buffer Pool or Page ReadAt
+→ target Record ReadAt
 → CRC / decode / Schema validate / project
 → memora.result/v1
 ```
 
 验收门：
 
-- Database/Table/Schema 解析直接查 Catalog Directory，不重读完整 Catalog；
-- current RowID Get 平均 O(1)，不调用 `IDs(ObjectKindRow)`；
-- exact revision 直接定位，as-of commit 只遍历该 Row 的版本，不扫其他 Row；
-- close/reopen 重建结果与写后内存状态完全一致；
-- Table cursor 不通过全对象 decode 去重；
+- B+ Tree 支持 search/insert/delete、顺序遍历、split/merge 和 root grow/shrink；
+- Page checksum、root/manifest、close/reopen、损坏拒绝和 crash fault point 通过；
+- Database/Table/Schema 解析查 Catalog 树或缓存，不重读完整 Catalog；
+- current RowID Get 为 `O(log_B N)` Page 路径，不调用 `IDs(ObjectKindRow)`；
+- exact revision 与 as-of 只扫描该 Row 的版本 key range；
+- Table cursor 沿有序叶 Page 前进，不通过全对象 decode 去重；
 - insert/update/delete/supersede、事务尾损坏和 CRC 错误有确定测试；
-- benchmark 分别报告 Row 数、每 Row revision 数、冷启动时间、点查延迟和内存。
+- benchmark 报告树高、Page 访问数、split/merge、冷/热点查、重启时间和内存。
 
 ## F82 Local Minimal MVCC
 
-在 F81 目录上增加最小 snapshot 可见性：
+在 F81 B+ Tree root/version key space 上增加最小 snapshot 可见性：
 
 - 一个 daemon 串行发布写事务；
 - autocommit 语句在开始时捕获 committed sequence；
@@ -108,6 +108,6 @@ exact row_id plan
 
 ## 后续升级触发器
 
-只有 benchmark 证明内存、启动扫描、范围查询或并发写成为瓶颈，才分别 Review
-checkpoint/compaction、Page/B+ Tree/Buffer Pool 或 Advanced MVCC/Undo/Redo。
-升级可以替换物理实现，不能改变 MSQL、RowID、Route locator 和 History 语义。
+B+ Tree 本身不再等待 benchmark 才进入。后续数据只决定 Secondary Index、完整
+Tablespace/Extent、Buffer Pool 分片、compaction/checkpoint 或 Advanced
+MVCC/Undo/Redo 的实现顺序；升级不能改变 MSQL、RowID、Route locator 和 History。
