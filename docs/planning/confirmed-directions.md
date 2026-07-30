@@ -160,9 +160,17 @@ F58 删除 SQLite → F59 Table Router → F60 产品门；详见
 99. SQLite 只作为迁移来源临时保留；原生 snapshot 等价、回读和回滚证据完成后，
 删除 driver、`internal/store/sqlite`、`.sqlite` 文件名和测试耦合。Unix socket/IPC
 是否删除属于另一决策，在用户明确确认前不能与 SQLite 清理混为一件事。
-100. F52 已完成最小自有文件闭环：32-byte File Header、24-byte Record Header、
-单 Record append、close/reopen、ID → offset 和 Get；没有事务、恢复、并发或
-SQLite 接入。下一项只能是 F53 真实 Catalog/Row round-trip。
+100. F52 的最小自有文件闭环是后续 F53–F80 的起点；“下一项只能是 F53”的
+历史顺序现已执行完毕，不再用于指示当前下一 Feature。
+101. Route 得到 RowID 后，取数必须是纯 Go 确定性数据库路径，不再调用 AI 或
+语义匹配。SQL/主键/事务可见性参考 MySQL，物理实现不要求复制 InnoDB。
+102. 精确 RowID 第一阶段使用 daemon 重开时可重建的内存 Row Directory：
+`row_id → latest committed revision → offset`，目标平均 O(1) 点查；当前
+Repository 遍历全部 Row record ID 的实现只是待替换过渡层。
+103. 本地个人数据库按单 writer、少量 reader 设计；B+ Tree、Page latch、
+gap/next-key lock、死锁检测、doublewrite 和复杂后台线程只有实测需要才增加。
+104. MVCC 作为正确性能力保留，但首版用 immutable revision、commit marker 和
+snapshot commit sequence 实现最小可见性，不预先绑定物理 Undo/Redo 方案。
 
 ## 尚需验证
 

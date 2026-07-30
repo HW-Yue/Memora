@@ -1,6 +1,7 @@
 # 数据可视化与本地观察接口计划
 
-状态：讨论稿，待用户 Review；候选 F81–F84 未获执行授权。
+状态：讨论稿，待用户 Review；候选 F83–F86 未获执行授权。
+F81/F82 先补 RowID 快速目录与本地最小 MVCC。
 
 ## 候选用户故事
 
@@ -51,7 +52,7 @@ Memora Studio 参考常规 MySQL Admin 的管理层级，但不照搬“Row Grid
 
 ## 数据项展示契约
 
-Table 由 AI 动态建模，前端不能假设每张表都有同名的 `title/body`。F81 需要在
+Table 由 AI 动态建模，前端不能假设每张表都有同名的 `title/body`。F83 需要在
 Data Dictionary 中增加可选、版本化的展示元数据：
 
 - 数据项标题 Column；
@@ -77,7 +78,7 @@ Data Dictionary 中增加可选、版本化的展示元数据：
 UI 不一次下载整库或整棵树。所有列表、子节点、History、关系和 Row 都必须有
 limit、cursor、truncated 与版本信息。
 
-## F81 Inspection MSQL Read Model
+## F83 Inspection MSQL Read Model
 
 目标：先补齐“可安全浏览”的确定性读协议，UI 不拥有特殊后门。
 
@@ -90,7 +91,7 @@ limit、cursor、truncated 与版本信息。
 
 不做：HTTP、HTML、写入、全文导出和物理 Page 观察。
 
-## F82 Local Read API
+## F84 Local Read API
 
 目标：暴露可供 Studio 和本地工具复用的版本化接口。
 
@@ -103,7 +104,7 @@ limit、cursor、truncated 与版本信息。
 
 不做：公网 API、远程登录、API Key、写接口和模型 Provider。
 
-## F83 Memora Studio v1
+## F85 Memora Studio v1
 
 目标：让普通用户第一次真实看到数据库内容和语义索引结构。
 
@@ -117,7 +118,7 @@ limit、cursor、truncated 与版本信息。
 
 不做：图形化写入、拖动 Route 节点、聊天问答和自动优化。
 
-## F84 Route Trace 与可视化诊断
+## F86 Route Trace 与可视化诊断
 
 目标：不只显示静态树，还显示 AI 实际怎样使用它。
 

@@ -1,6 +1,8 @@
 # MVCC、Undo Log、Redo Log 与 Binlog 边界
 
-状态：事务标识和隔离级别方向已确认；具体恢复算法待原型。
+状态：长期术语边界有效；第一阶段改为本地单 writer 的最小 MVCC，不预先实现
+完整 InnoDB Undo/Redo/锁体系。见
+[ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)。
 
 ## 事务与版本标识
 
@@ -15,34 +17,34 @@
 
 ## MVCC
 
-- 事务创建时分配本地 transaction ID，提交或回滚后进入终态；
-- 主数据结构保存最新 Record，Record 系统头携带最近修改事务和 Undo roll pointer；
-- UPDATE/DELETE 先写 Undo record，再修改当前 Record；
-- 旧快照沿 Undo version chain 重建其可见版本；
-- 没有活跃快照和恢复需求再引用旧 Undo 时，Purge 才能回收；
-- 默认隔离级别为 `REPEATABLE READ`，并支持 `READ COMMITTED`；
-- 同一 Row 并发写使用 first-committer-wins；
-- Agent 更新携带 expected revision；
-- AI 推理在事务外完成，提交使用短事务。
+- daemon 串行发布写事务，第一阶段不支持多个物理 writer 并行提交；
+- autocommit 语句在开始时固定 committed snapshot；
+- 显式事务固定开始时的 snapshot，并读取自己的暂存写；
+- Row revision 先写入事务缓冲，只有完整 COMMIT 后进入 Row Directory；
+- reader 依据 snapshot commit sequence 选择可见 immutable revision；
+- rollback 丢弃未发布记录，不需要用物理 Undo 恢复 in-place Page；
+- expected revision 继续处理 Agent 的陈旧语义写；
+- AI 推理在事务外完成，提交保持短小。
 
-`REPEATABLE READ` 的一致性读复用事务快照；`READ COMMITTED` 的每次一致性读获取新快照。普通一致性读不加行锁，`SELECT ... FOR SHARE` / `FOR UPDATE` 属于锁定读并读取当前可见版本。范围锁、gap lock 与 next-key lock 的防幻读边界参考 InnoDB。
-
-隔离级别使用 MySQL 风格 MSQL 设置，首版至少支持：
-
-```sql
-SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
-```
+这个模型提供接近 `READ COMMITTED` autocommit 与 repeatable snapshot transaction
+的必要行为，但第一 Feature 不开放隔离级别矩阵，也不承诺锁定读、gap lock、
+next-key lock 或死锁检测。
 
 ## Undo Log、Redo Log 与历史
 
 - 历史 revision：给 Agent 查询“谁为什么改了什么”；
-- Undo Log：回滚未提交事务，并为 MVCC 旧版本读取提供必要信息；
-- Redo Log：遵守 write-ahead logging，崩溃后重做已经承诺但尚未落盘的修改。
+- Undo Log：未来 in-place/Page 写入需要回滚或旧版本重建时再引入；
+- Redo Log：未来出现 dirty Page 和异步刷盘时再引入 WAL。
 
-事务 Undo 会被 Purge，因此不能承担长期语义历史。每次已提交语义修改另外写入目标 Database 的共享追加式 History Store，并按 `table_id + row_id + revision + commit_sequence` 建立定位；业务撤销创建新的补偿 revision，而不是删除历史。Page 在对应 Redo Log 持久化前不能刷盘。
+当前 append-only Frame 在 COMMIT 前不发布，崩溃尾恢复依赖 transaction digest 与
+fsync 边界。它不是通用 Redo/Undo，但在没有 in-place Page 写入时不需要先复制
+WAL。未来事务 Undo 会被 Purge，仍不能承担长期语义历史。每次已提交语义修改
+另外写入永久 History；业务撤销创建补偿 revision。
 
-Binlog 另外记录已提交事务的逻辑变更，为多设备同步和时间点恢复服务。它不能代替本机 Redo 崩溃恢复，也不能直接复用物理 Redo 格式。Redo 与 Binlog 使用 MySQL 风格内部两阶段提交和 Group Commit，保证本地事务与可同步事件一致，详见 [Binlog 与多设备同步基础](./binlog-and-sync.md)。
+如果未来引入 Binlog，它另外记录已提交事务的逻辑变更，为多设备同步和时间点
+恢复服务，不能代替本机 Redo，也不能直接复用物理 Redo 格式。届时是否需要
+MySQL 风格内部两阶段提交和 Group Commit，必须按本地事务与同步用户故事重新
+Review，详见 [Binlog 与多设备同步基础](./binlog-and-sync.md)。
 
 ## 并发错误
 
@@ -50,7 +52,7 @@ Binlog 另外记录已提交事务的逻辑变更，为多设备同步和时间�
 
 ## 未决问题
 
-- 是否以及何时增加 `READ UNCOMMITTED` 和 `SERIALIZABLE`？
+- 是否以及何时增加可配置隔离级别？
 - gap/next-key lock 的内部结构与死锁检测策略；
 - 使用 in-place + Redo Log、Copy-on-Write，还是混合结构？
 - Undo record 的字段级 before image、roll pointer 和 segment/page 编码；

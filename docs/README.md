@@ -106,8 +106,9 @@
 
 - [Feature 产品与用户故事门禁](./planning/feature-product-gate.md) — 每个 Feature 开工前与合入前的强制产品审查。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
-- [数据可视化与本地观察接口计划](./planning/visual-inspection-feature-plan.md) — 候选 F81–F84：只读 MSQL、loopback API、Studio 与 Route Trace。
-- [F81 之后的 Feature 规划](./planning/next-feature-plan.md) — 可视化、真实 AI 质量、语义自治、产品化和按数据触发的存储演进。
+- [RowID 取数基础 Feature 计划](./planning/row-read-foundation-feature-plan.md) — 候选 F81/F82：纯代码快速点查、可重建目录与本地最小 MVCC。
+- [数据可视化与本地观察接口计划](./planning/visual-inspection-feature-plan.md) — 候选 F83–F86：只读 MSQL、loopback API、Studio 与 Route Trace。
+- [F81 之后的 Feature 规划](./planning/next-feature-plan.md) — 取数基础、可视化、真实 AI 质量、语义自治、产品化和按数据触发的存储演进。
 - [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
 - [F72 AI-native 用户故事门](./planning/f72-ai-native-story-gate.md) — 全部产品故事、实际 MSQL、proof 文件、宿主与许可的最终验收。
 - [F80 真实发行用户故事门](./planning/f80-real-release-story-gate.md) — 双宿主、隔离 Instance、公开 CLI 和 mutation 后顶层 Route 重查的运行时 PASS。
@@ -138,6 +139,7 @@
 - [ADR-0001：SQLite 原型 Store](./decisions/0001-prototype-store.md) — 已被 ADR-0003 取代的历史原型决策。
 - [ADR-0002：v0 不内置 Agent Runtime](./decisions/0002-defer-embedded-agent.md) — F43 基于 Skill 覆盖审计 defer Provider/ask loop，并冻结重新开启条件。
 - [ADR-0003：原生极简 Store 优先](./decisions/0003-native-minimal-store-first.md) — 先自有文件格式，再接现有逻辑层并迁出 SQLite。
+- [ADR-0004：RowID 快速目录与本地最小 MVCC](./decisions/0004-fast-row-directory-minimal-mvcc.md) — MySQL 语义、纯 Go O(1) 点查、单 writer snapshot 与复杂 InnoDB 机制后置。
 
 ## 文档规模约束
 

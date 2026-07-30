@@ -1,6 +1,7 @@
 # 物理与语义索引
 
-状态：职责边界已确认；原生物理布局尚未冻结。F19–F23 的混合倒排主路径已撤销。
+状态：职责边界已确认；RowID 第一阶段使用可重建内存目录，B+ Tree 后置。
+F19–F23 的混合倒排主路径已撤销。
 
 ## 两套职责
 
@@ -61,21 +62,20 @@ Route 组合成一个虚假一致状态。
 
 ## 物理主数据候选
 
-物理 MVCC 使用“最新 Record + Undo version chain”：
+第一阶段不为 RowID 点查建立 B+ Tree。daemon 重开时从已提交 Record 重建：
 
 ```text
-Clustered/Row Directory B+ Tree
-  → 当前 Record 或稳定逻辑定位
-
-Secondary Index
-  → 稳定 row_id
-
-Undo Log
-  → 短期事务旧版本
-
-History Store
-  → 长期语义 revision
+row_id → latest committed revision → record offset
+row_id + revision → record offset
+table_id → ordered live row_id
 ```
+
+精确 RowID Get 通过内存目录定位后只读取目标 payload。范围、唯一键或数据量证明
+内存目录不足时，才把同一逻辑接口替换为 B+ Tree/Page 实现。
+
+最小 MVCC 使用 immutable Row revision、commit marker 和 snapshot sequence；
+不预设“最新 Record + 物理 Undo chain”。长期 History 仍独立保存语义 revision。
+见 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)。
 
 语义 Row 的字符预算属于 Schema/Column 约束；Page 的字节容量属于物理存储。
 Row split 由 AI 按语义完成，Page split 由引擎自动完成，二者不能混淆。
