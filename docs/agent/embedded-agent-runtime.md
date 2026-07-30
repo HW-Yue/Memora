@@ -1,6 +1,6 @@
 # 可选内置 Agent Runtime
 
-状态：v0 后候选；第一版不实现模型 Provider，也不要求用户另配 API Key。
+状态：F43 已决定 v0 defer；仅满足 [ADR-0002](../decisions/0002-defer-embedded-agent.md) 的重新开启条件后评估。
 
 ## 定位
 
@@ -104,7 +104,7 @@ memora daemon ...            启动、停止和检查本地 daemon
 memora config model ...      配置模型，密钥单独安全保存
 ```
 
-## 尚未确认
+## 若重新开启仍需冻结
 
 - Provider 抽象和第一版支持范围；
 - daemon 的启动、退出、崩溃恢复、本地 IPC 和客户端会话协议；

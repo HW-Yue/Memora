@@ -112,6 +112,7 @@
 - [进程配置与宿主边界](./development/process-configuration.md) — 非秘密启动配置的优先级，以及不接收 Codex/Claude 模型密钥的边界。
 - [本地 IPC 协议](./development/ipc-protocol.md) — 长度前缀 JSON、协议版本、并发请求和连接级 Session 生命周期。
 - [ADR-0001：SQLite 原型 Store](./decisions/0001-prototype-store.md) — 用可替换 CGO-free 后端先验证产品，原生内核通过质量门后再替换。
+- [ADR-0002：v0 不内置 Agent Runtime](./decisions/0002-defer-embedded-agent.md) — F43 基于 Skill 覆盖审计 defer Provider/ask loop，并冻结重新开启条件。
 
 ## 文档规模约束
 
