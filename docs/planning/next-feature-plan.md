@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F97c4 已完成；下一项为 F97d1 Tree Commit Preparation。一个 Feature
+状态：F81–F97d1 已完成；下一项为 F97d2 Atomic Buffer Publish。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
 
@@ -35,7 +35,7 @@
 | F97c2 Root/Allocator Redo Codec | metadata payload 可确定编解码（已完成） |
 | F97c3 Tree Metadata Recovery | root/allocator metadata 可随 committed WAL 幂等恢复（已完成） |
 | F97c4 Tree Revision Separation | physical generation 与逐提交 revision 分离（已完成） |
-| F97d1–F97d3 Durable Tree Commit | 准备、Buffer 原子发布、WAL/reopen runtime 逐域完成 |
+| F97d1–F97d3 Durable Tree Commit | F97d1 准备已完成；下一项 Buffer 原子发布，再接 WAL/reopen runtime |
 
 ## R：真实 RowID 数据路径
 
@@ -135,7 +135,7 @@
 
 ## 批准与执行规则
 
-1. 当前下一项是 F97d1；持续执行授权已覆盖开工；
+1. 当前下一项是 F97d2；持续执行授权已覆盖开工；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

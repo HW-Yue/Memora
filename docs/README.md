@@ -115,6 +115,7 @@
 - [Root/Allocator Redo v1](./storage/root-allocator-redo-v1.md) — F97c2 已完成的 metadata payload codec。
 - [Root/Allocator Redo v2](./storage/root-allocator-redo-v2.md) — F97c4 将 metadata 前置状态改为 publication revision。
 - [Tree Metadata Recovery v1](./storage/tree-metadata-recovery-v1.md) — F97c3 的 root-last recovery、验证与幂等边界。
+- [Tree Commit Preparation v1](./storage/tree-commit-preparation-v1.md) — F97d1 的 Mutation Plan 严格校验与确定性 redo 顺序。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
 - [Instance Format 升级与回滚 v1](./storage/instance-format-upgrade-v1.md) — F49 的兼容状态、v1→v2、完整性备份、迁移 journal 与 `doctor repair`。
@@ -160,6 +161,7 @@
 - [F97c3 Tree Metadata Recovery 开工与完成门](./planning/f97c3-tree-metadata-recovery-gate.md) — root-last recovery、幂等与故障矩阵。
 - [F97c4 Tree Revision Separation 开工与完成门](./planning/f97c4-tree-revision-separation-gate.md) — 修正 physical generation 与 publication revision 冲突。
 - [F97d Durable Tree Commit 拆分 Review](./planning/f97d-durable-tree-commit-review.md) — generation 阻断证据及 F97d1–F97d3 拆分。
+- [F97d1 Tree Commit Preparation 开工与完成门](./planning/f97d1-tree-commit-preparation-gate.md) — 纯计划校验、Page/free/allocator/root redo 与 root-last。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
