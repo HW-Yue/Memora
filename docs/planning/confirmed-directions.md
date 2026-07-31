@@ -10,7 +10,7 @@
 6. Route 只导航，实际数据只能通过 SQL 查询；
 7. 语义记录是短小完整的知识模块，目标约 800 字；文本 Column 各自声明可演化的字符上限，启动默认值为 1200，超限必须报错并由 Agent 切分或调整 Schema，禁止静默截断；
 8. 不保存完整大文档、图片和机械 chunk；资料仅临时读取并吸收；
-9. 全架构禁止使用 Embedding、向量数据库、余弦/距离相似度或其伪装形式，包含产品实现、评测基线和降级路径；
+9. [已被第 112–113 项与 ADR-0007 取代] 曾禁止所有 Embedding、向量与相似度路径；
 10. 检索主路径是 AI 对 Table 级语义 Router 的逐层 SQL 导航；关系只在回表后按明确需要扩展，不参与隐藏的相似度融合；
 11. 修改带 revision，保留历史并处理并发冲突；
 12. 动态索引不进入长期 system prompt；
@@ -191,6 +191,16 @@ WAL，COW 只用于 rebuild、compaction、snapshot 和 generation/root swap。
 111. F81 以后一个 Feature 只允许一个可独立 RED、验收、合入和回滚的主要结果；
 Milestone 不构成整批授权。严格执行 RED → GREEN → REFACTOR，恢复、并发和索引
 Feature 必须分别提供故障注入、race 或 reference-model 证据。
+112. Table Router 继续作为 AI 维护和读取的权威语义结构；Catalog、倒排位置聚合、
+Route-only Vector 与有效 Route Frame 可以通过 MSQL 成为带来源、可丢弃的候选预测器。
+预测 miss 只影响性能，最终仍显式选择 Route 并按 RowID SQL 回表。
+113. Vector 只编码 Route semantic surface，不保存 Row/chunk/正文事实；首版冻结算法
+无关接口并实现 CPU 精确扫描。Apple Accelerate 与 HNSW 只有在真实规模证据超过
+预定门槛后才进入独立 Feature。详见
+[ADR-0007](../decisions/0007-route-predictor-arsenal.md)。
+114. F97d3–F109 存储顺序不因 Route Predictor 改变。F124 先冻结 corpus，随后
+F124a–F124e 逐项实现候选契约、字面位置、向量 generation、CPU exact 和 Skill
+投机预取，再由 F125/F126 比较 Router-only 与优化 arm。
 
 ## 尚需验证
 

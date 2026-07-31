@@ -96,9 +96,11 @@ v0 的 AI 来自 Codex/Claude Code 等外部宿主；未来若增加内置 Runti
 
 引擎内部不调用 LLM 决定物理行为，AI 也不接触物理地址。
 
-## 永久无向量边界
+## 永久语义权威边界
 
-Memora 的语义发现不采用 Embedding、向量数据库、余弦/距离相似度或其伪装形式，评测和降级路径也不例外。语义能力来自：
+Memora 的语义发现以 AI 维护、AI 可读的显式 Router 为权威，不以 Row、文档 chunk、
+正文事实的 Embedding 或相似度排名代替语义结构。可回退的字面位置和 Route-only
+Vector 只提供候选位置，不能直接回答、扩大授权范围或排除零命中 Table。语义能力来自：
 
 ```text
 AI 维护可读的 Table 级多层语义树
@@ -108,7 +110,9 @@ AI 维护可读的 Table 级多层语义树
 + 最终 SELECT 回表
 ```
 
-既有混合倒排实现只可作为待审计的历史原型，不能继续充当主查询路径或已完成产品能力。
+候选预测器必须通过 MSQL 暴露 provenance、snapshot 和预算；命中后仍读 Router 并以
+RowID SQL 回表，缺失或误预测时确定性回退普通 Router。既有将机械词项、字符向量与
+事实候选混合打分的实现只可作为历史原型，不能继续充当主查询路径。
 
 ## 反例测试
 
@@ -120,7 +124,7 @@ AI 维护可读的 Table 级多层语义树
 - 数据库没有可读的 purpose、Schema 说明和 Router；
 - 旧索引长期塞在 system prompt；
 - 修改没有 revision、来源或回滚路径；
-- 实现、benchmark 或兜底路径仍依赖向量/余弦匹配；
+- 实现、benchmark 或兜底路径把 Row/chunk 向量或相似度结果当作事实权威；
 - 自动整理造成错误后无法解释和恢复。
 
 ## 关联
@@ -129,3 +133,4 @@ AI 维护可读的 Table 级多层语义树
 - [AI-native 产品边界](./ai-native-boundary.md)
 - [Mutation Agent](../agent/database-mutation-agent.md)
 - [质量模型与验收](./quality-model.md)
+- [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)

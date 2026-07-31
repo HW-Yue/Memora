@@ -21,7 +21,7 @@ Story Gate 与具体实现；不把历史归档或已撤销的 Vector/MATCH 路�
 | 领域 | 当前已经有 | 尚未实现 |
 | --- | --- | --- |
 | 真实 AI 用户旅程 | Codex/Claude adapter 与脚本化 F80 Story Gate | 真实 Codex、Claude、Kimi 等模型从自然语言自主选择 Database/Table/Route、决定 worthiness、Schema、split/merge，并验证回答质量 |
-| AI-native 质量门 | 八维计分结构、固定场景和脚本 Adapter | 不含 Vector 的真实 Table Router Adapter；fanout/depth/歧义度能力曲线、逐层准确率、共同安全 fanout、token/调用数/延迟和跨模型对照 |
+| AI-native 质量门 | 八维计分结构、固定场景和脚本 Adapter | 真实 Table Router Adapter；fanout/depth/歧义度能力曲线，并比较 Router-only 与可回退 predictor 的准确率、token/调用数/延迟和跨模型结果 |
 | 持续输入入口 | 显式 `memora reflect` delta/checkpoint/session_end | 宿主可稳定触发的“值得写”判断与会话交接；当前 adapter 只安装 Skill，不保证看见所有宿主活动 |
 | 语义 DBA | 手工 Route CRUD、原子 reshape、重复 Row/同义字段/陈旧描述报告 | Router 容量、错挂、漏挂、歧义、导航失败和结构熵检查；基于真实证据生成局部优化计划 |
 | 自动维护 | `maintain --report/request` 协议和幂等收据 | 当前实现没有会产生 `auto_fix=true` 的 Issue，`Maintain` 不生成实际 Action；文档所述 Router capacity 与 pending reindex retry 未接入当前代码 |
@@ -69,7 +69,7 @@ F80 能证明“公开二进制 + 两套 adapter + 同一 MSQL 机械旅程”�
 
 1. 先用持久化 B+ Tree 接通 Catalog、RowID、version 与 Table cursor，再冻结本地最小 MVCC 可见性；
 2. 再实现事务级 Committed Change Log，并建设本地可视化、只读接口和 Route Trace；
-3. 再补真实模型与无向量质量 benchmark，确认 AI 是否找得准、写得对、成本可接受；
+3. 再补 Route Retrieval Benchmark v3，确认 AI 是否找得准、predictor 能否减少调用且成本可接受；
 4. 再讨论语义 DBA：Router 质量诊断、导航失败反馈和局部优化计划；
 5. 再补完整 Schema 演化与 Row 迁移；
 6. 再确定持续输入入口、风险 Policy、多库发现与 Query Workspace；

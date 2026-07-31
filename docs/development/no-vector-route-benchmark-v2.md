@@ -1,6 +1,7 @@
 # 无向量语义 Route Benchmark v2
 
-状态：F124–F126 讨论稿，待用户 Review；未获实现授权。
+状态：已由 [Route Retrieval Benchmark v3](./route-retrieval-benchmark-v3.md)取代；
+本文只保留 Router-only 实验臂的历史设计，不再约束全部检索 Benchmark。
 
 ## 核心问题
 

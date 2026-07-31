@@ -1,8 +1,8 @@
 # AI-native Benchmark v1
 
 状态：F42 的场景与评分器仍可作历史测试资产；F51 证据已撤销。当前 Adapter
-集合包含被禁止的 Vector/cosine 路径，不能产生产品发布证据，需按产品宪章重做。
-当前继任讨论稿见[无向量语义 Route Benchmark v2](./no-vector-route-benchmark-v2.md)。
+把字符 Vector/cosine 混入事实候选，不能产生产品发布证据，需按产品宪章重做。
+当前继任规格见 [Route Retrieval Benchmark v3](./route-retrieval-benchmark-v3.md)。
 
 ## 数据集
 
@@ -43,7 +43,7 @@ memora；其中 vector 以及依赖混合相似候选的 memora Adapter 均已�
 
 撤销原因见 [AI-native 发布门 v1](./ai-native-release-gate-v1.md)。新版本必须改为
 Table 级语义树逐层 SQL 旅程，按 `US-COLD`、`US-READ`、`US-SPLIT` 等故事验收，
-且不实现任何 Vector baseline。
+且不把任何 Vector baseline 当作事实权威。
 
 ## 关联
 

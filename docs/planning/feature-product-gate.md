@@ -26,7 +26,8 @@ Feature 分支和实现计划必须先回答：
 3. 它作用于 Database、Table、Row、关系、Route Tree、Schema 还是物理引擎？边界是否混淆？
 4. 它怎样影响 Row revision、Route membership、历史、事务和失败恢复？
 5. AI 每一步最多看到多少节点、RowID 和正文？Route Frame 如何保持有界？
-6. 是否出现 Embedding、向量、余弦/距离相似度、全库 prompt 扫描或同类伪装？任一出现即否决。
+6. 是否把 Row/chunk/正文向量、相似度结果或全库 prompt 扫描当作事实权威？若使用
+   Route predictor，是否只返回有界位置并保留 provenance、snapshot 和 Router 回退？
 7. 是否让 Agent 绕过 MSQL，或让人承担本应由 AI/引擎完成的数据库工作？任一出现即否决。
 8. 是否把 SQLite、某个 Provider、某个宿主或临时 benchmark 变成产品语义？若是，必须重设接口边界。
 9. 最小验收旅程、错误注入、回滚测试和旧数据兼容证据是什么？
@@ -56,7 +57,7 @@ SQLite 一类实现选择不能隐藏在 Feature 列表里，也不能因 ADR �
 3. 对开工前每个 `US-*` 的逐项验收结果；
 4. split/merge/update/delete 后没有陈旧 Route membership 或关系的完整性证据；
 5. 权限、冲突、超限、中断和重试路径的结构化错误证据；
-6. 无向量、无隐藏旁路、存储后端不泄漏到产品协议的审计；
+6. 无 Row/chunk 向量权威、无隐藏旁路、predictor 可回退且存储后端不泄漏到产品协议的审计；
 7. 文档、测试、实现和当前 Feature 状态同步；
 8. 对未满足项明确标记“未完成”，不得用 benchmark 分数覆盖。
 
@@ -82,7 +83,7 @@ RED 测试、命令与当前失败证据:
 完成证据:
 GREEN/REFACTOR 与完整测试命令:
 故事逐项验收:
-旁路与无向量审计:
+旁路与语义权威审计:
 剩余偏差:
 完成后结论: PASS / INCOMPLETE
 ```

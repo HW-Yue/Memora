@@ -5,7 +5,8 @@
 
 ## 目标
 
-陌生 AI 不读取旧聊天、不扫描全库，也不使用 Embedding、向量或余弦/距离相似度，就能以最少上下文稳定找到正确 Row。
+陌生 AI 不读取旧聊天、不扫描全库，以显式 Router 为语义权威，并可组合有界候选
+位置，用尽量少的上下文和模型调用稳定找到正确 Row。
 
 主路径是 AI 对自描述语义树的逐层判断，不是引擎对自然语言做相似度排名。
 
@@ -74,10 +75,12 @@ LIMIT 1;
 - snapshot、权限和 revision 正确率；
 - 新宿主/新模型在同一标准流程下的等价性。
 
-禁止以 Vector baseline、cosine 分数或对其胜负作为发布条件。对照可以使用无记忆、Markdown 人工整理、全文字面查找和传统数据库精确查询，但不能在 Memora 代码或评测工具中实现被禁止的语义匹配。
+禁止以 Vector 分数直接回答，或用 predictor 命中掩盖 Router/SQL 的正确性失败。
+对照应同时包含 Router-only、字面位置、Route-only CPU Vector、两者有界并集和
+投机预取；所有 arm 的最终事实只来自相同 snapshot 下的 RowID SQL 回表。
 
-F124–F126 使用真实宿主模型在受控 fanout/depth 矩阵上逐层选择 Route ID；详细方法见
-[无向量语义 Route Benchmark v2](../development/no-vector-route-benchmark-v2.md)。
+F124–F126 使用真实宿主模型在受控 fanout/depth 矩阵上验证逐层选择和候选优化；
+详细方法见 [Route Retrieval Benchmark v3](../development/route-retrieval-benchmark-v3.md)。
 
 ## 必测故事
 
@@ -94,3 +97,4 @@ F124–F126 使用真实宿主模型在受控 fanout/depth 矩阵上逐层选择
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
 - [Agent 语义目录索引](./semantic-routing.md)
 - [产品与用户故事门禁](../planning/feature-product-gate.md)
+- [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)

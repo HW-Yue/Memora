@@ -4,7 +4,8 @@
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
 
-语义检索永久禁止 Embedding、Vector、cosine、隐藏评分和全文 prompt 扫描。
+Table Router 仍是权威语义结构；ADR-0007 允许 Catalog、字面位置和 Route-only
+Vector 作为可回退候选预测器，禁止 Row/chunk Vector、隐藏答案融合和全文 prompt 扫描。
 
 ## K：存储内核
 
@@ -80,9 +81,17 @@
 | --- | --- |
 | F123 Real Host Contract | Codex/Claude/Kimi 以同一 Skill/任务契约运行 |
 | F124 Route Benchmark Corpus | 固定 Route 树、问题和期望路径可重复生成 |
-| F125 Route Benchmark Runner | 真实 host/model 运行并保存逐层原始 receipt |
-| F126 Route Capability Report | 形成 fanout/depth/歧义度曲线与共同安全默认值 |
+| F124a Discovery Frame Contract | 候选位置共享 snapshot、预算和 predictor provenance |
+| F124b Lexical Route Locations | 倒排词项只聚合到 Database/Table/Route 位置 |
+| F124c Route Vector Generation | Route-only 向量作为可重建派生 generation |
+| F124d CPU Exact Route Match | CPU 精确点积返回稳定 Top K Route ID |
+| F124e Speculative Discovery Skill | Skill 组合候选与根 Route，miss 后确定性回退 |
+| F125 Route Benchmark Runner | 真实 host/model 对比 Router、Lexical、Vector 与组合 arm |
+| F126 Route Capability Report | 形成 fanout、候选预算、成本曲线和共同安全默认值 |
 | F127 Story Gate v2 | 每个 `US-*` 由匹配的真实 AI 旅程验收 |
+
+F124a–F124e 的 RED、边界和顺序见
+[Route Predictor 小 Feature 计划](./route-predictor-feature-plan.md)。
 
 ## A：语义自治候选
 
@@ -132,6 +141,8 @@
 | F159 Replication | 明确出现主从副本故事 |
 | F160 PITR | 明确出现时间点恢复故事 |
 | F161 Multi-device Sync | 明确出现多设备双向同步故事 |
+| F162 Apple Accelerate Route Scan | 纯 Go CPU exact 的 p95/能耗越过冻结门槛且结果等价 |
+| F163 HNSW Route Backend | CPU exact 在真实 Route 规模下越过资源门且 ANN Recall 通过 |
 
 ## 批准与执行规则
 

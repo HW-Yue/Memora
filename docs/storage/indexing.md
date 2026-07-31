@@ -1,7 +1,8 @@
 # 物理与语义索引
 
 状态：职责边界已确认；B+ Tree 是必做的持久化主索引，Page、树和业务索引由
-F81–F102 逐项 Review。F19–F23 的混合倒排主路径已撤销。
+F81–F102 逐项 Review。F19–F23 的混合倒排主路径已撤销；ADR-0007 只允许可回退的
+Route 候选预测器。
 
 ## 两套职责
 
@@ -21,20 +22,21 @@ AI 使用的语义索引：
 - 叶子中的有限 `row_id + revision` locator。
 
 语义树决定“AI 应沿哪个含义继续找”，物理索引决定“引擎怎样快速取得已明确
-指定的键、范围、关系或 Route 节点”。两者不能混为相似度评分系统。
+指定的键、范围、关系或 Route 节点”。候选预测器可以提示从哪里开始读，但不能
+把物理分数变成事实权威或隐藏查询主路径。
 
-## 永久禁止
+## 永久边界
 
-语义发现、评测和兜底均禁止：
+禁止：
 
-- Embedding 或向量数据库；
-- dense/sparse/字符向量；
-- cosine、点积、欧氏距离或等价距离排名；
+- 为 Row 正文、文档 chunk、图片或事实建立权威向量副本；
+- 让 cosine、点积、欧氏距离或隐藏融合分数直接返回答案；
 - 把机械 N-gram 命中包装成语义相似度；
 - 全库扫描后把正文交给模型挑选。
 
-若保留传统全文或 N-gram 能力，它只能由用户/AI 通过明确的“字面查找”语句调用，
-返回字面命中，不能自动接管 Router 失败，也不能作为语义主路径。
+允许通过 MSQL 显式调用字面位置聚合或 Route-only Vector 候选。它们只能返回
+Database/Table/Route ID、revision、来源和有界分数；AI 仍读取 Router 并 SQL 回表。
+完整边界见 [ADR-0007](../decisions/0007-route-predictor-arsenal.md)。
 
 ## Row 与 Route 原子性
 
@@ -53,6 +55,9 @@ AI 使用的语义索引：
 1. 单 Row membership 增量替换；
 2. 局部子树旁路重建；
 3. Table generation 重建。
+
+Route vector 使用独立可重建 generation，绑定 embedding model/version、维度、
+Route revision 和来源 digest；它不能进入 Row/Route 权威 snapshot。
 
 新 generation 在当前版本继续查询时构建，经过结构、revision、覆盖和权限校验后
 原子发布；旧读者释放后再回收旧版本。少量修改不得触发整表重建。
@@ -95,3 +100,4 @@ Row split 由 AI 按语义完成，Page split 由引擎自动完成，二者不�
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
 - [Agent 语义目录索引](../query/semantic-routing.md)
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)
+- [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)

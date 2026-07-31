@@ -42,6 +42,8 @@ JSON 错误。底层可以是可替换的简化实现，但不得定义上层产
 
 - 完成 Canonical Skill 的 read/write 流程、有界 Route Frame 和 Mutation Receipt；
 - 实现 AI 对 Table 级语义树的逐层 MSQL 导航、RowID 返回和 SQL 回表；
+- 在真实语料先冻结后，逐项加入字面位置、Route-only CPU exact Vector 和可回退的
+  投机预取，减少模型调用但不改变 Router/SQL 事实链路；
 - 实现 Router membership 反向索引、`pending_reindex` 队列、tombstone，以及 Row/子树/Database 三级重建与原子切换；
 - 完成 Query Workspace 生命周期、daemon 生命周期、交互 CLI 和 `--stdio` bridge；
 - 发布供外部 Agent 调用 `memora exec` 的 Canonical Skill；
@@ -92,7 +94,8 @@ B+ Tree、16 KiB Page、单实例 Buffer Pool 和 Redo WAL 已确认为 F81–F1
 
 ## 不提前做
 
-- 实现任何 HNSW、Embedding、Vector/cosine 或等价相似度路径；
+- 在 CPU exact Route scan 越过冻结性能门前实现 HNSW 或平台加速；
+- 为 Row、文档 chunk 或正文事实建立 Vector/cosine 权威查询路径；
 - 在协议未稳定前优化磁盘格式；
 - 在 source fidelity 未解决前批量吸收重要资料；
 - 在 Schema 健康测试前允许无约束自动迁移；

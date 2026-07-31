@@ -71,6 +71,7 @@
 - [Index Discovery v1](./query/index-discovery-v1.md) — 已撤销的 F23 候选融合历史实现。
 - [MSQL Result Envelope v1](./query/result-envelope.md) — 单条/批量统一结果、稳定错误码、warning 与截断兼容规则。
 - [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 每个 Table 一棵多层语义树，AI 逐层找到叶子 RowID。
+- [语义路由投机预取](./query/speculative-route-prefetch.md) — 已确认方向：用 Catalog、倒排位置提示和少量根 Route 预取减少模型调用，预测失败时确定性回退。
 - [语义树检索质量链路](./query/retrieval-quality.md) — AI 从 Table Router 逐层导航到 RowID，再 SQL 回表。
 - [上下文生命周期](./query/context-lifecycle.md) — 当前重点：索引缓存、污染、失效和平台限制。
 - [Query Workspace 与缓存边界](./query/working-set-cache.md) — 区分 Agent 临时状态、物理 Page 缓存和查询结果缓存。
@@ -168,6 +169,7 @@
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
 - [F81 之后的 Feature 规划](./planning/next-feature-plan.md) — 取数基础、可视化、真实 AI 质量、语义自治、产品化和按数据触发的存储演进。
+- [Route Predictor 小 Feature 计划](./planning/route-predictor-feature-plan.md) — F124a–F124e 的候选契约、字面位置、Route 向量、CPU exact 与 Skill 投机预取。
 - [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
 - [F72 AI-native 用户故事门](./planning/f72-ai-native-story-gate.md) — 全部产品故事、实际 MSQL、proof 文件、宿主与许可的最终验收。
 - [F80 真实发行用户故事门](./planning/f80-real-release-story-gate.md) — 双宿主、隔离 Instance、公开 CLI 和 mutation 后顶层 Route 重查的运行时 PASS。
@@ -188,7 +190,8 @@
 - [Codex Adapter v1](./development/codex-adapter-v1.md) — F40 从 Canonical Skill 确定性派生 Codex metadata、命令规则与 e2e fixture。
 - [Claude Code Adapter v1](./development/claude-code-adapter-v1.md) — F41 的 `.claude/skills` 包装、turn 级命令权限与跨宿主 digest 兼容。
 - [AI-native Benchmark v1](./development/ai-native-benchmark-v1.md) — F42 的五类可重放旅程、八维评分、baseline adapter 与确定性报告。
-- [无向量语义 Route Benchmark v2](./development/no-vector-route-benchmark-v2.md) — F124–F126 的 corpus、真实模型运行、能力曲线和共同安全 fanout。
+- [无向量语义 Route Benchmark v2](./development/no-vector-route-benchmark-v2.md) — 已被 v3 取代；保留 Router-only 实验臂的历史设计。
+- [Route Retrieval Benchmark v3](./development/route-retrieval-benchmark-v3.md) — 比较 Router-only、Lexical、CPU Vector 和投机预取的真实模型成本与质量。
 - [AI-native 发布门 v1](./development/ai-native-release-gate-v1.md) — 已撤销的 F51 历史评测及失效原因。
 - [安全与隐私门 v1](./development/security-privacy-gate-v1.md) — F46 的 Database scope、外部路径、approval、审计脱敏与 doctor 检查。
 - [macOS Release 制品 v1](./development/macos-release-artifacts-v1.md) — F47 的双架构 Mach-O、可复现归档、版本 manifest、checksum 与 smoke 契约。
@@ -202,6 +205,7 @@
 - [ADR-0004：RowID 快速目录与本地最小 MVCC](./decisions/0004-fast-row-directory-minimal-mvcc.md) — MVCC/写锁仍有效；内存目录与 B+ Tree 后置部分已被 ADR-0005 取代。
 - [ADR-0005：B+ Tree 是必做的持久化主索引](./decisions/0005-btree-mandatory-primary-index.md) — F90–F102 接通持久化 B+ Tree 与真实 RowID 路径；物理策略由 ADR-0006 细化。
 - [ADR-0006：MySQL 式 Page/Buffer Pool/WAL，COW 用于 generation](./decisions/0006-mysql-page-buffer-wal-cow.md) — 16 KiB Page、单实例 Buffer Pool、Redo recovery 与限定 COW 职责。
+- [ADR-0007：Router 权威，候选预测器可组合](./decisions/0007-route-predictor-arsenal.md) — 允许可回退的字面/Route Vector 预测器，CPU exact 优先且 HNSW 后置。
 
 ## 文档规模约束
 

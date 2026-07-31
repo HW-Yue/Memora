@@ -97,7 +97,8 @@ membership；删除 Database Router 与 MATCH/Vector fallback 主路径。
 ## F60 新 AI-native 产品门
 
 按 `US-*` 重做真实宿主旅程，固定每一步 MSQL、Route Frame、最终原生数据和用户
-输出；禁止 Vector/cosine 和全库 prompt 扫描。
+输出；禁止 Row/chunk Vector 充当事实权威和全库 prompt 扫描。Route-only 候选
+预测器必须有界、可审计，并在失败时回退普通 Router。
 
 ## F61+ 证据驱动优化
 

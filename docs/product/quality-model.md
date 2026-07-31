@@ -1,7 +1,7 @@
 # AI-native 质量模型与验收
 
-状态：产品指标方向有效；F51 的 Vector/cosine 评测结论已撤销，发布门待按
-[AI-native 产品宪章](./ai-native-product-charter.md)重做。
+状态：产品指标方向有效；F51 的 Row/字符向量融合结论仍撤销，ADR-0007 允许
+Route-only predictor；发布门待按[AI-native 产品宪章](./ai-native-product-charter.md)重做。
 
 F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1](../development/ai-native-benchmark-v1.md)。
 
@@ -23,8 +23,8 @@ F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1]
 | 记忆选择 | 是否只保存未来有用的状态变化 | write precision/recall、重复写入率、瞬时信息留存率 |
 | 资料吸收 | 是否完整且没有曲解来源 | coverage、claim accuracy、低置信度拒绝率、source anchor 可追溯率 |
 | Schema 健康 | AI 是否长期保持清晰结构 | 同义 Database/Table/Column 率、孤儿字段率、迁移失败率、描述完整率 |
-| 检索 | 不同表达能否找回正确 Row | Recall@k、MRR、nDCG、关系多跳成功率、过期事实命中率 |
-| 上下文 | 找回结果是否足够短且有证据 | Context Pack 字符/token、工具调用数、无关记录率、truncation 可见性 |
+| 检索 | 不同表达能否找回正确 Row | Route/预测器 Recall@k、路径成功率、关系多跳、过期事实命中率 |
+| 上下文 | 找回结果是否足够短且有证据 | Context Pack token、模型调用数、误预测 token、无关记录率 |
 | 修改 | 是否准确改变目标而不误伤 | unintended-row rate、revision conflict 捕获率、merge/split 可逆率 |
 | 接管 | 陌生 Agent 能否继续工作 | cold-start task success、首次正确 Database/Route、重新发现调用数 |
 | 引擎 | 物理状态是否可靠 | crash recovery、atomicity、index consistency、deterministic export |
@@ -65,7 +65,8 @@ F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1]
 查询故意使用与原文不同的同义表达，测试 AI 能否从 Database、Table 和顶层
 Route 开始逐层选择，在有界 Route Frame 内得到正确 RowID 并回表。
 
-不能只测试一个固定 fanout。F124–F126 必须交叉测试每层候选数、树深、兄弟语义歧义度、
+不能只测试一个固定 fanout。F124–F126 还必须对照 Router-only、Lexical、CPU Vector
+和组合投机预取，并交叉测试每层候选数、树深、兄弟语义歧义度、
 叶子 locator 数和中英文表达，并按真实 `host + model` 报告逐层准确率、端到端
 RowID 成功率与安全 fanout。共享 Database 的默认 fanout 取目标模型集合的可靠
 共同范围，不为每个模型维护不同权威语义树。
@@ -79,8 +80,10 @@ RowID 成功率与安全 fanout。共享 Database 的默认 fanout 取目标模�
 - Basic Memory 或同类 Markdown+MCP；
 - 传统数据库按精确字段与 ID 查询；
 - Memora 去掉 Router、关系或有界 Route Frame 的消融版本。
+- Memora Router-only、Lexical Route、CPU Vector Route 和有界组合 predictor。
 
-评测工具本身也禁止实现 Vector、Embedding、cosine 或等价距离匹配。
+Vector arm 只允许对 Route semantic surface 做 CPU 精确匹配；所有 arm 的最终事实
+仍来自相同 Router snapshot 与 SQL Row，禁止 Row/chunk Vector 或隐藏答案融合。
 
 ## 质量反馈闭环
 
@@ -105,3 +108,4 @@ useful / irrelevant / stale / wrong / incomplete
 - [AI-native 产品契约](./ai-native-contract.md)
 - [开发与验证路线](../planning/roadmap.md)
 - [未解决痛点](../planning/unresolved-pain-points.md)
+- [Route Retrieval Benchmark v3](../development/route-retrieval-benchmark-v3.md)

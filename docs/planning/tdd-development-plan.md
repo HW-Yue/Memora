@@ -83,7 +83,7 @@ Dictionary、稳定 ID、revision、Router 和 Result Envelope 不因后端迁�
 - Compatibility：逻辑导出、旧 format fixture、升级和跨版本读取。
 - Fault injection：进程终止、部分写入、磁盘满、校验损坏和日志恢复。
 - Quality benchmark：多项目对话、资料吸收、修订、冷启动和逐层语义树召回；
-  benchmark 本身也禁止 Vector/cosine。
+  同时比较 Router-only、字面位置、Route-only CPU Vector 和投机预取。
 - Release smoke：全新 macOS 用户环境从 GitHub Release 安装并由 Skill 完成首次写入。
 
 真实 Codex/Claude 测试只作为受控 smoke/benchmark，不进入普通 PR 的确定性门禁。v0 不实现自己的模型 Provider，也不保存宿主模型密钥。
@@ -99,7 +99,8 @@ Dictionary、稳定 ID、revision、Router 和 Result Envelope 不因后端迁�
 - `go test ./...`、`go test -race ./...`、`go vet ./...`、格式检查通过；
 - 影响协议时更新 golden fixture 和文档；
 - 产品门禁的目标故事、标准旅程和完成证据均为 PASS；
-- 无 Embedding、向量、cosine/距离匹配、全库 prompt 扫描或隐藏 MSQL 旁路；
+- 无 Row/chunk 向量权威、全库 prompt 扫描或隐藏 MSQL 旁路；Route predictor 有来源、
+  有界且可回退；
 - commit 可单独 checkout、构建、测试和回滚。
 
 ## 阶段质量门

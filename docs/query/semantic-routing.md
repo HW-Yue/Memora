@@ -1,7 +1,7 @@
 # Agent 语义目录索引（Router）
 
 状态：已实现；F70 将主路切换到 Table 级逐层导航，F76 暴露原子 reshape，
-F77 增加按需中间 Route synopsis。
+F77 增加按需中间 Route synopsis；ADR-0007 允许可回退的 Route 候选预测器。
 
 ## 定义
 
@@ -65,7 +65,11 @@ prompt，也不等同于物理 Buffer Pool。
 [中间 Route Synopsis](./route-synopsis.md)。
 
 Router/OPEN 只返回节点或 locator，不能返回正文、生成答案或自动退化为
-Embedding、cosine、全库扫描和混合相似度排名。
+Row/chunk Embedding、全库正文扫描和混合相似度答案。
+
+可选 predictor 可以依据 Catalog、字面位置或 Route-only Vector 返回带来源的候选
+Route ID，帮助 AI 预取根节点或缩短冷启动。候选不能跳过显式 Route 选择、扩大权限、
+排除零命中 Table 或直接作答；miss 后必须回到本节的正常逐层导航。
 
 ## 语义维护
 
@@ -114,3 +118,4 @@ Table Router、稳定 RowID、revision、cursor 与公开 SPLIT/MERGE 是当前�
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
 - [语义树检索质量链路](./retrieval-quality.md)
 - [Router Tree v1 历史实现](./router-tree-v1.md)
+- [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)
