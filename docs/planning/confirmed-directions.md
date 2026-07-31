@@ -208,6 +208,9 @@ durable 后发布失败必须 poison，并只通过 reopen recovery 收敛。
 116. F98 已建立持久化 Catalog Lookup Index：Database/Table/Column 的稳定 ID、
 名称、别名和当前 Schema revision 通过 B+ Tree 精确定位；冲突在 WAL 前失败，
 crash-before-flush 由 WAL 恢复，not-found/corruption 不允许回退全量 Catalog 扫描。
+117. F99 已建立持久化 Current Row Index：Table ID + RowID 精确返回当前 Schema
+revision、Row revision、commit sequence 与 live/deleted/superseded 状态；整批
+expected revision 在 WAL 前校验，当前 revision 只允许单调推进并支持幂等重试。
 
 ## 尚需验证
 
