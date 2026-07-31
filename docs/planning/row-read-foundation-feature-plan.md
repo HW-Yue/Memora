@@ -1,6 +1,6 @@
 # 存储内核小 Feature 计划
 
-状态：F81–F109 执行顺序已获用户授权；F81–F86b 已完成，F86c 下一项。
+状态：F81–F109 执行顺序已获用户授权；F81–F86c 已完成，F87 待实施。
 
 ## 当前缺口与目标
 
@@ -28,8 +28,8 @@
 | F86c Segment Reclaim | 删除仍被恢复需要的 WAL | 只回收 checkpoint 完全覆盖的旧 Segment | 后台策略 |
 
 Page 强制 golden/seed corpus/corruption/reopen；WAL 强制覆盖每个 write/fsync fault
-point、truncate、bit flip、乱序与 subprocess crash。F86c 完成前，任何业务写路径都
-不能切换到新 Store。
+point、truncate、bit flip、乱序与 subprocess crash。F86c 已通过独立完成门；业务
+写路径仍须等待后续 Buffer Pool、B+ Tree 与迁移 Feature 独立验收后才能切换。
 
 ## Buffer Pool
 

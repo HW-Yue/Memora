@@ -96,6 +96,7 @@
 - [Crash Recovery v1](./storage/crash-recovery-v1.md) — F85 的 committed Page redo、Page LSN 幂等与 FPI torn Page 修复。
 - [WAL Segment Set v1](./storage/wal-segment-set-v1.md) — F86a 的连续 Segment ID/LSN、显式 roll 与跨段事务顺序。
 - [Checkpoint Publish v1](./storage/checkpoint-publish-v1.md) — F86b 的 Page durability barrier、durable marker 与恢复起点。
+- [WAL Segment Reclaim v1](./storage/wal-segment-reclaim-v1.md) — F86c 的 retained manifest、旧段删除与中断恢复。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
 - [Instance Format 升级与回滚 v1](./storage/instance-format-upgrade-v1.md) — F49 的兼容状态、v1→v2、完整性备份、迁移 journal 与 `doctor repair`。
@@ -120,6 +121,7 @@
 - [F85 Crash Recovery 开工与完成门](./planning/f85-crash-recovery-gate.md) — committed redo、幂等 Page LSN 与 FPI 修复门。
 - [F86a WAL Segment Set 开工与完成门](./planning/f86a-wal-segment-set-gate.md) — 多 Segment roll/reopen 与故障注入门。
 - [F86b Checkpoint Publish 开工与完成门](./planning/f86b-checkpoint-publish-gate.md) — barrier、marker、Sync 与恢复起点门。
+- [F86c Segment Reclaim 开工与完成门](./planning/f86c-segment-reclaim-gate.md) — manifest authority、删除顺序与重开门。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
