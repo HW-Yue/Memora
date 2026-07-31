@@ -92,6 +92,7 @@
 - [Page Codec v1](./storage/page-codec-v1.md) — F81 的 16 KiB Header、Page Type、CRC32C 与确定性编解码边界。
 - [Page File Manager v1](./storage/page-file-manager-v1.md) — F82 的 space manifest、Page 定位 I/O、连续分配与 reopen 边界。
 - [WAL Record Stream v1](./storage/wal-record-stream-v1.md) — F83 的 Segment/Record、LSN、CRC32C、append/scan 与 durable offset。
+- [WAL Durable Transaction v1](./storage/wal-durable-transaction-v1.md) — F84 的连续 change/commit、digest、fsync 成功边界与 poisoned 状态。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
 - [Instance Format 升级与回滚 v1](./storage/instance-format-upgrade-v1.md) — F49 的兼容状态、v1→v2、完整性备份、迁移 journal 与 `doctor repair`。
@@ -112,6 +113,7 @@
 - [F81 Page Codec 开工与完成门](./planning/f81-page-codec-gate.md) — 单一结果、RED 清单、明确不做与完整测试门。
 - [F82 Page File Manager 开工与完成门](./planning/f82-page-file-manager-gate.md) — 单 space 文件 I/O 的 RED、故障矩阵与完成证据。
 - [F83 WAL Record Stream 开工与完成门](./planning/f83-wal-record-stream-gate.md) — 单 Segment 字节流、LSN 与 corruption TDD 门。
+- [F84 WAL Durable Transaction 开工与完成门](./planning/f84-wal-durable-transaction-gate.md) — commit digest、Sync 顺序与故障注入门。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。

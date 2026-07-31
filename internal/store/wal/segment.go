@@ -70,6 +70,7 @@ type Segment struct {
 	nextLSN    uint64
 	durableLSN uint64
 	closed     bool
+	poisoned   bool
 }
 
 func Create(path string, segmentID, startLSN uint64) (*Segment, error) {
@@ -170,6 +171,9 @@ func (segment *Segment) Append(value Record) (uint64, error) {
 	if segment.closed {
 		return 0, ErrClosed
 	}
+	if segment.poisoned {
+		return 0, ErrPoisoned
+	}
 	if value.LSN != 0 || !validType(value.Type) || len(value.Payload) > maxPayloadSize {
 		return 0, fmt.Errorf("%w: invalid WAL Record", ErrInvalid)
 	}
@@ -210,7 +214,11 @@ func (segment *Segment) Sync() error {
 	if segment.closed {
 		return ErrClosed
 	}
+	if segment.poisoned {
+		return ErrPoisoned
+	}
 	if err := segment.file.Sync(); err != nil {
+		segment.poisoned = true
 		return fmt.Errorf("sync WAL segment: %w", err)
 	}
 	segment.durableLSN = segment.nextLSN
