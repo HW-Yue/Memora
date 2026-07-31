@@ -140,6 +140,34 @@ func TestApplyIsIdempotentWithoutAnotherWALTransaction(t *testing.T) {
 	}
 }
 
+func TestLegacyZeroCommitSequenceCanBeIndexedButNextRevisionMustAdvance(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+	legacy := locator("row_legacy", 1, 0, row.StateLive)
+	if _, err := index.Apply(1, []Update{{Locator: legacy}}); err != nil {
+		t.Fatalf("Apply(legacy) error = %v", err)
+	}
+	assertLookup(t, legacy, func() (Locator, error) {
+		return index.Lookup(legacy.TableID, legacy.RowID)
+	})
+	invalid := legacy
+	invalid.Revision = 2
+	if _, err := index.Apply(2, []Update{{
+		ExpectedRevision: 1, Locator: invalid,
+	}}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("zero-sequence mutation error = %v", err)
+	}
+	next := invalid
+	next.CommitSequence = 1
+	if _, err := index.Apply(3, []Update{{
+		ExpectedRevision: 1, Locator: next,
+	}}); err != nil {
+		t.Fatalf("Apply(first sequenced revision) error = %v", err)
+	}
+	assertLookup(t, next, func() (Locator, error) {
+		return index.Lookup(next.TableID, next.RowID)
+	})
+}
+
 func TestLargeCurrentIndexMatchesReferenceModelAndSplits(t *testing.T) {
 	_, _, runtime, index := newTestIndex(t)
 	updates := make([]Update, 0, 700)

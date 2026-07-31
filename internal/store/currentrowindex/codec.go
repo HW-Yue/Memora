@@ -147,8 +147,7 @@ func validateLocator(value Locator, class error) error {
 		!validComponent(value.TableID) ||
 		!validComponent(value.RowID) ||
 		value.SchemaRevision == 0 ||
-		value.Revision == 0 ||
-		value.CommitSequence == 0 {
+		value.Revision == 0 {
 		return fmt.Errorf("%w: locator identity or revision", class)
 	}
 	if _, err := encodeState(value.State, class); err != nil {

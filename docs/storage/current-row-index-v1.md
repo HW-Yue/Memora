@@ -23,8 +23,10 @@ Locator v1 是严格的版本化二进制值：
 - 当前 Schema revision、Row revision、commit sequence；
 - live、deleted 或 superseded 当前状态。
 
-三种 revision/sequence 均非零。键 scope 与 Locator Table/Row 不一致、未知版本/
-状态、非法层级、保留位非零、尾随字节或 UTF-8 损坏均视为 corruption。
+Schema/Row revision 均非零。F17 之前的兼容 Row 允许 commit sequence 为 0，明确
+表示历史缺口；它的下一次 mutation 必须推进到正 sequence。键 scope 与 Locator
+Table/Row 不一致、未知版本/状态、非法层级、保留位非零、尾随字节或 UTF-8 损坏
+均视为 corruption。
 
 ## 原子更新
 

@@ -42,4 +42,5 @@ revision 和状态，不再列举、排序并解码其他 Row revision。
 - 32 个 same-base 并发更新仅 1 个提交，31 个在 WAL 前返回 conflict；
 - 覆盖整批 stale 原子失败、幂等零 WAL、revision/sequence/schema 单调门、三种状态、
   crash-before-flush reopen、Locator corpus 与合法外层 Page 中的树损坏；
+- 兼容 F17 前 commit sequence = 0 的 Row，且后续 revision 必须推进到正 sequence；
 - 全仓 test、race、vet 以及 scripts/ci.sh 全部通过。
