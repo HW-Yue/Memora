@@ -4,7 +4,7 @@
 [小 Feature TDD 与合入协议](./feature-tdd-protocol.md)和
 [当前 Feature 规划](./next-feature-plan.md)执行。
 
-当前进度：F52–F95 已完成，F96 B+ Tree Rebalance 待 Review；F51 的
+当前进度：F52–F96 已完成，F97 Durable B+ Tree Root 待 Review；F51 的
 Vector/cosine 结论已撤销。
 
 ## 产品目标

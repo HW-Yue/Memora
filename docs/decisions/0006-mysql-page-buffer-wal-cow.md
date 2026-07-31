@@ -1,6 +1,6 @@
 # ADR-0006：MySQL 式 Page/Buffer Pool/WAL，COW 用于 generation
 
-状态：Accepted，2026-07-31；F81–F108 执行顺序已获授权，F81–F95 已完成、F96 待 Review；
+状态：Accepted，2026-07-31；F81–F108 执行顺序已获授权，F81–F96 已完成、F97 待 Review；
 每项仍须独立 TDD、验收和合入。
 
 ## 总体选择

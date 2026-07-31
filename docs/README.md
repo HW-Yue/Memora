@@ -89,6 +89,7 @@
 - [B+ Tree Single-Node Upsert v1](./storage/btree-single-node-upsert-v1.md) — F93 的 leaf/internal 有序 insert/replace 与容量原子性契约。
 - [B+ Tree Split v1](./storage/btree-split-v1.md) — F94 的 variable-size leaf/internal split、separator promotion 与 root grow 契约。
 - [B+ Tree Leaf Delete v1](./storage/btree-leaf-delete-v1.md) — F95 的单 leaf 精确删除与 tombstone handoff 边界。
+- [B+ Tree Rebalance v1](./storage/btree-rebalance-v1.md) — F96 的 sibling merge/redistribute、parent separator 与 root shrink 契约。
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
 - [Committed Change Log（Binlog）与未来同步](./storage/binlog-and-sync.md) — 第一用途是 Admin 展示数据与语义索引变化；同步、PITR 后续复用。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
@@ -140,6 +141,7 @@
 - [F93 B+ Tree Insert 开工与完成门](./planning/f93-btree-insert-gate.md) — 单 Node upsert、reference model 与 no-space 原子性完成门。
 - [F94 B+ Tree Split 开工与完成门](./planning/f94-btree-split-gate.md) — leaf/internal 字节平衡切分、root grow 与原子失败完成门。
 - [F95 B+ Tree Delete 开工与完成门](./planning/f95-btree-delete-gate.md) — 单 leaf 精确删除、邻居保持与 reference-model 完成门。
+- [F96 B+ Tree Rebalance 开工与完成门](./planning/f96-btree-rebalance-gate.md) — sibling merge/redistribute、child mapping 与 root shrink 完成门。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
