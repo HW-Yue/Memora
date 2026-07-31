@@ -1,8 +1,10 @@
 # Buffer Pool
 
-状态：F87–F89 逐项实现单实例 Buffer Pool v1；16 KiB Page、Redo WAL、young/old LRU、
+状态：F87 Page Loading 已完成，F88 Eviction 待实施；16 KiB Page、Redo WAL、young/old LRU、
 pin/latch 与 dirty/flush 顺序已确认，复杂扩展后置。见
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
+
+F87 的冻结边界见 [Buffer Pool Page Loading v1](./buffer-pool-page-loading-v1.md)。
 
 ## 定位
 
