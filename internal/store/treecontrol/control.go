@@ -1,0 +1,113 @@
+package treecontrol
+
+import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"fmt"
+
+	"github.com/HW-Yue/Memora/internal/store/page"
+)
+
+const (
+	PageID          = uint64(1)
+	FirstDataPageID = uint64(2)
+	payloadSize     = 32
+	formatVersion   = uint16(1)
+)
+
+var (
+	ErrCorrupt            = errors.New("Tree control Page is corrupt")
+	ErrInvalid            = errors.New("Tree control state is invalid")
+	ErrUnsupportedVersion = errors.New("Tree control version is unsupported")
+	controlMagic          = [8]byte{'M', 'E', 'M', 'T', 'R', 'C', '0', '1'}
+)
+
+type State struct {
+	SpaceID    uint64
+	Generation uint64
+	RootPageID uint64
+	NextPageID uint64
+	LSN        uint64
+}
+
+func Bootstrap(spaceID uint64) State {
+	return State{SpaceID: spaceID, NextPageID: FirstDataPageID}
+}
+
+func EncodeBootstrap(spaceID uint64) page.Page {
+	value, err := Encode(Bootstrap(spaceID))
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
+
+func Encode(value State) (page.Page, error) {
+	if err := validatePersistentState(value); err != nil {
+		return page.Page{}, err
+	}
+	payload := make([]byte, payloadSize)
+	copy(payload[:8], controlMagic[:])
+	binary.LittleEndian.PutUint16(payload[8:10], formatVersion)
+	binary.LittleEndian.PutUint16(payload[10:12], payloadSize)
+	binary.LittleEndian.PutUint64(payload[16:24], value.RootPageID)
+	binary.LittleEndian.PutUint64(payload[24:32], value.NextPageID)
+	return page.Page{
+		Header: page.Header{
+			Type:       page.TypeTreeControl,
+			SpaceID:    value.SpaceID,
+			PageID:     PageID,
+			Generation: value.Generation,
+			LSN:        value.LSN,
+		},
+		Payload: payload,
+	}, nil
+}
+
+func Decode(value page.Page, expectedSpaceID uint64) (State, error) {
+	if value.Header.Type != page.TypeTreeControl ||
+		value.Header.Flags != 0 ||
+		value.Header.SpaceID != expectedSpaceID ||
+		value.Header.PageID != PageID {
+		return State{}, fmt.Errorf("%w: identity", ErrCorrupt)
+	}
+	if len(value.Payload) != payloadSize ||
+		!bytes.Equal(value.Payload[:8], controlMagic[:]) {
+		return State{}, fmt.Errorf("%w: payload", ErrCorrupt)
+	}
+	if version := binary.LittleEndian.Uint16(value.Payload[8:10]); version != formatVersion {
+		return State{}, fmt.Errorf("%w: got %d", ErrUnsupportedVersion, version)
+	}
+	if binary.LittleEndian.Uint16(value.Payload[10:12]) != payloadSize ||
+		binary.LittleEndian.Uint32(value.Payload[12:16]) != 0 {
+		return State{}, fmt.Errorf("%w: payload fields", ErrCorrupt)
+	}
+	state := State{
+		SpaceID:    expectedSpaceID,
+		Generation: value.Header.Generation,
+		RootPageID: binary.LittleEndian.Uint64(value.Payload[16:24]),
+		NextPageID: binary.LittleEndian.Uint64(value.Payload[24:32]),
+		LSN:        value.Header.LSN,
+	}
+	if err := validatePersistentState(state); err != nil {
+		return State{}, fmt.Errorf("%w: state", ErrCorrupt)
+	}
+	return state, nil
+}
+
+func validatePersistentState(value State) error {
+	if value.Generation == 0 &&
+		value.RootPageID == 0 &&
+		value.NextPageID == FirstDataPageID &&
+		value.LSN == 0 {
+		return nil
+	}
+	if value.Generation == 0 ||
+		value.RootPageID < FirstDataPageID ||
+		value.NextPageID <= value.RootPageID ||
+		value.LSN == 0 {
+		return fmt.Errorf("%w: fields", ErrInvalid)
+	}
+	return nil
+}

@@ -37,6 +37,7 @@ const (
 	TypeFree
 	TypeManifest
 	TypeOverflow
+	TypeTreeControl
 )
 
 type Header struct {
@@ -141,7 +142,7 @@ func Decode(encoded []byte) (Page, error) {
 }
 
 func validType(value Type) bool {
-	return value >= TypeData && value <= TypeOverflow
+	return value >= TypeData && value <= TypeTreeControl
 }
 
 func calculateChecksum(encoded []byte) uint32 {

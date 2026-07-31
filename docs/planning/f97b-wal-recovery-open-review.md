@@ -48,11 +48,12 @@ decision 的事务不发布；decision I/O 错误返回 outcome unknown，由 re
 
 冻结协议见 [Durable WAL Frontier v1](../storage/wal-durable-frontier-v1.md)与
 [WAL Recovery Open v1](../storage/wal-recovery-open-v1.md)。F97b2 的开工与完成门见
-[F97b2 WAL Recovery Open](./f97b2-wal-recovery-open-gate.md)；二者完成后 F97c 已可进入 Review。
+[F97b2 WAL Recovery Open](./f97b2-wal-recovery-open-gate.md)；二者完成后 F97c 已进入
+Review，并按规模门拆为 F97c1/F97c2。
 
 ## 决定门
 
 - 原 F97b：REVISE，不实现；
 - outcome-unknown 语义及 F97b1/F97b2 拆分：已批准；
 - F97b1：完成，PASS；
-- F97b2：完成，PASS；下一项进入 F97c Root/Allocator Redo Review。
+- F97b2：完成，PASS；后续 F97c 已拆为 F97c1 Tree Control Codec 与 F97c2 Redo。
