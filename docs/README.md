@@ -113,6 +113,7 @@
 - [Tree Control v1](./storage/tree-control-v1.md) — F97c1 已完成的 slot 1 control Page 与 bootstrap 格式。
 - [Tree Control v2](./storage/tree-control-v2.md) — F97c4 分离 physical generation 与逐提交 revision 的替代格式。
 - [Root/Allocator Redo v1](./storage/root-allocator-redo-v1.md) — F97c2 已完成的 metadata payload codec。
+- [Root/Allocator Redo v2](./storage/root-allocator-redo-v2.md) — F97c4 将 metadata 前置状态改为 publication revision。
 - [Tree Metadata Recovery v1](./storage/tree-metadata-recovery-v1.md) — F97c3 的 root-last recovery、验证与幂等边界。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。

@@ -1,7 +1,6 @@
 # F97 Durable Root 拆分 Review
 
-状态：F97a–F97c3 已完成；F97d Review 发现 generation 冲突，先执行 F97c4，再按
-F97d1–F97d3 实施。
+状态：F97a–F97c4 已完成；下一项按 Review 结论执行 F97d1 Tree Commit Preparation。
 
 ## 产品门
 
@@ -110,4 +109,5 @@ Page，但空间复用或 generation compaction 留给后续独立 Feature，避
 - F97c2：完成，PASS；
 - F97c3：完成，PASS；
 - F97d：REVISE；详见 [F97d 拆分 Review](./f97d-durable-tree-commit-review.md)；
-- F97c4：下一项，分离 physical generation 与 publication revision。
+- F97c4：完成，PASS；
+- F97d1：下一项，准备确定性 Tree redo。

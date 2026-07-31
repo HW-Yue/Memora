@@ -1,6 +1,6 @@
 # Tree Control v2
 
-状态：F97c4 已批准并冻结，待实现；取代
+状态：F97c4 已实现并验收，PASS；取代
 [Tree Control v1](./tree-control-v1.md) 的 generation 语义。
 
 ## 唯一结果

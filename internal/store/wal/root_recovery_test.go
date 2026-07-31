@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/store/btree"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/treecontrol"
 )
@@ -60,12 +61,13 @@ func TestRecoverBootstrapsCommittedRootAndAllocator(t *testing.T) {
 		t.Fatalf("write order = %v, want bootstrap, root, control", store.writeOrder)
 	}
 	assertTreeControl(t, store, treecontrol.State{
-		SpaceID: 7, Generation: 1, RootPageID: 2, NextPageID: 3,
+		SpaceID: 7, Generation: 1, Revision: 1,
+		RootPageID: 2, NextPageID: 3,
 		LSN: committedRootLSN(t, segment, 0),
 	})
 }
 
-func TestRecoverRootGrowReplayAndHigherGeneration(t *testing.T) {
+func TestRecoverRootGrowReplayAndHigherRevision(t *testing.T) {
 	segment := createTestSegment(t)
 	writer, err := NewTransactionWriter(segment)
 	if err != nil {
@@ -83,19 +85,19 @@ func TestRecoverRootGrowReplayAndHigherGeneration(t *testing.T) {
 		{
 			Type: TypePageInit, SpaceID: 7, PageID: 3,
 			Payload: mustPageImage(t, page.Page{Header: page.Header{
-				Type: page.TypeBTreeInternal, SpaceID: 7, PageID: 3, Generation: 2,
+				Type: page.TypeBTreeInternal, SpaceID: 7, PageID: 3, Generation: 1,
 			}}),
 		},
 		{
 			Type: TypeAllocator, SpaceID: 7, PageID: 1,
 			Payload: mustAllocatorRedo(t, AllocatorRedo{
-				ExpectedGeneration: 1, ExpectedNextPageID: 3, NextPageID: 4,
+				ExpectedRevision: 1, ExpectedNextPageID: 3, NextPageID: 4,
 			}),
 		},
 		{
 			Type: TypeRoot, SpaceID: 7, PageID: 1,
 			Payload: mustRootRedo(t, RootRedo{
-				ExpectedGeneration: 1, Generation: 2,
+				ExpectedRevision: 1, Revision: 2,
 				ExpectedRootPageID: 2, RootPageID: 3, ExpectedNextPageID: 3,
 			}),
 		},
@@ -111,7 +113,8 @@ func TestRecoverRootGrowReplayAndHigherGeneration(t *testing.T) {
 		t.Fatalf("grow write order = %v", store.writeOrder)
 	}
 	assertTreeControl(t, store, treecontrol.State{
-		SpaceID: 7, Generation: 2, RootPageID: 3, NextPageID: 4,
+		SpaceID: 7, Generation: 1, Revision: 2,
+		RootPageID: 3, NextPageID: 4,
 		LSN: committedRootLSN(t, segment, 1),
 	})
 
@@ -128,9 +131,63 @@ func TestRecoverRootGrowReplayAndHigherGeneration(t *testing.T) {
 	}
 }
 
+func TestRecoverKeepsPhysicalGenerationAcrossRootPublications(t *testing.T) {
+	segment := createTestSegment(t)
+	writer, err := NewTransactionWriter(segment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Commit(1, bootstrapTreeRecords(t, 7)); err != nil {
+		t.Fatal(err)
+	}
+	store := newFakePageStore()
+	if _, err := Recover(segment, map[uint64]PageStore{7: store}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Commit(2, []Record{{
+		Type: TypeRoot, SpaceID: 7, PageID: 1,
+		Payload: mustRootRedo(t, RootRedo{
+			ExpectedRevision: 1, Revision: 2,
+			ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
+		}),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Recover(segment, map[uint64]PageStore{7: store}); err != nil {
+		t.Fatal(err)
+	}
+	controlPage := store.pages[treecontrol.PageID]
+	rootPage := store.pages[2]
+	state, err := treecontrol.Decode(controlPage, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Generation != rootPage.Header.Generation || state.Revision != 2 {
+		t.Fatalf(
+			"control = %#v, root physical generation = %d",
+			state,
+			rootPage.Header.Generation,
+		)
+	}
+	planner, err := btree.NewMutationPlanner(
+		7,
+		state.Generation,
+		state.RootPageID,
+		state.NextPageID,
+		btree.ReaderFunc(store.Read),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := planner.Upsert([]byte("next"), []byte("commit")); err != nil {
+		t.Fatalf("Planner after second publication: %v", err)
+	}
+}
+
 func TestRecoverRootShrinkRetiresPage(t *testing.T) {
 	control, err := treecontrol.Encode(treecontrol.State{
-		SpaceID: 7, Generation: 2, RootPageID: 3, NextPageID: 4, LSN: 100,
+		SpaceID: 7, Generation: 2, Revision: 2,
+		RootPageID: 3, NextPageID: 4, LSN: 100,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -152,20 +209,20 @@ func TestRecoverRootShrinkRetiresPage(t *testing.T) {
 		{
 			Type: TypeFullPageImage, SpaceID: 7, PageID: 3,
 			Payload: mustPageImage(t, page.Page{Header: page.Header{
-				Type: page.TypeFree, SpaceID: 7, PageID: 3, Generation: 3,
+				Type: page.TypeFree, SpaceID: 7, PageID: 3, Generation: 2,
 			}}),
 		},
 		{
 			Type: TypeAllocator, SpaceID: 7, PageID: 1,
 			Payload: mustAllocatorRedo(t, AllocatorRedo{
-				ExpectedGeneration: 2, ExpectedNextPageID: 4, NextPageID: 4,
+				ExpectedRevision: 2, ExpectedNextPageID: 4, NextPageID: 4,
 				RetiredPageIDs: []uint64{3},
 			}),
 		},
 		{
 			Type: TypeRoot, SpaceID: 7, PageID: 1,
 			Payload: mustRootRedo(t, RootRedo{
-				ExpectedGeneration: 2, Generation: 3,
+				ExpectedRevision: 2, Revision: 3,
 				ExpectedRootPageID: 3, RootPageID: 2, ExpectedNextPageID: 4,
 			}),
 		},
@@ -180,14 +237,16 @@ func TestRecoverRootShrinkRetiresPage(t *testing.T) {
 		t.Fatalf("shrink state Page3=%#v order=%v", store.pages[3], store.writeOrder)
 	}
 	assertTreeControl(t, store, treecontrol.State{
-		SpaceID: 7, Generation: 3, RootPageID: 2, NextPageID: 4,
+		SpaceID: 7, Generation: 2, Revision: 3,
+		RootPageID: 2, NextPageID: 4,
 		LSN: committedRootLSN(t, segment, 0),
 	})
 }
 
 func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 	validControl, err := treecontrol.Encode(treecontrol.State{
-		SpaceID: 7, Generation: 1, RootPageID: 2, NextPageID: 3, LSN: 99,
+		SpaceID: 7, Generation: 1, Revision: 1,
+		RootPageID: 2, NextPageID: 3, LSN: 99,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -196,7 +255,7 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 		store := newFakePageStore()
 		store.pages[1] = clonePage(validControl)
 		store.pages[2] = page.Page{Header: page.Header{
-			Type: page.TypeBTreeLeaf, SpaceID: 7, PageID: 2, LSN: 90,
+			Type: page.TypeBTreeLeaf, SpaceID: 7, PageID: 2, Generation: 1, LSN: 90,
 		}}
 		return store
 	}
@@ -218,11 +277,11 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 			records: func(t *testing.T) []Record {
 				return []Record{
 					{Type: TypeAllocator, SpaceID: 7, PageID: 1, Payload: mustAllocatorRedo(t, AllocatorRedo{
-						ExpectedGeneration: 1, ExpectedNextPageID: 3, NextPageID: 3,
+						ExpectedRevision: 1, ExpectedNextPageID: 3, NextPageID: 3,
 						RetiredPageIDs: []uint64{2},
 					})},
 					{Type: TypeRoot, SpaceID: 7, PageID: 1, Payload: mustRootRedo(t, RootRedo{
-						ExpectedGeneration: 1, Generation: 2,
+						ExpectedRevision: 1, Revision: 2,
 						ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
 					})},
 				}
@@ -234,7 +293,7 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 			records: func(t *testing.T) []Record {
 				records := bootstrapTreeRecords(t, 7)
 				records[len(records)-1].Payload = mustRootRedo(t, RootRedo{
-					ExpectedGeneration: 0, Generation: 1,
+					ExpectedRevision: 0, Revision: 1,
 					ExpectedRootPageID: 0, RootPageID: 3, ExpectedNextPageID: 2,
 				})
 				return records
@@ -251,11 +310,11 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 			want: ErrCorrupt,
 		},
 		{
-			name: "allocator root generation mismatch", store: newFakePageStore,
+			name: "allocator root revision mismatch", store: newFakePageStore,
 			records: func(t *testing.T) []Record {
 				records := bootstrapTreeRecords(t, 7)
 				records[1].Payload = mustAllocatorRedo(t, AllocatorRedo{
-					ExpectedGeneration: 1, ExpectedNextPageID: 2, NextPageID: 3,
+					ExpectedRevision: 1, ExpectedNextPageID: 2, NextPageID: 3,
 				})
 				return records
 			},
@@ -272,11 +331,11 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 						}}),
 					},
 					{Type: TypeAllocator, SpaceID: 7, PageID: 1, Payload: mustAllocatorRedo(t, AllocatorRedo{
-						ExpectedGeneration: 1, ExpectedNextPageID: 3, NextPageID: 3,
+						ExpectedRevision: 1, ExpectedNextPageID: 3, NextPageID: 3,
 						RetiredPageIDs: []uint64{2},
 					})},
 					{Type: TypeRoot, SpaceID: 7, PageID: 1, Payload: mustRootRedo(t, RootRedo{
-						ExpectedGeneration: 1, Generation: 2,
+						ExpectedRevision: 1, Revision: 2,
 						ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
 					})},
 				}
@@ -284,21 +343,37 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 			want: ErrCorrupt,
 		},
 		{
-			name: "generation precondition", store: existingStore,
+			name: "revision precondition", store: existingStore,
 			records: func(t *testing.T) []Record {
 				return []Record{{Type: TypeRoot, SpaceID: 7, PageID: 1, Payload: mustRootRedo(t, RootRedo{
-					ExpectedGeneration: 2, Generation: 3,
+					ExpectedRevision: 2, Revision: 3,
 					ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
 				})}}
 			},
 			want: ErrCorrupt,
 		},
 		{
-			name: "same generation different LSN",
+			name: "root physical generation", store: func() *fakePageStore {
+				store := existingStore()
+				root := store.pages[2]
+				root.Header.Generation++
+				store.pages[2] = root
+				return store
+			},
+			records: func(t *testing.T) []Record {
+				return []Record{{Type: TypeRoot, SpaceID: 7, PageID: 1, Payload: mustRootRedo(t, RootRedo{
+					ExpectedRevision: 1, Revision: 2,
+					ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
+				})}}
+			},
+			want: ErrCorrupt,
+		},
+		{
+			name: "same revision different LSN",
 			store: func() *fakePageStore {
 				store := existingStore()
 				control, err := treecontrol.Encode(treecontrol.State{
-					SpaceID: 7, Generation: 2, RootPageID: 2,
+					SpaceID: 7, Generation: 1, Revision: 2, RootPageID: 2,
 					NextPageID: 3, LSN: 999,
 				})
 				if err != nil {
@@ -309,7 +384,7 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 			},
 			records: func(t *testing.T) []Record {
 				return []Record{{Type: TypeRoot, SpaceID: 7, PageID: 1, Payload: mustRootRedo(t, RootRedo{
-					ExpectedGeneration: 1, Generation: 2,
+					ExpectedRevision: 1, Revision: 2,
 					ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
 				})}}
 			},
@@ -319,7 +394,7 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 			name: "ordinary Tree control Page redo", store: existingStore,
 			records: func(t *testing.T) []Record {
 				control, err := treecontrol.Encode(treecontrol.State{
-					SpaceID: 7, Generation: 2, RootPageID: 2,
+					SpaceID: 7, Generation: 1, Revision: 2, RootPageID: 2,
 					NextPageID: 3, LSN: 1,
 				})
 				if err != nil {
@@ -344,7 +419,7 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 			},
 			records: func(t *testing.T) []Record {
 				return []Record{{Type: TypeRoot, SpaceID: 7, PageID: 1, Payload: mustRootRedo(t, RootRedo{
-					ExpectedGeneration: 1, Generation: 2,
+					ExpectedRevision: 1, Revision: 2,
 					ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
 				})}}
 			},
@@ -354,7 +429,7 @@ func TestRecoverRejectsInvalidTreeMetadataBeforeWrite(t *testing.T) {
 			name: "unknown root version", store: existingStore,
 			records: func(t *testing.T) []Record {
 				payload := mustRootRedo(t, RootRedo{
-					ExpectedGeneration: 1, Generation: 2,
+					ExpectedRevision: 1, Revision: 2,
 					ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
 				})
 				binary.LittleEndian.PutUint16(payload[4:6], treeRedoVersion+1)
@@ -428,7 +503,8 @@ func TestRecoverTreeMetadataFaultsConverge(t *testing.T) {
 				t.Fatalf("Recover(retry) error = %v", err)
 			}
 			assertTreeControl(t, store, treecontrol.State{
-				SpaceID: 7, Generation: 1, RootPageID: 2, NextPageID: 3,
+				SpaceID: 7, Generation: 1, Revision: 1,
+				RootPageID: 2, NextPageID: 3,
 				LSN: committedRootLSN(t, segment, 0),
 			})
 			if root := store.pages[2]; root.Header.Type != page.TypeBTreeLeaf {
@@ -459,7 +535,7 @@ func TestRecoverTreeMetadataFaultsConverge(t *testing.T) {
 		if _, err := writer.Commit(2, []Record{{
 			Type: TypeRoot, SpaceID: 7, PageID: 1,
 			Payload: mustRootRedo(t, RootRedo{
-				ExpectedGeneration: 1, Generation: 2,
+				ExpectedRevision: 1, Revision: 2,
 				ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
 			}),
 		}}); err != nil {
@@ -508,7 +584,7 @@ func TestRecoverSegmentSetReopensTreeControlAfterCheckpoint(t *testing.T) {
 	if _, err := set.Commit(2, []Record{{
 		Type: TypeRoot, SpaceID: 7, PageID: 1,
 		Payload: mustRootRedo(t, RootRedo{
-			ExpectedGeneration: 1, Generation: 2,
+			ExpectedRevision: 1, Revision: 2,
 			ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3,
 		}),
 	}}); err != nil {
@@ -546,7 +622,8 @@ func TestRecoverSegmentSetReopensTreeControlAfterCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err := treecontrol.Decode(controlPage, 7)
-	if err != nil || state.Generation != 2 || state.RootPageID != 2 ||
+	if err != nil || state.Generation != 1 || state.Revision != 2 ||
+		state.RootPageID != 2 ||
 		state.NextPageID != 3 {
 		t.Fatalf("reopened Tree control = %#v, %v", state, err)
 	}
@@ -554,11 +631,15 @@ func TestRecoverSegmentSetReopensTreeControlAfterCheckpoint(t *testing.T) {
 
 func bootstrapTreeRecords(t *testing.T, spaceID uint64) []Record {
 	t.Helper()
+	root, err := btree.Encode(page.Header{
+		Type: page.TypeBTreeLeaf, SpaceID: spaceID, PageID: 2, Generation: 1,
+	}, btree.Node{Kind: btree.KindLeaf})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return append([]Record{{
 		Type: TypePageInit, SpaceID: spaceID, PageID: 2,
-		Payload: mustPageImage(t, page.Page{Header: page.Header{
-			Type: page.TypeBTreeLeaf, SpaceID: spaceID, PageID: 2, Generation: 1,
-		}}),
+		Payload: mustPageImage(t, root),
 	}}, bootstrapTreeMetadata(t, spaceID)...)
 }
 
@@ -568,13 +649,13 @@ func bootstrapTreeMetadata(t *testing.T, spaceID uint64) []Record {
 		{
 			Type: TypeAllocator, SpaceID: spaceID, PageID: 1,
 			Payload: mustAllocatorRedo(t, AllocatorRedo{
-				ExpectedGeneration: 0, ExpectedNextPageID: 2, NextPageID: 3,
+				ExpectedRevision: 0, ExpectedNextPageID: 2, NextPageID: 3,
 			}),
 		},
 		{
 			Type: TypeRoot, SpaceID: spaceID, PageID: 1,
 			Payload: mustRootRedo(t, RootRedo{
-				ExpectedGeneration: 0, Generation: 1,
+				ExpectedRevision: 0, Revision: 1,
 				ExpectedRootPageID: 0, RootPageID: 2, ExpectedNextPageID: 2,
 			}),
 		},
@@ -626,14 +707,14 @@ func assertTreeControl(
 }
 
 func testRootRedo(
-	expectedGeneration, generation, expectedRoot, root, expectedNext uint64,
+	expectedRevision, revision, expectedRoot, root, expectedNext uint64,
 ) []byte {
 	payload := make([]byte, 56)
 	copy(payload[:4], "MROT")
-	binary.LittleEndian.PutUint16(payload[4:6], 1)
+	binary.LittleEndian.PutUint16(payload[4:6], treeRedoVersion)
 	binary.LittleEndian.PutUint16(payload[6:8], 56)
-	binary.LittleEndian.PutUint64(payload[16:24], expectedGeneration)
-	binary.LittleEndian.PutUint64(payload[24:32], generation)
+	binary.LittleEndian.PutUint64(payload[16:24], expectedRevision)
+	binary.LittleEndian.PutUint64(payload[24:32], revision)
 	binary.LittleEndian.PutUint64(payload[32:40], expectedRoot)
 	binary.LittleEndian.PutUint64(payload[40:48], root)
 	binary.LittleEndian.PutUint64(payload[48:56], expectedNext)
@@ -641,14 +722,14 @@ func testRootRedo(
 }
 
 func testAllocatorRedo(
-	expectedGeneration, expectedNextPageID, nextPageID uint64,
+	expectedRevision, expectedNextPageID, nextPageID uint64,
 	retired ...uint64,
 ) []byte {
 	payload := make([]byte, 48+len(retired)*8)
 	copy(payload[:4], "MALL")
-	binary.LittleEndian.PutUint16(payload[4:6], 1)
+	binary.LittleEndian.PutUint16(payload[4:6], treeRedoVersion)
 	binary.LittleEndian.PutUint16(payload[6:8], 48)
-	binary.LittleEndian.PutUint64(payload[16:24], expectedGeneration)
+	binary.LittleEndian.PutUint64(payload[16:24], expectedRevision)
 	binary.LittleEndian.PutUint64(payload[24:32], expectedNextPageID)
 	binary.LittleEndian.PutUint64(payload[32:40], nextPageID)
 	binary.LittleEndian.PutUint32(payload[40:44], uint32(len(retired)))

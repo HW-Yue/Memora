@@ -13,7 +13,7 @@ import (
 const (
 	rootRedoSize        = 56
 	allocatorRedoHeader = 48
-	treeRedoVersion     = uint16(1)
+	treeRedoVersion     = uint16(2)
 )
 
 var (
@@ -22,15 +22,15 @@ var (
 )
 
 type RootRedo struct {
-	ExpectedGeneration uint64
-	Generation         uint64
+	ExpectedRevision   uint64
+	Revision           uint64
 	ExpectedRootPageID uint64
 	RootPageID         uint64
 	ExpectedNextPageID uint64
 }
 
 type AllocatorRedo struct {
-	ExpectedGeneration uint64
+	ExpectedRevision   uint64
 	ExpectedNextPageID uint64
 	NextPageID         uint64
 	RetiredPageIDs     []uint64
@@ -44,8 +44,8 @@ func EncodeRootRedo(value RootRedo) ([]byte, error) {
 	copy(encoded[:4], rootRedoMagic[:])
 	binary.LittleEndian.PutUint16(encoded[4:6], treeRedoVersion)
 	binary.LittleEndian.PutUint16(encoded[6:8], rootRedoSize)
-	binary.LittleEndian.PutUint64(encoded[16:24], value.ExpectedGeneration)
-	binary.LittleEndian.PutUint64(encoded[24:32], value.Generation)
+	binary.LittleEndian.PutUint64(encoded[16:24], value.ExpectedRevision)
+	binary.LittleEndian.PutUint64(encoded[24:32], value.Revision)
 	binary.LittleEndian.PutUint64(encoded[32:40], value.ExpectedRootPageID)
 	binary.LittleEndian.PutUint64(encoded[40:48], value.RootPageID)
 	binary.LittleEndian.PutUint64(encoded[48:56], value.ExpectedNextPageID)
@@ -64,7 +64,7 @@ func EncodeAllocatorRedo(value AllocatorRedo) ([]byte, error) {
 	copy(encoded[:4], allocatorRedoMagic[:])
 	binary.LittleEndian.PutUint16(encoded[4:6], treeRedoVersion)
 	binary.LittleEndian.PutUint16(encoded[6:8], allocatorRedoHeader)
-	binary.LittleEndian.PutUint64(encoded[16:24], value.ExpectedGeneration)
+	binary.LittleEndian.PutUint64(encoded[16:24], value.ExpectedRevision)
 	binary.LittleEndian.PutUint64(encoded[24:32], value.ExpectedNextPageID)
 	binary.LittleEndian.PutUint64(encoded[32:40], value.NextPageID)
 	binary.LittleEndian.PutUint32(encoded[40:44], uint32(len(value.RetiredPageIDs)))
@@ -85,8 +85,8 @@ func decodeRootRedo(encoded []byte) (RootRedo, error) {
 		return RootRedo{}, fmt.Errorf("%w: root redo version %d", ErrUnsupportedRedo, version)
 	}
 	value := RootRedo{
-		ExpectedGeneration: binary.LittleEndian.Uint64(encoded[16:24]),
-		Generation:         binary.LittleEndian.Uint64(encoded[24:32]),
+		ExpectedRevision:   binary.LittleEndian.Uint64(encoded[16:24]),
+		Revision:           binary.LittleEndian.Uint64(encoded[24:32]),
 		ExpectedRootPageID: binary.LittleEndian.Uint64(encoded[32:40]),
 		RootPageID:         binary.LittleEndian.Uint64(encoded[40:48]),
 		ExpectedNextPageID: binary.LittleEndian.Uint64(encoded[48:56]),
@@ -113,7 +113,7 @@ func decodeAllocatorRedo(encoded []byte) (AllocatorRedo, error) {
 		return AllocatorRedo{}, fmt.Errorf("%w: allocator retired Page count", ErrCorrupt)
 	}
 	value := AllocatorRedo{
-		ExpectedGeneration: binary.LittleEndian.Uint64(encoded[16:24]),
+		ExpectedRevision:   binary.LittleEndian.Uint64(encoded[16:24]),
 		ExpectedNextPageID: binary.LittleEndian.Uint64(encoded[24:32]),
 		NextPageID:         binary.LittleEndian.Uint64(encoded[32:40]),
 		RetiredPageIDs:     make([]uint64, count),
@@ -130,12 +130,12 @@ func decodeAllocatorRedo(encoded []byte) (AllocatorRedo, error) {
 }
 
 func validateRootRedo(value RootRedo, class error) error {
-	if value.ExpectedGeneration == math.MaxUint64 ||
-		value.Generation != value.ExpectedGeneration+1 ||
+	if value.ExpectedRevision == math.MaxUint64 ||
+		value.Revision != value.ExpectedRevision+1 ||
 		value.RootPageID < treecontrol.FirstDataPageID ||
 		value.ExpectedNextPageID < treecontrol.FirstDataPageID ||
-		(value.ExpectedGeneration == 0 && value.ExpectedRootPageID != 0) ||
-		(value.ExpectedGeneration != 0 &&
+		(value.ExpectedRevision == 0 && value.ExpectedRootPageID != 0) ||
+		(value.ExpectedRevision != 0 &&
 			(value.ExpectedRootPageID < treecontrol.FirstDataPageID ||
 				value.ExpectedRootPageID >= value.ExpectedNextPageID)) {
 		return fmt.Errorf("%w: root redo fields", class)
@@ -144,7 +144,7 @@ func validateRootRedo(value RootRedo, class error) error {
 }
 
 func validateAllocatorRedo(value AllocatorRedo, class error) error {
-	if value.ExpectedGeneration == math.MaxUint64 ||
+	if value.ExpectedRevision == math.MaxUint64 ||
 		value.ExpectedNextPageID < treecontrol.FirstDataPageID ||
 		value.NextPageID < value.ExpectedNextPageID ||
 		(value.NextPageID == value.ExpectedNextPageID &&

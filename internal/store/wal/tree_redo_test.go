@@ -9,7 +9,7 @@ import (
 
 func TestTreeRedoCodecRoundTripAndValidation(t *testing.T) {
 	root := RootRedo{
-		ExpectedGeneration: 2, Generation: 3,
+		ExpectedRevision: 2, Revision: 3,
 		ExpectedRootPageID: 4, RootPageID: 6, ExpectedNextPageID: 5,
 	}
 	encodedRoot, err := EncodeRootRedo(root)
@@ -21,7 +21,7 @@ func TestTreeRedoCodecRoundTripAndValidation(t *testing.T) {
 		t.Fatalf("root round trip = %#v, %v", decodedRoot, err)
 	}
 	allocator := AllocatorRedo{
-		ExpectedGeneration: 2, ExpectedNextPageID: 5, NextPageID: 7,
+		ExpectedRevision: 2, ExpectedNextPageID: 5, NextPageID: 7,
 		RetiredPageIDs: []uint64{2, 4},
 	}
 	encodedAllocator, err := EncodeAllocatorRedo(allocator)
@@ -39,9 +39,9 @@ func TestTreeRedoCodecRoundTripAndValidation(t *testing.T) {
 
 	invalidRoots := []RootRedo{
 		{},
-		{ExpectedGeneration: ^uint64(0), Generation: 0, RootPageID: 2, ExpectedNextPageID: 3},
-		{ExpectedGeneration: 1, Generation: 3, ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3},
-		{ExpectedGeneration: 1, Generation: 2, ExpectedRootPageID: 3, RootPageID: 2, ExpectedNextPageID: 3},
+		{ExpectedRevision: ^uint64(0), Revision: 0, RootPageID: 2, ExpectedNextPageID: 3},
+		{ExpectedRevision: 1, Revision: 3, ExpectedRootPageID: 2, RootPageID: 2, ExpectedNextPageID: 3},
+		{ExpectedRevision: 1, Revision: 2, ExpectedRootPageID: 3, RootPageID: 2, ExpectedNextPageID: 3},
 	}
 	for index, value := range invalidRoots {
 		if _, err := EncodeRootRedo(value); !errors.Is(err, ErrInvalid) {
@@ -50,7 +50,7 @@ func TestTreeRedoCodecRoundTripAndValidation(t *testing.T) {
 	}
 	invalidAllocators := []AllocatorRedo{
 		{},
-		{ExpectedGeneration: ^uint64(0), ExpectedNextPageID: 2, NextPageID: 3},
+		{ExpectedRevision: ^uint64(0), ExpectedNextPageID: 2, NextPageID: 3},
 		{ExpectedNextPageID: 2, NextPageID: 2},
 		{ExpectedNextPageID: 4, NextPageID: 3},
 		{ExpectedNextPageID: 5, NextPageID: 5, RetiredPageIDs: []uint64{4, 3}},
@@ -77,14 +77,14 @@ func TestTreeRedoCodecRoundTripAndValidation(t *testing.T) {
 
 func TestTreeRedoCodecRejectsCorruptPayload(t *testing.T) {
 	root, err := EncodeRootRedo(RootRedo{
-		ExpectedGeneration: 1, Generation: 2,
+		ExpectedRevision: 1, Revision: 2,
 		ExpectedRootPageID: 2, RootPageID: 3, ExpectedNextPageID: 3,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	allocator, err := EncodeAllocatorRedo(AllocatorRedo{
-		ExpectedGeneration: 1, ExpectedNextPageID: 3, NextPageID: 4,
+		ExpectedRevision: 1, ExpectedNextPageID: 3, NextPageID: 4,
 	})
 	if err != nil {
 		t.Fatal(err)

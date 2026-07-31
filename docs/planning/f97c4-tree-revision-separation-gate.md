@@ -1,6 +1,6 @@
 # F97c4 Tree Revision Separation 开工与完成门
 
-状态：已批准；授权来自 2026-07-31 后续 Feature 持续执行指令。
+状态：已实现并验收，PASS；授权来自 2026-07-31 后续 Feature 持续执行指令。
 
 ## 唯一结果
 
@@ -28,3 +28,13 @@ revision，连续普通提交保持同一 Page generation。
 - treecontrol、wal、btree 受影响包 race；
 - 全仓 test/race/vet、format、`git diff --check` 与 `./scripts/ci.sh`；
 - 独立原子 commit，完成后才进入 F97d1。
+
+## 完成证据
+
+- control v2 golden/bootstrap、redo v2 round-trip 与 v1/unknown/corruption 拒绝通过；
+- recovery 连续发布只增加 revision，control 与未触及 root Page 的 physical generation
+  保持一致，随后 Mutation Planner 可正常读取；
+- root Page physical generation 错误在事务写入前拒绝；
+- bootstrap、grow/shrink、fault retry、checkpoint/reopen 与 F97c3 回归通过；
+- targeted codec/recovery `-count=20` 及 treecontrol/wal/btree `-race` 均 PASS；
+- 全仓 test/race/vet、format、`git diff --check` 与 CI 证据在合入前完成。

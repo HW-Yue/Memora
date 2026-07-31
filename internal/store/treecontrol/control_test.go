@@ -12,7 +12,8 @@ import (
 
 func TestControlCodecGoldenAndRoundTrip(t *testing.T) {
 	state := State{
-		SpaceID: 7, Generation: 3, RootPageID: 9, NextPageID: 12, LSN: 44,
+		SpaceID: 7, Generation: 3, Revision: 7,
+		RootPageID: 9, NextPageID: 12, LSN: 44,
 	}
 	value, err := Encode(state)
 	if err != nil {
@@ -24,11 +25,12 @@ func TestControlCodecGoldenAndRoundTrip(t *testing.T) {
 		t.Fatalf("Header = %#v", value.Header)
 	}
 	wantPayload := make([]byte, payloadSize)
-	copy(wantPayload[:8], "MEMTRC01")
-	binary.LittleEndian.PutUint16(wantPayload[8:10], 1)
+	copy(wantPayload[:8], "MEMTRC02")
+	binary.LittleEndian.PutUint16(wantPayload[8:10], 2)
 	binary.LittleEndian.PutUint16(wantPayload[10:12], payloadSize)
-	binary.LittleEndian.PutUint64(wantPayload[16:24], 9)
-	binary.LittleEndian.PutUint64(wantPayload[24:32], 12)
+	binary.LittleEndian.PutUint64(wantPayload[16:24], 7)
+	binary.LittleEndian.PutUint64(wantPayload[24:32], 9)
+	binary.LittleEndian.PutUint64(wantPayload[32:40], 12)
 	if !bytes.Equal(value.Payload, wantPayload) {
 		t.Fatalf("Payload = %x", value.Payload)
 	}
@@ -52,10 +54,11 @@ func TestBootstrapControlRoundTrip(t *testing.T) {
 
 func TestControlCodecRejectsInvalidStateAndCorruption(t *testing.T) {
 	for name, state := range map[string]State{
-		"zero generation": {SpaceID: 7, RootPageID: 2, NextPageID: 3, LSN: 1},
-		"zero root":       {SpaceID: 7, Generation: 1, NextPageID: 3, LSN: 1},
-		"root at next":    {SpaceID: 7, Generation: 1, RootPageID: 3, NextPageID: 3, LSN: 1},
-		"zero LSN":        {SpaceID: 7, Generation: 1, RootPageID: 2, NextPageID: 3},
+		"zero generation": {SpaceID: 7, Revision: 1, RootPageID: 2, NextPageID: 3, LSN: 1},
+		"zero revision":   {SpaceID: 7, Generation: 1, RootPageID: 2, NextPageID: 3, LSN: 1},
+		"zero root":       {SpaceID: 7, Generation: 1, Revision: 1, NextPageID: 3, LSN: 1},
+		"root at next":    {SpaceID: 7, Generation: 1, Revision: 1, RootPageID: 3, NextPageID: 3, LSN: 1},
+		"zero LSN":        {SpaceID: 7, Generation: 1, Revision: 1, RootPageID: 2, NextPageID: 3},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Encode(state); !errors.Is(err, ErrInvalid) {
@@ -65,7 +68,8 @@ func TestControlCodecRejectsInvalidStateAndCorruption(t *testing.T) {
 	}
 
 	valid, err := Encode(State{
-		SpaceID: 7, Generation: 1, RootPageID: 2, NextPageID: 3, LSN: 9,
+		SpaceID: 7, Generation: 1, Revision: 1,
+		RootPageID: 2, NextPageID: 3, LSN: 9,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -83,17 +87,20 @@ func TestControlCodecRejectsInvalidStateAndCorruption(t *testing.T) {
 		{"LSN", func(value *page.Page) { value.Header.LSN = 0 }, ErrCorrupt},
 		{"magic", func(value *page.Page) { value.Payload[0] ^= 1 }, ErrCorrupt},
 		{"version", func(value *page.Page) {
-			binary.LittleEndian.PutUint16(value.Payload[8:10], 2)
+			binary.LittleEndian.PutUint16(value.Payload[8:10], 3)
 		}, ErrUnsupportedVersion},
 		{"size", func(value *page.Page) {
 			binary.LittleEndian.PutUint16(value.Payload[10:12], 31)
 		}, ErrCorrupt},
 		{"reserved", func(value *page.Page) { value.Payload[12] = 1 }, ErrCorrupt},
+		{"revision", func(value *page.Page) {
+			binary.LittleEndian.PutUint64(value.Payload[16:24], 0)
+		}, ErrCorrupt},
 		{"root", func(value *page.Page) {
-			binary.LittleEndian.PutUint64(value.Payload[16:24], 1)
+			binary.LittleEndian.PutUint64(value.Payload[24:32], 1)
 		}, ErrCorrupt},
 		{"high-water", func(value *page.Page) {
-			binary.LittleEndian.PutUint64(value.Payload[24:32], 2)
+			binary.LittleEndian.PutUint64(value.Payload[32:40], 2)
 		}, ErrCorrupt},
 	}
 	for _, test := range tests {
@@ -110,7 +117,8 @@ func TestControlCodecRejectsInvalidStateAndCorruption(t *testing.T) {
 
 func TestControlCodecCorruptionSeed(t *testing.T) {
 	valid, err := Encode(State{
-		SpaceID: 7, Generation: 1, RootPageID: 2, NextPageID: 3, LSN: 9,
+		SpaceID: 7, Generation: 1, Revision: 1,
+		RootPageID: 2, NextPageID: 3, LSN: 9,
 	})
 	if err != nil {
 		t.Fatal(err)

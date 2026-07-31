@@ -12,27 +12,30 @@ import (
 const (
 	PageID          = uint64(1)
 	FirstDataPageID = uint64(2)
-	payloadSize     = 32
-	formatVersion   = uint16(1)
+	payloadSize     = 40
+	formatVersion   = uint16(2)
 )
 
 var (
 	ErrCorrupt            = errors.New("Tree control Page is corrupt")
 	ErrInvalid            = errors.New("Tree control state is invalid")
 	ErrUnsupportedVersion = errors.New("Tree control version is unsupported")
-	controlMagic          = [8]byte{'M', 'E', 'M', 'T', 'R', 'C', '0', '1'}
+	controlMagic          = [8]byte{'M', 'E', 'M', 'T', 'R', 'C', '0', '2'}
 )
 
 type State struct {
 	SpaceID    uint64
 	Generation uint64
+	Revision   uint64
 	RootPageID uint64
 	NextPageID uint64
 	LSN        uint64
 }
 
 func Bootstrap(spaceID uint64) State {
-	return State{SpaceID: spaceID, NextPageID: FirstDataPageID}
+	return State{
+		SpaceID: spaceID, Generation: 1, NextPageID: FirstDataPageID,
+	}
 }
 
 func EncodeBootstrap(spaceID uint64) page.Page {
@@ -51,8 +54,9 @@ func Encode(value State) (page.Page, error) {
 	copy(payload[:8], controlMagic[:])
 	binary.LittleEndian.PutUint16(payload[8:10], formatVersion)
 	binary.LittleEndian.PutUint16(payload[10:12], payloadSize)
-	binary.LittleEndian.PutUint64(payload[16:24], value.RootPageID)
-	binary.LittleEndian.PutUint64(payload[24:32], value.NextPageID)
+	binary.LittleEndian.PutUint64(payload[16:24], value.Revision)
+	binary.LittleEndian.PutUint64(payload[24:32], value.RootPageID)
+	binary.LittleEndian.PutUint64(payload[32:40], value.NextPageID)
 	return page.Page{
 		Header: page.Header{
 			Type:       page.TypeTreeControl,
@@ -86,8 +90,9 @@ func Decode(value page.Page, expectedSpaceID uint64) (State, error) {
 	state := State{
 		SpaceID:    expectedSpaceID,
 		Generation: value.Header.Generation,
-		RootPageID: binary.LittleEndian.Uint64(value.Payload[16:24]),
-		NextPageID: binary.LittleEndian.Uint64(value.Payload[24:32]),
+		Revision:   binary.LittleEndian.Uint64(value.Payload[16:24]),
+		RootPageID: binary.LittleEndian.Uint64(value.Payload[24:32]),
+		NextPageID: binary.LittleEndian.Uint64(value.Payload[32:40]),
 		LSN:        value.Header.LSN,
 	}
 	if err := validatePersistentState(state); err != nil {
@@ -97,13 +102,15 @@ func Decode(value page.Page, expectedSpaceID uint64) (State, error) {
 }
 
 func validatePersistentState(value State) error {
-	if value.Generation == 0 &&
+	if value.Generation == 1 &&
+		value.Revision == 0 &&
 		value.RootPageID == 0 &&
 		value.NextPageID == FirstDataPageID &&
 		value.LSN == 0 {
 		return nil
 	}
 	if value.Generation == 0 ||
+		value.Revision == 0 ||
 		value.RootPageID < FirstDataPageID ||
 		value.NextPageID <= value.RootPageID ||
 		value.LSN == 0 {

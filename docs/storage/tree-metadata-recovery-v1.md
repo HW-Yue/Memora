@@ -1,6 +1,7 @@
 # Tree Metadata Recovery v1
 
-状态：F97c3 已实现并验收，PASS；依赖 F97c1/F97c2。
+状态：F97c3 已实现并验收；generation 比较语义已被
+[Tree Control v2](./tree-control-v2.md) 的 publication revision 取代。
 
 ## 唯一结果
 
@@ -23,8 +24,9 @@ Manager 可连续分配 Page 2；随后写普通 Page 并 Sync，再覆盖 commi
 Sync。普通 Page 与 control 之间的持久化屏障是 root-last 的必要条件，不能只依赖写入
 调用顺序。
 
-exact generation/state/LSN 可跳过；磁盘 generation 更高时旧 metadata redo 幂等跳过；
-generation 缺口、相同 generation 不同状态或坏 control 一律 corruption。I/O 失败不
+exact revision/state/LSN 可跳过；磁盘 revision 更高时旧 metadata redo 幂等跳过；
+revision 缺口、相同 revision 不同状态、physical generation 不一致或坏 control一律
+corruption。I/O 失败不
 报告事务恢复完成，重复执行必须收敛。
 
 ## 明确不做
