@@ -1,0 +1,232 @@
+package rowversionindex
+
+import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"math"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/HW-Yue/Memora/internal/row"
+)
+
+const (
+	keyVersion        = byte(1)
+	keyRevision       = byte(1)
+	keyCommit         = byte(2)
+	keyIdentity       = byte(3)
+	locatorVersion    = uint16(1)
+	locatorHeaderSize = 48
+	maxComponentBytes = 2048
+)
+
+var (
+	ErrInvalid  = errors.New("Row Version Index input is invalid")
+	ErrNotFound = errors.New("Row Version Index key was not found")
+	ErrConflict = errors.New("Row Version Index immutable locator conflicts")
+	ErrCorrupt  = errors.New("Row Version Index is corrupt")
+
+	locatorMagic = [8]byte{'M', 'E', 'M', 'R', 'V', 'O', '0', '1'}
+)
+
+type Locator struct {
+	DatabaseID     string
+	TableID        string
+	RowID          string
+	SchemaRevision uint64
+	Revision       uint64
+	CommitSequence uint64
+	State          row.State
+}
+
+func revisionKey(rowID string, revision uint64) ([]byte, error) {
+	if revision == 0 {
+		return nil, fmt.Errorf("%w: zero revision", ErrInvalid)
+	}
+	key, err := rowPrefix(keyRevision, rowID)
+	if err != nil {
+		return nil, err
+	}
+	return binary.BigEndian.AppendUint64(key, revision), nil
+}
+
+func commitKey(rowID string, sequence, revision uint64) ([]byte, error) {
+	if sequence == 0 || revision == 0 {
+		return nil, fmt.Errorf("%w: zero commit sequence or revision", ErrInvalid)
+	}
+	key, err := rowPrefix(keyCommit, rowID)
+	if err != nil {
+		return nil, err
+	}
+	key = binary.BigEndian.AppendUint64(key, math.MaxUint64-sequence)
+	return binary.BigEndian.AppendUint64(key, math.MaxUint64-revision), nil
+}
+
+func commitStart(rowID string, sequence uint64) ([]byte, error) {
+	if sequence == 0 {
+		return nil, fmt.Errorf("%w: zero commit sequence", ErrInvalid)
+	}
+	key, err := rowPrefix(keyCommit, rowID)
+	if err != nil {
+		return nil, err
+	}
+	return binary.BigEndian.AppendUint64(key, math.MaxUint64-sequence), nil
+}
+
+func commitRowPrefix(rowID string) ([]byte, error) {
+	return rowPrefix(keyCommit, rowID)
+}
+
+func identityKey(rowID string) ([]byte, error) {
+	return rowPrefix(keyIdentity, rowID)
+}
+
+func rowPrefix(kind byte, rowID string) ([]byte, error) {
+	if kind < keyRevision || kind > keyIdentity || !validComponent(rowID) {
+		return nil, fmt.Errorf("%w: key kind or Row ID", ErrInvalid)
+	}
+	result := make([]byte, 4+len(rowID))
+	result[0], result[1] = keyVersion, kind
+	binary.BigEndian.PutUint16(result[2:4], uint16(len(rowID)))
+	copy(result[4:], rowID)
+	return result, nil
+}
+
+func prefixSuccessor(prefix []byte) ([]byte, error) {
+	result := bytes.Clone(prefix)
+	for index := len(result) - 1; index >= 0; index-- {
+		if result[index] != 0xff {
+			result[index]++
+			return result[:index+1], nil
+		}
+	}
+	return nil, fmt.Errorf("%w: key prefix has no successor", ErrInvalid)
+}
+
+func encodeLocator(value Locator) ([]byte, error) {
+	if err := validateLocator(value, ErrInvalid); err != nil {
+		return nil, err
+	}
+	state, err := encodeState(value.State, ErrInvalid)
+	if err != nil {
+		return nil, err
+	}
+	size := locatorHeaderSize + len(value.DatabaseID) + len(value.TableID) + len(value.RowID)
+	result := make([]byte, size)
+	copy(result[:8], locatorMagic[:])
+	binary.LittleEndian.PutUint16(result[8:10], locatorVersion)
+	binary.LittleEndian.PutUint16(result[10:12], state)
+	binary.LittleEndian.PutUint64(result[16:24], value.SchemaRevision)
+	binary.LittleEndian.PutUint64(result[24:32], value.Revision)
+	binary.LittleEndian.PutUint64(result[32:40], value.CommitSequence)
+	binary.LittleEndian.PutUint16(result[40:42], uint16(len(value.DatabaseID)))
+	binary.LittleEndian.PutUint16(result[42:44], uint16(len(value.TableID)))
+	binary.LittleEndian.PutUint16(result[44:46], uint16(len(value.RowID)))
+	offset := locatorHeaderSize
+	for _, component := range []string{value.DatabaseID, value.TableID, value.RowID} {
+		copy(result[offset:], component)
+		offset += len(component)
+	}
+	return result, nil
+}
+
+func decodeLocator(encoded []byte) (Locator, error) {
+	if len(encoded) < locatorHeaderSize ||
+		!bytes.Equal(encoded[:8], locatorMagic[:]) ||
+		binary.LittleEndian.Uint16(encoded[8:10]) != locatorVersion ||
+		binary.LittleEndian.Uint32(encoded[12:16]) != 0 ||
+		binary.LittleEndian.Uint16(encoded[46:48]) != 0 {
+		return Locator{}, fmt.Errorf("%w: locator header", ErrCorrupt)
+	}
+	lengths := [3]int{
+		int(binary.LittleEndian.Uint16(encoded[40:42])),
+		int(binary.LittleEndian.Uint16(encoded[42:44])),
+		int(binary.LittleEndian.Uint16(encoded[44:46])),
+	}
+	total := locatorHeaderSize
+	for _, length := range lengths {
+		if length == 0 || length > maxComponentBytes {
+			return Locator{}, fmt.Errorf("%w: locator component size", ErrCorrupt)
+		}
+		total += length
+	}
+	if total != len(encoded) {
+		return Locator{}, fmt.Errorf("%w: locator length", ErrCorrupt)
+	}
+	offset := locatorHeaderSize
+	components := [3]string{}
+	for index, length := range lengths {
+		value := encoded[offset : offset+length]
+		if !utf8.Valid(value) {
+			return Locator{}, fmt.Errorf("%w: locator UTF-8", ErrCorrupt)
+		}
+		components[index] = string(value)
+		offset += length
+	}
+	state, err := decodeState(binary.LittleEndian.Uint16(encoded[10:12]))
+	if err != nil {
+		return Locator{}, err
+	}
+	result := Locator{
+		DatabaseID:     components[0],
+		TableID:        components[1],
+		RowID:          components[2],
+		SchemaRevision: binary.LittleEndian.Uint64(encoded[16:24]),
+		Revision:       binary.LittleEndian.Uint64(encoded[24:32]),
+		CommitSequence: binary.LittleEndian.Uint64(encoded[32:40]),
+		State:          state,
+	}
+	if err := validateLocator(result, ErrCorrupt); err != nil {
+		return Locator{}, err
+	}
+	return result, nil
+}
+
+func validateLocator(value Locator, class error) error {
+	if !validComponent(value.DatabaseID) ||
+		!validComponent(value.TableID) ||
+		!validComponent(value.RowID) ||
+		value.SchemaRevision == 0 ||
+		value.Revision == 0 {
+		return fmt.Errorf("%w: locator identity or revision", class)
+	}
+	if _, err := encodeState(value.State, class); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validComponent(value string) bool {
+	return value != "" &&
+		len(value) <= maxComponentBytes &&
+		utf8.ValidString(value) &&
+		strings.TrimSpace(value) == value
+}
+
+func encodeState(value row.State, class error) (uint16, error) {
+	switch value {
+	case row.StateLive:
+		return 1, nil
+	case row.StateDeleted:
+		return 2, nil
+	case row.StateSuperseded:
+		return 3, nil
+	default:
+		return 0, fmt.Errorf("%w: locator state", class)
+	}
+}
+
+func decodeState(value uint16) (row.State, error) {
+	switch value {
+	case 1:
+		return row.StateLive, nil
+	case 2:
+		return row.StateDeleted, nil
+	case 3:
+		return row.StateSuperseded, nil
+	default:
+		return "", fmt.Errorf("%w: locator state", ErrCorrupt)
+	}
+}

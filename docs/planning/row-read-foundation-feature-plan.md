@@ -1,7 +1,7 @@
 # 存储内核小 Feature 计划
 
-状态：F81–F109 执行顺序及持续实现已获用户授权；F81–F99 已完成，下一项为
-F100 Row Version Index。后续仍逐项 Review、测试、验收和合入，但无需等待
+状态：F81–F109 执行顺序及持续实现已获用户授权；F81–F100 已完成，下一项为
+F101 Table Cursor Index。后续仍逐项 Review、测试、验收和合入，但无需等待
 重复授权。
 
 ## 当前缺口与目标
@@ -71,7 +71,7 @@ F97b 修订证据见
 | --- | --- | --- |
 | F98 Catalog Lookup | Describe 重读完整 Catalog | 已完成：identity/name/alias/Schema revision 走树 |
 | F99 Current Row | RowID Get 扫其他 revision | 已完成：current Row locator 走树 |
-| F100 Row Version | as-of/history 扫其他 Row | revision/sequence locator 走树 |
+| F100 Row Version | as-of/history 扫其他 Row | 已完成：revision/sequence locator 走树 |
 | F101 Table Cursor | 分页 decode 全表且重漏 | live/tombstone Row 有序分页 |
 | F102 MSQL Point-Get | exact predicate 仍走旧 IDs | Executor 切新索引且 envelope 等价 |
 | F103 Snapshot Visibility | 长 reader 混入新 commit | statement/transaction snapshot 与 own writes |

@@ -211,6 +211,9 @@ crash-before-flush 由 WAL 恢复，not-found/corruption 不允许回退全量 C
 117. F99 已建立持久化 Current Row Index：Table ID + RowID 精确返回当前 Schema
 revision、Row revision、commit sequence 与 live/deleted/superseded 状态；整批
 expected revision 在 WAL 前校验，当前 revision 只允许单调推进并支持幂等重试。
+118. F100 已建立持久化 Row Version Index：exact revision 走点查，AS OF commit
+通过倒序 sequence/revision 键用一次 forward cursor 求 floor；legacy sequence 0
+只进入 revision key，immutable locator 与稳定 Row identity 均在 WAL 前校验。
 
 ## 尚需验证
 
