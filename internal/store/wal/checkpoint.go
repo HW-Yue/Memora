@@ -74,11 +74,14 @@ func (set *SegmentSet) PublishCheckpoint(barrier DurabilityBarrier) (Checkpoint,
 		Payload: encodeCheckpointPayload(checkpoint),
 	})
 	if err != nil {
+		if errors.Is(err, ErrInvalid) || errors.Is(err, ErrPoisoned) || errors.Is(err, ErrClosed) {
+			return Checkpoint{}, err
+		}
 		active.markPoisoned()
-		return Checkpoint{}, fmt.Errorf("append WAL checkpoint: %w", err)
+		return Checkpoint{}, outcomeUnknown("append WAL checkpoint", err)
 	}
 	if err := active.Sync(); err != nil {
-		return Checkpoint{}, err
+		return Checkpoint{}, outcomeUnknown("sync WAL checkpoint", err)
 	}
 	durableLSN, err := active.DurableLSN()
 	if err != nil {
@@ -86,6 +89,12 @@ func (set *SegmentSet) PublishCheckpoint(barrier DurabilityBarrier) (Checkpoint,
 	}
 	checkpoint.RecordLSN = recordLSN
 	checkpoint.DurableLSN = durableLSN
+	if err := set.publishFrontier(
+		active.segmentID, durableLSN, set.frontier.LastTransactionID,
+	); err != nil {
+		active.markPoisoned()
+		return Checkpoint{}, outcomeUnknown("publish checkpoint frontier", err)
+	}
 	set.lastCheckpoint = checkpoint
 	set.hasCheckpoint = true
 	return checkpoint, nil

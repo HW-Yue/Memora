@@ -1,7 +1,7 @@
 # 存储内核小 Feature 计划
 
-状态：F81–F109 执行顺序已获用户授权；F81–F97a 已完成。F97b Review 发现 durable
-frontier 前置缺口，建议拆为 F97b1/F97b2，待用户确认；后续仍需逐项授权。
+状态：F81–F109 执行顺序已获用户授权；F81–F97b1 已完成。F97b2 Repairing Open
+待 Review，后续仍需逐项授权。
 
 ## 当前缺口与目标
 

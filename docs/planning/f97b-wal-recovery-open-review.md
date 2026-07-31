@@ -1,6 +1,6 @@
 # F97b WAL Recovery Open 拆分 Review
 
-状态：REVISE；发现 durable frontier 前置缺口，待用户确认语义与拆分，未授权实现。
+状态：REVISE 结论已确认；F97b1 已完成，F97b2 待 Review 和授权。
 
 ## 产品门
 
@@ -53,5 +53,6 @@ decision 的事务不发布；decision I/O 错误返回 outcome unknown，由 re
 ## 决定门
 
 - 原 F97b：REVISE，不实现；
-- 推荐：批准 outcome-unknown 语义及 F97b1/F97b2 拆分；
-- 当前授权：仅完成本 Review，未取得任一实现授权。
+- outcome-unknown 语义及 F97b1/F97b2 拆分：已批准；
+- F97b1：完成，PASS；
+- F97b2：下一候选，仍需单独 Review 和授权。

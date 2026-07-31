@@ -246,6 +246,8 @@ func inspectSetDirectory(
 	segments := make([]os.DirEntry, 0, len(entries))
 	for _, entry := range entries {
 		switch {
+		case isFrontierFilename(entry.Name()) && !entry.IsDir():
+			continue
 		case entry.Name() == segmentManifestName && !entry.IsDir():
 			if hasManifest {
 				return nil, manifest, false, fmt.Errorf("%w: duplicate manifest", ErrCorrupt)

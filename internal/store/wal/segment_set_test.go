@@ -150,8 +150,12 @@ func TestOpenSegmentSetRejectsDuplicateTransactionAcrossSegments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTransactionWriter() error = %v", err)
 	}
-	if _, err := rawWriter.Commit(1, []Record{{Type: TypePageDelta}}); err != nil {
+	duplicate, err := rawWriter.Commit(1, []Record{{Type: TypePageDelta}})
+	if err != nil {
 		t.Fatalf("raw Commit(duplicate) error = %v", err)
+	}
+	if err := set.publishFrontier(2, duplicate.DurableLSN, 1); err != nil {
+		t.Fatalf("publish duplicate frontier error = %v", err)
 	}
 	if err := set.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)

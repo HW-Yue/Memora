@@ -47,6 +47,8 @@ type SegmentSet struct {
 	retainedManifest              retainedManifest
 	hasRetainedManifest           bool
 	reclaimedTransactionHighWater uint64
+	frontierFiles                 [2]segmentFile
+	frontier                      frontierState
 }
 
 func CreateSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
@@ -80,14 +82,33 @@ func CreateSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 	if err != nil {
 		return nil, err
 	}
+	firstLSN, err := segment.NextLSN()
+	if err != nil {
+		return nil, err
+	}
+	frontierFiles, frontier, err := createFrontierControls(directory, FrontierInfo{
+		Generation: 1, SegmentID: 1, DurableEndLSN: firstLSN,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cleanupFrontier := true
+	defer func() {
+		if cleanupFrontier {
+			closeAndRemoveFrontierFiles(directory, frontierFiles)
+		}
+	}()
 	cleanupSegment = false
 	cleanupDirectory = false
+	cleanupFrontier = false
 	set := &SegmentSet{
 		directory:      directory,
 		segments:       []*Segment{segment},
 		writer:         writer,
 		transactionIDs: make(map[uint64]struct{}),
 		createSegment:  Create,
+		frontierFiles:  frontierFiles,
+		frontier:       frontier,
 	}
 	configureReclaimOperations(set)
 	return set, nil
@@ -112,6 +133,16 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 	if err != nil {
 		return nil, err
 	}
+	frontierFiles, frontier, err := openFrontierControls(directory)
+	if err != nil {
+		return nil, err
+	}
+	closeFrontierOnError := true
+	defer func() {
+		if closeFrontierOnError {
+			_ = closeFrontierFiles(frontierFiles)
+		}
+	}()
 
 	segments := make([]*Segment, 0, len(segmentEntries))
 	closeOnError := true
@@ -140,6 +171,11 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 		segmentID, err := parseSegmentFilename(entry.Name())
 		if err != nil || entry.IsDir() || segmentID != firstSegmentID+uint64(index) {
 			return nil, fmt.Errorf("%w: invalid Segment Set entry %q", ErrCorrupt, entry.Name())
+		}
+		if err := validateFrontierFileBoundary(
+			entry, segmentID, expectedStartLSN, frontier.FrontierInfo,
+		); err != nil {
+			return nil, err
 		}
 		segment, err := Open(
 			filepath.Join(directory, entry.Name()),
@@ -210,6 +246,22 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 			return nil, err
 		}
 	}
+	if len(segments) == 0 || segments[len(segments)-1].segmentID != frontier.SegmentID {
+		return nil, fmt.Errorf("%w: durable frontier Segment is missing", ErrCorrupt)
+	}
+	if expectedStartLSN != frontier.DurableEndLSN {
+		return nil, fmt.Errorf("%w: durable frontier end LSN", ErrCorrupt)
+	}
+	if lastCommitDurableLSN != 0 && frontier.LastTransactionID == 0 {
+		return nil, fmt.Errorf("%w: durable frontier lost last transaction", ErrCorrupt)
+	}
+	if frontier.LastTransactionID != 0 {
+		_, retainedTransaction := transactionIDs[frontier.LastTransactionID]
+		if !retainedTransaction &&
+			(!hasRetained || frontier.LastTransactionID > retained.ReclaimedTransactionHigh) {
+			return nil, fmt.Errorf("%w: durable frontier transaction identity", ErrCorrupt)
+		}
+	}
 	if hasRetained && !foundRetainedCheckpoint {
 		return nil, fmt.Errorf("%w: retained checkpoint is missing", ErrCorrupt)
 	}
@@ -218,6 +270,7 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 		return nil, err
 	}
 	closeOnError = false
+	closeFrontierOnError = false
 	set := &SegmentSet{
 		directory:                     directory,
 		segments:                      segments,
@@ -232,6 +285,8 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 		retainedManifest:              retained,
 		hasRetainedManifest:           hasRetained,
 		reclaimedTransactionHighWater: retained.ReclaimedTransactionHigh,
+		frontierFiles:                 frontierFiles,
+		frontier:                      frontier,
 	}
 	configureReclaimOperations(set)
 	return set, nil
@@ -251,7 +306,16 @@ func (set *SegmentSet) Commit(transactionID uint64, records []Record) (Receipt, 
 	}
 	receipt, err := set.writer.Commit(transactionID, records)
 	if err != nil {
-		return Receipt{}, err
+		if errors.Is(err, ErrInvalid) || errors.Is(err, ErrDuplicateTransaction) ||
+			errors.Is(err, ErrPoisoned) || errors.Is(err, ErrClosed) {
+			return Receipt{}, err
+		}
+		return Receipt{}, outcomeUnknown("commit WAL", err)
+	}
+	active := set.segments[len(set.segments)-1]
+	if err := set.publishFrontier(active.segmentID, receipt.DurableLSN, transactionID); err != nil {
+		active.markPoisoned()
+		return Receipt{}, outcomeUnknown("publish commit frontier", err)
 	}
 	set.transactionIDs[transactionID] = struct{}{}
 	set.activeCommits++
@@ -286,7 +350,7 @@ func (set *SegmentSet) Roll() (SegmentInfo, error) {
 		return SegmentInfo{}, fmt.Errorf("%w: active Segment changed outside Set", ErrCorrupt)
 	}
 	if err := active.Sync(); err != nil {
-		return SegmentInfo{}, err
+		return SegmentInfo{}, outcomeUnknown("sync active Segment for roll", err)
 	}
 	startLSN, err := active.NextLSN()
 	if err != nil {
@@ -304,12 +368,21 @@ func (set *SegmentSet) Roll() (SegmentInfo, error) {
 	writer, err := NewTransactionWriter(segment)
 	if err != nil {
 		_ = segment.Close()
-		return SegmentInfo{}, err
+		active.markPoisoned()
+		return SegmentInfo{}, outcomeUnknown("open new active Segment", err)
 	}
 	nextLSN, err := segment.NextLSN()
 	if err != nil {
 		_ = segment.Close()
-		return SegmentInfo{}, err
+		active.markPoisoned()
+		return SegmentInfo{}, outcomeUnknown("read new active Segment boundary", err)
+	}
+	if err := set.publishFrontier(
+		segmentID, nextLSN, set.frontier.LastTransactionID,
+	); err != nil {
+		_ = segment.Close()
+		active.markPoisoned()
+		return SegmentInfo{}, outcomeUnknown("publish roll frontier", err)
 	}
 	set.segments = append(set.segments, segment)
 	set.writer = writer
@@ -377,6 +450,7 @@ func (set *SegmentSet) Close() error {
 	for _, segment := range set.segments {
 		result = errors.Join(result, segment.Close())
 	}
+	result = errors.Join(result, closeFrontierFiles(set.frontierFiles))
 	return result
 }
 
