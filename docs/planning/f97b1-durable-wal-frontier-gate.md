@@ -1,6 +1,6 @@
 # F97b1 Durable WAL Frontier 开工与完成门
 
-状态：完成，PASS；F97b2 尚未 Review 或授权。
+状态：完成，PASS；后续 F97b2 也已完成。
 
 ## 产品门
 
@@ -12,7 +12,7 @@
   `ErrOutcomeUnknown` 并 poison，重开按最高有效 frontier 判定；
 - 格式：[Durable WAL Frontier v1](../storage/wal-durable-frontier-v1.md)；
 - 明确不做：截尾/删除 speculative WAL、Page/root/allocator redo、B+ Tree、Buffer Pool；
-- F97b2 不在本次授权范围内；开工前结论：PASS。
+- F97b2 不属于本 Feature 的实现范围；F97b1 开工前结论：PASS。
 
 ## RED 入口
 
@@ -63,4 +63,4 @@ frontier；占位错误未保留在最终实现中。
 
 - outcome-unknown 语义与 F97b1/F97b2 拆分：已确认；
 - F97b1：已授权并完成；
-- F97b2–F97d：未授权。
+- 后续 Feature 按 2026-07-31 持续执行授权逐项 Review、实现和验收。

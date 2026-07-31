@@ -162,12 +162,18 @@ func TestDurableFrontierCommitFaultsReturnOutcomeUnknown(t *testing.T) {
 				}
 				_ = opened.Close()
 			} else {
-				if opened != nil {
-					_ = opened.Close()
+				if openErr != nil {
+					t.Fatalf("Open after speculative tail = %v", openErr)
 				}
-				if !errors.Is(openErr, ErrPoisoned) {
-					t.Fatalf("Open after speculative tail = %v, want ErrPoisoned", openErr)
+				if got := mustFrontier(t, opened); got.Generation != 1 ||
+					got.LastTransactionID != 0 {
+					t.Fatalf("repaired speculative outcome = %#v", got)
 				}
+				transactions, err := opened.ScanCommitted()
+				if err != nil || len(transactions) != 0 {
+					t.Fatalf("transactions after repair = %#v, %v", transactions, err)
+				}
+				_ = opened.Close()
 			}
 		})
 	}
@@ -215,12 +221,15 @@ func TestDurableFrontierCheckpointAndRollPublishFaultsPoison(t *testing.T) {
 		if err := set.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if opened, err := OpenSegmentSet(directory, 0); !errors.Is(err, ErrPoisoned) {
-			if opened != nil {
-				_ = opened.Close()
-			}
-			t.Fatalf("Open after unfrontiered Segment = %v, want ErrPoisoned", err)
+		opened, err := OpenSegmentSet(directory, 0)
+		if err != nil {
+			t.Fatalf("Open after unfrontiered Segment = %v", err)
 		}
+		state, err := opened.State()
+		if err != nil || len(state) != 1 || state[0].ID != 1 {
+			t.Fatalf("repaired state = %#v, %v", state, err)
+		}
+		_ = opened.Close()
 	})
 }
 
@@ -283,7 +292,7 @@ func TestDurableFrontierOpenRejectsCorruptionAndAuthorityMismatch(t *testing.T) 
 			},
 		},
 		{
-			name: "frontier behind file", want: ErrPoisoned,
+			name: "frontier behind file is repaired",
 			mutate: func(t *testing.T, directory string, frontier FrontierInfo) {
 				frontier.Generation++
 				frontier.DurableEndLSN = segmentHeaderSize
@@ -364,7 +373,7 @@ func TestDurableFrontierCodecSeedCorpusAndOldFormat(t *testing.T) {
 	}
 }
 
-func TestDurableFrontierFallsBackToOlderValidSlotAndRejectsTail(t *testing.T) {
+func TestDurableFrontierFallsBackToOlderValidSlotAndRepairsTail(t *testing.T) {
 	directory, _ := committedFrontierFixture(t)
 	flipFileByte(t, frontierPath(directory, 1), 20)
 	files, state, err := openFrontierControls(directory)
@@ -375,15 +384,21 @@ func TestDurableFrontierFallsBackToOlderValidSlotAndRejectsTail(t *testing.T) {
 		t.Fatalf("fallback frontier = %#v", state)
 	}
 	_ = closeFrontierFiles(files)
-	if opened, err := OpenSegmentSet(directory, 0); !errors.Is(err, ErrPoisoned) {
-		if opened != nil {
-			_ = opened.Close()
-		}
-		t.Fatalf("Open with bytes beyond fallback = %v, want ErrPoisoned", err)
+	opened, err := OpenSegmentSet(directory, 0)
+	if err != nil {
+		t.Fatalf("Open with bytes beyond fallback = %v", err)
+	}
+	defer func() { _ = opened.Close() }()
+	if got := mustFrontier(t, opened); got.Generation != 1 || got.LastTransactionID != 0 {
+		t.Fatalf("fallback frontier after repair = %#v", got)
+	}
+	transactions, err := opened.ScanCommitted()
+	if err != nil || len(transactions) != 0 {
+		t.Fatalf("transactions after fallback repair = %#v, %v", transactions, err)
 	}
 }
 
-func TestDurableFrontierRejectsCompleteUnpublishedCommit(t *testing.T) {
+func TestDurableFrontierRepairsCompleteUnpublishedCommit(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "redo")
 	set, err := CreateSegmentSet(directory, 0)
 	if err != nil {
@@ -402,12 +417,16 @@ func TestDurableFrontierRejectsCompleteUnpublishedCommit(t *testing.T) {
 	if err := set.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if opened, err := OpenSegmentSet(directory, 0); !errors.Is(err, ErrPoisoned) {
-		if opened != nil {
-			_ = opened.Close()
-		}
-		t.Fatalf("Open complete unpublished commit = %v, want ErrPoisoned", err)
+	opened, err := OpenSegmentSet(directory, 0)
+	if err != nil {
+		t.Fatalf("Open complete unpublished commit = %v", err)
 	}
+	defer func() { _ = opened.Close() }()
+	transactions, err := opened.ScanCommitted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTransactionIDs(t, transactions, 1)
 }
 
 func TestDurableFrontierSubprocessResponseLoss(t *testing.T) {

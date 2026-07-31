@@ -109,7 +109,7 @@
 - [Checkpoint Publish v1](./storage/checkpoint-publish-v1.md) — F86b 的 Page durability barrier、durable marker 与恢复起点。
 - [WAL Segment Reclaim v1](./storage/wal-segment-reclaim-v1.md) — F86c 的 retained manifest、旧段删除与中断恢复。
 - [Durable WAL Frontier v1](./storage/wal-durable-frontier-v1.md) — F97b1 已完成；为 crash repair 提供独立可信的 durable byte boundary。
-- [WAL Recovery Open v1](./storage/wal-recovery-open-v1.md) — F97b2 候选；严格验证 frontier 前缀并持久清理 speculative tail。
+- [WAL Recovery Open v1](./storage/wal-recovery-open-v1.md) — F97b2 已完成；严格验证 frontier 前缀并持久清理 speculative tail。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
 - [Instance Format 升级与回滚 v1](./storage/instance-format-upgrade-v1.md) — F49 的兼容状态、v1→v2、完整性备份、迁移 journal 与 `doctor repair`。
@@ -149,6 +149,7 @@
 - [F97a B+ Tree Mutation Plan 开工与完成门](./planning/f97a-btree-mutation-plan-gate.md) — 私有多层 mutation 的 RED matrix 与完成证据。
 - [F97b WAL Recovery Open 拆分 Review](./planning/f97b-wal-recovery-open-review.md) — 当前格式无法区分 durable commit 与 speculative tail，建议拆出 durable frontier。
 - [F97b1 Durable WAL Frontier 开工与完成门](./planning/f97b1-durable-wal-frontier-gate.md) — 已完成的双槽 control、outcome unknown、fault matrix 与证据。
+- [F97b2 WAL Recovery Open 开工与完成门](./planning/f97b2-wal-recovery-open-gate.md) — repairing open 的严格 authority 校验、可重入截尾与故障矩阵。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。

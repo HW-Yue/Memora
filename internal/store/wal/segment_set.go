@@ -3,6 +3,7 @@ package wal
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -115,6 +116,18 @@ func CreateSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 }
 
 func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
+	return openSegmentSetWithOperations(
+		directory,
+		startLSN,
+		defaultRecoveryOpenOperations(),
+	)
+}
+
+func openSegmentSetWithOperations(
+	directory string,
+	startLSN uint64,
+	operations recoveryOpenOperations,
+) (*SegmentSet, error) {
 	if directory == "" {
 		return nil, fmt.Errorf("%w: Segment Set directory", ErrInvalid)
 	}
@@ -144,7 +157,29 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 		}
 	}()
 
-	segments := make([]*Segment, 0, len(segmentEntries))
+	firstSegmentID := uint64(1)
+	expectedStartLSN := startLSN
+	if hasRetained {
+		firstSegmentID = retained.FirstSegmentID
+		expectedStartLSN = retained.FirstStartLSN
+	}
+	frontierIndex := -1
+	for index, entry := range segmentEntries {
+		segmentID, err := parseSegmentFilename(entry.Name())
+		if err != nil || entry.IsDir() || segmentID != firstSegmentID+uint64(index) {
+			return nil, fmt.Errorf("%w: invalid Segment Set entry %q", ErrCorrupt, entry.Name())
+		}
+		if segmentID == frontier.SegmentID {
+			frontierIndex = index
+		}
+	}
+	if frontierIndex < 0 {
+		return nil, fmt.Errorf("%w: durable frontier Segment is missing", ErrCorrupt)
+	}
+	authoritativeEntries := segmentEntries[:frontierIndex+1]
+	tailEntries := segmentEntries[frontierIndex+1:]
+
+	segments := make([]*Segment, 0, len(authoritativeEntries))
 	closeOnError := true
 	defer func() {
 		if closeOnError {
@@ -161,27 +196,39 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 	var lastCheckpoint Checkpoint
 	hasCheckpoint := false
 	foundRetainedCheckpoint := false
-	firstSegmentID := uint64(1)
-	expectedStartLSN := startLSN
-	if hasRetained {
-		firstSegmentID = retained.FirstSegmentID
-		expectedStartLSN = retained.FirstStartLSN
-	}
-	for index, entry := range segmentEntries {
+	var frontierSize int64
+	var frontierPhysicalSize int64
+	for index, entry := range authoritativeEntries {
 		segmentID, err := parseSegmentFilename(entry.Name())
-		if err != nil || entry.IsDir() || segmentID != firstSegmentID+uint64(index) {
+		if err != nil {
 			return nil, fmt.Errorf("%w: invalid Segment Set entry %q", ErrCorrupt, entry.Name())
 		}
-		if err := validateFrontierFileBoundary(
-			entry, segmentID, expectedStartLSN, frontier.FrontierInfo,
-		); err != nil {
-			return nil, err
+		path := filepath.Join(directory, entry.Name())
+		var segment *Segment
+		if segmentID == frontier.SegmentID {
+			if expectedStartLSN > math.MaxUint64-segmentHeaderSize ||
+				frontier.DurableEndLSN < expectedStartLSN+segmentHeaderSize ||
+				frontier.DurableEndLSN-expectedStartLSN > math.MaxInt64 {
+				return nil, fmt.Errorf("%w: durable frontier LSN boundary", ErrCorrupt)
+			}
+			frontierSize = int64(frontier.DurableEndLSN - expectedStartLSN)
+			info, infoErr := entry.Info()
+			if infoErr != nil {
+				return nil, infoErr
+			}
+			frontierPhysicalSize = info.Size()
+			if frontierPhysicalSize < frontierSize {
+				return nil, fmt.Errorf("%w: WAL is shorter than durable frontier", ErrCorrupt)
+			}
+			segment, err = openSegmentPrefixPath(
+				path,
+				segmentID,
+				expectedStartLSN,
+				frontierSize,
+			)
+		} else {
+			segment, err = Open(path, segmentID, expectedStartLSN)
 		}
-		segment, err := Open(
-			filepath.Join(directory, entry.Name()),
-			segmentID,
-			expectedStartLSN,
-		)
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +244,7 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 		if hasTail {
 			return nil, ErrPoisoned
 		}
-		if index < len(segmentEntries)-1 && len(transactions) == 0 {
+		if index < len(authoritativeEntries)-1 && len(transactions) == 0 {
 			return nil, fmt.Errorf("%w: empty non-active Segment", ErrCorrupt)
 		}
 		for _, transaction := range transactions {
@@ -238,7 +285,7 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 			lastCheckpoint = checkpoint
 			hasCheckpoint = true
 		}
-		if index == len(segmentEntries)-1 {
+		if index == len(authoritativeEntries)-1 {
 			activeCommits = len(transactions)
 		}
 		expectedStartLSN, err = segment.NextLSN()
@@ -264,6 +311,17 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 	}
 	if hasRetained && !foundRetainedCheckpoint {
 		return nil, fmt.Errorf("%w: retained checkpoint is missing", ErrCorrupt)
+	}
+	if err := repairSegmentSet(
+		directory,
+		segments[len(segments)-1],
+		filepath.Join(directory, authoritativeEntries[len(authoritativeEntries)-1].Name()),
+		frontierSize,
+		frontierPhysicalSize,
+		tailEntries,
+		operations,
+	); err != nil {
+		return nil, err
 	}
 	writer, err := NewTransactionWriter(segments[len(segments)-1])
 	if err != nil {

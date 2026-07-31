@@ -1,6 +1,6 @@
 # WAL Recovery Open v1
 
-状态：F97b2 候选，依赖 F97b1；待用户批准，未冻结、未实现。
+状态：F97b2 已实现并验收，PASS；依赖 F97b1。
 
 ## 唯一结果
 
@@ -9,19 +9,19 @@
 
 ## 验证与修复
 
-1. 校验目录项、retained manifest、Segment Header 连续性与两个 frontier slot；
+1. 校验目录项、retained manifest、截至 frontier 的 Segment Header 连续性与两个 frontier slot；
 2. 严格扫描到 frontier，验证 Record CRC/LSN、transaction count/digest 与 checkpoint；
 3. 文件短于 frontier、frontier 内任一损坏或跨 Segment identity 错误均返回 corruption，
    零修复；
 4. frontier 所在 Segment 超长则截到精确 offset 并 Sync；
-5. frontier 之后的 Segment 从最高 ID 向下删除，最后 Sync 目录；
+5. frontier 之后的连续 Segment 不解析内容，从最高 ID 向下删除，最后 Sync 目录；
 6. 重新严格扫描并建立 transaction ID、checkpoint 与 writer 状态后才返回。
 
 frontier 后字节不作为已提交证据：完整 commit、partial header/payload、CRC 错误和完整
 uncommitted changes 一律丢弃。未知目录项、缺号和 frontier 前损坏绝不通过截尾掩盖。
 
-修复每一步必须可重入：truncate、file Sync、remove 或 directory Sync 失败只返回
-recovery-required；下一次 open 从同一 frontier 继续，不能推进 authority。
+修复每一步必须可重入：truncate、file Sync、remove 或 directory Sync 失败返回
+`ErrRecoveryRequired`；下一次 open 从同一 frontier 继续，不能推进 authority。
 
 ## RED 与完成门候选
 
@@ -35,3 +35,6 @@ recovery-required；下一次 open 从同一 frontier 继续，不能推进 auth
 ## 明确不做
 
 frontier 发布、root/allocator payload、Page redo、Buffer Pool、B+ Tree 或业务 Executor。
+
+开工与完成证据见
+[F97b2 WAL Recovery Open 开工与完成门](../planning/f97b2-wal-recovery-open-gate.md)。

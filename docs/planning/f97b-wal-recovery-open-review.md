@@ -1,6 +1,6 @@
 # F97b WAL Recovery Open 拆分 Review
 
-状态：REVISE 结论已确认；F97b1 已完成，F97b2 待 Review 和授权。
+状态：REVISE 结论已确认；F97b1、F97b2 均已完成并验收。
 
 ## 产品门
 
@@ -46,13 +46,13 @@ decision 的事务不发布；decision I/O 错误返回 outcome unknown，由 re
 | F97b1 Durable WAL Frontier | 每次成功的 Commit/Checkpoint/Roll 都发布双槽 durable byte boundary | WAL 已 Sync 但 control 未发布时仍被普通 reopen 当作 durable | 截尾、Page redo |
 | F97b2 Repairing Open | 严格校验 frontier 内字节，持久截断/删除 frontier 后 tail，并恢复 writer | partial/uncommitted active tail 仍使 open 失败 | frontier 写入、root redo |
 
-候选协议见 [Durable WAL Frontier v1](../storage/wal-durable-frontier-v1.md)与
-[WAL Recovery Open v1](../storage/wal-recovery-open-v1.md)。两个 Feature 分别 Review、
-授权、实现、验收和合入；F97c 继续等待二者完成。
+冻结协议见 [Durable WAL Frontier v1](../storage/wal-durable-frontier-v1.md)与
+[WAL Recovery Open v1](../storage/wal-recovery-open-v1.md)。F97b2 的开工与完成门见
+[F97b2 WAL Recovery Open](./f97b2-wal-recovery-open-gate.md)；二者完成后 F97c 已可进入 Review。
 
 ## 决定门
 
 - 原 F97b：REVISE，不实现；
 - outcome-unknown 语义及 F97b1/F97b2 拆分：已批准；
 - F97b1：完成，PASS；
-- F97b2：下一候选，仍需单独 Review 和授权。
+- F97b2：完成，PASS；下一项进入 F97c Root/Allocator Redo Review。

@@ -1,7 +1,7 @@
 # F97 Durable Root 拆分 Review
 
-状态：拆分已获用户批准；F97a 已完成；F97b Review 发现 durable frontier 前置缺口，
-已拆为 F97b1/F97b2；F97b1 已完成，F97b2 待 Review。
+状态：拆分已获用户批准；F97a、F97b1、F97b2 已完成；下一项为 F97c
+Root/Allocator Redo。
 
 ## 产品门
 
@@ -100,5 +100,6 @@ Page，但空间复用或 generation compaction 留给后续独立 Feature，避
 - 原 F97：REVISE，不直接编码；
 - F97a–F97d 拆分：已批准；
 - F97a：完成，PASS；
-- F97b：REVISE 后已拆为 F97b1 Durable Frontier 与 F97b2 Repairing Open；F97b1 已完成；
-- F97c–F97d：继续等待前置项完成，仍需逐项 Review 和授权。
+- F97b：REVISE 后拆为 F97b1 Durable Frontier 与 F97b2 Repairing Open，均已完成；
+- F97c：前置项已完成，进入独立 Review；
+- F97d：等待 F97c 完成后独立 Review。

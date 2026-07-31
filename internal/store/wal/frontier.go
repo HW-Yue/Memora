@@ -204,35 +204,6 @@ func validateFrontierInfo(value FrontierInfo) error {
 	return nil
 }
 
-func validateFrontierFileBoundary(
-	entry os.DirEntry,
-	segmentID, expectedStartLSN uint64,
-	frontier FrontierInfo,
-) error {
-	if segmentID > frontier.SegmentID {
-		return ErrPoisoned
-	}
-	if segmentID < frontier.SegmentID {
-		return nil
-	}
-	if frontier.DurableEndLSN < expectedStartLSN+segmentHeaderSize ||
-		frontier.DurableEndLSN-expectedStartLSN > math.MaxInt64 {
-		return fmt.Errorf("%w: durable frontier LSN boundary", ErrCorrupt)
-	}
-	info, err := entry.Info()
-	if err != nil {
-		return err
-	}
-	wantSize := int64(frontier.DurableEndLSN - expectedStartLSN)
-	if info.Size() < wantSize {
-		return fmt.Errorf("%w: WAL is shorter than durable frontier", ErrCorrupt)
-	}
-	if info.Size() > wantSize {
-		return ErrPoisoned
-	}
-	return nil
-}
-
 func frontierPath(directory string, slot int) string {
 	return filepath.Join(directory, fmt.Sprintf("durable-frontier-%d.ctrl", slot))
 }

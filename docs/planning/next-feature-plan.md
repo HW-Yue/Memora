@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F97b1 已完成；F97b2 Repairing Open 待 Review 和授权。一个 Feature 只交付一个可独立测试、
+状态：F81–F97b2 已完成；下一项为 F97c Root/Allocator Redo。一个 Feature 只交付一个可独立测试、
 验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许合并实施。
 
 语义检索永久禁止 Embedding、Vector、cosine、隐藏评分和全文 prompt 扫描。
@@ -29,7 +29,7 @@
 | F96 B+ Tree Rebalance | borrow/merge/root shrink 恢复树不变量 |
 | F97a B+ Tree Mutation Plan | 多层 mutation 生成零共享写入的私有 Page 计划（已完成） |
 | F97b1 Durable WAL Frontier | 独立 control 保存可信 durable byte boundary（已完成） |
-| F97b2 Repairing Open | 严格保留 frontier 前缀并清理 speculative tail（候选） |
+| F97b2 Repairing Open | 严格保留 frontier 前缀并清理 speculative tail（已完成） |
 | F97c Root/Allocator Redo | root 与 allocator metadata 可随 committed WAL 幂等恢复 |
 | F97d Durable Tree Commit | 私有计划经 WAL/Page/root-last 顺序提交并可 reopen |
 

@@ -103,7 +103,7 @@ func TestSegmentSetRejectsEmptyAndUncommittedRoll(t *testing.T) {
 	}
 }
 
-func TestOpenSegmentSetRejectsUncommittedTail(t *testing.T) {
+func TestOpenSegmentSetRepairsUncommittedTail(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "redo")
@@ -124,12 +124,16 @@ func TestOpenSegmentSetRejectsUncommittedTail(t *testing.T) {
 	if err := set.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	if opened, err := OpenSegmentSet(path, 0); !errors.Is(err, ErrPoisoned) {
-		if opened != nil {
-			_ = opened.Close()
-		}
-		t.Fatalf("OpenSegmentSet() error = %v, want ErrPoisoned", err)
+	opened, err := OpenSegmentSet(path, 0)
+	if err != nil {
+		t.Fatalf("OpenSegmentSet() error = %v", err)
 	}
+	defer func() { _ = opened.Close() }()
+	transactions, err := opened.ScanCommitted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTransactionIDs(t, transactions, 1)
 }
 
 func TestOpenSegmentSetRejectsDuplicateTransactionAcrossSegments(t *testing.T) {

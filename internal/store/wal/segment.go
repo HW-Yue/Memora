@@ -128,6 +128,23 @@ func Open(path string, expectedSegmentID, expectedStartLSN uint64) (*Segment, er
 }
 
 func openSegment(file segmentFile, expectedSegmentID, expectedStartLSN uint64) (*Segment, error) {
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat WAL segment: %w", err)
+	}
+	return openSegmentPrefix(
+		file,
+		expectedSegmentID,
+		expectedStartLSN,
+		info.Size(),
+	)
+}
+
+func openSegmentPrefix(
+	file segmentFile,
+	expectedSegmentID, expectedStartLSN uint64,
+	prefixSize int64,
+) (*Segment, error) {
 	if expectedStartLSN > math.MaxUint64-segmentHeaderSize {
 		return nil, fmt.Errorf("%w: start LSN overflow", ErrInvalid)
 	}
@@ -135,7 +152,8 @@ func openSegment(file segmentFile, expectedSegmentID, expectedStartLSN uint64) (
 	if err != nil {
 		return nil, fmt.Errorf("stat WAL segment: %w", err)
 	}
-	if !info.Mode().IsRegular() || info.Size() < segmentHeaderSize {
+	if !info.Mode().IsRegular() || prefixSize < segmentHeaderSize ||
+		prefixSize > info.Size() {
 		return nil, fmt.Errorf("%w: invalid segment file", ErrCorrupt)
 	}
 
@@ -150,7 +168,7 @@ func openSegment(file segmentFile, expectedSegmentID, expectedStartLSN uint64) (
 	if segmentID != expectedSegmentID || startLSN != expectedStartLSN {
 		return nil, fmt.Errorf("%w: segment identity mismatch", ErrCorrupt)
 	}
-	records, nextLSN, err := scanRecords(file, startLSN, info.Size())
+	records, nextLSN, err := scanRecords(file, startLSN, prefixSize)
 	_ = records
 	if err != nil {
 		return nil, err
