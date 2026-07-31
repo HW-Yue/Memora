@@ -4,7 +4,7 @@
 [小 Feature TDD 与合入协议](./feature-tdd-protocol.md)和
 [当前 Feature 规划](./next-feature-plan.md)执行。
 
-当前进度：F52–F91 已完成，F92 B+ Tree Range Cursor 待实施；F51 的
+当前进度：F52–F92 已完成，F93 B+ Tree Insert 待实施；F51 的
 Vector/cosine 结论已撤销。
 
 ## 产品目标
