@@ -1,7 +1,7 @@
 # 存储内核小 Feature 计划
 
-状态：F81–F109 执行顺序及持续实现已获用户授权；F81–F97d2 已完成，下一项为
-F97d3 Durable Tree Runtime。后续仍逐项 Review、测试、验收和合入，但无需等待
+状态：F81–F109 执行顺序及持续实现已获用户授权；F81–F98 已完成，下一项为
+F99 Current Row Index。后续仍逐项 Review、测试、验收和合入，但无需等待
 重复授权。
 
 ## 当前缺口与目标
@@ -55,7 +55,7 @@ point、truncate、bit flip、乱序与 subprocess crash。F86c 已通过独立�
 | F94 Split | 满节点插入丢 key 或 separator 错 | leaf/internal split、root grow | delete |
 | F95 Delete | 删除后 key 仍可见或误删邻居 | key 删除与 tombstone handoff | rebalance |
 | F96 Rebalance | underflow 后叶链/占用/root 错 | borrow、merge、root shrink | 持久事务接线 |
-| F97 Durable Root | commit/reopen 丢 root 或 crash 不一致 | F97a–F97d2 已完成；下一项 F97d3 | 业务 key space |
+| F97 Durable Root | commit/reopen 丢 root 或 crash 不一致 | F97a–F97d3 已完成 | 业务 key space |
 
 F90–F97 使用手工 fixture、排序 reference model、保存 seed 的随机操作和每步不变量
 检查。F93/F95 的中间树只用于 package 内测试，不能在 F94/F96 完成前接业务路径。
@@ -69,7 +69,7 @@ F97b 修订证据见
 
 | Feature | RED 先证明 | 唯一结果 |
 | --- | --- | --- |
-| F98 Catalog Lookup | Describe 重读完整 Catalog | identity/name/alias/Schema revision 走树 |
+| F98 Catalog Lookup | Describe 重读完整 Catalog | 已完成：identity/name/alias/Schema revision 走树 |
 | F99 Current Row | RowID Get 扫其他 revision | current Row locator 走树 |
 | F100 Row Version | as-of/history 扫其他 Row | revision/sequence locator 走树 |
 | F101 Table Cursor | 分页 decode 全表且重漏 | live/tombstone Row 有序分页 |

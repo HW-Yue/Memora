@@ -172,8 +172,9 @@ Repository 遍历全部 Row record ID 的实现只是待替换过渡层。
 doublewrite 和复杂后台线程只有实测需要才增加。
 104. MVCC 作为正确性能力保留，但首版用 immutable revision、commit marker 和
 snapshot commit sequence 实现最小可见性，不预先绑定物理 Undo/Redo 方案。
-105. RowID 点查前的 Database/Table/Schema 解析也不能每次重读完整 Catalog；
-daemon 重开时同步重建 Catalog Directory，提交后与 Row Directory 原子发布。
+105. RowID 点查前的 Database/Table/Schema 解析也不能每次重读完整 Catalog。
+“daemon 重开时同步全量重建 Catalog Directory”的旧方案已由 F98 取代：Catalog
+locator 使用持久化 B+ Tree，reopen 直接打开 committed root。
 106. 第一阶段写锁按稳定对象 ID 加排他锁；autocommit 持有到语句终态，显式事务
 持有到 commit/rollback，普通 MVCC reader 不取该锁。冲突 fail-fast 还是有界
 等待仍需在 F104 Review 时确认。
@@ -203,7 +204,10 @@ F124a–F124e 逐项实现候选契约、字面位置、向量 generation、CPU 
 投机预取，再由 F125/F126 比较 Router-only 与优化 arm。
 115. F97d3 已将 Tree Mutation Plan 串联为单 writer durable runtime：Open 先执行
 WAL recovery，Commit 只在 durable WAL 后原子发布 Buffer batch；outcome unknown 或
-durable 后发布失败必须 poison，并只通过 reopen recovery 收敛。下一项为 F98。
+durable 后发布失败必须 poison，并只通过 reopen recovery 收敛。
+116. F98 已建立持久化 Catalog Lookup Index：Database/Table/Column 的稳定 ID、
+名称、别名和当前 Schema revision 通过 B+ Tree 精确定位；冲突在 WAL 前失败，
+crash-before-flush 由 WAL 恢复，not-found/corruption 不允许回退全量 Catalog 扫描。
 
 ## 尚需验证
 
