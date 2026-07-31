@@ -144,7 +144,8 @@ func validateRootRedo(value RootRedo, class error) error {
 }
 
 func validateAllocatorRedo(value AllocatorRedo, class error) error {
-	if value.ExpectedNextPageID < treecontrol.FirstDataPageID ||
+	if value.ExpectedGeneration == math.MaxUint64 ||
+		value.ExpectedNextPageID < treecontrol.FirstDataPageID ||
 		value.NextPageID < value.ExpectedNextPageID ||
 		(value.NextPageID == value.ExpectedNextPageID &&
 			len(value.RetiredPageIDs) == 0) {

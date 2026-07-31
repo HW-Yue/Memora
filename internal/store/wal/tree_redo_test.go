@@ -50,6 +50,7 @@ func TestTreeRedoCodecRoundTripAndValidation(t *testing.T) {
 	}
 	invalidAllocators := []AllocatorRedo{
 		{},
+		{ExpectedGeneration: ^uint64(0), ExpectedNextPageID: 2, NextPageID: 3},
 		{ExpectedNextPageID: 2, NextPageID: 2},
 		{ExpectedNextPageID: 4, NextPageID: 3},
 		{ExpectedNextPageID: 5, NextPageID: 5, RetiredPageIDs: []uint64{4, 3}},
