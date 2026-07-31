@@ -86,6 +86,7 @@
 - [B+ Tree Node Codec v1](./storage/btree-node-codec-v1.md) — F90 的 internal/leaf slotted payload、golden 与 corruption 契约。
 - [B+ Tree Point Search v1](./storage/btree-point-search-v1.md) — F91 的 root-to-leaf separator、identity、level 与精确 Get 契约。
 - [B+ Tree Range Cursor v1](./storage/btree-range-cursor-v1.md) — F92 的边界、limit、leaf-link 续读与 poison 契约。
+- [B+ Tree Single-Node Upsert v1](./storage/btree-single-node-upsert-v1.md) — F93 的 leaf/internal 有序 insert/replace 与容量原子性契约。
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
 - [Committed Change Log（Binlog）与未来同步](./storage/binlog-and-sync.md) — 第一用途是 Admin 展示数据与语义索引变化；同步、PITR 后续复用。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
@@ -134,6 +135,7 @@
 - [F90 B+ Tree Node Codec 开工与完成门](./planning/f90-btree-node-codec-gate.md) — internal/leaf golden、容量、seed corpus 与 corruption 完成门。
 - [F91 B+ Tree Point Search 开工与完成门](./planning/f91-btree-point-search-gate.md) — 单路径精确 Get、边界、cycle 与 corruption 完成门。
 - [F92 B+ Tree Range Cursor 开工与完成门](./planning/f92-btree-range-cursor-gate.md) — 跨 leaf 有界续读、不重不漏与链损坏完成门。
+- [F93 B+ Tree Insert 开工与完成门](./planning/f93-btree-insert-gate.md) — 单 Node upsert、reference model 与 no-space 原子性完成门。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
