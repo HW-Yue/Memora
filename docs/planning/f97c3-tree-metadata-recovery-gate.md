@@ -1,6 +1,6 @@
 # F97c3 Tree Metadata Recovery 开工与完成门
 
-状态：已批准并开工；授权来自 2026-07-31 后续 Feature 持续执行指令。
+状态：已完成，PASS；授权来自 2026-07-31 后续 Feature 持续执行指令。
 
 ## 唯一结果
 
@@ -34,3 +34,15 @@ committed root/allocator redo 可按 bootstrap → Page → control-last 顺序�
 - `gofmt`、`git diff --check` 与 `./scripts/ci.sh`；
 - 完成证据、计划状态和独立原子 commit 同步。
 
+## 完成证据
+
+- bootstrap、grow/shrink、allocator advance、retired Page、重复恢复与更高 generation
+  均通过；
+- bootstrap Write/Sync、普通 Page Write、Page 预发布 Sync、control-last Write/Sync
+  的逐点故障注入均在重试后收敛；
+- validation/corruption 覆盖坏 control、世代/identity/high-water、metadata 顺序、
+  缺 Page init/free 与 root 越界，失败保持零写入；
+- 真实 Page Manager + Segment Set 通过 checkpoint、close、reopen 后恢复；
+- `go test -count=20 ./internal/store/wal -run 'TestRecover.*(Root|Tree)'`、全仓
+  `go test`、全仓 `-race`、`go vet`、format、`git diff --check` 与
+  `./scripts/ci.sh` 全部 PASS。

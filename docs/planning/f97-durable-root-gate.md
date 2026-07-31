@@ -1,7 +1,7 @@
 # F97 Durable Root 拆分 Review
 
-状态：拆分已获用户批准；F97a、F97b1、F97b2、F97c1、F97c2 已完成；F97c3
-Tree Metadata Recovery 已 Review、批准并开工。
+状态：拆分已获用户批准；F97a、F97b1、F97b2、F97c1、F97c2、F97c3 已完成；
+下一项为 F97d Durable Tree Commit Review。
 
 ## 产品门
 
@@ -108,5 +108,5 @@ Page，但空间复用或 generation compaction 留给后续独立 Feature，避
 - F97c：两次规模 Review 后拆为 F97c1 control codec、F97c2 redo codec 与 F97c3 recovery；
 - F97c1：完成，PASS；
 - F97c2：完成，PASS；
-- F97c3：PASS，已由持续执行指令授权并开工；
-- F97d：等待 F97c3 完成后独立 Review。
+- F97c3：完成，PASS；
+- F97d：依赖已满足，下一步独立 Review。

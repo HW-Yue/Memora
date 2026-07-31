@@ -407,10 +407,10 @@ func TestRecoverRejectsInvalidRedoBeforeWrite(t *testing.T) {
 			want:   ErrMissingSpace,
 		},
 		{
-			name:   "unsupported root",
+			name:   "invalid root payload",
 			record: Record{Type: TypeRoot, SpaceID: 7, PageID: 1},
 			spaces: map[uint64]PageStore{7: newFakePageStore()},
-			want:   ErrUnsupportedRedo,
+			want:   ErrCorrupt,
 		},
 		{
 			name: "wrong image identity",
@@ -564,7 +564,9 @@ type fakePageStore struct {
 	corrupt       map[uint64]bool
 	failWriteCall int
 	writeCalls    int
+	writeOrder    []uint64
 	writeErr      error
+	failSyncCall  int
 	syncCalls     int
 	syncErr       error
 }
@@ -598,6 +600,7 @@ func (store *fakePageStore) Write(value page.Page) error {
 	if store.writeCalls == store.failWriteCall {
 		return store.writeErr
 	}
+	store.writeOrder = append(store.writeOrder, value.Header.PageID)
 	store.pages[value.Header.PageID] = clonePage(value)
 	delete(store.corrupt, value.Header.PageID)
 	return nil
@@ -605,7 +608,11 @@ func (store *fakePageStore) Write(value page.Page) error {
 
 func (store *fakePageStore) Sync() error {
 	store.syncCalls++
-	return store.syncErr
+	if store.syncErr != nil &&
+		(store.failSyncCall == 0 || store.syncCalls == store.failSyncCall) {
+		return store.syncErr
+	}
+	return nil
 }
 
 func clonePage(value page.Page) page.Page {
