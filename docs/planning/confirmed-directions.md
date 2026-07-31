@@ -214,6 +214,9 @@ expected revision 在 WAL 前校验，当前 revision 只允许单调推进并�
 118. F100 已建立持久化 Row Version Index：exact revision 走点查，AS OF commit
 通过倒序 sequence/revision 键用一次 forward cursor 求 floor；legacy sequence 0
 只进入 revision key，immutable locator 与稳定 Row identity 均在 WAL 前校验。
+119. F101 复用 F99 Current Row Tree 提供 Table prefix Page：after RowID 为
+exclusive，每次最多读取 limit + 1 个 locator；live/deleted/superseded 均显式返回，
+不因过滤 tombstone 造成无界 Page I/O，跨页 snapshot pin 留给 F103。
 
 ## 尚需验证
 

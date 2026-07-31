@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F100 已完成；下一项为 F101 Table Cursor Index。一个 Feature
+状态：F81–F101 已完成；下一项为 F102 MSQL Point-Get Switch。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
 
@@ -45,7 +45,7 @@ Vector 作为可回退候选预测器，禁止 Row/chunk Vector、隐藏答案�
 | F98 Catalog Lookup Index | 已完成：Database/Table/Schema identity 由持久化 B+ Tree 定位 |
 | F99 Current Row Index | 已完成：Table ID + RowID 精确定位当前 revision |
 | F100 Row Version Index | 已完成：RowID + revision/sequence 精确定位历史版本 |
-| F101 Table Cursor Index | Table 内 live/tombstone Row 可稳定分页 |
+| F101 Table Cursor Index | 已完成：Table 内 live/tombstone Row 可稳定分页 |
 | F102 MSQL Point-Get Switch | exact RowID `SELECT` 只走新索引路径 |
 | F103 Snapshot Visibility | reader 固定 committed snapshot 并读取自身写入 |
 | F104 Exact-Object Write Lock | 同一 Row/Schema/Route 的写入互斥 |
@@ -146,7 +146,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F101；持续执行授权已覆盖开工；
+1. 当前下一项是 F102；持续执行授权已覆盖开工；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

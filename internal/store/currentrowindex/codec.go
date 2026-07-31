@@ -63,6 +63,60 @@ func encodeKey(tableID, rowID string) ([]byte, error) {
 	return result, nil
 }
 
+func tablePrefix(tableID string) ([]byte, error) {
+	if !validComponent(tableID) {
+		return nil, fmt.Errorf("%w: Table key component", ErrInvalid)
+	}
+	result := make([]byte, 4+len(tableID))
+	result[0], result[1] = keyVersion, keyKindCurrentRow
+	binary.BigEndian.PutUint16(result[2:4], uint16(len(tableID)))
+	copy(result[4:], tableID)
+	return result, nil
+}
+
+func decodeKey(encoded []byte) (string, string, error) {
+	if len(encoded) < 8 ||
+		encoded[0] != keyVersion ||
+		encoded[1] != keyKindCurrentRow {
+		return "", "", fmt.Errorf("%w: current Row key header", ErrCorrupt)
+	}
+	offset := 2
+	components := [2]string{}
+	for index := range components {
+		if offset+2 > len(encoded) {
+			return "", "", fmt.Errorf("%w: current Row key length", ErrCorrupt)
+		}
+		length := int(binary.BigEndian.Uint16(encoded[offset : offset+2]))
+		offset += 2
+		if length == 0 || length > maxComponentBytes || offset+length > len(encoded) {
+			return "", "", fmt.Errorf("%w: current Row key component", ErrCorrupt)
+		}
+		value := encoded[offset : offset+length]
+		if !utf8.Valid(value) {
+			return "", "", fmt.Errorf("%w: current Row key UTF-8", ErrCorrupt)
+		}
+		components[index] = string(value)
+		offset += length
+	}
+	if offset != len(encoded) ||
+		!validComponent(components[0]) ||
+		!validComponent(components[1]) {
+		return "", "", fmt.Errorf("%w: current Row key shape", ErrCorrupt)
+	}
+	return components[0], components[1], nil
+}
+
+func prefixSuccessor(prefix []byte) ([]byte, error) {
+	result := bytes.Clone(prefix)
+	for index := len(result) - 1; index >= 0; index-- {
+		if result[index] != 0xff {
+			result[index]++
+			return result[:index+1], nil
+		}
+	}
+	return nil, fmt.Errorf("%w: key prefix has no successor", ErrInvalid)
+}
+
 func encodeLocator(value Locator) ([]byte, error) {
 	if err := validateLocator(value, ErrInvalid); err != nil {
 		return nil, err

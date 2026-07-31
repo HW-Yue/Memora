@@ -122,6 +122,7 @@
 - [Catalog Lookup Index v1](./storage/catalog-lookup-index-v1.md) — F98 的 identity/name/alias/Schema revision 持久化 B+ Tree 定位契约。
 - [Current Row Index v1](./storage/current-row-index-v1.md) — F99 的 Table ID + RowID 到当前 revision locator 持久化 B+ Tree 契约。
 - [Row Version Index v1](./storage/row-version-index-v1.md) — F100 的 exact revision 与 AS OF commit floor 持久化 B+ Tree 契约。
+- [Table Row Cursor v1](./storage/table-row-cursor-v1.md) — F101 复用 Current Row Tree 的 Table prefix 有界叶链分页契约。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
 - [Instance Format 升级与回滚 v1](./storage/instance-format-upgrade-v1.md) — F49 的兼容状态、v1→v2、完整性备份、迁移 journal 与 `doctor repair`。
@@ -173,6 +174,7 @@
 - [F98 Catalog Lookup 开工与完成门](./planning/f98-catalog-lookup-index-gate.md) — Catalog locator 键空间、冲突、reopen、corruption 与 reference-model 门。
 - [F99 Current Row Index 开工与完成门](./planning/f99-current-row-index-gate.md) — current Row locator、revision guard、并发、reopen 与 corruption 门。
 - [F100 Row Version Index 开工与完成门](./planning/f100-row-version-index-gate.md) — immutable revision、倒序 commit floor、legacy gap 与并发门。
+- [F101 Table Row Cursor 开工与完成门](./planning/f101-table-row-cursor-gate.md) — Table prefix、exclusive cursor、跨 leaf 不重不漏与重开门。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
