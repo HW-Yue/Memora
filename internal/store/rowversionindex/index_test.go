@@ -68,8 +68,60 @@ func TestLookupByRevisionCommitAndAsOfFloor(t *testing.T) {
 	}
 }
 
+func TestSnapshotHighWaterAndLegacyFloorAdvanceAtomically(t *testing.T) {
+	set, _, _, index := newTestIndex(t)
+	if got, err := index.HighWater(); err != nil || got != 0 {
+		t.Fatalf("empty HighWater() = %d, %v", got, err)
+	}
+	legacyOne := locator("row_legacy", 1, 0, row.StateLive)
+	legacyTwo := locator("row_legacy", 2, 0, row.StateLive)
+	if _, err := index.Append(1, []Locator{legacyOne, legacyTwo}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := index.HighWater(); err != nil || got != 0 {
+		t.Fatalf("legacy HighWater() = %d, %v", got, err)
+	}
+	assertLookup(t, legacyTwo, func() (Locator, error) {
+		return index.VisibleAt(legacyTwo.RowID, 0)
+	})
+
+	sequenced := locator("row_legacy", 3, 5, row.StateDeleted)
+	other := locator("row_other", 1, 7, row.StateLive)
+	if _, err := index.Append(2, []Locator{sequenced, other}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := index.HighWater(); err != nil || got != 7 {
+		t.Fatalf("sequenced HighWater() = %d, %v", got, err)
+	}
+	assertLookup(t, legacyTwo, func() (Locator, error) {
+		return index.VisibleAt(legacyTwo.RowID, 4)
+	})
+	assertLookup(t, sequenced, func() (Locator, error) {
+		return index.VisibleAt(sequenced.RowID, 5)
+	})
+
+	historical := locator("row_historical", 1, 3, row.StateLive)
+	if _, err := index.Append(3, []Locator{historical}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("late historical append error = %v", err)
+	}
+	if got, err := index.HighWater(); err != nil || got != 7 {
+		t.Fatalf("HighWater after late historical conflict = %d, %v", got, err)
+	}
+	if _, err := index.ByRevision(historical.RowID, historical.Revision); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("late historical revision leaked: %v", err)
+	}
+	receipt, err := index.Append(4, []Locator{sequenced})
+	if err != nil || receipt.Changed {
+		t.Fatalf("idempotent Append() = %+v, %v", receipt, err)
+	}
+	transactions, err := set.ScanCommitted()
+	if err != nil || len(transactions) != 2 {
+		t.Fatalf("snapshot metadata transactions = %d, %v", len(transactions), err)
+	}
+}
+
 func TestLegacyZeroSequenceOnlyHasRevisionKey(t *testing.T) {
-	_, _, _, index := newTestIndex(t)
+	set, _, _, index := newTestIndex(t)
 	legacy := locator("row_legacy", 1, 0, row.StateLive)
 	if _, err := index.Append(1, []Locator{legacy}); err != nil {
 		t.Fatal(err)
@@ -83,15 +135,29 @@ func TestLegacyZeroSequenceOnlyHasRevisionKey(t *testing.T) {
 	if _, err := index.AsOfCommit(legacy.RowID, 1); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("legacy AsOfCommit error = %v", err)
 	}
+	lateLegacy := locator("row_late", 1, 0, row.StateLive)
+	if _, err := index.Append(2, []Locator{lateLegacy}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("late legacy import error = %v", err)
+	}
+	if _, err := index.ByRevision(lateLegacy.RowID, lateLegacy.Revision); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("late legacy revision leaked: %v", err)
+	}
+	if highWater, err := index.HighWater(); err != nil || highWater != 0 {
+		t.Fatalf("HighWater after late legacy conflict = %d, %v", highWater, err)
+	}
 	next := legacy
 	next.Revision = 2
 	next.CommitSequence = 5
-	if _, err := index.Append(2, []Locator{next}); err != nil {
+	if _, err := index.Append(3, []Locator{next}); err != nil {
 		t.Fatal(err)
 	}
 	assertLookup(t, next, func() (Locator, error) {
 		return index.AsOfCommit(next.RowID, 5)
 	})
+	transactions, err := set.ScanCommitted()
+	if err != nil || len(transactions) != 2 {
+		t.Fatalf("transactions after sealed legacy conflict = %d, %v", len(transactions), err)
+	}
 }
 
 func TestAppendRejectsImmutableAndIdentityConflictBeforeWAL(t *testing.T) {
@@ -122,6 +188,9 @@ func TestAppendRejectsImmutableAndIdentityConflictBeforeWAL(t *testing.T) {
 	transactions, err := set.ScanCommitted()
 	if err != nil || len(transactions) != 1 {
 		t.Fatalf("transactions after conflicts = %d, %v", len(transactions), err)
+	}
+	if highWater, err := index.HighWater(); err != nil || highWater != first.CommitSequence {
+		t.Fatalf("HighWater after conflicts = %d, %v", highWater, err)
 	}
 	assertLookup(t, first, func() (Locator, error) {
 		return index.ByRevision(first.RowID, first.Revision)
@@ -225,6 +294,14 @@ func TestConcurrentSameRevisionOnlyOneLocatorCommits(t *testing.T) {
 	if err != nil || len(transactions) != 1 {
 		t.Fatalf("same-revision transactions = %d, %v", len(transactions), err)
 	}
+	highWater, err := index.HighWater()
+	if err != nil || highWater == 0 {
+		t.Fatalf("concurrent HighWater() = %d, %v", highWater, err)
+	}
+	committed, err := index.ByRevision("row_one", 1)
+	if err != nil || committed.CommitSequence != highWater {
+		t.Fatalf("committed locator/high-water = %+v/%d, %v", committed, highWater, err)
+	}
 }
 
 func TestCrashBeforeFlushReopensVersionIndex(t *testing.T) {
@@ -257,6 +334,9 @@ func TestCrashBeforeFlushReopensVersionIndex(t *testing.T) {
 	assertLookup(t, value, func() (Locator, error) {
 		return reopened.AsOfCommit(value.RowID, value.CommitSequence)
 	})
+	if highWater, err := reopened.HighWater(); err != nil || highWater != value.CommitSequence {
+		t.Fatalf("reopened HighWater() = %d, %v", highWater, err)
+	}
 }
 
 func TestLookupRejectsCorruptTreeWithoutFallback(t *testing.T) {
@@ -294,6 +374,9 @@ func TestLookupRejectsCorruptTreeWithoutFallback(t *testing.T) {
 	if _, err := reopened.ByRevision(value.RowID, value.Revision); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("corrupt lookup error = %v", err)
 	}
+	if _, err := reopened.HighWater(); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("corrupt HighWater error = %v", err)
+	}
 }
 
 func TestLocatorCodecRejectsCorruptionCorpus(t *testing.T) {
@@ -319,6 +402,23 @@ func TestLocatorCodecRejectsCorruptionCorpus(t *testing.T) {
 	for number, value := range corpus {
 		if _, err := decodeLocator(value); !errors.Is(err, ErrCorrupt) {
 			t.Fatalf("corpus[%d] error = %v", number, err)
+		}
+	}
+	highWater := encodeHighWater(42)
+	if got, err := decodeHighWater(highWater); err != nil || got != 42 {
+		t.Fatalf("high-water round trip = %d, %v", got, err)
+	}
+	highWaterCorpus := [][]byte{
+		highWater[:len(highWater)-1],
+		append(append([]byte(nil), highWater...), 0),
+		append([]byte(nil), highWater...),
+		append([]byte(nil), highWater...),
+	}
+	highWaterCorpus[2][0] ^= 0xff
+	highWaterCorpus[3][10] = 1
+	for number, value := range highWaterCorpus {
+		if _, err := decodeHighWater(value); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("high-water corpus[%d] error = %v", number, err)
 		}
 	}
 }

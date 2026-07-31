@@ -70,7 +70,11 @@ func TestIndexedPointGetRejectsLocatorMismatchWithoutLegacyFallback(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := points.Get(ctx, table, "row_live"); !errors.Is(err, ErrCorrupt) {
+	snapshot, err := points.Capture(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := points.Get(ctx, table, "row_live", snapshot); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("locator mismatch error = %v", err)
 	}
 
@@ -341,6 +345,16 @@ func (lookup *mismatchingVersionLookup) ByRevision(rowID string, revision uint64
 
 func (lookup *mismatchingVersionLookup) AsOfCommit(rowID string, sequence uint64) (rowversionindex.Locator, error) {
 	return lookup.delegate.AsOfCommit(rowID, sequence)
+}
+
+func (lookup *mismatchingVersionLookup) VisibleAt(rowID string, sequence uint64) (rowversionindex.Locator, error) {
+	locator, err := lookup.delegate.VisibleAt(rowID, sequence)
+	locator.CommitSequence++
+	return locator, err
+}
+
+func (lookup *mismatchingVersionLookup) HighWater() (uint64, error) {
+	return lookup.delegate.HighWater()
 }
 
 func indexedPointRequest() executor.BatchRequest {

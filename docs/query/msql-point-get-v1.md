@@ -1,6 +1,6 @@
 # MSQL Indexed Point-Get v1
 
-状态：F102 已完成；读取契约已冻结。
+状态：F102 已完成；F103 已为 indexed lane 增加 statement snapshot。
 
 ## 唯一结果
 
@@ -23,10 +23,11 @@ database/table name
 → existing projection / WHERE / Result Envelope
 ```
 
-- current point-get 先读取 Current Row locator，再读取同 revision 的 immutable version
-  locator；两者必须完全一致；
-- `AS OF REVISION` 直接读取 revision locator；
-- `AS OF COMMIT_SEQUENCE` 读取不晚于目标 sequence 的 floor locator；
+- 每条精确 autocommit SELECT 在 Catalog bind 前只捕获一次 durable high-water；
+- current point-get 先读取 Current Row locator，再按 snapshot 读取 Version floor；Current
+  不晚于 snapshot 时两者必须完全一致，Current 超前时返回旧 floor；
+- `AS OF REVISION` 直接读取 revision locator，但拒绝 snapshot 后的 positive sequence；
+- `AS OF COMMIT_SEQUENCE` 读取不晚于 `min(target, snapshot)` 的 floor locator；
 - locator 与 Catalog、正文的 Database/Table/Row/revision/sequence/state/schema 任一不一致
   都是 corruption；
 - Catalog 表的 Column 只遍历该 Table 的 `column/name` 前缀并按原生记录 order 恢复，
@@ -39,15 +40,15 @@ database/table name
 - 非精确 predicate 继续使用既有 Table scan；
 - indexed lane 的 not-found、corruption、取消或 I/O 错误不得回退旧扫描；
 - 成功结果的 columns、rows、类型、truncated 与 legacy lane byte-for-byte JSON 等价；
-- active explicit transaction 暂走 transaction 自身读取以保留 own writes；F103 冻结
-  snapshot/root 可见性后再统一。
+- native `ReadView` 可跨多次 point/page read 复用同一 snapshot，并合并最多 1000 条
+  private Row；现有 active explicit transaction 在 F107 切换 authority 前仍走旧事务路径。
 
 ## 明确不做
 
 - 不让 Page Store 成为新写 authority，不在 daemon 创建默认 index 文件；
 - 不双写 Catalog/Row mutation，不迁移旧数据；
 - 不切换非精确 Table scan、SHOW HISTORY、mutation 或 Router；
-- 不定义 snapshot visibility、锁或静默 fallback。
+- 不定义写锁、Catalog MVCC 或静默 fallback。
 
 ## 关联
 

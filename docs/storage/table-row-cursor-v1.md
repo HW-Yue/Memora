@@ -9,7 +9,8 @@ F99 Current Row B+ Tree 可按 Table ID 范围返回有界、有序的 current l
 正文或重建全表 logical Row 集合后再分页。
 
 F101 复用 F99 的 table_id + row_id 键，不创建重复树。F102 才切 MSQL point-get；
-Table List 的正文回读接线、跨页 snapshot 固定分别留给后续执行器与 F103。
+Table List 的正文回读接线留给后续执行器；F103 已在 native `ReadView` 中固定跨页
+snapshot，并将 Current 的稳定 RowID 与 private overlay 合并。
 
 ## Page 契约
 
@@ -36,7 +37,8 @@ Page I/O 仍受 limit 约束。
 - 空 Table 返回空 Page，不把它当成 point not-found；
 - after Row ID 即使已不存在，仍从其二进制排序位置继续；
 - key 解码和 Locator 的 Table/Row scope 必须一致，否则 corruption；
-- 单次 Page 在 Index read lock 内看到一致 root；跨 Page snapshot pin 属于 F103；
+- 单次 physical Page 在 Index read lock 内看到一致 root；F103 ReadView 对每个 Row 按
+  固定 commit sequence 求 Version floor，snapshot 后新增 key 可被扫描但不会泄漏；
 - 不返回 Row values，不提供 SQL offset，不做旧 Store scan fallback。
 
 ## 完成证据

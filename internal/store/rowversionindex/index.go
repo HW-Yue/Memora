@@ -31,6 +31,7 @@ type preparedLocator struct {
 	revisionKey []byte
 	commitKey   []byte
 	identityKey []byte
+	legacyKey   []byte
 }
 
 type entry struct {
@@ -143,6 +144,58 @@ func (index *Index) AsOfCommit(rowID string, sequence uint64) (Locator, error) {
 	return locator, nil
 }
 
+// HighWater returns the largest commit sequence whose complete Version batch
+// is published. An empty tree has the baseline sequence zero.
+func (index *Index) HighWater() (uint64, error) {
+	if index == nil || index.runtime == nil {
+		return 0, fmt.Errorf("%w: lookup Index", ErrInvalid)
+	}
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return 0, nil
+	}
+	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+	if err != nil {
+		return 0, err
+	}
+	sequence, found, err := highWaterWithSearcher(searcher)
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, fmt.Errorf("%w: snapshot high-water is missing", ErrCorrupt)
+	}
+	return sequence, nil
+}
+
+// VisibleAt returns the latest sequenced revision not newer than the snapshot.
+// If none exists, the highest legacy sequence-zero revision remains visible.
+func (index *Index) VisibleAt(rowID string, sequence uint64) (Locator, error) {
+	if sequence != 0 {
+		locator, err := index.AsOfCommit(rowID, sequence)
+		if err == nil {
+			return locator, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return Locator{}, err
+		}
+	}
+	key, err := legacyKey(rowID)
+	if err != nil {
+		return Locator{}, err
+	}
+	locator, err := index.point(key)
+	if err != nil {
+		return Locator{}, err
+	}
+	if locator.RowID != rowID || locator.CommitSequence != 0 {
+		return Locator{}, fmt.Errorf("%w: legacy locator key mismatch", ErrCorrupt)
+	}
+	return locator, nil
+}
+
 func (index *Index) point(key []byte) (Locator, error) {
 	if index == nil || index.runtime == nil {
 		return Locator{}, fmt.Errorf("%w: lookup Index", ErrInvalid)
@@ -227,15 +280,21 @@ func prepareLocators(locators []Locator) ([]preparedLocator, error) {
 		}
 		identities[locator.RowID] = locator
 		var commit []byte
+		var legacy []byte
 		if locator.CommitSequence != 0 {
 			commit, err = commitKey(locator.RowID, locator.CommitSequence, locator.Revision)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			legacy, err = legacyKey(locator.RowID)
 			if err != nil {
 				return nil, err
 			}
 		}
 		result = append(result, preparedLocator{
 			locator: locator, value: value, revisionKey: revision,
-			commitKey: commit, identityKey: identity,
+			commitKey: commit, identityKey: identity, legacyKey: legacy,
 		})
 	}
 	sort.Slice(result, func(left, right int) bool {
@@ -258,7 +317,24 @@ func (index *Index) validateAppend(
 	}
 	active := make([]entry, 0, len(locators)*2)
 	identities := make(map[string]*identityStatus)
+	legacy := make(map[string]preparedLocator)
+	highWater, markerFound, err := highWaterWithSearcher(searcher)
+	if err != nil {
+		return nil, err
+	}
+	if searcher != nil && !markerFound {
+		return nil, fmt.Errorf("%w: snapshot high-water is missing", ErrCorrupt)
+	}
+	desiredHighWater := highWater
 	for _, prepared := range locators {
+		if prepared.locator.CommitSequence > desiredHighWater {
+			desiredHighWater = prepared.locator.CommitSequence
+		}
+		if len(prepared.legacyKey) != 0 {
+			if current, exists := legacy[prepared.locator.RowID]; !exists || prepared.locator.Revision > current.locator.Revision {
+				legacy[prepared.locator.RowID] = prepared
+			}
+		}
 		status, exists := identities[prepared.locator.RowID]
 		if !exists {
 			status = &identityStatus{}
@@ -300,6 +376,12 @@ func (index *Index) validateAppend(
 			}
 			continue
 		}
+		if markerFound && len(prepared.legacyKey) != 0 {
+			return nil, fmt.Errorf("%w: legacy sequence-zero import is sealed", ErrConflict)
+		}
+		if markerFound && prepared.locator.CommitSequence <= highWater {
+			return nil, fmt.Errorf("%w: committed snapshot history is sealed", ErrConflict)
+		}
 		if len(prepared.commitKey) != 0 {
 			if _, found, err := get(searcher, prepared.commitKey); err != nil {
 				return nil, err
@@ -316,7 +398,51 @@ func (index *Index) validateAppend(
 			active = append(active, entry{key: prepared.commitKey, value: prepared.value})
 		}
 	}
+	legacyIDs := make([]string, 0, len(legacy))
+	for rowID := range legacy {
+		legacyIDs = append(legacyIDs, rowID)
+	}
+	sort.Strings(legacyIDs)
+	for _, rowID := range legacyIDs {
+		candidate := legacy[rowID]
+		current, found, err := get(searcher, candidate.legacyKey)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			if current.RowID != rowID || current.CommitSequence != 0 ||
+				current.DatabaseID != candidate.locator.DatabaseID ||
+				current.TableID != candidate.locator.TableID {
+				return nil, fmt.Errorf("%w: legacy Row anchor", ErrCorrupt)
+			}
+			if current.Revision >= candidate.locator.Revision {
+				continue
+			}
+		}
+		active = append(active, entry{key: candidate.legacyKey, value: candidate.value})
+	}
+	if !markerFound || desiredHighWater > highWater {
+		active = append(active, entry{key: snapshotHighWaterKey(), value: encodeHighWater(desiredHighWater)})
+	}
 	return active, nil
+}
+
+func highWaterWithSearcher(searcher *btree.Searcher) (uint64, bool, error) {
+	if searcher == nil {
+		return 0, false, nil
+	}
+	encoded, err := searcher.Get(snapshotHighWaterKey())
+	if errors.Is(err, btree.ErrNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, classifyTreeError(err)
+	}
+	sequence, err := decodeHighWater(encoded)
+	if err != nil {
+		return 0, false, err
+	}
+	return sequence, true, nil
 }
 
 func get(searcher *btree.Searcher, key []byte) (Locator, bool, error) {

@@ -30,7 +30,13 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		return Output{}, err
 	}
 	var table catalog.Table
-	if engine.points != nil && hasExactRowIDPredicate(selectStatement.Where) {
+	indexedPoint := engine.points != nil && hasExactRowIDPredicate(selectStatement.Where)
+	var snapshot uint64
+	if indexedPoint {
+		snapshot, err = engine.points.Capture(ctx)
+		if err != nil {
+			return Output{}, normalizeError(err)
+		}
 		table, err = engine.points.DescribeTable(ctx, databaseName, tableName)
 	} else {
 		table, err = engine.catalog.DescribeTable(ctx, databaseName, tableName)
@@ -95,14 +101,14 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		var candidate datarow.Row
 		switch selectStatement.AsOf.Kind {
 		case "REVISION":
-			if engine.points != nil {
-				candidate, err = engine.points.AsOfRevision(ctx, table, rowID, uint64(version))
+			if indexedPoint {
+				candidate, err = engine.points.AsOfRevision(ctx, table, rowID, uint64(version), snapshot)
 			} else {
 				candidate, err = engine.rows.AsOfRevision(ctx, databaseName, tableName, rowID, uint64(version))
 			}
 		case "COMMIT_SEQUENCE":
-			if engine.points != nil {
-				candidate, err = engine.points.AsOfCommit(ctx, table, rowID, uint64(version))
+			if indexedPoint {
+				candidate, err = engine.points.AsOfCommit(ctx, table, rowID, uint64(version), snapshot)
 			} else {
 				candidate, err = engine.rows.AsOfCommit(ctx, databaseName, tableName, rowID, uint64(version))
 			}
@@ -116,8 +122,8 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 	} else if exact {
 		var candidate datarow.Row
 		var getErr error
-		if engine.points != nil {
-			candidate, getErr = engine.points.Get(ctx, table, rowID)
+		if indexedPoint {
+			candidate, getErr = engine.points.Get(ctx, table, rowID, snapshot)
 		} else {
 			candidate, getErr = engine.rows.Get(ctx, databaseName, tableName, rowID)
 		}

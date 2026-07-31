@@ -1,7 +1,7 @@
 # MVCC、Undo Log、Redo Log 与 Binlog 边界
 
-状态：本地最小 MVCC 与写锁方向有效；F83–F104 逐项接入 WAL、可见性和锁，物理
-Undo 继续后置。见
+状态：F103 已完成 Row snapshot visibility；F104 接入精确对象写锁，物理 Undo
+继续后置。见
 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)和
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 

@@ -74,7 +74,8 @@ func TestIndexedPointGetOwnsExactAutocommitSelectsWithoutLegacyFallback(t *testi
 	if legacyCatalog.calls != 0 || legacyRows.calls != 0 {
 		t.Fatalf("legacy point path calls = catalog:%d rows:%d", legacyCatalog.calls, legacyRows.calls)
 	}
-	if points.tableCalls != 5 || points.getCalls != 3 || points.revisionCalls != 1 || points.commitCalls != 1 {
+	if points.captureCalls != 5 || points.tableCalls != 5 || points.getCalls != 3 ||
+		points.revisionCalls != 1 || points.commitCalls != 1 {
 		t.Fatalf("indexed calls = %+v", points)
 	}
 }
@@ -98,8 +99,31 @@ func TestIndexedPointGetLeavesNonExactSelectOnLegacyScan(t *testing.T) {
 		envelope.Results[0].Rows[0]["title"] != "current" {
 		t.Fatalf("non-exact envelope = %#v", envelope)
 	}
-	if dictionary.calls != 1 || rows.listCalls != 1 || points.tableCalls != 0 || points.getCalls != 0 {
+	if dictionary.calls != 1 || rows.listCalls != 1 || points.captureCalls != 0 ||
+		points.tableCalls != 0 || points.getCalls != 0 {
 		t.Fatalf("non-exact calls = catalog:%d list:%d points:%+v", dictionary.calls, rows.listCalls, points)
+	}
+}
+
+func TestIndexedPointGetSnapshotCaptureFailureDoesNotFallback(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	legacyCatalog := &poisonPointCatalog{}
+	legacyRows := &poisonPointRows{}
+	points := &stubPointReads{captureErr: fmt.Errorf("snapshot marker is corrupt")}
+	session := executor.NewBatchSessionWithPointReads(ctx, legacyCatalog, legacyRows, points)
+	t.Cleanup(func() { _ = session.Close() })
+	envelope := session.Execute(ctx, executor.BatchRequest{
+		RequestID: "snapshot-failure",
+		Source:    "SELECT title FROM work.notes WHERE row_id = 'row_one' LIMIT 1",
+	})
+	if envelope.OK || envelope.Results[0].Error == nil ||
+		envelope.Results[0].Error.Code != result.CodeInternal {
+		t.Fatalf("snapshot failure envelope = %#v", envelope)
+	}
+	if legacyCatalog.calls != 0 || legacyRows.calls != 0 ||
+		points.captureCalls != 1 || points.tableCalls != 0 || points.getCalls != 0 {
+		t.Fatalf("snapshot failure calls = legacy:%d/%d points:%+v", legacyCatalog.calls, legacyRows.calls, points)
 	}
 }
 
@@ -158,8 +182,15 @@ func (rows *poisonPointRows) AsOfCommit(context.Context, string, string, string,
 type stubPointReads struct {
 	table                      catalog.Table
 	current, revision, commit  row.Row
-	tableCalls, getCalls       int
+	captureCalls, tableCalls   int
+	getCalls                   int
 	revisionCalls, commitCalls int
+	captureErr                 error
+}
+
+func (reader *stubPointReads) Capture(context.Context) (uint64, error) {
+	reader.captureCalls++
+	return 100, reader.captureErr
 }
 
 func (reader *stubPointReads) DescribeTable(context.Context, string, string) (catalog.Table, error) {
@@ -167,20 +198,23 @@ func (reader *stubPointReads) DescribeTable(context.Context, string, string) (ca
 	return reader.table, nil
 }
 
-func (reader *stubPointReads) Get(_ context.Context, _ catalog.Table, rowID string) (row.Row, error) {
+func (reader *stubPointReads) Get(_ context.Context, _ catalog.Table, rowID string, snapshot uint64) (row.Row, error) {
 	reader.getCalls++
+	if snapshot != 100 {
+		return row.Row{}, fmt.Errorf("snapshot = %d", snapshot)
+	}
 	if rowID == "row_missing" {
 		return row.Row{}, pointTestError{code: result.CodeNotFound}
 	}
 	return reader.current, nil
 }
 
-func (reader *stubPointReads) AsOfRevision(context.Context, catalog.Table, string, uint64) (row.Row, error) {
+func (reader *stubPointReads) AsOfRevision(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error) {
 	reader.revisionCalls++
 	return reader.revision, nil
 }
 
-func (reader *stubPointReads) AsOfCommit(context.Context, catalog.Table, string, uint64) (row.Row, error) {
+func (reader *stubPointReads) AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error) {
 	reader.commitCalls++
 	return reader.commit, nil
 }

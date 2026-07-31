@@ -17,8 +17,12 @@ const (
 	keyRevision       = byte(1)
 	keyCommit         = byte(2)
 	keyIdentity       = byte(3)
+	keySnapshotWater  = byte(4)
+	keyLegacy         = byte(5)
 	locatorVersion    = uint16(1)
 	locatorHeaderSize = 48
+	highWaterVersion  = uint16(1)
+	highWaterSize     = 24
 	maxComponentBytes = 2048
 )
 
@@ -28,7 +32,8 @@ var (
 	ErrConflict = errors.New("Row Version Index immutable locator conflicts")
 	ErrCorrupt  = errors.New("Row Version Index is corrupt")
 
-	locatorMagic = [8]byte{'M', 'E', 'M', 'R', 'V', 'O', '0', '1'}
+	locatorMagic   = [8]byte{'M', 'E', 'M', 'R', 'V', 'O', '0', '1'}
+	highWaterMagic = [8]byte{'M', 'E', 'M', 'S', 'H', 'W', '0', '1'}
 )
 
 type Locator struct {
@@ -83,8 +88,14 @@ func identityKey(rowID string) ([]byte, error) {
 	return rowPrefix(keyIdentity, rowID)
 }
 
+func legacyKey(rowID string) ([]byte, error) {
+	return rowPrefix(keyLegacy, rowID)
+}
+
+func snapshotHighWaterKey() []byte { return []byte{keyVersion, keySnapshotWater} }
+
 func rowPrefix(kind byte, rowID string) ([]byte, error) {
-	if kind < keyRevision || kind > keyIdentity || !validComponent(rowID) {
+	if kind < keyRevision || kind > keyLegacy || kind == keySnapshotWater || !validComponent(rowID) {
 		return nil, fmt.Errorf("%w: key kind or Row ID", ErrInvalid)
 	}
 	result := make([]byte, 4+len(rowID))
@@ -92,6 +103,25 @@ func rowPrefix(kind byte, rowID string) ([]byte, error) {
 	binary.BigEndian.PutUint16(result[2:4], uint16(len(rowID)))
 	copy(result[4:], rowID)
 	return result, nil
+}
+
+func encodeHighWater(sequence uint64) []byte {
+	result := make([]byte, highWaterSize)
+	copy(result[:8], highWaterMagic[:])
+	binary.LittleEndian.PutUint16(result[8:10], highWaterVersion)
+	binary.LittleEndian.PutUint64(result[16:24], sequence)
+	return result
+}
+
+func decodeHighWater(encoded []byte) (uint64, error) {
+	if len(encoded) != highWaterSize ||
+		!bytes.Equal(encoded[:8], highWaterMagic[:]) ||
+		binary.LittleEndian.Uint16(encoded[8:10]) != highWaterVersion ||
+		binary.LittleEndian.Uint16(encoded[10:12]) != 0 ||
+		binary.LittleEndian.Uint32(encoded[12:16]) != 0 {
+		return 0, fmt.Errorf("%w: snapshot high-water", ErrCorrupt)
+	}
+	return binary.LittleEndian.Uint64(encoded[16:24]), nil
 }
 
 func prefixSuccessor(prefix []byte) ([]byte, error) {

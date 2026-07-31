@@ -1,6 +1,6 @@
 # 已形成的方向
 
-更新时间：2026-07-31。这里记录方向性结论，不代表实现已验证。
+更新时间：2026-08-01。这里记录方向性结论，不代表实现已验证。
 
 1. Memora 是 AI 自主建模和维护的个人数据库；
 2. AI 决定业务数据库、表、字段和语义关系；
@@ -213,14 +213,20 @@ revision、Row revision、commit sequence 与 live/deleted/superseded 状态；�
 expected revision 在 WAL 前校验，当前 revision 只允许单调推进并支持幂等重试。
 118. F100 已建立持久化 Row Version Index：exact revision 走点查，AS OF commit
 通过倒序 sequence/revision 键用一次 forward cursor 求 floor；legacy sequence 0
-只进入 revision key，immutable locator 与稳定 Row identity 均在 WAL 前校验。
+由 F103 扩展为 revision key 与离线 legacy anchor，immutable locator 与稳定 Row
+identity 均在 WAL 前校验。
 119. F101 复用 F99 Current Row Tree 提供 Table prefix Page：after RowID 为
 exclusive，每次最多读取 limit + 1 个 locator；live/deleted/superseded 均显式返回，
-不因过滤 tombstone 造成无界 Page I/O，跨页 snapshot pin 留给 F103。
+不因过滤 tombstone 造成无界 Page I/O；F103 已在 ReadView 中固定跨页 snapshot。
 120. F102 已提供严格 indexed autocommit point-get lane：Catalog 只读取目标 Table
 及其 Column 前缀，current locator 必须与 immutable version locator 和正文完全一致；
 成功 envelope 与 legacy path 等价，not-found/corruption 均不得扫描回退。daemon 默认
-authority 仍等 F105–F107 迁移后切换，显式事务 snapshot 由 F103 统一。
+authority 仍等 F105–F107 迁移后切换；F103 固定 native ReadView，现有显式事务在
+F107 前仍走旧 transaction authority。
+121. F103 以 Row Version Tree 内原子发布的 commit high-water 固定 Row read view；
+Current Tree 只枚举稳定 RowID，实际 revision 按 snapshot floor 解析。marker 建立后
+禁止追加不晚于 high-water 的新历史或 sequence 0 locator，避免迟到写穿透旧快照；
+private overlay 有 1000 Row 硬界限，Page Store authority 仍待 F107 切换。
 
 ## 尚需验证
 

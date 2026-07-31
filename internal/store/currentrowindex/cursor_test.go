@@ -40,8 +40,8 @@ func TestPageReturnsOrderedCurrentLocatorsAndStates(t *testing.T) {
 
 	want := []Locator{initial[1], deleted, superseded}
 	sort.Slice(want, func(left, right int) bool {
-		leftKey, _ := encodeKey(want[left].TableID, want[left].RowID)
-		rightKey, _ := encodeKey(want[right].TableID, want[right].RowID)
+		leftKey, _ := RowOrderKey(want[left].RowID)
+		rightKey, _ := RowOrderKey(want[right].RowID)
 		return bytes.Compare(leftKey, rightKey) < 0
 	})
 	var got []Locator
@@ -119,8 +119,8 @@ func TestLargeTablePaginationMatchesReferenceOrderWithoutDuplicates(t *testing.T
 		t.Fatal(err)
 	}
 	sort.Slice(want, func(left, right int) bool {
-		leftKey, _ := encodeKey(want[left].TableID, want[left].RowID)
-		rightKey, _ := encodeKey(want[right].TableID, want[right].RowID)
+		leftKey, _ := RowOrderKey(want[left].RowID)
+		rightKey, _ := RowOrderKey(want[right].RowID)
 		return bytes.Compare(leftKey, rightKey) < 0
 	})
 	got := make([]Locator, 0, len(want))

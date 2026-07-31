@@ -74,6 +74,18 @@ func tablePrefix(tableID string) ([]byte, error) {
 	return result, nil
 }
 
+// RowOrderKey exposes the stable within-Table ordering component used by the
+// Current Row B+ Tree so transaction overlays can merge without changing cursor semantics.
+func RowOrderKey(rowID string) ([]byte, error) {
+	if !validComponent(rowID) {
+		return nil, fmt.Errorf("%w: Row key component", ErrInvalid)
+	}
+	result := make([]byte, 2+len(rowID))
+	binary.BigEndian.PutUint16(result[:2], uint16(len(rowID)))
+	copy(result[2:], rowID)
+	return result, nil
+}
+
 func decodeKey(encoded []byte) (string, string, error) {
 	if len(encoded) < 8 ||
 		encoded[0] != keyVersion ||

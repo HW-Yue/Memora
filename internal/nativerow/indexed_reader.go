@@ -19,11 +19,24 @@ type IndexedCatalog interface {
 
 type CurrentLookup interface {
 	Lookup(string, string) (currentrowindex.Locator, error)
+	Page(string, string, uint64) (currentrowindex.CursorPage, error)
 }
 
 type VersionLookup interface {
 	ByRevision(string, uint64) (rowversionindex.Locator, error)
 	AsOfCommit(string, uint64) (rowversionindex.Locator, error)
+	VisibleAt(string, uint64) (rowversionindex.Locator, error)
+	HighWater() (uint64, error)
+}
+
+func (reader *IndexedReader) Capture(ctx context.Context) (uint64, error) {
+	if reader == nil || reader.versions == nil {
+		return 0, fmt.Errorf("%w: indexed Row reader", ErrInvalid)
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	return reader.versions.HighWater()
 }
 
 // IndexedReader implements the strict F102 point-read lane. Once selected it
@@ -63,6 +76,7 @@ func (reader *IndexedReader) Get(
 	ctx context.Context,
 	table catalog.Table,
 	rowID string,
+	snapshot uint64,
 ) (row.Row, error) {
 	if err := validateIndexedTable(ctx, table); err != nil {
 		return row.Row{}, err
@@ -74,15 +88,12 @@ func (reader *IndexedReader) Get(
 		}
 		return row.Row{}, err
 	}
-	version, err := reader.versions.ByRevision(rowID, current.Revision)
+	version, err := reader.visibleLocator(table, current, snapshot)
 	if err != nil {
 		if errors.Is(err, rowversionindex.ErrNotFound) {
-			return row.Row{}, fmt.Errorf("%w: current Row has no immutable revision", ErrCorrupt)
+			return row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), err)
 		}
 		return row.Row{}, err
-	}
-	if !currentMatchesVersion(current, version) || !locatorMatchesTable(version, table) {
-		return row.Row{}, fmt.Errorf("%w: current and immutable Row locators disagree", ErrCorrupt)
 	}
 	value, err := reader.readBody(table, version)
 	if err != nil {
@@ -94,11 +105,38 @@ func (reader *IndexedReader) Get(
 	return project(table, value), nil
 }
 
+func (reader *IndexedReader) visibleLocator(
+	table catalog.Table,
+	current currentrowindex.Locator,
+	snapshot uint64,
+) (rowversionindex.Locator, error) {
+	if current.DatabaseID != table.DatabaseID || current.TableID != table.ID {
+		return rowversionindex.Locator{}, fmt.Errorf("%w: current Row locator has wrong Table", ErrCorrupt)
+	}
+	version, err := reader.versions.VisibleAt(current.RowID, snapshot)
+	if err != nil {
+		return rowversionindex.Locator{}, err
+	}
+	if !locatorMatchesTable(version, table) {
+		return rowversionindex.Locator{}, fmt.Errorf("%w: visible Row locator has wrong Table", ErrCorrupt)
+	}
+	if current.CommitSequence == 0 || current.CommitSequence <= snapshot {
+		if !currentMatchesVersion(current, version) {
+			return rowversionindex.Locator{}, fmt.Errorf("%w: current and visible Row locators disagree", ErrCorrupt)
+		}
+	} else if (version.CommitSequence != 0 && version.CommitSequence > snapshot) ||
+		version.Revision >= current.Revision {
+		return rowversionindex.Locator{}, fmt.Errorf("%w: snapshot Row ordering", ErrCorrupt)
+	}
+	return version, nil
+}
+
 func (reader *IndexedReader) AsOfRevision(
 	ctx context.Context,
 	table catalog.Table,
 	rowID string,
 	revision uint64,
+	snapshot uint64,
 ) (row.Row, error) {
 	if err := validateIndexedTable(ctx, table); err != nil {
 		return row.Row{}, err
@@ -109,6 +147,9 @@ func (reader *IndexedReader) AsOfRevision(
 	}
 	if !locatorMatchesTable(locator, table) {
 		return row.Row{}, serviceFailure(result.CodeNotFound, "historical Row was not found in requested table", nil)
+	}
+	if locator.CommitSequence != 0 && locator.CommitSequence > snapshot {
+		return row.Row{}, serviceFailure(result.CodeNotFound, "historical Row revision is newer than the read snapshot", nil)
 	}
 	value, err := reader.readBody(table, locator)
 	if err != nil {
@@ -122,9 +163,16 @@ func (reader *IndexedReader) AsOfCommit(
 	table catalog.Table,
 	rowID string,
 	commitSequence uint64,
+	snapshot uint64,
 ) (row.Row, error) {
 	if err := validateIndexedTable(ctx, table); err != nil {
 		return row.Row{}, err
+	}
+	if snapshot < commitSequence {
+		commitSequence = snapshot
+	}
+	if commitSequence == 0 {
+		return row.Row{}, serviceFailure(result.CodeNotFound, "no Row history is visible at the requested commit sequence", nil)
 	}
 	locator, err := reader.versions.AsOfCommit(rowID, commitSequence)
 	if err != nil {

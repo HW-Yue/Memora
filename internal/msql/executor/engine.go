@@ -51,10 +51,11 @@ type Rows interface {
 // PointReads owns exact autocommit SELECT reads when configured. Implementations
 // must not fall back to Catalog or Row scans after an indexed lookup fails.
 type PointReads interface {
+	Capture(context.Context) (uint64, error)
 	DescribeTable(context.Context, string, string) (catalog.Table, error)
-	Get(context.Context, catalog.Table, string) (row.Row, error)
-	AsOfRevision(context.Context, catalog.Table, string, uint64) (row.Row, error)
-	AsOfCommit(context.Context, catalog.Table, string, uint64) (row.Row, error)
+	Get(context.Context, catalog.Table, string, uint64) (row.Row, error)
+	AsOfRevision(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
+	AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 }
 
 type Reshaper interface {
