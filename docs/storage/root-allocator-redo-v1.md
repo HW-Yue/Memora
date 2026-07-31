@@ -1,17 +1,41 @@
 # Root/Allocator Redo v1
 
-状态：F97c2 已批准并冻结，正在实现；依赖 F97c1。
+状态：F97c2 已实现并验收，PASS；依赖 F97c1。
 
 ## 唯一结果
 
-已提交 Tree transaction 的 `root`/`allocator` WAL 可严格、幂等恢复到
-[Tree Control v1](./tree-control-v1.md)，普通 Page 先写，control Page 最后发布。
+Tree transaction 的 `root`/`allocator` WAL payload 可确定编解码，并携带恢复所需的
+generation、root、allocator high-water 与 retired Page 前置状态。
 
 ## Redo Payload
 
 `allocator` redo 保存 expected generation、expected/next Page ID 和有序 retired ID；
 `root` redo 保存 expected/next generation、expected/next root 与 expected allocator
 high-water。
+
+Root payload 固定 56 bytes：
+
+```text
+magic[4] = "MROT" | version u16 = 1 | header_size u16 = 56
+reserved[8] = 0
+expected_generation u64 | generation u64
+expected_root_page_id u64 | root_page_id u64
+expected_next_page_id u64
+```
+
+Allocator payload 为 48-byte header 加 `retired_count * 8`：
+
+```text
+magic[4] = "MALL" | version u16 = 1 | header_size u16 = 48
+reserved[8] = 0
+expected_generation u64
+expected_next_page_id u64 | next_page_id u64
+retired_count u32 | reserved u32 = 0
+retired_page_id[retired_count] u64
+```
+
+Root generation 必须严格 `expected + 1`。Retired ID 严格递增、位于
+`[2, expected_next_page_id)`，不在本 Feature 中复用。
 
 - 每个 Tree transaction 必须恰有一个最后出现的 root redo；
 - allocator redo 可选，但若存在必须位于 root 前且 generation 与 root 一致；
@@ -20,17 +44,7 @@ high-water。
 - root 必须小于 final allocator high-water，且不能属于 retired；
 - validation 失败时事务零 Page 写入。
 
-## Recovery 顺序
-
-首次 recovery 若 Page 1 不存在，先写入 bootstrap control 并 Sync，保证真实 Page
-Manager 可连续分配 Page 2；随后写普通 Page，最后覆盖 committed control 并再次 Sync。
-
-exact generation/state/LSN 可跳过；磁盘 generation 更高时旧 metadata redo 幂等跳过；
-generation 缺口、相同 generation 不同状态或坏 control 一律 corruption。I/O 失败不
-报告事务恢复完成，重复执行必须收敛。
-
 ## 明确不做
 
-F97c2 不生成 B+ Tree mutation、不定义在线 WAL→Page→root commit API、不接业务
-key space、不复用 free Page。运行时 durable commit 属于 F97d。
-
+F97c2 不读取或写入 Page、不执行 recovery、不生成 B+ Tree mutation，也不定义在线
+commit API。Committed recovery 属于 F97c3。
