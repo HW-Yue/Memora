@@ -1,6 +1,6 @@
 # F97 Durable Root 拆分 Review
 
-状态：F97a–F97d1 已完成；下一项按 Review 结论执行 F97d2 Atomic Buffer Publish。
+状态：F97a–F97d2 已完成；下一项按 Review 结论执行 F97d3 Durable Tree Runtime。
 
 ## 产品门
 
@@ -111,4 +111,5 @@ Page，但空间复用或 generation compaction 留给后续独立 Feature，避
 - F97d：REVISE；详见 [F97d 拆分 Review](./f97d-durable-tree-commit-review.md)；
 - F97c4：完成，PASS；
 - F97d1：完成，PASS；
-- F97d2：下一项，原子发布 committed Buffer write set。
+- F97d2：完成，PASS；
+- F97d3：下一项，串联 WAL outcome、Buffer publish 与 reopen recovery。

@@ -49,6 +49,7 @@ type Config struct {
 }
 
 type Pool struct {
+	publishMu sync.RWMutex
 	mu        sync.Mutex
 	loader    Loader
 	frames    map[Key]*frame
@@ -99,6 +100,9 @@ func New(loader Loader, config Config) (*Pool, error) {
 }
 
 func (pool *Pool) Fetch(key Key) (*Handle, error) {
+	pool.publishMu.RLock()
+	defer pool.publishMu.RUnlock()
+
 	if key.PageID == 0 {
 		return nil, fmt.Errorf("%w: Page ID is zero", ErrInvalid)
 	}
@@ -265,6 +269,8 @@ func (handle *Handle) Inspect(inspect func(page.Page) error) error {
 	if inspect == nil {
 		return fmt.Errorf("%w: Inspect callback is nil", ErrInvalid)
 	}
+	handle.pool.publishMu.RLock()
+	defer handle.pool.publishMu.RUnlock()
 	handle.mu.RLock()
 	defer handle.mu.RUnlock()
 	if handle.released {
@@ -279,6 +285,8 @@ func (handle *Handle) InspectExclusive(inspect func(page.Page) error) error {
 	if inspect == nil {
 		return fmt.Errorf("%w: InspectExclusive callback is nil", ErrInvalid)
 	}
+	handle.pool.publishMu.RLock()
+	defer handle.pool.publishMu.RUnlock()
 	handle.mu.RLock()
 	defer handle.mu.RUnlock()
 	if handle.released {

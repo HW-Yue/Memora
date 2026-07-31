@@ -44,6 +44,8 @@ func (handle *Handle) Modify(pageLSN uint64, modify func(*page.Page) error) erro
 	if modify == nil || pageLSN == 0 {
 		return fmt.Errorf("%w: invalid Modify request", ErrInvalid)
 	}
+	handle.pool.publishMu.RLock()
+	defer handle.pool.publishMu.RUnlock()
 	handle.mu.RLock()
 	defer handle.mu.RUnlock()
 	if handle.released {
@@ -108,6 +110,9 @@ func (handle *Handle) Modify(pageLSN uint64, modify func(*page.Page) error) erro
 }
 
 func (pool *Pool) Flush(key Key) error {
+	pool.publishMu.RLock()
+	defer pool.publishMu.RUnlock()
+
 	if pool.config.Writer == nil {
 		return ErrReadOnly
 	}
@@ -116,6 +121,9 @@ func (pool *Pool) Flush(key Key) error {
 }
 
 func (pool *Pool) FlushDirty(limit uint64) (FlushReport, error) {
+	pool.publishMu.RLock()
+	defer pool.publishMu.RUnlock()
+
 	if pool.config.Writer == nil {
 		return FlushReport{}, ErrReadOnly
 	}
