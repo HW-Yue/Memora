@@ -58,7 +58,8 @@
 
 ```text
 invalid_request, parse_error, unsupported_statement, validation_error
-not_found, already_exists, permission_denied, revision_conflict, constraint_violation
+not_found, already_exists, permission_denied, revision_conflict, write_conflict,
+constraint_violation
 value_too_long, transaction_aborted, invalid_transaction_state
 cancelled, deadline_exceeded, output_truncated, internal_error
 ```
@@ -68,6 +69,10 @@ cancelled, deadline_exceeded, output_truncated, internal_error
 `permission_denied` 表示请求语法有效，但调用方无权读取或修改目标逻辑
 对象。客户端可以缩小授权范围内的请求或向用户说明受限，不能换用物理文件、
 另一条检索通道或更高权限入口绕过。
+
+`write_conflict` 表示另一个活跃 transaction 正持有同一精确逻辑对象，属于可重试
+瞬时错误；它不同于已提交版本不匹配的 `revision_conflict`。客户端可在持有者终态后
+有界重试，仍须保留 expected revision 校验，不能用重试强制覆盖新 revision。
 
 ## Warning 与截断
 

@@ -56,8 +56,8 @@ instance、Page latch、doublewrite、change buffer、adaptive hash、Group Comm
 这些能力只有具体用户故事和 benchmark 证明需要时才单独 Review。未来增加 Redo、
 Undo 或完整 Tablespace 不能改变 RowID、MSQL、Route locator 或 History 语义。
 
-F104 当前首选多对象写按稳定 key 排序后非等待 try-lock，冲突立即返回，从而不建立
-等待环；这是待用户 Review 的实现策略，不属于本 ADR 已确认的产品边界。
+F104 已采用多对象写按稳定 key 排序后的非等待 batch try-lock；冲突立即返回
+`write_conflict`，从而不建立等待环。锁等待与死锁检测只在 F158 的证据门成立后进入。
 
 ## 结果
 

@@ -11,6 +11,7 @@ const (
 	CodeAlreadyExists      Code = "already_exists"
 	CodePermissionDenied   Code = "permission_denied"
 	CodeRevisionConflict   Code = "revision_conflict"
+	CodeWriteConflict      Code = "write_conflict"
 	CodeConstraint         Code = "constraint_violation"
 	CodeValueTooLong       Code = "value_too_long"
 	CodeTransactionAborted Code = "transaction_aborted"
@@ -23,7 +24,7 @@ const (
 
 var registeredCodes = map[Code]struct{}{
 	CodeInvalidRequest: {}, CodeParseError: {}, CodeUnsupported: {}, CodeValidation: {},
-	CodeNotFound: {}, CodeAlreadyExists: {}, CodePermissionDenied: {}, CodeRevisionConflict: {}, CodeConstraint: {},
+	CodeNotFound: {}, CodeAlreadyExists: {}, CodePermissionDenied: {}, CodeRevisionConflict: {}, CodeWriteConflict: {}, CodeConstraint: {},
 	CodeValueTooLong: {}, CodeTransactionAborted: {}, CodeInvalidTransaction: {},
 	CodeCancelled: {}, CodeDeadlineExceeded: {}, CodeOutputTruncated: {}, CodeInternal: {},
 }

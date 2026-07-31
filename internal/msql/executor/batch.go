@@ -360,7 +360,7 @@ func errorResult(err error) (result.Code, string) {
 }
 
 func retryable(code result.Code) bool {
-	return code == result.CodeCancelled || code == result.CodeDeadlineExceeded
+	return code == result.CodeWriteConflict || code == result.CodeCancelled || code == result.CodeDeadlineExceeded
 }
 
 func mutationStatement(statement ast.Statement) bool {

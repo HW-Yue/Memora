@@ -1,7 +1,7 @@
 # MVCC、Undo Log、Redo Log 与 Binlog 边界
 
-状态：F103 已完成 Row snapshot visibility；F104 接入精确对象写锁，物理 Undo
-继续后置。见
+状态：F103–F104 已完成 Row snapshot 与精确对象 Lock Manager；F107 接入 Page
+Store writer，物理 Undo 继续后置。见
 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)和
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
@@ -23,7 +23,8 @@
 - 显式事务固定开始时的 snapshot，并读取自己的暂存写；
 - 写入前取得 Row、Table/Schema、Route 等明确对象的排他写锁；
 - autocommit 在语句终态释放锁，显式事务在 commit/rollback 后释放；
-- 多对象写按稳定 key 排序；首选非等待 try-lock，冲突策略待 F104 Review；
+- 多对象写按稳定 key 排序并执行非等待 batch try-lock；冲突立即返回 retryable
+  `write_conflict`，等待队列与死锁检测只有 F158 证据成立后才进入；
 - Row revision 先写入事务缓冲，只有完整 WAL COMMIT 后进入 B+ Tree committed view；
 - reader 依据 snapshot commit sequence 选择可见 immutable revision；
 - rollback 丢弃未发布记录，不需要用物理 Undo 恢复 in-place Page；

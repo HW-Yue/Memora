@@ -1,7 +1,7 @@
 # 存储内核小 Feature 计划
 
-状态：F81–F109 执行顺序及持续实现已获用户授权；F81–F103 已完成，下一项为
-F104 Exact-Object Write Lock。后续仍逐项 Review、测试、验收和合入，但无需等待
+状态：F81–F109 执行顺序及持续实现已获用户授权；F81–F104 已完成，下一项为
+F105 Legacy Store Migration Reader。后续仍逐项 Review、测试、验收和合入，但无需等待
 重复授权。
 
 ## 当前缺口与目标
@@ -75,7 +75,7 @@ F97b 修订证据见
 | F101 Table Cursor | 分页 decode 全表且重漏 | 已完成：live/tombstone Row 有序分页 |
 | F102 MSQL Point-Get | exact predicate 仍走旧 IDs | 已完成：Executor 切新索引且 envelope 等价 |
 | F103 Snapshot Visibility | 长 reader 混入新 commit | 已完成：固定 Row snapshot 与 own writes |
-| F104 Write Lock | 同对象写同时通过 | 精确 Row/Schema/Route 排他锁，无 gap lock |
+| F104 Write Lock | 同对象写同时通过 | 已完成：精确对象 fail-fast 排他锁 |
 | F105 Migration Reader | 旧 Store 不能确定枚举/计划 | 只读 inventory 与迁移 plan |
 | F106 Migration Apply | 中断得到混合 authority | apply/verify，失败恢复完整旧 Store |
 | F107 Default Switch | 新写仍可进入旧路径 | Page Store 成为唯一新 authority |

@@ -176,8 +176,8 @@ snapshot commit sequence 实现最小可见性，不预先绑定物理 Undo/Redo
 “daemon 重开时同步全量重建 Catalog Directory”的旧方案已由 F98 取代：Catalog
 locator 使用持久化 B+ Tree，reopen 直接打开 committed root。
 106. 第一阶段写锁按稳定对象 ID 加排他锁；autocommit 持有到语句终态，显式事务
-持有到 commit/rollback，普通 MVCC reader 不取该锁。冲突 fail-fast 还是有界
-等待仍需在 F104 Review 时确认。
+持有到 commit/rollback，普通 MVCC reader 不取该锁。F104 已确定 stable-key batch
+try-lock 与 fail-fast `write_conflict`；有界等待/死锁检测只由 F158 证据触发。
 107. Binlog 第一用途是 Admin 中按 commit sequence 可视化数据、Schema、Route
 节点和 membership 的已提交变化；它是事务级逻辑变化流。复制、PITR、GTID 和
 多设备同步可以以后复用，但不能主导 F109 的首版事件格式。
@@ -227,6 +227,10 @@ F107 前仍走旧 transaction authority。
 Current Tree 只枚举稳定 RowID，实际 revision 按 snapshot floor 解析。marker 建立后
 禁止追加不晚于 high-water 的新历史或 sequence 0 locator，避免迟到写穿透旧快照；
 private overlay 有 1000 Row 硬界限，Page Store authority 仍待 F107 切换。
+122. F104 已建立 Instance 内易失的精确对象 Lock Manager：Row、Schema、Route 使用
+collision-free binary key，transaction guard 整批原子 try-lock 并持有到终态；冲突
+返回 retryable `write_conflict` 且不暴露 holder。普通 reader 不取锁，F107 才接入
+Page Store writer，range/gap/wait/deadlock 不进入首版。
 
 ## 尚需验证
 
