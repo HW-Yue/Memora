@@ -1,6 +1,6 @@
 # F97d Durable Tree Commit 拆分 Review
 
-状态：REVISE；发现 generation 语义冲突，先完成 F97c4，再拆为 F97d1–F97d3。
+状态：拆分已完成；F97c4 与 F97d1–F97d3 均已独立验收，下一项为 F98。
 
 ## 发现的阻断冲突
 

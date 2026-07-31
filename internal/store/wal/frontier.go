@@ -43,6 +43,11 @@ func (set *SegmentSet) DurableFrontier() (FrontierInfo, error) {
 	return set.frontier.FrontierInfo, nil
 }
 
+func (set *SegmentSet) DurableLSN() (uint64, error) {
+	frontier, err := set.DurableFrontier()
+	return frontier.DurableEndLSN, err
+}
+
 func createFrontierControls(
 	directory string,
 	initial FrontierInfo,

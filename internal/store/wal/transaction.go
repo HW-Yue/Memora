@@ -64,25 +64,33 @@ func NewTransactionWriter(segment *Segment) (*TransactionWriter, error) {
 }
 
 func (writer *TransactionWriter) Commit(transactionID uint64, records []Record) (Receipt, error) {
+	transaction, err := writer.CommitTransaction(transactionID, records)
+	return transaction.Receipt, err
+}
+
+func (writer *TransactionWriter) CommitTransaction(
+	transactionID uint64,
+	records []Record,
+) (CommittedTransaction, error) {
 	if writer == nil || writer.segment == nil {
-		return Receipt{}, fmt.Errorf("%w: transaction writer is required", ErrInvalid)
+		return CommittedTransaction{}, fmt.Errorf("%w: transaction writer is required", ErrInvalid)
 	}
 	prepared, err := prepareChanges(transactionID, records)
 	if err != nil {
-		return Receipt{}, err
+		return CommittedTransaction{}, err
 	}
 
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
 	if _, exists := writer.committed[transactionID]; exists {
-		return Receipt{}, ErrDuplicateTransaction
+		return CommittedTransaction{}, ErrDuplicateTransaction
 	}
-	receipt, err := writer.segment.appendTransaction(transactionID, prepared)
+	transaction, err := writer.segment.appendTransaction(transactionID, prepared)
 	if err != nil {
-		return Receipt{}, err
+		return CommittedTransaction{}, err
 	}
 	writer.committed[transactionID] = struct{}{}
-	return receipt, nil
+	return transaction, nil
 }
 
 func ScanCommitted(segment *Segment) ([]CommittedTransaction, error) {
@@ -116,29 +124,31 @@ func prepareChanges(transactionID uint64, records []Record) ([]Record, error) {
 func (segment *Segment) appendTransaction(
 	transactionID uint64,
 	records []Record,
-) (Receipt, error) {
+) (CommittedTransaction, error) {
 	segment.mu.Lock()
 	defer segment.mu.Unlock()
 	if segment.closed {
-		return Receipt{}, ErrClosed
+		return CommittedTransaction{}, ErrClosed
 	}
 	if segment.poisoned {
-		return Receipt{}, ErrPoisoned
+		return CommittedTransaction{}, ErrPoisoned
 	}
 
 	firstLSN := segment.nextLSN
 	nextLSN := firstLSN
 	encodedChanges := make([][]byte, len(records))
+	committedRecords := make([]Record, len(records))
 	digest := sha256.New()
 	for index, record := range records {
 		totalLength := uint64(recordHeaderSize + len(record.Payload))
 		if nextLSN > math.MaxUint64-totalLength {
-			return Receipt{}, fmt.Errorf("%w: LSN overflow", ErrInvalid)
+			return CommittedTransaction{}, fmt.Errorf("%w: LSN overflow", ErrInvalid)
 		}
 		record.LSN = nextLSN
 		record.TransactionID = transactionID
 		encoded := encodeRecord(record)
 		encodedChanges[index] = encoded
+		committedRecords[index] = record
 		_, _ = digest.Write(encoded)
 		nextLSN += totalLength
 	}
@@ -156,34 +166,35 @@ func (segment *Segment) appendTransaction(
 	}
 	encodedCommit := encodeRecord(commit)
 	if nextLSN > math.MaxUint64-uint64(len(encodedCommit)) {
-		return Receipt{}, fmt.Errorf("%w: LSN overflow", ErrInvalid)
+		return CommittedTransaction{}, fmt.Errorf("%w: LSN overflow", ErrInvalid)
 	}
 	finalLSN := nextLSN + uint64(len(encodedCommit))
 	if finalLSN-segment.startLSN > math.MaxInt64 {
-		return Receipt{}, fmt.Errorf("%w: WAL file offset overflow", ErrInvalid)
+		return CommittedTransaction{}, fmt.Errorf("%w: WAL file offset overflow", ErrInvalid)
 	}
 
 	for _, encoded := range append(encodedChanges, encodedCommit) {
 		offset := segment.nextLSN - segment.startLSN
 		if err := writeFullAt(segment.file, encoded, int64(offset)); err != nil {
 			segment.poisoned = true
-			return Receipt{}, fmt.Errorf("append WAL transaction: %w", err)
+			return CommittedTransaction{}, fmt.Errorf("append WAL transaction: %w", err)
 		}
 		segment.nextLSN += uint64(len(encoded))
 	}
 	if err := segment.file.Sync(); err != nil {
 		segment.poisoned = true
-		return Receipt{}, fmt.Errorf("sync WAL transaction: %w", err)
+		return CommittedTransaction{}, fmt.Errorf("sync WAL transaction: %w", err)
 	}
 	segment.durableLSN = segment.nextLSN
-	return Receipt{
+	receipt := Receipt{
 		TransactionID: transactionID,
 		FirstLSN:      firstLSN,
 		CommitLSN:     commit.LSN,
 		DurableLSN:    segment.durableLSN,
 		RecordCount:   uint32(len(records)),
 		Digest:        transactionDigest,
-	}, nil
+	}
+	return CommittedTransaction{Receipt: receipt, Records: committedRecords}, nil
 }
 
 func (segment *Segment) transactionRecords(durableOnly bool) ([]Record, error) {

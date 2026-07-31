@@ -351,35 +351,47 @@ func openSegmentSetWithOperations(
 }
 
 func (set *SegmentSet) Commit(transactionID uint64, records []Record) (Receipt, error) {
+	transaction, err := set.CommitTransaction(transactionID, records)
+	return transaction.Receipt, err
+}
+
+func (set *SegmentSet) CommitTransaction(
+	transactionID uint64,
+	records []Record,
+) (CommittedTransaction, error) {
 	set.mu.Lock()
 	defer set.mu.Unlock()
 	if set.closed {
-		return Receipt{}, ErrSegmentSetClosed
+		return CommittedTransaction{}, ErrSegmentSetClosed
 	}
 	if _, duplicate := set.transactionIDs[transactionID]; duplicate {
-		return Receipt{}, ErrDuplicateTransaction
+		return CommittedTransaction{}, ErrDuplicateTransaction
 	}
 	if transactionID != 0 && transactionID <= set.reclaimedTransactionHighWater {
-		return Receipt{}, ErrDuplicateTransaction
+		return CommittedTransaction{}, ErrDuplicateTransaction
 	}
-	receipt, err := set.writer.Commit(transactionID, records)
+	transaction, err := set.writer.CommitTransaction(transactionID, records)
 	if err != nil {
 		if errors.Is(err, ErrInvalid) || errors.Is(err, ErrDuplicateTransaction) ||
 			errors.Is(err, ErrPoisoned) || errors.Is(err, ErrClosed) {
-			return Receipt{}, err
+			return CommittedTransaction{}, err
 		}
-		return Receipt{}, outcomeUnknown("commit WAL", err)
+		return CommittedTransaction{}, outcomeUnknown("commit WAL", err)
 	}
 	active := set.segments[len(set.segments)-1]
-	if err := set.publishFrontier(active.segmentID, receipt.DurableLSN, transactionID); err != nil {
+	if err := set.publishFrontier(
+		active.segmentID,
+		transaction.Receipt.DurableLSN,
+		transactionID,
+	); err != nil {
 		active.markPoisoned()
-		return Receipt{}, outcomeUnknown("publish commit frontier", err)
+		return CommittedTransaction{}, outcomeUnknown("publish commit frontier", err)
 	}
 	set.transactionIDs[transactionID] = struct{}{}
 	set.activeCommits++
-	set.lastCommitDurableLSN = receipt.DurableLSN
+	set.lastCommitDurableLSN = transaction.Receipt.DurableLSN
 	set.lastCommitSegmentID = set.segments[len(set.segments)-1].segmentID
-	return receipt, nil
+	return transaction, nil
 }
 
 func (set *SegmentSet) Roll() (SegmentInfo, error) {

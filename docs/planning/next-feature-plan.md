@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F97d2 已完成；下一项为 F97d3 Durable Tree Runtime。一个 Feature
+状态：F81–F97d3 已完成；下一项为 F98 Catalog Lookup Index。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
 
@@ -36,7 +36,7 @@ Vector 作为可回退候选预测器，禁止 Row/chunk Vector、隐藏答案�
 | F97c2 Root/Allocator Redo Codec | metadata payload 可确定编解码（已完成） |
 | F97c3 Tree Metadata Recovery | root/allocator metadata 可随 committed WAL 幂等恢复（已完成） |
 | F97c4 Tree Revision Separation | physical generation 与逐提交 revision 分离（已完成） |
-| F97d1–F97d3 Durable Tree Commit | F97d1/F97d2 已完成；下一项 WAL/reopen runtime |
+| F97d1–F97d3 Durable Tree Commit | 已完成：prepare、atomic publish 与 WAL/reopen runtime |
 
 ## R：真实 RowID 数据路径
 

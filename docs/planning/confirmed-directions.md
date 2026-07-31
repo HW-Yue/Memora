@@ -201,6 +201,9 @@ Route-only Vector 与有效 Route Frame 可以通过 MSQL 成为带来源、可�
 114. F97d3–F109 存储顺序不因 Route Predictor 改变。F124 先冻结 corpus，随后
 F124a–F124e 逐项实现候选契约、字面位置、向量 generation、CPU exact 和 Skill
 投机预取，再由 F125/F126 比较 Router-only 与优化 arm。
+115. F97d3 已将 Tree Mutation Plan 串联为单 writer durable runtime：Open 先执行
+WAL recovery，Commit 只在 durable WAL 后原子发布 Buffer batch；outcome unknown 或
+durable 后发布失败必须 poison，并只通过 reopen recovery 收敛。下一项为 F98。
 
 ## 尚需验证
 

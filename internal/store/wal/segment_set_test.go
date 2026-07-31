@@ -70,6 +70,45 @@ func TestSegmentSetCommitRollReopenAndScan(t *testing.T) {
 	}
 }
 
+func TestSegmentSetCommitTransactionReturnsAssignedRecords(t *testing.T) {
+	set, err := CreateSegmentSet(filepath.Join(t.TempDir(), "wal"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = set.Close() }()
+	input := []Record{
+		{Type: TypePageInit, SpaceID: 7, PageID: 2, Payload: []byte("first")},
+		{Type: TypeRoot, SpaceID: 7, PageID: 1, Payload: []byte("root")},
+	}
+	transaction, err := set.CommitTransaction(9, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transaction.Receipt.TransactionID != 9 ||
+		transaction.Receipt.RecordCount != 2 || len(transaction.Records) != 2 {
+		t.Fatalf("transaction = %+v", transaction)
+	}
+	if transaction.Records[0].LSN != transaction.Receipt.FirstLSN ||
+		transaction.Records[1].LSN <= transaction.Records[0].LSN ||
+		transaction.Records[1].LSN >= transaction.Receipt.CommitLSN {
+		t.Fatalf("assigned Records = %+v", transaction.Records)
+	}
+	for _, record := range transaction.Records {
+		if record.TransactionID != 9 {
+			t.Fatalf("Record transaction ID = %d", record.TransactionID)
+		}
+	}
+	input[0].Payload[0] = 'X'
+	transaction.Records[0].Payload[0] = 'Y'
+	committed, err := set.ScanCommitted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(committed) != 1 || string(committed[0].Records[0].Payload) != "first" {
+		t.Fatalf("committed Records alias caller: %+v", committed)
+	}
+}
+
 func TestSegmentSetRejectsEmptyAndUncommittedRoll(t *testing.T) {
 	t.Parallel()
 
