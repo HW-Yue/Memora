@@ -1,7 +1,7 @@
 # 存储内核小 Feature 计划
 
-状态：F81–F109 执行顺序已获用户授权；F81–F97a 已完成。F97 Review 已拆为四个
-独立故障域，F97b 待 Review，F97b–F97d 仍需逐项授权。
+状态：F81–F109 执行顺序已获用户授权；F81–F97a 已完成。F97b Review 发现 durable
+frontier 前置缺口，建议拆为 F97b1/F97b2，待用户确认；后续仍需逐项授权。
 
 ## 当前缺口与目标
 
@@ -54,13 +54,15 @@ point、truncate、bit flip、乱序与 subprocess crash。F86c 已通过独立�
 | F94 Split | 满节点插入丢 key 或 separator 错 | leaf/internal split、root grow | delete |
 | F95 Delete | 删除后 key 仍可见或误删邻居 | key 删除与 tombstone handoff | rebalance |
 | F96 Rebalance | underflow 后叶链/占用/root 错 | borrow、merge、root shrink | 持久事务接线 |
-| F97 Durable Root | commit/reopen 丢 root 或 crash 不一致 | F97a mutation plan 已完成；F97b–F97d 待逐项 Review | 业务 key space |
+| F97 Durable Root | commit/reopen 丢 root 或 crash 不一致 | F97a 已完成；F97b 建议再拆 durable frontier/repairing open | 业务 key space |
 
 F90–F97 使用手工 fixture、排序 reference model、保存 seed 的随机操作和每步不变量
 检查。F93/F95 的中间树只用于 package 内测试，不能在 F94/F96 完成前接业务路径。
 F97 拆分 Review 见 [F97 Durable Root 开工门](./f97-durable-root-gate.md)。
 F97a 冻结契约见
 [B+ Tree Mutation Plan v1](../storage/btree-mutation-plan-v1.md)。
+F97b 修订证据见
+[WAL Recovery Open 拆分 Review](./f97b-wal-recovery-open-review.md)。
 
 ## 真实数据路径
 

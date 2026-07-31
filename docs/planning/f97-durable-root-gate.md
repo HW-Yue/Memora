@@ -1,12 +1,15 @@
 # F97 Durable Root 拆分 Review
 
-状态：拆分已获用户批准；原 F97 开工前结论：REVISE；F97a 已完成，F97b 待 Review。
+状态：拆分已获用户批准；F97a 已完成；F97b Review 发现 durable frontier 前置缺口，
+建议再拆为 F97b1/F97b2，待用户确认。
 
 ## 产品门
 
 - 目标故事：`US-RECOVER`、`US-ENGINE`、`US-DEVELOPER`；
 - 用户结果：一次 mutation 只有在 WAL COMMIT durable 后才成功；成功提交后无论何时
-  crash/reopen，exact lookup 都从同一已提交 root 得到结果；失败事务永不发布；
+  crash/reopen，exact lookup 都从同一已提交 root 得到结果；“失败事务永不发布”经
+  F97b Review 修正为候选边界：commit decision 前失败确定不发布，decision I/O 错误
+  返回 outcome unknown 并由 recovery 判定，待用户确认；
 - 物理作用域：B+ Tree Page、root descriptor、Page allocator、Buffer Pool 与 Redo WAL；
 - 语义作用域：不改变 Row revision、History、Route membership、Schema 或结果 envelope；
 - 上下文预算：不增加 AI 可见节点、RowID、正文、模型调用或 prompt 内容；
@@ -45,13 +48,14 @@ F97 的验收只证明这段旅程所依赖的物理索引可持久提交；业�
 | Feature | 唯一主要结果 | 明确不做 |
 | --- | --- | --- |
 | F97a Tree Mutation Plan | 任意深度 byte-key mutation 生成私有 Page after-image、new root、allocated/retired ID | WAL、Buffer Pool、文件 I/O |
-| F97b WAL Recovery Open | active Segment crash tail 收敛到最后完整 commit 并恢复可写 | root/allocator、B+ Tree |
+| F97b WAL Recovery Open | Review 发现必须先建立 durable frontier；建议拆为 F97b1/F97b2 | root/allocator、B+ Tree |
 | F97c Root/Allocator Redo | versioned root/allocator metadata 可随 committed WAL 幂等恢复 | tree mutation、业务 key |
 | F97d Durable Tree Commit | 私有计划按 WAL durable → committed Page → root-last 发布并可 reopen | Catalog/Row key 编码、MVCC |
 
 F97a 详细候选契约见
 [B+ Tree Mutation Plan v1](../storage/btree-mutation-plan-v1.md)，独立开工门见
 [F97a B+ Tree Mutation Plan](./f97a-btree-mutation-plan-gate.md)。
+F97b Review 见 [WAL Recovery Open 拆分 Review](./f97b-wal-recovery-open-review.md)。
 
 F97c 候选格式保留 F82 的 slot 0 space manifest 不变；slot 1 使用独立、versioned tree
 control Page，保存 committed root、generation 与连续 allocator high-water。新 Tree root
@@ -84,8 +88,9 @@ Page，但空间复用或 generation compaction 留给后续独立 Feature，避
 
 ### F97d
 
-- WAL commit 失败时 root/Page/allocator 零发布；commit durable 后任何 publish/flush fault
-  返回 recovery-required 并 poison 当前 Tree，重开后得到已提交结果；
+- WAL commit 未返回成功时当前进程 root/Page/allocator 零发布；decision I/O 错误返回
+  outcome unknown；commit durable 后任何 publish/flush fault 返回 recovery-required 并
+  poison 当前 Tree，重开后得到已提交结果；
 - root-last 事件日志、reader/writer 可控调度、Buffer Pool 硬容量与 `-race`；
 - reference model 随机 commit/crash/reopen，每一步校验树和 root；
 - targeted `-count=20`、`go test ./...`、全量/受影响包 race、vet、format 与 CI。
@@ -95,4 +100,5 @@ Page，但空间复用或 generation compaction 留给后续独立 Feature，避
 - 原 F97：REVISE，不直接编码；
 - F97a–F97d 拆分：已批准；
 - F97a：完成，PASS；
-- F97b–F97d：仍需逐项 Review 和授权。
+- F97b：REVISE，建议拆为 F97b1 Durable Frontier 与 F97b2 Repairing Open；
+- F97c–F97d：继续等待前置项完成，仍需逐项 Review 和授权。
