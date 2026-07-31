@@ -1,6 +1,6 @@
 # ADR-0006：MySQL 式 Page/Buffer Pool/WAL，COW 用于 generation
 
-状态：Accepted，2026-07-31；F81–F108 执行顺序已获授权，F81–F85 已完成、F86 下一项；
+状态：Accepted，2026-07-31；F81–F108 执行顺序已获授权，F81–F86a 已完成、F86b 下一项；
 每项仍须独立 TDD、验收和合入。
 
 ## 总体选择
@@ -87,7 +87,7 @@ RowID、History、Route 或 Change Log 语义。
 
 ## 实施 Feature
 
-- F81–F86：Page、WAL stream/commit、recovery 与 checkpoint；
+- F81–F86c：Page、WAL stream/commit、recovery、Segment Set、checkpoint 与回收；
 - F87–F89：Buffer Pool loading/eviction 与 dirty flush；
 - F90–F97：B+ Tree codec、read、mutation 与持久 root；
 - F98–F102：Catalog/Row/version/Table cursor 与 MSQL point-get；

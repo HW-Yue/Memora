@@ -1,6 +1,6 @@
 # 存储内核小 Feature 计划
 
-状态：F81–F109 执行顺序已获用户授权；F81–F85 已完成，F86 下一项。
+状态：F81–F109 执行顺序已获用户授权；F81–F86a 已完成，F86b 下一项。
 
 ## 当前缺口与目标
 
@@ -23,10 +23,12 @@
 | F83 WAL Record Stream | 半条、错 CRC、乱序 LSN 被接受 | segment append/scan 与 durable offset | 事务 commit、recovery |
 | F84 WAL Durable Transaction | COMMIT 未 fsync 也报告成功 | transaction boundary 与 durable COMMIT | redo apply、checkpoint |
 | F85 Crash Recovery | 未提交尾部被重放；重复恢复改坏 Page | committed redo 幂等重放、FPI 修复 torn Page | checkpoint 回收 |
-| F86 Checkpoint | 回收仍被恢复需要的 WAL | 固定恢复起点并安全回收旧 segment | 后台自适应策略 |
+| F86a Segment Set | 单 Segment 无法安全滚动 | 连续 ID/LSN 的 roll、reopen、跨段 scan | checkpoint、删除 |
+| F86b Checkpoint Publish | 未刷 Page 也推进恢复起点 | durability barrier 后发布 checkpoint | Segment 删除 |
+| F86c Segment Reclaim | 删除仍被恢复需要的 WAL | 只回收 checkpoint 完全覆盖的旧 Segment | 后台策略 |
 
 Page 强制 golden/seed corpus/corruption/reopen；WAL 强制覆盖每个 write/fsync fault
-point、truncate、bit flip、乱序与 subprocess crash。F84 完成前，任何业务写路径都
+point、truncate、bit flip、乱序与 subprocess crash。F86c 完成前，任何业务写路径都
 不能切换到新 Store。
 
 ## Buffer Pool

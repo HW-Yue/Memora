@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：执行顺序已获用户授权；F81–F85 已完成，F86 下一项。一个 Feature 只交付一个可独立
+状态：执行顺序已获用户授权；F81–F86a 已完成，F86b 下一项。一个 Feature 只交付一个可独立
 测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许合并实施。
 
 语义检索永久禁止 Embedding、Vector、cosine、隐藏评分和全文 prompt 扫描。
@@ -14,7 +14,9 @@
 | F83 WAL Record Stream | WAL segment 可追加、扫描并拒绝损坏尾部 |
 | F84 WAL Durable Transaction | 事务只有 durable COMMIT 后才报告成功 |
 | F85 Crash Recovery | 重启只重放完整已提交事务且幂等 |
-| F86 Checkpoint | checkpoint 固定恢复起点并安全回收旧 WAL |
+| F86a WAL Segment Set | 多个 Segment 可显式 roll、重开并保持全局顺序 |
+| F86b Checkpoint Publish | Page durability barrier 后固定恢复起点 |
+| F86c Segment Reclaim | 只删除 checkpoint 完全覆盖的旧 Segment |
 | F87 Buffer Pool Page Loading | 同一 Page single-flight 装载并可 pin/unpin |
 | F88 Buffer Pool Eviction | 有界 young/old LRU 不淘汰 pinned Frame |
 | F89 Dirty Page Flush | dirty Page 严守 WAL-before-data |
