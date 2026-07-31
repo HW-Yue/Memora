@@ -65,6 +65,30 @@ func nameKey(kind keyKind, scope, name string) ([]byte, error) {
 	return encodeKey(kind, false, scope, canonical)
 }
 
+func scopedNamePrefix(kind keyKind, scope string) ([]byte, error) {
+	if (kind != keyTableName && kind != keyColumnName) ||
+		scope == "" || !utf8.ValidString(scope) ||
+		strings.TrimSpace(scope) != scope || len(scope) > maxComponentBytes {
+		return nil, fmt.Errorf("%w: scoped name prefix", ErrInvalid)
+	}
+	result := make([]byte, 4+len(scope))
+	result[0], result[1] = keyVersion, byte(kind)
+	binary.BigEndian.PutUint16(result[2:4], uint16(len(scope)))
+	copy(result[4:], scope)
+	return result, nil
+}
+
+func keyPrefixSuccessor(prefix []byte) ([]byte, error) {
+	result := bytes.Clone(prefix)
+	for index := len(result) - 1; index >= 0; index-- {
+		if result[index] != 0xff {
+			result[index]++
+			return result[:index+1], nil
+		}
+	}
+	return nil, fmt.Errorf("%w: key prefix has no successor", ErrInvalid)
+}
+
 func encodeKey(kind keyKind, canonical bool, components ...string) ([]byte, error) {
 	if kind < keyDatabaseID || kind > keyColumnName || len(components) == 0 {
 		return nil, fmt.Errorf("%w: key shape", ErrInvalid)

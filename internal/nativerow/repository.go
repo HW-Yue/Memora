@@ -168,6 +168,17 @@ func (repository *Repository) ReadRevision(id string, revision uint64) (row.Row,
 	return repository.readRecord(revisionRecordID(id, revision))
 }
 
+func (repository *Repository) ReadRevisionWithTable(
+	id string,
+	revision uint64,
+	table catalog.Table,
+) (row.Row, error) {
+	if id == "" || revision == 0 || table.ID == "" || table.DatabaseID == "" {
+		return row.Row{}, fmt.Errorf("%w: RowID, revision, and Table are required", ErrInvalid)
+	}
+	return repository.readRecordWithTable(revisionRecordID(id, revision), table)
+}
+
 func (repository *Repository) ReadAsOfCommit(id string, commitSequence uint64) (row.Row, error) {
 	if id == "" || commitSequence == 0 {
 		return row.Row{}, fmt.Errorf("%w: RowID and commit sequence are required", ErrInvalid)
@@ -301,6 +312,29 @@ func (repository *Repository) StageSnapshotRow(transaction *nativestore.Transact
 }
 
 func (repository *Repository) readRecord(recordID string) (row.Row, error) {
+	value, err := repository.readDecodedRecord(recordID)
+	if err != nil {
+		return row.Row{}, err
+	}
+	table, err := repository.table(value.DatabaseID, value.TableID)
+	if err != nil {
+		return row.Row{}, fmt.Errorf("%w: row %q has invalid catalog reference", ErrCorrupt, value.ID)
+	}
+	return normalizeDecodedRecord(value, table)
+}
+
+func (repository *Repository) readRecordWithTable(recordID string, table catalog.Table) (row.Row, error) {
+	value, err := repository.readDecodedRecord(recordID)
+	if err != nil {
+		return row.Row{}, err
+	}
+	if value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
+		return row.Row{}, fmt.Errorf("%w: Row body does not belong to indexed Table", ErrCorrupt)
+	}
+	return normalizeDecodedRecord(value, table)
+}
+
+func (repository *Repository) readDecodedRecord(recordID string) (row.Row, error) {
 	payload, err := repository.file.Get(nativestore.ObjectKindRow, recordID)
 	if err != nil {
 		return row.Row{}, err
@@ -312,10 +346,10 @@ func (repository *Repository) readRecord(recordID string) (row.Row, error) {
 	if revisionRecordID(value.ID, value.Revision) != recordID {
 		return row.Row{}, fmt.Errorf("%w: row record identity mismatch", ErrCorrupt)
 	}
-	table, err := repository.table(value.DatabaseID, value.TableID)
-	if err != nil {
-		return row.Row{}, fmt.Errorf("%w: row %q has invalid catalog reference", ErrCorrupt, value.ID)
-	}
+	return value, nil
+}
+
+func normalizeDecodedRecord(value row.Row, table catalog.Table) (row.Row, error) {
 	normalized, err := normalize(value, table)
 	if err != nil {
 		return row.Row{}, fmt.Errorf("%w: row %q fails catalog validation", ErrCorrupt, value.ID)

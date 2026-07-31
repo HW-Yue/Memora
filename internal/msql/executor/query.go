@@ -29,11 +29,20 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 	if err != nil {
 		return Output{}, err
 	}
-	table, err := engine.catalog.DescribeTable(ctx, databaseName, tableName)
+	var table catalog.Table
+	if engine.points != nil && hasExactRowIDPredicate(selectStatement.Where) {
+		table, err = engine.points.DescribeTable(ctx, databaseName, tableName)
+	} else {
+		table, err = engine.catalog.DescribeTable(ctx, databaseName, tableName)
+	}
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
 	bound, err := bindParameters(statement, parameters)
+	if err != nil {
+		return Output{}, err
+	}
+	rowID, exact, err := exactRowID(selectStatement.Where, table, bound)
 	if err != nil {
 		return Output{}, err
 	}
@@ -64,10 +73,6 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 	}
 	var candidates []datarow.Row
 	hasMore := false
-	rowID, exact, err := exactRowID(selectStatement.Where, table, bound)
-	if err != nil {
-		return Output{}, err
-	}
 	if selectStatement.AsOf != nil {
 		if !exact {
 			return Output{}, executeError(result.CodeValidation, "AS OF requires an exact row_id predicate")
@@ -90,9 +95,17 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		var candidate datarow.Row
 		switch selectStatement.AsOf.Kind {
 		case "REVISION":
-			candidate, err = engine.rows.AsOfRevision(ctx, databaseName, tableName, rowID, uint64(version))
+			if engine.points != nil {
+				candidate, err = engine.points.AsOfRevision(ctx, table, rowID, uint64(version))
+			} else {
+				candidate, err = engine.rows.AsOfRevision(ctx, databaseName, tableName, rowID, uint64(version))
+			}
 		case "COMMIT_SEQUENCE":
-			candidate, err = engine.rows.AsOfCommit(ctx, databaseName, tableName, rowID, uint64(version))
+			if engine.points != nil {
+				candidate, err = engine.points.AsOfCommit(ctx, table, rowID, uint64(version))
+			} else {
+				candidate, err = engine.rows.AsOfCommit(ctx, databaseName, tableName, rowID, uint64(version))
+			}
 		default:
 			return Output{}, executeError(result.CodeValidation, "AS OF kind is invalid")
 		}
@@ -101,7 +114,13 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		}
 		candidates = []datarow.Row{candidate}
 	} else if exact {
-		candidate, getErr := engine.rows.Get(ctx, databaseName, tableName, rowID)
+		var candidate datarow.Row
+		var getErr error
+		if engine.points != nil {
+			candidate, getErr = engine.points.Get(ctx, table, rowID)
+		} else {
+			candidate, getErr = engine.rows.Get(ctx, databaseName, tableName, rowID)
+		}
 		if getErr == nil {
 			candidates = []datarow.Row{candidate}
 		} else if !hasStableCode(getErr, result.CodeNotFound) {
@@ -173,6 +192,24 @@ func exactRowID(expression *ast.Expression, table catalog.Table, bound bindings)
 		return normalized.(string), true, nil
 	}
 	return "", false, nil
+}
+
+func hasExactRowIDPredicate(expression *ast.Expression) bool {
+	if expression == nil {
+		return false
+	}
+	if expression.Operator == "AND" {
+		return hasExactRowIDPredicate(expression.Left) || hasExactRowIDPredicate(expression.Right)
+	}
+	if expression.Operator != "=" {
+		return false
+	}
+	for _, pair := range [][2]*ast.Expression{{expression.Left, expression.Right}, {expression.Right, expression.Left}} {
+		if isField(pair[0], "row_id") && !containsIdentifier(pair[1]) {
+			return true
+		}
+	}
+	return false
 }
 
 func isField(expression *ast.Expression, name string) bool {

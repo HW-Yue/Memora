@@ -63,6 +63,7 @@
 - [MSQL Catalog DDL v1](./query/catalog-ddl.md) — F13c 的自描述建模、发现、rename 和限定名 Binder 契约。
 - [MSQL 参数与表达式 v1](./query/msql-expressions.md) — F15c 的无插值参数绑定、整数/布尔表达式和稳定求值错误。
 - [MSQL SELECT Planner v1](./query/msql-select.md) — F15d 的限定表/字段绑定、强制 LIMIT、精确 Row ID 与截断边界。
+- [MSQL Indexed Point-Get v1](./query/msql-point-get-v1.md) — F102 用 F98–F100 B+ Tree 定位精确当前/历史 Row 且禁止扫描回退。
 - [MSQL Mutation Executor v1](./query/msql-mutation.md) — F15e 的参数化 CRUD、expected revision、影响行数预算与零插值边界。
 - [MSQL History v1](./query/msql-history.md) — F17c 的 AS OF、SHOW HISTORY、RESTORE 补偿与事务回滚语义。
 - [MSQL Relationships v1](./query/msql-relationships.md) — F18c 的参数化关系创建、双向发现、逻辑删除与 Batch 语义。
@@ -175,6 +176,7 @@
 - [F99 Current Row Index 开工与完成门](./planning/f99-current-row-index-gate.md) — current Row locator、revision guard、并发、reopen 与 corruption 门。
 - [F100 Row Version Index 开工与完成门](./planning/f100-row-version-index-gate.md) — immutable revision、倒序 commit floor、legacy gap 与并发门。
 - [F101 Table Row Cursor 开工与完成门](./planning/f101-table-row-cursor-gate.md) — Table prefix、exclusive cursor、跨 leaf 不重不漏与重开门。
+- [F102 MSQL Point-Get 开工与完成门](./planning/f102-msql-point-get-gate.md) — indexed autocommit exact SELECT、envelope 等价与无扫描回退门。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。

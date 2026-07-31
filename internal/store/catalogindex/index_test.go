@@ -63,6 +63,91 @@ func TestLookupResolvesIdentityNameAliasAndScope(t *testing.T) {
 	}
 }
 
+func TestColumnsForTableUsesScopedPrefixAndDeduplicatesAliases(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+	database := catalog.Database{
+		ID: "db_memory", Name: "Memory", SchemaVersion: 1,
+		Tables: []catalog.Table{
+			{
+				ID: "tbl_notes", DatabaseID: "db_memory", Name: "Notes", SchemaVersion: 2,
+				Columns: []catalog.Column{
+					{ID: "col_title", Name: "Title", Aliases: []string{"Heading", "标题"}, SchemaVersion: 3},
+					{ID: "col_body", Name: "Body", Aliases: []string{}, SchemaVersion: 4},
+				},
+			},
+			{
+				ID: "tbl_other", DatabaseID: "db_memory", Name: "Other", SchemaVersion: 1,
+				Columns: []catalog.Column{{ID: "col_other", Name: "Title", SchemaVersion: 1}},
+			},
+		},
+	}
+	if _, err := index.Replace(1, []catalog.Database{database}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := index.ColumnsForTable("tbl_notes")
+	want := []Locator{
+		{Kind: KindColumn, ID: "col_body", DatabaseID: "db_memory", TableID: "tbl_notes", SchemaRevision: 4},
+		{Kind: KindColumn, ID: "col_title", DatabaseID: "db_memory", TableID: "tbl_notes", SchemaRevision: 3},
+	}
+	if err != nil || len(got) != len(want) {
+		t.Fatalf("ColumnsForTable() = %+v, %v; want %+v", got, err, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("ColumnsForTable()[%d] = %+v, want %+v", index, got[index], want[index])
+		}
+	}
+	empty, err := index.ColumnsForTable("tbl_missing")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("ColumnsForTable(missing) = %+v, %v", empty, err)
+	}
+}
+
+func TestColumnsForTableCrossesLeavesAndMatchesReferenceModel(t *testing.T) {
+	_, _, runtime, index := newTestIndex(t)
+	target := catalog.Table{
+		ID: "tbl_target", DatabaseID: "db_memory", Name: "Target", SchemaVersion: 1,
+		Columns: make([]catalog.Column, 0, 360),
+	}
+	for number := 0; number < 360; number++ {
+		target.Columns = append(target.Columns, catalog.Column{
+			ID: fmt.Sprintf("col_%04d", number), Name: fmt.Sprintf("Field %04d", number),
+			Aliases: []string{fmt.Sprintf("字段 %04d", number)}, SchemaVersion: uint64(number + 1),
+		})
+	}
+	database := catalog.Database{
+		ID: "db_memory", Name: "Memory", SchemaVersion: 1,
+		Tables: []catalog.Table{
+			target,
+			{
+				ID: "tbl_other", DatabaseID: "db_memory", Name: "Other", SchemaVersion: 1,
+				Columns: []catalog.Column{{ID: "col_other", Name: "Field 0001", SchemaVersion: 1}},
+			},
+		},
+	}
+	if _, err := index.Replace(1, []catalog.Database{database}); err != nil {
+		t.Fatal(err)
+	}
+	root, err := runtime.Read(runtime.State().RootPageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := btree.Decode(root)
+	if err != nil || node.Kind != btree.KindInternal {
+		t.Fatalf("root after Column split = %+v, %v", node, err)
+	}
+	got, err := index.ColumnsForTable(target.ID)
+	if err != nil || len(got) != len(target.Columns) {
+		t.Fatalf("ColumnsForTable() count = %d, %v; want %d", len(got), err, len(target.Columns))
+	}
+	for number, locator := range got {
+		if locator.ID != fmt.Sprintf("col_%04d", number) ||
+			locator.TableID != target.ID || locator.SchemaRevision != uint64(number+1) {
+			t.Fatalf("ColumnsForTable()[%d] = %+v", number, locator)
+		}
+	}
+}
+
 func TestReplaceRejectsConflictBeforeWALAndPreservesSnapshot(t *testing.T) {
 	set, _, _, index := newTestIndex(t)
 	initial := []catalog.Database{{

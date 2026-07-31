@@ -2,6 +2,7 @@ package nativecatalog
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -197,6 +198,70 @@ func (repository *Repository) Read() ([]catalog.Database, error) {
 		result = append(result, database.value)
 	}
 	return result, nil
+}
+
+func (repository *Repository) readDatabaseRevision(id string, revision uint64) (databaseRecord, error) {
+	payload, err := repository.readVersionRecord(nativestore.ObjectKindDatabase, id, revision)
+	if err != nil {
+		return databaseRecord{}, err
+	}
+	record, err := decodeDatabase(payload)
+	if err != nil {
+		return databaseRecord{}, fmt.Errorf("%w: decode database %q revision %d", ErrCorrupt, id, revision)
+	}
+	if record.value.ID != id || record.value.SchemaVersion != revision {
+		return databaseRecord{}, fmt.Errorf("%w: database revision identity mismatch", ErrCorrupt)
+	}
+	return record, nil
+}
+
+func (repository *Repository) readTableRevision(id string, revision uint64) (tableRecord, error) {
+	payload, err := repository.readVersionRecord(nativestore.ObjectKindTable, id, revision)
+	if err != nil {
+		return tableRecord{}, err
+	}
+	record, err := decodeTable(payload)
+	if err != nil {
+		return tableRecord{}, fmt.Errorf("%w: decode table %q revision %d", ErrCorrupt, id, revision)
+	}
+	if record.value.ID != id || record.value.SchemaVersion != revision {
+		return tableRecord{}, fmt.Errorf("%w: table revision identity mismatch", ErrCorrupt)
+	}
+	return record, nil
+}
+
+func (repository *Repository) readColumnRevision(id string, revision uint64) (columnRecord, error) {
+	payload, err := repository.readVersionRecord(nativestore.ObjectKindColumn, id, revision)
+	if err != nil {
+		return columnRecord{}, err
+	}
+	record, err := decodeColumn(payload)
+	if err != nil {
+		return columnRecord{}, fmt.Errorf("%w: decode column %q revision %d", ErrCorrupt, id, revision)
+	}
+	if record.value.ID != id || record.value.SchemaVersion != revision {
+		return columnRecord{}, fmt.Errorf("%w: column revision identity mismatch", ErrCorrupt)
+	}
+	return record, nil
+}
+
+func (repository *Repository) readVersionRecord(
+	kind nativestore.ObjectKind,
+	id string,
+	revision uint64,
+) ([]byte, error) {
+	if repository == nil || repository.file == nil || id == "" || revision == 0 {
+		return nil, fmt.Errorf("%w: native file, object ID, and revision are required", ErrInvalid)
+	}
+	versionedID := fmt.Sprintf("%s@%020d", id, revision)
+	payload, err := repository.file.Get(kind, versionedID)
+	if err == nil {
+		return payload, nil
+	}
+	if !errors.Is(err, nativestore.ErrNotFound) {
+		return nil, err
+	}
+	return repository.file.Get(kind, id)
 }
 
 type databaseRecord struct {

@@ -217,6 +217,10 @@ expected revision 在 WAL 前校验，当前 revision 只允许单调推进并�
 119. F101 复用 F99 Current Row Tree 提供 Table prefix Page：after RowID 为
 exclusive，每次最多读取 limit + 1 个 locator；live/deleted/superseded 均显式返回，
 不因过滤 tombstone 造成无界 Page I/O，跨页 snapshot pin 留给 F103。
+120. F102 已提供严格 indexed autocommit point-get lane：Catalog 只读取目标 Table
+及其 Column 前缀，current locator 必须与 immutable version locator 和正文完全一致；
+成功 envelope 与 legacy path 等价，not-found/corruption 均不得扫描回退。daemon 默认
+authority 仍等 F105–F107 迁移后切换，显式事务 snapshot 由 F103 统一。
 
 ## 尚需验证
 

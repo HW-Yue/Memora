@@ -27,6 +27,10 @@ F98 只建立物理定位层，不把旧原生 Record File 替换为 Page Store 
 canonical 与 Catalog v1 一致：去除首尾空白后做 Unicode lowercase。ID 精确匹配，
 不做 lowercase。单个 UTF-8 组件最多 2048 bytes；超限是 validation error，不截断。
 
+F102 复用 `column/name` 的 Table ID 前缀遍历当前 Table 的 Column locator；当前名和
+alias 指向同一 locator，读取时按 Column ID 去重，再按原生 Column record 的持久 order
+恢复 Schema。该 cursor 不枚举其他 Table 或完整 Catalog，也不增加第二套 Column key。
+
 ## Locator v1
 
 值采用严格、确定性的版本化二进制编码，包含：

@@ -113,6 +113,71 @@ func (index *Index) ColumnByName(tableID, name string) (Locator, error) {
 	return index.lookup(key, KindColumn, "", tableID)
 }
 
+// ColumnsForTable returns each current Column locator once even though current
+// names and aliases occupy separate keys in the same Table-scoped prefix.
+func (index *Index) ColumnsForTable(tableID string) ([]Locator, error) {
+	if index == nil || index.runtime == nil {
+		return nil, fmt.Errorf("%w: lookup Index", ErrInvalid)
+	}
+	start, err := scopedNamePrefix(keyColumnName, tableID)
+	if err != nil {
+		return nil, err
+	}
+	end, err := keyPrefixSuccessor(start)
+	if err != nil {
+		return nil, err
+	}
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return []Locator{}, nil
+	}
+	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+	if err != nil {
+		return nil, err
+	}
+	cursor, err := searcher.NewCursor(start, end)
+	if err != nil {
+		return nil, classifyTreeError(err)
+	}
+	byID := make(map[string]Locator)
+	for {
+		batch, err := cursor.Next(256)
+		if err != nil {
+			return nil, classifyTreeError(err)
+		}
+		for _, entry := range batch.Entries {
+			if !bytes.HasPrefix(entry.Key, start) {
+				return nil, fmt.Errorf("%w: Column key escaped Table prefix", ErrCorrupt)
+			}
+			if err := validateStoredKey(entry.Key); err != nil {
+				return nil, err
+			}
+			locator, err := decodeLocator(entry.Value)
+			if err != nil {
+				return nil, err
+			}
+			if locator.Kind != KindColumn || locator.TableID != tableID {
+				return nil, fmt.Errorf("%w: Column locator does not match Table prefix", ErrCorrupt)
+			}
+			if previous, exists := byID[locator.ID]; exists && previous != locator {
+				return nil, fmt.Errorf("%w: Column aliases disagree", ErrCorrupt)
+			}
+			byID[locator.ID] = locator
+		}
+		if batch.Done {
+			break
+		}
+	}
+	result := make([]Locator, 0, len(byID))
+	for _, locator := range byID {
+		result = append(result, locator)
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].ID < result[right].ID })
+	return result, nil
+}
+
 func (index *Index) lookup(key []byte, kind Kind, databaseID, tableID string) (Locator, error) {
 	if index == nil || index.runtime == nil {
 		return Locator{}, fmt.Errorf("%w: lookup Index", ErrInvalid)

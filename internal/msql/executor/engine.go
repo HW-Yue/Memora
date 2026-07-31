@@ -48,6 +48,15 @@ type Rows interface {
 	ListRouterLeaf(context.Context, string, int) ([]router.Locator, bool, error)
 }
 
+// PointReads owns exact autocommit SELECT reads when configured. Implementations
+// must not fall back to Catalog or Row scans after an indexed lookup fails.
+type PointReads interface {
+	DescribeTable(context.Context, string, string) (catalog.Table, error)
+	Get(context.Context, catalog.Table, string) (row.Row, error)
+	AsOfRevision(context.Context, catalog.Table, string, uint64) (row.Row, error)
+	AsOfCommit(context.Context, catalog.Table, string, uint64) (row.Row, error)
+}
+
 type Reshaper interface {
 	Split(context.Context, string, string, []string, []map[string]any, row.ReshapeOptions) ([]row.Row, error)
 	Merge(context.Context, string, string, []string, []map[string]any, row.ReshapeOptions) ([]row.Row, error)
@@ -57,6 +66,7 @@ type Engine struct {
 	catalog       Catalog
 	catalogBinder *binder.Catalog
 	rows          Rows
+	points        PointReads
 	packages      PackageManager
 	wiki          WikiExporter
 }
@@ -166,6 +176,12 @@ func New(dictionary Catalog, rows Rows) *Engine {
 	if service, ok := dictionary.(binder.CatalogService); ok {
 		engine.catalogBinder = binder.NewCatalog(service)
 	}
+	return engine
+}
+
+func NewWithPointReads(dictionary Catalog, rows Rows, points PointReads) *Engine {
+	engine := New(dictionary, rows)
+	engine.points = points
 	return engine
 }
 

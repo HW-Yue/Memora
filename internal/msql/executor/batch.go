@@ -34,6 +34,7 @@ type BatchSession struct {
 	cancel     context.CancelFunc
 	autocommit *Engine
 	rows       Rows
+	points     PointReads
 	active     *row.Transaction
 	aborted    bool
 	closed     bool
@@ -41,6 +42,22 @@ type BatchSession struct {
 
 func NewBatchSession(ctx context.Context, dictionary Catalog, rows Rows) *BatchSession {
 	return NewBatchSessionWithPackages(ctx, dictionary, rows, nil)
+}
+
+func NewBatchSessionWithPointReads(
+	ctx context.Context,
+	dictionary Catalog,
+	rows Rows,
+	points PointReads,
+) *BatchSession {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	sessionContext, cancel := context.WithCancel(ctx)
+	return &BatchSession{
+		context: sessionContext, cancel: cancel,
+		autocommit: NewWithPointReads(dictionary, rows, points), rows: rows, points: points,
+	}
 }
 
 func NewBatchSessionWithPackages(
