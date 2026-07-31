@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -50,6 +51,51 @@ func TestTransactionPublishesAllRecordsOnlyAfterCommitAndReopen(t *testing.T) {
 		if err != nil || string(got) != want {
 			t.Fatalf("Get(%s) = %q, %v", id, got, err)
 		}
+	}
+}
+
+func TestRecordsReturnsOnlyCommittedRefsInStableOrderAcrossReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "records.memora")
+	file, err := Create(path, FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Put(ObjectKindRoute, 3, "route_b", []byte("route")); err != nil {
+		t.Fatal(err)
+	}
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Put(ObjectKindDatabase, 7, "db_a", []byte("database")); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := file.Records()
+	if err != nil || len(refs) != 1 || refs[0].Kind != ObjectKindRoute || refs[0].SchemaVersion != 3 {
+		t.Fatalf("pre-commit Records() = %#v, %v", refs, err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	want := []RecordRef{
+		{Kind: ObjectKindDatabase, SchemaVersion: 7, ID: "db_a", PayloadLength: 8},
+		{Kind: ObjectKindRoute, SchemaVersion: 3, ID: "route_b", PayloadLength: 5},
+	}
+	refs, err = file.Records()
+	if err != nil || !reflect.DeepEqual(refs, want) {
+		t.Fatalf("committed Records() = %#v, %v; want %#v", refs, err, want)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	refs, err = reopened.Records()
+	if err != nil || !reflect.DeepEqual(refs, want) {
+		t.Fatalf("reopened Records() = %#v, %v; want %#v", refs, err, want)
 	}
 }
 

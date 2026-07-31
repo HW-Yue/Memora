@@ -34,6 +34,13 @@ func Open(runtime *treecommit.Runtime) (*Index, error) {
 	return &Index{runtime: runtime}, nil
 }
 
+// Validate checks whether a Catalog can be represented without identity,
+// canonical name, or alias conflicts in the Lookup Index.
+func Validate(databases []catalog.Database) error {
+	_, err := buildEntries(databases)
+	return err
+}
+
 func (index *Index) Replace(transactionID uint64, databases []catalog.Database) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 {
 		return Receipt{}, fmt.Errorf("%w: replace request", ErrInvalid)

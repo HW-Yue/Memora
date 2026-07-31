@@ -231,6 +231,10 @@ private overlay 有 1000 Row 硬界限，Page Store authority 仍待 F107 切换
 collision-free binary key，transaction guard 整批原子 try-lock 并持有到终态；冲突
 返回 retryable `write_conflict` 且不暴露 holder。普通 reader 不取锁，F107 才接入
 Page Store writer，range/gap/wait/deadlock 不进入首版。
+123. F105 不迁移或复制 immutable `.memora` body，而是消除 `File.IDs()` 扫描作为
+逻辑索引 authority：只读 Reader 对全部 committed Record 做稳定 inventory/fingerprint，
+校验 Catalog 与每个 Row revision，并生成 F98–F100 locator Plan。未知 kind、损坏、
+规划期间变化或 F106 apply 前重验不一致都必须阻断，不能部分迁移或静默遗漏。
 
 ## 尚需验证
 

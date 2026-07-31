@@ -277,6 +277,50 @@ func (repository *Repository) AllRows() ([]row.Row, error) {
 	return result, nil
 }
 
+// AllRowVersions returns every immutable Row revision in stable RowID/revision order.
+func (repository *Repository) AllRowVersions() ([]row.Row, error) {
+	if repository == nil || repository.file == nil {
+		return nil, fmt.Errorf("%w: native file is required", ErrInvalid)
+	}
+	databases, err := nativecatalog.New(repository.file).Read()
+	if err != nil {
+		return nil, err
+	}
+	tables := make(map[string]catalog.Table)
+	for _, database := range databases {
+		for _, table := range database.Tables {
+			tables[table.ID] = table
+		}
+	}
+	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]row.Row, 0, len(ids))
+	for _, recordID := range ids {
+		value, err := repository.readDecodedRecord(recordID)
+		if err != nil {
+			return nil, err
+		}
+		table, exists := tables[value.TableID]
+		if !exists || table.DatabaseID != value.DatabaseID {
+			return nil, fmt.Errorf("%w: row %q has invalid Catalog reference", ErrCorrupt, value.ID)
+		}
+		value, err = normalizeDecodedRecord(value, table)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].ID != result[right].ID {
+			return result[left].ID < result[right].ID
+		}
+		return result[left].Revision < result[right].Revision
+	})
+	return result, nil
+}
+
 func (repository *Repository) NextCommitSequence() (uint64, error) {
 	rows, err := repository.AllRows()
 	if err != nil {

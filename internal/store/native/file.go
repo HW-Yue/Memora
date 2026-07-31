@@ -79,6 +79,14 @@ type recordMeta struct {
 	payloadOffset int64
 	payloadLength uint32
 	payloadCRC    uint32
+	schemaVersion uint32
+}
+
+type RecordRef struct {
+	Kind          ObjectKind
+	SchemaVersion uint32
+	ID            string
+	PayloadLength uint32
 }
 
 type bufferedRecord struct {
@@ -267,7 +275,9 @@ func (transaction *Transaction) Commit() error {
 	for _, record := range transaction.records {
 		encoded := encodeRecord(record.kind, record.schema, record.id, record.payload)
 		_, _ = digest.Write(encoded)
-		meta, err := transaction.file.appendEncoded(encoded, len(record.id), len(record.payload), crc32.ChecksumIEEE(record.payload))
+		meta, err := transaction.file.appendEncoded(
+			encoded, record.schema, len(record.id), len(record.payload), crc32.ChecksumIEEE(record.payload),
+		)
 		if err != nil {
 			return err
 		}
@@ -299,10 +309,15 @@ func (transaction *Transaction) Rollback() error {
 
 func (f *File) appendRecord(kind ObjectKind, schema uint32, id string, payload []byte) (recordMeta, error) {
 	encoded := encodeRecord(kind, schema, id, payload)
-	return f.appendEncoded(encoded, len(id), len(payload), crc32.ChecksumIEEE(payload))
+	return f.appendEncoded(encoded, schema, len(id), len(payload), crc32.ChecksumIEEE(payload))
 }
 
-func (f *File) appendEncoded(encoded []byte, idLength, payloadLength int, payloadCRC uint32) (recordMeta, error) {
+func (f *File) appendEncoded(
+	encoded []byte,
+	schemaVersion uint32,
+	idLength, payloadLength int,
+	payloadCRC uint32,
+) (recordMeta, error) {
 	offset, err := f.file.Seek(0, io.SeekEnd)
 	if err != nil {
 		return recordMeta{}, fmt.Errorf("seek native store file: %w", err)
@@ -310,7 +325,11 @@ func (f *File) appendEncoded(encoded []byte, idLength, payloadLength int, payloa
 	if err := writeFull(f.file, encoded); err != nil {
 		return recordMeta{}, fmt.Errorf("write native record: %w", err)
 	}
-	return recordMeta{payloadOffset: offset + recordHeaderSize + int64(idLength), payloadLength: uint32(payloadLength), payloadCRC: payloadCRC}, nil
+	return recordMeta{
+		payloadOffset: offset + recordHeaderSize + int64(idLength),
+		payloadLength: uint32(payloadLength), payloadCRC: payloadCRC,
+		schemaVersion: schemaVersion,
+	}, nil
 }
 
 func encodeRecord(kind ObjectKind, schema uint32, id string, payload []byte) []byte {
@@ -339,6 +358,13 @@ func (f *File) Get(kind ObjectKind, id string) ([]byte, error) {
 	return payload, nil
 }
 
+func (f *File) Kind() (FileKind, error) {
+	if f == nil || f.closed {
+		return 0, ErrClosed
+	}
+	return f.kind, nil
+}
+
 func (f *File) IDs(kind ObjectKind) ([]string, error) {
 	if f == nil || f.closed {
 		return nil, ErrClosed
@@ -351,6 +377,28 @@ func (f *File) IDs(kind ObjectKind) ([]string, error) {
 	}
 	sort.Strings(ids)
 	return ids, nil
+}
+
+// Records returns every committed logical record in deterministic physical-kind/key order.
+// Transaction markers and an incomplete crash tail are never included.
+func (f *File) Records() ([]RecordRef, error) {
+	if f == nil || f.closed {
+		return nil, ErrClosed
+	}
+	result := make([]RecordRef, 0, len(f.records))
+	for key, meta := range f.records {
+		result = append(result, RecordRef{
+			Kind: key.kind, SchemaVersion: meta.schemaVersion, ID: key.id,
+			PayloadLength: meta.payloadLength,
+		})
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].Kind != result[right].Kind {
+			return result[left].Kind < result[right].Kind
+		}
+		return result[left].ID < result[right].ID
+	})
+	return result, nil
 }
 
 func (f *File) Close() error {
@@ -418,6 +466,7 @@ func (f *File) scan(fileSize int64) error {
 			payloadOffset: payloadOffset,
 			payloadLength: header.payloadLength,
 			payloadCRC:    header.payloadCRC,
+			schemaVersion: header.schema,
 		}
 		switch header.kind {
 		case objectKindTransactionBegin:
