@@ -111,6 +111,7 @@
 - [Durable WAL Frontier v1](./storage/wal-durable-frontier-v1.md) — F97b1 已完成；为 crash repair 提供独立可信的 durable byte boundary。
 - [WAL Recovery Open v1](./storage/wal-recovery-open-v1.md) — F97b2 已完成；严格验证 frontier 前缀并持久清理 speculative tail。
 - [Tree Control v1](./storage/tree-control-v1.md) — F97c1 已完成的 slot 1 control Page 与 bootstrap 格式。
+- [Tree Control v2](./storage/tree-control-v2.md) — F97c4 分离 physical generation 与逐提交 revision 的替代格式。
 - [Root/Allocator Redo v1](./storage/root-allocator-redo-v1.md) — F97c2 已完成的 metadata payload codec。
 - [Tree Metadata Recovery v1](./storage/tree-metadata-recovery-v1.md) — F97c3 的 root-last recovery、验证与幂等边界。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
@@ -156,6 +157,8 @@
 - [F97c1 Tree Control Codec 开工与完成门](./planning/f97c1-tree-control-codec-gate.md) — slot 1 codec、bootstrap 与 corruption 完成证据。
 - [F97c2 Root/Allocator Redo Codec 开工与完成门](./planning/f97c2-root-allocator-redo-gate.md) — metadata payload、版本与字段校验。
 - [F97c3 Tree Metadata Recovery 开工与完成门](./planning/f97c3-tree-metadata-recovery-gate.md) — root-last recovery、幂等与故障矩阵。
+- [F97c4 Tree Revision Separation 开工与完成门](./planning/f97c4-tree-revision-separation-gate.md) — 修正 physical generation 与 publication revision 冲突。
+- [F97d Durable Tree Commit 拆分 Review](./planning/f97d-durable-tree-commit-review.md) — generation 阻断证据及 F97d1–F97d3 拆分。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。

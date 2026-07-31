@@ -1,6 +1,7 @@
 # Tree Control v1
 
-状态：F97c1 已实现并验收，PASS。
+状态：F97c1 已实现并验收；generation 语义已被
+[Tree Control v2](./tree-control-v2.md) 取代。
 
 ## 唯一用途
 

@@ -85,6 +85,9 @@ dirty Page steal、in-place Row body 或多 writer，再单独引入 Undo/Purge�
 COW generation 失败不影响当前 root；它不代替普通事务 Redo，也不产生第二套
 RowID、History、Route 或 Change Log 语义。
 
+Tree 的逐提交 root publication revision 与 physical generation 必须分离。普通 Redo
+提交只增加 revision；Page Header generation 和当前 physical generation 保持不变。
+
 ## 实施 Feature
 
 - F81–F86c：Page、WAL stream/commit、recovery、Segment Set、checkpoint 与回收；

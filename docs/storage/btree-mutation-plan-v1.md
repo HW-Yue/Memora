@@ -16,7 +16,8 @@ planner.Delete(key)
 planner.Plan() → root, next_page_id, PageChange[], allocated[], retired[]
 ```
 
-`next_page_id` 是第一个未分配 ID。每个 `PageChange` 携带原 Page 的
+传入的 `generation` 是 physical generation，普通提交前后保持不变，不是逐提交 root
+revision。`next_page_id` 是第一个未分配 ID。每个 `PageChange` 携带原 Page 的
 `expected_lsn`（新 Page 为 0）和 LSN 归零的 after-image，供 F97d 做提交前冲突检查和
 WAL 编码。输出按 Page ID 排序，所有 byte slice、Node、Page 和结果互不 alias。
 
