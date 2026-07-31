@@ -1,6 +1,6 @@
 # Current Row Index v1
 
-状态：F99 已完成；格式与行为契约已冻结。
+状态：F99 已完成；F106 已追加空树 final-locator Bootstrap。
 
 ## 唯一结果
 
@@ -41,6 +41,10 @@ Table/Row 不一致、未知版本/状态、非法层级、保留位非零、尾
 
 逻辑删除和 split/merge supersede 保留为“当前 Locator”，不物理删除 key，供 revision
 guard、History 和后续 Table Cursor 判断可见状态。
+
+F106 离线 `Bootstrap` 只允许空树：它直接接收已由完整历史 Plan 验证的最终 Locator，
+因此不重放中间 revision transition，并能为零 Row 创建非零 root。非空树调用稳定冲突；
+在线写入仍只能走上述 `Apply` guard。
 
 ## 完成证据
 

@@ -17,6 +17,33 @@ import (
 
 const testSpaceID = uint64(61)
 
+func TestBootstrapCreatesEmptyOrCompleteHistoricalAuthority(t *testing.T) {
+	_, _, emptyRuntime, empty := newTestIndex(t)
+	receipt, err := empty.Bootstrap(1, nil)
+	if err != nil || !receipt.Changed || emptyRuntime.State().RootPageID == 0 {
+		t.Fatalf("Bootstrap(empty) = %+v, %v", receipt, err)
+	}
+	if highWater, err := empty.HighWater(); err != nil || highWater != 0 {
+		t.Fatalf("empty high-water = %d, %v", highWater, err)
+	}
+
+	_, _, _, index := newTestIndex(t)
+	first := locator("row_one", 1, 0, row.StateLive)
+	second := locator("row_one", 2, 9, row.StateDeleted)
+	receipt, err = index.Bootstrap(1, []Locator{first, second})
+	if err != nil || !receipt.Changed {
+		t.Fatalf("Bootstrap(history) = %+v, %v", receipt, err)
+	}
+	assertLookup(t, first, func() (Locator, error) { return index.ByRevision(first.RowID, 1) })
+	assertLookup(t, second, func() (Locator, error) { return index.ByRevision(second.RowID, 2) })
+	if highWater, err := index.HighWater(); err != nil || highWater != second.CommitSequence {
+		t.Fatalf("history high-water = %d, %v", highWater, err)
+	}
+	if _, err := index.Bootstrap(2, nil); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Bootstrap(non-empty) error = %v", err)
+	}
+}
+
 func TestLookupByRevisionCommitAndAsOfFloor(t *testing.T) {
 	_, _, _, index := newTestIndex(t)
 	versions := []Locator{

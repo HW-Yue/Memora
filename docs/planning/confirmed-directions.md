@@ -235,6 +235,11 @@ Page Store writer，range/gap/wait/deadlock 不进入首版。
 逻辑索引 authority：只读 Reader 对全部 committed Record 做稳定 inventory/fingerprint，
 校验 Catalog 与每个 Row revision，并生成 F98–F100 locator Plan。未知 kind、损坏、
 规划期间变化或 F106 apply 前重验不一致都必须阻断，不能部分迁移或静默遗漏。
+124. F106 用 hidden staging generation 解决 Catalog/current/version 三棵独立 WAL Tree
+的跨树发布：各树完整 build、flush、reopen 与逐 locator 验证后，manifest 绑定 source、
+Plan、root state 和全部内容 digest，再以目录 rename + parent fsync 发布。发布前失败只
+清理本次 staging；rename 后 durability 不确定返回 outcome unknown 并由幂等重试收敛。
+F106 不切默认 authority，legacy body 和读写路径保持不变直到 F107。
 
 ## 尚需验证
 

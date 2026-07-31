@@ -1,6 +1,6 @@
 # Row Version Index v1
 
-状态：F100 已完成；F103 已追加 snapshot metadata 与单调发布契约。
+状态：F100 已完成；F103 已追加 snapshot 契约；F106 已追加空树完整历史 Bootstrap。
 
 ## 唯一结果
 
@@ -30,7 +30,7 @@ commit sequence 和 live/deleted/superseded 状态。Schema/Row revision 必须�
 
 F17 前兼容 revision 可以有 commit sequence 0：它写 revision key 与 legacy anchor，
 不写 commit key，因此可按 revision 或 snapshot fallback 读取，但不会伪装成 AS OF
-时间线位置。所有 legacy locator 必须在空树的首次离线 Append 中完成导入。
+时间线位置。所有 legacy locator 必须在 F106 的空树离线 `Bootstrap` 中完成导入。
 
 ## 追加与冲突
 
@@ -44,6 +44,10 @@ F17 前兼容 revision 可以有 commit sequence 0：它写 revision key 与 leg
 - 相同 Row + revision 指向不同 locator、同批重复 revision 或 identity 漂移均在
   WAL 前整批失败；
 - 索引只追加，不覆盖或删除历史 key。
+
+`Bootstrap` 与普通 `Append` 分离：它只接受空树，把全部 immutable locator、legacy
+anchor 与 high-water 在一个 WAL 事务中发布；空历史也会创建带 high-water 0 的非零 root。
+完成后历史封存规则立即生效，重复 Bootstrap 稳定冲突。
 
 ## 完成证据
 

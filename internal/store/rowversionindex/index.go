@@ -52,6 +52,41 @@ func Open(runtime *treecommit.Runtime) (*Index, error) {
 	return &Index{runtime: runtime}, nil
 }
 
+// Bootstrap creates the complete immutable Row history and snapshot marker in
+// one empty Tree. Later changes must use Append and its sealed-history rules.
+func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt, error) {
+	if index == nil || index.runtime == nil || transactionID == 0 {
+		return Receipt{}, fmt.Errorf("%w: Bootstrap request", ErrInvalid)
+	}
+	prepared, err := prepareLocators(locators)
+	if err != nil {
+		return Receipt{}, err
+	}
+
+	index.mu.Lock()
+	defer index.mu.Unlock()
+	state := index.runtime.State()
+	if state.RootPageID != 0 {
+		return Receipt{}, fmt.Errorf("%w: Row Version authority is not empty", ErrConflict)
+	}
+	active, err := index.validateAppend(state, prepared)
+	if err != nil {
+		return Receipt{}, err
+	}
+	sort.Slice(active, func(left, right int) bool {
+		return bytes.Compare(active[left].key, active[right].key) < 0
+	})
+	plan, err := planBootstrap(state, active)
+	if err != nil {
+		return Receipt{}, err
+	}
+	committed, err := index.runtime.Commit(transactionID, plan)
+	if err != nil {
+		return Receipt{}, err
+	}
+	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
+}
+
 func (index *Index) Append(transactionID uint64, locators []Locator) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 || len(locators) == 0 {
 		return Receipt{}, fmt.Errorf("%w: Append request", ErrInvalid)

@@ -46,6 +46,39 @@ func Open(runtime *treecommit.Runtime) (*Index, error) {
 	return &Index{runtime: runtime}, nil
 }
 
+// Bootstrap creates a complete Current Row authority from final locators.
+// Unlike Apply, it deliberately does not replay intermediate Row transitions;
+// the durable Tree must still be empty.
+func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt, error) {
+	if index == nil || index.runtime == nil || transactionID == 0 {
+		return Receipt{}, fmt.Errorf("%w: Bootstrap request", ErrInvalid)
+	}
+	updates := make([]Update, len(locators))
+	for position, locator := range locators {
+		updates[position] = Update{Locator: locator}
+	}
+	prepared, err := prepareUpdates(updates)
+	if err != nil {
+		return Receipt{}, err
+	}
+
+	index.mu.Lock()
+	defer index.mu.Unlock()
+	state := index.runtime.State()
+	if state.RootPageID != 0 {
+		return Receipt{}, fmt.Errorf("%w: Current Row authority is not empty", ErrConflict)
+	}
+	plan, err := planBootstrap(state, prepared)
+	if err != nil {
+		return Receipt{}, err
+	}
+	committed, err := index.runtime.Commit(transactionID, plan)
+	if err != nil {
+		return Receipt{}, err
+	}
+	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
+}
+
 func (index *Index) Apply(transactionID uint64, updates []Update) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 || len(updates) == 0 {
 		return Receipt{}, fmt.Errorf("%w: Apply request", ErrInvalid)
@@ -257,6 +290,9 @@ func planBootstrap(
 		}
 	}
 	plan := planner.Plan()
+	if len(plan.Changes) == 0 {
+		plan.Changes = []btree.PageChange{{Page: root}}
+	}
 	plan.Allocated = append([]uint64{rootID}, plan.Allocated...)
 	return plan, nil
 }
