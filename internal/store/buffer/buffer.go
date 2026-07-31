@@ -38,11 +38,14 @@ type Stats struct {
 	Young     uint64
 	Old       uint64
 	Evictions uint64
+	Dirty     uint64
 }
 
 type Config struct {
-	Capacity  uint64
-	OldFrames uint64
+	Capacity   uint64
+	OldFrames  uint64
+	Writer     PageWriter
+	Durability WALDurability
 }
 
 type Pool struct {
@@ -52,19 +55,23 @@ type Pool struct {
 	config    Config
 	young     list.List
 	old       list.List
+	dirty     list.List
 	evictions uint64
 }
 
 type frame struct {
-	key     Key
-	ready   chan struct{}
-	loading bool
-	loadErr error
-	value   page.Page
-	pins    uint64
-	latch   sync.RWMutex
-	queue   frameQueue
-	element *list.Element
+	key          Key
+	ready        chan struct{}
+	loading      bool
+	loadErr      error
+	value        page.Page
+	pins         uint64
+	latch        sync.RWMutex
+	flushMu      sync.Mutex
+	queue        frameQueue
+	element      *list.Element
+	dirty        bool
+	dirtyElement *list.Element
 }
 
 type frameQueue uint8
@@ -84,7 +91,8 @@ type Handle struct {
 
 func New(loader Loader, config Config) (*Pool, error) {
 	if loader == nil || config.Capacity == 0 || config.OldFrames == 0 ||
-		config.OldFrames > config.Capacity {
+		config.OldFrames > config.Capacity ||
+		((config.Writer == nil) != (config.Durability == nil)) {
 		return nil, ErrInvalid
 	}
 	return &Pool{loader: loader, frames: make(map[Key]*frame), config: config}, nil
@@ -160,6 +168,7 @@ func (pool *Pool) Stats() Stats {
 		Young:     uint64(pool.young.Len()),
 		Old:       uint64(pool.old.Len()),
 		Evictions: pool.evictions,
+		Dirty:     uint64(pool.dirty.Len()),
 	}
 	for _, current := range pool.frames {
 		state.Pins += current.pins
@@ -232,7 +241,7 @@ func (pool *Pool) trimOldLocked() {
 func evictableFromBack(queue *list.List) *frame {
 	for element := queue.Back(); element != nil; element = element.Prev() {
 		current := element.Value.(*frame)
-		if current.pins == 0 && !current.loading {
+		if current.pins == 0 && !current.loading && !current.dirty {
 			return current
 		}
 	}

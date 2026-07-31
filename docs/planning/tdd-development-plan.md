@@ -4,7 +4,7 @@
 [小 Feature TDD 与合入协议](./feature-tdd-protocol.md)和
 [当前 Feature 规划](./next-feature-plan.md)执行。
 
-当前进度：F52–F88 已完成，F89 Dirty Page Flush 待实施；F51 的
+当前进度：F52–F89 已完成，F90 B+ Tree Node Codec 待实施；F51 的
 Vector/cosine 结论已撤销。
 
 ## 产品目标

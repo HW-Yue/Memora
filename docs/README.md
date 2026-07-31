@@ -82,6 +82,7 @@
 - [Buffer Pool](./storage/buffer-pool.md) — daemon 中缓存文件 Page，最近访问的 Page 按 LRU 或近似算法保留与淘汰。
 - [Buffer Pool Page Loading v1](./storage/buffer-pool-page-loading-v1.md) — F87 的 Page Table、single-flight、pin Handle 与读写 latch 契约。
 - [Buffer Pool Eviction v1](./storage/buffer-pool-eviction-v1.md) — F88 的容量、young/old LRU、pin victim 与 scan protection 契约。
+- [Buffer Pool Dirty Flush v1](./storage/buffer-pool-dirty-flush-v1.md) — F89 的 committed Modify、flush list 与 WAL-before-data 契约。
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
 - [Committed Change Log（Binlog）与未来同步](./storage/binlog-and-sync.md) — 第一用途是 Admin 展示数据与语义索引变化；同步、PITR 后续复用。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
@@ -126,6 +127,7 @@
 - [F86c Segment Reclaim 开工与完成门](./planning/f86c-segment-reclaim-gate.md) — manifest authority、删除顺序与重开门。
 - [F87 Page Loading 开工与完成门](./planning/f87-page-loading-gate.md) — fake loader、single-flight、pin/latch 与 race 完成门。
 - [F88 Buffer Pool Eviction 开工与完成门](./planning/f88-buffer-pool-eviction-gate.md) — 硬容量、young/old victim、pin 与并发 miss 完成门。
+- [F89 Dirty Page Flush 开工与完成门](./planning/f89-dirty-page-flush-gate.md) — Page LSN、dirty victim、WAL 顺序与 write fault 完成门。
 - [当前实现缺口审计](./planning/implementation-gap-audit-2026-07-31.md) — 对照技术文档与公开代码，区分真实未实现、部分实现和状态漂移。
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
