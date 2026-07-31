@@ -1,7 +1,8 @@
 # F81 之后的小 Feature 规划
 
-状态：执行顺序已获用户授权；F81–F96 已完成，F97 待 Review。一个 Feature 只交付一个可独立
-测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许合并实施。
+状态：F81–F97a 已完成；F97b Review 建议拆为 F97b1 Durable WAL Frontier 与 F97b2
+Repairing Open，待用户确认语义与逐项授权。一个 Feature 只交付一个可独立测试、
+验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许合并实施。
 
 语义检索永久禁止 Embedding、Vector、cosine、隐藏评分和全文 prompt 扫描。
 
@@ -27,7 +28,11 @@
 | F94 B+ Tree Split | leaf/internal split 与 root grow 正确 |
 | F95 B+ Tree Delete | 删除 key 后查询结果正确 |
 | F96 B+ Tree Rebalance | borrow/merge/root shrink 恢复树不变量 |
-| F97 Durable B+ Tree Root | 树经 Buffer Pool/WAL 提交并从 root reopen |
+| F97a B+ Tree Mutation Plan | 多层 mutation 生成零共享写入的私有 Page 计划（已完成） |
+| F97b1 Durable WAL Frontier | 独立 control 保存可信 durable byte boundary（候选） |
+| F97b2 Repairing Open | 严格保留 frontier 前缀并清理 speculative tail（候选） |
+| F97c Root/Allocator Redo | root 与 allocator metadata 可随 committed WAL 幂等恢复 |
+| F97d Durable Tree Commit | 私有计划经 WAL/Page/root-last 顺序提交并可 reopen |
 
 ## R：真实 RowID 数据路径
 
@@ -127,7 +132,8 @@
 
 ## 批准与执行规则
 
-1. 当前只 Review F81；批准 F81 不授权 F82；
+1. 当前下一项是 F97b1；须先确认 outcome-unknown 语义与 F97b1/F97b2 拆分，批准
+   F97b1 不自动授权 F97b2；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；
