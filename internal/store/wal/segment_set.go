@@ -28,14 +28,18 @@ type SegmentInfo struct {
 }
 
 type SegmentSet struct {
-	mu             sync.Mutex
-	directory      string
-	segments       []*Segment
-	writer         *TransactionWriter
-	transactionIDs map[uint64]struct{}
-	activeCommits  int
-	closed         bool
-	createSegment  func(string, uint64, uint64) (*Segment, error)
+	mu                   sync.Mutex
+	directory            string
+	segments             []*Segment
+	writer               *TransactionWriter
+	transactionIDs       map[uint64]struct{}
+	activeCommits        int
+	closed               bool
+	createSegment        func(string, uint64, uint64) (*Segment, error)
+	lastCommitDurableLSN uint64
+	lastCommitSegmentID  uint64
+	lastCheckpoint       Checkpoint
+	hasCheckpoint        bool
 }
 
 func CreateSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
@@ -109,7 +113,12 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 		}
 	}()
 	transactionIDs := make(map[uint64]struct{})
+	commitBoundaries := make(map[uint64]uint64)
 	activeCommits := 0
+	var lastCommitDurableLSN uint64
+	var lastCommitSegmentID uint64
+	var lastCheckpoint Checkpoint
+	hasCheckpoint := false
 	expectedStartLSN := startLSN
 	for index, entry := range entries {
 		segmentID, err := parseSegmentFilename(entry.Name())
@@ -144,6 +153,29 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 				return nil, fmt.Errorf("%w: duplicate transaction across Segments", ErrCorrupt)
 			}
 			transactionIDs[transaction.Receipt.TransactionID] = struct{}{}
+			commitBoundaries[transaction.Receipt.DurableLSN] = segmentID
+			lastCommitDurableLSN = transaction.Receipt.DurableLSN
+			lastCommitSegmentID = segmentID
+		}
+		for _, record := range records {
+			if record.Type != TypeCheckpoint {
+				continue
+			}
+			checkpoint, err := decodeCheckpointRecord(record, segmentID)
+			if err != nil {
+				return nil, err
+			}
+			if (!hasCheckpoint && checkpoint.ID != 1) ||
+				(hasCheckpoint && (checkpoint.ID != lastCheckpoint.ID+1 ||
+					checkpoint.RecoveryLSN <= lastCheckpoint.RecoveryLSN)) {
+				return nil, fmt.Errorf("%w: checkpoint sequence", ErrCorrupt)
+			}
+			if coveredSegment, exists := commitBoundaries[checkpoint.RecoveryLSN]; !exists ||
+				coveredSegment != checkpoint.CoveredSegmentID {
+				return nil, fmt.Errorf("%w: checkpoint recovery boundary", ErrCorrupt)
+			}
+			lastCheckpoint = checkpoint
+			hasCheckpoint = true
 		}
 		if index == len(entries)-1 {
 			activeCommits = len(transactions)
@@ -159,12 +191,16 @@ func OpenSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
 	}
 	closeOnError = false
 	return &SegmentSet{
-		directory:      directory,
-		segments:       segments,
-		writer:         writer,
-		transactionIDs: transactionIDs,
-		activeCommits:  activeCommits,
-		createSegment:  Create,
+		directory:            directory,
+		segments:             segments,
+		writer:               writer,
+		transactionIDs:       transactionIDs,
+		activeCommits:        activeCommits,
+		createSegment:        Create,
+		lastCommitDurableLSN: lastCommitDurableLSN,
+		lastCommitSegmentID:  lastCommitSegmentID,
+		lastCheckpoint:       lastCheckpoint,
+		hasCheckpoint:        hasCheckpoint,
 	}, nil
 }
 
@@ -183,6 +219,8 @@ func (set *SegmentSet) Commit(transactionID uint64, records []Record) (Receipt, 
 	}
 	set.transactionIDs[transactionID] = struct{}{}
 	set.activeCommits++
+	set.lastCommitDurableLSN = receipt.DurableLSN
+	set.lastCommitSegmentID = set.segments[len(set.segments)-1].segmentID
 	return receipt, nil
 }
 
@@ -249,6 +287,10 @@ func (set *SegmentSet) ScanCommitted() ([]CommittedTransaction, error) {
 	if set.closed {
 		return nil, ErrSegmentSetClosed
 	}
+	return set.scanCommittedLocked()
+}
+
+func (set *SegmentSet) scanCommittedLocked() ([]CommittedTransaction, error) {
 	transactions := make([]CommittedTransaction, 0)
 	seen := make(map[uint64]struct{})
 	for _, segment := range set.segments {

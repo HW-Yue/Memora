@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：执行顺序已获用户授权；F81–F86a 已完成，F86b 下一项。一个 Feature 只交付一个可独立
+状态：执行顺序已获用户授权；F81–F86b 已完成，F86c 下一项。一个 Feature 只交付一个可独立
 测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许合并实施。
 
 语义检索永久禁止 Embedding、Vector、cosine、隐藏评分和全文 prompt 扫描。

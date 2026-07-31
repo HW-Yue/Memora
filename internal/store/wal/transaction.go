@@ -219,6 +219,15 @@ func scanCommittedRecords(
 	var pendingID uint64
 
 	for _, record := range records {
+		if record.Type == TypeCheckpoint {
+			if len(pending) != 0 {
+				return nil, nil, false, corruptTransaction("checkpoint inside transaction")
+			}
+			if _, err := decodeCheckpointRecord(record, math.MaxUint64); err != nil {
+				return nil, nil, false, err
+			}
+			continue
+		}
 		if isChangeType(record.Type) {
 			if record.TransactionID == 0 {
 				return nil, nil, false, corruptTransaction("zero transaction ID")

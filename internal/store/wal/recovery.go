@@ -66,11 +66,18 @@ func Recover(
 	segment *Segment,
 	spaces map[uint64]PageStore,
 ) (RecoveryReport, error) {
-	var report RecoveryReport
 	transactions, err := ScanCommitted(segment)
 	if err != nil {
-		return report, err
+		return RecoveryReport{}, err
 	}
+	return recoverTransactions(transactions, spaces)
+}
+
+func recoverTransactions(
+	transactions []CommittedTransaction,
+	spaces map[uint64]PageStore,
+) (RecoveryReport, error) {
+	var report RecoveryReport
 	for _, transaction := range transactions {
 		staged, touched, skipped, err := stageTransaction(transaction, spaces)
 		if err != nil {
