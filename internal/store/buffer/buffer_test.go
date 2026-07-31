@@ -43,6 +43,7 @@ func TestFetchSingleFlightPinsEveryCallerAndCachesPage(t *testing.T) {
 	if got := receive(t, entered); got != key {
 		t.Fatalf("Load key = %+v, want %+v", got, key)
 	}
+	waitForStats(t, pool, Stats{Frames: 1, Loading: 1, Pins: callers})
 	close(releaseLoad)
 
 	handles := make([]*Handle, 0, callers)
@@ -56,7 +57,7 @@ func TestFetchSingleFlightPinsEveryCallerAndCachesPage(t *testing.T) {
 	if got := loader.Calls(key); got != 1 {
 		t.Fatalf("Load calls = %d, want 1", got)
 	}
-	if got := pool.Stats(); got != (Stats{Frames: 1, Pins: callers}) {
+	if got := pool.Stats(); got != (Stats{Frames: 1, Pins: callers, Old: 1}) {
 		t.Fatalf("Stats() = %+v, want one Frame and %d pins", got, callers)
 	}
 	for _, handle := range handles {
@@ -64,7 +65,7 @@ func TestFetchSingleFlightPinsEveryCallerAndCachesPage(t *testing.T) {
 			t.Fatalf("Release() error = %v", err)
 		}
 	}
-	if got := pool.Stats(); got != (Stats{Frames: 1}) {
+	if got := pool.Stats(); got != (Stats{Frames: 1, Old: 1}) {
 		t.Fatalf("Stats() after Release = %+v, want cached unpinned Frame", got)
 	}
 
@@ -304,7 +305,7 @@ func TestPageValuesAreDeepCopiedAtEveryBoundary(t *testing.T) {
 }
 
 func TestPoolRejectsInvalidInputs(t *testing.T) {
-	if _, err := New(nil); !errors.Is(err, ErrInvalid) {
+	if _, err := New(nil, Config{Capacity: 4, OldFrames: 1}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("New(nil) error = %v, want ErrInvalid", err)
 	}
 	pool := mustNewPool(t, LoaderFunc(func(key Key) (page.Page, error) {
@@ -351,7 +352,7 @@ func (loader *countingLoader) Calls(key Key) int {
 
 func mustNewPool(t *testing.T, loader Loader) *Pool {
 	t.Helper()
-	pool, err := New(loader)
+	pool, err := New(loader, Config{Capacity: 1024, OldFrames: 256})
 	if err != nil {
 		t.Fatal(err)
 	}
