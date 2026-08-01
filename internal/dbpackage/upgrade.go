@@ -48,6 +48,9 @@ func (service *Service) PlanUpgrade(ctx context.Context, encoded []byte) (Upgrad
 	if err != nil {
 		return UpgradePlan{}, err
 	}
+	if err := service.checkRevoked(ctx, opened); err != nil {
+		return UpgradePlan{}, err
+	}
 	current, err := catalog.New(service.store, catalog.Options{}).DescribeDatabase(ctx, opened.Manifest.DatabaseID)
 	if err != nil {
 		return UpgradePlan{}, err

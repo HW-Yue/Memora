@@ -288,6 +288,9 @@ func (service *Service) Install(ctx context.Context, encoded []byte, options Ins
 	if err != nil {
 		return InstallReceipt{}, err
 	}
+	if err := service.checkRevoked(ctx, opened); err != nil {
+		return InstallReceipt{}, err
+	}
 	signerKeyID, signatureVerified := "", false
 	if opened.Signature != nil {
 		signerKeyID, signatureVerified = opened.Signature.KeyID, opened.Signature.Verified

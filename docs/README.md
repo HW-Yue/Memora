@@ -27,6 +27,7 @@
 - [Database Package Signature v1](./product/database-package-signature-v1.md) — F137 的确定性 Ed25519 发布者签名与离线验证。
 - [Database Package Install v2](./product/database-package-install-v2.md) — F138 的原子只读安装、签名收据与 MSQL 写入强制门。
 - [Database Package Upgrade v1](./product/database-package-upgrade-v1.md) — F139 的 current/package-bound 计划、审批与原子只读替换。
+- [Database Package Revocation v1](./product/database-package-revocation-v1.md) — F140 的 durable package/signer 负向信任与安装升级门。
 - [质量模型与验收](./product/quality-model.md) — 写入、检索、修改、上下文和接管的效果指标。
 - [语义记录模型](./data/semantic-records.md) — AI 自定义表和字段，记录是短小完整的知识模块。
 - [自描述 Data Dictionary](./data/self-describing-data-dictionary.md) — 让陌生 Agent 在有界输出内理解库、表、字段和边界。
