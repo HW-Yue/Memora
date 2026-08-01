@@ -40,6 +40,9 @@ func TestCanonicalSkillContract(t *testing.T) {
 	if got, want := bundle.Contract.RouteMutationPlanVersion, routemutationplan.PlanVersion; got != want {
 		t.Fatalf("Route mutation plan version = %q, want %q", got, want)
 	}
+	if got, want := bundle.Contract.RouteMutationReceiptVersion, routemutationplan.ReceiptVersion; got != want {
+		t.Fatalf("Route mutation receipt version = %q, want %q", got, want)
+	}
 	if got, want := bundle.Contract.ConflictViewVersion, skillconflict.ViewVersion; got != want {
 		t.Fatalf("conflict view version = %q, want %q", got, want)
 	}
@@ -134,7 +137,8 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 		"memora.assimilation-submission/v1", "memora.assimilation-review/v1", "memora.source-receipt/v1",
 		"RETAIN", "REWRITE", "REMOVE", "in_doubt",
 		"memora.feedback-event/v1", "memora.feedback-confirmation/v1", "COMPENSATE",
-		"memora.route-mutation-proposal/v1", "memora.route-mutation-plan/v1", "PLAN ROUTE MUTATION",
+		"memora.route-mutation-proposal/v1", "memora.route-mutation-plan/v1",
+		"memora.route-mutation-receipt/v1", "PLAN ROUTE MUTATION", "APPLY ROUTE MUTATION",
 	} {
 		if !strings.Contains(bundle.Markdown, required) {
 			t.Errorf("canonical Skill omits conflict protocol token %q", required)

@@ -351,10 +351,24 @@ memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.rout
 ```
 
 Verify that the result is `memora.route-mutation-plan/v1`, `status=review_required`,
-and has base snapshot and plan hashes. F129 has no apply path: show the plan and its
-impact for review, and never translate its actions into ad hoc CREATE/DELETE/UPDATE
-statements. A truncated scan or revision conflict requires a fresh inspection and
-new proposal.
+and has base snapshot and plan hashes. Show the exact plan and impact to the user.
+Only after explicit approval, submit that unchanged plan through `memora exec`; bind
+the generic approval to action `APPLY_ROUTE_MUTATION` and to the 64 hexadecimal
+characters after the plan hash's `sha256:` prefix:
+
+```sql
+APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes
+```
+
+Use `memora exec` with `parameters.named.plan` set to the exact reviewed object.
+Set `authorization.approval.version=memora.approval/v1`,
+`authorization.approval.action=APPLY_ROUTE_MUTATION`, the matching
+`subject_sha256`, and `confirmed=true`; keep the same authorized Database scope.
+
+Require `memora.route-mutation-receipt/v1`, `status=committed`, and `verified=true`.
+Never translate plan actions into ad hoc CREATE/DELETE/UPDATE statements. Never edit
+and re-hash a reviewed plan. A truncated scan, approval mismatch, or revision conflict
+requires a fresh inspection and new proposal; do not retry a stale plan.
 
 ## Record feedback and revise
 

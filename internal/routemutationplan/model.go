@@ -10,6 +10,7 @@ import (
 const (
 	ProposalVersion = "memora.route-mutation-proposal/v1"
 	PlanVersion     = "memora.route-mutation-plan/v1"
+	ReceiptVersion  = "memora.route-mutation-receipt/v1"
 )
 
 type Operation string
@@ -132,6 +133,20 @@ type Plan struct {
 	Deletes          []NodeDelete      `json:"deletes"`
 	Impact           Impact            `json:"impact"`
 	Hash             string            `json:"hash"`
+}
+
+type Receipt struct {
+	Version             string    `json:"version"`
+	PlanID              string    `json:"plan_id"`
+	PlanHash            string    `json:"plan_hash"`
+	Operation           Operation `json:"operation"`
+	Status              string    `json:"status"`
+	ChangeSequence      uint64    `json:"change_sequence"`
+	CreatedNodes        int       `json:"created_nodes"`
+	UpdatedNodes        int       `json:"updated_nodes"`
+	DeletedNodes        int       `json:"deleted_nodes"`
+	MembershipRevisions int       `json:"membership_revisions"`
+	Verified            bool      `json:"verified"`
 }
 
 type Source interface {

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -160,6 +161,65 @@ func (repository *Repository) StageNode(transaction *nativestore.Transaction, va
 		return err
 	}
 	return transaction.Put(nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(value.ID, value.Revision), payload)
+}
+
+// StagePlannedCreate stages a fully validated revision-one node whose parent
+// may also be staged in the same transaction. It is intentionally reserved for
+// a guarded Route mutation plan.
+func (repository *Repository) StagePlannedCreate(transaction *nativestore.Transaction, value router.Node) error {
+	if transaction == nil || value.Version != router.Version || value.ID == "" || value.DatabaseID == "" ||
+		value.TableID == "" || value.ParentID == "" || value.Name == "" || value.Path == "" ||
+		value.Purpose == "" || value.Revision != 1 || value.Deleted ||
+		(value.Kind != router.KindBranch && value.Kind != router.KindLeaf) {
+		return fmt.Errorf("%w: invalid planned Route create", ErrInvalid)
+	}
+	if _, err := repository.Get(value.ID); err == nil || !errors.Is(err, nativestore.ErrNotFound) {
+		if err == nil {
+			return fmt.Errorf("%w: planned Route already exists", ErrInvalid)
+		}
+		return err
+	}
+	if err := validateSynopsis(value.Synopsis); err != nil {
+		return err
+	}
+	return repository.stageInitialNode(transaction, value)
+}
+
+// StagePlannedRevision permits only reparent/path/deleted changes. Identity,
+// semantic surfaces and kind remain immutable during structural execution.
+func (repository *Repository) StagePlannedRevision(transaction *nativestore.Transaction, value router.Node) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	latest, err := repository.Get(value.ID)
+	if err != nil {
+		return err
+	}
+	if latest.Deleted || value.Version != latest.Version || value.Revision != latest.Revision+1 ||
+		value.DatabaseID != latest.DatabaseID || value.TableID != latest.TableID || value.Kind != latest.Kind ||
+		value.Name != latest.Name || value.Purpose != latest.Purpose || value.Synopsis != latest.Synopsis ||
+		!slices.Equal(value.Aliases, latest.Aliases) || value.Path == "" {
+		return fmt.Errorf("%w: planned Route revision conflicts with latest", ErrInvalid)
+	}
+	payload, err := encodeNode(value)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(value.ID, value.Revision), payload)
+}
+
+// StagePlannedMembership validates the immutable locator shape while allowing
+// its target leaf to be a Route created in the same transaction.
+func (repository *Repository) StagePlannedMembership(transaction *nativestore.Transaction, value router.Membership) error {
+	if transaction == nil || value.LeafID == "" || value.DatabaseID == "" || value.TableID == "" ||
+		value.RowID == "" || value.Revision == 0 || value.MembershipRevision == 0 {
+		return fmt.Errorf("%w: invalid planned membership", ErrInvalid)
+	}
+	payload, err := encodeMembership(value)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload)
 }
 
 func (repository *Repository) validateMembership(value router.Membership) error {

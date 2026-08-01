@@ -35,6 +35,14 @@ type RowChange struct {
 	Initial    bool
 }
 
+type RoutePlanCommit struct {
+	Routes      []router.Node
+	Created     map[string]bool
+	Memberships []router.Membership
+	Metadata    change.Metadata
+	CommittedAt time.Time
+}
+
 type Coordinator struct {
 	file   *nativestore.File
 	rows   *nativerow.Repository
@@ -135,6 +143,60 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 		return coordinator.pages.PublishRows(context.Background(), values, transaction.Commit)
 	}
 	return transaction.Commit()
+}
+
+func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, error) {
+	if coordinator == nil || coordinator.file == nil || coordinator.router == nil ||
+		len(plan.Routes)+len(plan.Memberships) == 0 {
+		return 0, fmt.Errorf("native Route plan commit is incomplete")
+	}
+	sequence, err := coordinator.changeSequence()
+	if err != nil {
+		return 0, err
+	}
+	transaction, err := coordinator.file.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	entries := make([]change.Entry, 0, len(plan.Routes)+len(plan.Memberships))
+	for _, value := range plan.Routes {
+		operation := change.OperationUpdate
+		if plan.Created[value.ID] {
+			operation = change.OperationInsert
+			err = coordinator.router.StagePlannedCreate(transaction, value)
+		} else {
+			if value.Deleted {
+				operation = change.OperationDelete
+			}
+			err = coordinator.router.StagePlannedRevision(transaction, value)
+		}
+		if err != nil {
+			return 0, err
+		}
+		entries = append(entries, nativechange.RouteNodeEntry(value, operation))
+	}
+	for _, value := range plan.Memberships {
+		if err := coordinator.router.StagePlannedMembership(transaction, value); err != nil {
+			return 0, err
+		}
+		entries = append(entries, nativechange.MembershipEntry(value))
+	}
+	committedAt := plan.CommittedAt.UTC()
+	if committedAt.IsZero() {
+		committedAt = time.Now().UTC()
+	}
+	envelope, err := change.NewEnvelope(sequence, committedAt, plan.Metadata, entries)
+	if err != nil {
+		return 0, err
+	}
+	if err := nativechange.Stage(transaction, envelope); err != nil {
+		return 0, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return 0, err
+	}
+	return sequence, nil
 }
 
 func (coordinator *Coordinator) commitSequence(

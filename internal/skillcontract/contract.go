@@ -96,6 +96,7 @@ type Contract struct {
 	SemanticHealthVersion              string               `json:"semantic_health_version"`
 	RouteMutationProposalVersion       string               `json:"route_mutation_proposal_version"`
 	RouteMutationPlanVersion           string               `json:"route_mutation_plan_version"`
+	RouteMutationReceiptVersion        string               `json:"route_mutation_receipt_version"`
 	MaintenanceRequestVersion          string               `json:"maintenance_request_version"`
 	MaintenanceReceiptVersion          string               `json:"maintenance_receipt_version"`
 	FeedbackEventVersion               string               `json:"feedback_event_version"`
@@ -183,6 +184,7 @@ func (bundle Bundle) Validate() error {
 	requireEqual("semantic_health_version", contract.SemanticHealthVersion, semantichealth.ReportVersion)
 	requireEqual("route_mutation_proposal_version", contract.RouteMutationProposalVersion, routemutationplan.ProposalVersion)
 	requireEqual("route_mutation_plan_version", contract.RouteMutationPlanVersion, routemutationplan.PlanVersion)
+	requireEqual("route_mutation_receipt_version", contract.RouteMutationReceiptVersion, routemutationplan.ReceiptVersion)
 	requireEqual("maintenance_request_version", contract.MaintenanceRequestVersion, semantichealth.RequestVersion)
 	requireEqual("maintenance_receipt_version", contract.MaintenanceReceiptVersion, semantichealth.ReceiptVersion)
 	requireEqual("feedback_event_version", contract.FeedbackEventVersion, feedback.EventVersion)

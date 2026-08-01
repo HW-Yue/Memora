@@ -80,6 +80,11 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			kind:       "PLAN_ROUTE_MUTATION",
 			parameters: 1,
 		},
+		{
+			source:     "APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes",
+			kind:       "APPLY_ROUTE_MUTATION",
+			parameters: 1,
+		},
 	}
 	for _, test := range tests {
 		document, err := Parse(test.source)

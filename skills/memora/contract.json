@@ -14,6 +14,7 @@
   "semantic_health_version": "memora.semantic-health/v2",
   "route_mutation_proposal_version": "memora.route-mutation-proposal/v1",
   "route_mutation_plan_version": "memora.route-mutation-plan/v1",
+  "route_mutation_receipt_version": "memora.route-mutation-receipt/v1",
   "maintenance_request_version": "memora.maintenance-request/v1",
   "maintenance_receipt_version": "memora.maintenance-receipt/v1",
   "feedback_event_version": "memora.feedback-event/v1",

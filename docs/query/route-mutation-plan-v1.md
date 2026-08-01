@@ -1,6 +1,6 @@
 # Route Mutation Plan v1
 
-状态：F129 已完成。
+状态：F129 计划生成与 F130 审批执行均已完成。
 
 ## MSQL 入口
 
@@ -31,8 +31,8 @@ hash、Node/revision guards、create/reparent/membership/delete actions、影响
 新 Route ID 由 Table、proposal ID 与 target key 确定性派生；同一快照和 proposal 的
 字节输出一致。
 
-计划状态固定为 `review_required`。F129 没有 APPLY/EXECUTE 入口，不修改 Route、
-membership、Row、History 或 Change Log。F130 才能在用户批准后重验 snapshot 并原子执行。
+计划状态固定为 `review_required`。生成计划不修改 Route、membership、Row、History
+或 Change Log。执行协议见 [Route Mutation Execution v1](./route-mutation-execution-v1.md)。
 
 ## 操作形状
 

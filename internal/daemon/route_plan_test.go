@@ -2,14 +2,17 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/routemutationplan"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
-func TestNativeDaemonPlansRouteSplitWithoutMutatingAuthority(t *testing.T) {
+func TestNativeDaemonPlansAndAppliesApprovedRouteSplit(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "instance")
 	ctx, cancel := context.WithCancel(context.Background())
 	ready := make(chan State, 1)
@@ -82,5 +85,36 @@ func TestNativeDaemonPlansRouteSplitWithoutMutatingAuthority(t *testing.T) {
 	}})
 	if len(opened.Results[0].Rows) != 2 {
 		t.Fatalf("PLAN mutated source leaf = %#v", opened.Results[0])
+	}
+	encodedPlan, err := json.Marshal(planned.Results[0].Rows[0]["route_mutation_plan"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan routemutationplan.Plan
+	if err := json.Unmarshal(encodedPlan, &plan); err != nil {
+		t.Fatal(err)
+	}
+	applied := executeTraceMSQL(t, dataDir,
+		"APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"plan": plan}},
+			Authorization: security.Authorization{
+				Version: security.AuthorizationVersion, Actor: "user:test", AuthorizedDatabases: []string{"work"},
+				Approval: &security.Approval{Version: security.ApprovalVersion,
+					Action:        security.ActionApplyRouteMutation,
+					SubjectSHA256: strings.TrimPrefix(plan.Hash, "sha256:"), Confirmed: true},
+			},
+		}},
+	)
+	if applied.Results[0].AffectedRows != 1 || applied.Results[0].Rows[0]["verified"] != true {
+		t.Fatalf("native Route apply = %#v", applied.Results[0])
+	}
+	for _, create := range plan.Creates {
+		target := executeTraceMSQL(t, dataDir, "OPEN ROUTE :leaf LIMIT 10", []executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"leaf": create.RouteID}},
+		}})
+		if len(target.Results[0].Rows) != 1 {
+			t.Fatalf("applied target %s = %#v", create.RouteID, target.Results[0])
+		}
 	}
 }

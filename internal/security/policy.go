@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	AuthorizationVersion = "memora.authorization/v1"
-	ApprovalVersion      = "memora.approval/v1"
-	ActionInstallPackage = "INSTALL_PACKAGE"
-	maxDatabaseScope     = 32
+	AuthorizationVersion     = "memora.authorization/v1"
+	ApprovalVersion          = "memora.approval/v1"
+	ActionInstallPackage     = "INSTALL_PACKAGE"
+	ActionApplyRouteMutation = "APPLY_ROUTE_MUTATION"
+	maxDatabaseScope         = 32
 )
 
 type Authorization struct {

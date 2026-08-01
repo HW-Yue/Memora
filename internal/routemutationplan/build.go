@@ -99,12 +99,9 @@ func Build(ctx context.Context, source Source, scope Scope, proposal Proposal) (
 		return Plan{}, err
 	}
 	b.canonicalize()
-	b.plan.BaseSnapshotHash, err = digest(struct {
-		Scope       Scope             `json:"scope"`
-		Nodes       []NodeGuard       `json:"node_guards"`
-		Children    []ChildSetGuard   `json:"child_set_guards"`
-		Memberships []LocatorSetGuard `json:"locator_set_guards"`
-	}{b.scope, b.plan.NodeGuards, b.plan.ChildSetGuards, b.plan.LocatorSetGuards})
+	b.plan.BaseSnapshotHash, err = SnapshotHash(
+		b.scope, b.plan.NodeGuards, b.plan.ChildSetGuards, b.plan.LocatorSetGuards,
+	)
 	if err != nil {
 		return Plan{}, planError(result.CodeInternal, "snapshot could not be hashed")
 	}
@@ -205,7 +202,9 @@ func (b *builder) buildSplit() error {
 			}
 			for _, childID := range target.ChildRouteIDs {
 				child, _ := b.node(childID)
-				b.addNodeGuard(child)
+				if err := b.guardSubtree(child, map[string]bool{}); err != nil {
+					return err
+				}
 				b.plan.Moves = append(b.plan.Moves, NodeMove{RouteID: child.ID, FromParentID: source.ID, ToParentID: creates[index].RouteID})
 			}
 		}
@@ -289,7 +288,9 @@ func (b *builder) buildMerge() error {
 			b.addChildSet(source.ID)
 			count += len(b.children[source.ID])
 			for _, child := range b.children[source.ID] {
-				b.addNodeGuard(child)
+				if err := b.guardSubtree(child, map[string]bool{}); err != nil {
+					return err
+				}
 				b.plan.Moves = append(b.plan.Moves, NodeMove{RouteID: child.ID, FromParentID: source.ID, ToParentID: targetID})
 			}
 		}

@@ -101,6 +101,33 @@ func TestCrossObjectMutationFailureLeavesNoPartialObjects(t *testing.T) {
 	}
 }
 
+func TestRoutePlanStagingFailureLeavesNoPartialRouteOrChange(t *testing.T) {
+	t.Parallel()
+	_, file, rows, routes, _, _, _ := mutationFixture(t)
+	t.Cleanup(func() { _ = file.Close() })
+	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	created := router.Node{Version: router.Version, ID: "route_staged", DatabaseID: "db_work", TableID: "tbl_notes",
+		ParentID: "route_root", Name: "staged", Aliases: []string{}, Path: "/staged", Kind: router.KindLeaf,
+		Purpose: "Staged", Revision: 1}
+	duplicate := created
+	duplicate.ID, duplicate.Name, duplicate.Path = "route_leaf", "duplicate", "/duplicate"
+	_, err := New(file, rows, routes).CommitRoutePlan(RoutePlanCommit{
+		Routes: []router.Node{created, duplicate}, Created: map[string]bool{created.ID: true, duplicate.ID: true},
+		Metadata:    change.Metadata{Actor: "agent:test", Source: "event:test", Reason: "fault injection"},
+		CommittedAt: now,
+	})
+	if err == nil {
+		t.Fatal("CommitRoutePlan() unexpectedly succeeded")
+	}
+	if _, err := routes.Get(created.ID); !errors.Is(err, nativestore.ErrNotFound) {
+		t.Fatalf("partially staged Route error = %v", err)
+	}
+	changes, _, err := nativechange.New(file).ListAfter(0, 10)
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("failed Route plan changes = %#v, %v", changes, err)
+	}
+}
+
 func countEntries(envelope change.Envelope, kind change.ObjectKind) int {
 	count := 0
 	for _, entry := range envelope.Entries {

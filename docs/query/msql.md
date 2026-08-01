@@ -2,7 +2,7 @@
 
 状态：协议定位已确认；F70 已实现 Table 级逐层 Router 语法，F71 已删除旧语义
 检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE，F79 已实现
-版本化查询预算配置，F129 已实现只读 Route Mutation Plan。
+版本化查询预算配置，F129/F130 已实现 Route Mutation Plan 与审批执行。
 
 ## 定位
 
@@ -36,7 +36,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 
 - 发现：SHOW INSTANCE/DATABASES/TABLES；
 - 描述：DESCRIBE DATABASE/TABLE；
-- 路由：SHOW ROUTES、OPEN ROUTE、PLAN ROUTE MUTATION；
+- 路由：SHOW ROUTES、OPEN ROUTE、PLAN/APPLY ROUTE MUTATION；
 - 数据：SELECT、INSERT、UPDATE、DELETE、SPLIT、MERGE；
 - Schema：CREATE/ALTER/DROP；
 - 事务：BEGIN、COMMIT、ROLLBACK、SET TRANSACTION ISOLATION LEVEL；
@@ -97,8 +97,15 @@ PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal;
 
 `:proposal` 通过参数绑定传入 `memora.route-mutation-proposal/v1`；结果返回
 `memora.route-mutation-plan/v1`、base snapshot hash 和 plan hash。F129 不提供执行入口，
-也不从 Row 正文、向量或字面索引猜分组。完整契约见
-[Route Mutation Plan v1](./route-mutation-plan-v1.md)。
+也不从 Row 正文、向量或字面索引猜分组。用户批准原计划 hash 后，F130 使用：
+
+```sql
+APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes;
+```
+
+引擎在单个 authority write window 重验全部 guard，并在一个 native transaction 发布
+Route、membership 与 Change Log。完整契约见 [Route Mutation Plan v1](./route-mutation-plan-v1.md)
+和 [Route Mutation Execution v1](./route-mutation-execution-v1.md)。
 
 查询预算通过同一 MSQL 发现和修改，不允许宿主直接改进程变量：
 

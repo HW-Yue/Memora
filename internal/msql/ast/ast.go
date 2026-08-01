@@ -15,30 +15,31 @@ type Batch struct {
 }
 
 type Statement struct {
-	Kind          string                      `json:"kind"`
-	Span          lexer.Span                  `json:"-"`
-	Show          *ShowStatement              `json:"show,omitempty"`
-	Describe      *DescribeStatement          `json:"describe,omitempty"`
-	Create        *CreateStatement            `json:"create,omitempty"`
-	Alter         *AlterStatement             `json:"alter,omitempty"`
-	Select        *SelectStatement            `json:"select,omitempty"`
-	Insert        *InsertStatement            `json:"insert,omitempty"`
-	Update        *UpdateStatement            `json:"update,omitempty"`
-	Delete        *DeleteStatement            `json:"delete,omitempty"`
-	Restore       *RestoreStatement           `json:"restore,omitempty"`
-	Reshape       *ReshapeStatement           `json:"reshape,omitempty"`
-	Relate        *RelateStatement            `json:"relate,omitempty"`
-	Unrelate      *UnrelateStatement          `json:"unrelate,omitempty"`
-	CreateRoute   *CreateRouteStatement       `json:"create_route,omitempty"`
-	RenameRoute   *RenameRouteStatement       `json:"rename_route,omitempty"`
-	UpdateRoute   *UpdateRouteStatement       `json:"update_route,omitempty"`
-	DeleteRoute   *DeleteRouteStatement       `json:"delete_route,omitempty"`
-	OpenRoute     *OpenRouteStatement         `json:"open_route,omitempty"`
-	PlanRoute     *PlanRouteMutationStatement `json:"plan_route_mutation,omitempty"`
-	Configuration *ConfigurationStatement     `json:"configuration,omitempty"`
-	Package       *PackageStatement           `json:"package,omitempty"`
-	Export        *ExportStatement            `json:"export,omitempty"`
-	Transaction   *TransactionStatement       `json:"transaction,omitempty"`
+	Kind          string                       `json:"kind"`
+	Span          lexer.Span                   `json:"-"`
+	Show          *ShowStatement               `json:"show,omitempty"`
+	Describe      *DescribeStatement           `json:"describe,omitempty"`
+	Create        *CreateStatement             `json:"create,omitempty"`
+	Alter         *AlterStatement              `json:"alter,omitempty"`
+	Select        *SelectStatement             `json:"select,omitempty"`
+	Insert        *InsertStatement             `json:"insert,omitempty"`
+	Update        *UpdateStatement             `json:"update,omitempty"`
+	Delete        *DeleteStatement             `json:"delete,omitempty"`
+	Restore       *RestoreStatement            `json:"restore,omitempty"`
+	Reshape       *ReshapeStatement            `json:"reshape,omitempty"`
+	Relate        *RelateStatement             `json:"relate,omitempty"`
+	Unrelate      *UnrelateStatement           `json:"unrelate,omitempty"`
+	CreateRoute   *CreateRouteStatement        `json:"create_route,omitempty"`
+	RenameRoute   *RenameRouteStatement        `json:"rename_route,omitempty"`
+	UpdateRoute   *UpdateRouteStatement        `json:"update_route,omitempty"`
+	DeleteRoute   *DeleteRouteStatement        `json:"delete_route,omitempty"`
+	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
+	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
+	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
+	Configuration *ConfigurationStatement      `json:"configuration,omitempty"`
+	Package       *PackageStatement            `json:"package,omitempty"`
+	Export        *ExportStatement             `json:"export,omitempty"`
+	Transaction   *TransactionStatement        `json:"transaction,omitempty"`
 }
 
 type Identifier struct {
@@ -209,6 +210,11 @@ type PlanRouteMutationStatement struct {
 	Proposal *Expression `json:"proposal"`
 }
 
+type ApplyRouteMutationStatement struct {
+	Table Name        `json:"table"`
+	Plan  *Expression `json:"plan"`
+}
+
 type ConfigurationStatement struct {
 	Action          string      `json:"action"`
 	Key             string      `json:"key"`
@@ -362,6 +368,8 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.OpenRoute.Limit)
 	case statement.PlanRoute != nil:
 		appendExpression(statement.PlanRoute.Proposal)
+	case statement.ApplyRoute != nil:
+		appendExpression(statement.ApplyRoute.Plan)
 	case statement.Configuration != nil:
 		appendExpression(statement.Configuration.RouteChildren)
 		appendExpression(statement.Configuration.OpenLocators)

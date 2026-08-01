@@ -175,6 +175,41 @@ func TestBuildMergeBranchSplitAndMoveShapes(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsTamperingAndBranchPlansGuardMovedSubtrees(t *testing.T) {
+	t.Parallel()
+	scope := routemutationplan.Scope{DatabaseID: "db_work", TableID: "tbl_notes"}
+	source := &fakeSource{nodes: []router.Node{
+		{Version: router.Version, ID: "route_root", DatabaseID: "db_work", TableID: "tbl_notes", Kind: router.KindRoot, Name: "root", Path: "/", Purpose: "Root", Revision: 1},
+		{Version: router.Version, ID: "route_source", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_root", Kind: router.KindBranch, Name: "source", Path: "/source", Purpose: "Source", Revision: 3},
+		{Version: router.Version, ID: "route_child", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_source", Kind: router.KindBranch, Name: "child", Path: "/source/child", Purpose: "Child", Revision: 2},
+		{Version: router.Version, ID: "route_grandchild", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_child", Kind: router.KindLeaf, Name: "grandchild", Path: "/source/child/grandchild", Purpose: "Grandchild", Revision: 4},
+		{Version: router.Version, ID: "route_sibling", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_source", Kind: router.KindLeaf, Name: "sibling", Path: "/source/sibling", Purpose: "Sibling", Revision: 1},
+	}, locators: map[string][]router.Locator{}}
+	plan, err := routemutationplan.Build(context.Background(), source, scope, splitProposal([]routemutationplan.TargetProposal{
+		{Key: "left", Name: "left", Purpose: "Left", ChildRouteIDs: []string{"route_child"}},
+		{Key: "right", Name: "right", Purpose: "Right", ChildRouteIDs: []string{"route_sibling"}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	guarded := map[string]bool{}
+	for _, guard := range plan.NodeGuards {
+		guarded[guard.RouteID] = true
+	}
+	if !guarded["route_grandchild"] {
+		t.Fatalf("moved subtree descendant was not guarded: %#v", plan.NodeGuards)
+	}
+	if err := routemutationplan.Validate(plan); err != nil {
+		t.Fatalf("Validate(generated plan) error = %v", err)
+	}
+	tampered := plan
+	tampered.Creates = append([]routemutationplan.NodeCreate(nil), plan.Creates...)
+	tampered.Creates[0].Purpose = "silently changed"
+	if err := routemutationplan.Validate(tampered); err == nil {
+		t.Fatal("Validate(tampered plan) unexpectedly succeeded")
+	}
+}
+
 func splitProposal(targets []routemutationplan.TargetProposal) routemutationplan.Proposal {
 	return routemutationplan.Proposal{
 		Version: routemutationplan.ProposalVersion, ID: "proposal_split", Operation: routemutationplan.OperationSplit,
