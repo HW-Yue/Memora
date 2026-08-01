@@ -245,6 +245,7 @@
 - [无向量语义 Route Benchmark v2](./development/no-vector-route-benchmark-v2.md) — 已被 v3 取代；保留 Router-only 实验臂的历史设计。
 - [Route Retrieval Benchmark v3](./development/route-retrieval-benchmark-v3.md) — 比较 Router-only、Lexical、CPU Vector 和投机预取的真实模型成本与质量。
 - [Route Benchmark Corpus v1](./development/route-benchmark-corpus-v1.md) — F124 在 predictor 前冻结的 fanout/depth/歧义/语言 Route 题库与 ground truth。
+- [Route Benchmark Runner v1](./development/route-benchmark-runner-v1.md) — F125 的五 arm、真实 host driver、盲测评分与可审计原始报告契约。
 - [AI-native 发布门 v1](./development/ai-native-release-gate-v1.md) — 已撤销的 F51 历史评测及失效原因。
 - [安全与隐私门 v1](./development/security-privacy-gate-v1.md) — F46 的 Database scope、外部路径、approval、审计脱敏与 doctor 检查。
 - [macOS Release 制品 v1](./development/macos-release-artifacts-v1.md) — F47 的双架构 Mach-O、可复现归档、版本 manifest、checksum 与 smoke 契约。
