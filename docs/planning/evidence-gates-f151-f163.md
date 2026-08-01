@@ -94,7 +94,20 @@
 - 结论：单 writer、snapshot sequence、immutable revision 和精确对象写锁覆盖现有旅程；
   不增加 transaction graph、predicate lock 或多 writer validation。
 
+## F158 Lock Waits/Deadlock
+
+状态：已评估，产品进入条件未成立，延后。
+
+- 冻结门槛：至少两个 canonical journey 因 fail-fast `conflict` 无法完成、且有明确可接受
+  wait budget，才加入 lock wait、timeout 和 deadlock detector。
+- 命令：用 `jq` 匹配 65 个 turn 的 lock-wait/deadlock 需求，并执行
+  `go test -v ./internal/store/objectlock`。
+- 结果：明确需求 0；seeded reference model、原子 batch conflict、cancel 和 opposite-order
+  并发全部通过，后者产生一个 winner 而不等待/死锁。
+- 结论：对本地 Agent 写入，快速返回稳定 conflict 让上层重新读取/重计划更可解释；不引入
+  等待队列、公平性、超时和 wait-for graph。
+
 ## 后续门
 
-F158–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
+F159–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
 先另开实现 Feature，不把大实现塞进证据门提交。
