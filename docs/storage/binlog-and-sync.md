@@ -1,6 +1,6 @@
 # Committed Change Log（Binlog）与未来同步
 
-状态：产品定位已确认；F109 durable envelope 已实现，F113 Page cursor 与 MSQL 读取待实现。
+状态：F109 durable envelope 与 F113 Page cursor/MSQL 读取均已完成；同步边界仍是未来方向。
 
 ## 第一用途
 
@@ -47,8 +47,9 @@ native logical write set + change envelope
 ```
 
 Change Log 不作为第二个独立 durability 日志，因此首版不需要 Redo/Binlog 两阶段
-提交。F113 再为 immutable envelope 建派生 Page cursor；具体 v1 契约见
-[Committed Change Envelope v1](./committed-change-envelope-v1.md)。
+提交。F113 已为 immutable envelope 建立派生 Page cursor；具体契约见
+[Committed Change Envelope v1](./committed-change-envelope-v1.md)与
+[Committed Change Page Index v1](./committed-change-page-index-v1.md)。
 
 ## F109 最小事件契约
 
@@ -74,15 +75,15 @@ Change Log 不作为第二个独立 durability 日志，因此首版不需要 Re
 
 ## Admin 读取形态
 
-候选 MSQL：
+F113 已冻结 MSQL：
 
 ```sql
-SHOW CHANGES AFTER COMMIT_SEQUENCE :cursor LIMIT :limit;
-SHOW CHANGES IN DATABASE :database AFTER COMMIT_SEQUENCE :cursor LIMIT :limit;
-SHOW CHANGE :transaction_id;
+SHOW CHANGES [IN DATABASE work] [AFTER COMMIT_SEQUENCE :sequence] [CURSOR :cursor] LIMIT :limit;
+SHOW CHANGE :transaction_id [IN DATABASE work] [CURSOR :cursor] LIMIT :limit;
 ```
 
-结果必须支持稳定 cursor、scope、truncated、事件版本和事务原子性。Admin 提供：
+结果支持固定 high-water、scope-bound cursor、truncated、事件版本和事务原子性。
+timeline summary 不含 entries，单事务 entry page 不含 Row values。后续 Admin 页面提供：
 
 - Instance/Database/Table 的变化时间线；
 - 单事务影响对象列表；
@@ -116,7 +117,7 @@ delta 或混合重放格式，在同步 Feature Review 时再决定。
 - F109 已选择 Row 正文只引用永久 History，不复制摘要；F121 再决定展示 diff 预算；
 - Catalog/Route delta 的具体字段和单事务大小预算；
 - 锁冲突、失败事务和维护 dry-run 是否进入独立诊断流；
-- `SHOW CHANGES` 的最终 MSQL 语法和分页 cursor。
+- Change Log retention/cleanup 后是否需要让旧 cursor 返回专用过期错误。
 
 ## 关联
 

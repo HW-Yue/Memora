@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -97,6 +98,9 @@ func TestRunReleasesLeaseAfterCancellation(t *testing.T) {
 	databaseDirectory := filepath.Join(dataDir, "databases")
 	if _, err := os.Stat(filepath.Join(databaseDirectory, "page-index-v1")); err != nil {
 		t.Fatalf("Page Store generation was not activated before ready: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(databaseDirectory, "change-index-v1")); err != nil {
+		t.Fatalf("committed change Page index was not activated before ready: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(databaseDirectory, "page-authority-v1.json")); err != nil {
 		t.Fatalf("Page Store authority marker was not durable before ready: %v", err)
@@ -203,6 +207,36 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 		historyTail.rows[0]["operation"] != "INSERT" {
 		t.Fatalf("daemon History tail = %#v", historyTail)
 	}
+	changePage := execute("SHOW CHANGES IN DATABASE work LIMIT 2", nil)
+	if changePage.page == nil || changePage.nextCursor == "" || len(changePage.rows) != 2 {
+		t.Fatalf("daemon change timeline = %#v", changePage)
+	}
+	if _, leaked := changePage.rows[0]["entries"]; leaked {
+		t.Fatalf("daemon change timeline leaked entries: %#v", changePage.rows[0])
+	}
+	changeTail := execute(
+		"SHOW CHANGES IN DATABASE work CURSOR :cursor LIMIT 2",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{
+			"cursor": changePage.nextCursor,
+		}}}},
+	)
+	if changeTail.page == nil || changeTail.nextCursor != "" || len(changeTail.rows) != 2 ||
+		fmt.Sprint(changeTail.rows[1]["commit_sequence"]) != "4" {
+		t.Fatalf("daemon change timeline tail = %#v", changeTail)
+	}
+	transactionID, ok := changeTail.rows[1]["transaction_id"].(string)
+	if !ok || transactionID == "" {
+		t.Fatalf("daemon change transaction ID = %#v", changeTail.rows[1])
+	}
+	changeEntries := execute(
+		"SHOW CHANGE :transaction IN DATABASE work LIMIT 1",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{
+			"transaction": transactionID,
+		}}}},
+	)
+	if changeEntries.page == nil || len(changeEntries.rows) != 1 || changeEntries.rows[0]["object_kind"] != "row" {
+		t.Fatalf("daemon transaction entries = %#v", changeEntries)
+	}
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
@@ -220,6 +254,15 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 	if len(selected.rows) != 1 || selected.rows[0]["title"] != "Page authority revised" ||
 		selected.rowDetail == nil || selected.rowDetail.Display.TitleColumn != "title" {
 		t.Fatalf("reopened Page SELECT = %#v", selected.rows)
+	}
+	reopenedChange := execute(
+		"SHOW CHANGE :transaction IN DATABASE work LIMIT 10",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{
+			"transaction": transactionID,
+		}}}},
+	)
+	if len(reopenedChange.rows) != 1 || reopenedChange.rows[0]["operation"] != "UPDATE" {
+		t.Fatalf("reopened committed change = %#v", reopenedChange)
 	}
 	stopReopened()
 	if err := <-reopenedDone; err != nil {

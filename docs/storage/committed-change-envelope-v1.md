@@ -8,8 +8,8 @@
 写入一个完整、不可变的 change envelope。rollback、校验失败和 crash tail 不产生可见
 envelope，split/merge 等跨对象事务也只产生一个 envelope。
 
-F109 只建立 durable event source 和内部验证读取；F113 才增加 Page cursor index 与
-MSQL/Admin 读取协议。不得把 F109 的内部 `ListAfter` 扫描暴露成产品查询 fallback。
+F109 建立 durable event source；F113 已增加独立 Page cursor index 与 MSQL/Admin
+读取协议。不得把 F109 的内部 `ListAfter` 扫描暴露成产品查询 fallback。
 
 ## Envelope
 
@@ -50,8 +50,8 @@ Authority operation gate
 ```
 
 Envelope 不是第二份 Binlog 文件，也不与 native body 做两阶段提交。Page Index 当前是
-业务查询 authority；Change envelope 是 immutable body source。F113 为它增加派生 Page
-cursor 后，仍由 envelope body 决定事件内容。
+业务查询 authority；Change envelope 是 immutable body source。F113 的派生 Page cursor
+只保存 sequence/transaction/checksum locator，仍由 envelope body 决定事件内容。
 
 ## 覆盖与边界
 
@@ -61,8 +61,8 @@ engine bootstrap、迁移和 logical snapshot import 不伪装成用户事务，
 F109 启用前已有的逻辑历史不回填 synthetic envelope。
 
 Change record 进入 F105 source inventory，所以 F108 replacement/reopen 会保留并重验它；
-logical snapshot 暂不搬运观察时间线。保留/清理、Page change index、MSQL cursor、Admin
-timeline、replication 和 PITR 分别留给后续 Feature。
+logical snapshot 暂不搬运观察时间线。Page change index 与 MSQL cursor 已由 F113 完成；
+保留/清理、Admin timeline 页面、replication 和 PITR 分别留给后续 Feature。
 
 ## 完成证据
 

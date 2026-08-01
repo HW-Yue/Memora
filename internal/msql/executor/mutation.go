@@ -53,6 +53,10 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return Output{}, err
 	}
 	switch {
+	case statement.Show != nil && statement.Show.Object == "CHANGES":
+		return engine.showCommittedChanges(ctx, statement.Show, bound)
+	case statement.Show != nil && statement.Show.Object == "CHANGE":
+		return engine.showCommittedChange(ctx, statement.Show, bound)
 	case statement.Show != nil && statement.Show.Object == "CONFIGURATION":
 		return engine.showConfiguration(ctx, statement.Show, bound)
 	case statement.Configuration != nil && statement.Configuration.Action == "ALTER":

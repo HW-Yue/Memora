@@ -52,6 +52,11 @@ type PageAuthority interface {
 	PublishRows(context.Context, []row.Row, func() error) error
 }
 
+type committedChangeAuthority interface {
+	ListCommittedChanges(context.Context, string, uint64, uint64, int) ([]change.Envelope, uint64, bool, error)
+	GetCommittedChange(context.Context, string, string) (change.Envelope, error)
+}
+
 type ServiceOptions struct {
 	IDs       IDSource
 	Clock     Clock
@@ -80,6 +85,36 @@ func NewService(repository *Repository, dictionary *nativecatalog.Service, optio
 	}
 	service.routeGate <- struct{}{}
 	return service
+}
+
+func (service *Service) ListCommittedChanges(
+	ctx context.Context,
+	databaseID string,
+	after, snapshot uint64,
+	limit int,
+) ([]change.Envelope, uint64, bool, error) {
+	if service == nil || ctx == nil {
+		return nil, 0, false, serviceFailure(result.CodeInternal, "committed change service is unavailable", ErrUnsupported)
+	}
+	authority, ok := service.authority.(committedChangeAuthority)
+	if !ok {
+		return nil, 0, false, serviceFailure(result.CodeUnsupported, "committed change reads require Page Store authority", ErrUnsupported)
+	}
+	return authority.ListCommittedChanges(ctx, databaseID, after, snapshot, limit)
+}
+
+func (service *Service) GetCommittedChange(
+	ctx context.Context,
+	transactionID, databaseID string,
+) (change.Envelope, error) {
+	if service == nil || ctx == nil {
+		return change.Envelope{}, serviceFailure(result.CodeInternal, "committed change service is unavailable", ErrUnsupported)
+	}
+	authority, ok := service.authority.(committedChangeAuthority)
+	if !ok {
+		return change.Envelope{}, serviceFailure(result.CodeUnsupported, "committed change reads require Page Store authority", ErrUnsupported)
+	}
+	return authority.GetCommittedChange(ctx, transactionID, databaseID)
 }
 
 func (service *Service) Insert(ctx context.Context, databaseName, tableName string, values map[string]any, options row.WriteOptions) (row.Row, error) {

@@ -179,6 +179,75 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Table = &name
+	case parser.matchWord("CHANGES"):
+		show.Object = "CHANGES"
+		if parser.matchWord("IN") {
+			if _, err := parser.expectWord("DATABASE"); err != nil {
+				return ast.Statement{}, err
+			}
+			name, err := parser.parseName()
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Database = &name
+		}
+		if parser.matchWord("AFTER") {
+			if _, err := parser.expectWord("COMMIT_SEQUENCE"); err != nil {
+				return ast.Statement{}, err
+			}
+			after, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.After = &after
+		}
+		if parser.matchWord("CURSOR") {
+			cursor, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Cursor = &cursor
+		}
+		if _, err := parser.expectWord("LIMIT"); err != nil {
+			return ast.Statement{}, err
+		}
+		limit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Limit = &limit
+	case parser.matchWord("CHANGE"):
+		show.Object = "CHANGE"
+		changeID, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Change = &changeID
+		if parser.matchWord("IN") {
+			if _, err := parser.expectWord("DATABASE"); err != nil {
+				return ast.Statement{}, err
+			}
+			name, err := parser.parseName()
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Database = &name
+		}
+		if parser.matchWord("CURSOR") {
+			cursor, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Cursor = &cursor
+		}
+		if _, err := parser.expectWord("LIMIT"); err != nil {
+			return ast.Statement{}, err
+		}
+		limit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Limit = &limit
 	case parser.matchWord("HISTORY"):
 		show.Object = "HISTORY"
 		if _, err := parser.expectWord("FROM"); err != nil {
@@ -300,7 +369,7 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		}
 		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, TABLES, COLUMNS, HISTORY, RELATIONS, or ROUTES")
+		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, TABLES, COLUMNS, CHANGES, CHANGE, HISTORY, RELATIONS, or ROUTES")
 	}
 	if show.Object == "DATABASES" || show.Object == "TABLES" || show.Object == "COLUMNS" {
 		if parser.matchWord("CURSOR") {

@@ -10,10 +10,12 @@ import (
 	"sync/atomic"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/store/changeindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/objectlock"
@@ -43,6 +45,7 @@ type Authority struct {
 	reader     *Reader
 	catalog    *nativecatalog.IndexedReader
 	rows       *nativerow.IndexedReader
+	changes    *authorityChangeTree
 	poisoned   bool
 	closed     bool
 	writeGate  chan struct{}
@@ -108,16 +111,20 @@ func OpenAuthority(
 		_ = generation.Close()
 		return nil, err
 	}
+	changeTree, err := openAuthorityChangeTree(ctx, absolute, file)
+	if err != nil {
+		_ = generation.Close()
+		return nil, err
+	}
 	authority := &Authority{
 		directory: absolute, file: file, marker: marker, generation: generation,
-		reader: reader, catalog: catalogReader, rows: rowReader,
+		reader: reader, catalog: catalogReader, rows: rowReader, changes: changeTree,
 		writeGate: make(chan struct{}, 1),
 		locks:     objectlock.New(),
 	}
 	authority.writeGate <- struct{}{}
 	if err := authority.reconcile(ctx); err != nil {
-		_ = generation.Close()
-		return nil, err
+		return nil, errors.Join(err, generation.Close(), changeTree.Close())
 	}
 	return authority, nil
 }
@@ -199,6 +206,72 @@ func (authority *Authority) NextChangeSequence(ctx context.Context) (uint64, err
 	}
 	defer authority.mu.RUnlock()
 	return nativechange.New(authority.file).NextSequence(0)
+}
+
+func (authority *Authority) ListCommittedChanges(
+	ctx context.Context,
+	databaseID string,
+	after, snapshot uint64,
+	limit int,
+) ([]change.Envelope, uint64, bool, error) {
+	if authority == nil || ctx == nil || limit < 1 || limit > 256 {
+		return nil, 0, false, fmt.Errorf("%w: committed change list", ErrInvalid)
+	}
+	release, err := authority.BeginWrite(ctx)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	defer release()
+	authority.mu.Lock()
+	defer authority.mu.Unlock()
+	if err := authority.healthyLocked(ctx); err != nil {
+		return nil, 0, false, err
+	}
+	if err := authority.changes.reconcile(ctx, false); err != nil {
+		return nil, 0, false, err
+	}
+	highWater, err := authority.changes.index.HighWater()
+	if err != nil {
+		return nil, 0, false, err
+	}
+	if snapshot == 0 {
+		snapshot = highWater
+	}
+	if snapshot > highWater || after > snapshot {
+		return nil, 0, false, fmt.Errorf("%w: committed change snapshot", changeindex.ErrInvalid)
+	}
+	values, more, err := authority.changes.list(ctx, databaseID, after, snapshot, limit)
+	return values, snapshot, more, err
+}
+
+func (authority *Authority) GetCommittedChange(
+	ctx context.Context,
+	transactionID, databaseID string,
+) (change.Envelope, error) {
+	if authority == nil || ctx == nil || transactionID == "" {
+		return change.Envelope{}, fmt.Errorf("%w: committed change lookup", ErrInvalid)
+	}
+	release, err := authority.BeginWrite(ctx)
+	if err != nil {
+		return change.Envelope{}, err
+	}
+	defer release()
+	authority.mu.Lock()
+	defer authority.mu.Unlock()
+	if err := authority.healthyLocked(ctx); err != nil {
+		return change.Envelope{}, err
+	}
+	if err := authority.changes.reconcile(ctx, false); err != nil {
+		return change.Envelope{}, err
+	}
+	value, err := authority.changes.get(transactionID)
+	if err != nil {
+		return change.Envelope{}, err
+	}
+	if databaseID != "" && !envelopeHasDatabase(value, databaseID) {
+		return change.Envelope{}, changeindex.ErrNotFound
+	}
+	return value, nil
 }
 
 func (authority *Authority) Get(
@@ -560,5 +633,5 @@ func (authority *Authority) Close() error {
 		return nil
 	}
 	authority.closed = true
-	return authority.generation.Close()
+	return errors.Join(authority.generation.Close(), authority.changes.Close())
 }

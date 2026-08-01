@@ -61,6 +61,8 @@ type ShowStatement struct {
 	Compact   bool        `json:"compact,omitempty"`
 	Route     *Expression `json:"route,omitempty"`
 	Cursor    *Expression `json:"cursor,omitempty"`
+	After     *Expression `json:"after,omitempty"`
+	Change    *Expression `json:"change,omitempty"`
 	RouteMode string      `json:"route_mode,omitempty"`
 }
 
@@ -273,6 +275,11 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		appendExpression(statement.Show.Row)
+		appendExpression(statement.Show.Cursor)
+		appendExpression(statement.Show.Limit)
+	case statement.Show != nil && (statement.Show.Object == "CHANGES" || statement.Show.Object == "CHANGE"):
+		appendExpression(statement.Show.Change)
+		appendExpression(statement.Show.After)
 		appendExpression(statement.Show.Cursor)
 		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "RELATIONS":

@@ -1,6 +1,6 @@
 # Admin 与本地可观察性小 Feature 计划
 
-状态：F112 已完成，下一项 F113；F110–F122 持续执行已获用户授权，仍逐项 Review、
+状态：F113 已完成，下一项 F114；F110–F122 持续执行已获用户授权，仍逐项 Review、
 测试与独立合入。
 
 ## 产品形态
@@ -31,7 +31,7 @@ MSQL。第一版只读，使用固定 actor/scope、随机 token、Host/Origin�
 | F110 Metadata Read | Admin 被迫读 Store 或无界列举 | 已完成：Database/Table/Schema 的有界 MSQL |
 | F111 Route Read | Route 叶泄露正文或整树一次加载 | 已完成：节点/children/locator 分层 cursor |
 | F112 Row Detail Read | 前端猜 `title/body` 或丢动态字段 | 已完成：Data Dictionary 驱动的 Row/History envelope |
-| F113 Change Read | 时间线重漏或混入不同 snapshot | commit cursor 的有界 MSQL |
+| F113 Change Read | 已完成：固定 snapshot、Page locator、Database scope 的有界 MSQL |
 | F114 Trace Read | trace 泄露 prompt/正文或无预算 | 可清理的有界 trace envelope |
 
 所有列表必须返回 `limit/cursor/snapshot/truncated/version`。Row 只能由 `SELECT`
