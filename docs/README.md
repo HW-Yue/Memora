@@ -69,6 +69,7 @@
 - [MSQL Route Read v1](./query/route-read-v1.md) — F111 的 point node、单层 children、leaf locator 分页与快照契约。
 - [Route Mutation Plan v1](./query/route-mutation-plan-v1.md) — F129 的只读 split/merge/move proposal 校验与确定性 review plan。
 - [Route Mutation Execution v1](./query/route-mutation-execution-v1.md) — F130 的 hash-bound approval、guard 重验与原子 Route/membership/Change Log 提交。
+- [Schema Change Plan v1](./query/schema-change-plan-v1.md) — F131 的 Column/constraint proposal、Schema/Row guard 与只读兼容性计划。
 - [MSQL Row Detail Read v1](./query/row-detail-read-v1.md) — F112 的 Data Dictionary 展示角色、point Row envelope 与 History 快照分页。
 - [MSQL Committed Change Read v1](./query/change-read-v1.md) — F113 的固定 high-water timeline、transaction entry page 与 Database scope cursor。
 - [MSQL Route Trace Read v1](./query/route-trace-read-v1.md) — F114 的短期 trace timeline、step page、retention epoch 与隐私边界。

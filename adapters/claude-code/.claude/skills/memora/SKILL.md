@@ -265,12 +265,22 @@ Submit the proposed name plus a short explicit synonym set through one
 purpose/row_semantics, and every Column type/purpose are mandatory. Reuse an
 exact candidate or alias; do not infer equivalence from a name alone.
 
-Use a migration plan for renames. Include the expected Database and object
-schema versions and a hard maximum affected-object count. Schema v1 accepts only
-reversible Table and Column renames. The command applies each autocommit DDL in
-order and compensates completed renames in reverse order after a failure. Treat
-`rolled_back` as a failed migration with a verified recovery receipt, not as a
-successful schema change. Ask the user before an irreversible or broad change.
+For an existing Table, do not translate Column evolution into ad hoc ALTER
+statements or the older host rename runner. Inspect the exact Table/Column IDs and
+revisions, then submit explicit ADD_COLUMN, RENAME_COLUMN, ALTER_COLUMN, or
+DROP_COLUMN intent as `memora.schema-change-proposal/v1` through read-only MSQL:
+
+```sh
+memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.schema-change-proposal/v1","proposal_id":"schema-proposal-9","actor":"agent:host","source_event_id":"conversation:event-9","reason":"tighten reviewed title budget","expected_table_revision":4,"changes":[{"change_id":"title-budget","action":"ALTER_COLUMN","column_id":"col_title","expected_revision":2,"definition":{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title","semantic_role":"title"}}]}}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal"
+```
+
+The result must be `memora.schema-change-plan/v1`. `review_required` means only
+that current values passed the bounded compatibility scan; it is not approval or
+execution. `blocked` includes bounded RowID-only blockers and must lead to a new
+proposal or explicit Row revisions. A truncated scan is a hard failure. F131 has
+no apply path: show the plan and impact, and never execute its actions through
+ordinary DDL. Ask the user before any destructive, broad, or constraint-tightening
+change.
 
 ```sh
 memora schema --plan '{"version":"memora.schema-plan/v1","id":"schema-8","actor":"agent:host","source_event_id":"conversation:event-8","reason":"new durable project domain","authorized_databases":["work"],"ensure":{"database":{"name":"work","purpose":"Project knowledge","scope":"Reviewed projects"},"database_synonyms":["projects"],"table":{"name":"notes","purpose":"Durable decisions","row_semantics":"One reviewed decision","columns":[{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title"}]},"table_synonyms":["decisions"]}}'

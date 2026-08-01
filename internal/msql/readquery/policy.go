@@ -30,7 +30,7 @@ func Validate(source string) (int, error) {
 
 func Allowed(kind string) bool {
 	switch kind {
-	case "SHOW", "DESCRIBE", "DESCRIBE_ROUTE", "SELECT", "OPEN_ROUTE", "PLAN_ROUTE_MUTATION":
+	case "SHOW", "DESCRIBE", "DESCRIBE_ROUTE", "SELECT", "OPEN_ROUTE", "PLAN_ROUTE_MUTATION", "PLAN_SCHEMA_CHANGE":
 		return true
 	default:
 		return false

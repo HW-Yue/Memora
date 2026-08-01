@@ -24,7 +24,11 @@ Runner 先 `SHOW DATABASES`，再 `SHOW TABLES`。复用只依据提议名称、
 语义猜测。没有匹配时才生成受限 `CREATE DATABASE/TABLE` MSQL。所有读写仍
 经过统一 daemon/MSQL/Catalog 链路。
 
-## Migration
+## Migration（历史兼容）
+
+本节是 F32 的 host rename runner，继续兼容已有调用。F131 起，新的 Column/constraint
+演化必须先走 [Schema Change Plan v1](../query/schema-change-plan-v1.md)；不得把新计划
+拆回本节的 autocommit DDL。执行与补偿由 F132 接管。
 
 Migration Plan 必须声明 Database 当前 schema version、每个对象的预期
 version，以及 `max_affected_objects`。v1 只接受：

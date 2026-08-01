@@ -85,6 +85,11 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			kind:       "APPLY_ROUTE_MUTATION",
 			parameters: 1,
 		},
+		{
+			source:     "PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal",
+			kind:       "PLAN_SCHEMA_CHANGE",
+			parameters: 1,
+		},
 	}
 	for _, test := range tests {
 		document, err := Parse(test.source)
@@ -116,6 +121,7 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 		"OPEN ROUTE :route",
 		"PLAN ROUTE MUTATION FOR TABLE work.notes",
 		"PLAN ROUTE FOR TABLE work.notes USING :proposal",
+		"PLAN SCHEMA CHANGE FOR TABLE work.notes",
 	} {
 		if _, err := Parse(source); err == nil {
 			t.Fatalf("Parse(%q) succeeded", source)

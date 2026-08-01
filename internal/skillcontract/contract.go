@@ -16,6 +16,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/routemutationplan"
+	"github.com/HW-Yue/Memora/internal/schemachangeplan"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
 	"github.com/HW-Yue/Memora/internal/skillconflict"
@@ -97,6 +98,8 @@ type Contract struct {
 	RouteMutationProposalVersion       string               `json:"route_mutation_proposal_version"`
 	RouteMutationPlanVersion           string               `json:"route_mutation_plan_version"`
 	RouteMutationReceiptVersion        string               `json:"route_mutation_receipt_version"`
+	SchemaChangeProposalVersion        string               `json:"schema_change_proposal_version"`
+	SchemaChangePlanVersion            string               `json:"schema_change_plan_version"`
 	MaintenanceRequestVersion          string               `json:"maintenance_request_version"`
 	MaintenanceReceiptVersion          string               `json:"maintenance_receipt_version"`
 	FeedbackEventVersion               string               `json:"feedback_event_version"`
@@ -185,6 +188,8 @@ func (bundle Bundle) Validate() error {
 	requireEqual("route_mutation_proposal_version", contract.RouteMutationProposalVersion, routemutationplan.ProposalVersion)
 	requireEqual("route_mutation_plan_version", contract.RouteMutationPlanVersion, routemutationplan.PlanVersion)
 	requireEqual("route_mutation_receipt_version", contract.RouteMutationReceiptVersion, routemutationplan.ReceiptVersion)
+	requireEqual("schema_change_proposal_version", contract.SchemaChangeProposalVersion, schemachangeplan.ProposalVersion)
+	requireEqual("schema_change_plan_version", contract.SchemaChangePlanVersion, schemachangeplan.PlanVersion)
 	requireEqual("maintenance_request_version", contract.MaintenanceRequestVersion, semantichealth.RequestVersion)
 	requireEqual("maintenance_receipt_version", contract.MaintenanceReceiptVersion, semantichealth.ReceiptVersion)
 	requireEqual("feedback_event_version", contract.FeedbackEventVersion, feedback.EventVersion)

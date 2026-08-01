@@ -16,19 +16,24 @@ import (
 func TestScopedMSQLRejectsQualifiedDatabaseOutsideAuthorization(t *testing.T) {
 	t.Parallel()
 
-	document, err := parser.Parse(`SELECT title FROM private.notes LIMIT 1`)
-	if err != nil {
-		t.Fatal(err)
-	}
 	ctx := security.WithAuthorization(context.Background(), security.Authorization{
 		Version: security.AuthorizationVersion, Actor: "agent:host",
 		AuthorizedDatabases: []string{"work"},
 	})
-	_, err = executor.New(nil, nil).Execute(
-		ctx, document.Statement, executor.Parameters{}, executor.MutationOptions{},
-	)
-	if code(err) != "permission_denied" {
-		t.Fatalf("Execute() error = %v", err)
+	for _, source := range []string{
+		`SELECT title FROM private.notes LIMIT 1`,
+		`PLAN SCHEMA CHANGE FOR TABLE private.notes USING :proposal`,
+	} {
+		document, err := parser.Parse(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = executor.New(nil, nil).Execute(
+			ctx, document.Statement, executor.Parameters{}, executor.MutationOptions{},
+		)
+		if code(err) != "permission_denied" {
+			t.Fatalf("Execute(%q) error = %v", source, err)
+		}
 	}
 }
 

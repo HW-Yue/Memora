@@ -2,7 +2,8 @@
 
 状态：协议定位已确认；F70 已实现 Table 级逐层 Router 语法，F71 已删除旧语义
 检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE，F79 已实现
-版本化查询预算配置，F129/F130 已实现 Route Mutation Plan 与审批执行。
+版本化查询预算配置，F129/F130 已实现 Route Mutation Plan 与审批执行，F131 已实现
+只读 Schema Change Plan。
 
 ## 定位
 
@@ -38,7 +39,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 描述：DESCRIBE DATABASE/TABLE；
 - 路由：SHOW ROUTES、OPEN ROUTE、PLAN/APPLY ROUTE MUTATION；
 - 数据：SELECT、INSERT、UPDATE、DELETE、SPLIT、MERGE；
-- Schema：CREATE/ALTER/DROP；
+- Schema：CREATE/ALTER 与 PLAN SCHEMA CHANGE；
 - 事务：BEGIN、COMMIT、ROLLBACK、SET TRANSACTION ISOLATION LEVEL；
 - 历史：SHOW HISTORY、AS OF REVISION/COMMIT_SEQUENCE、RESTORE 补偿；
 - 关系：RELATE、SHOW RELATIONS、UNRELATE；
@@ -106,6 +107,16 @@ APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes;
 引擎在单个 authority write window 重验全部 guard，并在一个 native transaction 发布
 Route、membership 与 Change Log。完整契约见 [Route Mutation Plan v1](./route-mutation-plan-v1.md)
 和 [Route Mutation Execution v1](./route-mutation-execution-v1.md)。
+
+现有 Table 的 Column/constraint 演化先生成只读计划：
+
+```sql
+PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal;
+```
+
+F131 对完整 Column Schema 建 guard，并仅在约束可能影响既有值时做有界 Row 兼容性
+扫描；`blocked` 或截断不能执行。完整契约见
+[Schema Change Plan v1](./schema-change-plan-v1.md)。
 
 查询预算通过同一 MSQL 发现和修改，不允许宿主直接改进程变量：
 

@@ -35,6 +35,7 @@ type Statement struct {
 	DeleteRoute   *DeleteRouteStatement        `json:"delete_route,omitempty"`
 	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
+	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
 	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
 	Configuration *ConfigurationStatement      `json:"configuration,omitempty"`
 	Package       *PackageStatement            `json:"package,omitempty"`
@@ -215,6 +216,11 @@ type ApplyRouteMutationStatement struct {
 	Plan  *Expression `json:"plan"`
 }
 
+type PlanSchemaChangeStatement struct {
+	Table    Name        `json:"table"`
+	Proposal *Expression `json:"proposal"`
+}
+
 type ConfigurationStatement struct {
 	Action          string      `json:"action"`
 	Key             string      `json:"key"`
@@ -368,6 +374,8 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.OpenRoute.Limit)
 	case statement.PlanRoute != nil:
 		appendExpression(statement.PlanRoute.Proposal)
+	case statement.PlanSchema != nil:
+		appendExpression(statement.PlanSchema.Proposal)
 	case statement.ApplyRoute != nil:
 		appendExpression(statement.ApplyRoute.Plan)
 	case statement.Configuration != nil:

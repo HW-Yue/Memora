@@ -89,6 +89,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.openRoute(ctx, statement.OpenRoute, bound)
 	case statement.PlanRoute != nil:
 		return engine.planRouteMutation(ctx, statement.PlanRoute, bound)
+	case statement.PlanSchema != nil:
+		return engine.planSchemaChange(ctx, statement.PlanSchema, bound)
 	case statement.ApplyRoute != nil:
 		return engine.applyRouteMutation(ctx, statement.ApplyRoute, bound)
 	case statement.Insert != nil:
