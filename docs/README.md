@@ -95,6 +95,7 @@
 - [B+ Tree Mutation Plan v1](./storage/btree-mutation-plan-v1.md) — F97a 已冻结的多层私有 mutation、split/rebalance 传播与 allocator handoff。
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
 - [Committed Change Log（Binlog）与未来同步](./storage/binlog-and-sync.md) — 第一用途是 Admin 展示数据与语义索引变化；同步、PITR 后续复用。
+- [Committed Change Envelope v1](./storage/committed-change-envelope-v1.md) — F109 的单事务 envelope、独立 change cursor、checksum 与 crash 边界。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
 - [中间 Route Synopsis](./query/route-synopsis.md) — 可选私有子树总结、按需读取预算及随 reshape 原子更新规则。
 - [来源强度与复核证明](./data/source-provenance.md) — conversation/anchor/reviewed 分级、History 证据与 challenge-bound review。
@@ -170,7 +171,8 @@
 - [F97b WAL Recovery Open 拆分 Review](./planning/f97b-wal-recovery-open-review.md) — 当前格式无法区分 durable commit 与 speculative tail，建议拆出 durable frontier。
 - [F97b1 Durable WAL Frontier 开工与完成门](./planning/f97b1-durable-wal-frontier-gate.md) — 已完成的双槽 control、outcome unknown、fault matrix 与证据。
 - [F107 Page Store Default Switch 开工与完成门](./planning/f107-page-store-default-switch-gate.md) — 已完成的 RED、发布故障与无 fallback 验收证据。
-- [F108 COW Generation Replacement 开工与完成门](./planning/f108-cow-generation-replacement-gate.md) — 当前 Feature 的 epoch、故障矩阵与原子 swap 完成门。
+- [F108 COW Generation Replacement 开工与完成门](./planning/f108-cow-generation-replacement-gate.md) — 已完成的 epoch、故障矩阵与原子 swap 证据。
+- [F109 Committed Change Log 开工与完成门](./planning/f109-committed-change-log-gate.md) — envelope RED、原子事务、cross-object 与 crash/race 完成门。
 - [F97b2 WAL Recovery Open 开工与完成门](./planning/f97b2-wal-recovery-open-gate.md) — repairing open 的严格 authority 校验、可重入截尾与故障矩阵。
 - [F97c1 Tree Control Codec 开工与完成门](./planning/f97c1-tree-control-codec-gate.md) — slot 1 codec、bootstrap 与 corruption 完成证据。
 - [F97c2 Root/Allocator Redo Codec 开工与完成门](./planning/f97c2-root-allocator-redo-gate.md) — metadata payload、版本与字段校验。

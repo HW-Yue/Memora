@@ -28,6 +28,28 @@ func (repository *Repository) CreateRoot(id, databaseID, tableID, purpose string
 }
 
 func (repository *Repository) CreateRootWithSynopsis(id, databaseID, tableID, purpose, synopsis string) (router.Node, error) {
+	value, err := repository.prepareRoot(id, databaseID, tableID, purpose, synopsis)
+	if err != nil {
+		return router.Node{}, err
+	}
+	return value, repository.putNode(value)
+}
+
+func (repository *Repository) StageRoot(
+	transaction *nativestore.Transaction,
+	id, databaseID, tableID, purpose, synopsis string,
+) (router.Node, error) {
+	if transaction == nil {
+		return router.Node{}, fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	value, err := repository.prepareRoot(id, databaseID, tableID, purpose, synopsis)
+	if err != nil {
+		return router.Node{}, err
+	}
+	return value, repository.stageInitialNode(transaction, value)
+}
+
+func (repository *Repository) prepareRoot(id, databaseID, tableID, purpose, synopsis string) (router.Node, error) {
 	if id == "" || databaseID == "" || tableID == "" || purpose == "" {
 		return router.Node{}, fmt.Errorf("%w: root identity and purpose are required", ErrInvalid)
 	}
@@ -40,7 +62,7 @@ func (repository *Repository) CreateRootWithSynopsis(id, databaseID, tableID, pu
 		}
 	}
 	value := router.Node{Version: router.Version, ID: id, DatabaseID: databaseID, TableID: tableID, Name: "root", Aliases: []string{}, Path: "/", Kind: router.KindRoot, Purpose: purpose, Synopsis: synopsis, Revision: 1}
-	return value, repository.putNode(value)
+	return value, nil
 }
 
 func (repository *Repository) CreateChild(id, parentID, name string, kind router.Kind, purpose string) (router.Node, error) {
@@ -48,6 +70,30 @@ func (repository *Repository) CreateChild(id, parentID, name string, kind router
 }
 
 func (repository *Repository) CreateChildWithSynopsis(id, parentID, name string, kind router.Kind, purpose, synopsis string) (router.Node, error) {
+	value, err := repository.prepareChild(id, parentID, name, kind, purpose, synopsis)
+	if err != nil {
+		return router.Node{}, err
+	}
+	return value, repository.putNode(value)
+}
+
+func (repository *Repository) StageChild(
+	transaction *nativestore.Transaction,
+	id, parentID, name string,
+	kind router.Kind,
+	purpose, synopsis string,
+) (router.Node, error) {
+	if transaction == nil {
+		return router.Node{}, fmt.Errorf("%w: transaction is required", ErrInvalid)
+	}
+	value, err := repository.prepareChild(id, parentID, name, kind, purpose, synopsis)
+	if err != nil {
+		return router.Node{}, err
+	}
+	return value, repository.stageInitialNode(transaction, value)
+}
+
+func (repository *Repository) prepareChild(id, parentID, name string, kind router.Kind, purpose, synopsis string) (router.Node, error) {
 	parent, err := repository.Get(parentID)
 	if err != nil {
 		return router.Node{}, err
@@ -65,7 +111,7 @@ func (repository *Repository) CreateChildWithSynopsis(id, parentID, name string,
 	}
 	path := strings.TrimSuffix(parent.Path, "/") + "/" + name
 	value := router.Node{Version: router.Version, ID: id, DatabaseID: parent.DatabaseID, TableID: parent.TableID, ParentID: parent.ID, Name: name, Aliases: []string{}, Path: path, Kind: kind, Purpose: purpose, Synopsis: synopsis, Revision: 1}
-	return value, repository.putNode(value)
+	return value, nil
 }
 
 func (repository *Repository) Attach(leafID string, locator router.Locator, membershipRevision uint64) error {
@@ -275,6 +321,18 @@ func (repository *Repository) putNode(value router.Node) error {
 		return err
 	}
 	return repository.file.Put(nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(value.ID, value.Revision), payload)
+}
+
+func (repository *Repository) stageInitialNode(
+	transaction *nativestore.Transaction, value router.Node,
+) error {
+	payload, err := encodeNode(value)
+	if err != nil {
+		return err
+	}
+	return transaction.Put(
+		nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(value.ID, value.Revision), payload,
+	)
 }
 
 func nodeRecordID(id string, revision uint64) string {

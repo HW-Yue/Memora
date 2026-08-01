@@ -11,6 +11,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
@@ -187,6 +188,17 @@ func (authority *Authority) Capture(ctx context.Context) (uint64, error) {
 	}
 	defer authority.mu.RUnlock()
 	return authority.rows.Capture(ctx)
+}
+
+// NextChangeSequence reserves the next logical timeline position while the
+// caller holds the Authority operation gate. Failed native transactions do
+// not persist the reservation, so retry may reuse the same position.
+func (authority *Authority) NextChangeSequence(ctx context.Context) (uint64, error) {
+	if err := authority.lockRead(ctx); err != nil {
+		return 0, err
+	}
+	defer authority.mu.RUnlock()
+	return nativechange.New(authority.file).NextSequence(0)
 }
 
 func (authority *Authority) Get(

@@ -1,0 +1,118 @@
+package nativechange
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/HW-Yue/Memora/internal/change"
+	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/relation"
+	"github.com/HW-Yue/Memora/internal/router"
+	"github.com/HW-Yue/Memora/internal/row"
+)
+
+func RowMetadata(value row.WriteMetadata) change.Metadata {
+	metadata := change.Metadata{
+		Actor: value.Actor, Source: value.Source, Reason: value.Reason,
+		SourceReceiptID: value.SourceReceiptID,
+	}
+	if strings.TrimSpace(metadata.Actor) == "" {
+		metadata.Actor = "system:direct-api"
+	}
+	if strings.TrimSpace(metadata.Source) == "" {
+		metadata.Source = "direct-api"
+	}
+	if strings.TrimSpace(metadata.Reason) == "" {
+		metadata.Reason = "logical mutation"
+	}
+	return metadata
+}
+
+func RowEntry(value row.Row, operation history.Operation, related ...string) change.Entry {
+	historyLocator := value.ID
+	if value.Revision > 1 {
+		historyLocator = fmt.Sprintf("%s@%020d", value.ID, value.Revision)
+	}
+	return change.Entry{
+		ObjectKind: change.ObjectRow, DatabaseID: value.DatabaseID, TableID: value.TableID,
+		ObjectID: value.ID, Operation: changeOperation(operation),
+		BeforeRevision: value.Revision - 1, AfterRevision: value.Revision,
+		SchemaVersion:    value.SchemaVersion,
+		HistoryLocator:   historyLocator,
+		RelatedObjectIDs: uniqueIDs(related),
+	}
+}
+
+func RelationEntry(value relation.Relation) change.Entry {
+	operation := change.OperationUpdate
+	if value.Revision == 1 {
+		operation = change.OperationInsert
+	} else if value.State == relation.StateDeleted {
+		operation = change.OperationDelete
+	}
+	return change.Entry{
+		ObjectKind: change.ObjectRelation, DatabaseID: value.Source.DatabaseID,
+		TableID: value.Source.TableID, ObjectID: value.ID, Operation: operation,
+		BeforeRevision: value.Revision - 1, AfterRevision: value.Revision,
+		RelatedObjectIDs: uniqueIDs([]string{value.Source.RowID, value.Target.RowID}),
+	}
+}
+
+func RouteNodeEntry(value router.Node, operation change.Operation) change.Entry {
+	return change.Entry{
+		ObjectKind: change.ObjectRouteNode, DatabaseID: value.DatabaseID, TableID: value.TableID,
+		ObjectID: value.ID, Operation: operation, BeforeRevision: value.Revision - 1,
+		AfterRevision: value.Revision,
+	}
+}
+
+func MembershipEntry(value router.Membership) change.Entry {
+	operation := change.OperationUpdate
+	if value.MembershipRevision == 1 {
+		operation = change.OperationInsert
+	} else if value.Deleted {
+		operation = change.OperationDelete
+	}
+	return change.Entry{
+		ObjectKind: change.ObjectRouteMembership, DatabaseID: value.DatabaseID,
+		TableID: value.TableID, ObjectID: value.LeafID + "@" + value.RowID,
+		Operation: operation, BeforeRevision: value.MembershipRevision - 1,
+		AfterRevision:    value.MembershipRevision,
+		RelatedObjectIDs: uniqueIDs([]string{value.LeafID, value.RowID}),
+	}
+}
+
+func changeOperation(operation history.Operation) change.Operation {
+	switch operation {
+	case history.OperationInsert:
+		return change.OperationInsert
+	case history.OperationUpdate:
+		return change.OperationUpdate
+	case history.OperationDelete:
+		return change.OperationDelete
+	case history.OperationCompensate:
+		return change.OperationCompensate
+	case history.OperationSplit:
+		return change.OperationSplit
+	case history.OperationMerge:
+		return change.OperationMerge
+	default:
+		return ""
+	}
+}
+
+func uniqueIDs(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			seen[value] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for value := range seen {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}

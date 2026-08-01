@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/change"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/result"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
@@ -135,6 +137,12 @@ func (service *Service) history() ([]Revision, error) {
 }
 
 func (service *Service) Update(budgets QueryBudgets, expected uint64, actor, reason string) (Revision, error) {
+	return service.UpdateCommitted(budgets, expected, actor, reason, 0)
+}
+
+func (service *Service) UpdateCommitted(
+	budgets QueryBudgets, expected uint64, actor, reason string, sequence uint64,
+) (Revision, error) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if err := validateMutation(expected, actor, reason); err != nil {
@@ -155,10 +163,16 @@ func (service *Service) Update(budgets QueryBudgets, expected uint64, actor, rea
 		Budgets: budgets, Actor: strings.TrimSpace(actor), Reason: strings.TrimSpace(reason),
 		RecordedAt: time.Now().UTC(),
 	}
-	return next, service.put(next)
+	return next, service.commit(next, sequence, change.OperationUpdate)
 }
 
 func (service *Service) Restore(target, expected uint64, actor, reason string) (Revision, error) {
+	return service.RestoreCommitted(target, expected, actor, reason, 0)
+}
+
+func (service *Service) RestoreCommitted(
+	target, expected uint64, actor, reason string, sequence uint64,
+) (Revision, error) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if target == 0 {
@@ -183,7 +197,43 @@ func (service *Service) Restore(target, expected uint64, actor, reason string) (
 		Budgets: history[target-1].Budgets, Actor: strings.TrimSpace(actor), Reason: strings.TrimSpace(reason),
 		RestoredRevision: target, RecordedAt: time.Now().UTC(),
 	}
-	return next, service.put(next)
+	return next, service.commit(next, sequence, change.OperationRestore)
+}
+
+func (service *Service) commit(value Revision, sequence uint64, operation change.Operation) error {
+	if sequence == 0 {
+		var err error
+		sequence, err = nativechange.New(service.file).NextSequence(0)
+		if err != nil {
+			return err
+		}
+	}
+	transaction, err := service.file.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	id := fmt.Sprintf("%s_r%020d", QueryBudgetsKey, value.Revision)
+	if err := transaction.Put(nativestore.ObjectKindConfiguration, recordSchema, id, payload); err != nil {
+		return err
+	}
+	envelope, err := change.NewEnvelope(sequence, value.RecordedAt, change.Metadata{
+		Actor: value.Actor, Source: "msql", Reason: value.Reason,
+	}, []change.Entry{{
+		ObjectKind: change.ObjectConfiguration, ObjectID: value.Key, Operation: operation,
+		BeforeRevision: value.Revision - 1, AfterRevision: value.Revision,
+	}})
+	if err != nil {
+		return err
+	}
+	if err := nativechange.Stage(transaction, envelope); err != nil {
+		return err
+	}
+	return transaction.Commit()
 }
 
 func (service *Service) put(value Revision) error {

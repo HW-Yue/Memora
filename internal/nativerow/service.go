@@ -9,8 +9,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -39,6 +41,7 @@ type Clock interface{ Now() time.Time }
 type PageAuthority interface {
 	BeginWrite(context.Context) (func(), error)
 	BeginRowWrite(context.Context, string, string, []string) (func(), error)
+	NextChangeSequence(context.Context) (uint64, error)
 	Capture(context.Context) (uint64, error)
 	Get(context.Context, catalog.Table, string, uint64) (row.Row, error)
 	CurrentIncludingDeleted(context.Context, catalog.Table, string) (row.Row, error)
@@ -97,11 +100,15 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 		return row.Row{}, fmt.Errorf("allocate RowID: %w", err)
 	}
 	now := service.clock.Now().UTC()
-	sequence, err := service.repository.NextCommitSequence()
+	sequence, err := service.NextCommitSequence(ctx)
 	if err != nil {
 		return row.Row{}, err
 	}
 	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now}
+	changeSequence, err := service.NextChangeSequence(ctx)
+	if err != nil {
+		return row.Row{}, err
+	}
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
 		return row.Row{}, err
@@ -114,11 +121,16 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 		return row.Row{}, err
 	}
 	routes := nativerouter.New(service.repository.file)
+	memberships := make([]router.Membership, 0, len(options.RouteLeafIDs))
 	for _, leafID := range options.RouteLeafIDs {
 		membership := router.Membership{LeafID: leafID, MembershipRevision: 1, Locator: router.Locator{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID, Revision: value.Revision}}
 		if err := routes.StageMembership(transaction, membership); err != nil {
 			return row.Row{}, err
 		}
+		memberships = append(memberships, membership)
+	}
+	if err := stageRowChange(transaction, changeSequence, value, history.OperationInsert, options.Metadata, memberships); err != nil {
+		return row.Row{}, err
 	}
 	commit := transaction.Commit
 	if service.authority != nil {
@@ -241,7 +253,7 @@ func (service *Service) Update(ctx context.Context, databaseName, tableName, row
 		updated.Values[columnID] = value
 	}
 	updated.Revision++
-	updated.CommitSequence, err = service.repository.NextCommitSequence()
+	updated.CommitSequence, err = service.NextCommitSequence(ctx)
 	if err != nil {
 		return row.Row{}, err
 	}
@@ -268,7 +280,7 @@ func (service *Service) Delete(ctx context.Context, databaseName, tableName, row
 	}
 	deleted := current
 	deleted.Revision++
-	deleted.CommitSequence, err = service.repository.NextCommitSequence()
+	deleted.CommitSequence, err = service.NextCommitSequence(ctx)
 	if err != nil {
 		return row.Row{}, err
 	}
@@ -308,6 +320,7 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 		}
 	}
 	wanted := map[string]bool{}
+	changedMemberships := make([]router.Membership, 0)
 	for _, leafID := range desired {
 		if wanted[leafID] {
 			return fmt.Errorf("duplicate Route membership %q", leafID)
@@ -327,12 +340,21 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 		if err := routes.StageMembership(transaction, membership); err != nil {
 			return err
 		}
+		changedMemberships = append(changedMemberships, membership)
 	}
 	for leafID := range wanted {
 		membership := router.Membership{LeafID: leafID, MembershipRevision: 1, Locator: router.Locator{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID, Revision: value.Revision}}
 		if err := routes.StageMembership(transaction, membership); err != nil {
 			return err
 		}
+		changedMemberships = append(changedMemberships, membership)
+	}
+	changeSequence, err := service.NextChangeSequence(ctx)
+	if err != nil {
+		return err
+	}
+	if err := stageRowChange(transaction, changeSequence, value, operation, metadata, changedMemberships); err != nil {
+		return err
 	}
 	if service.authority != nil {
 		return service.authority.PublishRows(ctx, []row.Row{value}, transaction.Commit)
@@ -347,6 +369,30 @@ func containsRoute(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func stageRowChange(
+	transaction *nativestore.Transaction,
+	changeSequence uint64,
+	value row.Row,
+	operation history.Operation,
+	metadata row.WriteMetadata,
+	memberships []router.Membership,
+) error {
+	entries := make([]change.Entry, 0, 1+len(memberships))
+	related := make([]string, 0, len(memberships))
+	for _, membership := range memberships {
+		related = append(related, membership.LeafID)
+		entries = append(entries, nativechange.MembershipEntry(membership))
+	}
+	entries = append(entries, nativechange.RowEntry(value, operation, related...))
+	envelope, err := change.NewEnvelope(
+		changeSequence, value.UpdatedAt, nativechange.RowMetadata(metadata), entries,
+	)
+	if err != nil {
+		return err
+	}
+	return nativechange.Stage(transaction, envelope)
 }
 
 func (service *Service) mutationTarget(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (catalog.Table, row.Row, error) {
@@ -529,7 +575,7 @@ func (service *Service) Restore(
 	if target.State == row.StateLive && options.RouteLeafIDs == nil {
 		return row.Row{}, serviceFailure(result.CodeValidation, "RESTORE to a live Row requires a complete Route snapshot", nil)
 	}
-	sequence, err := service.repository.NextCommitSequence()
+	sequence, err := service.NextCommitSequence(ctx)
 	if err != nil {
 		return row.Row{}, err
 	}
@@ -583,12 +629,12 @@ func (service *Service) Relate(ctx context.Context, definition row.RelationDefin
 		return relation.Relation{}, fmt.Errorf("allocate relation ID: %w", err)
 	}
 	now := service.clock.Now().UTC()
-	sequence, err := service.repository.NextCommitSequence()
+	sequence, err := service.NextCommitSequence(ctx)
 	if err != nil {
 		return relation.Relation{}, err
 	}
 	created := relation.Relation{Version: relation.Version, ID: "rel_" + id, Source: source, Type: definition.Type, Target: target, Description: definition.Description, Revision: 1, CommitSequence: sequence, State: relation.StateLive, CreatedAt: now, UpdatedAt: now}
-	if err := service.repository.PutRelation(created); err != nil {
+	if err := service.commitRelationChange(ctx, created); err != nil {
 		return relation.Relation{}, err
 	}
 	return created, nil
@@ -615,16 +661,43 @@ func (service *Service) DeleteRelation(ctx context.Context, id string, expected 
 	}
 	deleted := current
 	deleted.Revision++
-	deleted.CommitSequence, err = service.repository.NextCommitSequence()
+	deleted.CommitSequence, err = service.NextCommitSequence(ctx)
 	if err != nil {
 		return relation.Relation{}, err
 	}
 	deleted.State = relation.StateDeleted
 	deleted.UpdatedAt = service.clock.Now().UTC()
-	if err := service.repository.PutRelation(deleted); err != nil {
+	if err := service.commitRelationChange(ctx, deleted); err != nil {
 		return relation.Relation{}, err
 	}
 	return deleted, nil
+}
+
+func (service *Service) commitRelationChange(ctx context.Context, value relation.Relation) error {
+	changeSequence, err := service.NextChangeSequence(ctx)
+	if err != nil {
+		return err
+	}
+	transaction, err := service.repository.file.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := service.repository.StageRelation(transaction, value); err != nil {
+		return err
+	}
+	envelope, err := change.NewEnvelope(
+		changeSequence, value.UpdatedAt,
+		change.Metadata{Actor: "system:direct-api", Source: "direct-api", Reason: "relation mutation"},
+		[]change.Entry{nativechange.RelationEntry(value)},
+	)
+	if err != nil {
+		return err
+	}
+	if err := nativechange.Stage(transaction, envelope); err != nil {
+		return err
+	}
+	return transaction.Commit()
 }
 func (service *Service) ListOutgoingRelations(ctx context.Context, endpoint row.RelationEndpoint) ([]relation.Relation, error) {
 	resolved, err := service.relationEndpoint(ctx, endpoint)
@@ -675,6 +748,33 @@ func (service *Service) BeginAuthorityWrite(ctx context.Context) (func(), error)
 	return service.authority.BeginWrite(ctx)
 }
 
+// NextCommitSequence preserves the Row/Relation snapshot sequence contract.
+func (service *Service) NextCommitSequence(ctx context.Context) (uint64, error) {
+	if service == nil || service.repository == nil || service.repository.file == nil || ctx == nil {
+		return 0, fmt.Errorf("native Row service is incomplete")
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	return service.repository.NextCommitSequence()
+}
+
+// NextChangeSequence is the independent global cursor for committed logical
+// envelopes. Row snapshot sequences remain stable and are referenced through
+// the envelope's History locator.
+func (service *Service) NextChangeSequence(ctx context.Context) (uint64, error) {
+	if service == nil || service.repository == nil || service.repository.file == nil || ctx == nil {
+		return 0, fmt.Errorf("native Row service is incomplete")
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if service.authority != nil {
+		return service.authority.NextChangeSequence(ctx)
+	}
+	return nativechange.New(service.repository.file).NextSequence(0)
+}
+
 func (service *Service) BeginRowAuthorityWrite(
 	ctx context.Context, table catalog.Table, rowIDs []string,
 ) (func(), error) {
@@ -703,7 +803,10 @@ func (service *Service) CreateTableRouterRoot(ctx context.Context, databaseName,
 	if err != nil || strings.TrimSpace(id) == "" {
 		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
 	}
-	return nativerouter.New(service.repository.file).CreateRootWithSynopsis("route_"+id, table.DatabaseID, table.ID, purpose, synopsis)
+	routes := nativerouter.New(service.repository.file)
+	return service.commitRouteNodeChange(ctx, change.OperationInsert, "create Route root", func(transaction *nativestore.Transaction) (router.Node, error) {
+		return routes.StageRoot(transaction, "route_"+id, table.DatabaseID, table.ID, purpose, synopsis)
+	})
 }
 func (service *Service) ListTableRouterRoots(_ context.Context, databaseID, tableID, cursor string, limit int) ([]router.Node, string, error) {
 	if limit < 1 || limit > 100 {
@@ -726,9 +829,13 @@ func (service *Service) CreateRouterNode(ctx context.Context, parentID string, d
 	if err != nil || strings.TrimSpace(id) == "" {
 		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
 	}
-	return nativerouter.New(service.repository.file).CreateChildWithSynopsis(
-		"route_"+id, parentID, definition.Name, definition.Kind, definition.Purpose, definition.Synopsis,
-	)
+	routes := nativerouter.New(service.repository.file)
+	return service.commitRouteNodeChange(ctx, change.OperationInsert, "create Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
+		return routes.StageChild(
+			transaction, "route_"+id, parentID, definition.Name,
+			definition.Kind, definition.Purpose, definition.Synopsis,
+		)
+	})
 }
 func (service *Service) RenameRouterNode(ctx context.Context, id, name string, expected uint64) (router.Node, error) {
 	release, err := service.BeginAuthorityWrite(ctx)
@@ -749,15 +856,9 @@ func (service *Service) RenameRouterNode(ctx context.Context, id, name string, e
 		return router.Node{}, err
 	}
 	current.Name, current.Path, current.Revision = name, strings.TrimSuffix(parent.Path, "/")+"/"+name, current.Revision+1
-	transaction, err := service.repository.file.Begin()
-	if err != nil {
-		return router.Node{}, err
-	}
-	defer func() { _ = transaction.Rollback() }()
-	if err := routes.StageNode(transaction, current); err != nil {
-		return router.Node{}, err
-	}
-	return current, transaction.Commit()
+	return service.commitRouteNodeChange(ctx, change.OperationUpdate, "rename Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
+		return current, routes.StageNode(transaction, current)
+	})
 }
 func (service *Service) UpdateRouterSynopsis(ctx context.Context, id, synopsis string, expected uint64) (router.Node, error) {
 	release, err := service.BeginAuthorityWrite(ctx)
@@ -774,15 +875,9 @@ func (service *Service) UpdateRouterSynopsis(ctx context.Context, id, synopsis s
 		return router.Node{}, ErrRevisionConflict
 	}
 	current.Synopsis, current.Revision = synopsis, current.Revision+1
-	transaction, err := service.repository.file.Begin()
-	if err != nil {
-		return router.Node{}, err
-	}
-	defer func() { _ = transaction.Rollback() }()
-	if err := routes.StageNode(transaction, current); err != nil {
-		return router.Node{}, err
-	}
-	return current, transaction.Commit()
+	return service.commitRouteNodeChange(ctx, change.OperationUpdate, "update Route synopsis", func(transaction *nativestore.Transaction) (router.Node, error) {
+		return current, routes.StageNode(transaction, current)
+	})
 }
 func (service *Service) DeleteRouterNode(ctx context.Context, id string, expected uint64) (uint64, error) {
 	release, err := service.BeginAuthorityWrite(ctx)
@@ -799,15 +894,43 @@ func (service *Service) DeleteRouterNode(ctx context.Context, id string, expecte
 		return 0, ErrRevisionConflict
 	}
 	current.Revision, current.Deleted = current.Revision+1, true
+	committed, err := service.commitRouteNodeChange(ctx, change.OperationDelete, "delete Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
+		return current, routes.StageNode(transaction, current)
+	})
+	return committed.Revision, err
+}
+
+func (service *Service) commitRouteNodeChange(
+	ctx context.Context,
+	operation change.Operation,
+	reason string,
+	stage func(*nativestore.Transaction) (router.Node, error),
+) (router.Node, error) {
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
-		return 0, err
+		return router.Node{}, err
 	}
 	defer func() { _ = transaction.Rollback() }()
-	if err := routes.StageNode(transaction, current); err != nil {
-		return 0, err
+	value, err := stage(transaction)
+	if err != nil {
+		return router.Node{}, err
 	}
-	return current.Revision, transaction.Commit()
+	sequence, err := service.NextChangeSequence(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	envelope, err := change.NewEnvelope(
+		sequence, service.clock.Now().UTC(),
+		change.Metadata{Actor: "system:direct-api", Source: "direct-api", Reason: reason},
+		[]change.Entry{nativechange.RouteNodeEntry(value, operation)},
+	)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if err := nativechange.Stage(transaction, envelope); err != nil {
+		return router.Node{}, err
+	}
+	return value, transaction.Commit()
 }
 func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node, error) {
 	value, err := nativerouter.New(service.repository.file).Get(id)

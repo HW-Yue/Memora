@@ -156,7 +156,7 @@ func (source *nativeSource) Inventory(ctx context.Context) (SourceState, error) 
 	if err != nil {
 		return SourceState{}, classifySourceError(err)
 	}
-	counts := make([]RecordCount, 0, int(nativestore.ObjectKindConfiguration-nativestore.ObjectKindDatabase)+1)
+	counts := make([]RecordCount, 0, int(nativestore.ObjectKindCommittedChange-nativestore.ObjectKindDatabase)+1)
 	byKind := make(map[nativestore.ObjectKind]uint64)
 	hash := sha256.New()
 	_, _ = hash.Write([]byte("memora-legacy-record-inventory-v1\x00"))
@@ -165,7 +165,7 @@ func (source *nativeSource) Inventory(ctx context.Context) (SourceState, error) 
 		if err := ctx.Err(); err != nil {
 			return SourceState{}, err
 		}
-		if reference.Kind < nativestore.ObjectKindDatabase || reference.Kind > nativestore.ObjectKindConfiguration {
+		if reference.Kind < nativestore.ObjectKindDatabase || reference.Kind > nativestore.ObjectKindCommittedChange {
 			return SourceState{}, fmt.Errorf("%w: object kind %d", ErrUnsupported, reference.Kind)
 		}
 		payload, err := source.file.Get(reference.Kind, reference.ID)
@@ -186,7 +186,7 @@ func (source *nativeSource) Inventory(ctx context.Context) (SourceState, error) 
 		_, _ = hash.Write(payload)
 		byKind[reference.Kind]++
 	}
-	for kind := nativestore.ObjectKindDatabase; kind <= nativestore.ObjectKindConfiguration; kind++ {
+	for kind := nativestore.ObjectKindDatabase; kind <= nativestore.ObjectKindCommittedChange; kind++ {
 		counts = append(counts, RecordCount{Kind: kind, Count: byKind[kind]})
 	}
 	var fingerprint [sha256.Size]byte
@@ -364,8 +364,9 @@ func validSHA256(value string) bool {
 }
 
 func validCounts(counts []RecordCount) bool {
-	want := int(nativestore.ObjectKindConfiguration-nativestore.ObjectKindDatabase) + 1
-	if len(counts) != want {
+	legacy := int(nativestore.ObjectKindConfiguration-nativestore.ObjectKindDatabase) + 1
+	current := int(nativestore.ObjectKindCommittedChange-nativestore.ObjectKindDatabase) + 1
+	if len(counts) != legacy && len(counts) != current {
 		return false
 	}
 	for index, count := range counts {

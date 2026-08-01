@@ -97,6 +97,8 @@ F66 增加 logical snapshot 与 native typed authority 之间的原子导入/确
 作为旧后端迁移桥；snapshot metadata 不是运行时真相源。
 F68 已将 daemon 默认 authority 切换为 `database.memora`；旧 SQLite authority
 只作为保留源和显式备份存在，切换前必须通过 logical snapshot hash 回读验证。
+F109 新增 `ObjectKindCommittedChange=12`；change envelope 与同一逻辑事务的 immutable
+body 共用 transaction COMMIT，rollback 或 crash tail 均不可见。
 
 后续版本可以改变物理 format version，但必须提供明确迁移；不能为了避免升级而把
 F52 重新膨胀成完整内核。

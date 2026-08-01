@@ -56,6 +56,7 @@ const (
 	ObjectKindRouteMembership ObjectKind = 9
 	ObjectKindSnapshotMeta    ObjectKind = 10
 	ObjectKindConfiguration   ObjectKind = 11
+	ObjectKindCommittedChange ObjectKind = 12
 )
 
 const (

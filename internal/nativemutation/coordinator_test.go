@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/relation"
@@ -58,6 +60,13 @@ func TestCrossObjectMutationPublishesAtomicallyAfterReopen(t *testing.T) {
 	if err != nil || len(memberships) != 1 || memberships[0].MembershipRevision != 2 {
 		t.Fatalf("Memberships() = %#v, %v", memberships, err)
 	}
+	changes, more, err := nativechange.New(reopened).ListAfter(0, 10)
+	if err != nil || more || len(changes) != 1 || len(changes[0].Entries) != 3 ||
+		countEntries(changes[0], change.ObjectRow) != 1 ||
+		countEntries(changes[0], change.ObjectRelation) != 1 ||
+		countEntries(changes[0], change.ObjectRouteMembership) != 1 {
+		t.Fatalf("cross-object change envelope = %+v, %v, %v", changes, more, err)
+	}
 }
 
 func TestCrossObjectMutationFailureLeavesNoPartialObjects(t *testing.T) {
@@ -86,6 +95,20 @@ func TestCrossObjectMutationFailureLeavesNoPartialObjects(t *testing.T) {
 	if err != nil || len(locators) != 1 || locators[0].Revision != 1 {
 		t.Fatalf("membership after rollback = %#v, %v", locators, err)
 	}
+	changes, more, err := nativechange.New(file).ListAfter(0, 10)
+	if err != nil || more || len(changes) != 0 {
+		t.Fatalf("failed mutation changes = %+v, %v, %v", changes, more, err)
+	}
+}
+
+func countEntries(envelope change.Envelope, kind change.ObjectKind) int {
+	count := 0
+	for _, entry := range envelope.Entries {
+		if entry.ObjectKind == kind {
+			count++
+		}
+	}
+	return count
 }
 
 func mutationFixture(t *testing.T) (string, *nativestore.File, *nativerow.Repository, *nativerouter.Repository, row.Row, relation.Relation, router.Membership) {

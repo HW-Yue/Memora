@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F108 已完成；下一项为 F109 Committed Change Log。用户已于
+状态：F81–F109 已完成；下一项为 F110 Metadata Read Protocol。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -54,7 +54,7 @@ Vector 作为可回退候选预测器，禁止 Row/chunk Vector、隐藏答案�
 | F106 Page Store Migration | 已完成：Plan staging、重验并原子发布三树 generation |
 | F107 Page Store Default Switch | 已完成：新 Instance 与已迁移 Instance 只以 Page Store 为查询 authority |
 | F108 COW Generation Replacement | 已完成：rebuild 失败保留旧 root，成功原子切换 generation |
-| F109 Committed Change Log | 每个 commit 形成一个完整逻辑变化 envelope |
+| F109 Committed Change Log | 已完成：每个 commit 形成一个完整逻辑变化 envelope |
 
 详细 RED 与故障门见[存储内核小 Feature 计划](./row-read-foundation-feature-plan.md)。
 
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F109；持续执行授权覆盖 F109–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F110；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

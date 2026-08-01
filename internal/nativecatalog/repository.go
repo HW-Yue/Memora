@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/change"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
@@ -20,6 +22,18 @@ type Repository struct{ file *nativestore.File }
 func New(file *nativestore.File) *Repository { return &Repository{file: file} }
 
 func (repository *Repository) Write(databases []catalog.Database) error {
+	return repository.write(databases, nil)
+}
+
+func (repository *Repository) WriteCommitted(
+	databases []catalog.Database, envelope change.Envelope,
+) error {
+	return repository.write(databases, &envelope)
+}
+
+func (repository *Repository) write(
+	databases []catalog.Database, envelope *change.Envelope,
+) error {
 	if repository == nil || repository.file == nil {
 		return fmt.Errorf("%w: native file is required", ErrInvalid)
 	}
@@ -67,6 +81,11 @@ func (repository *Repository) Write(databases []catalog.Database) error {
 	}
 	if !changed {
 		return nil
+	}
+	if envelope != nil {
+		if err := nativechange.Stage(transaction, *envelope); err != nil {
+			return err
+		}
 	}
 	return transaction.Commit()
 }

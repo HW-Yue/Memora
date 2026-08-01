@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/logical"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/google/uuid"
 )
 
@@ -20,6 +22,7 @@ type Clock interface{ Now() time.Time }
 // exposes the supplied snapshot.
 type PageAuthority interface {
 	BeginWrite(context.Context) (func(), error)
+	NextChangeSequence(context.Context) (uint64, error)
 	SnapshotCatalog(context.Context) ([]catalog.Database, error)
 	ShowDatabases(context.Context) ([]catalog.Database, error)
 	DescribeDatabase(context.Context, string) (catalog.Database, error)
@@ -217,15 +220,91 @@ func (service *Service) mutate(ctx context.Context, change func(*[]catalog.Datab
 	if err != nil {
 		return err
 	}
+	before := catalogRevisionMap(databases)
 	if err := change(&databases); err != nil {
+		return err
+	}
+	sequence, err := service.nextChangeSequence(ctx)
+	if err != nil {
+		return err
+	}
+	envelope, err := changeEnvelope(sequence, service.clock.Now().UTC(), before, databases)
+	if err != nil {
 		return err
 	}
 	if service.authority != nil {
 		return service.authority.PublishCatalog(ctx, databases, func() error {
-			return service.repository.Write(databases)
+			return service.repository.WriteCommitted(databases, envelope)
 		})
 	}
-	return service.repository.Write(databases)
+	return service.repository.WriteCommitted(databases, envelope)
+}
+
+type catalogRevision struct {
+	kind       change.ObjectKind
+	databaseID string
+	tableID    string
+	revision   uint64
+}
+
+func catalogRevisionMap(databases []catalog.Database) map[string]catalogRevision {
+	result := make(map[string]catalogRevision)
+	for _, database := range databases {
+		result[string(change.ObjectDatabase)+"\x00"+database.ID] = catalogRevision{
+			kind: change.ObjectDatabase, databaseID: database.ID, revision: database.SchemaVersion,
+		}
+		for _, table := range database.Tables {
+			result[string(change.ObjectTable)+"\x00"+table.ID] = catalogRevision{
+				kind: change.ObjectTable, databaseID: database.ID, tableID: table.ID,
+				revision: table.SchemaVersion,
+			}
+			for _, column := range table.Columns {
+				result[string(change.ObjectColumn)+"\x00"+column.ID] = catalogRevision{
+					kind: change.ObjectColumn, databaseID: database.ID, tableID: table.ID,
+					revision: column.SchemaVersion,
+				}
+			}
+		}
+	}
+	return result
+}
+
+func changeEnvelope(
+	sequence uint64,
+	committedAt time.Time,
+	before map[string]catalogRevision,
+	databases []catalog.Database,
+) (change.Envelope, error) {
+	after := catalogRevisionMap(databases)
+	entries := make([]change.Entry, 0)
+	for key, current := range after {
+		previous, existed := before[key]
+		if existed && previous.revision == current.revision {
+			continue
+		}
+		operation := change.OperationInsert
+		beforeRevision := uint64(0)
+		if existed {
+			operation = change.OperationUpdate
+			beforeRevision = previous.revision
+		}
+		objectID := strings.SplitN(key, "\x00", 2)[1]
+		entries = append(entries, change.Entry{
+			ObjectKind: current.kind, DatabaseID: current.databaseID, TableID: current.tableID,
+			ObjectID: objectID, Operation: operation, BeforeRevision: beforeRevision,
+			AfterRevision: current.revision, SchemaVersion: current.revision,
+		})
+	}
+	return change.NewEnvelope(sequence, committedAt, change.Metadata{
+		Actor: "system:direct-api", Source: "direct-api", Reason: "Catalog mutation",
+	}, entries)
+}
+
+func (service *Service) nextChangeSequence(ctx context.Context) (uint64, error) {
+	if service.authority != nil {
+		return service.authority.NextChangeSequence(ctx)
+	}
+	return nativechange.New(service.repository.file).NextSequence(0)
 }
 
 func (service *Service) newColumn(definition catalog.ColumnDefinition, now time.Time) (catalog.Column, error) {

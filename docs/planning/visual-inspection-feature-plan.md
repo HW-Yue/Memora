@@ -1,6 +1,7 @@
 # Admin 与本地可观察性小 Feature 计划
 
-状态：F109–F122 讨论稿，待用户逐项 Review；未获实现授权。
+状态：F109 已完成，下一项 F110；F110–F122 持续执行已获用户授权，仍逐项 Review、
+测试与独立合入。
 
 ## 产品形态
 
@@ -26,7 +27,7 @@ MSQL。第一版只读，使用固定 actor/scope、随机 token、Host/Origin�
 
 | Feature | RED 先证明 | 唯一结果 |
 | --- | --- | --- |
-| F109 Change Log | rollback/crash tail 或半套 split 可见 | 一个 commit 对应完整变化 envelope |
+| F109 Change Log | rollback/crash tail 或半套 split 可见 | 已完成：一个 commit 对应完整变化 envelope |
 | F110 Metadata Read | Admin 被迫读 Store 或无界列举 | Database/Table/Schema 的有界 MSQL |
 | F111 Route Read | Route 叶泄露正文或整树一次加载 | 节点/children/locator 分层 cursor |
 | F112 Row Detail Read | 前端猜 `title/body` 或丢动态字段 | Data Dictionary 驱动的 Row/History envelope |

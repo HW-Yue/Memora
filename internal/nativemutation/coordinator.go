@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/relation"
@@ -67,6 +69,24 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 			return fmt.Errorf("native mutation has an unsupported row operation")
 		}
 	}
+	sequence, err := coordinator.commitSequence(changes, plan.Relations)
+	if err != nil {
+		return err
+	}
+	for index := range changes {
+		if changes[index].Row.CommitSequence == 0 {
+			changes[index].Row.CommitSequence = sequence
+		}
+	}
+	for index := range plan.Relations {
+		if plan.Relations[index].CommitSequence == 0 {
+			plan.Relations[index].CommitSequence = sequence
+		}
+	}
+	changeSequence, err := coordinator.changeSequence()
+	if err != nil {
+		return err
+	}
 	transaction, err := coordinator.file.Begin()
 	if err != nil {
 		return err
@@ -100,6 +120,13 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 			return err
 		}
 	}
+	envelope, err := mutationEnvelope(changeSequence, changes, plan.Relations, plan.Routes, plan.Memberships)
+	if err != nil {
+		return err
+	}
+	if err := nativechange.Stage(transaction, envelope); err != nil {
+		return err
+	}
 	if coordinator.pages != nil {
 		values := make([]row.Row, 0, len(changes))
 		for _, change := range changes {
@@ -108,4 +135,91 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 		return coordinator.pages.PublishRows(context.Background(), values, transaction.Commit)
 	}
 	return transaction.Commit()
+}
+
+func (coordinator *Coordinator) commitSequence(
+	changes []RowChange, relations []relation.Relation,
+) (uint64, error) {
+	sequence := uint64(0)
+	for _, value := range changes {
+		if value.Row.CommitSequence == 0 {
+			continue
+		}
+		if sequence != 0 && sequence != value.Row.CommitSequence {
+			return 0, fmt.Errorf("native mutation has mixed commit sequences")
+		}
+		sequence = value.Row.CommitSequence
+	}
+	for _, value := range relations {
+		if value.CommitSequence == 0 {
+			continue
+		}
+		if sequence != 0 && sequence != value.CommitSequence {
+			return 0, fmt.Errorf("native mutation has mixed commit sequences")
+		}
+		sequence = value.CommitSequence
+	}
+	if sequence != 0 {
+		return sequence, nil
+	}
+	return coordinator.rows.NextCommitSequence()
+}
+
+func (coordinator *Coordinator) changeSequence() (uint64, error) {
+	if coordinator.pages != nil {
+		return coordinator.pages.NextChangeSequence(context.Background())
+	}
+	return nativechange.New(coordinator.file).NextSequence(0)
+}
+
+func mutationEnvelope(
+	sequence uint64,
+	changes []RowChange,
+	relations []relation.Relation,
+	routes []router.Node,
+	memberships []router.Membership,
+) (change.Envelope, error) {
+	entries := make([]change.Entry, 0, len(changes)+len(relations)+len(routes)+len(memberships))
+	relatedRows := make([]string, 0, len(changes))
+	committedAt := time.Time{}
+	metadata := change.Metadata{}
+	for _, value := range changes {
+		relatedRows = append(relatedRows, value.Row.ID)
+		if value.RecordedAt.After(committedAt) {
+			committedAt = value.RecordedAt
+		}
+		if metadata.Actor == "" {
+			metadata = nativechange.RowMetadata(value.Metadata)
+		}
+	}
+	for _, value := range changes {
+		entries = append(entries, nativechange.RowEntry(value.Row, value.Operation, relatedRows...))
+	}
+	for _, value := range relations {
+		entries = append(entries, nativechange.RelationEntry(value))
+		if value.UpdatedAt.After(committedAt) {
+			committedAt = value.UpdatedAt
+		}
+	}
+	for _, value := range routes {
+		operation := change.OperationUpdate
+		if value.Revision == 1 {
+			operation = change.OperationInsert
+		} else if value.Deleted {
+			operation = change.OperationDelete
+		}
+		entries = append(entries, nativechange.RouteNodeEntry(value, operation))
+	}
+	for _, value := range memberships {
+		entries = append(entries, nativechange.MembershipEntry(value))
+	}
+	if committedAt.IsZero() {
+		committedAt = time.Now().UTC()
+	}
+	if metadata.Actor == "" {
+		metadata = change.Metadata{
+			Actor: "system:direct-api", Source: "direct-api", Reason: "logical mutation",
+		}
+	}
+	return change.NewEnvelope(sequence, committedAt, metadata, entries)
 }

@@ -78,7 +78,11 @@ func (service *Service) UpdateQueryBudgets(
 		return nativeconfig.Revision{}, err
 	}
 	defer release()
-	return service.config.Update(budgets, expected, actor, reason)
+	sequence, err := service.Service.NextChangeSequence(ctx)
+	if err != nil {
+		return nativeconfig.Revision{}, err
+	}
+	return service.config.UpdateCommitted(budgets, expected, actor, reason, sequence)
 }
 
 func (service *Service) RestoreQueryBudgets(
@@ -92,7 +96,11 @@ func (service *Service) RestoreQueryBudgets(
 		return nativeconfig.Revision{}, err
 	}
 	defer release()
-	return service.config.Restore(target, expected, actor, reason)
+	sequence, err := service.Service.NextChangeSequence(ctx)
+	if err != nil {
+		return nativeconfig.Revision{}, err
+	}
+	return service.config.RestoreCommitted(target, expected, actor, reason, sequence)
 }
 
 func (service *Service) Split(
@@ -153,7 +161,7 @@ func (service *Service) reshape(
 	if err != nil {
 		return nil, err
 	}
-	sequence, err := service.rows.NextCommitSequence()
+	sequence, err := service.Service.NextCommitSequence(ctx)
 	if err != nil {
 		return nil, err
 	}

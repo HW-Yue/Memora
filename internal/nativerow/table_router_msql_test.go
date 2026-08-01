@@ -100,7 +100,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	}
 	asOfCommit := executeMSQL(t, ctx, engine,
 		"SELECT title, revision FROM work.notes AS OF COMMIT_SEQUENCE :sequence WHERE row_id = :row LIMIT 1",
-		executor.Parameters{Named: map[string]any{"sequence": 2, "row": "row_first"}},
+		executor.Parameters{Named: map[string]any{"sequence": *updated.CommitSequence, "row": "row_first"}},
 		executor.MutationOptions{},
 	)
 	if len(asOfCommit.Rows) != 1 || asOfCommit.Rows[0]["title"] != "native authority revised" ||

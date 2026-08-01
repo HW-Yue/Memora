@@ -1,6 +1,6 @@
 # Committed Change Log（Binlog）与未来同步
 
-状态：产品定位已确认；F109/F113 事件契约与 MSQL 仍待用户 Review，未获实现授权。
+状态：产品定位已确认；F109 durable envelope 已实现，F113 Page cursor 与 MSQL 读取待实现。
 
 ## 第一用途
 
@@ -36,19 +36,19 @@ Binlog 不复制原始 prompt、隐藏推理或完整大正文。Row 详情和�
 Binlog 只包含已经提交的逻辑变化，并保留完整事务边界。回滚、未完成事务和 crash
 tail 不得产生可见事件。
 
-F109 中，Change Transaction Envelope 作为普通逻辑 Page Record，与 Row、Catalog、
-Route、membership 和 Relation Page 变化进入同一个 WAL transaction：
+F109 中，Change Transaction Envelope 与 Row、Catalog、Route、membership 和 Relation
+immutable body 进入同一个 native 原子 transaction：
 
 ```text
-private physical/logical write set
-  → WAL page redo + change envelope Page record
-  → WAL COMMIT + fsync
-  → publish B+ Tree committed view
-  → publish Change Log cursor
+native logical write set + change envelope
+  → native records fsync
+  → native COMMIT + fsync
+  → publish/reconcile Page indexes
 ```
 
 Change Log 不作为第二个独立 durability 日志，因此首版不需要 Redo/Binlog 两阶段
-提交或 Group Commit。未来若为复制拆出独立流文件，再重新 Review 一致性协议。
+提交。F113 再为 immutable envelope 建派生 Page cursor；具体 v1 契约见
+[Committed Change Envelope v1](./committed-change-envelope-v1.md)。
 
 ## F109 最小事件契约
 
@@ -113,7 +113,7 @@ delta 或混合重放格式，在同步 Feature Review 时再决定。
 ## 尚待 Review
 
 - Change Log 默认保留期限，以及用户是否允许关闭或清理；
-- Row 正文 diff 只引用永久 History，还是额外保存有界摘要；
+- F109 已选择 Row 正文只引用永久 History，不复制摘要；F121 再决定展示 diff 预算；
 - Catalog/Route delta 的具体字段和单事务大小预算；
 - 锁冲突、失败事务和维护 dry-run 是否进入独立诊断流；
 - `SHOW CHANGES` 的最终 MSQL 语法和分页 cursor。

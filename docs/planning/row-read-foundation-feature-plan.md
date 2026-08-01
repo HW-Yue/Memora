@@ -1,8 +1,7 @@
 # 存储内核小 Feature 计划
 
-状态：F81–F109 执行顺序及持续实现已获用户授权；F81–F108 已完成，下一项为
-F109 Committed Change Log。后续仍逐项 Review、测试、验收和合入，但无需等待
-重复授权。
+状态：F81–F109 已全部完成并独立验收；后续从 F110 Admin Metadata Read Protocol
+继续，仍逐项 Review、测试、验收和合入，但无需等待重复授权。
 
 ## 当前缺口与目标
 
@@ -80,7 +79,7 @@ F97b 修订证据见
 | F106 Migration Apply | 中断得到混合 authority | 已完成：staging/verify/atomic generation publish |
 | F107 Default Switch | 新写仍可进入旧路径 | 已完成：Page Store 成为唯一新查询 authority |
 | F108 COW Replacement | 失败 rebuild 改坏当前 root | 已完成：build/validate/atomic root swap |
-| F109 Change Log | rollback 或半事务出现在时间线 | 同 WAL 事务的完整 change envelope |
+| F109 Change Log | rollback 或半事务出现在时间线 | 已完成：同 native 事务的完整 change envelope |
 
 F98–F109 都覆盖 success、not-found/conflict/corruption、reopen 和上一 Feature 回归。
 不得保留旧全量扫描作为静默 fallback；F107 需用测试证明旧 authority 不可到达。
