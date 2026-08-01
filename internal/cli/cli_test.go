@@ -18,6 +18,8 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/feedback"
+	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/instanceupgrade"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -168,6 +170,18 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: assimilate requires exactly one of --event, --submission, or --receipt\n",
 		},
 		{
+			name:       "capture requires one operation",
+			args:       []string{"capture"},
+			wantCode:   2,
+			wantStderr: "memora: capture requires exactly one of --candidate or --receipt with --workspace\n",
+		},
+		{
+			name:       "capture rejects unknown candidate field",
+			args:       []string{"capture", "--candidate", `{"content":"unsafe"}`},
+			wantCode:   2,
+			wantStderr: "memora: --candidate must be one strict Host Input JSON object\n",
+		},
+		{
 			name:       "assimilate rejects raw content field",
 			args:       []string{"assimilate", "--event", `{"content":"raw source text"}`},
 			wantCode:   2,
@@ -229,6 +243,52 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunCaptureSubmitsAndReloadsPendingInput(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	input := hostinput.Input{Version: hostinput.InputVersion, InputID: "input-cli", Workspace: "project",
+		Actor: "agent:host", AuthorizedDatabases: []string{"work"}, CandidateText: "A bounded candidate",
+		Source: hostinput.Source{Kind: history.SourceConversationAssertion, Title: "Candidate"}}
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := hostinput.Receipt{Version: hostinput.ReceiptVersion, InputID: input.InputID, Workspace: input.Workspace,
+		Status: hostinput.StatusPending, InputSHA256: "sha256:" + strings.Repeat("a", 64),
+		ContentSHA256: "sha256:" + strings.Repeat("b", 64), ScopeSHA256: "sha256:" + strings.Repeat("c", 64),
+		ContentBytes: len(input.CandidateText), AuthorizedDatabases: []string{"work"}, CapturedAt: time.Now().UTC()}
+	captured, loaded := false, false
+	dependencies := Dependencies{HomeDir: func() (string, error) { return home, nil },
+		CaptureHostInput: func(_ context.Context, gotDataDir string, got hostinput.Input) (hostinput.Receipt, error) {
+			captured = true
+			if gotDataDir != dataDir || got.InputID != input.InputID {
+				t.Fatalf("capture = %q, %#v", gotDataDir, got)
+			}
+			return receipt, nil
+		},
+		GetHostInput: func(_ context.Context, gotDataDir, gotID, gotWorkspace string) (hostinput.Pending, error) {
+			loaded = true
+			if gotDataDir != dataDir || gotID != input.InputID || gotWorkspace != input.Workspace {
+				t.Fatalf("capture lookup = %q, %q, %q", gotDataDir, gotID, gotWorkspace)
+			}
+			return hostinput.Pending{Input: input, Receipt: receipt}, nil
+		},
+	}
+	for _, args := range [][]string{
+		{"capture", "--data-dir", dataDir, "--candidate", string(encoded)},
+		{"capture", "--data-dir", dataDir, "--receipt", input.InputID, "--workspace", input.Workspace},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := RunWithDependencies(args, &stdout, &stderr, BuildInfo{}, dependencies); code != ExitOK {
+			t.Fatalf("capture %v code=%d stderr=%q", args, code, &stderr)
+		}
+	}
+	if !captured || !loaded {
+		t.Fatalf("captured=%t loaded=%t", captured, loaded)
 	}
 }
 

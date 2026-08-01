@@ -21,6 +21,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/daemon"
 	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/feedback"
+	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/instanceupgrade"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
@@ -46,6 +47,7 @@ Usage:
 Commands:
   admin      Start a temporary local read-only Admin API
   assimilate  Track, review, and receipt source assimilation
+  capture    Capture or reload one bounded pending host input
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
@@ -104,6 +106,8 @@ type Dependencies struct {
 	Assimilate         func(context.Context, string, assimilation.Event) (assimilation.Receipt, error)
 	SubmitAssimilation func(context.Context, string, assimilation.Submission) (assimilation.SourceReceipt, error)
 	GetSourceReceipt   func(context.Context, string, string) (assimilation.SourceReceipt, error)
+	CaptureHostInput   func(context.Context, string, hostinput.Input) (hostinput.Receipt, error)
+	GetHostInput       func(context.Context, string, string, string) (hostinput.Pending, error)
 	SemanticHealth     func(context.Context, string) (semantichealth.Report, error)
 	Maintain           func(context.Context, string, semantichealth.Request) (semantichealth.Receipt, error)
 	RecordFeedback     func(context.Context, string, feedback.Event) (feedback.Receipt, error)
@@ -130,6 +134,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runAdmin(args[1:], stdout, stderr, dependencies)
 	case "assimilate":
 		return runAssimilate(args[1:], stdout, stderr, dependencies)
+	case "capture":
+		return runCapture(args[1:], stdout, stderr, dependencies)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, dependencies)
 	case "exec", "query":
@@ -162,6 +168,81 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return ExitUsage
 	}
+}
+
+func runCapture(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var candidateJSON, receiptID, workspace string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--candidate":
+			if index+1 >= len(args) || candidateJSON != "" {
+				return usageError(stderr, "--candidate requires one JSON object")
+			}
+			candidateJSON = args[index+1]
+			index++
+		case "--receipt":
+			if index+1 >= len(args) || receiptID != "" {
+				return usageError(stderr, "--receipt requires one input ID")
+			}
+			receiptID = args[index+1]
+			index++
+		case "--workspace":
+			if index+1 >= len(args) || workspace != "" {
+				return usageError(stderr, "--workspace requires one value")
+			}
+			workspace = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown capture option: %q", args[index]))
+		}
+	}
+	if (candidateJSON == "") == (receiptID == "") || (receiptID != "" && strings.TrimSpace(workspace) == "") ||
+		(candidateJSON != "" && workspace != "") {
+		return usageError(stderr, "capture requires exactly one of --candidate or --receipt with --workspace")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if receiptID != "" {
+		load := dependencies.GetHostInput
+		if load == nil {
+			load = daemon.GetHostInput
+		}
+		pending, err := load(context.Background(), dataDir, receiptID, workspace)
+		if err != nil {
+			return commandError(stderr, "read pending host input", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(pending); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	var input hostinput.Input
+	decoder := json.NewDecoder(bytes.NewBufferString(candidateJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--candidate must be one strict Host Input JSON object")
+	}
+	capture := dependencies.CaptureHostInput
+	if capture == nil {
+		capture = daemon.CaptureHostInput
+	}
+	receipt, err := capture(context.Background(), dataDir, input)
+	if err != nil {
+		return commandError(stderr, "capture host input", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	return ExitOK
 }
 
 func runWikiExport(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {

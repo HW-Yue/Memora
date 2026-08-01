@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F132 已完成；下一项为 F133 Host Input Capture。用户已于
+状态：F81–F133 已完成；下一项为 F134 Worthiness Decision。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -103,7 +103,7 @@ F124a–F124e 的 RED、边界和顺序见
 | F130 Route Plan Execution | 已完成：原子执行已批准 Route 计划并验证覆盖率 |
 | F131 Schema Change Plan | 已完成：为 Column/约束演化生成 snapshot-bound 兼容性计划 |
 | F132 Schema Migration Execution | 已完成：审批后重验并原子执行 Schema 计划，返回验证/补偿收据 |
-| F133 Host Input Capture | 宿主以稳定 receipt 提交候选资料 |
+| F133 Host Input Capture | 已完成：宿主以稳定 receipt 提交有界 pending 候选且不写数据库事实 |
 | F134 Worthiness Decision | AI 对候选输入给出 ignore/write/revise 决定 |
 | F135 Scalable Database Discovery | 多库发现保持有界且不漏冷库 |
 | F136 Policy Enforcement v2 | L0–L3 与每库授权由引擎确定性强制 |
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F133；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F134；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

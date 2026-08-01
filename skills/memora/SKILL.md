@@ -9,7 +9,7 @@ Use this single source for stable host behavior. It targets `memora.msql.ast/v1`
 and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
-Only use the `memora assimilate`, `memora doctor`, `memora query`, `memora exec`,
+Only use the `memora assimilate`, `memora capture`, `memora doctor`, `memora query`, `memora exec`,
 `memora feedback`, `memora maintain`, `memora mutate`, `memora schema`, and
 `memora reflect` interfaces for normal database work. The approval-gated
 `upgrade` and `doctor repair` recovery commands below are the only exception.
@@ -203,6 +203,38 @@ short transaction.
 memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
 memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decision":"IGNORE","database":"work","table":"notes","actor":"agent:host","source_event_id":"conversation:event-7","reason":"existing Row already captures it","authorized_databases":["work"],"preflight":[{"id":"duplicate-check","msql":"SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1","input":{"parameters":{"named":{"row":"row_01"}}},"expect_rows":1}],"steps":[],"verify":[]}'
 ```
+
+## Capture pending host input
+
+Before deciding whether a new short user assertion or bounded source excerpt is
+worth a database mutation, capture it as one `memora.host-input/v1`. Bind a
+stable input ID, workspace, actor, and the exact 1–32 user-authorized Database
+selectors. Keep `candidate_text` within 12,000 UTF-8 bytes. This auxiliary inbox
+is temporary handoff state, not a semantic Row, fact, History entry, or answer.
+
+Use `conversation_assertion` only without a locator or source hash. A
+`document_anchor` or `repository_anchor` requires both a bounded locator and the
+source content SHA-256. Never label capture as `reviewed_source`. Send a whole
+document, directory, media source, or multi-window task through `assimilate`
+instead of splitting it into Host Inputs.
+
+```sh
+memora capture --candidate '{"version":"memora.host-input/v1","input_id":"input-12","workspace":"project-memora","actor":"agent:host","authorized_databases":["work"],"candidate_text":"Router results are locators, not facts.","source":{"kind":"conversation_assertion","title":"Router boundary"}}'
+```
+
+Require `memora.host-input-receipt/v1`, `status=pending`, and matching input,
+content, and scope hashes. The capture receipt deliberately omits candidate
+text. After host restart or context loss, reload the exact pending candidate
+only with its workspace:
+
+```sh
+memora capture --receipt input-12 --workspace project-memora
+```
+
+An identical input ID/content replay is success; different content under the
+same ID is a hard revision conflict. `pending` proves only durable capture. Do
+not infer IGNORE/WRITE/REVISE or run MSQL from the receipt; the worthiness
+decision is a separate reviewed step.
 
 ## Assimilate sources
 

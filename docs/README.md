@@ -49,6 +49,7 @@
 - [Skill 写入流程 v1](./agent/skill-write-v1.md) — F31 的七种语义决策、Mutation Plan、Policy、短事务和紧凑收据。
 - [Skill Schema 生命周期 v1](./agent/skill-schema-lifecycle-v1.md) — F32 的同义 Schema 复用、受限 DDL、影响预览和补偿回滚。
 - [Conversation Delta 交接 v1](./agent/conversation-delta-v1.md) — F33 的显式事件、幂等去重、checkpoint 和缺失上下文处理。
+- [Host Input Capture v1](./agent/host-input-capture-v1.md) — F133 的有界 pending 候选、非回显 hash receipt、幂等与重启恢复边界。
 - [Skill 语义冲突交互 v1](./agent/skill-conflict-v1.md) — F34 的并列来源/revision 差异、用户决议和 Mutation Plan 绑定。
 - [资料清单与覆盖 v1](./agent/assimilation-coverage-v1.md) — F35 的临时 inventory、窗口去重、未读范围和中断恢复。
 - [资料独立复核与提交 v1](./agent/assimilation-review-v1.md) — F36 的隔离复核、语义提交门禁、来源锚点和 Source Receipt。

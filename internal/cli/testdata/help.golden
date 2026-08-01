@@ -6,6 +6,7 @@ Usage:
 Commands:
   admin      Start a temporary local read-only Admin API
   assimilate  Track, review, and receipt source assimilation
+  capture    Capture or reload one bounded pending host input
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon

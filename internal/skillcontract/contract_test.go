@@ -10,6 +10,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/feedback"
+	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -52,6 +53,12 @@ func TestCanonicalSkillContract(t *testing.T) {
 	}
 	if got, want := bundle.Contract.SchemaChangeReceiptVersion, schemachangeplan.ReceiptVersion; got != want {
 		t.Fatalf("Schema change receipt version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.HostInputVersion, hostinput.InputVersion; got != want {
+		t.Fatalf("Host Input version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.HostInputReceiptVersion, hostinput.ReceiptVersion; got != want {
+		t.Fatalf("Host Input receipt version = %q, want %q", got, want)
 	}
 	if got, want := bundle.Contract.ConflictViewVersion, skillconflict.ViewVersion; got != want {
 		t.Fatalf("conflict view version = %q, want %q", got, want)
@@ -151,6 +158,7 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 		"memora.route-mutation-receipt/v1", "PLAN ROUTE MUTATION", "APPLY ROUTE MUTATION",
 		"memora.schema-change-proposal/v1", "memora.schema-change-plan/v1", "memora.schema-change-receipt/v1",
 		"PLAN SCHEMA CHANGE", "APPLY SCHEMA CHANGE", "APPLY_SCHEMA_CHANGE", "compensation_proposal",
+		"memora.host-input/v1", "memora.host-input-receipt/v1", "memora capture", "status=pending",
 	} {
 		if !strings.Contains(bundle.Markdown, required) {
 			t.Errorf("canonical Skill omits conflict protocol token %q", required)

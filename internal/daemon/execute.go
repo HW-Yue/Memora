@@ -17,6 +17,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/feedback"
+	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -46,6 +47,7 @@ type databaseHandler struct {
 	export       func(context.Context) ([]byte, error)
 	security     *security.Service
 	traces       *routetrace.Service
+	hostInputs   *hostinput.Service
 	sessions     map[string]*executor.BatchSession
 	closed       bool
 }
@@ -73,7 +75,8 @@ func newDatabaseHandlerWithSecurity(
 		export: func(callContext context.Context) ([]byte, error) {
 			return snapshot.New(database).Export(callContext)
 		},
-		security: securityService, sessions: make(map[string]*executor.BatchSession),
+		security: securityService, hostInputs: hostinput.New(database, hostinput.Options{}),
+		sessions: make(map[string]*executor.BatchSession),
 	}
 }
 
@@ -90,7 +93,8 @@ func newNativeDatabaseHandler(
 ) *databaseHandler {
 	return &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, points: points,
 		routeVectors: routeVectors, store: auxiliary,
-		export: export, security: securityService, traces: traces, sessions: make(map[string]*executor.BatchSession)}
+		export: export, security: securityService, traces: traces,
+		hostInputs: hostinput.New(auxiliary, hostinput.Options{}), sessions: make(map[string]*executor.BatchSession)}
 }
 
 type routeTraceRecordPayload struct {
@@ -185,6 +189,39 @@ func SourceReceipt(ctx context.Context, dataDir, submissionID string) (assimilat
 	return receipt, err
 }
 
+func CaptureHostInput(ctx context.Context, dataDir string, input hostinput.Input) (hostinput.Receipt, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return hostinput.Receipt{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return hostinput.Receipt{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var receipt hostinput.Receipt
+	err = client.Call(ctx, "host_input.capture", input, &receipt)
+	return receipt, err
+}
+
+func GetHostInput(ctx context.Context, dataDir, inputID, workspace string) (hostinput.Pending, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return hostinput.Pending{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return hostinput.Pending{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var pending hostinput.Pending
+	err = client.Call(ctx, "host_input.get", struct {
+		InputID   string `json:"input_id"`
+		Workspace string `json:"workspace"`
+	}{InputID: inputID, Workspace: workspace}, &pending)
+	return pending, err
+}
+
 func RecordRouteTrace(
 	ctx context.Context,
 	dataDir string,
@@ -256,6 +293,9 @@ func (handler *databaseHandler) Handle(
 	if request.Method == "assimilation.receipt" {
 		return handler.handleSourceReceipt(ctx, request)
 	}
+	if request.Method == "host_input.capture" || request.Method == "host_input.get" {
+		return handler.handleHostInput(ctx, request)
+	}
 	if request.Method == "semantic_health.report" || request.Method == "semantic_health.maintain" {
 		return handler.handleSemanticHealth(ctx, request)
 	}
@@ -292,6 +332,38 @@ func (handler *databaseHandler) Handle(
 		RequestID: request.RequestID, Source: payload.Source, Statements: payload.Statements,
 	})
 	return json.Marshal(envelope)
+}
+
+func (handler *databaseHandler) handleHostInput(ctx context.Context, request ipc.Request) (json.RawMessage, error) {
+	processor := handler.hostInputs
+	if processor == nil {
+		return nil, &hostinput.Error{Code: result.CodeInternal, Message: "capture service is unavailable"}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	if request.Method == "host_input.capture" {
+		var input hostinput.Input
+		if err := decoder.Decode(&input); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+			return nil, &hostinput.Error{Code: result.CodeInvalidRequest, Message: "capture payload is invalid"}
+		}
+		receipt, err := processor.Capture(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(receipt)
+	}
+	var lookup struct {
+		InputID   string `json:"input_id"`
+		Workspace string `json:"workspace"`
+	}
+	if err := decoder.Decode(&lookup); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, &hostinput.Error{Code: result.CodeInvalidRequest, Message: "capture lookup payload is invalid"}
+	}
+	input, receipt, err := processor.Get(ctx, lookup.InputID, lookup.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(hostinput.Pending{Input: input, Receipt: receipt})
 }
 
 func (handler *databaseHandler) handleRouteTraceRecord(

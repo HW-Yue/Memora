@@ -12,6 +12,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/feedback"
+	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -35,6 +36,7 @@ var requiredWorkflows = []string{
 	"query",
 	"summarize",
 	"write",
+	"capture",
 	"assimilate",
 	"conflict",
 	"request_user",
@@ -101,6 +103,8 @@ type Contract struct {
 	SchemaChangeProposalVersion        string               `json:"schema_change_proposal_version"`
 	SchemaChangePlanVersion            string               `json:"schema_change_plan_version"`
 	SchemaChangeReceiptVersion         string               `json:"schema_change_receipt_version"`
+	HostInputVersion                   string               `json:"host_input_version"`
+	HostInputReceiptVersion            string               `json:"host_input_receipt_version"`
 	MaintenanceRequestVersion          string               `json:"maintenance_request_version"`
 	MaintenanceReceiptVersion          string               `json:"maintenance_receipt_version"`
 	FeedbackEventVersion               string               `json:"feedback_event_version"`
@@ -192,6 +196,8 @@ func (bundle Bundle) Validate() error {
 	requireEqual("schema_change_proposal_version", contract.SchemaChangeProposalVersion, schemachangeplan.ProposalVersion)
 	requireEqual("schema_change_plan_version", contract.SchemaChangePlanVersion, schemachangeplan.PlanVersion)
 	requireEqual("schema_change_receipt_version", contract.SchemaChangeReceiptVersion, schemachangeplan.ReceiptVersion)
+	requireEqual("host_input_version", contract.HostInputVersion, hostinput.InputVersion)
+	requireEqual("host_input_receipt_version", contract.HostInputReceiptVersion, hostinput.ReceiptVersion)
 	requireEqual("maintenance_request_version", contract.MaintenanceRequestVersion, semantichealth.RequestVersion)
 	requireEqual("maintenance_receipt_version", contract.MaintenanceReceiptVersion, semantichealth.ReceiptVersion)
 	requireEqual("feedback_event_version", contract.FeedbackEventVersion, feedback.EventVersion)
@@ -238,7 +244,7 @@ func (bundle Bundle) RenderCommandExamples() string {
 
 func validateCommands(commands []string) []string {
 	want := map[string]bool{
-		"assimilate": false, "doctor": false, "query": false, "exec": false,
+		"assimilate": false, "capture": false, "doctor": false, "query": false, "exec": false,
 		"mutate": false, "schema": false, "reflect": false, "maintain": false,
 		"feedback": false,
 	}

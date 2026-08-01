@@ -18,6 +18,8 @@
   "schema_change_proposal_version": "memora.schema-change-proposal/v1",
   "schema_change_plan_version": "memora.schema-change-plan/v1",
   "schema_change_receipt_version": "memora.schema-change-receipt/v1",
+  "host_input_version": "memora.host-input/v1",
+  "host_input_receipt_version": "memora.host-input-receipt/v1",
   "maintenance_request_version": "memora.maintenance-request/v1",
   "maintenance_receipt_version": "memora.maintenance-receipt/v1",
   "feedback_event_version": "memora.feedback-event/v1",
@@ -38,6 +40,7 @@
   "supported_install_arch": ["arm64", "amd64"],
   "allowed_commands": [
     "assimilate",
+    "capture",
     "doctor",
     "query",
     "exec",
@@ -61,6 +64,7 @@
     "query",
     "summarize",
     "write",
+    "capture",
     "assimilate",
     "conflict",
     "request_user",
@@ -80,6 +84,10 @@
     {
       "name": "assimilation-status",
       "command": "memora assimilate --event '{\"version\":\"memora.assimilation-event/v1\",\"event_id\":\"book-status-2\",\"task_id\":\"book-task\",\"workspace\":\"project-memora\",\"kind\":\"status\"}'"
+    },
+    {
+      "name": "capture-host-input",
+      "command": "memora capture --candidate '{\"version\":\"memora.host-input/v1\",\"input_id\":\"input-12\",\"workspace\":\"project-memora\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"candidate_text\":\"Router results are locators, not facts.\",\"source\":{\"kind\":\"conversation_assertion\",\"title\":\"Router boundary\"}}'"
     },
     {
       "name": "assimilation-receipt",
