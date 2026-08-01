@@ -29,4 +29,8 @@ func TestCodexAndClaudeAdaptersBindTheSameCanonicalProtocol(t *testing.T) {
 	if codex.Manifest.ProtocolDigest != claude.Manifest.ProtocolDigest {
 		t.Fatalf("host protocol digests differ: %q != %q", codex.Manifest.ProtocolDigest, claude.Manifest.ProtocolDigest)
 	}
+	if codex.Manifest.TaskContractDigest != claude.Manifest.TaskContractDigest {
+		t.Fatalf("host Task contract digests differ: %q != %q",
+			codex.Manifest.TaskContractDigest, claude.Manifest.TaskContractDigest)
+	}
 }

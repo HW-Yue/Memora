@@ -21,6 +21,12 @@ func TestBuildAddsOnlyClaudeHostMetadataToCanonicalSkill(t *testing.T) {
 	generated := string(bundle.Files[".claude/skills/memora/SKILL.md"].Content)
 	frontmatter := strings.TrimSuffix(generated, claudeadapter.CanonicalBody(generated))
 	canonical, _ := os.ReadFile(filepath.Join(root, "skills", "memora", "SKILL.md"))
+	if bundle.Manifest.Version != "memora.claude-code-adapter/v2" || len(bundle.Manifest.TaskContractDigest) != 64 {
+		t.Fatalf("Claude host contract identity = %#v", bundle.Manifest)
+	}
+	if _, ok := bundle.Files[".claude/skills/memora/host-contract.json"]; !ok {
+		t.Fatal("Claude bundle omits the real host task contract")
+	}
 	for _, command := range []string{"assimilate", "exec", "feedback", "maintain", "mutate", "query", "reflect", "schema"} {
 		if !strings.Contains(frontmatter, "Bash(memora "+command+" *)") {
 			t.Errorf("Claude allowed-tools omits %q", command)

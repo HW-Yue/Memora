@@ -1,6 +1,6 @@
 # Claude Code Adapter v1
 
-状态：F41 实现规格，已冻结。
+状态：F41 实现；F123 升级为 adapter manifest v2 并绑定 Real Host Contract。
 
 ## 派生布局
 
@@ -10,6 +10,7 @@
 adapters/claude-code/
 ├── .claude/skills/memora/SKILL.md
 ├── .claude/skills/memora/contract.json
+├── .claude/skills/memora/host-contract.json
 ├── .claude/skills/memora/scripts/install.sh
 └── manifest.json
 ```
@@ -27,8 +28,8 @@ settings 中更高优先级的 deny/ask。适配层不使用 `Bash(memora *)`，
 
 ## 同源兼容
 
-Codex 与 Claude Code manifest 都记录 canonical Skill digest 和 protocol
-contract digest。e2e 要求两者完全相同；宿主包装不得改变 MSQL、Result、
+Codex 与 Claude Code v2 manifest 都记录 canonical Skill、protocol contract 和
+Task contract digest。e2e 要求三者完全相同；宿主包装不得改变 MSQL、Result、
 Mutation Policy、冲突边界、数据内容或预期 revision。两端共享同一 Scripted
 Host 核心旅程，宿主差异只允许存在于发现目录、调用名和权限表达。
 

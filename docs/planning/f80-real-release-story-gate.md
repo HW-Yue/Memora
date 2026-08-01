@@ -20,7 +20,8 @@ protocol digest。
 → daemon restart / 顶层 Route 重查 / doctor
 ```
 
-`memora.real-story-gate/v1` 报告逐步保存公开命令输出 SHA-256，并覆盖全部 16 个
+F123 起 `memora.real-story-gate/v2` 报告还绑定 Real Host Task contract digest；报告
+逐步保存公开命令输出 SHA-256，并覆盖全部 16 个
 `US-*`。INSERT、UPDATE、DELETE、CORRECT、OPTIMIZE、SPLIT、ASSIMILATE、
 RECOVER 和 ENGINE 缺少 `rediscovered_from_root` 时报告无效。
 

@@ -37,7 +37,9 @@ func TestPhaseCExitSkillFirstHostsTakeoverConflictAndNoModelKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if codex.Manifest.CanonicalDigest != claude.Manifest.CanonicalDigest || codex.Manifest.ProtocolDigest != claude.Manifest.ProtocolDigest {
+	if codex.Manifest.CanonicalDigest != claude.Manifest.CanonicalDigest ||
+		codex.Manifest.ProtocolDigest != claude.Manifest.ProtocolDigest ||
+		codex.Manifest.TaskContractDigest != claude.Manifest.TaskContractDigest {
 		t.Fatal("Codex and Claude Code do not share one Skill/protocol")
 	}
 	suite, err := benchmark.Load(filepath.Join(root, "benchmarks", "ai-native-v1.json"))

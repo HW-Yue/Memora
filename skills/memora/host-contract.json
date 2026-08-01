@@ -1,0 +1,46 @@
+{
+  "version": "memora.real-host-contract/v1",
+  "task_version": "memora.real-host-task/v1",
+  "invocation_version": "memora.real-host-invocation/v1",
+  "receipt_version": "memora.real-host-receipt/v1",
+  "skill_version": "memora.skill/v1",
+  "allowed_commands": [
+    "assimilate",
+    "doctor",
+    "exec",
+    "feedback",
+    "maintain",
+    "mutate",
+    "query",
+    "reflect",
+    "schema"
+  ],
+  "host_surfaces": [
+    {
+      "name": "codex",
+      "provider_protocols": ["openai-compatible"]
+    },
+    {
+      "name": "claude-code",
+      "provider_protocols": ["anthropic-compatible"]
+    }
+  ],
+  "provider_examples": [
+    {
+      "name": "kimi",
+      "owner": "host",
+      "protocols": ["openai-compatible", "anthropic-compatible"]
+    }
+  ],
+  "budgets": {
+    "max_prompt_characters": 4096,
+    "max_authorized_databases": 32,
+    "max_tool_calls": 64,
+    "max_context_characters": 12000,
+    "max_elapsed_ms": 600000
+  },
+  "credentials": "never-passed-to-memora",
+  "endpoint_evidence": "hostname-only",
+  "hidden_reasoning": "forbidden",
+  "prompt_persistence": "benchmark-artifact-only"
+}

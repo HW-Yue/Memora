@@ -22,6 +22,12 @@ func TestBuildUsesCanonicalSkillAndLeastPrivilegeCodexSurfaces(t *testing.T) {
 	if got := string(bundle.Files[".agents/skills/memora/SKILL.md"].Content); got != string(canonical) {
 		t.Fatal("Codex Skill drifted from the canonical source")
 	}
+	if bundle.Manifest.Version != "memora.codex-adapter/v2" || len(bundle.Manifest.TaskContractDigest) != 64 {
+		t.Fatalf("Codex host contract identity = %#v", bundle.Manifest)
+	}
+	if _, ok := bundle.Files[".agents/skills/memora/host-contract.json"]; !ok {
+		t.Fatal("Codex bundle omits the real host task contract")
+	}
 	for _, path := range []string{
 		".agents/skills/memora/LICENSE",
 		".agents/skills/memora/COMMERCIAL-LICENSE.md",

@@ -48,7 +48,7 @@ func Run(ctx context.Context, options RunOptions) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	canonicalDigest, protocolDigest, err := installAdapter(options)
+	canonicalDigest, protocolDigest, taskContractDigest, err := installAdapter(options)
 	if err != nil {
 		return Report{}, err
 	}
@@ -57,7 +57,8 @@ func Run(ctx context.Context, options RunOptions) (Report, error) {
 		report: Report{
 			Version: ReportVersion, Status: "failed", Host: options.Host,
 			BinarySHA256: binaryDigest, CanonicalDigest: canonicalDigest, ProtocolDigest: protocolDigest,
-			Steps: []Step{}, Stories: []StoryResult{},
+			TaskContractDigest: taskContractDigest,
+			Steps:              []Step{}, Stories: []StoryResult{},
 		},
 	}
 	if _, err := journey.command("init", "init", "--data-dir", options.DataDir); err != nil {
@@ -79,28 +80,30 @@ func Run(ctx context.Context, options RunOptions) (Report, error) {
 	return journey.report, nil
 }
 
-func installAdapter(options RunOptions) (string, string, error) {
+func installAdapter(options RunOptions) (string, string, string, error) {
 	switch options.Host {
 	case "codex":
 		bundle, err := codexadapter.Build(options.CanonicalDir)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		if err := bundle.Install(options.AdapterDir); err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
-		return bundle.Manifest.CanonicalDigest, bundle.Manifest.ProtocolDigest, nil
+		return bundle.Manifest.CanonicalDigest, bundle.Manifest.ProtocolDigest,
+			bundle.Manifest.TaskContractDigest, nil
 	case "claude":
 		bundle, err := claudeadapter.Build(options.CanonicalDir)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		if err := bundle.Install(options.AdapterDir); err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
-		return bundle.Manifest.CanonicalDigest, bundle.Manifest.ProtocolDigest, nil
+		return bundle.Manifest.CanonicalDigest, bundle.Manifest.ProtocolDigest,
+			bundle.Manifest.TaskContractDigest, nil
 	default:
-		return "", "", fmt.Errorf("story gate host %q is unsupported", options.Host)
+		return "", "", "", fmt.Errorf("story gate host %q is unsupported", options.Host)
 	}
 }
 

@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/HW-Yue/Memora/internal/hostcontract"
 	"github.com/HW-Yue/Memora/internal/skillcontract"
 )
 
-const Version = "memora.codex-adapter/v1"
+const Version = "memora.codex-adapter/v2"
 
 type File struct {
 	Content []byte
@@ -25,10 +26,11 @@ type Bundle struct {
 }
 
 type Manifest struct {
-	Version         string         `json:"version"`
-	CanonicalDigest string         `json:"canonical_digest"`
-	ProtocolDigest  string         `json:"protocol_digest"`
-	Files           []ManifestFile `json:"files"`
+	Version            string         `json:"version"`
+	CanonicalDigest    string         `json:"canonical_digest"`
+	ProtocolDigest     string         `json:"protocol_digest"`
+	TaskContractDigest string         `json:"task_contract_digest"`
+	Files              []ManifestFile `json:"files"`
 }
 
 type ManifestFile struct {
@@ -50,6 +52,15 @@ func Build(canonicalDirectory string) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read canonical contract: %w", err)
 	}
+	hostContractPath := filepath.Join(canonicalDirectory, "host-contract.json")
+	_, hostContractDigest, err := hostcontract.Load(hostContractPath)
+	if err != nil {
+		return Bundle{}, fmt.Errorf("build Codex adapter: %w", err)
+	}
+	hostContract, err := os.ReadFile(hostContractPath)
+	if err != nil {
+		return Bundle{}, fmt.Errorf("read real host contract: %w", err)
+	}
 	installer, err := os.ReadFile(filepath.Join(canonicalDirectory, canonical.Contract.BootstrapScript))
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read canonical bootstrap: %w", err)
@@ -63,11 +74,15 @@ func Build(canonicalDirectory string) (Bundle, error) {
 		".agents/skills/memora/LICENSE":               {Content: license, Mode: 0o644},
 		".agents/skills/memora/SKILL.md":              {Content: skill, Mode: 0o644},
 		".agents/skills/memora/contract.json":         {Content: contract, Mode: 0o644},
+		".agents/skills/memora/host-contract.json":    {Content: hostContract, Mode: 0o644},
 		".agents/skills/memora/scripts/install.sh":    {Content: installer, Mode: 0o755},
 		".agents/skills/memora/agents/openai.yaml":    {Content: []byte(openAIMetadata), Mode: 0o644},
 		".codex/rules/memora.rules":                   {Content: []byte(commandRules), Mode: 0o644},
 	}
-	manifest := Manifest{Version: Version, CanonicalDigest: digest(skill), ProtocolDigest: digest(contract), Files: manifestFiles(files)}
+	manifest := Manifest{
+		Version: Version, CanonicalDigest: digest(skill), ProtocolDigest: digest(contract),
+		TaskContractDigest: hostContractDigest, Files: manifestFiles(files),
+	}
 	encoded, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return Bundle{}, fmt.Errorf("encode Codex adapter manifest: %w", err)

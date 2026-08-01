@@ -5,8 +5,9 @@
 ## 唯一来源
 
 宿主稳定规则只维护在 [`skills/memora/SKILL.md`](../../skills/memora/SKILL.md)。
-相邻 `contract.json` 是机器可读 lint 清单，不是第二份行为说明，也不保存
-任何动态 Database、Schema、Router 或候选。
+相邻 `contract.json` 是机器可读 lint 清单；F123 新增的 `host-contract.json` 只冻结
+真实模型同题 Task、预算和脱敏收据。两者都不是第二份行为说明，也不保存任何动态
+Database、Schema、Router 或候选。
 
 契约绑定：
 
@@ -19,6 +20,7 @@
 - `memora.semantic-health/v1`、`memora.maintenance-request/v1` 和 `memora.maintenance-receipt/v1`；
 - `memora.feedback-event/v1`、`memora.feedback-receipt/v1`、`memora.feedback-confirmation/v1` 和确认收据；
 - `memora assimilate/doctor/query/exec/feedback/maintain/mutate/schema/reflect` 九个逻辑入口。
+- `memora.real-host-task/v1`、invocation/receipt 及 Codex/Claude/Kimi 同题矩阵。
 
 每次 CI 都解析契约中的 MSQL 示例，并校验 Skill 中出现的是同一组命令。
 版本或语法变化必须显式更新契约和 golden，不能让宿主提示静默漂移。

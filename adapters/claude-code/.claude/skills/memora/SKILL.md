@@ -28,6 +28,10 @@ endpoint exposed through CC Switch; it must never assume `openai.com`. A Claude
 Code host may likewise use its CC Switch/Anthropic-compatible configuration.
 Never pass Provider base URLs, API keys, or bearer tokens to `memora`, its
 database, logs, receipts, exports, or command input.
+For controlled real-model evaluation, the adjacent `host-contract.json` fixes
+one host-independent natural-language Task, Database scope, and budget. Codex
+and Claude Code execute that same Task; Kimi is recorded only as a host-managed
+Provider profile, never as a separate Memora protocol or Skill.
 
 ## Install once
 

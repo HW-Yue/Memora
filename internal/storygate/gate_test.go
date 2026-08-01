@@ -27,6 +27,11 @@ func TestRuntimeGateRequiresMatchingCodexAndClaudeProtocol(t *testing.T) {
 	if err := storygate.ValidatePair(codex, claude); err == nil {
 		t.Fatal("mismatched protocol passed")
 	}
+	claude = completeReport("claude")
+	claude.TaskContractDigest = strings.Repeat("c", 64)
+	if err := storygate.ValidatePair(codex, claude); err == nil {
+		t.Fatal("mismatched host Task contract passed")
+	}
 }
 
 func completeReport(host string) storygate.Report {
@@ -34,6 +39,7 @@ func completeReport(host string) storygate.Report {
 	report := storygate.Report{
 		Version: storygate.ReportVersion, Status: "passed", Host: host,
 		BinarySHA256: digest, CanonicalDigest: digest, ProtocolDigest: digest,
+		TaskContractDigest: digest,
 	}
 	for index, story := range storygate.RequiredStories() {
 		id := "step-" + story

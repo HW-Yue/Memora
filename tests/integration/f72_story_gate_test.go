@@ -35,7 +35,9 @@ func TestF72AINativeStoryProviderAndLicenseGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if codex.Manifest.CanonicalDigest != claude.Manifest.CanonicalDigest || codex.Manifest.ProtocolDigest != claude.Manifest.ProtocolDigest {
+	if codex.Manifest.CanonicalDigest != claude.Manifest.CanonicalDigest ||
+		codex.Manifest.ProtocolDigest != claude.Manifest.ProtocolDigest ||
+		codex.Manifest.TaskContractDigest != claude.Manifest.TaskContractDigest {
 		t.Fatal("host adapters do not share one canonical AI-native contract")
 	}
 

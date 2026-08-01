@@ -1,6 +1,6 @@
 # 宿主模型与 CC Switch 兼容边界
 
-状态：F72 已确认并进入 Canonical Skill contract。
+状态：F72 已确认；F123 已补充真实 Host Task contract。
 
 Memora v0 不内置模型 Provider，也不接收或保存模型密钥。自然语言推理发生在
 Codex、Claude Code 等宿主中；Memora 只接收宿主生成的 MSQL、授权对象和逻辑
@@ -10,7 +10,8 @@ Mutation Plan。
 
 - OpenAI-compatible 只表示协议兼容，不表示 `openai.com`；base URL、模型名和
   API key 均由宿主配置。
-- Kimi 等由 CC Switch 暴露的 OpenAI-compatible 地址可以作为宿主 Provider。
+- Kimi 等由 CC Switch 暴露的兼容地址可以作为宿主 Provider；Kimi 不是第三套
+  Memora host adapter。
 - Claude Code 可使用 CC Switch 提供的 Anthropic-compatible 配置。
 - CC Switch 是可选宿主配置，不是 Memora 运行依赖，也不进入数据库协议。
 - Provider 地址、API key、Bearer token 不得出现在 `memora` 命令参数、Config、
@@ -24,6 +25,7 @@ Anthropic-compatible 两种宿主协议。
 
 ## 验收
 
-Codex 与 Claude Code 适配包必须来自同一 Canonical Skill，协议 digest 相同；
+Codex 与 Claude Code v2 适配包必须来自同一 Canonical Skill，协议与 Task contract
+digest 均相同；标准真实模型矩阵另外要求至少一个 `provider=kimi` invocation。
 Memora Config 继续拒绝 `api_key` 等秘密字段。测试不得打印或复制 CC Switch 中
 的真实凭据。

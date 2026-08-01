@@ -42,6 +42,7 @@
 - [AI 自主权与约束](./agent/autonomy.md) — 自主建模、风险等级和引擎不变量。
 - [Canonical Skill v1](./agent/canonical-skill-v1.md) — F28 的唯一宿主规则源、版本 lint、冲突边界和上下文预算。
 - [宿主模型与 CC Switch 兼容边界](./agent/host-provider-compatibility.md) — Provider 由宿主管理，兼容自定义 OpenAI/Anthropic 协议地址且密钥不进入 Memora。
+- [Real Host Contract v1](./agent/real-host-contract-v1.md) — F123 的同题 Task、宿主/Provider 矩阵、预算与脱敏执行收据。
 - [Skill 查询流程 v1](./agent/skill-query-v1.md) — F30 历史实现与 Table 级逐层 Route 目标状态机。
 - [Skill 写入流程 v1](./agent/skill-write-v1.md) — F31 的七种语义决策、Mutation Plan、Policy、短事务和紧凑收据。
 - [Skill Schema 生命周期 v1](./agent/skill-schema-lifecycle-v1.md) — F32 的同义 Schema 复用、受限 DDL、影响预览和补偿回滚。

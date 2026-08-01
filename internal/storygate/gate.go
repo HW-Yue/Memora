@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const ReportVersion = "memora.real-story-gate/v1"
+const ReportVersion = "memora.real-story-gate/v2"
 
 type Step struct {
 	ID           string `json:"id"`
@@ -22,14 +22,15 @@ type StoryResult struct {
 }
 
 type Report struct {
-	Version         string        `json:"version"`
-	Status          string        `json:"status"`
-	Host            string        `json:"host"`
-	BinarySHA256    string        `json:"binary_sha256"`
-	CanonicalDigest string        `json:"canonical_digest"`
-	ProtocolDigest  string        `json:"protocol_digest"`
-	Steps           []Step        `json:"steps"`
-	Stories         []StoryResult `json:"stories"`
+	Version            string        `json:"version"`
+	Status             string        `json:"status"`
+	Host               string        `json:"host"`
+	BinarySHA256       string        `json:"binary_sha256"`
+	CanonicalDigest    string        `json:"canonical_digest"`
+	ProtocolDigest     string        `json:"protocol_digest"`
+	TaskContractDigest string        `json:"task_contract_digest"`
+	Steps              []Step        `json:"steps"`
+	Stories            []StoryResult `json:"stories"`
 }
 
 func RequiredStories() []string {
@@ -47,7 +48,8 @@ func Validate(report Report) error {
 	if report.Host != "codex" && report.Host != "claude" {
 		return fmt.Errorf("runtime story report host %q is unsupported", report.Host)
 	}
-	if !isSHA256(report.BinarySHA256) || !isSHA256(report.CanonicalDigest) || !isSHA256(report.ProtocolDigest) {
+	if !isSHA256(report.BinarySHA256) || !isSHA256(report.CanonicalDigest) ||
+		!isSHA256(report.ProtocolDigest) || !isSHA256(report.TaskContractDigest) {
 		return fmt.Errorf("runtime story report digests are invalid")
 	}
 	stepIDs := map[string]bool{}
@@ -111,8 +113,9 @@ func ValidatePair(codex, claude Report) error {
 	}
 	if codex.BinarySHA256 != claude.BinarySHA256 ||
 		codex.CanonicalDigest != claude.CanonicalDigest ||
-		codex.ProtocolDigest != claude.ProtocolDigest {
-		return fmt.Errorf("runtime hosts did not execute one binary and canonical protocol")
+		codex.ProtocolDigest != claude.ProtocolDigest ||
+		codex.TaskContractDigest != claude.TaskContractDigest {
+		return fmt.Errorf("runtime hosts did not execute one binary, canonical protocol, and Task contract")
 	}
 	return nil
 }

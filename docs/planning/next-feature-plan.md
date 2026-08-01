@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F122 已完成；下一项为 F123 Real Host Contract。用户已于
+状态：F81–F123 已完成；下一项为 F124 Route Benchmark Corpus。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -80,7 +80,7 @@ Vector 作为可回退候选预测器，禁止 Row/chunk Vector、隐藏答案�
 
 | Feature | 唯一主要结果 |
 | --- | --- |
-| F123 Real Host Contract | Codex/Claude/Kimi 以同一 Skill/任务契约运行 |
+| F123 Real Host Contract | 已完成：Codex/Claude/Kimi 以同一 Skill/任务契约运行 |
 | F124 Route Benchmark Corpus | 固定 Route 树、问题和期望路径可重复生成 |
 | F124a Discovery Frame Contract | 候选位置共享 snapshot、预算和 predictor provenance |
 | F124b Lexical Route Locations | 倒排词项只聚合到 Database/Table/Route 位置 |
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F123；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F124；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

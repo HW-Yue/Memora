@@ -1,6 +1,6 @@
 # Codex Adapter v1
 
-状态：F40 实现规格，已冻结。
+状态：F40 实现；F123 升级为 adapter manifest v2 并绑定 Real Host Contract。
 
 ## 派生布局
 
@@ -10,6 +10,7 @@
 ```text
 .agents/skills/memora/SKILL.md
 .agents/skills/memora/contract.json
+.agents/skills/memora/host-contract.json
 .agents/skills/memora/scripts/install.sh
 .agents/skills/memora/agents/openai.yaml
 .codex/rules/memora.rules
@@ -19,6 +20,9 @@ manifest.json
 Codex 按官方本地 Skill 发现规则读取 `.agents/skills`。生成器复制而不改写
 Canonical Skill/contract/bootstrap，manifest 记录每个文件 SHA-256 和 mode；CI
 比较 checked-in bundle 与生成结果，防止宿主包装漂移。
+
+v2 manifest 另记录 `task_contract_digest`；真实模型执行时 host/model 不进入 Task
+digest。Kimi 只作为 OpenAI-compatible Provider profile，不生成另一套 adapter。
 
 ## 触发与权限
 
