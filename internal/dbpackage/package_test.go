@@ -3,6 +3,8 @@ package dbpackage_test
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -17,6 +19,47 @@ import (
 	"github.com/HW-Yue/Memora/internal/store"
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
+
+func TestSignedPackageIsDeterministicAndVerifiesPublisher(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databaseStore := openStore(t, "signed-source.db")
+	defer databaseStore.Close()
+	seedSource(t, ctx, databaseStore)
+	seed := sha256.Sum256([]byte("memora-f137-deterministic-test-key"))
+	privateKey := ed25519.NewKeyFromSeed(seed[:])
+	service := dbpackage.New(databaseStore)
+	first, _, err := service.PackSigned(ctx, "work", "Alice", dbpackage.Signer{
+		KeyID: "alice:test", PrivateKey: privateKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := service.PackSigned(ctx, "db_work", "Alice", dbpackage.Signer{
+		KeyID: "alice:test", PrivateKey: privateKey,
+	})
+	if err != nil || !bytes.Equal(first, second) {
+		t.Fatalf("signed package is not deterministic: %v", err)
+	}
+	opened, err := service.Open(first)
+	if err != nil || opened.Signature == nil || !opened.Signature.Verified || opened.Signature.KeyID != "alice:test" {
+		t.Fatalf("Open(signed) = %#v, %v", opened.Signature, err)
+	}
+
+	var damaged map[string]any
+	if err := json.Unmarshal(first, &damaged); err != nil {
+		t.Fatal(err)
+	}
+	damaged["signature"].(map[string]any)["value"] = "AAAA"
+	encoded, err := json.Marshal(damaged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Open(encoded); err == nil {
+		t.Fatal("Open accepted a damaged signature")
+	}
+}
 
 func TestPackIsDeterministicAndContainsOnlySelectedDatabaseAuthority(t *testing.T) {
 	t.Parallel()

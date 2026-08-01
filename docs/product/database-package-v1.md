@@ -5,7 +5,8 @@
 ## 格式
 
 扩展名建议使用 `.memora-db`；识别依据始终是内容版本
-`memora.database-package/v1`，不依赖文件名。包是一个严格 JSON envelope：
+`memora.database-package/v1`，不依赖文件名。包是一个严格 JSON envelope；F137 起允许顶层
+携带可选且严格验证的 [Ed25519 签名](./database-package-signature-v1.md)：
 
 ```json
 {"version":"memora.database-package/v1","manifest":{},"snapshot":{}}
@@ -52,7 +53,7 @@ snapshot SHA-256 校验。未知 envelope 字段、损坏内容、不支持版�
 - v1 不支持包升级、rename、fork 或三方 merge；冲突只拒绝。
 - v1 不携带跨库关系，避免安装包隐式取得其他库权限。
 - v1 不执行包中文本；文本只保持普通数据库数据权限。
-- 签名、商业授权和远程仓库不属于 F44；完整性由 SHA-256 保证，来源信任由本地 Policy 决定。
+- 商业授权和远程仓库不属于 F44；F137 已补充可验证签名，来源信任仍由本地 Policy 决定。
 
 ## 关联
 

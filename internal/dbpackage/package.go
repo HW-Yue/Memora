@@ -3,7 +3,9 @@ package dbpackage
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -46,6 +48,21 @@ type Opened struct {
 	Snapshot      []byte
 	PackageSHA256 string
 	ReadOnly      bool
+	Signature     *Signature
+}
+
+type Signer struct {
+	KeyID      string
+	PrivateKey ed25519.PrivateKey
+}
+
+type Signature struct {
+	Algorithm     string `json:"algorithm"`
+	KeyID         string `json:"key_id"`
+	PublicKey     string `json:"public_key"`
+	SubjectSHA256 string `json:"subject_sha256"`
+	Value         string `json:"value"`
+	Verified      bool   `json:"-"`
 }
 
 type InstallOptions struct {
@@ -73,9 +90,10 @@ type Service struct {
 }
 
 type envelope struct {
-	Version  string          `json:"version"`
-	Manifest Manifest        `json:"manifest"`
-	Snapshot json.RawMessage `json:"snapshot"`
+	Version   string          `json:"version"`
+	Manifest  Manifest        `json:"manifest"`
+	Snapshot  json.RawMessage `json:"snapshot"`
+	Signature *Signature      `json:"signature,omitempty"`
 }
 
 type snapshotShape struct {
@@ -133,6 +151,35 @@ func (service *Service) Pack(ctx context.Context, selector, createdBy string) ([
 	return encoded, manifest, nil
 }
 
+func (service *Service) PackSigned(
+	ctx context.Context, selector, createdBy string, signer Signer,
+) ([]byte, Manifest, error) {
+	if err := security.ValidateMetadataText(signer.KeyID, 200, true); err != nil ||
+		len(signer.PrivateKey) != ed25519.PrivateKeySize {
+		return nil, Manifest{}, packageError(result.CodeValidation, "package signer is invalid")
+	}
+	unsigned, manifest, err := service.Pack(ctx, selector, createdBy)
+	if err != nil {
+		return nil, Manifest{}, err
+	}
+	value, err := decode(unsigned)
+	if err != nil {
+		return nil, Manifest{}, err
+	}
+	publicKey := signer.PrivateKey.Public().(ed25519.PublicKey)
+	value.Signature = &Signature{
+		Algorithm: "Ed25519", KeyID: strings.TrimSpace(signer.KeyID),
+		PublicKey:     base64.StdEncoding.EncodeToString(publicKey),
+		SubjectSHA256: Hash(unsigned),
+		Value:         base64.StdEncoding.EncodeToString(ed25519.Sign(signer.PrivateKey, unsigned)),
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, Manifest{}, packageError(result.CodeInternal, "signed database package could not be encoded")
+	}
+	return encoded, manifest, nil
+}
+
 func (service *Service) Open(encoded []byte) (Opened, error) {
 	value, err := decode(encoded)
 	if err != nil {
@@ -185,10 +232,40 @@ func (service *Service) Open(encoded []byte) (Opened, error) {
 	if !equalHash(hash, manifest.SnapshotSHA256) {
 		return Opened{}, packageError(result.CodeValidation, "database package content hash does not match")
 	}
+	verifiedSignature, err := verifySignature(value)
+	if err != nil {
+		return Opened{}, err
+	}
 	return Opened{
 		Manifest: manifest, Snapshot: append([]byte(nil), value.Snapshot...),
-		PackageSHA256: Hash(encoded), ReadOnly: true,
+		PackageSHA256: Hash(encoded), ReadOnly: true, Signature: verifiedSignature,
 	}, nil
+}
+
+func verifySignature(value envelope) (*Signature, error) {
+	if value.Signature == nil {
+		return nil, nil
+	}
+	signature := *value.Signature
+	if signature.Algorithm != "Ed25519" ||
+		security.ValidateMetadataText(signature.KeyID, 200, true) != nil ||
+		!equalHash(signature.SubjectSHA256, signature.SubjectSHA256) {
+		return nil, packageError(result.CodeValidation, "package signature metadata is invalid")
+	}
+	publicKey, publicErr := base64.StdEncoding.Strict().DecodeString(signature.PublicKey)
+	signed, signatureErr := base64.StdEncoding.Strict().DecodeString(signature.Value)
+	if publicErr != nil || signatureErr != nil || len(publicKey) != ed25519.PublicKeySize || len(signed) != ed25519.SignatureSize {
+		return nil, packageError(result.CodeValidation, "package signature encoding is invalid")
+	}
+	unsigned := value
+	unsigned.Signature = nil
+	payload, err := json.Marshal(unsigned)
+	if err != nil || !equalHash(Hash(payload), signature.SubjectSHA256) ||
+		!ed25519.Verify(ed25519.PublicKey(publicKey), payload, signed) {
+		return nil, packageError(result.CodeValidation, "package signature verification failed")
+	}
+	signature.Verified = true
+	return &signature, nil
 }
 
 func (service *Service) Install(ctx context.Context, encoded []byte, options InstallOptions) (InstallReceipt, error) {

@@ -24,6 +24,7 @@
 - [AI-native 可演化配置](./product/adaptive-configuration.md) — 默认值进入数据库；冻结、迁移和 AI 优化边界留到最后阶段确定。
 - [可安装的独立语义数据库](./product/installable-database-package.md) — 单库打包、安装、直接问答和全局跨库入口。
 - [Database Package v1](./product/database-package-v1.md) — F44 的确定性单库包、完整性、只读打开、可信安装与冲突边界。
+- [Database Package Signature v1](./product/database-package-signature-v1.md) — F137 的确定性 Ed25519 发布者签名与离线验证。
 - [质量模型与验收](./product/quality-model.md) — 写入、检索、修改、上下文和接管的效果指标。
 - [语义记录模型](./data/semantic-records.md) — AI 自定义表和字段，记录是短小完整的知识模块。
 - [自描述 Data Dictionary](./data/self-describing-data-dictionary.md) — 让陌生 Agent 在有界输出内理解库、表、字段和边界。
