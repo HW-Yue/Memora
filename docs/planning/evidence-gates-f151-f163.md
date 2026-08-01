@@ -28,7 +28,19 @@
 - 恢复证据：retire/flush/reopen 后可发现 free Page；split 优先复用并保持 lookup 等价；
   非 free 候选、错误顺序/身份和 publish 冲突均拒绝。
 
+## F153 Secondary Indexes
+
+状态：已评估，进入条件未成立，延后。
+
+- 冻结门槛：至少两个 canonical AI journey 明确要求在 10,000+ Row 上执行非
+  `row_id` 精确字段/范围谓词；随后 bounded scan p95 超过 20 ms 才进入索引设计。
+- 命令：用 `jq` 汇总全部 turn，并匹配 `secondary index|10,?000|non-row_id|field predicate`。
+- 结果：canonical suite 共 65 turn，显式需求 0；第一层产品门未成立，因此不以合成
+  SQL benchmark 替代真实故事。
+- 结论：MSQL 已可用有界 scan 执行 typed predicate；继续以语义 Route + RowID 主路径为主，
+  不提前引入每次写入都需维护的通用 Secondary Index。
+
 ## 后续门
 
-F153–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
+F154–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
 先另开实现 Feature，不把大实现塞进证据门提交。
