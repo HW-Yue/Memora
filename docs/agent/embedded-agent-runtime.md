@@ -1,10 +1,15 @@
 # 可选内置 Agent Runtime
 
-状态：F43 已决定 v0 defer；仅满足 [ADR-0002](../decisions/0002-defer-embedded-agent.md) 的重新开启条件后评估。
+状态：F43 已决定面向用户的 v0 Runtime defer；2026-08-02 另确认内置评测 Agent 为后期候选，
+实现仍需独立 Review。
 
 ## 定位
 
-v0 由 Codex/Claude Code 按 Canonical Skill 生成 MSQL，并调用本地 daemon。只有 Skill-first 产品验证后仍存在明确的独立使用需求，才考虑让 Memora 自带模型 Provider 和 `memora ask`。本文保留候选 Runtime 的边界，不能作为 v0 依赖。
+v0 由 Codex/Claude Code 按 Canonical Skill 生成 MSQL，并调用本地 daemon。面向用户的
+`memora ask` 仍按 [ADR-0002](../decisions/0002-defer-embedded-agent.md) 延后；标准化静态评测
+可以先评估一个隔离的内置 benchmark Agent driver。后者的角色和外置 Hook 边界见
+[内置评测 Agent 与外置 Hook 观测](../development/evaluation-agent-observability.md)，不能据此
+推定完整产品 Runtime 已获实现授权。
 
 内置 Agent 负责语义决策，引擎仍负责确定性执行。二者可以随同一个本地产品发布，但必须保持模块边界。
 

@@ -274,6 +274,7 @@
 - [Route Retrieval Benchmark v3](./development/route-retrieval-benchmark-v3.md) — 比较 Router-only、Lexical、CPU Vector 和投机预取的真实模型成本与质量。
 - [Route Benchmark Corpus v1](./development/route-benchmark-corpus-v1.md) — F124 在 predictor 前冻结的 fanout/depth/歧义/语言 Route 题库与 ground truth。
 - [Route Benchmark Runner v1](./development/route-benchmark-runner-v1.md) — F125 的五 arm、真实 host driver、盲测评分与可审计原始报告契约。
+- [内置评测 Agent 与外置 Hook 观测](./development/evaluation-agent-observability.md) — 标准静态评测使用内置 Agent；外置 Agent 只通过 Memora 调用 Hook 观测真实 session 表现。
 - [Route Capability Report v1](./development/route-capability-report-v1.md) — F126 的全维度统计、成本曲线与共同安全 discovery 默认门。
 - [AI-native 发布门 v1](./development/ai-native-release-gate-v1.md) — 已撤销的 F51 历史评测及失效原因。
 - [安全与隐私门 v1](./development/security-privacy-gate-v1.md) — F46 的 Database scope、外部路径、approval、审计脱敏与 doctor 检查。
