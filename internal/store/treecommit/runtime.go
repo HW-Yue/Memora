@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/store/btree"
@@ -36,6 +37,7 @@ type Runtime struct {
 	pool     *buffer.Pool
 	spaceID  uint64
 	state    treecontrol.State
+	free     map[uint64]struct{}
 	poisoned bool
 }
 
@@ -43,6 +45,7 @@ type batchRecipe struct {
 	recordIndex uint64
 	expectedLSN uint64
 	newPage     bool
+	reusedPage  bool
 	inferLSN    bool
 }
 
@@ -80,6 +83,10 @@ func OpenRuntime(
 	if err != nil {
 		return nil, report, fmt.Errorf("decode Tree control: %w", err)
 	}
+	free, err := scanFreePages(store, state)
+	if err != nil {
+		return nil, report, err
+	}
 	pool, err := buffer.New(
 		buffer.LoaderFunc(func(key buffer.Key) (page.Page, error) {
 			if key.SpaceID != config.SpaceID {
@@ -97,7 +104,7 @@ func OpenRuntime(
 	if err != nil {
 		return nil, report, err
 	}
-	runtime := &Runtime{log: set, pool: pool, spaceID: config.SpaceID, state: state}
+	runtime := &Runtime{log: set, pool: pool, spaceID: config.SpaceID, state: state, free: free}
 	loaded, err := runtime.Read(treecontrol.PageID)
 	if err != nil {
 		return nil, report, fmt.Errorf("load Tree control: %w", err)
@@ -109,6 +116,24 @@ func OpenRuntime(
 	return runtime, report, nil
 }
 
+func scanFreePages(store wal.PageStore, state treecontrol.State) (map[uint64]struct{}, error) {
+	result := make(map[uint64]struct{})
+	for pageID := treecontrol.FirstDataPageID; pageID < state.NextPageID; pageID++ {
+		value, err := store.Read(pageID)
+		if err != nil {
+			return nil, fmt.Errorf("scan reusable Page %d: %w", pageID, err)
+		}
+		if value.Header.Type == page.TypeFree {
+			result[pageID] = struct{}{}
+			continue
+		}
+		if value.Header.Type != page.TypeBTreeInternal && value.Header.Type != page.TypeBTreeLeaf {
+			return nil, fmt.Errorf("%w: reusable Page scan type", treecontrol.ErrCorrupt)
+		}
+	}
+	return result, nil
+}
+
 func (runtime *Runtime) State() treecontrol.State {
 	if runtime == nil {
 		return treecontrol.State{}
@@ -116,6 +141,20 @@ func (runtime *Runtime) State() treecontrol.State {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	return runtime.state
+}
+
+func (runtime *Runtime) FreePageIDs() []uint64 {
+	if runtime == nil {
+		return nil
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	result := make([]uint64, 0, len(runtime.free))
+	for pageID := range runtime.free {
+		result = append(result, pageID)
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left] < result[right] })
+	return result
 }
 
 func (runtime *Runtime) Read(pageID uint64) (page.Page, error) {
@@ -152,6 +191,11 @@ func (runtime *Runtime) Commit(
 	if runtime.poisoned {
 		return CommitReceipt{}, ErrRuntimePoisoned
 	}
+	for _, pageID := range plan.Reused {
+		if _, reusable := runtime.free[pageID]; !reusable {
+			return CommitReceipt{}, fmt.Errorf("%w: Page %d is not reusable", ErrInvalidPlan, pageID)
+		}
+	}
 	prepared, err := Prepare(runtime.state, plan)
 	if err != nil {
 		return CommitReceipt{}, err
@@ -183,6 +227,12 @@ func (runtime *Runtime) Commit(
 		return CommitReceipt{}, err
 	}
 	runtime.state = next
+	for _, pageID := range plan.Reused {
+		delete(runtime.free, pageID)
+	}
+	for _, pageID := range plan.Retired {
+		runtime.free[pageID] = struct{}{}
+	}
 	return CommitReceipt{WAL: transaction.Receipt, State: next}, nil
 }
 
@@ -201,13 +251,19 @@ func (runtime *Runtime) preflight(
 	for _, pageID := range plan.Allocated {
 		allocated[pageID] = struct{}{}
 	}
+	reused := make(map[uint64]struct{}, len(plan.Reused))
+	for _, pageID := range plan.Reused {
+		reused[pageID] = struct{}{}
+	}
 	recipes := make([]batchRecipe, 0, len(plan.Changes)+len(plan.Retired))
 	for index, change := range plan.Changes {
 		_, newPage := allocated[change.Page.Header.PageID]
+		_, reusedPage := reused[change.Page.Header.PageID]
 		recipes = append(recipes, batchRecipe{
 			recordIndex: uint64(index),
 			expectedLSN: change.ExpectedLSN,
 			newPage:     newPage,
+			reusedPage:  reusedPage,
 		})
 	}
 	for index := range plan.Retired {
@@ -262,6 +318,9 @@ func (runtime *Runtime) preflight(
 				current.Header.PageID != image.Header.PageID ||
 				(!recipe.inferLSN && current.Header.LSN != recipe.expectedLSN) {
 				return nil, fmt.Errorf("%w: existing Page %d state", buffer.ErrPublishConflict, image.Header.PageID)
+			}
+			if recipe.reusedPage && current.Header.Type != page.TypeFree {
+				return nil, fmt.Errorf("%w: reusable Page %d type", buffer.ErrPublishConflict, image.Header.PageID)
 			}
 			if recipe.inferLSN {
 				recipe.expectedLSN = current.Header.LSN

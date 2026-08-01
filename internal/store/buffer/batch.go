@@ -125,6 +125,9 @@ func (pool *Pool) PublishBatch(changes []BatchChange) error {
 }
 
 func validBatchTypeTransition(current, next page.Type) bool {
+	if current == page.TypeFree {
+		return next == page.TypeBTreeInternal || next == page.TypeBTreeLeaf
+	}
 	if next == page.TypeFree {
 		return current == page.TypeBTreeInternal ||
 			current == page.TypeBTreeLeaf

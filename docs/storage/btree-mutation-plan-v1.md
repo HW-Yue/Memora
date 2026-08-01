@@ -83,5 +83,6 @@ mutation 失败时保留此前已成功的私有计划，但不泄漏本次的 P
 
 ## 明确不做
 
-WAL、root/control Page 格式、Buffer Pool publish、文件 I/O、Page ID 复用、业务 key
+WAL、root/control Page 格式、Buffer Pool publish、文件 I/O、Page ID 复用（后由
+[Free Page Reuse v1](./free-page-reuse-v1.md) 扩展）、业务 key
 编码、Catalog/Row 接线、MVCC、锁、checkpoint 或 compaction。

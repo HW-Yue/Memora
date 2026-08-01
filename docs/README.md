@@ -124,6 +124,7 @@
 - [B+ Tree Leaf Delete v1](./storage/btree-leaf-delete-v1.md) — F95 的单 leaf 精确删除与 tombstone handoff 边界。
 - [B+ Tree Rebalance v1](./storage/btree-rebalance-v1.md) — F96 的 sibling merge/redistribute、parent separator 与 root shrink 契约。
 - [B+ Tree Mutation Plan v1](./storage/btree-mutation-plan-v1.md) — F97a 已冻结的多层私有 mutation、split/rebalance 传播与 allocator handoff。
+- [Free Page Reuse v1](./storage/free-page-reuse-v1.md) — F152 的同计划 recycled、durable free Page 复用与 reopen 恢复契约。
 - [MVCC、Undo Log 与 Redo Log](./storage/mvcc-undo-redo.md) — 版本、并发、回溯和恢复。
 - [Committed Change Log（Binlog）与未来同步](./storage/binlog-and-sync.md) — 第一用途是 Admin 展示数据与语义索引变化；同步、PITR 后续复用。
 - [Committed Change Envelope v1](./storage/committed-change-envelope-v1.md) — F109 的单事务 envelope、独立 change cursor、checksum 与 crash 边界。

@@ -507,6 +507,7 @@ func (index *Index) plan(
 	}
 	planner, err := btree.NewMutationPlanner(
 		state.SpaceID, state.Generation, state.RootPageID, state.NextPageID, index.runtime,
+		index.runtime.FreePageIDs()...,
 	)
 	if err != nil {
 		return btree.MutationPlan{}, err

@@ -1,8 +1,10 @@
 package treecommit
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -534,6 +536,103 @@ func TestRuntimeRetiresPageWithAssignedWALLSN(t *testing.T) {
 	if freed.Header.Type != page.TypeFree ||
 		freed.Header.LSN != receipt.WAL.FirstLSN || receipt.State.Revision != 2 {
 		t.Fatalf("retired Page=%+v receipt=%+v", freed.Header, receipt)
+	}
+}
+
+func TestRuntimeReopensAndReusesDurableFreePage(t *testing.T) {
+	directory := t.TempDir()
+	walPath := filepath.Join(directory, "wal")
+	pagePath := filepath.Join(directory, "tree.pages")
+	set, err := wal.CreateSegmentSet(walPath, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := page.Create(pagePath, 29)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := treecontrol.Encode(treecontrol.State{
+		SpaceID: 29, Generation: 1, Revision: 1, RootPageID: 2, NextPageID: 4, LSN: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	large := bytes.Repeat([]byte("v"), 6_000)
+	root, err := btree.Encode(page.Header{
+		Type: page.TypeBTreeLeaf, SpaceID: 29, PageID: 2, Generation: 1, LSN: 1,
+	}, btree.Node{Kind: btree.KindLeaf, LeafEntries: []btree.LeafEntry{
+		{Key: []byte("a"), Value: large}, {Key: []byte("c"), Value: large},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spare := commitNodePage(t, 29, 1, 3, btree.KindLeaf)
+	spare.Header.LSN = 1
+	for _, value := range []page.Page{control, root, spare} {
+		if err := manager.Write(value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := manager.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	runtime, _, err := OpenRuntime(set, manager, RuntimeConfig{SpaceID: 29, Capacity: 8, OldFrames: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.Commit(1, btree.MutationPlan{RootPageID: 2, NextPageID: 4, Retired: []uint64{3}}); err != nil {
+		t.Fatal(err)
+	}
+	if report, err := runtime.FlushDirty(math.MaxUint64); err != nil || report.Remaining != 0 {
+		t.Fatalf("FlushDirty() = %+v, %v", report, err)
+	}
+	if err := set.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	set, err = wal.OpenSegmentSet(walPath, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = set.Close() }()
+	manager, err = page.Open(pagePath, 29)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = manager.Close() }()
+	runtime, _, err = OpenRuntime(set, manager, RuntimeConfig{SpaceID: 29, Capacity: 8, OldFrames: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if free := runtime.FreePageIDs(); len(free) != 1 || free[0] != 3 {
+		t.Fatalf("reopened free Pages = %v", free)
+	}
+	planner, err := btree.NewMutationPlanner(29, 1, 2, 4, runtime, runtime.FreePageIDs()...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := planner.Upsert([]byte("b"), large); err != nil {
+		t.Fatal(err)
+	}
+	plan := planner.Plan()
+	if len(plan.Reused) != 1 || plan.Reused[0] != 3 || len(plan.Allocated) != 1 || plan.Allocated[0] != 4 {
+		t.Fatalf("reuse plan = %+v", plan)
+	}
+	if _, err := runtime.Commit(2, plan); err != nil {
+		t.Fatal(err)
+	}
+	if free := runtime.FreePageIDs(); len(free) != 0 {
+		t.Fatalf("free Pages after reuse = %v", free)
+	}
+	searcher, err := btree.NewSearcher(29, runtime.State().RootPageID, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, err := searcher.Get([]byte("b")); err != nil || !bytes.Equal(value, large) {
+		t.Fatalf("reused tree lookup bytes=%d err=%v", len(value), err)
 	}
 }
 

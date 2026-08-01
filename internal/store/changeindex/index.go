@@ -148,6 +148,7 @@ func (index *Index) Append(transactionID uint64, locators []Locator) (Receipt, e
 	operations = append(operations, operation{key: bytes.Clone(metaHighWaterKey), value: encodeUint64(next)})
 	planner, err := btree.NewMutationPlanner(
 		state.SpaceID, state.Generation, state.RootPageID, state.NextPageID, index.runtime,
+		index.runtime.FreePageIDs()...,
 	)
 	if err != nil {
 		return Receipt{}, err

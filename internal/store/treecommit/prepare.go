@@ -41,6 +41,14 @@ func Prepare(
 	if err != nil {
 		return Prepared{}, err
 	}
+	reused, err := validateReused(base, plan)
+	if err != nil {
+		return Prepared{}, err
+	}
+	recycled, err := validateRecycled(base, plan, reused)
+	if err != nil {
+		return Prepared{}, err
+	}
 	records := make(
 		[]wal.Record,
 		0,
@@ -115,6 +123,20 @@ func Prepare(
 			)
 		}
 	}
+	for pageID := range reused {
+		if _, exists := changed[pageID]; !exists {
+			return Prepared{}, fmt.Errorf(
+				"%w: reused Page %d has no change", ErrInvalidPlan, pageID,
+			)
+		}
+	}
+	for pageID := range recycled {
+		if _, exists := changed[pageID]; !exists {
+			return Prepared{}, fmt.Errorf(
+				"%w: recycled Page %d has no change", ErrInvalidPlan, pageID,
+			)
+		}
+	}
 
 	retired, retiredRecords, err := prepareRetired(
 		base,
@@ -128,8 +150,10 @@ func Prepare(
 	records = append(records, retiredRecords...)
 	if plan.RootPageID != base.RootPageID {
 		_, newRoot := allocated[plan.RootPageID]
+		_, reusedRoot := reused[plan.RootPageID]
+		_, recycledRoot := recycled[plan.RootPageID]
 		_, oldRootRetired := retired[base.RootPageID]
-		if !newRoot && !oldRootRetired {
+		if !newRoot && !reusedRoot && !recycledRoot && !oldRootRetired {
 			return Prepared{}, fmt.Errorf(
 				"%w: root change has no grow or shrink evidence",
 				ErrInvalidPlan,
@@ -167,6 +191,42 @@ func Prepare(
 		PageID: treecontrol.PageID, Payload: rootPayload,
 	})
 	return Prepared{Records: records}, nil
+}
+
+func validateReused(
+	base treecontrol.State,
+	plan btree.MutationPlan,
+) (map[uint64]struct{}, error) {
+	result := make(map[uint64]struct{}, len(plan.Reused))
+	var previous uint64
+	for index, pageID := range plan.Reused {
+		if pageID < treecontrol.FirstDataPageID || pageID >= base.NextPageID ||
+			(index > 0 && pageID <= previous) {
+			return nil, fmt.Errorf("%w: reused Page order or identity", ErrInvalidPlan)
+		}
+		result[pageID] = struct{}{}
+		previous = pageID
+	}
+	return result, nil
+}
+
+func validateRecycled(
+	base treecontrol.State,
+	plan btree.MutationPlan,
+	reused map[uint64]struct{},
+) (map[uint64]struct{}, error) {
+	result := make(map[uint64]struct{}, len(plan.Recycled))
+	var previous uint64
+	for index, pageID := range plan.Recycled {
+		_, alsoReused := reused[pageID]
+		if pageID < treecontrol.FirstDataPageID || pageID >= base.NextPageID || alsoReused ||
+			(index > 0 && pageID <= previous) {
+			return nil, fmt.Errorf("%w: recycled Page order or identity", ErrInvalidPlan)
+		}
+		result[pageID] = struct{}{}
+		previous = pageID
+	}
+	return result, nil
 }
 
 func validateAllocated(

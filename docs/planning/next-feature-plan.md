@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F150 已完成；F151 已评估并延后，下一项为 F152 Free Page Reuse evidence gate。用户已于
+状态：F81–F150、F152 已完成；F151 已评估并延后，下一项为 F153 Secondary Indexes evidence gate。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -132,7 +132,7 @@ F124a–F124e 的 RED、边界和顺序见
 | Feature | 进入条件 |
 | --- | --- |
 | F151 Compaction | 已评估并延后：256 locator × 16 轮等宽更新为 1.00x，未越过 1.25x 空间放大门 |
-| F152 Free Page Reuse | Page 分配浪费超过冻结门槛 |
+| F152 Free Page Reuse | 已完成：10% Catalog churn 的 22.22% 浪费越门，recycled/durable free reuse 将结果降至 0% |
 | F153 Secondary Indexes | 精确字段/范围查询证明需要 |
 | F154 Buffer Pool Scaling | 命中率或锁竞争证明单实例不足 |
 | F155 Advanced I/O Scheduler | 刷盘延迟证明简单 scheduler 不足 |
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F152；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F153；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

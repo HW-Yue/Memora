@@ -62,6 +62,51 @@ func TestMutationPlannerUpsertPropagatesSplitToNewRoot(t *testing.T) {
 	})
 }
 
+func TestMutationPlannerReusesDurableFreePagesBeforeHighWater(t *testing.T) {
+	large := bytes.Repeat([]byte("v"), 6_000)
+	root := planNodePage(t, 7, 3, 2, 9, Node{Kind: KindLeaf, LeafEntries: []LeafEntry{
+		{Key: []byte("a"), Value: large}, {Key: []byte("c"), Value: large},
+	}})
+	free := func(pageID uint64) page.Page {
+		return page.Page{Header: page.Header{
+			Type: page.TypeFree, SpaceID: 7, PageID: pageID, Generation: 3, LSN: 8,
+		}}
+	}
+	reader := &mapReader{pages: map[uint64]page.Page{2: root, 3: free(3), 4: free(4)}}
+	planner, err := NewMutationPlanner(7, 3, 2, 5, reader, 3, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := planner.Upsert([]byte("b"), large); err != nil {
+		t.Fatal(err)
+	}
+	plan := planner.Plan()
+	if plan.RootPageID != 4 || plan.NextPageID != 5 || len(plan.Allocated) != 0 ||
+		!reflect.DeepEqual(plan.Reused, []uint64{3, 4}) {
+		t.Fatalf("reuse plan = root=%d next=%d allocated=%v reused=%v", plan.RootPageID, plan.NextPageID, plan.Allocated, plan.Reused)
+	}
+	assertPlanValues(t, map[uint64]page.Page{2: root}, plan, map[string][]byte{
+		"a": large, "b": large, "c": large,
+	})
+}
+
+func TestMutationPlannerRejectsReusablePageThatIsNotFree(t *testing.T) {
+	large := bytes.Repeat([]byte("v"), 6_000)
+	root := planNodePage(t, 7, 3, 2, 9, Node{Kind: KindLeaf, LeafEntries: []LeafEntry{
+		{Key: []byte("a"), Value: large}, {Key: []byte("c"), Value: large},
+	}})
+	reader := &mapReader{pages: map[uint64]page.Page{
+		2: root, 3: planNodePage(t, 7, 3, 3, 8, Node{Kind: KindLeaf}),
+	}}
+	planner, err := NewMutationPlanner(7, 3, 2, 4, reader, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := planner.Upsert([]byte("b"), large); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Upsert(non-free reusable Page) error = %v", err)
+	}
+}
+
 func TestMutationPlannerUpsertRecursivelySplitsInternalAndRoot(t *testing.T) {
 	longKey := func(prefix byte) []byte {
 		return append([]byte{prefix}, bytes.Repeat([]byte{prefix}, 4_099)...)

@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/HW-Yue/Memora/internal/store/page"
+	"github.com/HW-Yue/Memora/internal/store/treecontrol"
 )
 
 var ErrPageIDOverflow = errors.New("B+ Tree Page ID allocation overflow")
@@ -22,6 +23,8 @@ type MutationPlan struct {
 	NextPageID uint64
 	Changes    []PageChange
 	Allocated  []uint64
+	Reused     []uint64
+	Recycled   []uint64
 	Retired    []uint64
 }
 
@@ -34,6 +37,9 @@ type MutationPlanner struct {
 	loaded     map[uint64]page.Page
 	changes    map[uint64]PageChange
 	allocated  map[uint64]struct{}
+	reused     map[uint64]struct{}
+	recycled   map[uint64]struct{}
+	reusable   []uint64
 	retired    map[uint64]struct{}
 }
 
@@ -48,9 +54,18 @@ type mutationPathFrame struct {
 func NewMutationPlanner(
 	spaceID, generation, rootPageID, nextPageID uint64,
 	reader Reader,
+	reusablePageIDs ...uint64,
 ) (*MutationPlanner, error) {
 	if spaceID == 0 || rootPageID == 0 || nextPageID == 0 || rootPageID >= nextPageID || reader == nil {
 		return nil, fmt.Errorf("%w: Mutation Planner configuration", ErrInvalid)
+	}
+	var previous uint64
+	for index, pageID := range reusablePageIDs {
+		if pageID < treecontrol.FirstDataPageID || pageID >= nextPageID || pageID == rootPageID ||
+			(index > 0 && pageID <= previous) {
+			return nil, fmt.Errorf("%w: reusable Page IDs", ErrInvalid)
+		}
+		previous = pageID
 	}
 	return &MutationPlanner{
 		spaceID:    spaceID,
@@ -61,6 +76,9 @@ func NewMutationPlanner(
 		loaded:     make(map[uint64]page.Page),
 		changes:    make(map[uint64]PageChange),
 		allocated:  make(map[uint64]struct{}),
+		reused:     make(map[uint64]struct{}),
+		recycled:   make(map[uint64]struct{}),
+		reusable:   append([]uint64(nil), reusablePageIDs...),
 		retired:    make(map[uint64]struct{}),
 	}, nil
 }
@@ -98,6 +116,8 @@ func (planner *MutationPlanner) Plan() MutationPlan {
 		NextPageID: planner.nextPageID,
 		Changes:    make([]PageChange, 0, len(planner.changes)),
 		Allocated:  sortedIDs(planner.allocated),
+		Reused:     sortedIDs(planner.reused),
+		Recycled:   sortedIDs(planner.recycled),
 		Retired:    sortedIDs(planner.retired),
 	}
 	changeIDs := make([]uint64, 0, len(planner.changes))
@@ -440,6 +460,28 @@ func (planner *MutationPlanner) stageNode(pageID uint64, node Node) error {
 }
 
 func (planner *MutationPlanner) allocatePage() (uint64, error) {
+	if len(planner.retired) > 0 {
+		pageID := sortedIDs(planner.retired)[0]
+		delete(planner.retired, pageID)
+		planner.recycled[pageID] = struct{}{}
+		return pageID, nil
+	}
+	if len(planner.reusable) > 0 {
+		pageID := planner.reusable[0]
+		planner.reusable = planner.reusable[1:]
+		value, err := planner.reader.Read(pageID)
+		if err != nil {
+			return 0, fmt.Errorf("read reusable Page %d: %w", pageID, err)
+		}
+		if value.Header.Type != page.TypeFree || value.Header.SpaceID != planner.spaceID ||
+			value.Header.PageID != pageID || value.Header.Generation != planner.generation ||
+			value.Header.LSN == 0 {
+			return 0, fmt.Errorf("%w: reusable Page %d state", ErrCorrupt, pageID)
+		}
+		planner.loaded[pageID] = clonePlanPage(value)
+		planner.reused[pageID] = struct{}{}
+		return pageID, nil
+	}
 	if planner.nextPageID == math.MaxUint64 {
 		return 0, ErrPageIDOverflow
 	}
@@ -450,6 +492,17 @@ func (planner *MutationPlanner) allocatePage() (uint64, error) {
 }
 
 func (planner *MutationPlanner) retirePage(pageID uint64) {
+	if _, wasRecycled := planner.recycled[pageID]; wasRecycled {
+		delete(planner.recycled, pageID)
+		delete(planner.changes, pageID)
+		planner.retired[pageID] = struct{}{}
+		return
+	}
+	if _, wasReused := planner.reused[pageID]; wasReused {
+		delete(planner.reused, pageID)
+		delete(planner.changes, pageID)
+		return
+	}
 	if _, wasAllocated := planner.allocated[pageID]; wasAllocated {
 		// Page IDs reserved by this plan remain consumed and initialized even when
 		// a later mutation makes them unreachable. This keeps the allocator advance
@@ -505,6 +558,9 @@ func (planner *MutationPlanner) clone() *MutationPlanner {
 		loaded:    make(map[uint64]page.Page, len(planner.loaded)),
 		changes:   make(map[uint64]PageChange, len(planner.changes)),
 		allocated: make(map[uint64]struct{}, len(planner.allocated)),
+		reused:    make(map[uint64]struct{}, len(planner.reused)),
+		recycled:  make(map[uint64]struct{}, len(planner.recycled)),
+		reusable:  append([]uint64(nil), planner.reusable...),
 		retired:   make(map[uint64]struct{}, len(planner.retired)),
 	}
 	for pageID, value := range planner.loaded {
@@ -515,6 +571,12 @@ func (planner *MutationPlanner) clone() *MutationPlanner {
 	}
 	for pageID := range planner.allocated {
 		cloned.allocated[pageID] = struct{}{}
+	}
+	for pageID := range planner.reused {
+		cloned.reused[pageID] = struct{}{}
+	}
+	for pageID := range planner.recycled {
+		cloned.recycled[pageID] = struct{}{}
 	}
 	for pageID := range planner.retired {
 		cloned.retired[pageID] = struct{}{}

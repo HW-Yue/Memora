@@ -26,6 +26,8 @@ retired_page_id[retired_count] u64
 ```
 
 Revision 必须严格 `expected + 1`。Allocator 与 Root 必须使用相同 expected revision。
-Retired Page 的排序、范围、free-image 与不立即复用规则不变。
+Retired Page 的排序、范围与同事务 free-image 规则不变。F152 在不修改本 WAL payload 的
+前提下允许后续事务复用 durable free Page；同一 Mutation Plan 内重新利用刚退休的 Page
+记为 recycled，不进入最终 retired 集合，详见 [Free Page Reuse v1](./free-page-reuse-v1.md)。
 
 尚无已发布或业务接入的数据文件，因此 decoder 明确拒绝 v1，不做静默兼容。
