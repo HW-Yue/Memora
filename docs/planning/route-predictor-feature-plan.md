@@ -1,6 +1,6 @@
 # Route Predictor 小 Feature 计划
 
-状态：F124 Corpus 已完成；下一项 F124a。F124a–F124e 仍逐项 Review、RED、实现
+状态：F124/F124a 已完成；下一项 F124b。F124b–F124e 仍逐项 Review、RED、实现
 和合入，不能整批开工。
 
 ## 目标链路

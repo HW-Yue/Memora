@@ -72,6 +72,17 @@ func validateStatement(position int, result StatementResult) error {
 			return invalid("result %d row detail has no title or fallback", position)
 		}
 	}
+	if result.Discovery != nil {
+		if result.Status != StatusSucceeded {
+			return invalid("result %d failed with discovery metadata", position)
+		}
+		if err := result.Discovery.Validate(); err != nil {
+			return invalid("result %d has invalid discovery metadata: %v", position, err)
+		}
+		if result.Discovery.Truncated && !result.Truncated {
+			return invalid("result %d did not propagate discovery truncation", position)
+		}
+	}
 	switch result.Status {
 	case StatusSucceeded:
 		if result.Error != nil {

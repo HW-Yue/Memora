@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/HW-Yue/Memora/internal/discovery"
 )
 
 const Version = "memora.result/v1"
@@ -61,21 +63,22 @@ type ListPage struct {
 }
 
 type StatementResult struct {
-	Index          int          `json:"index"`
-	Statement      string       `json:"statement"`
-	Source         string       `json:"source"`
-	Status         Status       `json:"status"`
-	Columns        []Column     `json:"columns"`
-	Rows           []Row        `json:"rows"`
-	AffectedRows   uint64       `json:"affected_rows"`
-	Revision       *uint64      `json:"revision,omitempty"`
-	CommitSequence *uint64      `json:"commit_sequence,omitempty"`
-	Truncated      bool         `json:"truncated"`
-	NextCursor     string       `json:"next_cursor,omitempty"`
-	Page           *ListPage    `json:"page,omitempty"`
-	RowDetail      *RowDetail   `json:"row_detail,omitempty"`
-	Warnings       []Notice     `json:"warnings"`
-	Error          *ResultError `json:"error,omitempty"`
+	Index          int              `json:"index"`
+	Statement      string           `json:"statement"`
+	Source         string           `json:"source"`
+	Status         Status           `json:"status"`
+	Columns        []Column         `json:"columns"`
+	Rows           []Row            `json:"rows"`
+	AffectedRows   uint64           `json:"affected_rows"`
+	Revision       *uint64          `json:"revision,omitempty"`
+	CommitSequence *uint64          `json:"commit_sequence,omitempty"`
+	Truncated      bool             `json:"truncated"`
+	NextCursor     string           `json:"next_cursor,omitempty"`
+	Page           *ListPage        `json:"page,omitempty"`
+	RowDetail      *RowDetail       `json:"row_detail,omitempty"`
+	Discovery      *discovery.Frame `json:"discovery,omitempty"`
+	Warnings       []Notice         `json:"warnings"`
+	Error          *ResultError     `json:"error,omitempty"`
 }
 
 type Envelope struct {

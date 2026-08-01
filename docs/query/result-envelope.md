@@ -50,6 +50,11 @@ Database/Table 稳定身份、Schema version、row semantics 与显式 display r
 title role 时必须声明 `row_id_revision` fallback。Column metadata 可向后兼容增加
 `column_id/purpose/semantic_role`；客户端按数组顺序读取，不猜业务列。
 
+Discovery statement 可以额外返回 `discovery`；`memora.discovery-frame/v1` 在同一
+snapshot 和全局预算内携带带 predictor 来源的 `navigation_only` 候选。单个 predictor
+不可用是成功收据，不是 statement error；Frame 截断必须传播到 statement 和顶层。
+完整契约见 [Discovery Frame v1](./discovery-frame-v1.md)。
+
 状态固定为：
 
 - `succeeded`：语句成功，包括显式执行成功的 `ROLLBACK`；

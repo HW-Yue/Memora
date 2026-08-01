@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/HW-Yue/Memora/internal/discovery"
 )
 
 func TestEnvelopeGolden(t *testing.T) {
@@ -156,5 +158,49 @@ func TestRowDetailEnvelopeRequiresDictionaryIdentityAndExplicitFallback(t *testi
 	invalid.Results[0].RowDetail.Display.Fallback = ""
 	if _, err := json.Marshal(invalid); !errors.Is(err, ErrInvalidEnvelope) {
 		t.Fatalf("invalid row detail error = %v, want %v", err, ErrInvalidEnvelope)
+	}
+}
+
+func TestResultEnvelopeCarriesDiscoveryAndPropagatesTruncation(t *testing.T) {
+	t.Parallel()
+	builder, err := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
+		CandidateLimit: 1, UTF8ByteLimit: 2048,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	score := 2.0
+	if err := builder.Add(discovery.Batch{
+		Snapshot: "sha256:view", CatalogRevision: "sha256:catalog", Predictor: "lexical/v1",
+		Status: discovery.PredictorSucceeded, ScoreKind: discovery.ScoreMatchCount, Reason: "term locations",
+		Candidates: []discovery.CandidateInput{
+			{DatabaseID: "db_work", TableID: "tbl_notes", Reason: "two terms", Score: &score},
+			{DatabaseID: "db_work", TableID: "tbl_tasks", Reason: "two terms", Score: &score},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	frame := builder.Frame()
+	statement := NewStatement(0, "DISCOVER", "DISCOVER ROUTES")
+	statement.Discovery = &frame
+	statement.Truncated = true
+	envelope := NewEnvelope("req-discovery", statement)
+	envelope.Truncated = true
+	if _, err := json.Marshal(envelope); err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	notPropagated := envelope
+	notPropagated.Results[0].Truncated = false
+	if _, err := json.Marshal(notPropagated); !errors.Is(err, ErrInvalidEnvelope) {
+		t.Fatalf("missing statement truncation error = %v", err)
+	}
+
+	failed := envelope
+	failed.Results[0].Status = StatusFailed
+	failed.Results[0].Error = statementError(0, CodeInternal, "failed", false)
+	failed.OK = false
+	if _, err := json.Marshal(failed); !errors.Is(err, ErrInvalidEnvelope) {
+		t.Fatalf("failed discovery result error = %v", err)
 	}
 }
