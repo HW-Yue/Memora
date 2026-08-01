@@ -17,6 +17,7 @@ Commands:
   init       Initialize a local instance
   install    Install an explicitly trusted database package
   maintain   Report and retry low-risk semantic maintenance
+  move       Safely move an Instance to another directory or device
   mutate     Execute a validated Mutation Plan
   open       Inspect a database package read-only
   pack       Export one portable database package

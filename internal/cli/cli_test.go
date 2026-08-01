@@ -20,6 +20,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/hostinput"
+	"github.com/HW-Yue/Memora/internal/instancemove"
 	"github.com/HW-Yue/Memora/internal/instanceupgrade"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -1125,6 +1126,36 @@ func TestRunInitRejectsRelativeDataDir(t *testing.T) {
 	}
 	if got, want := stderr.String(), "memora: --data-dir must be an absolute path\n"; got != want {
 		t.Fatalf("stderr = %q, want %q", got, want)
+	}
+}
+
+func TestRunInstanceMoveUsesExplicitPathsAndEmitsReceipt(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	backup := filepath.Join(root, "backup")
+	target := filepath.Join(root, "target")
+	var gotSource, gotBackup, gotTarget, gotExecutable string
+	dependencies := Dependencies{
+		HomeDir:    func() (string, error) { return root, nil },
+		Executable: func() (string, error) { return "/opt/memora", nil },
+		MoveInstance: func(_ context.Context, source, backup, target string, options instancemove.Options) (instancemove.Receipt, error) {
+			gotSource, gotBackup, gotTarget, gotExecutable = source, backup, target, options.Executable
+			return instancemove.Receipt{Version: instancemove.ReceiptVersion, Status: "moved", SourceRetained: true}, nil
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunWithDependencies([]string{"move", "--data-dir", source, "--backup", backup, "--target", target}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK {
+		t.Fatalf("move code = %d, stderr = %s", code, &stderr)
+	}
+	if gotSource != source || gotBackup != backup || gotTarget != target || gotExecutable != "/opt/memora" {
+		t.Fatalf("move args = %q, %q, %q, %q", gotSource, gotBackup, gotTarget, gotExecutable)
+	}
+	var receipt instancemove.Receipt
+	if err := json.Unmarshal(stdout.Bytes(), &receipt); err != nil || !receipt.SourceRetained {
+		t.Fatalf("receipt = %#v, error = %v", receipt, err)
 	}
 }
 

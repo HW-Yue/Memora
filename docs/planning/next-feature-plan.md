@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F144 已完成；下一项为 F145 Instance Move。用户已于
+状态：F81–F145 已完成；下一项为 F146 MCP Adapter。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -120,7 +120,7 @@ F124a–F124e 的 RED、边界和顺序见
 | F142 Package Merge | 已完成：fork 以显式三方计划合并非重叠变化并确定性报告冲突 |
 | F143 Instance Backup | 已完成：生成严格布局、逐文件哈希并发布后重验的可搬迁备份 |
 | F144 Instance Restore | 已完成：备份可经 staging 重验原子恢复到明确且不存在的目标 |
-| F145 Instance Move | 普通用户可完成跨目录/设备搬迁旅程 |
+| F145 Instance Move | 已完成：离线 backup/restore 编排保持 daemon 状态且永不自动删除源 |
 | F146 MCP Adapter | MCP 客户端通过同一 MSQL 边界访问 daemon |
 | F147 Go SDK | Go 调用方使用版本化 client/envelope |
 | F148 launchd Integration | daemon 可按 macOS 用户会话可靠启停 |

@@ -23,6 +23,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/instance"
+	"github.com/HW-Yue/Memora/internal/instancemove"
 	"github.com/HW-Yue/Memora/internal/instanceupgrade"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/readquery"
@@ -58,6 +59,7 @@ Commands:
   init       Initialize a local instance
   install    Install an explicitly trusted database package
   maintain   Report and retry low-risk semantic maintenance
+  move       Safely move an Instance to another directory or device
   mutate     Execute a validated Mutation Plan
   open       Inspect a database package read-only
   pack       Export one portable database package
@@ -118,6 +120,8 @@ type Dependencies struct {
 	PreviewUpgrade     func(string) (instanceupgrade.Plan, error)
 	ApplyUpgrade       func(context.Context, string, instanceupgrade.Options) (instanceupgrade.Receipt, error)
 	RepairUpgrade      func(context.Context, string, string, instanceupgrade.Options) (instanceupgrade.Receipt, error)
+	MoveInstance       func(context.Context, string, string, string, instancemove.Options) (instancemove.Receipt, error)
+	Executable         func() (string, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -153,6 +157,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runInit(args[1:], stdout, stderr, dependencies)
 	case "mutate":
 		return runMutate(args[1:], stdout, stderr, dependencies)
+	case "move":
+		return runInstanceMove(args[1:], stdout, stderr, dependencies)
 	case "pack", "open", "install":
 		return runDatabasePackage(args[0], args[1:], stdout, stderr, dependencies)
 	case "maintain":
@@ -1409,6 +1415,68 @@ func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	}
 	if !response.OK {
 		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runInstanceMove(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var backup, target string
+	var daemonArgs []string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--backup", "--target", "--data-dir":
+			option := args[index]
+			index++
+			if index >= len(args) {
+				return usageError(stderr, option+" requires a path")
+			}
+			value := args[index]
+			if !filepath.IsAbs(value) || filepath.Clean(value) != value {
+				return usageError(stderr, option+" must be an absolute normalized path")
+			}
+			switch option {
+			case "--backup":
+				if backup != "" {
+					return usageError(stderr, "--backup may only be specified once")
+				}
+				backup = value
+			case "--target":
+				if target != "" {
+					return usageError(stderr, "--target may only be specified once")
+				}
+				target = value
+			default:
+				daemonArgs = append(daemonArgs, option, value)
+			}
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown move option: %q", args[index]))
+		}
+	}
+	if backup == "" || target == "" {
+		return usageError(stderr, "move requires --backup and --target")
+	}
+	source, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	executable := dependencies.Executable
+	if executable == nil {
+		executable = os.Executable
+	}
+	executablePath, err := executable()
+	if err != nil {
+		return commandError(stderr, "resolve executable", err)
+	}
+	move := dependencies.MoveInstance
+	if move == nil {
+		move = instancemove.Move
+	}
+	receipt, err := move(context.Background(), source, backup, target, instancemove.Options{Executable: executablePath})
+	if err != nil {
+		return commandError(stderr, "move instance", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
 	}
 	return ExitOK
 }
