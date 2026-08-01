@@ -1,6 +1,6 @@
 # Admin 与本地可观察性小 Feature 计划
 
-状态：F114 已完成，下一项 F115；F110–F122 持续执行已获用户授权，仍逐项 Review、
+状态：F115 已完成，下一项 F116；F110–F122 持续执行已获用户授权，仍逐项 Review、
 测试与独立合入。
 
 ## 产品形态
@@ -42,10 +42,10 @@ MSQL。第一版只读，使用固定 actor/scope、随机 token、Host/Origin�
 
 ### F115 Local Read API
 
-- RED：可提交 mutation、扩大 scope、跨 Origin 或产生不同于 CLI 的 envelope；
-- GREEN：`memora admin --scope ... --no-open` 启动临时只读 Gateway；
-- 门：API/CLI contract 等价、安全故障注入、关闭后端口释放；
-- 不做：HTML、公网 API、登录、模型 Provider。
+- 已完成：`memora admin --scope ... --no-open` 启动临时只读 Gateway；
+- 已验收：共享 read-only classifier、固定 scope、API/CLI envelope 等价、一次性 token、
+  SameSite Cookie、Host/Origin/CSRF、故障注入与关闭后端口释放；
+- 未包含：HTML、公网 API、登录、模型 Provider。
 
 ### F116 Embedded Admin Shell
 
@@ -71,7 +71,6 @@ Gateway browser journey，不以 mock 页面截图代替。F117 不顺手做 Rou
 
 ## 待逐项 Review
 
-- F115 loopback API 的 read-only allowlist、session TTL 与启动输出；
 - 命令最终使用 `admin` 还是 `studio`；
 - F120 Change Log 默认保留窗口；
 - F121 正文 diff 的字节预算；

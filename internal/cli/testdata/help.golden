@@ -4,6 +4,7 @@ Usage:
   memora <command> [options]
 
 Commands:
+  admin      Start a temporary local read-only Admin API
   assimilate  Track, review, and receipt source assimilation
   daemon     Manage the local daemon
   doctor     Verify logical database integrity

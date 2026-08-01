@@ -1,6 +1,7 @@
 # CLI Database Workflow v1
 
-状态：F27 已冻结本地 `exec`、`query`、`doctor` 与 daemon 垂直链路。
+状态：F27 已冻结本地 `exec`、`query`、`doctor` 与 daemon 垂直链路；F115 增加
+临时只读 `admin` Gateway。
 
 ## 命令
 
@@ -10,6 +11,7 @@
 memora exec  [--data-dir PATH] [--input JSON] "MSQL"
 memora query [--data-dir PATH] [--input JSON] "MSQL"
 memora mutate [--data-dir PATH] --plan 'MUTATION_PLAN_JSON'
+memora admin --scope DATABASE [--scope DATABASE...] --no-open [--data-dir PATH]
 memora doctor [--data-dir PATH]
 ```
 
@@ -42,6 +44,11 @@ memora doctor [--data-dir PATH]
 batch 和 verify。MERGE/SPLIT 的不同 StatementInput 由 Plan 编译进同一显式
 事务，不改变 `exec --input` 的单 statement 边界。输出为
 `memora.mutation-receipt/v1`。
+
+`admin` 是 F115 的临时只读交付面。它把启动时固定的 Database scope 注入每条
+MSQL，通过 daemon Unix socket 执行，并在 SIGINT/SIGTERM 后释放随机 loopback
+端口。F115 尚无内嵌页面或自动打开浏览器，所以必须显式使用 `--no-open`；HTTP
+session、Origin、Cookie 与 CSRF 契约见 [Local Read API v1](./local-read-api-v1.md)。
 
 ## 统一执行
 

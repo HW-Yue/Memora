@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/adminapi"
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/conversation"
@@ -76,6 +77,18 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: unknown option for version: \"--yaml\"\n",
 		},
 		{
+			name:       "admin requires scope",
+			args:       []string{"admin", "--no-open"},
+			wantCode:   2,
+			wantStderr: "memora: admin requires at least one --scope\n",
+		},
+		{
+			name:       "admin requires explicit no-open in F115",
+			args:       []string{"admin", "--scope", "work"},
+			wantCode:   2,
+			wantStderr: "memora: admin currently requires --no-open\n",
+		},
+		{
 			name:       "exec requires source",
 			args:       []string{"exec"},
 			wantCode:   2,
@@ -90,6 +103,12 @@ func TestRun(t *testing.T) {
 		{
 			name:       "query rejects mutation",
 			args:       []string{"query", "UPDATE work.notes SET title = 'unsafe'"},
+			wantCode:   2,
+			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE\n",
+		},
+		{
+			name:       "query rejects recovered mutation after parse failure",
+			args:       []string{"query", "SELECT * work.notes; DELETE FROM work.notes WHERE row_id = 'row_1'"},
 			wantCode:   2,
 			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE\n",
 		},
@@ -215,6 +234,48 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr mismatch\n--- got ---\n%s--- want ---\n%s", got, tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestRunAdminStartsScopedGatewayAndPrintsDescriptor(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	called := false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(
+			context.Context, string, string, []executor.StatementInput,
+		) (result.Envelope, error) {
+			return result.Envelope{}, errors.New("not called by startup")
+		},
+		ServeAdmin: func(
+			_ context.Context, config adminapi.Config, ready func(adminapi.Descriptor) error,
+		) error {
+			called = true
+			if config.DataDir != dataDir || len(config.Scopes) != 2 ||
+				config.Scopes[0] != "work" || config.Scopes[1] != "personal" || config.Execute == nil {
+				t.Fatalf("admin config = %#v", config)
+			}
+			return ready(adminapi.Descriptor{
+				Version:   adminapi.SessionVersion,
+				Origin:    "http://127.0.0.1:49152",
+				URL:       "http://127.0.0.1:49152/#token=fixture",
+				ExpiresAt: time.Date(2026, 8, 1, 0, 15, 0, 0, time.UTC),
+			})
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunWithDependencies([]string{
+		"admin", "--scope", "work", "--scope", "personal", "--no-open", "--data-dir", dataDir,
+	}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK || !called || stderr.Len() != 0 {
+		t.Fatalf("admin code=%d called=%t stdout=%q stderr=%q", code, called, &stdout, &stderr)
+	}
+	var descriptor adminapi.Descriptor
+	if err := json.Unmarshal(stdout.Bytes(), &descriptor); err != nil || descriptor.Version != adminapi.SessionVersion {
+		t.Fatalf("descriptor = %#v, %v", descriptor, err)
 	}
 }
 

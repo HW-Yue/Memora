@@ -224,6 +224,7 @@
 
 - [测试约定](./development/testing.md) — Unit、integration、e2e、race、隔离目录和确定性 Testkit。
 - [CLI Database Workflow v1](./development/cli-database-workflow.md) — F27 的 exec/query/doctor、统一 MSQL 与进程级垂直链路。
+- [Local Read API v1](./development/local-read-api-v1.md) — F115 的临时 loopback、固定 scope、session/CSRF 与只读 MSQL 契约。
 - [Scripted Host Harness v1](./development/scripted-host-harness-v1.md) — F29 的无模型 transcript 重放、错误注入、最终数据库和用户回复断言。
 - [Codex Adapter v1](./development/codex-adapter-v1.md) — F40 从 Canonical Skill 确定性派生 Codex metadata、命令规则与 e2e fixture。
 - [Claude Code Adapter v1](./development/claude-code-adapter-v1.md) — F41 的 `.claude/skills` 包装、turn 级命令权限与跨宿主 digest 兼容。

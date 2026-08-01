@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/HW-Yue/Memora/internal/adminapi"
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/config"
 	"github.com/HW-Yue/Memora/internal/conversation"
@@ -22,7 +23,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/instanceupgrade"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
-	"github.com/HW-Yue/Memora/internal/msql/parser"
+	"github.com/HW-Yue/Memora/internal/msql/readquery"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
@@ -42,6 +43,7 @@ Usage:
   memora <command> [options]
 
 Commands:
+  admin      Start a temporary local read-only Admin API
   assimilate  Track, review, and receipt source assimilation
   daemon     Manage the local daemon
   doctor     Verify logical database integrity
@@ -95,6 +97,7 @@ type Dependencies struct {
 		string,
 		[]executor.StatementInput,
 	) (result.Envelope, error)
+	ServeAdmin         func(context.Context, adminapi.Config, func(adminapi.Descriptor) error) error
 	Reflect            func(context.Context, string, conversation.Event) (conversation.Receipt, error)
 	Assimilate         func(context.Context, string, assimilation.Event) (assimilation.Receipt, error)
 	SubmitAssimilation func(context.Context, string, assimilation.Submission) (assimilation.SourceReceipt, error)
@@ -121,6 +124,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return writeText(stdout, stderr, helpText)
 	case "daemon":
 		return runDaemon(args[1:], stdout, stderr, dependencies)
+	case "admin":
+		return runAdmin(args[1:], stdout, stderr, dependencies)
 	case "assimilate":
 		return runAssimilate(args[1:], stdout, stderr, dependencies)
 	case "doctor":
@@ -853,15 +858,11 @@ func runExecute(
 		return usageError(stderr, command+" requires an MSQL source argument")
 	}
 	if command == "query" {
-		if batch, err := parser.ParseBatch(source); err == nil {
-			for _, statement := range batch.Statements {
-				if !queryStatement(statement.Kind) {
-					return usageError(
-						stderr,
-						"query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE",
-					)
-				}
-			}
+		if _, err := readquery.Validate(source); err != nil {
+			return usageError(
+				stderr,
+				"query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE",
+			)
 		}
 	}
 	statements := []executor.StatementInput{}
@@ -895,6 +896,91 @@ func runExecute(
 		return ExitFailure
 	}
 	return ExitOK
+}
+
+func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var scopes []string
+	noOpen := false
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--scope":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--scope requires a Database name or ID")
+			}
+			scopes = append(scopes, args[index+1])
+			index++
+		case "--no-open":
+			if noOpen {
+				return usageError(stderr, "--no-open may only be specified once")
+			}
+			noOpen = true
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown admin option: %q", args[index]))
+		}
+	}
+	if len(scopes) == 0 {
+		return usageError(stderr, "admin requires at least one --scope")
+	}
+	if !noOpen {
+		return usageError(stderr, "admin currently requires --no-open")
+	}
+	authorization := security.Authorization{
+		Version:             security.AuthorizationVersion,
+		Actor:               "user:admin",
+		AuthorizedDatabases: scopes,
+	}
+	if err := authorization.Validate(); err != nil {
+		return usageError(stderr, "admin scope is invalid")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	execute := dependencies.ExecuteMSQL
+	if execute == nil {
+		execute = daemon.Execute
+	}
+	serve := dependencies.ServeAdmin
+	if serve == nil {
+		serve = serveAdmin
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	err := serve(ctx, adminapi.Config{
+		DataDir: dataDir,
+		Scopes:  append([]string(nil), scopes...),
+		Execute: execute,
+	}, func(descriptor adminapi.Descriptor) error {
+		return json.NewEncoder(stdout).Encode(descriptor)
+	})
+	if err != nil {
+		return commandError(stderr, "serve Admin API", err)
+	}
+	return ExitOK
+}
+
+func serveAdmin(
+	ctx context.Context,
+	config adminapi.Config,
+	ready func(adminapi.Descriptor) error,
+) error {
+	gateway, err := adminapi.Start(ctx, config)
+	if err != nil {
+		return err
+	}
+	if err := ready(gateway.Descriptor()); err != nil {
+		closeErr := gateway.Close()
+		waitErr := gateway.Wait()
+		return errors.Join(err, closeErr, waitErr)
+	}
+	return gateway.Wait()
 }
 
 func runMutate(
@@ -957,15 +1043,6 @@ func runMutate(
 		return ExitFailure
 	}
 	return ExitOK
-}
-
-func queryStatement(kind string) bool {
-	switch kind {
-	case "SHOW", "DESCRIBE", "DESCRIBE_ROUTE", "SELECT", "OPEN_ROUTE":
-		return true
-	default:
-		return false
-	}
 }
 
 func runDoctor(
