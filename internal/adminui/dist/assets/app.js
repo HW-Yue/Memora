@@ -1,5 +1,6 @@
 import { renderCatalog } from "./catalog.js";
 import { renderRoutes } from "./routes.js";
+import { renderRow } from "./rows.js";
 
 let csrfToken = "";
 let sessionReady = false;
@@ -97,6 +98,7 @@ async function renderCurrentRoute() {
   if (path === "/catalog" || path.startsWith("/catalog/")) {
     document.body.classList.add("route-catalog");
     document.body.classList.remove("route-routes");
+    document.body.classList.remove("route-rows");
     updateNavigation("catalog");
     await renderCatalog(routeOutlet, {
       path,
@@ -108,6 +110,7 @@ async function renderCurrentRoute() {
   if (path === "/routes" || path.startsWith("/routes/")) {
     document.body.classList.remove("route-catalog");
     document.body.classList.add("route-routes");
+    document.body.classList.remove("route-rows");
     updateNavigation("routes");
     await renderRoutes(routeOutlet, {
       path,
@@ -116,8 +119,21 @@ async function renderCurrentRoute() {
     });
     return;
   }
+  if (path.startsWith("/rows/")) {
+    document.body.classList.remove("route-catalog");
+    document.body.classList.remove("route-routes");
+    document.body.classList.add("route-rows");
+    updateNavigation("routes");
+    await renderRow(routeOutlet, {
+      path,
+      executeMSQL,
+      isCurrent: () => window.location.pathname === path
+    });
+    return;
+  }
   document.body.classList.remove("route-catalog");
   document.body.classList.remove("route-routes");
+  document.body.classList.remove("route-rows");
   updateNavigation("overview");
   routeOutlet.dataset.pageState = "ready";
   routeOutlet.replaceChildren(overviewNode());

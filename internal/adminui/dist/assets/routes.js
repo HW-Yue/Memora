@@ -214,7 +214,9 @@ function routeCard(row, databaseID, tableID) {
 }
 
 function locatorCard(row) {
-  const card = element("div", "locator-card");
+  const card = element("a", "locator-card");
+  card.href = `/rows/${encodeURIComponent(row.database_id)}/${encodeURIComponent(row.table_id)}/${encodeURIComponent(row.row_id)}`;
+  card.dataset.route = "";
   card.append(element("strong", "", row.row_id), element("span", "", `revision ${row.revision}`));
   const scope = element("small", "", `${row.database_id} / ${row.table_id}`);
   card.append(scope);

@@ -255,6 +255,37 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 		journey.assert(t, routeEnvelope.Results[0])
 	}
 
+	rowSource := fmt.Sprintf(
+		"SELECT * FROM %q.%q WHERE row_id = :row LIMIT 1; SHOW HISTORY FROM %q.%q FOR ROW :row LIMIT 20",
+		databaseID, tableID, databaseID, tableID,
+	)
+	rowInput := map[string]any{"parameters": executor.Parameters{Named: map[string]any{"row": rowID}}}
+	payload, err := json.Marshal(map[string]any{
+		"source": rowSource, "statements": []map[string]any{rowInput, rowInput},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken, string(payload))
+	var rowEnvelope result.Envelope
+	if err := json.NewDecoder(response.Body).Decode(&rowEnvelope); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !rowEnvelope.OK || len(rowEnvelope.Results) != 2 ||
+		len(rowEnvelope.Results[0].Rows) != 1 || rowEnvelope.Results[0].Rows[0]["row_id"] != rowID ||
+		rowEnvelope.Results[0].Rows[0]["body"] != "private body" ||
+		rowEnvelope.Results[0].RowDetail == nil || rowEnvelope.Results[0].RowDetail.DatabaseID != databaseID ||
+		rowEnvelope.Results[0].RowDetail.TableID != tableID ||
+		rowEnvelope.Results[0].RowDetail.Display.TitleColumn != "title" ||
+		rowEnvelope.Results[0].RowDetail.Display.SummaryColumn != "body" ||
+		len(rowEnvelope.Results[1].Rows) != 1 || len(rowEnvelope.Results[1].Rows[0]) != 14 ||
+		rowEnvelope.Results[1].Rows[0]["row_id"] != rowID || rowEnvelope.Results[1].Rows[0]["body"] != nil ||
+		rowEnvelope.Results[1].Page == nil || rowEnvelope.Results[1].Page.Limit != 20 {
+		t.Fatalf("Row document journey = status %d, %#v", response.StatusCode, rowEnvelope)
+	}
+
 	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken,
 		`{"source":"SHOW TABLES FROM secret LIMIT 16 COMPACT"}`)
 	defer response.Body.Close()

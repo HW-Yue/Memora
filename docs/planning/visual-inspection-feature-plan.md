@@ -1,6 +1,6 @@
 # Admin 与本地可观察性小 Feature 计划
 
-状态：F118 已完成，下一项 F119；F110–F122 持续执行已获用户授权，仍逐项 Review、
+状态：F119 已完成，下一项 F120；F110–F122 持续执行已获用户授权，仍逐项 Review、
 测试与独立合入。
 
 ## 产品形态
@@ -61,7 +61,7 @@ MSQL。第一版只读，使用固定 actor/scope、随机 token、Host/Origin�
 | --- | --- | --- |
 | F117 Catalog Navigation | 已完成：用户看不到库/表/结构层级 | Instance→Database→Table→Schema 浏览 |
 | F118 Route Tree Browser | 已完成：语义索引只能看扁平 JSON | 按层展开 Route 并显示 locator |
-| F119 Row Document View | 千字 Row 被塞进横向表格 | locator→RowID→完整动态文档详情 |
+| F119 Row Document View | 已完成：千字 Row 不进入横向表格 | locator→RowID→完整动态文档详情 |
 | F120 Change Timeline | 用户看不到提交顺序和影响对象 | commit 级变化时间线 |
 | F121 Revision Diff | 用户无法比较变化前后 | 一个 Row/Route revision 的 before/after |
 | F122 Route Trace View | 只能看到最终 RowID | 每层节点、选择、回退、耗时与预算叠加树 |

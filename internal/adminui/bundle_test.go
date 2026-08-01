@@ -17,7 +17,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := bundle.Manifest()
-	if manifest.Version != BundleVersion || len(manifest.Assets) != 5 {
+	if manifest.Version != BundleVersion || len(manifest.Assets) != 6 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	for _, asset := range manifest.Assets {
@@ -52,6 +52,50 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 	fetchAt := strings.Index(javascript, `fetch("/api/v1/session"`)
 	if clearAt < 0 || fetchAt < 0 || clearAt >= fetchAt || !strings.Contains(javascript, "export async function executeMSQL") {
 		t.Fatalf("JavaScript does not clear fragment before bootstrap or expose the module API client")
+	}
+}
+
+func TestRowDocumentModuleUsesDictionaryMetadataAndBoundedParameterizedMSQL(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(app), `from "./rows.js"`) ||
+		!strings.Contains(string(app), `path.startsWith("/rows/")`) {
+		t.Fatal("Admin shell does not route the Row document module")
+	}
+	routes, err := fs.ReadFile(embeddedFiles, "dist/assets/routes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(routes), "/rows/${encodeURIComponent") {
+		t.Fatal("Route locator does not link to its Row document")
+	}
+	rows, err := fs.ReadFile(embeddedFiles, "dist/assets/rows.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(rows)
+	for _, required := range []string{
+		"SELECT * FROM", "WHERE row_id = :row LIMIT 1", "SHOW HISTORY FROM",
+		"FOR ROW :row LIMIT 20", "CURSOR :cursor LIMIT 20", "parameters", "named",
+		"row_detail", "memora.row-detail/v1", "semantic_role", "title_column",
+		"summary_column", "row_id_revision", "column_id", "purpose",
+		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Row document module is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"innerHTML", " AS OF ", "INSERT ", "UPDATE ", "DELETE ", "CREATE ",
+		"localStorage", "sessionStorage",
+	} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Row document module contains forbidden %q", forbidden)
+		}
 	}
 }
 
@@ -157,7 +201,9 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/catalog/work", "/routes/db_work/tbl_notes/route_1"} {
+	for _, path := range []string{
+		"/", "/catalog/work", "/routes/db_work/tbl_notes/route_1", "/rows/db_work/tbl_notes/row_1",
+	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Memora Admin") {
@@ -171,7 +217,7 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 		}
 	}
 	for _, path := range []string{
-		"/assets/app.js", "/assets/app.css", "/assets/catalog.js", "/assets/routes.js",
+		"/assets/app.js", "/assets/app.css", "/assets/catalog.js", "/assets/routes.js", "/assets/rows.js",
 	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
