@@ -480,6 +480,15 @@ func encodeDatabase(value catalog.Database, order uint64) ([]byte, error) {
 	if value.PackageSignerKeyID != "" {
 		values = append(values, fieldValue{14, value.PackageSignerKeyID})
 	}
+	if value.ForkedFromDatabaseID != "" {
+		values = append(values, fieldValue{15, value.ForkedFromDatabaseID})
+	}
+	if value.ForkedFromPackageSHA256 != "" {
+		values = append(values, fieldValue{16, value.ForkedFromPackageSHA256})
+	}
+	if value.ForkedFromSnapshotSHA256 != "" {
+		values = append(values, fieldValue{17, value.ForkedFromSnapshotSHA256})
+	}
 	return encodeObject(values)
 }
 
@@ -554,10 +563,13 @@ func decodeDatabase(payload []byte) (databaseRecord, error) {
 	packageHash, e12 := fields.optionalText(12)
 	packageSnapshotHash, e13 := fields.optionalText(13)
 	packageSigner, e14 := fields.optionalText(14)
-	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14); err != nil {
+	forkDatabase, e15 := fields.optionalText(15)
+	forkPackage, e16 := fields.optionalText(16)
+	forkSnapshot, e17 := fields.optionalText(17)
+	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17); err != nil {
 		return databaseRecord{}, err
 	}
-	return databaseRecord{order: order, value: catalog.Database{ID: id, Name: name, Aliases: aliases, Purpose: purpose, Scope: scope, AntiScope: anti, SchemaVersion: schema, ReadOnly: readOnly, PackageSHA256: packageHash, PackageSnapshotSHA256: packageSnapshotHash, PackageSignerKeyID: packageSigner, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
+	return databaseRecord{order: order, value: catalog.Database{ID: id, Name: name, Aliases: aliases, Purpose: purpose, Scope: scope, AntiScope: anti, SchemaVersion: schema, ReadOnly: readOnly, PackageSHA256: packageHash, PackageSnapshotSHA256: packageSnapshotHash, PackageSignerKeyID: packageSigner, ForkedFromDatabaseID: forkDatabase, ForkedFromPackageSHA256: forkPackage, ForkedFromSnapshotSHA256: forkSnapshot, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
 }
 
 func decodeTable(payload []byte) (tableRecord, error) {

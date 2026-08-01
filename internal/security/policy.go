@@ -16,6 +16,7 @@ const (
 	ActionInstallPackage         = "INSTALL_PACKAGE"
 	ActionApplyPackageUpgrade    = "APPLY_PACKAGE_UPGRADE"
 	ActionApplyPackageRevocation = "APPLY_PACKAGE_REVOCATION"
+	ActionForkPackageDatabase    = "FORK_PACKAGE_DATABASE"
 	ActionApplyRouteMutation     = "APPLY_ROUTE_MUTATION"
 	ActionApplySchemaChange      = "APPLY_SCHEMA_CHANGE"
 	maxDatabaseScope             = 32
