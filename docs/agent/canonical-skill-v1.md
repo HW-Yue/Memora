@@ -18,7 +18,7 @@ Database、Schema、Router 或候选。
 - `memora.semantic-conflict/v1` 和 `memora.conflict-resolution/v1`；
 - `memora.assimilation-event/v1` 和 `memora.assimilation-receipt/v1`；
 - `memora.assimilation-submission/v1`、`memora.assimilation-review/v1` 和 `memora.source-receipt/v1`；
-- `memora.semantic-health/v1`、`memora.maintenance-request/v1` 和 `memora.maintenance-receipt/v1`；
+- `memora.semantic-health/v2`、`memora.maintenance-request/v1` 和 `memora.maintenance-receipt/v1`；
 - `memora.feedback-event/v1`、`memora.feedback-receipt/v1`、`memora.feedback-confirmation/v1` 和确认收据；
 - `memora.speculative-discovery/v1` 的同回合并行发现、全局预算与 Router fallback；
 - `memora assimilate/doctor/query/exec/feedback/maintain/mutate/schema/reflect` 九个逻辑入口。
@@ -56,8 +56,7 @@ Row/revision，再转换为 IGNORE、REVISE 或 MERGE Plan。
 coverage_complete 不等于语义吸收成功。
 资料提交还必须通过隔离复核、完整 anchor、关键事实和未决冲突门禁；只有
 committed Source Receipt 才表示吸收成功，中断写入必须按 in_doubt 恢复。
-健康维护只自动 retry failed pending_reindex；其余候选必须复核，不能静默改事实、
-Schema 或 Router。
+健康维护当前不自动修复；所有报告候选必须复核，不能静默改事实、Schema 或 Router。
 质量反馈本身不修改事实；stale、wrong、incomplete 只有绑定新的用户确认和当前
 revision 后才可修订。逻辑 Undo 追加 COMPENSATE revision，不删除 History。
 

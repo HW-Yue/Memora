@@ -9,6 +9,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
 )
@@ -76,13 +77,22 @@ type daemonHealthSource struct {
 	rows interface {
 		ListPage(context.Context, string, string, int) ([]row.Row, bool, error)
 	}
+	routes interface {
+		ListRouterNodes(context.Context) ([]router.Node, error)
+		ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
+	}
 }
 
 func handlerHealthSource(handler *databaseHandler) (*daemonHealthSource, bool) {
 	dictionary, ok := handler.dictionary.(interface {
 		ShowDatabases(context.Context) ([]catalog.Database, error)
 	})
-	return &daemonHealthSource{catalog: dictionary, rows: handler.rows}, ok && handler.rows != nil
+	routes, routesOK := handler.rows.(interface {
+		ListRouterNodes(context.Context) ([]router.Node, error)
+		ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
+	})
+	return &daemonHealthSource{catalog: dictionary, rows: handler.rows, routes: routes},
+		ok && handler.rows != nil && routesOK
 }
 
 func (source *daemonHealthSource) ShowDatabases(ctx context.Context) ([]catalog.Database, error) {
@@ -90,4 +100,12 @@ func (source *daemonHealthSource) ShowDatabases(ctx context.Context) ([]catalog.
 }
 func (source *daemonHealthSource) ListPage(ctx context.Context, database, table string, limit int) ([]row.Row, bool, error) {
 	return source.rows.ListPage(ctx, database, table, limit)
+}
+func (source *daemonHealthSource) ListRouterNodes(ctx context.Context) ([]router.Node, error) {
+	return source.routes.ListRouterNodes(ctx)
+}
+func (source *daemonHealthSource) ListRouterLeafPage(
+	ctx context.Context, leafID, cursor string, limit int,
+) ([]router.Locator, router.ReadPage, error) {
+	return source.routes.ListRouterLeafPage(ctx, leafID, cursor, limit)
 }

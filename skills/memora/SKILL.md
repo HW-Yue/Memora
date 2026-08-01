@@ -326,7 +326,9 @@ destructive operations.
 
 Run `memora maintain --report` only when the user asks or at an explicit
 conversation checkpoint; do not assume a hidden hook or scan after every turn.
-Treat `memora.semantic-health/v1` issues as deterministic candidates, not facts.
+Treat `memora.semantic-health/v2` issues as deterministic structural candidates, not facts.
+Route capacity, ambiguity, structure, membership, unrouted Row, duplicate Row, synonymous Column,
+and stale description findings are review-only; never infer the correct semantic placement from a scan.
 SELECT duplicate Rows before proposing MERGE, inspect synonymous fields before a
 Schema plan, and request review before Router splits or description rewrites.
 

@@ -49,6 +49,7 @@ func (service *Service) Report(ctx context.Context) (Report, error) {
 	sort.Slice(databases, func(left, right int) bool { return databases[left].ID < databases[right].ID })
 	issues := []Issue{}
 	truncated := false
+	tablesByID := map[string]*healthTableState{}
 	for _, database := range databases {
 		tables := append([]catalog.Table{}, database.Tables...)
 		sort.Slice(tables, func(left, right int) bool { return tables[left].ID < tables[right].ID })
@@ -59,12 +60,25 @@ func (service *Service) Report(ctx context.Context) (Report, error) {
 				return Report{}, healthError(result.CodeInternal, "list %s.%s Rows: %v", database.Name, table.Name, listErr)
 			}
 			truncated = truncated || more
+			state := &healthTableState{database: database, table: table, rows: map[string]row.Row{}, rowsComplete: !more}
+			for _, value := range rows {
+				if value.State == row.StateLive {
+					state.rows[value.ID] = value
+				}
+			}
+			tablesByID[table.ID] = state
 			issues = append(issues, duplicateRowIssues(database, table, rows)...)
 			if issue, found := staleDescriptionIssue(database, table, rows); found {
 				issues = append(issues, issue)
 			}
 		}
 	}
+	routeIssues, routeTruncated, err := scanRoutes(ctx, service.source, tablesByID)
+	if err != nil {
+		return Report{}, err
+	}
+	issues = append(issues, routeIssues...)
+	truncated = truncated || routeTruncated
 	sortIssues(issues)
 	if len(issues) > maximumIssues {
 		issues, truncated = issues[:maximumIssues], true

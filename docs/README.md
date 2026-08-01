@@ -53,6 +53,7 @@
 - [资料清单与覆盖 v1](./agent/assimilation-coverage-v1.md) — F35 的临时 inventory、窗口去重、未读范围和中断恢复。
 - [资料独立复核与提交 v1](./agent/assimilation-review-v1.md) — F36 的隔离复核、语义提交门禁、来源锚点和 Source Receipt。
 - [语义数据库健康维护 v1](./agent/semantic-health-v1.md) — F37 的确定性健康报告、风险分级和低风险 reindex retry。
+- [Semantic Health v2](./agent/semantic-health-v2.md) — F128 的 Route/locator/Row/Schema 有界结构一致性扫描。
 - [反馈、修订与逻辑 Undo v1](./agent/feedback-revision-v1.md) — F38 的五类反馈收据、显式确认和补偿 revision。
 - [Skill 首次安全安装 v1](./agent/safe-bootstrap-v1.md) — F39 的显式授权、Release 校验、源码回退和 doctor 验收。
 - [可选内置 Agent Runtime](./agent/embedded-agent-runtime.md) — v0 后候选；第一版由 Codex/Claude Code 按 Skill 调用统一 MSQL 核心。
@@ -192,6 +193,7 @@
 - [F112 Row Detail Read Protocol 开工与完成门](./planning/f112-row-detail-read-protocol-gate.md) — 动态字段展示角色、History cursor、reopen 与 daemon 验收。
 - [F113 Change Read Protocol 开工与完成门](./planning/f113-change-read-protocol-gate.md) — Page change index、固定 snapshot cursor、授权与 daemon/reopen 验收。
 - [F114 Trace Read Protocol 开工与完成门](./planning/f114-trace-read-protocol-gate.md) — bounded receipt、retention、scope cursor 与 daemon/reopen 验收。
+- [F128 Semantic Health Scan 开工与完成门](./planning/f128-semantic-health-scan-gate.md) — Route、membership 与 Schema 结构债务的有界只读扫描。
 - [F97b2 WAL Recovery Open 开工与完成门](./planning/f97b2-wal-recovery-open-gate.md) — repairing open 的严格 authority 校验、可重入截尾与故障矩阵。
 - [F97c1 Tree Control Codec 开工与完成门](./planning/f97c1-tree-control-codec-gate.md) — slot 1 codec、bootstrap 与 corruption 完成证据。
 - [F97c2 Root/Allocator Redo Codec 开工与完成门](./planning/f97c2-root-allocator-redo-gate.md) — metadata payload、版本与字段校验。

@@ -1,6 +1,6 @@
 # 语义数据库健康维护 v1
 
-状态：F37 实现规格，已冻结。
+状态：F37 历史规格；已由 [Semantic Health v2](./semantic-health-v2.md) 取代。
 
 ## 确定性报告
 
@@ -8,12 +8,10 @@
 locator、计数、风险等级、建议动作和 report SHA-256，不返回 Row 正文。Issue
 按 kind、Database、Table 和 object ID 排序，并由同一组字段生成稳定 ID。
 
-v1 检查：
+v1 实际检查：
 
 - 同一 Table 内值映射完全相同的 live Row：`duplicate_row`；
 - 类型、NULL 约束和规范化 purpose 相同的多个字段：`synonymous_columns`；
-- 达到启动容量 12 children 或 100 Rows 的 Router 节点：Router capacity；
-- 非 completed 的 durable `pending_reindex`；
 - 最新 Row 比 Table 说明更新时间晚至少 30 天：`stale_description`。
 
 这些是维护候选，不是语义事实。扫描超过有界 Row 预算时报告 truncated，不能
@@ -25,9 +23,8 @@ v1 检查：
 引擎不能自动删除/合并 Row、改 Schema、发明 Router 分支或重写描述；Skill
 必须 SELECT 回表，必要时请求用户，再走既有 Mutation/Schema Policy。
 
-只有状态为 failed 的 pending_reindex retry 是 `low_risk` 且 `auto_fix=true`，
-因为它只恢复可重建派生索引任务，不修改 Row、History 或语义决定。pending、
-leased 和 completed task 不自动改状态。
+v1 实现没有接通 pending-reindex 自动修复；全部实际 issue 均需复核。v2 延续该安全边界，
+并增加 Route/locator 结构扫描。
 
 ## 维护请求与收据
 

@@ -55,3 +55,33 @@ func TestSemanticHealthHandlerReportsAndReplaysNoopMaintenance(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeDaemonPublishesSemanticHealthV2(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "instance")
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan State, 1)
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, dataDir, ready) }()
+	<-ready
+
+	if envelope, err := Execute(context.Background(), dataDir,
+		"CREATE DATABASE work PURPOSE 'Work' SCOPE 'Private'", nil,
+	); err != nil || !envelope.OK {
+		cancel()
+		<-done
+		t.Fatalf("native CREATE DATABASE = %#v, %v", envelope, err)
+	}
+	report, err := SemanticHealth(context.Background(), dataDir)
+	if err != nil || report.Version != semantichealth.ReportVersion || report.Hash == "" {
+		cancel()
+		<-done
+		t.Fatalf("native semantic health = %#v, %v", report, err)
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

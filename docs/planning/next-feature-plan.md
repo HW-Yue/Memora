@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F127 已完成；下一项为 F128 Semantic Health Scan。用户已于
+状态：F81–F128 已完成；下一项为 F129 Route Mutation Plan。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -98,7 +98,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 | Feature | 唯一主要结果 |
 | --- | --- |
-| F128 Semantic Health Scan | 发现 Route、membership 与 Schema 债务 |
+| F128 Semantic Health Scan | 已完成：有界发现 Route、membership 与 Schema 结构债务 |
 | F129 Route Mutation Plan | 为局部 split/merge/move 生成可审阅计划 |
 | F130 Route Plan Execution | 原子执行已批准 Route 计划并验证覆盖率 |
 | F131 Schema Change Plan | 为 Column/约束演化生成迁移计划 |
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F128；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F129；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

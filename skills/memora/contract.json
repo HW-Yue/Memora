@@ -11,7 +11,7 @@
   "assimilation_submission_version": "memora.assimilation-submission/v1",
   "assimilation_review_version": "memora.assimilation-review/v1",
   "source_receipt_version": "memora.source-receipt/v1",
-  "semantic_health_version": "memora.semantic-health/v1",
+  "semantic_health_version": "memora.semantic-health/v2",
   "maintenance_request_version": "memora.maintenance-request/v1",
   "maintenance_receipt_version": "memora.maintenance-receipt/v1",
   "feedback_event_version": "memora.feedback-event/v1",

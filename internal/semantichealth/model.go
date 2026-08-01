@@ -6,11 +6,12 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
 const (
-	ReportVersion  = "memora.semantic-health/v1"
+	ReportVersion  = "memora.semantic-health/v2"
 	RequestVersion = "memora.maintenance-request/v1"
 	ReceiptVersion = "memora.maintenance-receipt/v1"
 )
@@ -18,9 +19,16 @@ const (
 type Kind string
 
 const (
-	KindDuplicateRow      Kind = "duplicate_row"
-	KindSynonymousColumns Kind = "synonymous_columns"
-	KindStaleDescription  Kind = "stale_description"
+	KindDuplicateRow           Kind = "duplicate_row"
+	KindSynonymousColumns      Kind = "synonymous_columns"
+	KindStaleDescription       Kind = "stale_description"
+	KindRouteCapacity          Kind = "route_capacity"
+	KindAmbiguousSiblings      Kind = "ambiguous_siblings"
+	KindInvalidRouteStructure  Kind = "invalid_route_structure"
+	KindUnroutedRow            Kind = "unrouted_row"
+	KindOrphanMembership       Kind = "orphan_membership"
+	KindStaleMembership        Kind = "stale_membership"
+	KindInvalidMembershipScope Kind = "invalid_membership_scope"
 )
 
 type Severity string
@@ -90,6 +98,8 @@ type Receipt struct {
 type Source interface {
 	ShowDatabases(context.Context) ([]catalog.Database, error)
 	ListPage(context.Context, string, string, int) ([]row.Row, bool, error)
+	ListRouterNodes(context.Context) ([]router.Node, error)
+	ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
 }
 
 type Error struct {
