@@ -53,7 +53,21 @@
 - 结论：最慢均值只占门槛 4.74%，当前单 Pool mutex 没有形成资源瓶颈；保留 benchmark，
   不增加分片映射、跨池预算和 rebalance 故障域。
 
+## F155 Advanced I/O Scheduler
+
+状态：已评估，进入条件未成立，延后。
+
+- 冻结门槛：真实 Page file 上串行 dirty flush 64 × 16 KiB（1 MiB），5 次运行中最慢
+  均值超过 5 ms/batch，才引入并发 Page Cleaner、自适应 I/O capacity 或队列优先级。
+- 命令：`go test -run '^$' -bench BenchmarkFlushDirty64PageBatch -benchmem -count 5
+  ./internal/store/buffer`
+- 环境：darwin/arm64，Apple M4；已 resident Page、durable WAL frontier、真实 `pwrite`，
+  不把 checkpoint/fsync 混入 Page Cleaner 测量。
+- 结果：356.733–359.502 µs/batch；最慢值为门槛的 7.19%。
+- 结论：简单有界串行 scheduler 尚未造成 flush 延迟压力；2.39 MB/batch 的 clone allocation
+  单独保留为内存优化观察项，不足以授权新的 I/O 并发协议。
+
 ## 后续门
 
-F155–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
+F156–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
 先另开实现 Feature，不把大实现塞进证据门提交。

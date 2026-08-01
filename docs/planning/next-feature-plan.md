@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F150、F152 已完成；F151/F153/F154 已评估并延后，下一项为 F155 Advanced I/O Scheduler evidence gate。用户已于
+状态：F81–F150、F152 已完成；F151/F153–F155 已评估并延后，下一项为 F156 Physical Undo evidence gate。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -135,7 +135,7 @@ F124a–F124e 的 RED、边界和顺序见
 | F152 Free Page Reuse | 已完成：10% Catalog churn 的 22.22% 浪费越门，recycled/durable free reuse 将结果降至 0% |
 | F153 Secondary Indexes | 已评估并延后：65 个 canonical turn 无 10k+ 非 RowID predicate 明确需求 |
 | F154 Buffer Pool Scaling | 已评估并延后：M4 parallel hot-hit 最慢 236.8 ns/op，未越 5 µs 门 |
-| F155 Advanced I/O Scheduler | 刷盘延迟证明简单 scheduler 不足 |
+| F155 Advanced I/O Scheduler | 已评估并延后：M4 串行 1 MiB dirty batch 最慢 359.502 µs，未越 5 ms 门 |
 | F156 Physical Undo | uncommitted steal 或 in-place update 成立 |
 | F157 Advanced MVCC | 多 writer 或更强隔离故事成立 |
 | F158 Lock Waits/Deadlock | fail-fast 写锁无法满足真实旅程 |
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F155；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F156；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；
