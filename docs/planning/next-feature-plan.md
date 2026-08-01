@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F149 已完成；下一项为 F150 Public Release Publish。用户已于
+状态：F81–F150 已完成；下一项为 F151 Compaction evidence gate。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -125,7 +125,7 @@ F124a–F124e 的 RED、边界和顺序见
 | F147 Go SDK | 已完成：公开版本化 Request/Envelope Client 以长连接复用 daemon IPC |
 | F148 launchd Integration | 已完成：每 Instance 用户 LaunchAgent 可原子安装、状态查询与安全卸载 |
 | F149 Release Artifacts | 已完成：双架构可复现集合以显式 trust root 验证 Ed25519 detached signature |
-| F150 Public Release Publish | 验证后的 tag 可原子发布完整 Release |
+| F150 Public Release Publish | 已完成：验证后的 tag 仅在显式 publication trust root 通过后原子发布七项资产 |
 
 ## E：必须由证据触发
 
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F145；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F151；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

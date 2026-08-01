@@ -161,6 +161,7 @@ func AssetNames(version string) []string {
 		fmt.Sprintf("memora_%s_skill_bundle.tar.gz", version),
 		fmt.Sprintf("memora_%s_skill_bundle.tar.gz.sha256", version),
 		"release.json",
+		"release.sig",
 	}
 	return names
 }

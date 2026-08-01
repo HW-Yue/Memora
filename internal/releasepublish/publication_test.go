@@ -2,6 +2,7 @@ package releasepublish_test
 
 import (
 	"context"
+	"crypto/ed25519"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/release"
 	"github.com/HW-Yue/Memora/internal/releasepublish"
 )
 
@@ -26,6 +28,7 @@ func TestBuildPublicationIsDeterministicAndSelfVerifying(t *testing.T) {
 		Version:        "1.2.3",
 		Commit:         targetCommit,
 		SourceEpoch:    publicationEpoch,
+		Signer:         publicationSigner(),
 	}
 	first, err := releasepublish.Build(context.Background(), options)
 	if err != nil {
@@ -55,8 +58,11 @@ func TestBuildPublicationIsDeterministicAndSelfVerifying(t *testing.T) {
 			t.Fatalf("publication file %q is not deterministic", name)
 		}
 	}
-	if _, err := releasepublish.Verify(firstDir, "1.2.3"); err != nil {
+	if _, err := releasepublish.VerifySigned(firstDir, "1.2.3", publicationTrust()); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := releasepublish.VerifySigned(firstDir, "1.2.3", map[string]ed25519.PublicKey{}); err == nil {
+		t.Fatal("VerifySigned accepted an unknown release signer")
 	}
 }
 
@@ -71,6 +77,7 @@ func TestVerifyPublicationRejectsMissingAndMismatchedAssets(t *testing.T) {
 		Version:        "1.2.3",
 		Commit:         targetCommit,
 		SourceEpoch:    publicationEpoch,
+		Signer:         publicationSigner(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +97,7 @@ func TestVerifyPublicationRejectsMissingAndMismatchedAssets(t *testing.T) {
 		Version:        "1.2.3",
 		Commit:         targetCommit,
 		SourceEpoch:    publicationEpoch,
+		Signer:         publicationSigner(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +107,31 @@ func TestVerifyPublicationRejectsMissingAndMismatchedAssets(t *testing.T) {
 	if _, err := releasepublish.Verify(missingOutput, "1.2.3"); err == nil {
 		t.Fatal("Verify accepted a missing release asset")
 	}
+}
+
+func TestBuildPublicationRequiresReleaseSigner(t *testing.T) {
+	t.Parallel()
+
+	_, err := releasepublish.Build(context.Background(), releasepublish.BuildOptions{
+		RepositoryRoot: publicationFixture(t), OutputDir: filepath.Join(t.TempDir(), "publication"),
+		Version: "1.2.3", Commit: targetCommit, SourceEpoch: publicationEpoch,
+	})
+	if err == nil || !strings.Contains(err.Error(), "signer") {
+		t.Fatalf("Build() error = %v", err)
+	}
+}
+
+func publicationSigner() *release.Signer {
+	seed := make([]byte, ed25519.SeedSize)
+	for index := range seed {
+		seed[index] = byte(index + 11)
+	}
+	return &release.Signer{KeyID: "memora:test-publication", PrivateKey: ed25519.NewKeyFromSeed(seed)}
+}
+
+func publicationTrust() map[string]ed25519.PublicKey {
+	signer := publicationSigner()
+	return map[string]ed25519.PublicKey{signer.KeyID: signer.PrivateKey.Public().(ed25519.PublicKey)}
 }
 
 func publicationFixture(t *testing.T) string {

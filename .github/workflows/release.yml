@@ -71,10 +71,33 @@ jobs:
         run: ./scripts/ci.sh
 
       - name: Build publication from tag commit
-        run: ./scripts/publication.sh "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/publication"
+        env:
+          MEMORA_RELEASE_SIGNING_KEY: ${{ secrets.MEMORA_RELEASE_SIGNING_KEY }}
+          MEMORA_RELEASE_SIGNER_KEY_ID: ${{ secrets.MEMORA_RELEASE_SIGNER_KEY_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          signing_key="$RUNNER_TEMP/release-signing.key"
+          cleanup() { rm -f -- "$signing_key"; }
+          trap cleanup EXIT HUP INT TERM
+          printf '%s\n' "$MEMORA_RELEASE_SIGNING_KEY" >"$signing_key"
+          export MEMORA_RELEASE_SIGNING_KEY_FILE="$signing_key"
+          ./scripts/publication.sh "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/publication"
 
       - name: Verify publication
-        run: go run ./cmd/verify-publication --directory "$RUNNER_TEMP/publication" --version "${GITHUB_REF_NAME#v}"
+        env:
+          MEMORA_RELEASE_SIGNING_PUBLIC_KEY: ${{ secrets.MEMORA_RELEASE_SIGNING_PUBLIC_KEY }}
+          MEMORA_RELEASE_SIGNER_KEY_ID: ${{ secrets.MEMORA_RELEASE_SIGNER_KEY_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          public_key="$RUNNER_TEMP/release-signing.pub"
+          printf '%s\n' "$MEMORA_RELEASE_SIGNING_PUBLIC_KEY" >"$public_key"
+          go run ./cmd/verify-publication \
+            --directory "$RUNNER_TEMP/publication" \
+            --version "${GITHUB_REF_NAME#v}" \
+            --trusted-key-id "$MEMORA_RELEASE_SIGNER_KEY_ID" \
+            --trusted-public-key "$public_key"
 
       - name: Upload immutable workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -116,7 +139,19 @@ jobs:
           path: ${{ runner.temp }}/publication
 
       - name: Verify downloaded publication
-        run: go run ./cmd/verify-publication --directory "$RUNNER_TEMP/publication" --version "${GITHUB_REF_NAME#v}"
+        env:
+          MEMORA_RELEASE_SIGNING_PUBLIC_KEY: ${{ secrets.MEMORA_RELEASE_SIGNING_PUBLIC_KEY }}
+          MEMORA_RELEASE_SIGNER_KEY_ID: ${{ secrets.MEMORA_RELEASE_SIGNER_KEY_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          public_key="$RUNNER_TEMP/release-signing.pub"
+          printf '%s\n' "$MEMORA_RELEASE_SIGNING_PUBLIC_KEY" >"$public_key"
+          go run ./cmd/verify-publication \
+            --directory "$RUNNER_TEMP/publication" \
+            --version "${GITHUB_REF_NAME#v}" \
+            --trusted-key-id "$MEMORA_RELEASE_SIGNER_KEY_ID" \
+            --trusted-public-key "$public_key"
 
       - name: Run native release smoke
         run: ./scripts/smoke-release.sh "$RUNNER_TEMP/publication/release" "${GITHUB_REF_NAME#v}" "${{ matrix.arch }}"
@@ -205,7 +240,18 @@ jobs:
       - name: Verify both acceptance reports
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          MEMORA_RELEASE_SIGNING_PUBLIC_KEY: ${{ secrets.MEMORA_RELEASE_SIGNING_PUBLIC_KEY }}
+          MEMORA_RELEASE_SIGNER_KEY_ID: ${{ secrets.MEMORA_RELEASE_SIGNER_KEY_ID }}
         run: |
+          set -euo pipefail
+          umask 077
+          public_key="$RUNNER_TEMP/release-signing.pub"
+          printf '%s\n' "$MEMORA_RELEASE_SIGNING_PUBLIC_KEY" >"$public_key"
+          go run ./cmd/verify-publication \
+            --directory "$RUNNER_TEMP/publication" \
+            --version "$RELEASE_VERSION" \
+            --trusted-key-id "$MEMORA_RELEASE_SIGNER_KEY_ID" \
+            --trusted-public-key "$public_key"
           go run ./cmd/verify-clean-machine-acceptance \
             --directory "$RUNNER_TEMP/acceptance/arm64" \
             --publication "$RUNNER_TEMP/publication" \
@@ -250,10 +296,19 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          MEMORA_RELEASE_SIGNING_PUBLIC_KEY: ${{ secrets.MEMORA_RELEASE_SIGNING_PUBLIC_KEY }}
+          MEMORA_RELEASE_SIGNER_KEY_ID: ${{ secrets.MEMORA_RELEASE_SIGNER_KEY_ID }}
         run: |
           set -Eeuo pipefail
           publication="$RUNNER_TEMP/publication"
-          go run ./cmd/verify-publication --directory "$publication" --version "$RELEASE_VERSION"
+          umask 077
+          public_key="$RUNNER_TEMP/release-signing.pub"
+          printf '%s\n' "$MEMORA_RELEASE_SIGNING_PUBLIC_KEY" >"$public_key"
+          go run ./cmd/verify-publication \
+            --directory "$publication" \
+            --version "$RELEASE_VERSION" \
+            --trusted-key-id "$MEMORA_RELEASE_SIGNER_KEY_ID" \
+            --trusted-public-key "$public_key"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             printf 'release: %s already exists\n' "$RELEASE_TAG" >&2
             exit 1
@@ -282,7 +337,8 @@ jobs:
             "$publication/release/memora_${RELEASE_VERSION}_darwin_arm64.tar.gz" \
             "$publication/memora_${RELEASE_VERSION}_skill_bundle.tar.gz" \
             "$publication/memora_${RELEASE_VERSION}_skill_bundle.tar.gz.sha256" \
-            "$publication/release/release.json"
+            "$publication/release/release.json" \
+            "$publication/release/release.sig"
           draft_json="$RUNNER_TEMP/release-draft.json"
           gh release view "$RELEASE_TAG" --json tagName,isDraft,assets >"$draft_json"
           go run ./cmd/validate-release-draft \

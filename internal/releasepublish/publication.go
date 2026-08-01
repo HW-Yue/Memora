@@ -2,6 +2,7 @@ package releasepublish
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"os"
@@ -22,6 +23,7 @@ type BuildOptions struct {
 	Commit         string
 	SourceEpoch    int64
 	GoCommand      string
+	Signer         *release.Signer
 }
 
 type Publication struct {
@@ -56,13 +58,17 @@ func Build(ctx context.Context, options BuildOptions) (Publication, error) {
 		Commit:         normalized.Commit,
 		SourceEpoch:    normalized.SourceEpoch,
 		GoCommand:      normalized.GoCommand,
+		Signer:         normalized.Signer,
 	}); err != nil {
 		return Publication{}, fmt.Errorf("build publication release: %w", err)
 	}
 	if _, err := buildBundle(normalized, staging); err != nil {
 		return Publication{}, err
 	}
-	publication, err := Verify(staging, normalized.Version)
+	publicKey := normalized.Signer.PrivateKey.Public().(ed25519.PublicKey)
+	publication, err := VerifySigned(staging, normalized.Version, map[string]ed25519.PublicKey{
+		normalized.Signer.KeyID: publicKey,
+	})
 	if err != nil {
 		return Publication{}, fmt.Errorf("verify staged publication: %w", err)
 	}
@@ -73,6 +79,14 @@ func Build(ctx context.Context, options BuildOptions) (Publication, error) {
 }
 
 func Verify(directory, expectedVersion string) (Publication, error) {
+	return verify(directory, expectedVersion, nil, false)
+}
+
+func VerifySigned(directory, expectedVersion string, trusted map[string]ed25519.PublicKey) (Publication, error) {
+	return verify(directory, expectedVersion, trusted, true)
+}
+
+func verify(directory, expectedVersion string, trusted map[string]ed25519.PublicKey, requireTrust bool) (Publication, error) {
 	if !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
 		return Publication{}, errors.New("publication directory must be absolute and normalized")
 	}
@@ -109,7 +123,12 @@ func Verify(directory, expectedVersion string) (Publication, error) {
 		}
 		expected[entry.Name()] = true
 	}
-	releaseManifest, err := release.Verify(filepath.Join(directory, "release"))
+	var releaseManifest release.Manifest
+	if requireTrust {
+		releaseManifest, err = release.VerifySigned(filepath.Join(directory, "release"), trusted)
+	} else {
+		releaseManifest, err = release.Verify(filepath.Join(directory, "release"))
+	}
 	if err != nil {
 		return Publication{}, fmt.Errorf("verify publication release: %w", err)
 	}
@@ -134,6 +153,9 @@ func validateBuildOptions(options BuildOptions) (BuildOptions, error) {
 	}
 	if options.SourceEpoch <= 0 || time.Unix(options.SourceEpoch, 0).Year() < 2000 {
 		return BuildOptions{}, errors.New("publication source date epoch is invalid")
+	}
+	if options.Signer == nil {
+		return BuildOptions{}, errors.New("publication signer is required")
 	}
 	if options.GoCommand == "" {
 		options.GoCommand = "go"
