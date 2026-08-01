@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F146 已完成；下一项为 F147 Go SDK。用户已于
+状态：F81–F147 已完成；下一项为 F148 launchd Integration。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -122,7 +122,7 @@ F124a–F124e 的 RED、边界和顺序见
 | F144 Instance Restore | 已完成：备份可经 staging 重验原子恢复到明确且不存在的目标 |
 | F145 Instance Move | 已完成：离线 backup/restore 编排保持 daemon 状态且永不自动删除源 |
 | F146 MCP Adapter | 已完成：现代/legacy MCP stdio 以唯一工具复用 daemon MSQL 与授权边界 |
-| F147 Go SDK | Go 调用方使用版本化 client/envelope |
+| F147 Go SDK | 已完成：公开版本化 Request/Envelope Client 以长连接复用 daemon IPC |
 | F148 launchd Integration | daemon 可按 macOS 用户会话可靠启停 |
 | F149 Release Artifacts | 双架构签名制品可重复构建和 smoke |
 | F150 Public Release Publish | 验证后的 tag 可原子发布完整 Release |
