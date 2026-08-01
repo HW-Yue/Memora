@@ -1,7 +1,7 @@
 # 语义路由投机预取
 
-状态：方向已由 ADR-0007 接受；F124a–F124d 的 Frame、字面位置、vector generation
-与 CPU exact 已冻结，下一项为 Speculative Discovery Skill。
+状态：F124a–F124e 已实现 Frame、字面位置、vector generation、CPU exact 与
+Canonical Skill 同回合投机发现；下一项由 F125 验证真实收益。
 
 ## 动机
 

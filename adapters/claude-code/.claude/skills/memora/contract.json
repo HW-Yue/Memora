@@ -18,6 +18,14 @@
   "feedback_receipt_version": "memora.feedback-receipt/v1",
   "feedback_confirmation_version": "memora.feedback-confirmation/v1",
   "feedback_confirmation_receipt_version": "memora.feedback-confirmation-receipt/v1",
+  "speculative_discovery": {
+    "version": "memora.speculative-discovery/v1",
+    "max_databases": 4,
+    "candidate_rows": 8,
+    "candidate_utf8_bytes": 4096,
+    "prefetch_tables": 2,
+    "max_tool_calls": 10
+  },
   "bootstrap_script": "scripts/install.sh",
   "install_consent": "required",
   "supported_install_os": ["darwin"],
@@ -43,6 +51,7 @@
   },
   "workflows": [
     "discover",
+    "speculative_discovery",
     "query",
     "summarize",
     "write",
@@ -96,6 +105,11 @@
       "name": "discover-schema",
       "command": "memora query --input '{\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"DESCRIBE TABLE work.notes COMPACT\"",
       "msql": "DESCRIBE TABLE work.notes COMPACT"
+    },
+    {
+      "name": "speculative-lexical",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"lexical_query\":\"crash recovery\",\"lexical_limit\":8,\"lexical_bytes\":4096}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes\"",
+      "msql": "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
     },
     {
       "name": "route-root",

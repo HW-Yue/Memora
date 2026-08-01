@@ -1,6 +1,7 @@
 package skillcontract_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -166,6 +167,51 @@ func TestCanonicalSkillContextBudgetsAreBounded(t *testing.T) {
 	}
 	if budgets.ContextCharacters > 12_000 {
 		t.Errorf("context_characters budget = %d, want <= 12000", budgets.ContextCharacters)
+	}
+}
+
+func TestCanonicalSkillSpeculativeDiscoveryIsBoundedAndFallbackSafe(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	bundle, err := skillcontract.Load(filepath.Join(root, "skills", "memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"## Speculative discovery",
+		"memora.speculative-discovery/v1",
+		"navigation_only",
+		"same model turn",
+		"ordinary Router root fallback",
+		"different topic",
+		"Answer only from revision-matched SELECT rows",
+	} {
+		if !strings.Contains(bundle.Markdown, required) {
+			t.Errorf("Canonical Skill omits speculative rule %q", required)
+		}
+	}
+	encoded, err := os.ReadFile(filepath.Join(root, "skills", "memora", "contract.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var machine struct {
+		SpeculativeDiscovery struct {
+			Version            string `json:"version"`
+			MaxDatabases       int    `json:"max_databases"`
+			CandidateRows      int    `json:"candidate_rows"`
+			CandidateUTF8Bytes int    `json:"candidate_utf8_bytes"`
+			PrefetchTables     int    `json:"prefetch_tables"`
+			MaxToolCalls       int    `json:"max_tool_calls"`
+		} `json:"speculative_discovery"`
+	}
+	if err := json.Unmarshal(encoded, &machine); err != nil {
+		t.Fatal(err)
+	}
+	profile := machine.SpeculativeDiscovery
+	if profile.Version != "memora.speculative-discovery/v1" || profile.MaxDatabases != 4 ||
+		profile.CandidateRows != 8 || profile.CandidateUTF8Bytes != 4096 ||
+		profile.PrefetchTables != 2 || profile.MaxToolCalls != 10 {
+		t.Fatalf("speculative discovery profile = %#v", profile)
 	}
 }
 

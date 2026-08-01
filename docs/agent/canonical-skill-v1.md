@@ -1,6 +1,7 @@
 # Canonical Skill v1
 
-状态：F28 已冻结基础宿主契约；F30–F41 已扩展稳定流程，并由同一来源生成 Codex/Claude Code 适配层。
+状态：F28 已冻结基础宿主契约；F30–F41 与 F124e 已扩展稳定流程，并由同一来源生成
+Codex/Claude Code 适配层。
 
 ## 唯一来源
 
@@ -19,6 +20,7 @@ Database、Schema、Router 或候选。
 - `memora.assimilation-submission/v1`、`memora.assimilation-review/v1` 和 `memora.source-receipt/v1`；
 - `memora.semantic-health/v1`、`memora.maintenance-request/v1` 和 `memora.maintenance-receipt/v1`；
 - `memora.feedback-event/v1`、`memora.feedback-receipt/v1`、`memora.feedback-confirmation/v1` 和确认收据；
+- `memora.speculative-discovery/v1` 的同回合并行发现、全局预算与 Router fallback；
 - `memora assimilate/doctor/query/exec/feedback/maintain/mutate/schema/reflect` 九个逻辑入口。
 - `memora.real-host-task/v1`、invocation/receipt 及 Codex/Claude/Kimi 同题矩阵。
 
@@ -38,7 +40,11 @@ discover → query → summarize
          → request_user（发生语义冲突或越过风险边界）
 ```
 
-发现结果、Router/MATCH 候选和 SELECT Row 有不同语义。Router/MATCH 只返回
+发现阶段可在一个模型回合并行发出有界 Catalog、Lexical、可选 Vector 和最多两个
+同主题根 Route 调用；这减少的是 LLM 续推，不把策略藏进引擎。不同 predictor 保留
+各自 snapshot 并要求 Catalog revision 一致，错误预取确定性回到普通 Router。
+
+发现结果、Router/Discovery 候选和 SELECT Row 有不同语义。Router/Discovery 只返回
 定位，宿主必须 SELECT 回表后才能回答或总结。写入先查已有 Row，再选择
 IGNORE、INSERT、REVISE、MERGE、SPLIT、MOVE 或 RELATE。
 
@@ -62,6 +68,7 @@ Skill 禁止读取或修改物理数据库、索引、日志、Page 和 Instance
 
 - Router 12 行；
 - 候选定位 24 行；
+- 投机 profile 合计 8 个候选、4,096 candidate bytes、2 个根 Table 和 10 次 tool calls；
 - SELECT 10 行；
 - Mutation Receipt 2,000 字符；
 - 单任务工作上下文 12,000 字符。

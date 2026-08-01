@@ -1,7 +1,7 @@
 # Route Retrieval Benchmark v3
 
-状态：F124 Corpus 与 F124a–F124d 的 Frame、Lexical、Vector Generation、CPU Exact
-已冻结；F124e 完成后运行 F125。
+状态：F124 Corpus 与 F124a–F124e 的 Frame、Lexical、Vector Generation、CPU Exact、
+Speculative Skill 已冻结；下一项运行 F125。
 
 ## 核心问题
 

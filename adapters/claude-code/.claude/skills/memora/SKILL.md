@@ -87,6 +87,50 @@ memora query --input '{"authorization":{"version":"memora.authorization/v1","act
 memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
 ```
 
+## Speculative discovery
+
+Use `memora.speculative-discovery/v1` when a new question can benefit from
+fewer model continuations. In the same model turn, dispatch independent bounded
+calls for Configuration/Databases, compact Tables in each exact authorized
+Database, lexical Route candidates, an optional vector candidate query, and at
+most two root Route prefetches from the current same-topic Route Frame. Run the
+independent calls in parallel when the host supports it; do not wait for a model
+decision between their millisecond-scale results.
+
+Use this profile only for at most four authorized Databases. Across all
+predictors allow at most 8 candidates and 4,096 candidate UTF-8 bytes; when both
+Lexical and Vector run, allocate 4 candidates and 2,048 bytes to each. Prefetch
+at most two Table roots with at most 12 Routes each, issue at most 10 tool calls,
+and keep the total working context within 12,000 UTF-8 bytes. Record topic ID,
+exact calls, output bytes, truncation, each predictor snapshot/catalog revision
+and each root page snapshot. Keep different predictor snapshots separate and
+require their Catalog revisions to agree.
+
+Always pass the lexical question as a parameter. Add Vector only when the host
+already has a normalized query vector and the exact generation space digest;
+split the global predictor budget before issuing either call. Missing encoder,
+unavailable/stale generation, zero hits, or a failed prefetch are normal
+navigation outcomes, not query failures.
+
+```sh
+memora query --input '{"parameters":{"named":{"lexical_query":"crash recovery","lexical_limit":8,"lexical_bytes":4096}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
+```
+
+Treat every Discovery candidate and prefetched Route as `navigation_only`.
+They are neither answers nor evidence, and scores with different kinds are not
+comparable. Explicitly choose one or more Tables from the complete compact
+Catalog; a zero-hit Table remains selectable. Reuse a prefetched root only when
+its topic, Table, Catalog revision, page snapshot and Route revisions are still
+current. For a selected Table without a valid prefetch, issue the ordinary Router root fallback
+and continue the normal layer-by-layer state machine.
+
+Discard the speculative Frame when the question has a different topic, a
+revision is stale, the context ceiling is crossed, or the task ends. A wrong
+prediction may waste bounded context but must never exclude a Table, widen
+authorization, persist in a system prompt, or change the visible Row set.
+Answer only from revision-matched SELECT rows after normal Route navigation and
+RowID lookup.
+
 ## Query and summarize
 
 Compare the user's intent with the bounded Route descriptions returned by each

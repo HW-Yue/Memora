@@ -1,7 +1,6 @@
 # Route Predictor 小 Feature 计划
 
-状态：F124–F124d 已完成；下一项为 F124e。F124e 仍独立 Review、RED、实现
-和合入，不能整批开工。
+状态：F124–F124e 已完成；下一项为 F125 Route Benchmark Runner。
 
 ## 目标链路
 

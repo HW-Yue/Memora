@@ -1,6 +1,6 @@
 # Skill 查询流程 v1
 
-状态：F70 当前契约。F30 的 full Route path 与检索 fallback 已被取代；AI
+状态：F124e 当前契约。F30 的 full Route path 与检索 fallback 已被取代；AI
 逐层选择 Table Route，并只对叶子返回的 Row locator 执行精确回表。
 
 ## 输入与职责
@@ -8,6 +8,11 @@
 宿主语义层把用户问题整理为发现意图、投影字段和预算。AI 必须从 Database、
 Table 和顶层 Route 开始逐层选择，不能要求调用方预先生成完整 Route path 或
 `query_terms`。
+
+新任务可先使用 `memora.speculative-discovery/v1`，在一次模型回合并行读取紧凑
+Catalog、Lexical、可选 Vector 和至多两个同主题 Table root。它只提前准备下一层
+Route Frame；候选未命中的 Table 仍可选择，错误/旧 topic 预取必须走正常 root fallback。
+后续权威状态机和 SELECT evidence 门不变。
 
 ```text
 SHOW DATABASES

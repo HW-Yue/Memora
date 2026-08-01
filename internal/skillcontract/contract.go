@@ -18,6 +18,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
 	"github.com/HW-Yue/Memora/internal/skillconflict"
+	"github.com/HW-Yue/Memora/internal/skilldiscovery"
 )
 
 const (
@@ -28,6 +29,7 @@ const (
 
 var requiredWorkflows = []string{
 	"discover",
+	"speculative_discovery",
 	"query",
 	"summarize",
 	"write",
@@ -68,37 +70,47 @@ type ProviderBoundary struct {
 	Protocols      []string `json:"protocols"`
 }
 
+type SpeculativeDiscovery struct {
+	Version            string `json:"version"`
+	MaxDatabases       int    `json:"max_databases"`
+	CandidateRows      int    `json:"candidate_rows"`
+	CandidateUTF8Bytes int    `json:"candidate_utf8_bytes"`
+	PrefetchTables     int    `json:"prefetch_tables"`
+	MaxToolCalls       int    `json:"max_tool_calls"`
+}
+
 type Contract struct {
-	Version                            string           `json:"version"`
-	Source                             string           `json:"source"`
-	MSQLASTVersion                     string           `json:"msql_ast_version"`
-	ResultVersion                      string           `json:"result_version"`
-	AuthorizationVersion               string           `json:"authorization_version"`
-	ConflictViewVersion                string           `json:"conflict_view_version"`
-	ConflictResolutionVersion          string           `json:"conflict_resolution_version"`
-	AssimilationEventVersion           string           `json:"assimilation_event_version"`
-	AssimilationReceiptVersion         string           `json:"assimilation_receipt_version"`
-	AssimilationSubmissionVersion      string           `json:"assimilation_submission_version"`
-	AssimilationReviewVersion          string           `json:"assimilation_review_version"`
-	SourceReceiptVersion               string           `json:"source_receipt_version"`
-	SemanticHealthVersion              string           `json:"semantic_health_version"`
-	MaintenanceRequestVersion          string           `json:"maintenance_request_version"`
-	MaintenanceReceiptVersion          string           `json:"maintenance_receipt_version"`
-	FeedbackEventVersion               string           `json:"feedback_event_version"`
-	FeedbackReceiptVersion             string           `json:"feedback_receipt_version"`
-	FeedbackConfirmationVersion        string           `json:"feedback_confirmation_version"`
-	FeedbackConfirmationReceiptVersion string           `json:"feedback_confirmation_receipt_version"`
-	BootstrapScript                    string           `json:"bootstrap_script"`
-	InstallConsent                     string           `json:"install_consent"`
-	SupportedInstallOS                 []string         `json:"supported_install_os"`
-	SupportedInstallArch               []string         `json:"supported_install_arch"`
-	AllowedCommands                    []string         `json:"allowed_commands"`
-	PhysicalAccess                     string           `json:"physical_access"`
-	ConflictPolicy                     string           `json:"conflict_policy"`
-	ProviderBoundary                   ProviderBoundary `json:"provider_boundary"`
-	Workflows                          []string         `json:"workflows"`
-	Budgets                            Budgets          `json:"budgets"`
-	Examples                           []Example        `json:"examples"`
+	Version                            string               `json:"version"`
+	Source                             string               `json:"source"`
+	MSQLASTVersion                     string               `json:"msql_ast_version"`
+	ResultVersion                      string               `json:"result_version"`
+	AuthorizationVersion               string               `json:"authorization_version"`
+	ConflictViewVersion                string               `json:"conflict_view_version"`
+	ConflictResolutionVersion          string               `json:"conflict_resolution_version"`
+	AssimilationEventVersion           string               `json:"assimilation_event_version"`
+	AssimilationReceiptVersion         string               `json:"assimilation_receipt_version"`
+	AssimilationSubmissionVersion      string               `json:"assimilation_submission_version"`
+	AssimilationReviewVersion          string               `json:"assimilation_review_version"`
+	SourceReceiptVersion               string               `json:"source_receipt_version"`
+	SemanticHealthVersion              string               `json:"semantic_health_version"`
+	MaintenanceRequestVersion          string               `json:"maintenance_request_version"`
+	MaintenanceReceiptVersion          string               `json:"maintenance_receipt_version"`
+	FeedbackEventVersion               string               `json:"feedback_event_version"`
+	FeedbackReceiptVersion             string               `json:"feedback_receipt_version"`
+	FeedbackConfirmationVersion        string               `json:"feedback_confirmation_version"`
+	FeedbackConfirmationReceiptVersion string               `json:"feedback_confirmation_receipt_version"`
+	BootstrapScript                    string               `json:"bootstrap_script"`
+	InstallConsent                     string               `json:"install_consent"`
+	SupportedInstallOS                 []string             `json:"supported_install_os"`
+	SupportedInstallArch               []string             `json:"supported_install_arch"`
+	AllowedCommands                    []string             `json:"allowed_commands"`
+	PhysicalAccess                     string               `json:"physical_access"`
+	ConflictPolicy                     string               `json:"conflict_policy"`
+	ProviderBoundary                   ProviderBoundary     `json:"provider_boundary"`
+	SpeculativeDiscovery               SpeculativeDiscovery `json:"speculative_discovery"`
+	Workflows                          []string             `json:"workflows"`
+	Budgets                            Budgets              `json:"budgets"`
+	Examples                           []Example            `json:"examples"`
 }
 
 type Bundle struct {
@@ -192,6 +204,7 @@ func (bundle Bundle) Validate() error {
 	violations = append(violations, validateCommands(contract.AllowedCommands)...)
 	violations = append(violations, validateWorkflows(contract.Workflows)...)
 	violations = append(violations, validateBudgets(contract.Budgets)...)
+	violations = append(violations, validateSpeculativeDiscovery(contract.SpeculativeDiscovery)...)
 	violations = append(violations, validateMarkdown(bundle.Markdown)...)
 	violations = append(violations, validateExamples(bundle.Markdown, contract)...)
 	if len(violations) == 0 {
@@ -271,11 +284,35 @@ func validateBudgets(budgets Budgets) []string {
 	return violations
 }
 
+func validateSpeculativeDiscovery(profile SpeculativeDiscovery) []string {
+	var violations []string
+	if profile.Version != skilldiscovery.Version {
+		violations = append(violations, fmt.Sprintf(
+			"speculative_discovery.version must be %q, got %q", skilldiscovery.Version, profile.Version,
+		))
+	}
+	for name, values := range map[string][2]int{
+		"max_databases":        {profile.MaxDatabases, 4},
+		"candidate_rows":       {profile.CandidateRows, 8},
+		"candidate_utf8_bytes": {profile.CandidateUTF8Bytes, 4096},
+		"prefetch_tables":      {profile.PrefetchTables, 2},
+		"max_tool_calls":       {profile.MaxToolCalls, 10},
+	} {
+		if values[0] != values[1] {
+			violations = append(violations, fmt.Sprintf(
+				"speculative_discovery.%s must be %d, got %d", name, values[1], values[0],
+			))
+		}
+	}
+	return violations
+}
+
 func validateMarkdown(markdown string) []string {
 	var violations []string
 	for _, heading := range []string{
 		"# Memora Canonical Skill",
 		"## Discover",
+		"## Speculative discovery",
 		"## Install once",
 		"## Query and summarize",
 		"## Write",

@@ -1,6 +1,6 @@
 # Codex Adapter v1
 
-状态：F40 实现；F123 升级为 adapter manifest v2 并绑定 Real Host Contract。
+状态：F40 实现；F123 升级为 adapter manifest v2，F124e 已重新派生投机发现规则。
 
 ## 派生布局
 

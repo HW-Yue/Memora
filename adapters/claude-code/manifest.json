@@ -1,7 +1,7 @@
 {
   "version": "memora.claude-code-adapter/v2",
-  "canonical_digest": "84c7b3e5b5b1ac79883493117f4acd16a24478a4185cb4ed4487a7fec4f41746",
-  "protocol_digest": "d81095b670739101e7b011bb81146ed39a70ff6125ae2e95d1bd47c8184266c9",
+  "canonical_digest": "86dc387abbae793951b448555980b75463f16c28b1fe83c1ef87a5082f417a10",
+  "protocol_digest": "47c72f171dd14bdc6d4269496ae64b08212524adf64254f580a172fb97b31443",
   "task_contract_digest": "abb76eaf088e154cad636837ab0f5b0c9496ae74adc30d261c4a8b9e94acee44",
   "files": [
     {
@@ -16,12 +16,12 @@
     },
     {
       "path": ".claude/skills/memora/SKILL.md",
-      "sha256": "d39531ceb9690336a910792d8451686342b1f61930d689bf67a38f2cf68d8a1c",
+      "sha256": "e3409a609b142df0feb9628b533d432ba4707a277348eb6c1b5ac64441d7c0fa",
       "mode": "0644"
     },
     {
       "path": ".claude/skills/memora/contract.json",
-      "sha256": "d81095b670739101e7b011bb81146ed39a70ff6125ae2e95d1bd47c8184266c9",
+      "sha256": "47c72f171dd14bdc6d4269496ae64b08212524adf64254f580a172fb97b31443",
       "mode": "0644"
     },
     {

@@ -6,6 +6,7 @@ doctor	memora doctor
 discover-databases	memora query "SHOW CONFIGURATION; SHOW DATABASES"
 discover-tables	memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW TABLES FROM work COMPACT"
 discover-schema	memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "DESCRIBE TABLE work.notes COMPACT"
+speculative-lexical	memora query --input '{"parameters":{"named":{"lexical_query":"crash recovery","lexical_limit":8,"lexical_bytes":4096}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
 route-root	memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
 route-under	memora query --input '{"parameters":{"named":{"parent":"route_architecture","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES UNDER :parent LIMIT :limit"
 open-route	memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":24}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "OPEN ROUTE :leaf LIMIT :limit"
