@@ -65,6 +65,11 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			kind:       "OPEN_ROUTE",
 			parameters: 2,
 		},
+		{
+			source:     "OPEN ROUTE :route CURSOR :cursor LIMIT :limit",
+			kind:       "OPEN_ROUTE",
+			parameters: 3,
+		},
 	}
 	for _, test := range tests {
 		document, err := Parse(test.source)

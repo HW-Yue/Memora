@@ -240,37 +240,41 @@ func (repository *Repository) Children(parentID string) []router.Node {
 }
 
 func (repository *Repository) ShowUnder(parentID, cursor string, limit int) ([]router.Node, string, error) {
+	nodes, page, err := repository.ShowUnderPage(parentID, cursor, limit)
+	return nodes, page.NextCursor, err
+}
+
+func (repository *Repository) ShowUnderPage(parentID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
 	if limit < 1 || limit > 1000 {
-		return nil, "", fmt.Errorf("%w: limit must be between 1 and 1000", ErrInvalid)
+		return nil, router.ReadPage{}, fmt.Errorf("%w: limit must be between 1 and 1000", ErrInvalid)
+	}
+	parent, err := repository.Get(parentID)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	if parent.Deleted || parent.Kind == router.KindLeaf {
+		return nil, router.ReadPage{}, fmt.Errorf("%w: children require a live root or branch", ErrInvalid)
 	}
 	children := repository.Children(parentID)
-	start := 0
-	if cursor != "" {
-		for index := range children {
-			if children[index].ID == cursor {
-				start = index + 1
-				break
-			}
-		}
-	}
-	end := start + limit
-	if end >= len(children) {
-		return children[start:], "", nil
-	}
-	return children[start:end], children[end-1].ID, nil
+	return router.PaginateNodes("parent:"+parentID, cursor, limit, children)
 }
 
 func (repository *Repository) Open(leafID string, limit int) ([]router.Locator, bool, error) {
+	locators, page, err := repository.OpenPage(leafID, "", limit)
+	return locators, page.NextCursor != "", err
+}
+
+func (repository *Repository) OpenPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
 	leaf, err := repository.Get(leafID)
 	if err != nil {
-		return nil, false, err
+		return nil, router.ReadPage{}, err
 	}
 	if leaf.Kind != router.KindLeaf || limit < 1 || limit > 1000 {
-		return nil, false, fmt.Errorf("%w: OPEN requires a leaf and valid limit", ErrInvalid)
+		return nil, router.ReadPage{}, fmt.Errorf("%w: OPEN requires a leaf and valid limit", ErrInvalid)
 	}
 	memberships, err := repository.memberships()
 	if err != nil {
-		return nil, false, err
+		return nil, router.ReadPage{}, err
 	}
 	locators := make([]router.Locator, 0)
 	for _, membership := range memberships {
@@ -279,10 +283,7 @@ func (repository *Repository) Open(leafID string, limit int) ([]router.Locator, 
 		}
 	}
 	sort.Slice(locators, func(left, right int) bool { return locators[left].RowID < locators[right].RowID })
-	if len(locators) > limit {
-		return locators[:limit], true, nil
-	}
-	return locators, false, nil
+	return router.PaginateLocators("leaf:"+leafID, cursor, limit, locators)
 }
 
 func (repository *Repository) Memberships(rowID string) ([]router.Membership, error) {

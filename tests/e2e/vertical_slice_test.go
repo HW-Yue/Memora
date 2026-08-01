@@ -101,6 +101,14 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		len(opened.Results[0].Rows) != 1 || opened.Results[0].Rows[0]["row_id"] != rowID {
 		t.Fatalf("Table Router navigation = top %#v, children %#v, open %#v", top, children, opened)
 	}
+	for name, statement := range map[string]result.StatementResult{
+		"top": top.Results[0], "children": children.Results[0], "open": opened.Results[0],
+	} {
+		if statement.Page == nil || statement.Page.Version != result.ListPageVersion ||
+			statement.Page.Snapshot == "" || statement.Page.Truncated || statement.Page.NextCursor != "" {
+			t.Fatalf("%s Route page = %#v", name, statement.Page)
+		}
+	}
 	if _, leaked := top.Results[0].Rows[0]["synopsis"]; leaked {
 		t.Fatalf("default Route frame leaked on-demand synopsis = %#v", top)
 	}

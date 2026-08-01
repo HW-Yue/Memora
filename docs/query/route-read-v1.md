@@ -1,0 +1,57 @@
+# MSQL Route Read v1
+
+状态：F111 已实现并冻结。
+
+## 目的
+
+Admin 与 Agent 使用同一条 MSQL 链路逐层读取 Table Router：point node、children page、
+leaf locator page。Route 只负责导航，任何读取都不得夹带 Row 正文、答案、embedding
+或物理 Store 信息。
+
+## 分层语法
+
+```sql
+DESCRIBE ROUTE :route_id;
+SHOW ROUTES FROM TABLE work.notes AT ROOT [CURSOR :cursor] LIMIT :limit;
+SHOW ROUTES UNDER :parent_id [CURSOR :cursor] LIMIT :limit;
+OPEN ROUTE :leaf_id [CURSOR :cursor] LIMIT :limit;
+```
+
+- `DESCRIBE` 是一个有界 point read，返回 node 元数据与按需 synopsis，不返回 children；
+- `SHOW` 返回一层 child node，默认不返回 synopsis；
+- `OPEN` 只接受 leaf，只返回 `database_id/table_id/row_id/revision` locator；
+- 业务字段和正文只能由后续 `SELECT ... WHERE row_id = ... LIMIT ...` 回表。
+
+`LIMIT` 必填，仍受当前动态 Route children/open locator 预算限制。cursor 必须是 TEXT
+literal 或 parameter。
+
+## List page
+
+`SHOW` 与 `OPEN` 复用 `memora.list-page/v1`，每次都返回 version、limit、输入 cursor、
+snapshot、truncated 和可选 next cursor。snapshot 是当前 scope 内完整、可见 node 或
+locator 序列的确定性 SHA-256。
+
+cursor 绑定读取类型、稳定 parent/leaf scope、snapshot 与下一 offset，并使用 canonical
+encoding 和 checksum。损坏、非 canonical、跨 scope、越界 cursor 返回
+`validation_error`；两页之间 Route 或 membership 变化返回 `revision_conflict`，不能
+静默混合导航状态。
+
+## 类型边界
+
+- 对 root/branch 执行 `OPEN` 返回 `constraint_violation`；
+- 对 leaf 执行 `SHOW ROUTES UNDER` 返回 `constraint_violation`，调用方应改用 `OPEN`；
+- point node、children 与 locator 都先执行 database authorization；
+- cursor 不是授权凭据，不允许扩大 Database/Table scope。
+
+## 边界
+
+- 不读取 Row detail/history，它属于 F112；
+- 不读取 committed changes 或 trace，它们属于 F113/F114；
+- 不做 predictor、vector 或 HNSW；它们只能在后续作为可回退候选来源。
+
+## 关联
+
+- [Agent 语义目录索引](./semantic-routing.md)
+- [中间 Route Synopsis](./route-synopsis.md)
+- [MSQL Metadata Read v1](./metadata-read-v1.md)
+- [F111 开工与完成门](../planning/f111-route-read-protocol-gate.md)

@@ -171,7 +171,7 @@ func TestRouterEnforcesCapacityAndProvidesStableChildCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustCreateNode(t, ctx, service, tx, root.ID, "b", router.KindLeaf)
+	b := mustCreateNode(t, ctx, service, tx, root.ID, "b", router.KindLeaf)
 	a := mustCreateNode(t, ctx, service, tx, root.ID, "a", router.KindLeaf)
 	_, err = service.CreateNodeIn(ctx, tx, root.ID, router.NodeDefinition{
 		Name: "overflow", Kind: router.KindLeaf, Purpose: "Overflow",
@@ -206,6 +206,33 @@ func TestRouterEnforcesCapacityAndProvidesStableChildCursor(t *testing.T) {
 	if _, _, err := service.ListChildren(ctx, root.ID, "invalid", 1); err == nil {
 		t.Fatal("invalid cursor succeeded")
 	}
+	_, _, err = service.ListChildren(ctx, a.ID, "", 1)
+	assertCode(t, err, result.CodeConstraint)
+	leafFirst, leafPage, err := service.ListLeafCursorPage(ctx, a.ID, "", 1)
+	if err != nil || len(leafFirst) != 1 || leafPage.Snapshot == "" || leafPage.NextCursor == "" {
+		t.Fatalf("first legacy leaf page = %#v, %#v, %v", leafFirst, leafPage, err)
+	}
+	leafSecond, continued, err := service.ListLeafCursorPage(ctx, a.ID, leafPage.NextCursor, 1)
+	if err != nil || len(leafSecond) != 1 || continued.Snapshot != leafPage.Snapshot || continued.NextCursor != "" {
+		t.Fatalf("second legacy leaf page = %#v, %#v, %v", leafSecond, continued, err)
+	}
+
+	tx = mustBegin(t, ctx, databaseStore)
+	if _, err := service.RenameIn(ctx, tx, b.ID, "c", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReplaceMembershipsIn(ctx, tx, router.Locator{
+		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 2,
+	}, []string{a.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = service.ListChildren(ctx, root.ID, cursor, 1)
+	assertCode(t, err, result.CodeRevisionConflict)
+	_, _, err = service.ListLeafCursorPage(ctx, a.ID, leafPage.NextCursor, 1)
+	assertCode(t, err, result.CodeRevisionConflict)
 }
 
 func mustCreateNode(

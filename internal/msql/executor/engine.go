@@ -44,8 +44,8 @@ type Rows interface {
 	RenameRouterNode(context.Context, string, string, uint64) (router.Node, error)
 	DeleteRouterNode(context.Context, string, uint64) (uint64, error)
 	GetRouterNode(context.Context, string) (router.Node, error)
-	ListRouterChildren(context.Context, string, string, int) ([]router.Node, string, error)
-	ListRouterLeaf(context.Context, string, int) ([]router.Locator, bool, error)
+	ListRouterChildrenPage(context.Context, string, string, int) ([]router.Node, router.ReadPage, error)
+	ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
 }
 
 // PointReads owns exact autocommit SELECT reads when configured. Implementations

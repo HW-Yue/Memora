@@ -170,6 +170,15 @@ func (service *Service) ListRouterChildren(
 	return nodes, next, stableError(err)
 }
 
+func (service *Service) ListRouterChildrenPage(
+	ctx context.Context,
+	parentID, cursor string,
+	limit int,
+) ([]router.Node, router.ReadPage, error) {
+	nodes, page, err := service.routes.ListChildrenPage(ctx, parentID, cursor, limit)
+	return nodes, page, stableError(err)
+}
+
 func (transaction *Transaction) ListRouterChildren(
 	ctx context.Context,
 	parentID, cursor string,
@@ -181,6 +190,17 @@ func (transaction *Transaction) ListRouterChildren(
 	return nodes, next, stableError(err)
 }
 
+func (transaction *Transaction) ListRouterChildrenPage(
+	ctx context.Context,
+	parentID, cursor string,
+	limit int,
+) ([]router.Node, router.ReadPage, error) {
+	nodes, page, err := transaction.service.routes.ListChildrenPageIn(
+		ctx, transaction.tx, parentID, cursor, limit,
+	)
+	return nodes, page, stableError(err)
+}
+
 func (service *Service) ListRouterLeaf(
 	ctx context.Context,
 	leafID string,
@@ -188,6 +208,15 @@ func (service *Service) ListRouterLeaf(
 ) ([]router.Locator, bool, error) {
 	locators, truncated, err := service.routes.ListLeafPage(ctx, leafID, limit)
 	return locators, truncated, stableError(err)
+}
+
+func (service *Service) ListRouterLeafPage(
+	ctx context.Context,
+	leafID, cursor string,
+	limit int,
+) ([]router.Locator, router.ReadPage, error) {
+	locators, page, err := service.routes.ListLeafCursorPage(ctx, leafID, cursor, limit)
+	return locators, page, stableError(err)
 }
 
 func (transaction *Transaction) ListRouterLeaf(
@@ -199,6 +228,17 @@ func (transaction *Transaction) ListRouterLeaf(
 		ctx, transaction.tx, leafID, limit,
 	)
 	return locators, truncated, stableError(err)
+}
+
+func (transaction *Transaction) ListRouterLeafPage(
+	ctx context.Context,
+	leafID, cursor string,
+	limit int,
+) ([]router.Locator, router.ReadPage, error) {
+	locators, page, err := transaction.service.routes.ListLeafCursorPageIn(
+		ctx, transaction.tx, leafID, cursor, limit,
+	)
+	return locators, page, stableError(err)
 }
 
 func (service *Service) RouterMemberships(

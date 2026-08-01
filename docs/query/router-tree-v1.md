@@ -33,7 +33,10 @@ leaf 保存 `database_id + table_id + row_id + row_revision`，同一 Row 可属
 
 ## 遍历
 
-child 按 name 稳定排序，页大小为 1–100。cursor 是绑定 parent ID 与 offset 的不透明 base64url 值；跨 parent、损坏或越界 cursor 返回 validation error。leaf 只返回 locator，不返回 Row 正文。
+child 按 name 稳定排序，页大小为 1–100。当前 cursor 同时绑定 parent/leaf scope、
+完整可见序列 snapshot 与 offset；跨 scope、损坏、越界或 snapshot 改变分别返回稳定
+validation/revision conflict。leaf 只返回 locator，不返回 Row 正文。最终协议见
+[Route Read v1](./route-read-v1.md)。
 
 ## MSQL
 
@@ -49,19 +52,19 @@ DELETE ROUTE :route;
 SHOW ROUTES FROM DATABASE :database AT :path CURSOR :cursor LIMIT :limit;
 SHOW ROUTES UNDER :parent CURSOR :cursor LIMIT :limit;
 OPEN ROUTE FROM DATABASE :database AT :path LIMIT :limit;
-OPEN ROUTE :leaf LIMIT :limit;
+OPEN ROUTE :leaf CURSOR :cursor LIMIT :limit;
 ```
 
 CREATE 返回新节点的稳定 ID、path、kind、purpose 和 revision。ALTER/DELETE 要求结构化 `expected_revision`；三种写操作都要求 `max_affected_rows`。SHOW 返回节点元数据和可继续读取的 `next_cursor`；空 cursor 表示第一页。OPEN 只接受 leaf，结果严格为 Database/Table/Row/revision locator，不返回业务正文。
 
 Database name 先绑定 Catalog stable ID；因此新会话可从 `/` 冷启动，不需要预先记住 root ID。上述写操作参加普通显式 Batch 事务，任一写失败时节点、路径和 membership 一起回滚。
 
-目标语法从 `DESCRIBE TABLE` 后进入：
+F111 已实现从 `DESCRIBE TABLE` 后进入的目标读取语法：
 
 ```sql
 SHOW ROUTES FROM TABLE :qualified_table AT ROOT LIMIT :limit;
 SHOW ROUTES UNDER :parent CURSOR :cursor LIMIT :limit;
-OPEN ROUTE :leaf LIMIT :limit;
+OPEN ROUTE :leaf CURSOR :cursor LIMIT :limit;
 ```
 
 迁移必须保留稳定 RowID、revision、membership 原子性和有界 cursor，并给现有

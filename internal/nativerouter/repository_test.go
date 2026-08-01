@@ -1,10 +1,12 @@
 package nativerouter
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
@@ -47,6 +49,10 @@ func TestTableRouterShowUnderOpenAndReverseMembershipSurviveReopen(t *testing.T)
 	if err := repository.Attach(principles.ID, locator, 1); err != nil {
 		t.Fatal(err)
 	}
+	secondLocator := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_second", Revision: 1}
+	if err := repository.Attach(decisions.ID, secondLocator, 1); err != nil {
+		t.Fatal(err)
+	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -63,22 +69,39 @@ func TestTableRouterShowUnderOpenAndReverseMembershipSurviveReopen(t *testing.T)
 	if roots := repository.Roots("tbl_tasks"); len(roots) != 1 || roots[0].ID != "route_root_tasks" {
 		t.Fatalf("Roots(tbl_tasks) = %#v", roots)
 	}
-	firstPage, cursor, err := repository.ShowUnder(root.ID, "", 1)
-	if err != nil || len(firstPage) != 1 || cursor == "" {
-		t.Fatalf("ShowUnder(first) = %#v, %q, %v", firstPage, cursor, err)
+	firstPage, childrenPage, err := repository.ShowUnderPage(root.ID, "", 1)
+	if err != nil || len(firstPage) != 1 || childrenPage.Snapshot == "" || childrenPage.NextCursor == "" {
+		t.Fatalf("ShowUnderPage(first) = %#v, %#v, %v", firstPage, childrenPage, err)
 	}
-	secondPage, next, err := repository.ShowUnder(root.ID, cursor, 1)
-	if err != nil || len(secondPage) != 1 || next != "" || secondPage[0].ID == firstPage[0].ID {
-		t.Fatalf("ShowUnder(second) = %#v, %q, %v", secondPage, next, err)
+	secondPage, continued, err := repository.ShowUnderPage(root.ID, childrenPage.NextCursor, 1)
+	if err != nil || len(secondPage) != 1 || continued.NextCursor != "" ||
+		continued.Snapshot != childrenPage.Snapshot || secondPage[0].ID == firstPage[0].ID {
+		t.Fatalf("ShowUnderPage(second) = %#v, %#v, %v", secondPage, continued, err)
 	}
-	locators, truncated, err := repository.Open(decisions.ID, 10)
-	if err != nil || truncated || len(locators) != 1 || locators[0] != locator {
-		t.Fatalf("Open() = %#v, %v, %v", locators, truncated, err)
+	locators, locatorPage, err := repository.OpenPage(decisions.ID, "", 1)
+	if err != nil || len(locators) != 1 || locatorPage.Snapshot == "" || locatorPage.NextCursor == "" {
+		t.Fatalf("OpenPage(first) = %#v, %#v, %v", locators, locatorPage, err)
+	}
+	remaining, locatorContinued, err := repository.OpenPage(decisions.ID, locatorPage.NextCursor, 1)
+	if err != nil || len(remaining) != 1 || locatorContinued.Snapshot != locatorPage.Snapshot ||
+		locatorContinued.NextCursor != "" || remaining[0] == locators[0] {
+		t.Fatalf("OpenPage(second) = %#v, %#v, %v", remaining, locatorContinued, err)
+	}
+	if _, err := repository.CreateChild("route_extra", root.ID, "额外", router.KindLeaf, "额外知识"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := repository.ShowUnderPage(root.ID, childrenPage.NextCursor, 1); !nativeRouteCode(err, result.CodeRevisionConflict) {
+		t.Fatalf("changed native children error = %v", err)
 	}
 	memberships, err := repository.Memberships(locator.RowID)
 	if err != nil || len(memberships) != 2 || memberships[0].LeafID == memberships[1].LeafID {
 		t.Fatalf("Memberships() = %#v, %v", memberships, err)
 	}
+}
+
+func nativeRouteCode(err error, code result.Code) bool {
+	var stable interface{ StableCode() string }
+	return errors.As(err, &stable) && stable.StableCode() == string(code)
 }
 
 func TestRouteSynopsisEncodingReadsRecordsWrittenBeforeSynopsis(t *testing.T) {

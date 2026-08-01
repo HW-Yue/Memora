@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -435,15 +434,24 @@ func (service *Service) ListLeafPage(
 	leafID string,
 	limit int,
 ) ([]Locator, bool, error) {
+	locators, page, err := service.ListLeafCursorPage(ctx, leafID, "", limit)
+	return locators, page.NextCursor != "", err
+}
+
+func (service *Service) ListLeafCursorPage(
+	ctx context.Context,
+	leafID, cursor string,
+	limit int,
+) ([]Locator, ReadPage, error) {
 	if limit < 1 || limit > maxPageSize {
-		return nil, false, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
+		return nil, ReadPage{}, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
 	}
 	tx, err := service.store.Begin(ctx, store.ReadOnly)
 	if err != nil {
-		return nil, false, stableError(err)
+		return nil, ReadPage{}, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	return service.ListLeafPageIn(ctx, tx, leafID, limit)
+	return service.ListLeafCursorPageIn(ctx, tx, leafID, cursor, limit)
 }
 
 func (service *Service) ListLeafIn(
@@ -462,22 +470,31 @@ func (service *Service) ListLeafPageIn(
 	leafID string,
 	limit int,
 ) ([]Locator, bool, error) {
+	locators, page, err := service.ListLeafCursorPageIn(ctx, tx, leafID, "", limit)
+	return locators, page.NextCursor != "", err
+}
+
+func (service *Service) ListLeafCursorPageIn(
+	ctx context.Context,
+	tx store.Tx,
+	leafID, cursor string,
+	limit int,
+) ([]Locator, ReadPage, error) {
 	if limit < 1 || limit > maxPageSize {
-		return nil, false, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
+		return nil, ReadPage{}, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
 	}
 	node, err := getNode(ctx, tx, leafID)
 	if err != nil {
-		return nil, false, err
+		return nil, ReadPage{}, err
 	}
 	if node.Kind != KindLeaf {
-		return nil, false, routerError(result.CodeConstraint, "Router node is not a leaf")
+		return nil, ReadPage{}, routerError(result.CodeConstraint, "Router node is not a leaf")
 	}
 	locators, err := loadLocators(ctx, tx, leafID)
-	truncated := len(locators) > limit
-	if len(locators) > limit {
-		locators = locators[:limit]
+	if err != nil {
+		return nil, ReadPage{}, err
 	}
-	return locators, truncated, err
+	return PaginateLocators("leaf:"+leafID, cursor, limit, locators)
 }
 
 func (service *Service) MembershipsForRow(
@@ -521,12 +538,21 @@ func (service *Service) ListChildren(
 	parentID, cursor string,
 	limit int,
 ) ([]Node, string, error) {
+	nodes, page, err := service.ListChildrenPage(ctx, parentID, cursor, limit)
+	return nodes, page.NextCursor, err
+}
+
+func (service *Service) ListChildrenPage(
+	ctx context.Context,
+	parentID, cursor string,
+	limit int,
+) ([]Node, ReadPage, error) {
 	tx, err := service.store.Begin(ctx, store.ReadOnly)
 	if err != nil {
-		return nil, "", stableError(err)
+		return nil, ReadPage{}, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	return service.ListChildrenIn(ctx, tx, parentID, cursor, limit)
+	return service.ListChildrenPageIn(ctx, tx, parentID, cursor, limit)
 }
 
 func (service *Service) ListChildrenIn(
@@ -535,38 +561,40 @@ func (service *Service) ListChildrenIn(
 	parentID, cursor string,
 	limit int,
 ) ([]Node, string, error) {
+	nodes, page, err := service.ListChildrenPageIn(ctx, tx, parentID, cursor, limit)
+	return nodes, page.NextCursor, err
+}
+
+func (service *Service) ListChildrenPageIn(
+	ctx context.Context,
+	tx store.Tx,
+	parentID, cursor string,
+	limit int,
+) ([]Node, ReadPage, error) {
 	if limit < 1 || limit > maxPageSize {
-		return nil, "", routerError(result.CodeValidation, "Router child limit must be between 1 and 100")
+		return nil, ReadPage{}, routerError(result.CodeValidation, "Router child limit must be between 1 and 100")
 	}
-	offset, err := decodeCursor(cursor, parentID)
+	parent, err := getNode(ctx, tx, parentID)
 	if err != nil {
-		return nil, "", err
+		return nil, ReadPage{}, err
 	}
-	if _, err := getNode(ctx, tx, parentID); err != nil {
-		return nil, "", err
+	if parent.Kind == KindLeaf {
+		return nil, ReadPage{}, routerError(result.CodeConstraint, "Router children require a root or branch")
 	}
 	ids, err := loadStrings(ctx, tx, childrenBucket, parentID)
 	if err != nil {
-		return nil, "", err
+		return nil, ReadPage{}, err
 	}
 	nodes := make([]Node, 0, len(ids))
 	for _, id := range ids {
 		node, err := getNode(ctx, tx, id)
 		if err != nil {
-			return nil, "", err
+			return nil, ReadPage{}, err
 		}
 		nodes = append(nodes, node)
 	}
 	sort.Slice(nodes, func(left, right int) bool { return nodes[left].Name < nodes[right].Name })
-	if offset > len(nodes) {
-		return nil, "", routerError(result.CodeValidation, "Router cursor is out of range")
-	}
-	end := min(offset+limit, len(nodes))
-	next := ""
-	if end < len(nodes) {
-		next = encodeCursor(parentID, end)
-	}
-	return nodes[offset:end], next, nil
+	return PaginateNodes("parent:"+parentID, cursor, limit, nodes)
 }
 
 func (service *Service) nextID() (string, error) {
@@ -822,31 +850,6 @@ func canonicalPath(path string) string {
 		return "/"
 	}
 	return value
-}
-
-type cursorValue struct {
-	ParentID string `json:"parent_id"`
-	Offset   int    `json:"offset"`
-}
-
-func encodeCursor(parentID string, offset int) string {
-	encoded, _ := json.Marshal(cursorValue{ParentID: parentID, Offset: offset})
-	return base64.RawURLEncoding.EncodeToString(encoded)
-}
-
-func decodeCursor(cursor, parentID string) (int, error) {
-	if cursor == "" {
-		return 0, nil
-	}
-	encoded, err := base64.RawURLEncoding.DecodeString(cursor)
-	if err != nil {
-		return 0, routerError(result.CodeValidation, "Router cursor is invalid")
-	}
-	var value cursorValue
-	if json.Unmarshal(encoded, &value) != nil || value.ParentID != parentID || value.Offset < 0 {
-		return 0, routerError(result.CodeValidation, "Router cursor is invalid")
-	}
-	return value.Offset, nil
 }
 
 func hasCode(err error, code result.Code) bool {

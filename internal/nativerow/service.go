@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -63,6 +64,7 @@ type Service struct {
 	ids        IDSource
 	clock      Clock
 	authority  PageAuthority
+	routeGate  chan struct{}
 }
 
 func NewService(repository *Repository, dictionary *nativecatalog.Service, options ServiceOptions) *Service {
@@ -72,10 +74,12 @@ func NewService(repository *Repository, dictionary *nativecatalog.Service, optio
 	if options.Clock == nil {
 		options.Clock = systemClock{}
 	}
-	return &Service{
+	service := &Service{
 		repository: repository, catalog: dictionary, ids: options.IDs, clock: options.Clock,
-		authority: options.Authority,
+		authority: options.Authority, routeGate: make(chan struct{}, 1),
 	}
+	service.routeGate <- struct{}{}
+	return service
 }
 
 func (service *Service) Insert(ctx context.Context, databaseName, tableName string, values map[string]any, options row.WriteOptions) (row.Row, error) {
@@ -742,10 +746,19 @@ func (service *Service) BeginAuthorityWrite(ctx context.Context) (func(), error)
 	if service == nil {
 		return nil, fmt.Errorf("native Row service is incomplete")
 	}
-	if service.authority == nil {
-		return func() {}, nil
+	releaseLocal, err := service.beginRouteOperation(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return service.authority.BeginWrite(ctx)
+	if service.authority == nil {
+		return service.routeWriteRelease(nil, releaseLocal), nil
+	}
+	release, err := service.authority.BeginWrite(ctx)
+	if err != nil {
+		releaseLocal()
+		return nil, err
+	}
+	return service.routeWriteRelease(release, releaseLocal), nil
 }
 
 // NextCommitSequence preserves the Row/Relation snapshot sequence contract.
@@ -781,11 +794,52 @@ func (service *Service) BeginRowAuthorityWrite(
 	if service == nil {
 		return nil, fmt.Errorf("native Row service is incomplete")
 	}
-	if service.authority == nil {
-		return func() {}, nil
+	releaseLocal, err := service.beginRouteOperation(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return service.authority.BeginRowWrite(ctx, table.DatabaseID, table.ID, rowIDs)
+	if service.authority == nil {
+		return service.routeWriteRelease(nil, releaseLocal), nil
+	}
+	release, err := service.authority.BeginRowWrite(ctx, table.DatabaseID, table.ID, rowIDs)
+	if err != nil {
+		releaseLocal()
+		return nil, err
+	}
+	return service.routeWriteRelease(release, releaseLocal), nil
 }
+
+func (service *Service) routeWriteRelease(releaseAuthority, releaseLocal func()) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			if releaseAuthority != nil {
+				releaseAuthority()
+			}
+			releaseLocal()
+		})
+	}
+}
+
+func (service *Service) beginRouteRead(ctx context.Context) (func(), error) {
+	return service.beginRouteOperation(ctx)
+}
+
+func (service *Service) beginRouteOperation(ctx context.Context) (func(), error) {
+	if service == nil || ctx == nil {
+		return nil, fmt.Errorf("native Row service is incomplete")
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-service.routeGate:
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() { service.routeGate <- struct{}{} })
+	}, nil
+}
+
 func (service *Service) CreateRouterRoot(context.Context, string, string) (router.Node, error) {
 	return router.Node{}, ErrUnsupported
 }
@@ -808,16 +862,21 @@ func (service *Service) CreateTableRouterRoot(ctx context.Context, databaseName,
 		return routes.StageRoot(transaction, "route_"+id, table.DatabaseID, table.ID, purpose, synopsis)
 	})
 }
-func (service *Service) ListTableRouterRoots(_ context.Context, databaseID, tableID, cursor string, limit int) ([]router.Node, string, error) {
+func (service *Service) ListTableRouterRootsPage(ctx context.Context, databaseID, tableID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
 	if limit < 1 || limit > 100 {
-		return nil, "", fmt.Errorf("invalid Table Router limit")
+		return nil, router.ReadPage{}, fmt.Errorf("invalid Table Router limit")
 	}
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	defer release()
 	routes := nativerouter.New(service.repository.file)
 	roots := routes.Roots(tableID)
 	if len(roots) != 1 || roots[0].DatabaseID != databaseID || roots[0].Deleted {
-		return nil, "", nativestore.ErrNotFound
+		return nil, router.ReadPage{}, nativestore.ErrNotFound
 	}
-	return routes.ShowUnder(roots[0].ID, cursor, limit)
+	return routes.ShowUnderPage(roots[0].ID, cursor, limit)
 }
 func (service *Service) CreateRouterNode(ctx context.Context, parentID string, definition router.NodeDefinition) (router.Node, error) {
 	release, err := service.BeginAuthorityWrite(ctx)
@@ -968,8 +1027,24 @@ func (service *Service) ResolveRouterPath(_ context.Context, databaseID, path st
 func (service *Service) ListRouterChildren(_ context.Context, parentID, cursor string, limit int) ([]router.Node, string, error) {
 	return nativerouter.New(service.repository.file).ShowUnder(parentID, cursor, limit)
 }
+func (service *Service) ListRouterChildrenPage(ctx context.Context, parentID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	defer release()
+	return nativerouter.New(service.repository.file).ShowUnderPage(parentID, cursor, limit)
+}
 func (service *Service) ListRouterLeaf(_ context.Context, leafID string, limit int) ([]router.Locator, bool, error) {
 	return nativerouter.New(service.repository.file).Open(leafID, limit)
+}
+func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	defer release()
+	return nativerouter.New(service.repository.file).OpenPage(leafID, cursor, limit)
 }
 
 func findRoutePath(routes *nativerouter.Repository, parentID, path string) (router.Node, bool) {

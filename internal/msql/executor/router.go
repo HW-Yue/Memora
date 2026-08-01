@@ -14,7 +14,7 @@ import (
 
 type tableRouterRows interface {
 	CreateTableRouterRoot(context.Context, string, string, string, string) (router.Node, error)
-	ListTableRouterRoots(context.Context, string, string, string, int) ([]router.Node, string, error)
+	ListTableRouterRootsPage(context.Context, string, string, string, int) ([]router.Node, router.ReadPage, error)
 }
 
 type routeSynopsisRows interface {
@@ -221,29 +221,41 @@ func (engine *Engine) showRoutes(
 		return Output{}, err
 	}
 	var nodes []router.Node
-	var next string
+	var page router.ReadPage
+	expectedDatabaseID, expectedTableID, expectedParentID := "", "", ""
 	if show.RouteMode == "TABLE_ROOT" {
 		if show.Table == nil {
 			return Output{}, executeError(result.CodeValidation, "SHOW ROUTES requires a Table")
 		}
-		_, _, table, err := engine.bindTable(ctx, *show.Table)
-		if err != nil {
-			return Output{}, err
+		_, _, table, bindErr := engine.bindTable(ctx, *show.Table)
+		if bindErr != nil {
+			return Output{}, bindErr
 		}
 		tableRows, ok := engine.rows.(tableRouterRows)
 		if !ok {
 			return Output{}, executeError(result.CodeUnsupported, "Table Router is not supported by this backend")
 		}
-		nodes, next, err = tableRows.ListTableRouterRoots(ctx, table.DatabaseID, table.ID, cursor, limit)
+		expectedDatabaseID, expectedTableID = table.DatabaseID, table.ID
+		nodes, page, err = tableRows.ListTableRouterRootsPage(ctx, table.DatabaseID, table.ID, cursor, limit)
 	} else {
-		parent, err := engine.resolveRouterNode(ctx, show.Route, bound)
-		if err != nil {
-			return Output{}, err
+		parent, resolveErr := engine.resolveRouterNode(ctx, show.Route, bound)
+		if resolveErr != nil {
+			return Output{}, resolveErr
 		}
-		nodes, next, err = engine.rows.ListRouterChildren(ctx, parent.ID, cursor, limit)
+		if parent.Kind == router.KindLeaf {
+			return Output{}, executeError(result.CodeConstraint, "SHOW ROUTES UNDER requires a root or branch; use OPEN ROUTE for a leaf")
+		}
+		expectedDatabaseID, expectedTableID, expectedParentID = parent.DatabaseID, parent.TableID, parent.ID
+		nodes, page, err = engine.rows.ListRouterChildrenPage(ctx, parent.ID, cursor, limit)
 	}
 	if err != nil {
 		return Output{}, normalizeError(err)
+	}
+	if page.Snapshot == "" {
+		return Output{}, executeError(result.CodeInternal, "Route child page has no snapshot")
+	}
+	if err := validateRouteChildren(nodes, expectedDatabaseID, expectedTableID, expectedParentID); err != nil {
+		return Output{}, err
 	}
 	output := Output{
 		Columns: []result.Column{
@@ -256,7 +268,11 @@ func (engine *Engine) showRoutes(
 			{Name: "revision", Type: "INTEGER"},
 		},
 		Rows:      make([]result.Row, 0, len(nodes)),
-		Truncated: next != "", NextCursor: next,
+		Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
+		Page: &result.ListPage{
+			Version: result.ListPageVersion, Limit: uint64(limit), Cursor: cursor,
+			Snapshot: page.Snapshot, Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
+		},
 	}
 	for _, node := range nodes {
 		output.Rows = append(output.Rows, routeResult(node))
@@ -269,6 +285,14 @@ func (engine *Engine) openRoute(
 	statement *ast.OpenRouteStatement,
 	bound bindings,
 ) (Output, error) {
+	cursor := ""
+	if statement.Cursor != nil {
+		var err error
+		cursor, err = routerString(statement.Cursor, bound, "Router cursor")
+		if err != nil {
+			return Output{}, err
+		}
+	}
 	budgets, err := engine.queryBudgets(ctx)
 	if err != nil {
 		return Output{}, err
@@ -281,9 +305,18 @@ func (engine *Engine) openRoute(
 	if err != nil {
 		return Output{}, err
 	}
-	locators, truncated, err := engine.rows.ListRouterLeaf(ctx, node.ID, limit)
+	if node.Kind != router.KindLeaf {
+		return Output{}, executeError(result.CodeConstraint, "OPEN ROUTE requires a leaf")
+	}
+	locators, page, err := engine.rows.ListRouterLeafPage(ctx, node.ID, cursor, limit)
 	if err != nil {
 		return Output{}, normalizeError(err)
+	}
+	if page.Snapshot == "" {
+		return Output{}, executeError(result.CodeInternal, "Route locator page has no snapshot")
+	}
+	if err := validateRouteLocators(locators, node); err != nil {
+		return Output{}, err
 	}
 	output := Output{
 		Columns: []result.Column{
@@ -292,7 +325,12 @@ func (engine *Engine) openRoute(
 			{Name: "row_id", Type: "ID"},
 			{Name: "revision", Type: "INTEGER"},
 		},
-		Rows: make([]result.Row, 0, len(locators)), Truncated: truncated,
+		Rows:      make([]result.Row, 0, len(locators)),
+		Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
+		Page: &result.ListPage{
+			Version: result.ListPageVersion, Limit: uint64(limit), Cursor: cursor,
+			Snapshot: page.Snapshot, Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
+		},
 	}
 	for _, locator := range locators {
 		if err := engine.authorizeDatabaseReference(ctx, locator.DatabaseID); err != nil {
@@ -344,6 +382,40 @@ func routeResult(node router.Node) result.Row {
 		"path": node.Path, "name": node.Name, "kind": string(node.Kind),
 		"purpose": node.Purpose, "revision": node.Revision,
 	}
+}
+
+func validateRouteChildren(nodes []router.Node, databaseID, tableID, parentID string) error {
+	if parentID == "" && len(nodes) > 0 {
+		parentID = nodes[0].ParentID
+	}
+	seen := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		if node.Version != router.Version || node.ID == "" || node.Revision == 0 || node.Deleted ||
+			node.DatabaseID != databaseID || node.TableID != tableID || node.ParentID == "" ||
+			node.ParentID != parentID || (node.Kind != router.KindBranch && node.Kind != router.KindLeaf) {
+			return executeError(result.CodeInternal, "Route child page violates its logical scope")
+		}
+		if _, duplicate := seen[node.ID]; duplicate {
+			return executeError(result.CodeInternal, "Route child page contains a duplicate node")
+		}
+		seen[node.ID] = struct{}{}
+	}
+	return nil
+}
+
+func validateRouteLocators(locators []router.Locator, leaf router.Node) error {
+	seen := make(map[string]struct{}, len(locators))
+	for _, locator := range locators {
+		if locator.DatabaseID != leaf.DatabaseID || locator.TableID != leaf.TableID ||
+			locator.RowID == "" || locator.Revision == 0 {
+			return executeError(result.CodeInternal, "Route locator page violates its leaf scope")
+		}
+		if _, duplicate := seen[locator.RowID]; duplicate {
+			return executeError(result.CodeInternal, "Route locator page contains a duplicate RowID")
+		}
+		seen[locator.RowID] = struct{}{}
+	}
+	return nil
 }
 
 func routerString(

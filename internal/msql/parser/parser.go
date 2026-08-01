@@ -1094,6 +1094,13 @@ func (parser *parser) parseOpenRoute() (ast.Statement, error) {
 		return ast.Statement{}, err
 	}
 	statement.Route = &route
+	if parser.matchWord("CURSOR") {
+		cursor, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Cursor = &cursor
+	}
 	if _, err := parser.expectWord("LIMIT"); err != nil {
 		return ast.Statement{}, err
 	}

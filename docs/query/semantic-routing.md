@@ -1,7 +1,8 @@
 # Agent 语义目录索引（Router）
 
 状态：已实现；F70 将主路切换到 Table 级逐层导航，F76 暴露原子 reshape，
-F77 增加按需中间 Route synopsis；ADR-0007 允许可回退的 Route 候选预测器。
+F77 增加按需中间 Route synopsis，F111 冻结 snapshot cursor 读取协议；ADR-0007
+允许可回退的 Route 候选预测器。
 
 ## 定义
 
@@ -47,8 +48,8 @@ table_id + row_id + row_revision + membership_revision
 AI 必须显式执行：
 
 ```sql
-SHOW DATABASES COMPACT;
-SHOW TABLES FROM project_memora COMPACT;
+SHOW DATABASES LIMIT 16 COMPACT;
+SHOW TABLES FROM project_memora LIMIT 16 COMPACT;
 DESCRIBE TABLE project_memora.decisions COMPACT;
 SHOW ROUTES FROM TABLE project_memora.decisions AT ROOT LIMIT 12;
 SHOW ROUTES UNDER :route_id LIMIT 12;
@@ -66,6 +67,10 @@ prompt，也不等同于物理 Buffer Pool。
 
 Router/OPEN 只返回节点或 locator，不能返回正文、生成答案或自动退化为
 Row/chunk Embedding、全库正文扫描和混合相似度答案。
+
+`SHOW ROUTES` 与 `OPEN ROUTE` 都返回 `memora.list-page/v1`；cursor 绑定当前
+parent/leaf、完整可见序列 snapshot 和下一 offset。Route 或 membership 在续页间变化
+时必须返回冲突并重新导航，不能重漏。精确字段见 [Route Read v1](./route-read-v1.md)。
 
 可选 predictor 可以依据 Catalog、字面位置或 Route-only Vector 返回带来源的候选
 Route ID，帮助 AI 预取根节点或缩短冷启动。候选不能跳过显式 Route 选择、扩大权限、

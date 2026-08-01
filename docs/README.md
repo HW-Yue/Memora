@@ -62,6 +62,7 @@
 - [MSQL Batch 与事务边界 v1](./query/msql-batch-transactions.md) — F12/F16 的可恢复多语句解析、原子事务执行和跨 request IPC session。
 - [MSQL Catalog DDL v1](./query/catalog-ddl.md) — F13c 的自描述建模、发现、rename 和限定名 Binder 契约。
 - [MSQL Metadata Read v1](./query/metadata-read-v1.md) — F110 的 Database/Table/Column 有界分页、snapshot 与 cursor 契约。
+- [MSQL Route Read v1](./query/route-read-v1.md) — F111 的 point node、单层 children、leaf locator 分页与快照契约。
 - [MSQL 参数与表达式 v1](./query/msql-expressions.md) — F15c 的无插值参数绑定、整数/布尔表达式和稳定求值错误。
 - [MSQL SELECT Planner v1](./query/msql-select.md) — F15d 的限定表/字段绑定、强制 LIMIT、精确 Row ID 与截断边界。
 - [MSQL Indexed Point-Get v1](./query/msql-point-get-v1.md) — F102 用 F98–F100 B+ Tree 定位精确当前/历史 Row 且禁止扫描回退。
@@ -175,6 +176,7 @@
 - [F108 COW Generation Replacement 开工与完成门](./planning/f108-cow-generation-replacement-gate.md) — 已完成的 epoch、故障矩阵与原子 swap 证据。
 - [F109 Committed Change Log 开工与完成门](./planning/f109-committed-change-log-gate.md) — envelope RED、原子事务、cross-object 与 crash/race 完成门。
 - [F110 Metadata Read Protocol 开工与完成门](./planning/f110-metadata-read-protocol-gate.md) — Catalog list page、snapshot、cursor 与授权分页完成门。
+- [F111 Route Read Protocol 开工与完成门](./planning/f111-route-read-protocol-gate.md) — Route children/locator snapshot cursor 与正文隔离完成门。
 - [F97b2 WAL Recovery Open 开工与完成门](./planning/f97b2-wal-recovery-open-gate.md) — repairing open 的严格 authority 校验、可重入截尾与故障矩阵。
 - [F97c1 Tree Control Codec 开工与完成门](./planning/f97c1-tree-control-codec-gate.md) — slot 1 codec、bootstrap 与 corruption 完成证据。
 - [F97c2 Root/Allocator Redo Codec 开工与完成门](./planning/f97c2-root-allocator-redo-gate.md) — metadata payload、版本与字段校验。

@@ -8,8 +8,136 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/security"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
+
+func TestRouteReadProtocolPaginatesChildrenAndLocatorsWithoutRowBodies(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	now := time.Date(2026, 8, 1, 8, 0, 0, 0, time.UTC)
+	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{
+		IDs: &testIDs{values: []string{"database", "table", "title"}}, Clock: testClock{value: now},
+	})
+	rows := NewService(New(file), dictionary, ServiceOptions{
+		IDs:   &testIDs{values: []string{"root", "alpha", "beta", "gamma", "first", "second", "third", "delta", "fourth"}},
+		Clock: testClock{value: now},
+	})
+	engine := executor.New(dictionary, rows)
+	executeMSQL(t, ctx, engine, "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title')", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Notes Router'", executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1})
+	for _, name := range []string{"alpha", "beta", "gamma"} {
+		executeMSQL(t, ctx, engine,
+			"CREATE ROUTE UNDER :parent NAME :name KIND 'leaf' PURPOSE :purpose",
+			executor.Parameters{Named: map[string]any{
+				"parent": "route_root", "name": name, "purpose": name + " notes",
+			}}, executor.MutationOptions{MaxAffectedRows: 1})
+	}
+	for _, name := range []string{"first", "second", "third"} {
+		executeMSQL(t, ctx, engine, "INSERT INTO work.notes (title) VALUES (:title)",
+			executor.Parameters{Named: map[string]any{"title": name}}, executor.MutationOptions{
+				ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{"route_alpha"},
+			})
+	}
+
+	children := executeMSQL(t, ctx, engine,
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 2", executor.Parameters{}, executor.MutationOptions{})
+	if children.Page == nil || children.Page.Version != result.ListPageVersion ||
+		children.Page.Snapshot == "" || !children.Truncated || children.NextCursor == "" ||
+		len(children.Rows) != 2 || children.Rows[0]["name"] != "alpha" ||
+		children.Rows[1]["name"] != "beta" {
+		t.Fatalf("first children page = %#v", children)
+	}
+	for _, child := range children.Rows {
+		if len(child) != 7 || child["synopsis"] != nil || child["title"] != nil {
+			t.Fatalf("child frame leaked on-demand or Row content = %#v", child)
+		}
+	}
+	described := executeMSQL(t, ctx, engine, "DESCRIBE ROUTE 'route_alpha'", executor.Parameters{}, executor.MutationOptions{})
+	if len(described.Rows) != 1 || len(described.Rows[0]) != 8 || described.Rows[0]["route_id"] != "route_alpha" {
+		t.Fatalf("Route point read = %#v", described)
+	}
+	remainingChildren := executeMSQL(t, ctx, engine,
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT 2",
+		executor.Parameters{Named: map[string]any{"cursor": children.NextCursor}}, executor.MutationOptions{})
+	if remainingChildren.Page == nil || remainingChildren.Page.Cursor != children.NextCursor ||
+		remainingChildren.Page.Snapshot != children.Page.Snapshot || remainingChildren.Truncated ||
+		len(remainingChildren.Rows) != 1 || remainingChildren.Rows[0]["name"] != "gamma" {
+		t.Fatalf("second children page = %#v", remainingChildren)
+	}
+
+	locators := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_alpha' LIMIT 2", executor.Parameters{}, executor.MutationOptions{})
+	if locators.Page == nil || locators.Page.Version != result.ListPageVersion ||
+		locators.Page.Snapshot == "" || !locators.Truncated || locators.NextCursor == "" || len(locators.Rows) != 2 {
+		t.Fatalf("first locator page = %#v", locators)
+	}
+	for _, locator := range locators.Rows {
+		if len(locator) != 4 || locator["row_id"] == "" || locator["title"] != nil {
+			t.Fatalf("locator leaked Row body = %#v", locator)
+		}
+	}
+	remainingLocators := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_alpha' CURSOR :cursor LIMIT 2",
+		executor.Parameters{Named: map[string]any{"cursor": locators.NextCursor}}, executor.MutationOptions{})
+	if remainingLocators.Page == nil || remainingLocators.Page.Snapshot != locators.Page.Snapshot ||
+		remainingLocators.Truncated || len(remainingLocators.Rows) != 1 {
+		t.Fatalf("second locator page = %#v", remainingLocators)
+	}
+
+	executeMSQL(t, ctx, engine,
+		"CREATE ROUTE UNDER 'route_root' NAME 'delta' KIND 'leaf' PURPOSE 'Delta notes'",
+		executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1})
+	currentChildren := executeMSQL(t, ctx, engine,
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 10", executor.Parameters{}, executor.MutationOptions{})
+	if len(currentChildren.Rows) != 4 {
+		t.Fatalf("children after Route mutation = %#v", currentChildren)
+	}
+	changedChildren, err := runMSQL(ctx, engine,
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT 2",
+		executor.Parameters{Named: map[string]any{"cursor": children.NextCursor}}, executor.MutationOptions{})
+	if !hasCode(err, string(result.CodeRevisionConflict)) {
+		t.Fatalf("changed children rows = %#v, page = %+v, original page = %+v, error = %v",
+			changedChildren.Rows, changedChildren.Page, children.Page, err)
+	}
+	executeMSQL(t, ctx, engine, "INSERT INTO work.notes (title) VALUES ('fourth')",
+		executor.Parameters{}, executor.MutationOptions{
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{"route_alpha"},
+		})
+	_, err = runMSQL(ctx, engine, "OPEN ROUTE 'route_alpha' CURSOR :cursor LIMIT 2",
+		executor.Parameters{Named: map[string]any{"cursor": locators.NextCursor}}, executor.MutationOptions{})
+	if !hasCode(err, string(result.CodeRevisionConflict)) {
+		t.Fatalf("changed locator snapshot error = %v", err)
+	}
+	_, err = runMSQL(ctx, engine, "SHOW ROUTES UNDER 'route_alpha' LIMIT 1", executor.Parameters{}, executor.MutationOptions{})
+	if !hasCode(err, string(result.CodeConstraint)) {
+		t.Fatalf("SHOW under leaf error = %v", err)
+	}
+	_, err = runMSQL(ctx, engine, "OPEN ROUTE 'route_root' LIMIT 1", executor.Parameters{}, executor.MutationOptions{})
+	if !hasCode(err, string(result.CodeConstraint)) {
+		t.Fatalf("OPEN root error = %v", err)
+	}
+	unauthorized := security.WithAuthorization(ctx, security.Authorization{
+		Version: security.AuthorizationVersion, Actor: "agent:test", AuthorizedDatabases: []string{"private"},
+	})
+	for _, source := range []string{
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 1",
+		"SHOW ROUTES UNDER 'route_root' LIMIT 1",
+		"OPEN ROUTE 'route_alpha' LIMIT 1",
+		"DESCRIBE ROUTE 'route_alpha'",
+	} {
+		if _, err := runMSQL(unauthorized, engine, source, executor.Parameters{}, executor.MutationOptions{}); !hasCode(err, string(result.CodePermissionDenied)) {
+			t.Fatalf("unauthorized %s error = %v", source, err)
+		}
+	}
+}
 
 func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	t.Parallel()

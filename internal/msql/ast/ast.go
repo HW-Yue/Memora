@@ -189,9 +189,10 @@ type DeleteRouteStatement struct {
 }
 
 type OpenRouteStatement struct {
-	Mode  string      `json:"mode"`
-	Route *Expression `json:"route"`
-	Limit *Expression `json:"limit"`
+	Mode   string      `json:"mode"`
+	Route  *Expression `json:"route"`
+	Cursor *Expression `json:"cursor,omitempty"`
+	Limit  *Expression `json:"limit"`
 }
 
 type ConfigurationStatement struct {
@@ -327,6 +328,7 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.Limit)
 	case statement.OpenRoute != nil:
 		appendExpression(statement.OpenRoute.Route)
+		appendExpression(statement.OpenRoute.Cursor)
 		appendExpression(statement.OpenRoute.Limit)
 	case statement.Configuration != nil:
 		appendExpression(statement.Configuration.RouteChildren)
