@@ -104,6 +104,36 @@ func TestShowRouteTracePaginatesStepsAndRejectsCursorTamper(t *testing.T) {
 	assertExecutorCode(t, err, result.CodeValidation)
 }
 
+func TestShowRouteTraceExposesStableScopeAndNonNullLists(t *testing.T) {
+	ctx := context.Background()
+	dictionary, baseRows, closeStore := changeDependencies(t, ctx)
+	defer closeStore()
+	rows, closeTraces := traceReadFixture(t, baseRows)
+	defer closeTraces()
+	created, err := rows.traces.Record(ctx, traceDraft(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	subject := executor.New(dictionary, rows)
+	output, err := execute(ctx, subject,
+		"SHOW ROUTE TRACE :trace IN DATABASE work LIMIT 10",
+		executor.Parameters{Named: map[string]any{"trace": created.TraceID}}, executor.MutationOptions{},
+	)
+	if err != nil || len(output.Rows) != 2 {
+		t.Fatalf("trace steps = %#v, %v", output, err)
+	}
+	for _, value := range output.Rows {
+		if value["database_id"] != "db_database" || value["table_id"] != "tbl_table" {
+			t.Fatalf("trace step scope = %#v", value)
+		}
+		candidates, candidatesOK := value["candidate_route_ids"].([]string)
+		locators, locatorsOK := value["locators"].([]routetrace.Locator)
+		if !candidatesOK || candidates == nil || !locatorsOK || locators == nil {
+			t.Fatalf("trace step lists are nullable = %#v", value)
+		}
+	}
+}
+
 func TestShowRouteTracesRejectsInvalidBoundsAndMixedCursor(t *testing.T) {
 	ctx := context.Background()
 	dictionary, baseRows, closeStore := changeDependencies(t, ctx)

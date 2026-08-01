@@ -31,6 +31,10 @@ SHOW ROUTE TRACE :trace_id [IN DATABASE work] [CURSOR :cursor] LIMIT :limit;
 RowID/revision locator、稳定 result code、耗时和剩余预算。cursor 绑定 trace checksum、
 Database scope 与 offset。
 
+F122 起每个 step row 还明确返回 trace 自身的 `database_id/table_id`，让 stable-ID Admin
+深链路可以验证 scope 后再生成 Route/Row 链接。空候选与 locator 按 non-nullable column
+contract 确定编码为 `[]`，不使用 `null`。
+
 ## 授权与隐私
 
 带有限 Database authorization 的调用必须显式 `IN DATABASE`；本地无 scope 管理会话可

@@ -3,6 +3,7 @@ import { renderChanges } from "./changes.js";
 import { renderDiff } from "./diffs.js";
 import { renderRoutes } from "./routes.js";
 import { renderRow } from "./rows.js";
+import { renderTraces } from "./traces.js";
 
 let csrfToken = "";
 let sessionReady = false;
@@ -103,6 +104,7 @@ async function renderCurrentRoute() {
     document.body.classList.remove("route-rows");
     document.body.classList.remove("route-changes");
     document.body.classList.remove("route-diffs");
+    document.body.classList.remove("route-traces");
     updateNavigation("catalog");
     await renderCatalog(routeOutlet, {
       path,
@@ -117,6 +119,7 @@ async function renderCurrentRoute() {
     document.body.classList.remove("route-rows");
     document.body.classList.remove("route-changes");
     document.body.classList.remove("route-diffs");
+    document.body.classList.remove("route-traces");
     updateNavigation("routes");
     await renderRoutes(routeOutlet, {
       path,
@@ -131,6 +134,7 @@ async function renderCurrentRoute() {
     document.body.classList.add("route-rows");
     document.body.classList.remove("route-changes");
     document.body.classList.remove("route-diffs");
+    document.body.classList.remove("route-traces");
     updateNavigation("routes");
     await renderRow(routeOutlet, {
       path,
@@ -145,6 +149,7 @@ async function renderCurrentRoute() {
     document.body.classList.remove("route-rows");
     document.body.classList.add("route-changes");
     document.body.classList.remove("route-diffs");
+    document.body.classList.remove("route-traces");
     updateNavigation("changes");
     await renderChanges(routeOutlet, {
       path,
@@ -159,8 +164,24 @@ async function renderCurrentRoute() {
     document.body.classList.remove("route-rows");
     document.body.classList.remove("route-changes");
     document.body.classList.add("route-diffs");
+    document.body.classList.remove("route-traces");
     updateNavigation("changes");
     await renderDiff(routeOutlet, {
+      path,
+      executeMSQL,
+      isCurrent: () => window.location.pathname === path
+    });
+    return;
+  }
+  if (path === "/traces" || path.startsWith("/traces/")) {
+    document.body.classList.remove("route-catalog");
+    document.body.classList.remove("route-routes");
+    document.body.classList.remove("route-rows");
+    document.body.classList.remove("route-changes");
+    document.body.classList.remove("route-diffs");
+    document.body.classList.add("route-traces");
+    updateNavigation("traces");
+    await renderTraces(routeOutlet, {
       path,
       executeMSQL,
       isCurrent: () => window.location.pathname === path
@@ -172,6 +193,7 @@ async function renderCurrentRoute() {
   document.body.classList.remove("route-rows");
   document.body.classList.remove("route-changes");
   document.body.classList.remove("route-diffs");
+  document.body.classList.remove("route-traces");
   updateNavigation("overview");
   routeOutlet.dataset.pageState = "ready";
   routeOutlet.replaceChildren(overviewNode());

@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/daemon"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/routetrace"
 	"github.com/HW-Yue/Memora/internal/security"
 )
 
@@ -106,6 +107,30 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 		}})
 	if err != nil || !updated.OK {
 		t.Fatalf("update routed Row = %#v, %v", updated, err)
+	}
+	traceAuthorization := security.Authorization{
+		Version:             security.AuthorizationVersion,
+		Actor:               "agent:host",
+		AuthorizedDatabases: []string{databaseID},
+	}
+	now := time.Now().UTC()
+	recordedTrace, err := daemon.RecordRouteTrace(context.Background(), dataDir, routetrace.Draft{
+		TraceID: "trace_10000000000000000000000000000000", RecordedAt: now,
+		ExpiresAt: now.Add(time.Hour), Actor: "agent:host", DatabaseID: databaseID,
+		TableID: tableID, Status: routetrace.StatusComplete,
+		Steps: []routetrace.Step{
+			{Ordinal: 1, Operation: routetrace.OperationFrame, ParentRouteID: rootRouteID,
+				CandidateRouteIDs: []string{branchRouteID}, SelectedRouteID: branchRouteID,
+				Locators: []routetrace.Locator{}, Outcome: routetrace.OutcomeSucceeded,
+				ElapsedMillis: 3, RemainingBudget: 11},
+			{Ordinal: 2, Operation: routetrace.OperationOpen, CandidateRouteIDs: []string{},
+				SelectedRouteID: leafRouteID,
+				Locators:        []routetrace.Locator{{RowID: rowID, Revision: 2}},
+				Outcome:         routetrace.OutcomeSucceeded, ElapsedMillis: 2, RemainingBudget: 9},
+		},
+	}, traceAuthorization)
+	if err != nil {
+		t.Fatalf("record Route Trace = %v", err)
 	}
 	gateway, err := Start(context.Background(), Config{
 		DataDir:    dataDir,
@@ -391,6 +416,62 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 		if len(entry) != 12 || entry["transaction_id"] != transactionID ||
 			entry["database_id"] != databaseID || entry["values"] != nil || entry["body"] != nil {
 			t.Fatalf("Change entry scope = %#v", entry)
+		}
+	}
+
+	traceSource := fmt.Sprintf(
+		"DESCRIBE DATABASE %q COMPACT; SHOW ROUTE TRACES IN DATABASE %q LIMIT 20",
+		databaseID, databaseID,
+	)
+	payload, err = json.Marshal(map[string]any{"source": traceSource})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken, string(payload))
+	var traceEnvelope result.Envelope
+	if err := json.NewDecoder(response.Body).Decode(&traceEnvelope); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !traceEnvelope.OK || len(traceEnvelope.Results) != 2 ||
+		len(traceEnvelope.Results[1].Rows) != 1 || traceEnvelope.Results[1].Page == nil ||
+		traceEnvelope.Results[1].Page.Limit != 20 ||
+		traceEnvelope.Results[1].Rows[0]["trace_id"] != recordedTrace.TraceID ||
+		traceEnvelope.Results[1].Rows[0]["database_id"] != databaseID ||
+		traceEnvelope.Results[1].Rows[0]["table_id"] != tableID ||
+		traceEnvelope.Results[1].Rows[0]["steps"] != nil {
+		t.Fatalf("Route Trace timeline journey = status %d, %#v", response.StatusCode, traceEnvelope)
+	}
+	traceDetailSource := fmt.Sprintf("SHOW ROUTE TRACE :trace IN DATABASE %q LIMIT 24", databaseID)
+	payload, err = json.Marshal(map[string]any{
+		"source": traceDetailSource,
+		"statements": []map[string]any{{
+			"parameters": executor.Parameters{Named: map[string]any{"trace": recordedTrace.TraceID}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken, string(payload))
+	traceEnvelope = result.Envelope{}
+	if err := json.NewDecoder(response.Body).Decode(&traceEnvelope); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !traceEnvelope.OK || len(traceEnvelope.Results) != 1 ||
+		len(traceEnvelope.Results[0].Rows) != 2 || traceEnvelope.Results[0].Page == nil ||
+		traceEnvelope.Results[0].Page.Limit != 24 {
+		t.Fatalf("Route Trace detail journey = status %d, %#v", response.StatusCode, traceEnvelope)
+	}
+	for _, step := range traceEnvelope.Results[0].Rows {
+		candidates, candidatesOK := step["candidate_route_ids"].([]any)
+		locators, locatorsOK := step["locators"].([]any)
+		if len(step) != 13 || step["trace_id"] != recordedTrace.TraceID ||
+			step["database_id"] != databaseID || step["table_id"] != tableID ||
+			!candidatesOK || !locatorsOK || candidates == nil || locators == nil {
+			t.Fatalf("Route Trace step scope = %#v", step)
 		}
 	}
 

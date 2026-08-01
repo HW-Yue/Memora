@@ -40,15 +40,15 @@ type assetSpec struct {
 var frozenAssets = []assetSpec{
 	{
 		file: "dist/index.html", path: "/", contentType: "text/html; charset=utf-8",
-		hash: "bc49b0e160e4c47f0dad9022af7a8888a0bcdf85f84e84db46b1760ad99ec97d", size: 2328,
+		hash: "79e93f654d6df2f77fb5a35154f50864145be5f8fd1a2ca8da39fe8fdc9a81f3", size: 2366,
 	},
 	{
 		file: "dist/assets/app.css", path: "/assets/app.css", contentType: "text/css; charset=utf-8",
-		hash: "0e80ba171447fb5e5e3d7638f78a49c7b48eef2422e97077aa52804405bbb5f2", size: 15238,
+		hash: "2d1e9808fd2cef9a079bd80168b8087c00908e4dbabfd039747e3bd59e30baff", size: 18657,
 	},
 	{
 		file: "dist/assets/app.js", path: "/assets/app.js", contentType: "text/javascript; charset=utf-8",
-		hash: "b6dd387b4916e91b96f9a8caf7251058f3826ca8cb2530712ceb7e8313f1e05c", size: 6717,
+		hash: "a45911cad9e1b0bc93ec206cca4cc1172037dafbd09e3a2e2c21cdf86538458a", size: 7620,
 	},
 	{
 		file: "dist/assets/catalog.js", path: "/assets/catalog.js", contentType: "text/javascript; charset=utf-8",
@@ -69,6 +69,10 @@ var frozenAssets = []assetSpec{
 	{
 		file: "dist/assets/diffs.js", path: "/assets/diffs.js", contentType: "text/javascript; charset=utf-8",
 		hash: "cc99a7f6dd62822829ae0bba4aa72face3d1815813ff5c66877fd646fed7a66d", size: 14135,
+	},
+	{
+		file: "dist/assets/traces.js", path: "/assets/traces.js", contentType: "text/javascript; charset=utf-8",
+		hash: "ae613bc84d47d3723ca811c86abbdd30ff12d9793b2247877abab5daa7b672ea", size: 27203,
 	},
 }
 

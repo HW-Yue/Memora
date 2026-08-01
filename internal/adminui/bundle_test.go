@@ -17,7 +17,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := bundle.Manifest()
-	if manifest.Version != BundleVersion || len(manifest.Assets) != 8 {
+	if manifest.Version != BundleVersion || len(manifest.Assets) != 9 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	for _, asset := range manifest.Assets {
@@ -52,6 +52,52 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 	fetchAt := strings.Index(javascript, `fetch("/api/v1/session"`)
 	if clearAt < 0 || fetchAt < 0 || clearAt >= fetchAt || !strings.Contains(javascript, "export async function executeMSQL") {
 		t.Fatalf("JavaScript does not clear fragment before bootstrap or expose the module API client")
+	}
+}
+
+func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
+	t.Parallel()
+
+	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), `href="/traces" data-route data-nav="traces"`) {
+		t.Fatal("Admin shell does not expose Route Traces navigation")
+	}
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(app), `from "./traces.js"`) ||
+		!strings.Contains(string(app), `path === "/traces"`) ||
+		!strings.Contains(string(app), `path.startsWith("/traces/")`) {
+		t.Fatal("Admin shell does not route the Route Trace module")
+	}
+	traces, err := fs.ReadFile(embeddedFiles, "dist/assets/traces.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(traces)
+	for _, required := range []string{
+		"SHOW DATABASES LIMIT 32 COMPACT", "DESCRIBE DATABASE", "SHOW ROUTE TRACES IN DATABASE",
+		"CURSOR :cursor LIMIT 20", "SHOW ROUTE TRACE :trace IN DATABASE", "LIMIT 24",
+		"CURSOR :cursor LIMIT 24", "parameters", "named", "trace_id", "trace_sequence",
+		"database_id", "table_id", "candidate_route_ids", "selected_route_id", "locators",
+		"elapsed_ms", "remaining_budget", "loading", "empty", "ready", "truncated",
+		"permission", "corrupt", "revision_conflict",
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Route Trace module is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"innerHTML", "SELECT ", "SHOW HISTORY", "SHOW CHANGE", "INSERT ", "UPDATE ",
+		"DELETE ", "CREATE ", "prompt", "reasoning", "row_detail", "localStorage", "sessionStorage",
+	} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Route Trace module contains forbidden %q", forbidden)
+		}
 	}
 }
 
@@ -297,6 +343,7 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 	for _, path := range []string{
 		"/", "/catalog/work", "/routes/db_work/tbl_notes/route_1", "/rows/db_work/tbl_notes/row_1",
 		"/changes/db_work", "/diffs/db_work/tbl_notes/row_1/1/2",
+		"/traces/db_work/tbl_notes/trace_00000000000000000000000000000001",
 	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
@@ -312,7 +359,7 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 	}
 	for _, path := range []string{
 		"/assets/app.js", "/assets/app.css", "/assets/catalog.js", "/assets/routes.js", "/assets/rows.js",
-		"/assets/changes.js", "/assets/diffs.js",
+		"/assets/changes.js", "/assets/diffs.js", "/assets/traces.js",
 	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))

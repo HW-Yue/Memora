@@ -159,10 +159,11 @@ func (engine *Engine) showRouteTrace(
 	for _, step := range value.Steps[offset:end] {
 		output.Rows = append(output.Rows, result.Row{
 			"trace_id": value.TraceID, "trace_sequence": value.Sequence, "ordinal": step.Ordinal,
+			"database_id": value.DatabaseID, "table_id": value.TableID,
 			"operation": string(step.Operation), "parent_route_id": step.ParentRouteID,
-			"candidate_route_ids": append([]string(nil), step.CandidateRouteIDs...),
+			"candidate_route_ids": append([]string{}, step.CandidateRouteIDs...),
 			"selected_route_id":   step.SelectedRouteID,
-			"locators":            append([]routetrace.Locator(nil), step.Locators...),
+			"locators":            append([]routetrace.Locator{}, step.Locators...),
 			"outcome":             string(step.Outcome), "elapsed_ms": step.ElapsedMillis,
 			"remaining_budget": step.RemainingBudget,
 		})
@@ -235,6 +236,7 @@ func routeTraceTimelineColumns() []result.Column {
 func routeTraceStepColumns() []result.Column {
 	return []result.Column{
 		{Name: "trace_id", Type: "ID"}, {Name: "trace_sequence", Type: "INTEGER"},
+		{Name: "database_id", Type: "ID"}, {Name: "table_id", Type: "ID"},
 		{Name: "ordinal", Type: "INTEGER"}, {Name: "operation", Type: "TEXT"},
 		{Name: "parent_route_id", Type: "ID", Nullable: true},
 		{Name: "candidate_route_ids", Type: "ID_LIST"},
