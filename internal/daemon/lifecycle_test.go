@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/HW-Yue/Memora/internal/msql/executor"
+	"github.com/HW-Yue/Memora/internal/result"
 )
 
 func TestAcquireEnforcesSingleDaemon(t *testing.T) {
@@ -91,6 +94,13 @@ func TestRunReleasesLeaseAfterCancellation(t *testing.T) {
 	if !state.Running {
 		t.Fatalf("ready state = %#v, want running", state)
 	}
+	databaseDirectory := filepath.Join(dataDir, "databases")
+	if _, err := os.Stat(filepath.Join(databaseDirectory, "page-index-v1")); err != nil {
+		t.Fatalf("Page Store generation was not activated before ready: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(databaseDirectory, "page-authority-v1.json")); err != nil {
+		t.Fatalf("Page Store authority marker was not durable before ready: %v", err)
+	}
 	envelope, err := Execute(context.Background(), dataDir, "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", nil)
 	if err != nil || !envelope.OK {
 		t.Fatalf("native daemon CREATE DATABASE = %#v, %v", envelope, err)
@@ -130,3 +140,61 @@ func TestInspectRejectsCorruptPIDWhileLocked(t *testing.T) {
 		t.Fatalf("Inspect() error = %v, want %v", err, ErrCorruptPID)
 	}
 }
+
+func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "instance")
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan State, 1)
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, dataDir, ready) }()
+	<-ready
+	execute := func(source string, statements []executor.StatementInput) executorResult {
+		envelope, err := Execute(context.Background(), dataDir, source, statements)
+		if err != nil || !envelope.OK || len(envelope.Results) != 1 {
+			t.Fatalf("Execute(%q) = %#v, %v", source, envelope, err)
+		}
+		return executorResult{rows: envelope.Results[0].Rows}
+	}
+	execute("CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", nil)
+	execute("CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title')", nil)
+	inserted := execute(
+		"INSERT INTO work.notes (title) VALUES ('Page authority')",
+		[]executor.StatementInput{{Mutation: executor.MutationOptions{
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
+		}}},
+	)
+	rowID, ok := inserted.rows[0]["row_id"].(string)
+	if !ok || rowID == "" {
+		t.Fatalf("INSERT rows = %#v", inserted.rows)
+	}
+	selected := execute(
+		"SELECT title FROM work.notes WHERE row_id = :row LIMIT 1",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
+	)
+	if len(selected.rows) != 1 || selected.rows[0]["title"] != "Page authority" {
+		t.Fatalf("live Page SELECT = %#v", selected.rows)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	reopenContext, stopReopened := context.WithCancel(context.Background())
+	reopenedReady := make(chan State, 1)
+	reopenedDone := make(chan error, 1)
+	go func() { reopenedDone <- Run(reopenContext, dataDir, reopenedReady) }()
+	<-reopenedReady
+	selected = execute(
+		"SELECT title FROM work.notes WHERE row_id = :row LIMIT 1",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
+	)
+	if len(selected.rows) != 1 || selected.rows[0]["title"] != "Page authority" {
+		t.Fatalf("reopened Page SELECT = %#v", selected.rows)
+	}
+	stopReopened()
+	if err := <-reopenedDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+type executorResult struct{ rows []result.Row }

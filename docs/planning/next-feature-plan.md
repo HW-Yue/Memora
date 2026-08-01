@@ -1,6 +1,7 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F106 已完成；下一项为 F107 Page Store Default Switch。一个 Feature
+状态：F81–F107 已完成；下一项为 F108 COW Generation Replacement。用户已于
+2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
 
@@ -51,7 +52,7 @@ Vector 作为可回退候选预测器，禁止 Row/chunk Vector、隐藏答案�
 | F104 Exact-Object Write Lock | 已完成：同一 Row/Schema/Route 的写入互斥 |
 | F105 Legacy Store Migration Reader | 已完成：只读枚举并生成 source-bound 迁移计划 |
 | F106 Page Store Migration | 已完成：Plan staging、重验并原子发布三树 generation |
-| F107 Page Store Default Switch | 新 Instance 与已迁移 Instance 只以 Page Store 为 authority |
+| F107 Page Store Default Switch | 已完成：新 Instance 与已迁移 Instance 只以 Page Store 为查询 authority |
 | F108 COW Generation Replacement | rebuild 失败保留旧 root，成功原子切换 generation |
 | F109 Committed Change Log | 每个 commit 形成一个完整逻辑变化 envelope |
 
@@ -146,8 +147,10 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F107；持续执行授权已覆盖开工；
+1. 当前下一项是 F108；持续执行授权覆盖 F108–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；
 5. 候选 Feature 临近开工时仍需补完整规格，不能按本表直接实施。
+6. F151–F163 到达时必须执行可复现的进入条件基准；条件成立则实现，条件不成立则
+   固化基准、环境和延后结论并继续下一项，不得把证据未成立当作停止整个路线的理由。

@@ -37,6 +37,7 @@ type databaseHandler struct {
 	context    context.Context
 	dictionary executor.Catalog
 	rows       executor.Rows
+	points     executor.PointReads
 	legacyRows *row.Service
 	store      store.Store
 	export     func(context.Context) ([]byte, error)
@@ -76,11 +77,12 @@ func newNativeDatabaseHandler(
 	ctx context.Context,
 	dictionary executor.Catalog,
 	rows executor.Rows,
+	points executor.PointReads,
 	auxiliary store.Store,
 	securityService *security.Service,
 	export func(context.Context) ([]byte, error),
 ) *databaseHandler {
-	return &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, store: auxiliary,
+	return &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, points: points, store: auxiliary,
 		export: export, security: securityService, sessions: make(map[string]*executor.BatchSession)}
 }
 
@@ -528,6 +530,11 @@ func (handler *databaseHandler) session(id string) (*executor.BatchSession, bool
 	session := executor.NewBatchSessionWithManagement(
 		handler.context, handler.dictionary, handler.rows, nil, nil,
 	)
+	if handler.points != nil {
+		session = executor.NewBatchSessionWithPointReads(
+			handler.context, handler.dictionary, handler.rows, handler.points,
+		)
+	}
 	if handler.legacyRows != nil {
 		session = executor.NewBatchSessionWithManagement(
 			handler.context, handler.dictionary, handler.rows,

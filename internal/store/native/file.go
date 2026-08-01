@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -63,6 +64,7 @@ const (
 )
 
 type File struct {
+	mu             sync.RWMutex
 	file           *os.File
 	kind           FileKind
 	records        map[recordKey]recordMeta
@@ -204,7 +206,12 @@ func openFile(file *os.File) (*File, error) {
 }
 
 func (f *File) Put(kind ObjectKind, schemaVersion uint32, id string, payload []byte) error {
-	if f == nil || f.closed {
+	if f == nil {
+		return ErrClosed
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
 		return ErrClosed
 	}
 	if err := validateRecord(kind, schemaVersion, id, len(payload)); err != nil {
@@ -230,18 +237,19 @@ func (f *File) Put(kind ObjectKind, schemaVersion uint32, id string, payload []b
 }
 
 func (f *File) Begin() (*Transaction, error) {
-	if f == nil || f.closed {
+	if f == nil {
 		return nil, ErrClosed
 	}
-	var idBytes [16]byte
-	if _, err := rand.Read(idBytes[:]); err != nil {
-		return nil, fmt.Errorf("generate transaction ID: %w", err)
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
+		return nil, ErrClosed
 	}
-	return &Transaction{file: f, id: hex.EncodeToString(idBytes[:]), keys: make(map[recordKey]struct{})}, nil
+	return &Transaction{file: f, keys: make(map[recordKey]struct{})}, nil
 }
 
 func (transaction *Transaction) Put(kind ObjectKind, schemaVersion uint32, id string, payload []byte) error {
-	if transaction == nil || transaction.closed || transaction.file == nil || transaction.file.closed {
+	if transaction == nil || transaction.closed || transaction.file == nil {
 		return ErrClosed
 	}
 	if kind == objectKindTransactionBegin || kind == objectKindTransactionCommit {
@@ -251,6 +259,11 @@ func (transaction *Transaction) Put(kind ObjectKind, schemaVersion uint32, id st
 		return err
 	}
 	key := recordKey{kind: kind, id: id}
+	transaction.file.mu.RLock()
+	defer transaction.file.mu.RUnlock()
+	if transaction.file.closed {
+		return ErrClosed
+	}
 	if _, exists := transaction.file.records[key]; exists {
 		return ErrDuplicateID
 	}
@@ -263,10 +276,21 @@ func (transaction *Transaction) Put(kind ObjectKind, schemaVersion uint32, id st
 }
 
 func (transaction *Transaction) Commit() error {
-	if transaction == nil || transaction.closed || transaction.file == nil || transaction.file.closed {
+	if transaction == nil || transaction.closed || transaction.file == nil {
+		return ErrClosed
+	}
+	transaction.file.mu.Lock()
+	defer transaction.file.mu.Unlock()
+	if transaction.file.closed {
 		return ErrClosed
 	}
 	transaction.closed = true
+	for key := range transaction.keys {
+		if _, exists := transaction.file.records[key]; exists {
+			return ErrDuplicateID
+		}
+	}
+	transaction.id = deterministicTransactionID(transaction.records)
 	if _, err := transaction.file.appendRecord(objectKindTransactionBegin, 1, transaction.id, nil); err != nil {
 		return err
 	}
@@ -296,6 +320,15 @@ func (transaction *Transaction) Commit() error {
 		transaction.file.records[key] = meta
 	}
 	return nil
+}
+
+func deterministicTransactionID(records []bufferedRecord) string {
+	hash := sha256.New()
+	_, _ = hash.Write([]byte("memora-native-transaction-v1\x00"))
+	for _, record := range records {
+		_, _ = hash.Write(encodeRecord(record.kind, record.schema, record.id, record.payload))
+	}
+	return hex.EncodeToString(hash.Sum(nil)[:16])
 }
 
 func (transaction *Transaction) Rollback() error {
@@ -341,7 +374,12 @@ func encodeRecord(kind ObjectKind, schema uint32, id string, payload []byte) []b
 }
 
 func (f *File) Get(kind ObjectKind, id string) ([]byte, error) {
-	if f == nil || f.closed {
+	if f == nil {
+		return nil, ErrClosed
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
 		return nil, ErrClosed
 	}
 	meta, ok := f.records[recordKey{kind: kind, id: id}]
@@ -359,14 +397,24 @@ func (f *File) Get(kind ObjectKind, id string) ([]byte, error) {
 }
 
 func (f *File) Kind() (FileKind, error) {
-	if f == nil || f.closed {
+	if f == nil {
+		return 0, ErrClosed
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
 		return 0, ErrClosed
 	}
 	return f.kind, nil
 }
 
 func (f *File) IDs(kind ObjectKind) ([]string, error) {
-	if f == nil || f.closed {
+	if f == nil {
+		return nil, ErrClosed
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
 		return nil, ErrClosed
 	}
 	ids := make([]string, 0)
@@ -382,7 +430,12 @@ func (f *File) IDs(kind ObjectKind) ([]string, error) {
 // Records returns every committed logical record in deterministic physical-kind/key order.
 // Transaction markers and an incomplete crash tail are never included.
 func (f *File) Records() ([]RecordRef, error) {
-	if f == nil || f.closed {
+	if f == nil {
+		return nil, ErrClosed
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
 		return nil, ErrClosed
 	}
 	result := make([]RecordRef, 0, len(f.records))
@@ -402,7 +455,12 @@ func (f *File) Records() ([]RecordRef, error) {
 }
 
 func (f *File) Close() error {
-	if f == nil || f.closed {
+	if f == nil {
+		return ErrClosed
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
 		return ErrClosed
 	}
 	f.closed = true

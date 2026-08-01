@@ -15,15 +15,30 @@ import (
 type IDSource interface{ Next() (string, error) }
 type Clock interface{ Now() time.Time }
 
+// PageAuthority owns Catalog visibility after F107. The commit callback writes
+// immutable bodies; PublishCatalog must not report success until the Page tree
+// exposes the supplied snapshot.
+type PageAuthority interface {
+	BeginWrite(context.Context) (func(), error)
+	SnapshotCatalog(context.Context) ([]catalog.Database, error)
+	ShowDatabases(context.Context) ([]catalog.Database, error)
+	DescribeDatabase(context.Context, string) (catalog.Database, error)
+	ShowTables(context.Context, string) ([]catalog.Table, error)
+	DescribeTable(context.Context, string, string) (catalog.Table, error)
+	PublishCatalog(context.Context, []catalog.Database, func() error) error
+}
+
 type ServiceOptions struct {
-	IDs   IDSource
-	Clock Clock
+	IDs       IDSource
+	Clock     Clock
+	Authority PageAuthority
 }
 
 type Service struct {
 	repository *Repository
 	ids        IDSource
 	clock      Clock
+	authority  PageAuthority
 	mu         sync.Mutex
 }
 
@@ -34,7 +49,7 @@ func NewService(repository *Repository, options ServiceOptions) *Service {
 	if options.Clock == nil {
 		options.Clock = systemClock{}
 	}
-	return &Service{repository: repository, ids: options.IDs, clock: options.Clock}
+	return &Service{repository: repository, ids: options.IDs, clock: options.Clock, authority: options.Authority}
 }
 
 func (service *Service) CreateDatabase(ctx context.Context, definition catalog.DatabaseDefinition) (catalog.Database, error) {
@@ -65,6 +80,9 @@ func (service *Service) CreateDatabase(ctx context.Context, definition catalog.D
 }
 
 func (service *Service) ShowDatabases(ctx context.Context) ([]catalog.Database, error) {
+	if service.authority != nil {
+		return service.authority.ShowDatabases(ctx)
+	}
 	databases, err := service.read(ctx)
 	if err != nil {
 		return nil, err
@@ -74,6 +92,9 @@ func (service *Service) ShowDatabases(ctx context.Context) ([]catalog.Database, 
 }
 
 func (service *Service) DescribeDatabase(ctx context.Context, name string) (catalog.Database, error) {
+	if service.authority != nil {
+		return service.authority.DescribeDatabase(ctx, name)
+	}
 	databases, err := service.read(ctx)
 	if err != nil {
 		return catalog.Database{}, err
@@ -119,6 +140,9 @@ func (service *Service) CreateTable(ctx context.Context, databaseName string, de
 }
 
 func (service *Service) ShowTables(ctx context.Context, databaseName string) ([]catalog.Table, error) {
+	if service.authority != nil {
+		return service.authority.ShowTables(ctx, databaseName)
+	}
 	database, err := service.DescribeDatabase(ctx, databaseName)
 	if err != nil {
 		return nil, err
@@ -129,6 +153,9 @@ func (service *Service) ShowTables(ctx context.Context, databaseName string) ([]
 }
 
 func (service *Service) DescribeTable(ctx context.Context, databaseName, tableName string) (catalog.Table, error) {
+	if service.authority != nil {
+		return service.authority.DescribeTable(ctx, databaseName, tableName)
+	}
 	database, err := service.DescribeDatabase(ctx, databaseName)
 	if err != nil {
 		return catalog.Table{}, err
@@ -146,6 +173,9 @@ func (service *Service) read(ctx context.Context) ([]catalog.Database, error) {
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
+	if service.authority != nil {
+		return service.authority.SnapshotCatalog(ctx)
+	}
 	databases, err := service.repository.Read()
 	if err != nil {
 		return nil, err
@@ -176,12 +206,24 @@ func (service *Service) mutate(ctx context.Context, change func(*[]catalog.Datab
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
+	if service.authority != nil {
+		release, err := service.authority.BeginWrite(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
 	databases, err := service.repository.Read()
 	if err != nil {
 		return err
 	}
 	if err := change(&databases); err != nil {
 		return err
+	}
+	if service.authority != nil {
+		return service.authority.PublishCatalog(ctx, databases, func() error {
+			return service.repository.Write(databases)
+		})
 	}
 	return service.repository.Write(databases)
 }

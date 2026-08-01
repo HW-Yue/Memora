@@ -105,6 +105,63 @@ func (reader *IndexedReader) Get(
 	return project(table, value), nil
 }
 
+// CurrentIncludingDeleted resolves the current immutable body without hiding a
+// tombstone. Mutation conflict checks use it instead of enumerating Row IDs.
+func (reader *IndexedReader) CurrentIncludingDeleted(
+	ctx context.Context, table catalog.Table, rowID string,
+) (row.Row, error) {
+	if err := validateIndexedTable(ctx, table); err != nil {
+		return row.Row{}, err
+	}
+	current, err := reader.current.Lookup(table.ID, rowID)
+	if err != nil {
+		if errors.Is(err, currentrowindex.ErrNotFound) {
+			return row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), err)
+		}
+		return row.Row{}, err
+	}
+	version, err := reader.versions.ByRevision(rowID, current.Revision)
+	if err != nil {
+		return row.Row{}, err
+	}
+	if !currentMatchesVersion(current, version) || !locatorMatchesTable(version, table) {
+		return row.Row{}, fmt.Errorf("%w: current and version Row locators disagree", ErrCorrupt)
+	}
+	value, err := reader.readBody(table, version)
+	if err != nil {
+		return row.Row{}, err
+	}
+	return value, nil
+}
+
+func (reader *IndexedReader) ListPage(
+	ctx context.Context, table catalog.Table, limit int, snapshot uint64,
+) ([]row.Row, bool, error) {
+	if limit < 1 || limit > 1000 {
+		return nil, false, fmt.Errorf("%w: limit must be between 1 and 1000", ErrInvalid)
+	}
+	view := &ReadView{
+		reader: reader, sequence: snapshot, overlay: make(map[string]row.Row),
+	}
+	defer func() { _ = view.Discard() }()
+	page, err := view.PageLocators(ctx, table, "", uint64(limit))
+	if err != nil {
+		return nil, false, err
+	}
+	values := make([]row.Row, 0, len(page.Locators))
+	for _, locator := range page.Locators {
+		value, err := reader.readBody(table, locator)
+		if err != nil {
+			return nil, false, err
+		}
+		if value.State == row.StateDeleted || value.State == row.StateSuperseded {
+			continue
+		}
+		values = append(values, project(table, value))
+	}
+	return values, page.HasMore, nil
+}
+
 func (reader *IndexedReader) visibleLocator(
 	table catalog.Table,
 	current currentrowindex.Locator,

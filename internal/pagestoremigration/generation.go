@@ -12,6 +12,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
+	"github.com/HW-Yue/Memora/internal/store/treecontrol"
 	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
@@ -36,6 +37,16 @@ type Generation struct {
 }
 
 func OpenGeneration(directory string) (*Generation, error) {
+	return openGeneration(directory, true)
+}
+
+// openLiveGeneration opens an activated generation whose Tree/WAL bytes are
+// expected to have advanced beyond the immutable F106 migration manifest.
+func openLiveGeneration(directory string) (*Generation, error) {
+	return openGeneration(directory, false)
+}
+
+func openGeneration(directory string, strict bool) (*Generation, error) {
 	if directory == "" {
 		return nil, fmt.Errorf("%w: generation directory", ErrInvalid)
 	}
@@ -47,9 +58,13 @@ func OpenGeneration(directory string) (*Generation, error) {
 	if err != nil {
 		return nil, err
 	}
-	digest, err := contentDigest(directory)
-	if err != nil || digest != manifest.ContentDigest {
-		return nil, fmt.Errorf("%w: generation content digest", ErrTargetCorrupt)
+	if strict {
+		digest, err := contentDigest(directory)
+		if err != nil || digest != manifest.ContentDigest {
+			return nil, fmt.Errorf("%w: generation content digest", ErrTargetCorrupt)
+		}
+	} else if err := validateGenerationEntries(directory); err != nil {
+		return nil, err
 	}
 
 	generation := &Generation{directory: directory, manifest: manifest}
@@ -64,7 +79,9 @@ func OpenGeneration(directory string) (*Generation, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: open %s Tree: %v", ErrTargetCorrupt, specification.Kind, err)
 		}
-		if tree.runtime.State() != specification.State.runtimeState(specification.SpaceID) {
+		state := tree.runtime.State()
+		baseline := specification.State.runtimeState(specification.SpaceID)
+		if (strict && state != baseline) || (!strict && !validLiveState(state, baseline)) {
 			_ = closeGenerationTree(tree)
 			return nil, fmt.Errorf("%w: %s Tree state changed", ErrTargetCorrupt, specification.Kind)
 		}
@@ -83,12 +100,22 @@ func OpenGeneration(directory string) (*Generation, error) {
 			return nil, fmt.Errorf("%w: open %s Index: %v", ErrTargetCorrupt, specification.Kind, err)
 		}
 	}
-	afterOpen, err := contentDigest(directory)
-	if err != nil || afterOpen != manifest.ContentDigest {
-		return nil, fmt.Errorf("%w: recovery changed generation content", ErrTargetCorrupt)
+	if strict {
+		afterOpen, err := contentDigest(directory)
+		if err != nil || afterOpen != manifest.ContentDigest {
+			return nil, fmt.Errorf("%w: recovery changed generation content", ErrTargetCorrupt)
+		}
 	}
 	closeOnError = false
 	return generation, nil
+}
+
+func validLiveState(state, baseline treecontrol.State) bool {
+	return state.SpaceID == baseline.SpaceID &&
+		state.Generation == baseline.Generation &&
+		state.Revision >= baseline.Revision &&
+		state.NextPageID >= baseline.NextPageID &&
+		state.LSN >= baseline.LSN && state.RootPageID != 0
 }
 
 func openGenerationTree(directory string, specification treeManifest, capacity uint64) (*generationTree, error) {

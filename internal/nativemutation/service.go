@@ -68,20 +68,30 @@ func (service *Service) QueryBudgetHistory(context.Context) ([]nativeconfig.Revi
 }
 
 func (service *Service) UpdateQueryBudgets(
-	_ context.Context, budgets nativeconfig.QueryBudgets, expected uint64, actor, reason string,
+	ctx context.Context, budgets nativeconfig.QueryBudgets, expected uint64, actor, reason string,
 ) (nativeconfig.Revision, error) {
 	if service == nil || service.config == nil {
 		return nativeconfig.Revision{}, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
 	}
+	release, err := service.Service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return nativeconfig.Revision{}, err
+	}
+	defer release()
 	return service.config.Update(budgets, expected, actor, reason)
 }
 
 func (service *Service) RestoreQueryBudgets(
-	_ context.Context, target, expected uint64, actor, reason string,
+	ctx context.Context, target, expected uint64, actor, reason string,
 ) (nativeconfig.Revision, error) {
 	if service == nil || service.config == nil {
 		return nativeconfig.Revision{}, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
 	}
+	release, err := service.Service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return nativeconfig.Revision{}, err
+	}
+	defer release()
 	return service.config.Restore(target, expected, actor, reason)
 }
 
@@ -124,6 +134,15 @@ func (service *Service) reshape(
 		return nil, reshapeError(result.CodeValidation, "one complete Route snapshot is required per target")
 	}
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return nil, err
+	}
+	release, err := service.Service.BeginRowAuthorityWrite(ctx, table, sourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	table, err = service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +263,8 @@ func (service *Service) reshapeSources(
 			return nil, nil, reshapeError(result.CodeValidation, "source RowIDs must be unique")
 		}
 		seen[sourceID] = true
-		value, err := service.rows.Read(sourceID)
-		if err != nil || value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
+		value, err := service.Service.CurrentBody(context.Background(), table, sourceID)
+		if err != nil || value.State != row.StateLive || value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
 			return nil, nil, reshapeError(result.CodeNotFound, "source Row %q was not found in requested table", sourceID)
 		}
 		expected := options.SourceRevisions[sourceID]

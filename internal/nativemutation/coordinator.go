@@ -1,6 +1,7 @@
 package nativemutation
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -36,10 +37,20 @@ type Coordinator struct {
 	file   *nativestore.File
 	rows   *nativerow.Repository
 	router *nativerouter.Repository
+	pages  nativerow.PageAuthority
 }
 
-func New(file *nativestore.File, rows *nativerow.Repository, routes *nativerouter.Repository) *Coordinator {
-	return &Coordinator{file: file, rows: rows, router: routes}
+func New(
+	file *nativestore.File,
+	rows *nativerow.Repository,
+	routes *nativerouter.Repository,
+	authorities ...nativerow.PageAuthority,
+) *Coordinator {
+	coordinator := &Coordinator{file: file, rows: rows, router: routes}
+	if len(authorities) > 0 {
+		coordinator.pages = authorities[0]
+	}
+	return coordinator
 }
 
 func (coordinator *Coordinator) Commit(plan Plan) error {
@@ -88,6 +99,13 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 		if err := coordinator.router.StageMembership(transaction, value); err != nil {
 			return err
 		}
+	}
+	if coordinator.pages != nil {
+		values := make([]row.Row, 0, len(changes))
+		for _, change := range changes {
+			values = append(values, change.Row)
+		}
+		return coordinator.pages.PublishRows(context.Background(), values, transaction.Commit)
 	}
 	return transaction.Commit()
 }

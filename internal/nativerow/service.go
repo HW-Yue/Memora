@@ -35,9 +35,23 @@ func (err *ServiceError) Unwrap() error      { return err.Cause }
 type IDSource interface{ Next() (string, error) }
 type Clock interface{ Now() time.Time }
 
+// PageAuthority owns current/version visibility after F107.
+type PageAuthority interface {
+	BeginWrite(context.Context) (func(), error)
+	BeginRowWrite(context.Context, string, string, []string) (func(), error)
+	Capture(context.Context) (uint64, error)
+	Get(context.Context, catalog.Table, string, uint64) (row.Row, error)
+	CurrentIncludingDeleted(context.Context, catalog.Table, string) (row.Row, error)
+	ListPage(context.Context, catalog.Table, int, uint64) ([]row.Row, bool, error)
+	AsOfRevision(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
+	AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
+	PublishRows(context.Context, []row.Row, func() error) error
+}
+
 type ServiceOptions struct {
-	IDs   IDSource
-	Clock Clock
+	IDs       IDSource
+	Clock     Clock
+	Authority PageAuthority
 }
 
 type Service struct {
@@ -45,6 +59,7 @@ type Service struct {
 	catalog    *nativecatalog.Service
 	ids        IDSource
 	clock      Clock
+	authority  PageAuthority
 }
 
 func NewService(repository *Repository, dictionary *nativecatalog.Service, options ServiceOptions) *Service {
@@ -54,10 +69,18 @@ func NewService(repository *Repository, dictionary *nativecatalog.Service, optio
 	if options.Clock == nil {
 		options.Clock = systemClock{}
 	}
-	return &Service{repository: repository, catalog: dictionary, ids: options.IDs, clock: options.Clock}
+	return &Service{
+		repository: repository, catalog: dictionary, ids: options.IDs, clock: options.Clock,
+		authority: options.Authority,
+	}
 }
 
 func (service *Service) Insert(ctx context.Context, databaseName, tableName string, values map[string]any, options row.WriteOptions) (row.Row, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return row.Row{}, err
+	}
+	defer release()
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return row.Row{}, err
@@ -97,7 +120,11 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 			return row.Row{}, err
 		}
 	}
-	if err := transaction.Commit(); err != nil {
+	commit := transaction.Commit
+	if service.authority != nil {
+		commit = func() error { return service.authority.PublishRows(ctx, []row.Row{value}, transaction.Commit) }
+	}
+	if err := commit(); err != nil {
 		return row.Row{}, err
 	}
 	return project(table, value), nil
@@ -107,6 +134,13 @@ func (service *Service) Get(ctx context.Context, databaseName, tableName, rowID 
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return row.Row{}, err
+	}
+	if service.authority != nil {
+		snapshot, err := service.authority.Capture(ctx)
+		if err != nil {
+			return row.Row{}, err
+		}
+		return service.authority.Get(ctx, table, rowID, snapshot)
 	}
 	value, err := service.repository.Read(rowID)
 	if err != nil {
@@ -125,6 +159,13 @@ func (service *Service) ListPage(ctx context.Context, databaseName, tableName st
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return nil, false, err
+	}
+	if service.authority != nil {
+		snapshot, err := service.authority.Capture(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		return service.authority.ListPage(ctx, table, limit, snapshot)
 	}
 	values, more, err := service.repository.List(table.DatabaseID, table.ID, limit)
 	for index := range values {
@@ -177,6 +218,15 @@ func serviceFailure(code result.Code, message string, cause error) error {
 }
 
 func (service *Service) Update(ctx context.Context, databaseName, tableName, rowID string, changes map[string]any, options row.WriteOptions) (row.Row, error) {
+	lockTable, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return row.Row{}, err
+	}
+	release, err := service.BeginRowAuthorityWrite(ctx, lockTable, []string{rowID})
+	if err != nil {
+		return row.Row{}, err
+	}
+	defer release()
 	table, current, err := service.mutationTarget(ctx, databaseName, tableName, rowID, options)
 	if err != nil {
 		return row.Row{}, err
@@ -197,12 +247,21 @@ func (service *Service) Update(ctx context.Context, databaseName, tableName, row
 	}
 	updated.SchemaVersion = table.SchemaVersion
 	updated.UpdatedAt = service.clock.Now().UTC()
-	if err := service.commitRowRevision(updated, history.OperationUpdate, options.Metadata, options.RouteLeafIDs); err != nil {
+	if err := service.commitRowRevision(ctx, updated, history.OperationUpdate, options.Metadata, options.RouteLeafIDs); err != nil {
 		return row.Row{}, err
 	}
 	return project(table, updated), nil
 }
 func (service *Service) Delete(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (row.Row, error) {
+	lockTable, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return row.Row{}, err
+	}
+	release, err := service.BeginRowAuthorityWrite(ctx, lockTable, []string{rowID})
+	if err != nil {
+		return row.Row{}, err
+	}
+	defer release()
 	table, current, err := service.mutationTarget(ctx, databaseName, tableName, rowID, options)
 	if err != nil {
 		return row.Row{}, err
@@ -217,13 +276,13 @@ func (service *Service) Delete(ctx context.Context, databaseName, tableName, row
 	deleted.State = row.StateDeleted
 	deleted.UpdatedAt = service.clock.Now().UTC()
 	emptyRoutes := []string{}
-	if err := service.commitRowRevision(deleted, history.OperationDelete, options.Metadata, emptyRoutes); err != nil {
+	if err := service.commitRowRevision(ctx, deleted, history.OperationDelete, options.Metadata, emptyRoutes); err != nil {
 		return row.Row{}, err
 	}
 	return project(table, deleted), nil
 }
 
-func (service *Service) commitRowRevision(value row.Row, operation history.Operation, metadata row.WriteMetadata, desired []string) error {
+func (service *Service) commitRowRevision(ctx context.Context, value row.Row, operation history.Operation, metadata row.WriteMetadata, desired []string) error {
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
 		return err
@@ -275,6 +334,9 @@ func (service *Service) commitRowRevision(value row.Row, operation history.Opera
 			return err
 		}
 	}
+	if service.authority != nil {
+		return service.authority.PublishRows(ctx, []row.Row{value}, transaction.Commit)
+	}
 	return transaction.Commit()
 }
 
@@ -292,7 +354,12 @@ func (service *Service) mutationTarget(ctx context.Context, databaseName, tableN
 	if err != nil {
 		return catalog.Table{}, row.Row{}, err
 	}
-	current, err := service.repository.Read(rowID)
+	var current row.Row
+	if service.authority != nil {
+		current, err = service.authority.CurrentIncludingDeleted(ctx, table, rowID)
+	} else {
+		current, err = service.repository.Read(rowID)
+	}
 	if err != nil {
 		if errors.Is(err, nativestore.ErrNotFound) {
 			return catalog.Table{}, row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), err)
@@ -301,6 +368,9 @@ func (service *Service) mutationTarget(ctx context.Context, databaseName, tableN
 	}
 	if current.DatabaseID != table.DatabaseID || current.TableID != table.ID {
 		return catalog.Table{}, row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found in requested table", rowID), nil)
+	}
+	if current.State == row.StateDeleted || current.State == row.StateSuperseded {
+		return catalog.Table{}, row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), nil)
 	}
 	if options.ExpectedSchemaVersion != table.SchemaVersion || options.ExpectedRevision != current.Revision {
 		return catalog.Table{}, row.Row{}, serviceFailure(result.CodeRevisionConflict, "row or schema revision conflicts with latest", ErrRevisionConflict)
@@ -327,6 +397,13 @@ func (service *Service) AsOfRevision(ctx context.Context, databaseName, tableNam
 	if err != nil {
 		return row.Row{}, err
 	}
+	if service.authority != nil {
+		snapshot, err := service.authority.Capture(ctx)
+		if err != nil {
+			return row.Row{}, err
+		}
+		return service.authority.AsOfRevision(ctx, table, rowID, revision, snapshot)
+	}
 	value, err := service.repository.ReadRevision(rowID, revision)
 	if err != nil {
 		return row.Row{}, err
@@ -344,6 +421,13 @@ func (service *Service) AsOfCommit(
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return row.Row{}, err
+	}
+	if service.authority != nil {
+		snapshot, err := service.authority.Capture(ctx)
+		if err != nil {
+			return row.Row{}, err
+		}
+		return service.authority.AsOfCommit(ctx, table, rowID, commitSequence, snapshot)
 	}
 	value, err := service.repository.ReadAsOfCommit(rowID, commitSequence)
 	if err != nil {
@@ -370,11 +454,25 @@ func (service *Service) Restore(
 	targetRevision uint64,
 	options row.WriteOptions,
 ) (row.Row, error) {
+	lockTable, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return row.Row{}, err
+	}
+	release, err := service.BeginRowAuthorityWrite(ctx, lockTable, []string{rowID})
+	if err != nil {
+		return row.Row{}, err
+	}
+	defer release()
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return row.Row{}, err
 	}
-	current, err := service.repository.ReadIncludingDeleted(rowID)
+	var current row.Row
+	if service.authority != nil {
+		current, err = service.authority.CurrentIncludingDeleted(ctx, table, rowID)
+	} else {
+		current, err = service.repository.ReadIncludingDeleted(rowID)
+	}
 	if err != nil {
 		if errors.Is(err, nativestore.ErrNotFound) {
 			return row.Row{}, serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), err)
@@ -387,7 +485,19 @@ func (service *Service) Restore(
 	if options.ExpectedSchemaVersion != table.SchemaVersion || options.ExpectedRevision != current.Revision {
 		return row.Row{}, serviceFailure(result.CodeRevisionConflict, "row or schema revision conflicts with latest", ErrRevisionConflict)
 	}
-	target, err := service.repository.ReadRevision(rowID, targetRevision)
+	var target row.Row
+	if service.authority != nil {
+		snapshot, captureErr := service.authority.Capture(ctx)
+		if captureErr != nil {
+			return row.Row{}, captureErr
+		}
+		target, err = service.authority.AsOfRevision(ctx, table, rowID, targetRevision, snapshot)
+		if err == nil {
+			target.Values, err = bindValues(table, target.Values)
+		}
+	} else {
+		target, err = service.repository.ReadRevision(rowID, targetRevision)
+	}
 	if err != nil {
 		if errors.Is(err, nativestore.ErrNotFound) {
 			return row.Row{}, serviceFailure(result.CodeNotFound, "target Row revision was not found", err)
@@ -434,12 +544,17 @@ func (service *Service) Restore(
 	if restored.State == row.StateDeleted {
 		desired = []string{}
 	}
-	if err := service.commitRowRevision(restored, history.OperationCompensate, options.Metadata, desired); err != nil {
+	if err := service.commitRowRevision(ctx, restored, history.OperationCompensate, options.Metadata, desired); err != nil {
 		return row.Row{}, err
 	}
 	return project(table, restored), nil
 }
 func (service *Service) Relate(ctx context.Context, definition row.RelationDefinition) (relation.Relation, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	defer release()
 	source, err := service.relationEndpoint(ctx, definition.Source)
 	if err != nil {
 		return relation.Relation{}, err
@@ -485,7 +600,12 @@ func (service *Service) GetRelation(_ context.Context, id string) (relation.Rela
 	}
 	return value, err
 }
-func (service *Service) DeleteRelation(_ context.Context, id string, expected uint64) (relation.Relation, error) {
+func (service *Service) DeleteRelation(ctx context.Context, id string, expected uint64) (relation.Relation, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	defer release()
 	current, err := service.repository.GetRelation(id, false)
 	if err != nil {
 		return relation.Relation{}, err
@@ -526,16 +646,55 @@ func (service *Service) relationEndpoint(ctx context.Context, endpoint row.Relat
 	if err != nil {
 		return relation.Endpoint{}, err
 	}
-	value, err := service.repository.Read(endpoint.RowID)
-	if err != nil || value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
+	value, err := service.CurrentBody(ctx, table, endpoint.RowID)
+	if err != nil || value.State != row.StateLive || value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
 		return relation.Endpoint{}, serviceFailure(result.CodeNotFound, "relation endpoint Row was not found", err)
 	}
 	return relation.Endpoint{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID}, nil
+}
+
+// CurrentBody resolves an unprojected current revision for engine-owned
+// mutation planning. It is not an MSQL read surface.
+func (service *Service) CurrentBody(ctx context.Context, table catalog.Table, rowID string) (row.Row, error) {
+	if service == nil || service.repository == nil {
+		return row.Row{}, fmt.Errorf("native Row service is incomplete")
+	}
+	if service.authority != nil {
+		return service.authority.CurrentIncludingDeleted(ctx, table, rowID)
+	}
+	return service.repository.ReadIncludingDeleted(rowID)
+}
+
+func (service *Service) BeginAuthorityWrite(ctx context.Context) (func(), error) {
+	if service == nil {
+		return nil, fmt.Errorf("native Row service is incomplete")
+	}
+	if service.authority == nil {
+		return func() {}, nil
+	}
+	return service.authority.BeginWrite(ctx)
+}
+
+func (service *Service) BeginRowAuthorityWrite(
+	ctx context.Context, table catalog.Table, rowIDs []string,
+) (func(), error) {
+	if service == nil {
+		return nil, fmt.Errorf("native Row service is incomplete")
+	}
+	if service.authority == nil {
+		return func() {}, nil
+	}
+	return service.authority.BeginRowWrite(ctx, table.DatabaseID, table.ID, rowIDs)
 }
 func (service *Service) CreateRouterRoot(context.Context, string, string) (router.Node, error) {
 	return router.Node{}, ErrUnsupported
 }
 func (service *Service) CreateTableRouterRoot(ctx context.Context, databaseName, tableName, purpose, synopsis string) (router.Node, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer release()
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
 		return router.Node{}, err
@@ -557,7 +716,12 @@ func (service *Service) ListTableRouterRoots(_ context.Context, databaseID, tabl
 	}
 	return routes.ShowUnder(roots[0].ID, cursor, limit)
 }
-func (service *Service) CreateRouterNode(_ context.Context, parentID string, definition router.NodeDefinition) (router.Node, error) {
+func (service *Service) CreateRouterNode(ctx context.Context, parentID string, definition router.NodeDefinition) (router.Node, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer release()
 	id, err := service.ids.Next()
 	if err != nil || strings.TrimSpace(id) == "" {
 		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
@@ -566,7 +730,12 @@ func (service *Service) CreateRouterNode(_ context.Context, parentID string, def
 		"route_"+id, parentID, definition.Name, definition.Kind, definition.Purpose, definition.Synopsis,
 	)
 }
-func (service *Service) RenameRouterNode(_ context.Context, id, name string, expected uint64) (router.Node, error) {
+func (service *Service) RenameRouterNode(ctx context.Context, id, name string, expected uint64) (router.Node, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer release()
 	routes := nativerouter.New(service.repository.file)
 	current, err := routes.Get(id)
 	if err != nil {
@@ -590,7 +759,12 @@ func (service *Service) RenameRouterNode(_ context.Context, id, name string, exp
 	}
 	return current, transaction.Commit()
 }
-func (service *Service) UpdateRouterSynopsis(_ context.Context, id, synopsis string, expected uint64) (router.Node, error) {
+func (service *Service) UpdateRouterSynopsis(ctx context.Context, id, synopsis string, expected uint64) (router.Node, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer release()
 	routes := nativerouter.New(service.repository.file)
 	current, err := routes.Get(id)
 	if err != nil {
@@ -610,7 +784,12 @@ func (service *Service) UpdateRouterSynopsis(_ context.Context, id, synopsis str
 	}
 	return current, transaction.Commit()
 }
-func (service *Service) DeleteRouterNode(_ context.Context, id string, expected uint64) (uint64, error) {
+func (service *Service) DeleteRouterNode(ctx context.Context, id string, expected uint64) (uint64, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer release()
 	routes := nativerouter.New(service.repository.file)
 	current, err := routes.Get(id)
 	if err != nil {

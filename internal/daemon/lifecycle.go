@@ -18,6 +18,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/nativesnapshot"
+	"github.com/HW-Yue/Memora/internal/pagestoremigration"
 	"github.com/HW-Yue/Memora/internal/security"
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"golang.org/x/sys/unix"
@@ -147,35 +148,49 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		return err
 	}
 	nativeFile := migration.File
+	authority, err := pagestoremigration.OpenAuthority(
+		ctx, nativeFile, filepath.Join(dataDir, "databases"),
+	)
+	if err != nil {
+		_ = nativeFile.Close()
+		return err
+	}
 	auxiliaryStore, err := nativekvstore.Open(filepath.Join(dataDir, "system", "auxiliary.memora"))
 	if err != nil {
+		_ = authority.Close()
 		_ = nativeFile.Close()
 		return err
 	}
 	securityStore, err := nativekvstore.Open(filepath.Join(dataDir, "system", "security.memora"))
 	if err != nil {
+		_ = authority.Close()
 		_ = nativeFile.Close()
 		_ = auxiliaryStore.Close()
 		return err
 	}
-	dictionary := nativecatalog.NewService(nativecatalog.New(nativeFile), nativecatalog.ServiceOptions{})
+	dictionary := nativecatalog.NewService(
+		nativecatalog.New(nativeFile), nativecatalog.ServiceOptions{Authority: authority},
+	)
 	rowRepository := nativerow.New(nativeFile)
 	routeRepository := nativerouter.New(nativeFile)
 	configuration, err := nativeconfig.New(nativeFile)
 	if err != nil {
+		_ = authority.Close()
 		_ = nativeFile.Close()
 		_ = auxiliaryStore.Close()
 		_ = securityStore.Close()
 		return err
 	}
-	rowService := nativerow.NewService(rowRepository, dictionary, nativerow.ServiceOptions{})
+	rowService := nativerow.NewService(
+		rowRepository, dictionary, nativerow.ServiceOptions{Authority: authority},
+	)
 	rows := nativemutation.NewService(
 		rowService, dictionary, rowRepository, routeRepository,
-		nativemutation.New(nativeFile, rowRepository, routeRepository),
+		nativemutation.New(nativeFile, rowRepository, routeRepository, authority),
 		configuration,
 	)
 	handler := newNativeDatabaseHandler(
-		ctx, dictionary, rows, auxiliaryStore, security.New(securityStore, security.Options{}),
+		ctx, dictionary, rows, authority, auxiliaryStore, security.New(securityStore, security.Options{}),
 		func(context.Context) ([]byte, error) { return nativesnapshot.NewNative(nativeFile).Export() },
 	)
 	server := ipc.NewServer(handler)
@@ -185,16 +200,17 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		case <-ctx.Done():
 			_ = server.Close()
 			_ = handler.Close()
-			return errors.Join(nativeFile.Close(), auxiliaryStore.Close(), securityStore.Close())
+			return errors.Join(authority.Close(), nativeFile.Close(), auxiliaryStore.Close(), securityStore.Close())
 		}
 	}
 	serveErr := server.Serve(ctx, listener)
 	serverErr := server.Close()
 	handlerErr := handler.Close()
+	authorityErr := authority.Close()
 	storeErr := nativeFile.Close()
 	auxiliaryStoreErr := auxiliaryStore.Close()
 	securityStoreErr := securityStore.Close()
-	return errors.Join(serveErr, serverErr, handlerErr, storeErr, auxiliaryStoreErr, securityStoreErr)
+	return errors.Join(serveErr, serverErr, handlerErr, authorityErr, storeErr, auxiliaryStoreErr, securityStoreErr)
 }
 
 func (lease *Lease) Close() error {

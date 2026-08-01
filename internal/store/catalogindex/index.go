@@ -185,6 +185,76 @@ func (index *Index) ColumnsForTable(tableID string) ([]Locator, error) {
 	return result, nil
 }
 
+// Databases returns every current Database identity locator exactly once.
+func (index *Index) Databases() ([]Locator, error) {
+	return index.identityLocators(keyDatabaseID, KindDatabase, "")
+}
+
+// TablesForDatabase returns every current Table identity locator in one Database.
+func (index *Index) TablesForDatabase(databaseID string) ([]Locator, error) {
+	if strings.TrimSpace(databaseID) != databaseID || databaseID == "" {
+		return nil, fmt.Errorf("%w: Database ID", ErrInvalid)
+	}
+	return index.identityLocators(keyTableID, KindTable, databaseID)
+}
+
+func (index *Index) identityLocators(kind keyKind, locatorKind Kind, databaseID string) ([]Locator, error) {
+	if index == nil || index.runtime == nil {
+		return nil, fmt.Errorf("%w: lookup Index", ErrInvalid)
+	}
+	start := []byte{keyVersion, byte(kind)}
+	end, err := keyPrefixSuccessor(start)
+	if err != nil {
+		return nil, err
+	}
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return []Locator{}, nil
+	}
+	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+	if err != nil {
+		return nil, err
+	}
+	cursor, err := searcher.NewCursor(start, end)
+	if err != nil {
+		return nil, classifyTreeError(err)
+	}
+	result := make([]Locator, 0)
+	for {
+		batch, err := cursor.Next(256)
+		if err != nil {
+			return nil, classifyTreeError(err)
+		}
+		for _, entry := range batch.Entries {
+			if !bytes.HasPrefix(entry.Key, start) {
+				return nil, fmt.Errorf("%w: identity key escaped prefix", ErrCorrupt)
+			}
+			if err := validateStoredKey(entry.Key); err != nil {
+				return nil, err
+			}
+			locator, err := decodeLocator(entry.Value)
+			if err != nil {
+				return nil, err
+			}
+			if locator.Kind != locatorKind ||
+				(databaseID != "" && locator.DatabaseID != databaseID) {
+				if databaseID != "" && locator.Kind == locatorKind {
+					continue
+				}
+				return nil, fmt.Errorf("%w: identity locator kind", ErrCorrupt)
+			}
+			result = append(result, locator)
+		}
+		if batch.Done {
+			break
+		}
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].ID < result[right].ID })
+	return result, nil
+}
+
 func (index *Index) lookup(key []byte, kind Kind, databaseID, tableID string) (Locator, error) {
 	if index == nil || index.runtime == nil {
 		return Locator{}, fmt.Errorf("%w: lookup Index", ErrInvalid)

@@ -26,34 +26,49 @@ func (repository *Repository) Write(databases []catalog.Database) error {
 	if err := validateCatalog(databases); err != nil {
 		return err
 	}
+	transaction, err := repository.file.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	changed := false
 	for databaseIndex, database := range databases {
 		payload, err := encodeDatabase(database, uint64(databaseIndex))
 		if err != nil {
 			return err
 		}
-		if err := repository.putVersion(nativestore.ObjectKindDatabase, database.ID, database.SchemaVersion, payload); err != nil {
+		staged, err := repository.stageVersion(transaction, nativestore.ObjectKindDatabase, database.ID, database.SchemaVersion, payload)
+		if err != nil {
 			return fmt.Errorf("write database %q: %w", database.ID, err)
 		}
+		changed = changed || staged
 		for tableIndex, table := range database.Tables {
 			payload, err = encodeTable(table, uint64(tableIndex))
 			if err != nil {
 				return err
 			}
-			if err := repository.putVersion(nativestore.ObjectKindTable, table.ID, table.SchemaVersion, payload); err != nil {
+			staged, err = repository.stageVersion(transaction, nativestore.ObjectKindTable, table.ID, table.SchemaVersion, payload)
+			if err != nil {
 				return fmt.Errorf("write table %q: %w", table.ID, err)
 			}
+			changed = changed || staged
 			for columnIndex, column := range table.Columns {
 				payload, err = encodeColumn(column, table.ID, uint64(columnIndex))
 				if err != nil {
 					return err
 				}
-				if err := repository.putVersion(nativestore.ObjectKindColumn, column.ID, column.SchemaVersion, payload); err != nil {
+				staged, err = repository.stageVersion(transaction, nativestore.ObjectKindColumn, column.ID, column.SchemaVersion, payload)
+				if err != nil {
 					return fmt.Errorf("write column %q: %w", column.ID, err)
 				}
+				changed = changed || staged
 			}
 		}
 	}
-	return nil
+	if !changed {
+		return nil
+	}
+	return transaction.Commit()
 }
 
 // StageSnapshot writes a validated Catalog into an empty native snapshot transaction.
@@ -94,10 +109,16 @@ func (repository *Repository) StageSnapshot(transaction *nativestore.Transaction
 	return nil
 }
 
-func (repository *Repository) putVersion(kind nativestore.ObjectKind, id string, version uint64, payload []byte) error {
+func (repository *Repository) stageVersion(
+	transaction *nativestore.Transaction,
+	kind nativestore.ObjectKind,
+	id string,
+	version uint64,
+	payload []byte,
+) (bool, error) {
 	ids, err := repository.file.IDs(kind)
 	if err != nil {
-		return err
+		return false, err
 	}
 	latest := uint64(0)
 	for _, recordID := range ids {
@@ -106,11 +127,11 @@ func (repository *Repository) putVersion(kind nativestore.ObjectKind, id string,
 		}
 		existing, err := repository.file.Get(kind, recordID)
 		if err != nil {
-			return err
+			return false, err
 		}
 		fields, err := decodeFields(existing)
 		if err != nil {
-			return err
+			return false, err
 		}
 		logicalID, err := fields.text(1)
 		if err != nil || logicalID != id {
@@ -122,26 +143,29 @@ func (repository *Repository) putVersion(kind nativestore.ObjectKind, id string,
 		}
 		existingVersion, err := fields.uint64(fieldID)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if existingVersion == version {
 			if bytes.Equal(existing, payload) {
-				return nil
+				return false, nil
 			}
-			return fmt.Errorf("%w: object %q changes without schema version", ErrInvalid, id)
+			return false, fmt.Errorf("%w: object %q changes without schema version", ErrInvalid, id)
 		}
 		if existingVersion > latest {
 			latest = existingVersion
 		}
 	}
 	if latest >= version {
-		return fmt.Errorf("%w: object %q schema version is stale", ErrInvalid, id)
+		return false, fmt.Errorf("%w: object %q schema version is stale", ErrInvalid, id)
 	}
 	recordID := id
 	if latest > 0 {
 		recordID = fmt.Sprintf("%s@%020d", id, version)
 	}
-	return repository.file.Put(kind, recordSchemaVersion, recordID, payload)
+	if err := transaction.Put(kind, recordSchemaVersion, recordID, payload); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (repository *Repository) Read() ([]catalog.Database, error) {
