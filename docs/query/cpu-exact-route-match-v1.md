@@ -43,4 +43,4 @@ generation 替换后不会伪装成同一预测快照。
 
 - [Route Vector Generation v1](./route-vector-generation-v1.md)
 - [Discovery Frame v1](./discovery-frame-v1.md)
-- [F124d 开工与完成门](../planning/f124d-cpu-exact-route-match-gate.md)
+- [F124d 开工与完成门](../archive/planning/f124d-cpu-exact-route-match-gate.md)

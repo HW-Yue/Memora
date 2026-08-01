@@ -67,5 +67,5 @@ staging、未知目录和权威 Database 文件永不由该路径删除。
 
 - [ADR-0007](../decisions/0007-route-predictor-arsenal.md)
 - [语义路由投机预取](./speculative-route-prefetch.md)
-- [Route Predictor 小 Feature 计划](../planning/route-predictor-feature-plan.md)
-- [F124c 开工与完成门](../planning/f124c-route-vector-generation-gate.md)
+- [Route Predictor 历史 Feature 计划](../archive/planning/route-predictor-feature-plan.md)
+- [F124c 开工与完成门](../archive/planning/f124c-route-vector-generation-gate.md)

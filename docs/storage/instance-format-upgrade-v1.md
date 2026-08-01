@@ -79,4 +79,4 @@ F49 不支持原地 downgrade。需要回退 binary 时，必须先用该 binary
 
 - [macOS Instance 数据目录](./macos-instance-directory.md)
 - [测试约定](../development/testing.md)
-- [Phase D](../planning/tdd-phase-d-release-kernel.md)
+- [历史 Phase D](../archive/planning/tdd-phase-d-release-kernel.md)

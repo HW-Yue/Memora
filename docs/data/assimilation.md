@@ -67,4 +67,4 @@ F36 用隔离上下文的第二遍复核和可追溯门禁降低误吸收风险�
 ## 关联
 
 - [语义记录](./semantic-records.md)
-- [未解决痛点](../planning/unresolved-pain-points.md)
+- [历史未解决痛点](../archive/planning/unresolved-pain-points.md)

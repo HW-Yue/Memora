@@ -15,7 +15,7 @@ MSQL 不以兼容 MySQL 为目标，不承诺 MySQL 的完整 Grammar、行为�
 
 Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop 必须提交同一种 MSQL Request，并经过同一套 Lexer、Parser、AST、Binder、Policy、事务和执行器。`pack`、`install`、`open`、`export`、`doctor` 等 CLI 命令只是对应 MSQL 的参数化便捷入口，不能拥有绕过 MSQL 的实现路径。自然语言由 Agent 转换为 MSQL，不属于 MSQL Grammar。
 
-宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。直接使用内部 Go API 或本地用户运行的普通 SQL 可走可信本地操作员路径，但 `PACK DATABASE`、`EXPORT WIKI` 和 `INSTALL PACKAGE` 没有无 scope/approval 降级。完整边界见[安全与隐私门 v1](../development/security-privacy-gate-v1.md)。
+宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。直接使用内部 Go API 或本地用户运行的普通 SQL 可走可信本地操作员路径，但 `PACK DATABASE`、`EXPORT WIKI` 和 `INSTALL PACKAGE` 没有无 scope/approval 降级。完整边界见 [Policy Enforcement v2](../development/policy-enforcement-v2.md)。
 
 ## 标准进入流程
 
@@ -157,7 +157,7 @@ F18 已冻结参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `
 
 F21 的 `MATCH database.table QUERY ... TERMS ...` 是已撤销主路径的历史实现，
 不得继续扩展语义评分。F22 已实现参数化 Router 管理与遍历，但 root 仍是
-Database；迁移差距见 [Router Tree v1](./router-tree-v1.md)。
+Database；历史迁移背景见 [Router Tree v1](../archive/design/router-tree-v1.md)。
 
 文本值超过目标 Column 当前配置的字符上限时，INSERT、UPDATE、MERGE 等写入返回稳定的字段超限错误；文本 Column 启动默认上限为 1200 个字符。引擎不自动截断，调用方可以切分后重试，也可以通过声明式 DDL 调整该 Column 的类型或上限；所有变更都经过 Policy 和 revision 校验。
 

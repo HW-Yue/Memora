@@ -2,21 +2,29 @@
 
 Memora 是由 AI 自主建模、通过版本化 MSQL 读写的本地个人数据库。
 
-项目当前处于端到端原型与发行准备阶段。本地 `memora` daemon 长期承载数据库 Instance 和统一 MSQL 执行引擎；Codex/Claude Code 按 Memora Skill 通过 CLI 连接 daemon：
+项目已经形成可安装、可持久化、可通过 Skill/MCP 使用的产品原型。本地 `memora` daemon
+长期承载数据库 Instance 和统一 MSQL 执行引擎；Codex/Claude Code 按 Memora Skill
+通过 CLI 或 MCP 连接 daemon：
 
 ```text
 memora --stdio        为外部 Agent 提供长驻 JSONL 会话
 memora exec <msql>    直接执行 MSQL
+memora mcp            提供唯一 memora_execute 工具
+memora admin          打开本地只读观察界面
 memora daemon         管理本地常驻服务
 ```
 
 所有 Agent 操作必须经过同一套 MSQL Parser、Policy、事务和执行器；Agent 不能直接操作 Page、索引或日志。自带模型的 `memora ask` 属于 v0 发布后的可选评估，不阻塞 Skill-first 产品。
 
-当前设计入口见 [`docs/README.md`](./docs/README.md)。
+当前产品、Feature 状态和后续路线见 [`docs/README.md`](./docs/README.md)。
 
 ## 当前实现状态
 
-开发按 [TDD 开发总计划](./docs/planning/tdd-development-plan.md) 推进。当前 CLI 提供 Instance/daemon、MSQL query/exec、Skill 写入与 Schema 计划、资料吸收、Database Package、Wiki 导出、格式升级和诊断链路。基础入口包括：
+F00–F150 与 F152 的当前主线能力已经实现；F151、F153–F163 完成证据门后延后。
+F127 的真实双宿主 AI evidence 仍不完整，内置评测 Agent 与外置 Hook 属于下一阶段。
+权威账本见 [Feature 状态](./docs/planning/feature-status.md)。当前 CLI 提供
+Instance/daemon、MSQL query/exec、Skill 写入与 Schema 计划、资料吸收、Database Package、
+Wiki 导出、格式升级和诊断链路。基础入口包括：
 
 ```text
 memora help

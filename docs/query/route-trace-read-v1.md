@@ -51,4 +51,4 @@ receipt 永不接受问题正文、prompt、节点描述、Row values、模型�
 ## 关联
 
 - [Route Trace Store v1](../storage/route-trace-store-v1.md)
-- [F114 开工与完成门](../planning/f114-trace-read-protocol-gate.md)
+- [F114 开工与完成门](../archive/planning/f114-trace-read-protocol-gate.md)

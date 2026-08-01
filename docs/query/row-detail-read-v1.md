@@ -55,4 +55,4 @@ Database/Table/Row scope、完整 revision snapshot 和下一 offset；损坏或
 - [自描述 Data Dictionary](../data/self-describing-data-dictionary.md)
 - [MSQL SELECT Planner v1](./msql-select.md)
 - [MSQL History v1](./msql-history.md)
-- [F112 开工与完成门](../planning/f112-row-detail-read-protocol-gate.md)
+- [F112 开工与完成门](../archive/planning/f112-row-detail-read-protocol-gate.md)

@@ -46,4 +46,4 @@ hash、Node/revision guards、create/reparent/membership/delete actions、影响
 
 - [Semantic Health v2](../agent/semantic-health-v2.md)
 - [Route Read v1](./route-read-v1.md)
-- [Router Tree v1](./router-tree-v1.md)
+- [Router Tree v1（历史）](../archive/design/router-tree-v1.md)

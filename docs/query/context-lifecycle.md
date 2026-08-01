@@ -119,5 +119,5 @@ database_id + schema_version + route_id + route_revision
 
 ## 关联
 
-- [未解决痛点](../planning/unresolved-pain-points.md)
+- [历史未解决痛点](../archive/planning/unresolved-pain-points.md)
 - [语义路由](./semantic-routing.md)

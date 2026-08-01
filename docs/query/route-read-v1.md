@@ -60,4 +60,4 @@ encoding 和 checksum。损坏、非 canonical、跨 scope、越界 cursor 返�
 - [Agent 语义目录索引](./semantic-routing.md)
 - [中间 Route Synopsis](./route-synopsis.md)
 - [MSQL Metadata Read v1](./metadata-read-v1.md)
-- [F111 开工与完成门](../planning/f111-route-read-protocol-gate.md)
+- [F111 开工与完成门](../archive/planning/f111-route-read-protocol-gate.md)

@@ -69,4 +69,4 @@ Route Benchmark Corpus 之后、真实 Runner 之前逐项实现，避免先看�
 
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
 - [语义路由投机预取](../query/speculative-route-prefetch.md)
-- [Route Predictor Feature 计划](../planning/route-predictor-feature-plan.md)
+- [Route Predictor 历史 Feature 计划](../archive/planning/route-predictor-feature-plan.md)

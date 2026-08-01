@@ -70,6 +70,6 @@ F126 先选择默认 Discovery profile 和共同安全预算。只有 CPU exact 
 
 ## 关联
 
-- [Route Predictor Feature 计划](../planning/route-predictor-feature-plan.md)
+- [Route Predictor 历史 Feature 计划](../archive/planning/route-predictor-feature-plan.md)
 - [AI-native 质量模型](../product/quality-model.md)
-- [无向量 Route Benchmark v2](./no-vector-route-benchmark-v2.md)
+- [无向量 Route Benchmark v2（历史）](../archive/design/no-vector-route-benchmark-v2.md)

@@ -64,4 +64,4 @@ MVCC snapshot，可保持本协议外形而替换内部 cursor 实现。
 
 - [Catalog DDL v1](./catalog-ddl.md)
 - [MSQL Result Envelope v1](./result-envelope.md)
-- [F110 开工与完成门](../planning/f110-metadata-read-protocol-gate.md)
+- [F110 开工与完成门](../archive/planning/f110-metadata-read-protocol-gate.md)

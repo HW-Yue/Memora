@@ -47,5 +47,5 @@ go run ./cmd/build-ai-story-gate \
 ## 关联
 
 - [Real Host Contract v1](./real-host-contract-v1.md)
-- [F80 真实发行用户故事门](../planning/f80-real-release-story-gate.md)
+- [F80 真实发行用户故事门（历史）](../archive/planning/f80-real-release-story-gate.md)
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)

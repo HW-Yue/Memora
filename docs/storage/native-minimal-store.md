@@ -131,6 +131,6 @@ Catalog、当前 Row、Row version 和 Table 顺序拥有已提交 root，内存
 
 ## 关联
 
-- [F52 开工门](../planning/f52-native-format-gate.md)
+- [F52 开工门](../archive/planning/f52-native-format-gate.md)
 - [ADR-0003](../decisions/0003-native-minimal-store-first.md)
 - [逻辑类型与字段预算](../data/logical-types.md)

@@ -105,5 +105,6 @@ Milestone 只组织顺序，不允许把多个 Feature 合成一次无法定位�
 ## 关联
 
 - [Feature 产品与用户故事门禁](./feature-product-gate.md)
-- [TDD 开发总计划](./tdd-development-plan.md)
-- [F81 之后的 Feature 规划](./next-feature-plan.md)
+- [历史 TDD 开发总计划](../archive/planning/tdd-development-plan.md)
+- [当前 Feature 状态](./feature-status.md)
+- [后续路线](./future-roadmap.md)

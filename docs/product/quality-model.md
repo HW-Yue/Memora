@@ -3,7 +3,8 @@
 状态：产品指标方向有效；F51 的 Row/字符向量融合结论仍撤销，ADR-0007 允许
 Route-only predictor；发布门待按[AI-native 产品宪章](./ai-native-product-charter.md)重做。
 
-F42 的固定数据集、原始计数和报告格式见 [AI-native Benchmark v1](../development/ai-native-benchmark-v1.md)。
+F42 的历史固定数据集、原始计数和报告格式见
+[AI-native Benchmark v1](../archive/design/ai-native-benchmark-v1.md)。
 
 ## 原则
 
@@ -101,11 +102,11 @@ useful / irrelevant / stale / wrong / incomplete
 进入新的产品级 Story Gate 前，必须证明真实 AI 能用 Table 级语义树和逐层 MSQL
 完成端到端维护，并优于“用户手工整理 Markdown + 字面搜索”的工作负担。F51
 不满足该条件，撤销记录见
-[AI-native 发布门 v1](../development/ai-native-release-gate-v1.md)。
+[AI-native 发布门 v1](../archive/design/ai-native-release-gate-v1.md)。
 
 ## 关联
 
 - [AI-native 产品契约](./ai-native-contract.md)
-- [开发与验证路线](../planning/roadmap.md)
-- [未解决痛点](../planning/unresolved-pain-points.md)
+- [后续路线](../planning/future-roadmap.md)
+- [历史未解决痛点](../archive/planning/unresolved-pain-points.md)
 - [Route Retrieval Benchmark v3](../development/route-retrieval-benchmark-v3.md)

@@ -122,5 +122,5 @@ Table Router、稳定 RowID、revision、cursor 与公开 SPLIT/MERGE 是当前�
 
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
 - [语义树检索质量链路](./retrieval-quality.md)
-- [Router Tree v1 历史实现](./router-tree-v1.md)
+- [Router Tree v1 历史实现](../archive/design/router-tree-v1.md)
 - [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)

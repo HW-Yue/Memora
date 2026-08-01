@@ -1,6 +1,7 @@
 # Policy Enforcement v2
 
-状态：F136 已实现；取代 [安全与隐私门 v1](./security-privacy-gate-v1.md) 中仅有 Database scope 的授权协议。
+状态：F136 已实现；取代
+[安全与隐私门 v1](../archive/design/security-privacy-gate-v1.md) 中仅有 Database scope 的授权协议。
 
 ## Authorization
 

@@ -22,4 +22,4 @@ Memora 不自动删除。
 
 - [Logical Snapshot v1](./logical-snapshot-v1.md)
 - [原生极简存储格式](./native-minimal-store.md)
-- [F62–F72 实现计划](../planning/native-features-transition-review.md)
+- [F62–F72 历史实现计划](../archive/planning/native-features-transition-review.md)

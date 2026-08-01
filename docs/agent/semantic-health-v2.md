@@ -33,6 +33,6 @@ scope/revision 等正证据问题。报告 `truncated=true`，不得把零 issue
 
 ## 关联
 
-- [语义数据库健康维护 v1](./semantic-health-v1.md)
+- [语义数据库健康维护 v1（历史）](../archive/design/semantic-health-v1.md)
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
 - [Route Mutation Plan v1](../query/route-mutation-plan-v1.md)

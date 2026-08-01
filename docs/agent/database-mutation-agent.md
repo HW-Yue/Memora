@@ -132,5 +132,5 @@ RELATE      只新增或修正关系
 - [Conversation Delta 交接 v1](./conversation-delta-v1.md)
 - [Skill 语义冲突交互 v1](./skill-conflict-v1.md)
 - [AI 自主权与约束](./autonomy.md)
-- [数据库查询 Sub-agent](./database-query-subagent.md)
+- [数据库查询 Sub-agent（历史）](../archive/design/database-query-subagent.md)
 - [AI-native 产品契约](../product/ai-native-contract.md)

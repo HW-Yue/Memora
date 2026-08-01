@@ -37,4 +37,4 @@ uncommitted changes 一律丢弃。未知目录项、缺号和 frontier 前损�
 frontier 发布、root/allocator payload、Page redo、Buffer Pool、B+ Tree 或业务 Executor。
 
 开工与完成证据见
-[F97b2 WAL Recovery Open 开工与完成门](../planning/f97b2-wal-recovery-open-gate.md)。
+[F97b2 WAL Recovery Open 开工与完成门](../archive/planning/f97b2-wal-recovery-open-gate.md)。

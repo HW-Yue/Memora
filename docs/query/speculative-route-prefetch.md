@@ -114,4 +114,4 @@ ADR-0007 已将旧绝对禁令收窄为“禁止向量充当事实、Row/chunk �
 - [上下文生命周期](./context-lifecycle.md)
 - [Query Workspace 与缓存边界](./working-set-cache.md)
 - [ADR-0007](../decisions/0007-route-predictor-arsenal.md)
-- [Route Predictor Feature 计划](../planning/route-predictor-feature-plan.md)
+- [Route Predictor 历史 Feature 计划](../archive/planning/route-predictor-feature-plan.md)

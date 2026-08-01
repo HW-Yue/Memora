@@ -37,7 +37,7 @@ memora_<version>_skill_bundle.tar.gz
 memora_<version>_skill_bundle.tar.gz.sha256
 ```
 
-前四项沿用 [macOS Release 制品 v1](./macos-release-artifacts-v1.md)。Skill
+前四项沿用 [macOS Release 制品 v1（历史）](../archive/design/macos-release-artifacts-v1.md)。Skill
 bundle 从同一 commit 快照确定性生成，包含 canonical Skill、Codex/Claude
 adapter、README、PolyForm Noncommercial 正文和商业授权说明；只接受有界普通
 文件、稳定路径、固定 mode/timestamp 和无额外 entry 的归档。
@@ -69,7 +69,7 @@ Apple Developer ID 签名、notarization 或通用 provenance attestation。仓�
 
 ## 关联
 
-- [macOS Release 制品 v1](./macos-release-artifacts-v1.md)
+- [macOS Release 制品 v1（历史）](../archive/design/macos-release-artifacts-v1.md)
 - [干净机器验收 v1](./clean-machine-acceptance-v1.md)
 - [测试约定](./testing.md)
-- [Phase D](../planning/tdd-phase-d-release-kernel.md)
+- [历史 Phase D](../archive/planning/tdd-phase-d-release-kernel.md)

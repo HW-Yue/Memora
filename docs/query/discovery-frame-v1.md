@@ -76,5 +76,5 @@ Catalog 版本。组装器拒绝混入其他 snapshot 或 Catalog revision 的�
 
 - [MSQL Result Envelope v1](./result-envelope.md)
 - [语义路由投机预取](./speculative-route-prefetch.md)
-- [Route Predictor 小 Feature 计划](../planning/route-predictor-feature-plan.md)
-- [F124a 开工与完成门](../planning/f124a-discovery-frame-contract-gate.md)
+- [Route Predictor 历史 Feature 计划](../archive/planning/route-predictor-feature-plan.md)
+- [F124a 开工与完成门](../archive/planning/f124a-discovery-frame-contract-gate.md)

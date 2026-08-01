@@ -53,4 +53,4 @@ F124b 不自动选表、不预取根 Route、不融合其他 predictor，也不�
 - [Discovery Frame v1](./discovery-frame-v1.md)
 - [MSQL Route Read v1](./route-read-v1.md)
 - [语义路由投机预取](./speculative-route-prefetch.md)
-- [F124b 开工与完成门](../planning/f124b-lexical-route-locations-gate.md)
+- [F124b 开工与完成门](../archive/planning/f124b-lexical-route-locations-gate.md)

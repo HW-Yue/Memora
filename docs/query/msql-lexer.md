@@ -50,4 +50,4 @@ Lexer 错误包含 code 和 source span：
 ## 关联
 
 - [MSQL 标准语言](./msql.md)
-- [TDD 开发总计划](../planning/tdd-development-plan.md)
+- [历史 TDD 开发总计划](../archive/planning/tdd-development-plan.md)

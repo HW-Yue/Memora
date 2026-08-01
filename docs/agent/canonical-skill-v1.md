@@ -93,7 +93,7 @@ Skill 禁止读取或修改物理数据库、索引、日志、Page 和 Instance
 - [Host Input Capture v1](./host-input-capture-v1.md)
 - [Worthiness Decision v1](./worthiness-decision-v1.md)
 - [资料独立复核与提交 v1](./assimilation-review-v1.md)
-- [语义数据库健康维护 v1](./semantic-health-v1.md)
+- [语义数据库健康维护 v1（历史）](../archive/design/semantic-health-v1.md)
 - [反馈、修订与逻辑 Undo v1](./feedback-revision-v1.md)
 - [Skill 首次安全安装 v1](./safe-bootstrap-v1.md)
 - [Codex Adapter v1](../development/codex-adapter-v1.md)

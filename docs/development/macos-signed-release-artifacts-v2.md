@@ -35,4 +35,4 @@ Ed25519 证明 Memora 发布者与文件集合，不等于 Apple Developer ID、
 notarization ticket。Apple 层依赖外部证书和服务，其 timestamp 也不属于可复现 payload；若后续
 加入，应作为 archive 之前的额外签名层并单独记录证据。
 
-历史格式见 [macOS Release 制品 v1](./macos-release-artifacts-v1.md)。
+历史格式见 [macOS Release 制品 v1](../archive/design/macos-release-artifacts-v1.md)。

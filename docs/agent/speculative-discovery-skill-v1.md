@@ -46,4 +46,4 @@ topic 改变、Catalog revision 改变、root page/Route revision stale、上下
 - [Canonical Skill v1](./canonical-skill-v1.md)
 - [Discovery Frame v1](../query/discovery-frame-v1.md)
 - [语义路由投机预取](../query/speculative-route-prefetch.md)
-- [F124e 开工与完成门](../planning/f124e-speculative-discovery-skill-gate.md)
+- [F124e 开工与完成门](../archive/planning/f124e-speculative-discovery-skill-gate.md)

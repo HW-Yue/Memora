@@ -59,4 +59,4 @@ Database。无 authorization 的本地管理会话可读取全 Instance。
 
 - [Committed Change Envelope v1](../storage/committed-change-envelope-v1.md)
 - [Committed Change Page Index v1](../storage/committed-change-page-index-v1.md)
-- [F113 开工与完成门](../planning/f113-change-read-protocol-gate.md)
+- [F113 开工与完成门](../archive/planning/f113-change-read-protocol-gate.md)

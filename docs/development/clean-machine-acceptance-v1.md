@@ -69,4 +69,4 @@ commit/版本/架构都会阻断 Release。
 
 - [Skill 首次安全安装 v1](../agent/safe-bootstrap-v1.md)
 - [GitHub Release 自动化 v1](./github-release-automation-v1.md)
-- [Phase D](../planning/tdd-phase-d-release-kernel.md)
+- [历史 Phase D](../archive/planning/tdd-phase-d-release-kernel.md)
