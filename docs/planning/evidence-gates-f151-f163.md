@@ -81,7 +81,20 @@
 - 结论：当前是 no-steal + immutable revision，不存在 Physical Undo 要撤销的物理状态；Redo
   recovery 与逻辑补偿继续承担各自边界。
 
+## F157 Advanced MVCC
+
+状态：已评估，产品进入条件未成立，延后。
+
+- 冻结门槛：canonical journey 中出现 multi-writer 或明确要求 serializable、repeatable
+  read、snapshot isolation 中任一强隔离语义，才扩展当前最小 MVCC。
+- 命令：用 `jq` 在 65 个 canonical turn 匹配上述需求，并运行 snapshot reference-model
+  与 same-base concurrent update 测试。
+- 结果：明确需求 0；固定 snapshot 分页与后续 mutation 对拍一致，同一 base revision 的
+  并发更新仍只有一个成功。
+- 结论：单 writer、snapshot sequence、immutable revision 和精确对象写锁覆盖现有旅程；
+  不增加 transaction graph、predicate lock 或多 writer validation。
+
 ## 后续门
 
-F157–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
+F158–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
 先另开实现 Feature，不把大实现塞进证据门提交。
