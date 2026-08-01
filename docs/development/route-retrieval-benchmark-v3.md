@@ -1,7 +1,7 @@
 # Route Retrieval Benchmark v3
 
-状态：F124 Corpus、F124a–F124e predictor 链路与 F125 Runner 已冻结；下一项由 F126
-消费真实报告并形成 Capability Report。
+状态：F124 Corpus、F124a–F124e predictor、F125 Runner 与 F126 Capability Report
+contract 已冻结；真实 source report 尚未提供，当前安全默认保持 Router。
 
 ## 核心问题
 

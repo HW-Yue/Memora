@@ -1,6 +1,6 @@
 # Route Predictor 小 Feature 计划
 
-状态：F124–F125 已完成；下一项为 F126 Route Capability Report。
+状态：F124–F126 已完成；真实报告未提供，默认保持 Router，后续硬件 backend 仍由证据门控制。
 
 ## 目标链路
 
