@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/conversation"
@@ -19,6 +20,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/routetrace"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
@@ -42,6 +44,7 @@ type databaseHandler struct {
 	store      store.Store
 	export     func(context.Context) ([]byte, error)
 	security   *security.Service
+	traces     *routetrace.Service
 	sessions   map[string]*executor.BatchSession
 	closed     bool
 }
@@ -80,10 +83,16 @@ func newNativeDatabaseHandler(
 	points executor.PointReads,
 	auxiliary store.Store,
 	securityService *security.Service,
+	traces *routetrace.Service,
 	export func(context.Context) ([]byte, error),
 ) *databaseHandler {
 	return &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, points: points, store: auxiliary,
-		export: export, security: securityService, sessions: make(map[string]*executor.BatchSession)}
+		export: export, security: securityService, traces: traces, sessions: make(map[string]*executor.BatchSession)}
+}
+
+type routeTraceRecordPayload struct {
+	Draft         routetrace.Draft       `json:"draft"`
+	Authorization security.Authorization `json:"authorization,omitempty"`
 }
 
 func Execute(
@@ -173,6 +182,47 @@ func SourceReceipt(ctx context.Context, dataDir, submissionID string) (assimilat
 	return receipt, err
 }
 
+func RecordRouteTrace(
+	ctx context.Context,
+	dataDir string,
+	draft routetrace.Draft,
+	authorization security.Authorization,
+) (routetrace.Trace, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return routetrace.Trace{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return routetrace.Trace{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var receipt routetrace.Trace
+	err = client.Call(ctx, "route_trace.record", routeTraceRecordPayload{
+		Draft: draft, Authorization: authorization,
+	}, &receipt)
+	return receipt, err
+}
+
+func PruneRouteTraces(ctx context.Context, dataDir string, now time.Time) (uint64, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return 0, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = client.Close() }()
+	var receipt struct {
+		Deleted uint64 `json:"deleted"`
+	}
+	err = client.Call(ctx, "route_trace.prune", struct {
+		Now time.Time `json:"now"`
+	}{Now: now}, &receipt)
+	return receipt.Deleted, err
+}
+
 func (handler *databaseHandler) Handle(
 	ctx context.Context,
 	session ipc.Session,
@@ -212,6 +262,12 @@ func (handler *databaseHandler) Handle(
 	if request.Method == "feedback.record" || request.Method == "feedback.confirm" {
 		return handler.handleFeedback(ctx, session, request)
 	}
+	if request.Method == "route_trace.record" {
+		return handler.handleRouteTraceRecord(ctx, request)
+	}
+	if request.Method == "route_trace.prune" {
+		return handler.handleRouteTracePrune(ctx, request)
+	}
 	if request.Method != "msql.execute" {
 		return handleRequest(ctx, session, request)
 	}
@@ -233,6 +289,57 @@ func (handler *databaseHandler) Handle(
 		RequestID: request.RequestID, Source: payload.Source, Statements: payload.Statements,
 	})
 	return json.Marshal(envelope)
+}
+
+func (handler *databaseHandler) handleRouteTraceRecord(
+	ctx context.Context, request ipc.Request,
+) (json.RawMessage, error) {
+	if handler.traces == nil {
+		return nil, errors.New("Route Trace observation store is unavailable")
+	}
+	var payload routeTraceRecordPayload
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, routetrace.ErrInvalid
+	}
+	if payload.Authorization.Version != "" {
+		if err := payload.Authorization.Validate(); err != nil {
+			return nil, err
+		}
+		authorized := security.WithAuthorization(ctx, payload.Authorization)
+		if err := security.RequireAnyDatabase(authorized, payload.Draft.DatabaseID); err != nil {
+			return nil, err
+		}
+	}
+	value, err := handler.traces.Record(ctx, payload.Draft)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(value)
+}
+
+func (handler *databaseHandler) handleRouteTracePrune(
+	ctx context.Context, request ipc.Request,
+) (json.RawMessage, error) {
+	if handler.traces == nil {
+		return nil, errors.New("Route Trace observation store is unavailable")
+	}
+	var payload struct {
+		Now time.Time `json:"now"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, routetrace.ErrInvalid
+	}
+	deleted, err := handler.traces.PruneExpired(ctx, payload.Now)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(struct {
+		Deleted uint64 `json:"deleted"`
+	}{Deleted: deleted})
 }
 
 func auditInput(request ipc.Request, response json.RawMessage, responseErr error) security.AuditInput {
@@ -280,6 +387,21 @@ func auditInput(request ipc.Request, response json.RawMessage, responseErr error
 func auditIdentity(request ipc.Request) (string, []string) {
 	actor := "local:" + strconv.Itoa(os.Getuid())
 	databases := []string{}
+	if request.Method == "route_trace.record" {
+		var payload routeTraceRecordPayload
+		if json.Unmarshal(request.Payload, &payload) == nil {
+			if payload.Authorization.Actor != "" {
+				actor = payload.Authorization.Actor
+			} else if payload.Draft.Actor != "" {
+				actor = payload.Draft.Actor
+			}
+			databases = append(databases, payload.Authorization.AuthorizedDatabases...)
+			if len(databases) == 0 && payload.Draft.DatabaseID != "" {
+				databases = append(databases, payload.Draft.DatabaseID)
+			}
+			return sanitizeAuditIdentity(actor, databases)
+		}
+	}
 	if request.Method == "msql.execute" {
 		var payload executePayload
 		if json.Unmarshal(request.Payload, &payload) == nil {

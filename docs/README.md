@@ -65,6 +65,7 @@
 - [MSQL Route Read v1](./query/route-read-v1.md) — F111 的 point node、单层 children、leaf locator 分页与快照契约。
 - [MSQL Row Detail Read v1](./query/row-detail-read-v1.md) — F112 的 Data Dictionary 展示角色、point Row envelope 与 History 快照分页。
 - [MSQL Committed Change Read v1](./query/change-read-v1.md) — F113 的固定 high-water timeline、transaction entry page 与 Database scope cursor。
+- [MSQL Route Trace Read v1](./query/route-trace-read-v1.md) — F114 的短期 trace timeline、step page、retention epoch 与隐私边界。
 - [MSQL 参数与表达式 v1](./query/msql-expressions.md) — F15c 的无插值参数绑定、整数/布尔表达式和稳定求值错误。
 - [MSQL SELECT Planner v1](./query/msql-select.md) — F15d 的限定表/字段绑定、强制 LIMIT、精确 Row ID 与截断边界。
 - [MSQL Indexed Point-Get v1](./query/msql-point-get-v1.md) — F102 用 F98–F100 B+ Tree 定位精确当前/历史 Row 且禁止扫描回退。
@@ -101,6 +102,7 @@
 - [Committed Change Log（Binlog）与未来同步](./storage/binlog-and-sync.md) — 第一用途是 Admin 展示数据与语义索引变化；同步、PITR 后续复用。
 - [Committed Change Envelope v1](./storage/committed-change-envelope-v1.md) — F109 的单事务 envelope、独立 change cursor、checksum 与 crash 边界。
 - [Committed Change Page Index v1](./storage/committed-change-page-index-v1.md) — F113 的 sequence/transaction Page locator、suffix reconcile 与正文重验。
+- [Route Trace Auxiliary Store v1](./storage/route-trace-store-v1.md) — F114 的可清理 navigation receipt、sequence/ID locator 与 retention epoch。
 - [物理与检索索引](./storage/indexing.md) — B+ Tree、倒排索引及聚簇/非聚簇方向。
 - [中间 Route Synopsis](./query/route-synopsis.md) — 可选私有子树总结、按需读取预算及随 reshape 原子更新规则。
 - [来源强度与复核证明](./data/source-provenance.md) — conversation/anchor/reviewed 分级、History 证据与 challenge-bound review。
@@ -182,6 +184,7 @@
 - [F111 Route Read Protocol 开工与完成门](./planning/f111-route-read-protocol-gate.md) — Route children/locator snapshot cursor 与正文隔离完成门。
 - [F112 Row Detail Read Protocol 开工与完成门](./planning/f112-row-detail-read-protocol-gate.md) — 动态字段展示角色、History cursor、reopen 与 daemon 验收。
 - [F113 Change Read Protocol 开工与完成门](./planning/f113-change-read-protocol-gate.md) — Page change index、固定 snapshot cursor、授权与 daemon/reopen 验收。
+- [F114 Trace Read Protocol 开工与完成门](./planning/f114-trace-read-protocol-gate.md) — bounded receipt、retention、scope cursor 与 daemon/reopen 验收。
 - [F97b2 WAL Recovery Open 开工与完成门](./planning/f97b2-wal-recovery-open-gate.md) — repairing open 的严格 authority 校验、可重入截尾与故障矩阵。
 - [F97c1 Tree Control Codec 开工与完成门](./planning/f97c1-tree-control-codec-gate.md) — slot 1 codec、bootstrap 与 corruption 完成证据。
 - [F97c2 Root/Allocator Redo Codec 开工与完成门](./planning/f97c2-root-allocator-redo-gate.md) — metadata payload、版本与字段校验。

@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F113 已完成；下一项为 F114 Trace Read Protocol。用户已于
+状态：F81–F114 已完成；下一项为 F115 Local Read API。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -66,7 +66,7 @@ Vector 作为可回退候选预测器，禁止 Row/chunk Vector、隐藏答案�
 | F111 Route Read Protocol | Admin 可按层读取 Route 节点与 locator |
 | F112 Row Detail Read Protocol | 已完成：Admin 可按 RowID 读取动态字段与 History |
 | F113 Change Read Protocol | 已完成：Admin 可按固定 snapshot commit cursor 读取变化事务 |
-| F114 Trace Read Protocol | Admin 可有界读取可清理的 Route Trace |
+| F114 Trace Read Protocol | 已完成：Admin 可有界读取可清理且脱敏的 Route Trace |
 | F115 Local Read API | 只读 MSQL 通过临时 loopback API 安全执行 |
 | F116 Embedded Admin Shell | Go binary 离线内嵌并启动前端壳 |
 | F117 Catalog Navigation | 用户能浏览 Instance→Database→Table→Schema |
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F114；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F115；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

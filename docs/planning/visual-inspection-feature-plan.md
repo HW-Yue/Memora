@@ -1,6 +1,6 @@
 # Admin 与本地可观察性小 Feature 计划
 
-状态：F113 已完成，下一项 F114；F110–F122 持续执行已获用户授权，仍逐项 Review、
+状态：F114 已完成，下一项 F115；F110–F122 持续执行已获用户授权，仍逐项 Review、
 测试与独立合入。
 
 ## 产品形态
@@ -32,7 +32,7 @@ MSQL。第一版只读，使用固定 actor/scope、随机 token、Host/Origin�
 | F111 Route Read | Route 叶泄露正文或整树一次加载 | 已完成：节点/children/locator 分层 cursor |
 | F112 Row Detail Read | 前端猜 `title/body` 或丢动态字段 | 已完成：Data Dictionary 驱动的 Row/History envelope |
 | F113 Change Read | 已完成：固定 snapshot、Page locator、Database scope 的有界 MSQL |
-| F114 Trace Read | trace 泄露 prompt/正文或无预算 | 可清理的有界 trace envelope |
+| F114 Trace Read | 已完成：可清理、scope-safe 且不含 prompt/正文的 trace envelope |
 
 所有列表必须返回 `limit/cursor/snapshot/truncated/version`。Row 只能由 `SELECT`
 回表；Route 只返回节点或 locator。管理元数据可用表格，业务 Row 由展示角色决定
@@ -71,7 +71,7 @@ Gateway browser journey，不以 mock 页面截图代替。F117 不顺手做 Rou
 
 ## 待逐项 Review
 
-- F112–F114 的最终 MSQL 与 cursor 编码；
+- F115 loopback API 的 read-only allowlist、session TTL 与启动输出；
 - 命令最终使用 `admin` 还是 `studio`；
 - F120 Change Log 默认保留窗口；
 - F121 正文 diff 的字节预算；

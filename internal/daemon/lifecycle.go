@@ -19,6 +19,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/nativesnapshot"
 	"github.com/HW-Yue/Memora/internal/pagestoremigration"
+	"github.com/HW-Yue/Memora/internal/routetrace"
 	"github.com/HW-Yue/Memora/internal/security"
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"golang.org/x/sys/unix"
@@ -33,6 +34,27 @@ var (
 type Paths struct {
 	LockFile string
 	PIDFile  string
+}
+
+type nativeRouteTraceRows struct {
+	*nativemutation.Service
+	traces *routetrace.Service
+}
+
+func (rows *nativeRouteTraceRows) ListRouteTraces(
+	ctx context.Context,
+	databaseID string,
+	after uint64,
+	snapshot routetrace.Snapshot,
+	limit int,
+) ([]routetrace.Trace, routetrace.Snapshot, bool, error) {
+	return rows.traces.List(ctx, databaseID, after, snapshot, limit)
+}
+
+func (rows *nativeRouteTraceRows) GetRouteTrace(
+	ctx context.Context, traceID, databaseID string,
+) (routetrace.Trace, error) {
+	return rows.traces.Get(ctx, traceID, databaseID)
 }
 
 func RuntimePaths(dataDir string) (Paths, error) {
@@ -189,8 +211,11 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		nativemutation.New(nativeFile, rowRepository, routeRepository, authority),
 		configuration,
 	)
+	traces := routetrace.New(auxiliaryStore)
+	rowsWithTraces := &nativeRouteTraceRows{Service: rows, traces: traces}
 	handler := newNativeDatabaseHandler(
-		ctx, dictionary, rows, authority, auxiliaryStore, security.New(securityStore, security.Options{}),
+		ctx, dictionary, rowsWithTraces, authority, auxiliaryStore,
+		security.New(securityStore, security.Options{}), traces,
 		func(context.Context) ([]byte, error) { return nativesnapshot.NewNative(nativeFile).Export() },
 	)
 	server := ipc.NewServer(handler)

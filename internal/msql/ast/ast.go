@@ -63,6 +63,7 @@ type ShowStatement struct {
 	Cursor    *Expression `json:"cursor,omitempty"`
 	After     *Expression `json:"after,omitempty"`
 	Change    *Expression `json:"change,omitempty"`
+	Trace     *Expression `json:"trace,omitempty"`
 	RouteMode string      `json:"route_mode,omitempty"`
 }
 
@@ -279,6 +280,11 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && (statement.Show.Object == "CHANGES" || statement.Show.Object == "CHANGE"):
 		appendExpression(statement.Show.Change)
+		appendExpression(statement.Show.After)
+		appendExpression(statement.Show.Cursor)
+		appendExpression(statement.Show.Limit)
+	case statement.Show != nil && (statement.Show.Object == "ROUTE_TRACES" || statement.Show.Object == "ROUTE_TRACE"):
+		appendExpression(statement.Show.Trace)
 		appendExpression(statement.Show.After)
 		appendExpression(statement.Show.Cursor)
 		appendExpression(statement.Show.Limit)
