@@ -1,6 +1,6 @@
 # MSQL 标准语言
 
-状态：协议定位已确认；F70 已实现 Table 级逐层 Router 语法，F71 已删除旧语义
+状态：协议定位已确认；F70 已实现 Table 级逐层 Router 语法，F71/F166 已完整删除旧语义
 检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE，F79 已实现
 版本化查询预算配置，F129/F130 已实现 Route Mutation Plan 与审批执行，F131/F132 已实现
 Schema Change Plan 与审批执行。
@@ -45,7 +45,6 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 关系：RELATE、SHOW RELATIONS、UNRELATE；
 - 管理：PACK、INSTALL、OPEN、EXPORT、DOCTOR、REINDEX；
 - 配置：SHOW CONFIGURATION/HISTORY、ALTER CONFIGURATION、RESTORE CONFIGURATION；
-- 显式字面检索：是否保留历史 `MATCH` 语法待架构对账，不能作为语义主路径；
 
 Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。F44 已冻结的写法：
 
@@ -155,8 +154,8 @@ F15 已把 `expected_schema_version`、`expected_revision` 和 `max_affected_row
 
 F18 已冻结参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`。关系结果只返回结构化边与稳定 Row 定位；业务内容仍必须使用 SELECT 回表。语法和事务边界见 [MSQL Relationships v1](./msql-relationships.md)。
 
-F21 的 `MATCH database.table QUERY ... TERMS ...` 是已撤销主路径的历史实现，
-不得继续扩展语义评分。F22 已实现参数化 Router 管理与遍历，但 root 仍是
+F21 的 `MATCH database.table QUERY ... TERMS ...` 是已撤销并删除的历史语法，
+Parser、Policy 和只读 Host 均拒绝它。F22 已实现参数化 Router 管理与遍历，但 root 仍是
 Database；历史迁移背景见 [Router Tree v1](../archive/design/router-tree-v1.md)。
 
 文本值超过目标 Column 当前配置的字符上限时，INSERT、UPDATE、MERGE 等写入返回稳定的字段超限错误；文本 Column 启动默认上限为 1200 个字符。引擎不自动截断，调用方可以切分后重试，也可以通过声明式 DDL 调整该 Column 的类型或上限；所有变更都经过 Policy 和 revision 校验。
@@ -230,13 +229,9 @@ Skill 应包含：
 
 Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
 
-## 未决问题
+## 后续问题
 
-- MSQL v0 首批冻结哪些 SQL 语句和 Memora 扩展？
-- 多语句批次的整体输出预算是什么？
-- 历史 MATCH 是否删除，或只保留为显式字面检索？
 - Table 级 Route DDL、迁移和 generation 语法怎样冻结？
-- 自研 Parser 还是基于现有 Go SQL Parser？
 
 ## 关联
 

@@ -144,7 +144,7 @@ func validateAction(action Action, final bool) error {
 
 func readOnlyKind(kind string) bool {
 	switch kind {
-	case "SHOW", "DESCRIBE", "SELECT", "MATCH", "OPEN_ROUTE":
+	case "SHOW", "DESCRIBE", "SELECT", "OPEN_ROUTE":
 		return true
 	default:
 		return false

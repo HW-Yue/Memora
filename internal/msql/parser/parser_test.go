@@ -59,6 +59,14 @@ func TestParseTracksParametersInSourceOrder(t *testing.T) {
 	}
 }
 
+func TestParseRejectsRetiredMatchStatement(t *testing.T) {
+	t.Parallel()
+
+	if _, err := Parse("MATCH work.notes QUERY :query TERMS :terms LIMIT 10"); err == nil {
+		t.Fatal("Parse(MATCH) succeeded after the statement was retired")
+	}
+}
+
 func TestParseHistoryStatementsAndParameters(t *testing.T) {
 	t.Parallel()
 

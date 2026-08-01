@@ -51,7 +51,7 @@ var keywords = map[string]struct{}{
 	"ATLAS": {}, "BY": {}, "BYTES": {}, "CANDIDATES": {}, "CATALOG": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
 	"DATABASES": {}, "DELETE": {}, "DESCRIBE": {}, "DOCTOR": {}, "DROP": {},
 	"EXPLAIN": {}, "EXPORT": {}, "FALSE": {}, "FOR": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
-	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LEXICAL": {}, "LIMIT": {}, "MATCH": {},
+	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LEXICAL": {}, "LIMIT": {},
 	"NOT": {}, "NULL": {}, "OF": {}, "ON": {}, "OPEN": {}, "OR": {},
 	"ONLY": {}, "ORDER": {}, "PACK": {}, "PACKAGE": {}, "PROFILE": {}, "PURGE": {}, "PURPOSE": {}, "READ": {},
 	"RENAME": {}, "RESTORE": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "ROW": {},

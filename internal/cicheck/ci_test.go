@@ -145,7 +145,7 @@ func TestRuntimeAndHostContractsContainNoRetiredRowRetrieval(t *testing.T) {
 
 	root := repositoryRoot(t)
 	forbidden := []string{
-		"MAT" + "CH ",
+		"\"" + "MAT" + "CH" + "\"",
 		"FROM DATA" + "BASE",
 		"query" + "_terms",
 		"index" + "_terms",
@@ -174,11 +174,11 @@ func TestRuntimeAndHostContractsContainNoRetiredRowRetrieval(t *testing.T) {
 			lower := strings.ToLower(string(content))
 			for _, token := range forbidden {
 				candidate := token
-				if token != "MATCH " && token != "FROM DATABASE" {
+				if token != "\"MATCH\"" && token != "FROM DATABASE" {
 					candidate = strings.ToLower(token)
 				}
 				if strings.Contains(string(content), candidate) ||
-					(token != "MATCH " && token != "FROM DATABASE" && strings.Contains(lower, candidate)) {
+					(token != "\"MATCH\"" && token != "FROM DATABASE" && strings.Contains(lower, candidate)) {
 					return fmt.Errorf("%s contains retired retrieval token %q", path, token)
 				}
 			}

@@ -1,12 +1,13 @@
 # Scripted Host Harness v1
 
-状态：F29 已冻结确定性宿主重放格式；不调用真实模型。
+状态：F29 已冻结确定性宿主重放格式；不调用真实模型。它只保留为协议回归工具，
+旧 F30 查询 Runner 与 F42 评分器已删除。
 
 ## 目的
 
 Harness 用固定 transcript 表达 Codex/Claude Code 已经做出的宿主决策，并
 验证这些决策产生的工具调用和数据库结果。它不伪装成语言模型，也不评价
-开放式推理；F30–F42 的 Skill 状态机和场景基准都复用这一层。
+开放式推理；静态 AI 质量评测改由后续内置评测 Agent 承担。
 
 fixture 版本为 `memora.host-transcript/v1`，包含：
 
@@ -18,8 +19,8 @@ fixture 版本为 `memora.host-transcript/v1`，包含：
 - reply 必含、禁含和字符预算。
 
 所有 JSON 字段严格解析，未知字段直接失败。fixture 中的 MSQL 由当前
-Parser 解析；标记为 `query` 的调用只能使用 SHOW、DESCRIBE、SELECT、
-MATCH 或 OPEN ROUTE。
+Parser 解析；标记为 `query` 的调用只能使用 SHOW、DESCRIBE、SELECT 或
+OPEN ROUTE。
 
 ## 重放语义
 
@@ -49,5 +50,6 @@ smoke/benchmark，不进入普通 CI。
 ## 关联
 
 - [Canonical Skill v1](../agent/canonical-skill-v1.md)
+- [评测 Agent 与外置 Hook](./evaluation-agent-observability.md)
 - [CLI Database Workflow v1](./cli-database-workflow.md)
 - [测试约定](./testing.md)

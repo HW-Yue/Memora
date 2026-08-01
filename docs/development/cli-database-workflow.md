@@ -15,20 +15,21 @@ memora admin --scope DATABASE [--scope DATABASE...] [--no-open] [--data-dir PATH
 memora doctor [--data-dir PATH]
 ```
 
-`exec` 接受任一已支持的 MSQL batch。`query` 只接受 SHOW、DESCRIBE、SELECT、MATCH 和 OPEN ROUTE，避免误把 mutation 放在只读入口执行。两者都输出完整 `memora.result/v1` JSON envelope；statement 失败时仍输出 envelope，并以非零进程码结束。
+`exec` 接受任一已支持的 MSQL batch。`query` 只接受 SHOW、DESCRIBE、SELECT 和
+OPEN ROUTE，避免误把 mutation 放在只读入口执行。两者都输出完整
+`memora.result/v1` JSON envelope；statement 失败时仍输出 envelope，并以非零进程码结束。
 
 `--input` 是单条 statement 的严格 JSON：
 
 ```json
 {
   "parameters": {
-    "named": {"row": "row_...", "terms": ["architecture"]}
+    "named": {"row_id": "row_..."}
   },
   "mutation": {
     "expected_schema_version": 1,
     "expected_revision": 2,
     "max_affected_rows": 1,
-    "index_terms": ["architecture"],
     "route_leaf_ids": ["route_..."],
     "actor": "agent:codex",
     "source": "conversation:event-7",
@@ -56,7 +57,7 @@ Origin、Cookie 与 CSRF 契约见 [Local Read API v1](./local-read-api-v1.md)�
 
 - Catalog Binder：CREATE/ALTER/SHOW/DESCRIBE Database、Table、Column；
 - Row Executor：INSERT/UPDATE/DELETE/RESTORE；
-- Query：SELECT、MATCH、History、Relation、Router。
+- Query：SELECT、History、Relation、Router。
 
 DDL 与数据操作共享 Lexer、Parser、stable result envelope 和 daemon 持久 Store，不存在 CLI-only DDL 或测试专用写入接口。
 
