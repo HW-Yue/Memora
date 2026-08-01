@@ -1,7 +1,7 @@
 # 语义路由投机预取
 
-状态：方向已由 ADR-0007 接受；F124a Frame、F124b 字面位置与 F124c Route vector
-generation 已冻结，下一项为 CPU Exact Route Match。
+状态：方向已由 ADR-0007 接受；F124a–F124d 的 Frame、字面位置、vector generation
+与 CPU exact 已冻结，下一项为 Speculative Discovery Skill。
 
 ## 动机
 
@@ -35,11 +35,12 @@ Discovery 可以把预测器视为由 Canonical Skill 选择、通过 MSQL 显�
 不同预测器只输出带来源的候选 Route ID。Skill 可以单独使用、取有界并集或完全
 跳过它们；最终仍由模型读取 AI 维护的语义节点并显式选择路径。
 
-候选 MSQL 形态仅表达能力，尚未冻结语法：
+F124d 已冻结向量候选 MSQL：
 
 ```sql
 SHOW ROUTE CANDIDATES FROM ALL TABLES
-USING VECTOR :query_vector LIMIT 8;
+USING VECTOR :query_vector SPACE :space_digest
+LIMIT 8 BYTES 4096;
 ```
 
 ### 向量只预测语义索引

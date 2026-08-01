@@ -45,6 +45,11 @@ type Result struct {
 	Matches         []Match
 }
 
+type SnapshotState struct {
+	Snapshot        string
+	CatalogRevision string
+}
+
 type surface struct {
 	location Match
 	fields   []field
@@ -111,17 +116,9 @@ func Search(source Source, query string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	surfaces, catalogState, routeState, err := normalizeSource(source)
+	surfaces, state, err := normalizeSnapshot(source)
 	if err != nil {
 		return Result{}, err
-	}
-	catalogDigest, err := digest(catalogState)
-	if err != nil {
-		return Result{}, sourceError("encode Catalog snapshot: %v", err)
-	}
-	snapshotDigest, err := digest(snapshotView{CatalogSHA256: catalogDigest, Routes: routeState})
-	if err != nil {
-		return Result{}, sourceError("encode Route snapshot: %v", err)
 	}
 
 	postings := make(map[string][]posting)
@@ -161,7 +158,30 @@ func Search(source Source, query string) (Result, error) {
 		matches = append(matches, match)
 	}
 	sort.Slice(matches, func(left, right int) bool { return lessMatch(matches[left], matches[right]) })
-	return Result{Snapshot: snapshotDigest, CatalogRevision: catalogDigest, Matches: matches}, nil
+	return Result{Snapshot: state.Snapshot, CatalogRevision: state.CatalogRevision, Matches: matches}, nil
+}
+
+// Snapshot validates and hashes the same current semantic source used by
+// lexical discovery without requiring an artificial lexical query.
+func Snapshot(source Source) (SnapshotState, error) {
+	_, state, err := normalizeSnapshot(source)
+	return state, err
+}
+
+func normalizeSnapshot(source Source) ([]surface, SnapshotState, error) {
+	surfaces, catalogState, routeState, err := normalizeSource(source)
+	if err != nil {
+		return nil, SnapshotState{}, err
+	}
+	catalogDigest, err := digest(catalogState)
+	if err != nil {
+		return nil, SnapshotState{}, sourceError("encode Catalog snapshot: %v", err)
+	}
+	snapshotDigest, err := digest(snapshotView{CatalogSHA256: catalogDigest, Routes: routeState})
+	if err != nil {
+		return nil, SnapshotState{}, sourceError("encode Route snapshot: %v", err)
+	}
+	return surfaces, SnapshotState{Snapshot: snapshotDigest, CatalogRevision: catalogDigest}, nil
 }
 
 func normalizeSource(source Source) ([]surface, catalogView, []routerView, error) {

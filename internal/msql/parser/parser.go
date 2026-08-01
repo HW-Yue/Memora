@@ -264,15 +264,29 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			if _, err := parser.expectWord("USING"); err != nil {
 				return ast.Statement{}, err
 			}
-			if _, err := parser.expectWord("LEXICAL"); err != nil {
-				return ast.Statement{}, err
+			switch {
+			case parser.matchWord("LEXICAL"):
+				show.Predictor = "LEXICAL"
+			case parser.matchWord("VECTOR"):
+				show.Predictor = "VECTOR"
+			default:
+				return ast.Statement{}, parser.unexpected("LEXICAL or VECTOR")
 			}
-			show.Predictor = "LEXICAL"
 			query, err := parser.parseExpression(1)
 			if err != nil {
 				return ast.Statement{}, err
 			}
 			show.Query = &query
+			if show.Predictor == "VECTOR" {
+				if _, err := parser.expectWord("SPACE"); err != nil {
+					return ast.Statement{}, err
+				}
+				space, err := parser.parseExpression(1)
+				if err != nil {
+					return ast.Statement{}, err
+				}
+				show.Space = &space
+			}
 			if _, err := parser.expectWord("LIMIT"); err != nil {
 				return ast.Statement{}, err
 			}

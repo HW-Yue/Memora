@@ -35,18 +35,19 @@ type executePayload struct {
 }
 
 type databaseHandler struct {
-	mu         sync.Mutex
-	context    context.Context
-	dictionary executor.Catalog
-	rows       executor.Rows
-	points     executor.PointReads
-	legacyRows *row.Service
-	store      store.Store
-	export     func(context.Context) ([]byte, error)
-	security   *security.Service
-	traces     *routetrace.Service
-	sessions   map[string]*executor.BatchSession
-	closed     bool
+	mu           sync.Mutex
+	context      context.Context
+	dictionary   executor.Catalog
+	rows         executor.Rows
+	points       executor.PointReads
+	routeVectors executor.RouteVectorReader
+	legacyRows   *row.Service
+	store        store.Store
+	export       func(context.Context) ([]byte, error)
+	security     *security.Service
+	traces       *routetrace.Service
+	sessions     map[string]*executor.BatchSession
+	closed       bool
 }
 
 func newDatabaseHandler(
@@ -81,12 +82,14 @@ func newNativeDatabaseHandler(
 	dictionary executor.Catalog,
 	rows executor.Rows,
 	points executor.PointReads,
+	routeVectors executor.RouteVectorReader,
 	auxiliary store.Store,
 	securityService *security.Service,
 	traces *routetrace.Service,
 	export func(context.Context) ([]byte, error),
 ) *databaseHandler {
-	return &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, points: points, store: auxiliary,
+	return &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, points: points,
+		routeVectors: routeVectors, store: auxiliary,
 		export: export, security: securityService, traces: traces, sessions: make(map[string]*executor.BatchSession)}
 }
 
@@ -653,8 +656,8 @@ func (handler *databaseHandler) session(id string) (*executor.BatchSession, bool
 		handler.context, handler.dictionary, handler.rows, nil, nil,
 	)
 	if handler.points != nil {
-		session = executor.NewBatchSessionWithPointReads(
-			handler.context, handler.dictionary, handler.rows, handler.points,
+		session = executor.NewBatchSessionWithPointReadsAndRouteVectors(
+			handler.context, handler.dictionary, handler.rows, handler.points, handler.routeVectors,
 		)
 	}
 	if handler.legacyRows != nil {

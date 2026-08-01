@@ -40,7 +40,8 @@ source；revision/surface 变化则拒绝发布。读取 active generation 时�
 
 ## COW 发布与恢复
 
-Instance 级派生目录使用 staging → generation rename → active marker rename：
+Instance 的 `<data-dir>/derived/route-vector-v1/` 派生目录使用
+staging → generation rename → active marker rename：
 
 1. staging 写入、fsync 并 strict reopen；
 2. 原子 rename 为不可变 generation，fsync generations 目录；

@@ -50,13 +50,23 @@ func NewBatchSessionWithPointReads(
 	rows Rows,
 	points PointReads,
 ) *BatchSession {
+	return NewBatchSessionWithPointReadsAndRouteVectors(ctx, dictionary, rows, points, nil)
+}
+
+func NewBatchSessionWithPointReadsAndRouteVectors(
+	ctx context.Context,
+	dictionary Catalog,
+	rows Rows,
+	points PointReads,
+	vectors RouteVectorReader,
+) *BatchSession {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	sessionContext, cancel := context.WithCancel(ctx)
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
-		autocommit: NewWithPointReads(dictionary, rows, points), rows: rows, points: points,
+		autocommit: NewWithPointReadsAndRouteVectors(dictionary, rows, points, vectors), rows: rows, points: points,
 	}
 }
 

@@ -1,6 +1,6 @@
 # Route Predictor 小 Feature 计划
 
-状态：F124–F124c 已完成；下一项为 F124d。F124d–F124e 仍逐项 Review、RED、实现
+状态：F124–F124d 已完成；下一项为 F124e。F124e 仍独立 Review、RED、实现
 和合入，不能整批开工。
 
 ## 目标链路
@@ -58,11 +58,12 @@ scope 在匹配后才过滤；并列分数不确定；输入向量被修改。
 GREEN：先过滤授权 scope，再对归一化 `float32` 执行 `O(N*d)` 精确点积；按分数和
 稳定 Route ID 确定排序，返回深复制候选。纯 Go 为 reference，Mac Accelerate 后置。
 
-候选 MSQL 仅表达能力，最终语法由 F124a Review 冻结：
+F124d 冻结的候选 MSQL 为：
 
 ```sql
 SHOW ROUTE CANDIDATES FROM ALL TABLES
-USING VECTOR :query_vector LIMIT 8;
+USING VECTOR :query_vector SPACE :space_digest
+LIMIT :limit BYTES :bytes;
 ```
 
 ## F124e Speculative Discovery Skill

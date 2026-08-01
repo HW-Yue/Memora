@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
+	"github.com/HW-Yue/Memora/internal/routevector"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
@@ -72,6 +73,11 @@ type Engine struct {
 	points           PointReads
 	packages         PackageManager
 	wiki             WikiExporter
+	routeVectors     RouteVectorReader
+}
+
+type RouteVectorReader interface {
+	OpenActive(context.Context, string) (*routevector.Generation, routevector.Marker, error)
 }
 
 type PackageManager interface {
@@ -189,8 +195,23 @@ func New(dictionary Catalog, rows Rows) *Engine {
 }
 
 func NewWithPointReads(dictionary Catalog, rows Rows, points PointReads) *Engine {
+	return NewWithPointReadsAndRouteVectors(dictionary, rows, points, nil)
+}
+
+func NewWithPointReadsAndRouteVectors(
+	dictionary Catalog,
+	rows Rows,
+	points PointReads,
+	vectors RouteVectorReader,
+) *Engine {
 	engine := New(dictionary, rows)
-	engine.points = points
+	engine.points, engine.routeVectors = points, vectors
+	return engine
+}
+
+func NewWithRouteVectors(dictionary Catalog, rows Rows, vectors RouteVectorReader) *Engine {
+	engine := New(dictionary, rows)
+	engine.routeVectors = vectors
 	return engine
 }
 

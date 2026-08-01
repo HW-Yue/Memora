@@ -67,6 +67,7 @@ type ShowStatement struct {
 	RouteMode string      `json:"route_mode,omitempty"`
 	Predictor string      `json:"predictor,omitempty"`
 	Query     *Expression `json:"query,omitempty"`
+	Space     *Expression `json:"space,omitempty"`
 	ByteLimit *Expression `json:"byte_limit,omitempty"`
 }
 
@@ -293,6 +294,7 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "ROUTE_CANDIDATES":
 		appendExpression(statement.Show.Query)
+		appendExpression(statement.Show.Space)
 		appendExpression(statement.Show.Limit)
 		appendExpression(statement.Show.ByteLimit)
 	case statement.Show != nil && statement.Show.Object == "RELATIONS":

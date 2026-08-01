@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 )
@@ -160,10 +161,23 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 		return executorResult{
 			rows: envelope.Results[0].Rows, rowDetail: envelope.Results[0].RowDetail,
 			page: envelope.Results[0].Page, nextCursor: envelope.Results[0].NextCursor,
+			discovery: envelope.Results[0].Discovery,
 		}
 	}
 	execute("CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", nil)
 	execute("CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title' ROLE title)", nil)
+	vectorFallback := execute(
+		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING VECTOR :query SPACE :space LIMIT 8 BYTES 4096",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{
+			"query": []any{1.0, 0.0},
+			"space": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		}}}},
+	)
+	if vectorFallback.discovery == nil || len(vectorFallback.discovery.Candidates) != 0 ||
+		len(vectorFallback.discovery.Predictors) != 1 ||
+		vectorFallback.discovery.Predictors[0].Status != discovery.PredictorUnavailable {
+		t.Fatalf("daemon vector fallback = %#v", vectorFallback.discovery)
+	}
 	inserted := execute(
 		"INSERT INTO work.notes (title) VALUES ('Page authority')",
 		[]executor.StatementInput{{Mutation: executor.MutationOptions{
@@ -275,4 +289,5 @@ type executorResult struct {
 	rowDetail  *result.RowDetail
 	page       *result.ListPage
 	nextCursor string
+	discovery  *discovery.Frame
 }

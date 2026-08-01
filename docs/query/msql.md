@@ -155,6 +155,18 @@ USING LEXICAL :query LIMIT :candidate_limit BYTES :utf8_byte_limit;
 成功且不能排除其他 Table。词法、snapshot 与预算见
 [Lexical Route Locations v1](./lexical-route-locations-v1.md)。
 
+F124d 增加同 embedding space 的 CPU exact 候选原语：
+
+```sql
+SHOW ROUTE CANDIDATES FROM ALL TABLES
+USING VECTOR :query_vector SPACE :space_digest
+LIMIT :candidate_limit BYTES :utf8_byte_limit;
+```
+
+授权范围在打开 generation 和点积前确定；generation 缺失、stale 或 space 不兼容时
+`discovery` 返回 unavailable receipt，普通 Router 不受影响。详见
+[CPU Exact Route Match v1](./cpu-exact-route-match-v1.md)。
+
 ## 多语句请求
 
 MSQL v0 必须允许一次 request 携带由分号分隔的多条语句，使 Agent 能在一次往返中完成一组发现或查询。Parser 解析完整 statement list，不能用字符串切分代替语法解析。

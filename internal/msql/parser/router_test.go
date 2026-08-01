@@ -101,12 +101,31 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 		"DELETE ROUTE",
 		"SHOW ROUTES FROM TABLE work.notes LIMIT 10",
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :query LIMIT 8",
+		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING VECTOR :query LIMIT 8 BYTES 4096",
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING UNKNOWN :query LIMIT 8 BYTES 4096",
 		"OPEN ROUTE :route",
 	} {
 		if _, err := Parse(source); err == nil {
 			t.Fatalf("Parse(%q) succeeded", source)
 		}
+	}
+}
+
+func TestParseVectorRouteCandidatesRequiresSpaceAndAllBudgets(t *testing.T) {
+	t.Parallel()
+	document, err := Parse("SHOW ROUTE CANDIDATES FROM ALL TABLES USING VECTOR :query SPACE :space LIMIT :limit BYTES :bytes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	show := document.Statement.Show
+	if show == nil || show.Object != "ROUTE_CANDIDATES" || show.Predictor != "VECTOR" ||
+		show.Query == nil || show.Space == nil || show.Limit == nil || show.ByteLimit == nil {
+		t.Fatalf("vector Route candidate AST = %#v", document.Statement)
+	}
+	parameters := document.Parameters()
+	if len(parameters) != 4 || parameters[0].Name != "query" || parameters[1].Name != "space" ||
+		parameters[2].Name != "limit" || parameters[3].Name != "bytes" {
+		t.Fatalf("vector Route candidate parameters = %#v", parameters)
 	}
 }
 

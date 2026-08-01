@@ -115,6 +115,22 @@ func TestSearchSnapshotIsDeterministicAndChangesWithVisibleMetadata(t *testing.T
 	}
 }
 
+func TestSnapshotUsesTheSearchSemanticViewWithoutAQuery(t *testing.T) {
+	t.Parallel()
+	source := semanticSource()
+	state, err := routelexical.Snapshot(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	searched, err := routelexical.Search(source, "recovery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Snapshot != searched.Snapshot || state.CatalogRevision != searched.CatalogRevision {
+		t.Fatalf("snapshot = %#v, search = %#v", state, searched)
+	}
+}
+
 func TestSearchRejectsInvalidQueryAndCorruptScope(t *testing.T) {
 	t.Parallel()
 	source := semanticSource()

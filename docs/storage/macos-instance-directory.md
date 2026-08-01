@@ -58,6 +58,7 @@ default/
 ├── system/auxiliary.memora
 ├── system/security.memora
 ├── databases/database.memora
+├── derived/route-vector-v1/ F124c Route-only 可重建向量 generation
 ├── redo/                    F107 默认切换后的 Instance 级 WAL segments
 └── tmp/
 ```
