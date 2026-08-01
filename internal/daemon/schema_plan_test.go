@@ -104,7 +104,7 @@ func TestNativeDaemonAppliesApprovedSchemaPlanAndReopensCommittedCatalog(t *test
 	applied := executeTraceMSQL(t, dataDir, "APPLY SCHEMA CHANGE PLAN :plan FOR TABLE work.notes",
 		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"plan": plan}},
 			Authorization: security.Authorization{Version: security.AuthorizationVersion, Actor: "user:test",
-				AuthorizedDatabases: []string{"work"}, Approval: &security.Approval{Version: security.ApprovalVersion,
+				AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelStructural, Approval: &security.Approval{Version: security.ApprovalVersion,
 					Action: security.ActionApplySchemaChange, SubjectSHA256: strings.TrimPrefix(plan.Hash, "sha256:"), Confirmed: true}}}})
 	if applied.Results[0].AffectedRows != 1 || applied.Results[0].Rows[0]["verified"] != true ||
 		applied.Results[0].Rows[0]["table_revision"] != float64(2) {

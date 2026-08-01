@@ -64,7 +64,7 @@ func (engine *Engine) createRoute(
 		if err != nil {
 			return Output{}, err
 		}
-		if err := engine.authorizeRouterID(ctx, parentID); err != nil {
+		if err := engine.authorizeRouterIDAtLevel(ctx, security.LevelStructural, parentID); err != nil {
 			return Output{}, err
 		}
 		name, err := routerString(statement.Name, bound, "Router name")
@@ -128,7 +128,7 @@ func (engine *Engine) updateRouteSynopsis(
 	if err != nil {
 		return Output{}, err
 	}
-	if err := engine.authorizeRouterID(ctx, routeID); err != nil {
+	if err := engine.authorizeRouterIDAtLevel(ctx, security.LevelStructural, routeID); err != nil {
 		return Output{}, err
 	}
 	synopsis, err := routerString(statement.Synopsis, bound, "Router synopsis")
@@ -159,7 +159,7 @@ func (engine *Engine) renameRoute(
 	if err != nil {
 		return Output{}, err
 	}
-	if err := engine.authorizeRouterID(ctx, routeID); err != nil {
+	if err := engine.authorizeRouterIDAtLevel(ctx, security.LevelStructural, routeID); err != nil {
 		return Output{}, err
 	}
 	name, err := routerString(statement.Name, bound, "Router name")
@@ -188,7 +188,7 @@ func (engine *Engine) deleteRoute(
 	if err != nil {
 		return Output{}, err
 	}
-	if err := engine.authorizeRouterID(ctx, routeID); err != nil {
+	if err := engine.authorizeRouterIDAtLevel(ctx, security.LevelStructural, routeID); err != nil {
 		return Output{}, err
 	}
 	revision, err := engine.rows.DeleteRouterNode(ctx, routeID, options.ExpectedRevision)
@@ -369,6 +369,10 @@ func (engine *Engine) resolveRouterNode(
 }
 
 func (engine *Engine) authorizeRouterID(ctx context.Context, routeID string) error {
+	return engine.authorizeRouterIDAtLevel(ctx, security.LevelRead, routeID)
+}
+
+func (engine *Engine) authorizeRouterIDAtLevel(ctx context.Context, level security.RiskLevel, routeID string) error {
 	if _, present := security.AuthorizationFrom(ctx); !present {
 		return nil
 	}
@@ -376,7 +380,7 @@ func (engine *Engine) authorizeRouterID(ctx context.Context, routeID string) err
 	if err != nil {
 		return normalizeError(err)
 	}
-	return engine.authorizeDatabaseReference(ctx, node.DatabaseID)
+	return engine.authorizeDatabaseReferenceAtLevel(ctx, level, node.DatabaseID)
 }
 
 func routeResult(node router.Node) result.Row {

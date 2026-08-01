@@ -68,7 +68,7 @@ func TestPackageOperationsRunThroughMSQLExecutor(t *testing.T) {
 	}
 	installCtx := security.WithAuthorization(ctx, security.Authorization{
 		Version: security.AuthorizationVersion, Actor: "user:test",
-		AuthorizedDatabases: []string{"work"},
+		AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelStructural,
 		Approval: &security.Approval{
 			Version: security.ApprovalVersion, Action: security.ActionInstallPackage,
 			SubjectSHA256: dbpackage.Hash([]byte(encoded)), Confirmed: true,

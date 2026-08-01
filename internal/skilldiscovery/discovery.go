@@ -638,6 +638,7 @@ func authorizedInput(actor string, databases []string, named map[string]any) exe
 		Authorization: security.Authorization{
 			Version: security.AuthorizationVersion, Actor: actor,
 			AuthorizedDatabases: append([]string(nil), databases...),
+			DefaultLevel:        security.LevelRead,
 		},
 	}
 }

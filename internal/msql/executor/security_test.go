@@ -59,6 +59,35 @@ func TestScopedMSQLAcceptsStableDatabaseID(t *testing.T) {
 	}
 }
 
+func TestScopedMSQLEnforcesRiskLevelAfterDatabaseScope(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	subject, _, closeStore := queryFixture(t, ctx)
+	defer closeStore()
+	readOnly := security.WithAuthorization(ctx, security.Authorization{
+		Version: security.AuthorizationVersion, Actor: "agent:host",
+		AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelRead,
+	})
+	if _, err := execute(readOnly, subject, `SELECT title FROM work.notes LIMIT 1`, executor.Parameters{}, executor.MutationOptions{}); err != nil {
+		t.Fatalf("L0 SELECT error = %v", err)
+	}
+	_, err := execute(readOnly, subject, `INSERT INTO work.notes (title) VALUES ('blocked')`, executor.Parameters{}, executor.MutationOptions{
+		ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
+	})
+	if code(err) != "permission_denied" {
+		t.Fatalf("L0 INSERT error = %v", err)
+	}
+	write := security.WithAuthorization(ctx, security.Authorization{
+		Version: security.AuthorizationVersion, Actor: "agent:host",
+		AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelWrite,
+	})
+	_, err = execute(write, subject, `ALTER TABLE work.notes ADD COLUMN summary TEXT(100) PURPOSE 'Summary'`, executor.Parameters{}, executor.MutationOptions{})
+	if code(err) != "permission_denied" {
+		t.Fatalf("L1 ALTER error = %v", err)
+	}
+}
+
 func TestScopedCatalogDiscoveryAndRelationsDoNotLeakOtherDatabases(t *testing.T) {
 	t.Parallel()
 

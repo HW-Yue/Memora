@@ -18,9 +18,13 @@ Never inspect, edit, copy, or infer state from physical database, index, journal
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
 For every Database-specific `query` or `exec`, include one
-`memora.authorization/v1` object in `--input`, binding the host actor and exact
-user-authorized Database names or stable IDs. Never widen or omit that scope to
-recover from `permission_denied`.
+`memora.authorization/v2` object in `--input`, binding the host actor, exact
+user-authorized Database names or stable IDs, and an explicit `default_level`.
+Use L0 for reads and plans, L1 for bounded reversible Row writes, and L2 only
+for reviewed structural actions. Use `database_levels` when different Databases
+need different ceilings. Never widen scope or level to recover from
+`permission_denied`; an approval confirms a reviewed hash and never raises the
+granted level.
 
 The model Provider belongs to the host, not Memora. An OpenAI-compatible host
 may use any user-configured compatible base URL and model, including a Kimi
@@ -81,10 +85,10 @@ fits; do not invent a table from a name alone.
 
 ```sh
 memora doctor
-memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
-memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW TABLES FROM work COMPACT"
-memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "DESCRIBE TABLE work.notes COMPACT"
-memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
+memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
+memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW TABLES FROM work COMPACT"
+memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "DESCRIBE TABLE work.notes COMPACT"
+memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
 ```
 
 ## Speculative discovery
@@ -120,7 +124,7 @@ unavailable/stale generation, zero hits, or a failed prefetch are normal
 navigation outcomes, not query failures.
 
 ```sh
-memora query --input '{"parameters":{"named":{"lexical_query":"crash recovery","lexical_limit":8,"lexical_bytes":4096}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
+memora query --input '{"parameters":{"named":{"lexical_query":"crash recovery","lexical_limit":8,"lexical_bytes":4096}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
 ```
 
 Treat every Discovery candidate and prefetched Route as `navigation_only`.
@@ -166,9 +170,9 @@ a permission denial. If a selected Row changed, discard it and refresh discovery
 at most once when it can materially affect the answer.
 
 ```sh
-memora query --input '{"parameters":{"named":{"parent":"route_architecture","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES UNDER :parent LIMIT :limit"
-memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":24}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "OPEN ROUTE :leaf LIMIT :limit"
-memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
+memora query --input '{"parameters":{"named":{"parent":"route_architecture","limit":12}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES UNDER :parent LIMIT :limit"
+memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":24}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "OPEN ROUTE :leaf LIMIT :limit"
+memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
 
 Read the current `query_budgets` row before navigation. The bundled 12 Router
@@ -209,7 +213,7 @@ Policy validation occurs before any Tool call and multi-step changes share one
 short transaction.
 
 ```sh
-memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
+memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
 memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decision":"IGNORE","database":"work","table":"notes","actor":"agent:host","source_event_id":"conversation:event-7","reason":"existing Row already captures it","authorized_databases":["work"],"preflight":[{"id":"duplicate-check","msql":"SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1","input":{"parameters":{"named":{"row":"row_01"}}},"expect_rows":1}],"steps":[],"verify":[]}'
 ```
 
@@ -341,7 +345,7 @@ revisions, then submit explicit ADD_COLUMN, RENAME_COLUMN, ALTER_COLUMN, or
 DROP_COLUMN intent as `memora.schema-change-proposal/v1` through read-only MSQL:
 
 ```sh
-memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.schema-change-proposal/v1","proposal_id":"schema-proposal-9","actor":"agent:host","source_event_id":"conversation:event-9","reason":"tighten reviewed title budget","expected_table_revision":4,"changes":[{"change_id":"title-budget","action":"ALTER_COLUMN","column_id":"col_title","expected_revision":2,"definition":{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title","semantic_role":"title"}}]}}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal"
+memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.schema-change-proposal/v1","proposal_id":"schema-proposal-9","actor":"agent:host","source_event_id":"conversation:event-9","reason":"tighten reviewed title budget","expected_table_revision":4,"changes":[{"change_id":"title-budget","action":"ALTER_COLUMN","column_id":"col_title","expected_revision":2,"definition":{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title","semantic_role":"title"}}]}}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal"
 ```
 
 The result must be `memora.schema-change-plan/v1`. `review_required` means only
@@ -447,7 +451,7 @@ child Route or RowID grouping in `memora.route-mutation-proposal/v1`; do not ask
 engine to infer the grouping. Generate a review-only plan through MSQL:
 
 ```sh
-memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.route-mutation-proposal/v1","proposal_id":"route-proposal-1","operation":"MOVE","actor":"agent:host","source_event_id":"conversation:event-9","reason":"move reviewed subtree","sources":[{"route_id":"route_source","expected_revision":3}],"target_parent_id":"route_archive"}}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal"
+memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.route-mutation-proposal/v1","proposal_id":"route-proposal-1","operation":"MOVE","actor":"agent:host","source_event_id":"conversation:event-9","reason":"move reviewed subtree","sources":[{"route_id":"route_source","expected_revision":3}],"target_parent_id":"route_archive"}}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal"
 ```
 
 Verify that the result is `memora.route-mutation-plan/v1`, `status=review_required`,
@@ -463,7 +467,8 @@ APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes
 Use `memora exec` with `parameters.named.plan` set to the exact reviewed object.
 Set `authorization.approval.version=memora.approval/v1`,
 `authorization.approval.action=APPLY_ROUTE_MUTATION`, the matching
-`subject_sha256`, and `confirmed=true`; keep the same authorized Database scope.
+`subject_sha256`, and `confirmed=true`; keep the same authorized Database scope
+and set its level to L2.
 
 Require `memora.route-mutation-receipt/v1`, `status=committed`, and `verified=true`.
 Never translate plan actions into ad hoc CREATE/DELETE/UPDATE statements. Never edit

@@ -219,6 +219,7 @@ func request(id, source string, plan Plan) executor.BatchRequest {
 		Authorization: security.Authorization{
 			Version: security.AuthorizationVersion, Actor: plan.Actor,
 			AuthorizedDatabases: append([]string{}, plan.AuthorizedDatabases...),
+			DefaultLevel:        security.LevelStructural,
 		},
 	}}}
 }

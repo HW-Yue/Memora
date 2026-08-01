@@ -99,7 +99,7 @@ func TestNativeDaemonPlansAndAppliesApprovedRouteSplit(t *testing.T) {
 		[]executor.StatementInput{{
 			Parameters: executor.Parameters{Named: map[string]any{"plan": plan}},
 			Authorization: security.Authorization{
-				Version: security.AuthorizationVersion, Actor: "user:test", AuthorizedDatabases: []string{"work"},
+				Version: security.AuthorizationVersion, Actor: "user:test", AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelStructural,
 				Approval: &security.Approval{Version: security.ApprovalVersion,
 					Action:        security.ActionApplyRouteMutation,
 					SubjectSHA256: strings.TrimPrefix(plan.Hash, "sha256:"), Confirmed: true},

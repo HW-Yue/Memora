@@ -185,6 +185,7 @@ func authorizedInput(input executor.StatementInput, plan Plan) executor.Statemen
 	input.Authorization = security.Authorization{
 		Version: security.AuthorizationVersion, Actor: plan.Actor,
 		AuthorizedDatabases: append([]string{}, plan.AuthorizedDatabases...),
+		DefaultLevel:        security.LevelWrite,
 	}
 	return input
 }

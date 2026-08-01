@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	AuthorizationVersion     = "memora.authorization/v1"
+	AuthorizationVersion     = "memora.authorization/v2"
 	ApprovalVersion          = "memora.approval/v1"
 	ActionInstallPackage     = "INSTALL_PACKAGE"
 	ActionApplyRouteMutation = "APPLY_ROUTE_MUTATION"
@@ -19,11 +19,22 @@ const (
 	maxDatabaseScope         = 32
 )
 
+type RiskLevel string
+
+const (
+	LevelRead         RiskLevel = "L0"
+	LevelWrite        RiskLevel = "L1"
+	LevelStructural   RiskLevel = "L2"
+	LevelIrreversible RiskLevel = "L3"
+)
+
 type Authorization struct {
-	Version             string    `json:"version"`
-	Actor               string    `json:"actor"`
-	AuthorizedDatabases []string  `json:"authorized_databases"`
-	Approval            *Approval `json:"approval,omitempty"`
+	Version             string               `json:"version"`
+	Actor               string               `json:"actor"`
+	AuthorizedDatabases []string             `json:"authorized_databases"`
+	DefaultLevel        RiskLevel            `json:"default_level,omitempty"`
+	DatabaseLevels      map[string]RiskLevel `json:"database_levels,omitempty"`
+	Approval            *Approval            `json:"approval,omitempty"`
 }
 
 type Approval struct {
@@ -76,6 +87,20 @@ func (authorization Authorization) Validate() error {
 		}
 		seen[normalized] = true
 	}
+	if _, valid := levelRank(authorization.effectiveDefaultLevel()); !valid {
+		return securityError(result.CodeValidation, "Authorization default level is invalid")
+	}
+	levelKeys := map[string]bool{}
+	for database, level := range authorization.DatabaseLevels {
+		normalized := canonical(database)
+		if normalized == "" || levelKeys[normalized] || !seen[normalized] {
+			return securityError(result.CodeValidation, "Authorization Database level override is invalid")
+		}
+		if _, valid := levelRank(level); !valid {
+			return securityError(result.CodeValidation, "Authorization Database level is invalid")
+		}
+		levelKeys[normalized] = true
+	}
 	if authorization.Approval != nil {
 		if err := authorization.Approval.Validate(); err != nil {
 			return err
@@ -107,21 +132,42 @@ func RequireAuthorization(ctx context.Context) (Authorization, error) {
 }
 
 func RequireDatabase(ctx context.Context, database string) error {
-	return RequireAnyDatabase(ctx, database)
+	return RequireDatabaseLevel(ctx, LevelRead, database)
 }
 
 func RequireAnyDatabase(ctx context.Context, databases ...string) error {
+	return RequireAnyDatabaseLevel(ctx, LevelRead, databases...)
+}
+
+func RequireDatabaseLevel(ctx context.Context, level RiskLevel, database string) error {
+	return RequireAnyDatabaseLevel(ctx, level, database)
+}
+
+func RequireAnyDatabaseLevel(ctx context.Context, level RiskLevel, databases ...string) error {
 	authorization, err := RequireAuthorization(ctx)
 	if err != nil {
 		return err
 	}
-	if AllowsAnyDatabase(authorization, databases...) {
+	if AllowsAnyDatabaseLevel(authorization, level, databases...) {
 		return nil
 	}
 	return securityError(
 		result.CodePermissionDenied,
-		fmt.Sprintf("Database selectors %q are outside the authorized scope", databases),
+		fmt.Sprintf("Database selectors %q do not permit risk level %s", databases, level),
 	)
+}
+
+func RequireLevel(ctx context.Context, level RiskLevel) error {
+	authorization, err := RequireAuthorization(ctx)
+	if err != nil {
+		return err
+	}
+	granted, _ := levelRank(authorization.effectiveDefaultLevel())
+	required, valid := levelRank(level)
+	if valid && granted >= required {
+		return nil
+	}
+	return securityError(result.CodePermissionDenied, fmt.Sprintf("Authorization does not permit risk level %s", level))
 }
 
 func RequireApproval(ctx context.Context, action, subjectSHA256 string) error {
@@ -162,17 +208,57 @@ func IsAuthorized(authorization Authorization, selectors ...string) bool {
 }
 
 func AllowsAnyDatabase(authorization Authorization, selectors ...string) bool {
+	return AllowsAnyDatabaseLevel(authorization, LevelRead, selectors...)
+}
+
+func AllowsAnyDatabaseLevel(authorization Authorization, level RiskLevel, selectors ...string) bool {
 	if authorization.Validate() != nil {
+		return false
+	}
+	required, valid := levelRank(level)
+	if !valid {
 		return false
 	}
 	for _, selector := range selectors {
 		for _, allowed := range authorization.AuthorizedDatabases {
 			if canonical(allowed) == canonical(selector) {
-				return true
+				granted, _ := levelRank(authorization.levelForDatabase(allowed))
+				return granted >= required
 			}
 		}
 	}
 	return false
+}
+
+func (authorization Authorization) effectiveDefaultLevel() RiskLevel {
+	if authorization.DefaultLevel == "" {
+		return LevelWrite
+	}
+	return authorization.DefaultLevel
+}
+
+func (authorization Authorization) levelForDatabase(database string) RiskLevel {
+	for selector, level := range authorization.DatabaseLevels {
+		if canonical(selector) == canonical(database) {
+			return level
+		}
+	}
+	return authorization.effectiveDefaultLevel()
+}
+
+func levelRank(level RiskLevel) (int, bool) {
+	switch level {
+	case LevelRead:
+		return 0, true
+	case LevelWrite:
+		return 1, true
+	case LevelStructural:
+		return 2, true
+	case LevelIrreversible:
+		return 3, true
+	default:
+		return 0, false
+	}
 }
 
 func ValidateMetadataText(value string, maximum int, required bool) error {

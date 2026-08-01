@@ -30,6 +30,14 @@ func (engine *Engine) relate(
 	if err != nil {
 		return Output{}, err
 	}
+	if !strings.EqualFold(sourceTable.DatabaseID, targetTable.DatabaseID) {
+		if err := engine.authorizeDatabaseReferenceAtLevel(ctx, security.LevelStructural, sourceDatabase); err != nil {
+			return Output{}, err
+		}
+		if err := engine.authorizeDatabaseReferenceAtLevel(ctx, security.LevelStructural, targetDatabase); err != nil {
+			return Output{}, err
+		}
+	}
 	sourceRow, err := relationshipString(statement.SourceRow, sourceTable, bound, "source Row ID")
 	if err != nil {
 		return Output{}, err
@@ -88,7 +96,11 @@ func (engine *Engine) unrelate(
 		if err != nil {
 			return Output{}, normalizeError(err)
 		}
-		if err := engine.authorizeRelation(ctx, existing); err != nil {
+		level := security.LevelWrite
+		if !strings.EqualFold(existing.Source.DatabaseID, existing.Target.DatabaseID) {
+			level = security.LevelStructural
+		}
+		if err := engine.authorizeRelationAtLevel(ctx, existing, level); err != nil {
 			return Output{}, err
 		}
 	}
@@ -182,10 +194,14 @@ func (engine *Engine) showRelations(
 }
 
 func (engine *Engine) authorizeRelation(ctx context.Context, value relation.Relation) error {
-	if err := engine.authorizeDatabaseReference(ctx, value.Source.DatabaseID); err != nil {
+	return engine.authorizeRelationAtLevel(ctx, value, security.LevelRead)
+}
+
+func (engine *Engine) authorizeRelationAtLevel(ctx context.Context, value relation.Relation, level security.RiskLevel) error {
+	if err := engine.authorizeDatabaseReferenceAtLevel(ctx, level, value.Source.DatabaseID); err != nil {
 		return err
 	}
-	return engine.authorizeDatabaseReference(ctx, value.Target.DatabaseID)
+	return engine.authorizeDatabaseReferenceAtLevel(ctx, level, value.Target.DatabaseID)
 }
 
 func relationshipString(

@@ -295,7 +295,7 @@ func (value *journey) summarizeProject() ([]byte, int, error) {
 			"reason":                  "summarize the clean-machine fixture project",
 		},
 		"authorization": map[string]any{
-			"version":              "memora.authorization/v1",
+			"version":              "memora.authorization/v2",
 			"actor":                "agent:clean-machine",
 			"authorized_databases": []string{"clean"},
 		},
@@ -338,7 +338,7 @@ func (value *journey) restartDaemon() ([]byte, int, error) {
 func (value *journey) queryAfterRestart() ([]byte, int, error) {
 	input := map[string]any{
 		"authorization": map[string]any{
-			"version":              "memora.authorization/v1",
+			"version":              "memora.authorization/v2",
 			"actor":                "agent:clean-machine",
 			"authorized_databases": []string{"clean"},
 		},

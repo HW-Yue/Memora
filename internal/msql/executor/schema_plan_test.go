@@ -113,7 +113,7 @@ func TestApplySchemaChangeMSQLRequiresHashBoundApprovalAndReturnsReceipt(t *test
 		t.Fatal("APPLY without approval unexpectedly succeeded")
 	}
 	approved := security.WithAuthorization(ctx, security.Authorization{Version: security.AuthorizationVersion,
-		Actor: "user:test", AuthorizedDatabases: []string{"work"}, Approval: &security.Approval{
+		Actor: "user:test", AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelStructural, Approval: &security.Approval{
 			Version: security.ApprovalVersion, Action: security.ActionApplySchemaChange,
 			SubjectSHA256: strings.TrimPrefix(plan.Hash, "sha256:"), Confirmed: true,
 		}})

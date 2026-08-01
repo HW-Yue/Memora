@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F135 已完成；下一项为 F136 Policy Enforcement v2。用户已于
+状态：F81–F136 已完成；下一项为 F137 Package Signature。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -106,7 +106,7 @@ F124a–F124e 的 RED、边界和顺序见
 | F133 Host Input Capture | 已完成：宿主以稳定 receipt 提交有界 pending 候选且不写数据库事实 |
 | F134 Worthiness Decision | 已完成：AI 以绑定 capture 和 verified Mutation Receipt 的稳定收据终结候选 |
 | F135 Scalable Database Discovery | 已完成：Catalog Atlas 双预算分页并以 complete coverage 保证冷库可达 |
-| F136 Policy Enforcement v2 | L0–L3 与每库授权由引擎确定性强制 |
+| F136 Policy Enforcement v2 | 已完成：L0–L3、逐库上限与动态对象由引擎确定性强制 |
 
 ## P：产品化候选
 
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F136；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F137；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

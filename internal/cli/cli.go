@@ -490,6 +490,7 @@ func runDatabasePackage(command string, args []string, stdout, stderr io.Writer,
 		if command == "install" {
 			input.Authorization = security.Authorization{
 				Version: security.AuthorizationVersion, Actor: "user:local",
+				DefaultLevel: security.LevelStructural,
 				Approval: &security.Approval{
 					Version: security.ApprovalVersion, Action: security.ActionInstallPackage,
 					SubjectSHA256: dbpackage.Hash(encoded), Confirmed: true,

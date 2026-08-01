@@ -148,7 +148,7 @@ func TestRoutePlanRequiresExactApprovalAndFreshSnapshotWithoutPartialWrites(t *t
 
 func approvedRoutePlanContext(plan routemutationplan.Plan) context.Context {
 	return security.WithAuthorization(context.Background(), security.Authorization{
-		Version: security.AuthorizationVersion, Actor: "user:test", AuthorizedDatabases: []string{"work"},
+		Version: security.AuthorizationVersion, Actor: "user:test", AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelStructural,
 		Approval: &security.Approval{Version: security.ApprovalVersion, Action: security.ActionApplyRouteMutation,
 			SubjectSHA256: strings.TrimPrefix(plan.Hash, "sha256:"), Confirmed: true},
 	})

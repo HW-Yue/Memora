@@ -16,15 +16,26 @@ func (engine *Engine) authorizeStatement(ctx context.Context, statement ast.Stat
 	if err := authorization.Validate(); err != nil {
 		return normalizeError(err)
 	}
-	for _, database := range statementDatabaseNames(statement) {
-		if err := engine.authorizeDatabaseReference(ctx, database); err != nil {
+	level := statementRiskLevel(statement)
+	databases := statementDatabaseNames(statement)
+	for _, database := range databases {
+		if err := engine.authorizeDatabaseReferenceAtLevel(ctx, level, database); err != nil {
 			return err
+		}
+	}
+	if len(databases) == 0 && level != security.LevelRead {
+		if err := security.RequireLevel(ctx, level); err != nil {
+			return normalizeError(err)
 		}
 	}
 	return nil
 }
 
 func (engine *Engine) authorizeDatabaseReference(ctx context.Context, reference string) error {
+	return engine.authorizeDatabaseReferenceAtLevel(ctx, security.LevelRead, reference)
+}
+
+func (engine *Engine) authorizeDatabaseReferenceAtLevel(ctx context.Context, level security.RiskLevel, reference string) error {
 	authorization, present := security.AuthorizationFrom(ctx)
 	if !present {
 		return nil
@@ -32,16 +43,34 @@ func (engine *Engine) authorizeDatabaseReference(ctx context.Context, reference 
 	if err := authorization.Validate(); err != nil {
 		return normalizeError(err)
 	}
-	if security.AllowsAnyDatabase(authorization, reference) {
+	if security.AllowsAnyDatabaseLevel(authorization, level, reference) {
 		return nil
 	}
 	if engine != nil && engine.catalog != nil {
 		database, err := engine.catalog.DescribeDatabase(ctx, reference)
-		if err == nil && security.AllowsAnyDatabase(authorization, database.ID, database.Name) {
+		selectors := append([]string{database.ID, database.Name}, database.Aliases...)
+		if err == nil && security.AllowsAnyDatabaseLevel(authorization, level, selectors...) {
 			return nil
 		}
 	}
-	return normalizeError(security.RequireAnyDatabase(ctx, reference))
+	return normalizeError(security.RequireAnyDatabaseLevel(ctx, level, reference))
+}
+
+func statementRiskLevel(statement ast.Statement) security.RiskLevel {
+	switch {
+	case statement.Insert != nil, statement.Update != nil, statement.Delete != nil,
+		statement.Restore != nil, statement.Relate != nil, statement.Unrelate != nil:
+		return security.LevelWrite
+	case statement.Create != nil, statement.Alter != nil, statement.Reshape != nil,
+		statement.CreateRoute != nil, statement.RenameRoute != nil,
+		statement.UpdateRoute != nil, statement.DeleteRoute != nil,
+		statement.ApplyRoute != nil, statement.ApplySchema != nil,
+		statement.Configuration != nil,
+		statement.Package != nil && statement.Package.Action == "INSTALL":
+		return security.LevelStructural
+	default:
+		return security.LevelRead
+	}
 }
 
 func statementDatabaseNames(statement ast.Statement) []string {
@@ -105,6 +134,8 @@ func statementDatabaseNames(statement ast.Statement) []string {
 	case statement.Relate != nil:
 		appendQualifiedTable(statement.Relate.SourceTable)
 		appendQualifiedTable(statement.Relate.TargetTable)
+	case statement.CreateRoute != nil && statement.CreateRoute.Table != nil:
+		appendQualifiedTable(*statement.CreateRoute.Table)
 	case statement.Package != nil && statement.Package.Action == "PACK":
 		appendDatabase(statement.Package.Database)
 	}

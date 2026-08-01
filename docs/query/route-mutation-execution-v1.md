@@ -9,7 +9,7 @@ APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes;
 ```
 
 `:plan` 必须是未经修改的 `memora.route-mutation-plan/v1`。statement input 必须同时
-携带 `memora.authorization/v1`、Database scope，以及 `memora.approval/v1`：action
+携带 `memora.authorization/v2`、Database scope，以及 `memora.approval/v1`：action
 固定为 `APPLY_ROUTE_MUTATION`，`subject_sha256` 等于 plan hash 去掉 `sha256:` 前缀后的
 64 位十六进制值。无批准、批准不匹配、跨 Table 或 legacy backend 都拒绝执行。
 

@@ -195,6 +195,9 @@ func (service *Service) Install(ctx context.Context, encoded []byte, options Ins
 	if !options.Trusted {
 		return InstallReceipt{}, packageError(result.CodePermissionDenied, "installing a database package requires explicit trust")
 	}
+	if err := security.RequireLevel(ctx, security.LevelStructural); err != nil {
+		return InstallReceipt{}, err
+	}
 	if err := security.RequireApproval(ctx, security.ActionInstallPackage, Hash(encoded)); err != nil {
 		return InstallReceipt{}, err
 	}

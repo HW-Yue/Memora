@@ -3,7 +3,7 @@
   "source": "SKILL.md",
   "msql_ast_version": "memora.msql.ast/v1",
   "result_version": "memora.result/v1",
-  "authorization_version": "memora.authorization/v1",
+  "authorization_version": "memora.authorization/v2",
   "conflict_view_version": "memora.semantic-conflict/v1",
   "conflict_resolution_version": "memora.conflict-resolution/v1",
   "assimilation_event_version": "memora.assimilation-event/v1",
@@ -109,12 +109,12 @@
     },
     {
       "name": "route-mutation-plan",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"proposal\":{\"version\":\"memora.route-mutation-proposal/v1\",\"proposal_id\":\"route-proposal-1\",\"operation\":\"MOVE\",\"actor\":\"agent:host\",\"source_event_id\":\"conversation:event-9\",\"reason\":\"move reviewed subtree\",\"sources\":[{\"route_id\":\"route_source\",\"expected_revision\":3}],\"target_parent_id\":\"route_archive\"}}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"proposal\":{\"version\":\"memora.route-mutation-proposal/v1\",\"proposal_id\":\"route-proposal-1\",\"operation\":\"MOVE\",\"actor\":\"agent:host\",\"source_event_id\":\"conversation:event-9\",\"reason\":\"move reviewed subtree\",\"sources\":[{\"route_id\":\"route_source\",\"expected_revision\":3}],\"target_parent_id\":\"route_archive\"}}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal\"",
       "msql": "PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal"
     },
     {
       "name": "schema-change-plan",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"proposal\":{\"version\":\"memora.schema-change-proposal/v1\",\"proposal_id\":\"schema-proposal-9\",\"actor\":\"agent:host\",\"source_event_id\":\"conversation:event-9\",\"reason\":\"tighten reviewed title budget\",\"expected_table_revision\":4,\"changes\":[{\"change_id\":\"title-budget\",\"action\":\"ALTER_COLUMN\",\"column_id\":\"col_title\",\"expected_revision\":2,\"definition\":{\"name\":\"title\",\"type\":\"TEXT(200)\",\"nullable\":false,\"purpose\":\"Decision title\",\"semantic_role\":\"title\"}}]}}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"proposal\":{\"version\":\"memora.schema-change-proposal/v1\",\"proposal_id\":\"schema-proposal-9\",\"actor\":\"agent:host\",\"source_event_id\":\"conversation:event-9\",\"reason\":\"tighten reviewed title budget\",\"expected_table_revision\":4,\"changes\":[{\"change_id\":\"title-budget\",\"action\":\"ALTER_COLUMN\",\"column_id\":\"col_title\",\"expected_revision\":2,\"definition\":{\"name\":\"title\",\"type\":\"TEXT(200)\",\"nullable\":false,\"purpose\":\"Decision title\",\"semantic_role\":\"title\"}}]}}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal\"",
       "msql": "PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal"
     },
     {
@@ -127,47 +127,47 @@
     },
     {
       "name": "catalog-atlas",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"limit\":64,\"bytes\":8192}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"limit\":64,\"bytes\":8192}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT\"",
       "msql": "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
     },
     {
       "name": "discover-tables",
-      "command": "memora query --input '{\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"SHOW TABLES FROM work COMPACT\"",
+      "command": "memora query --input '{\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW TABLES FROM work COMPACT\"",
       "msql": "SHOW TABLES FROM work COMPACT"
     },
     {
       "name": "discover-schema",
-      "command": "memora query --input '{\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"DESCRIBE TABLE work.notes COMPACT\"",
+      "command": "memora query --input '{\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"DESCRIBE TABLE work.notes COMPACT\"",
       "msql": "DESCRIBE TABLE work.notes COMPACT"
     },
     {
       "name": "speculative-lexical",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"lexical_query\":\"crash recovery\",\"lexical_limit\":8,\"lexical_bytes\":4096}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"lexical_query\":\"crash recovery\",\"lexical_limit\":8,\"lexical_bytes\":4096}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes\"",
       "msql": "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
     },
     {
       "name": "route-root",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"cursor\":\"\",\"limit\":12}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"cursor\":\"\",\"limit\":12}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit\"",
       "msql": "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
     },
     {
       "name": "route-under",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"parent\":\"route_architecture\",\"limit\":12}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"SHOW ROUTES UNDER :parent LIMIT :limit\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"parent\":\"route_architecture\",\"limit\":12}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW ROUTES UNDER :parent LIMIT :limit\"",
       "msql": "SHOW ROUTES UNDER :parent LIMIT :limit"
     },
     {
       "name": "open-route",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"leaf\":\"route_storage\",\"limit\":24}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"OPEN ROUTE :leaf LIMIT :limit\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"leaf\":\"route_storage\",\"limit\":24}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"OPEN ROUTE :leaf LIMIT :limit\"",
       "msql": "OPEN ROUTE :leaf LIMIT :limit"
     },
     {
       "name": "select",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"limit\":10}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"limit\":10}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit\"",
       "msql": "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
     },
     {
       "name": "write",
-      "command": "memora exec --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"summary\":\"Route results are locators only\"}},\"mutation\":{\"expected_schema_version\":1,\"expected_revision\":2,\"max_affected_rows\":1,\"route_leaf_ids\":[\"route_query\"],\"actor\":\"agent:host\",\"source\":\"conversation:event-7\",\"reason\":\"refine verified conclusion\"},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"UPDATE work.notes SET summary = :summary WHERE row_id = :row\"",
+      "command": "memora exec --input '{\"parameters\":{\"named\":{\"row\":\"row_01\",\"summary\":\"Route results are locators only\"}},\"mutation\":{\"expected_schema_version\":1,\"expected_revision\":2,\"max_affected_rows\":1,\"route_leaf_ids\":[\"route_query\"],\"actor\":\"agent:host\",\"source\":\"conversation:event-7\",\"reason\":\"refine verified conclusion\"},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L1\"}}' \"UPDATE work.notes SET summary = :summary WHERE row_id = :row\"",
       "msql": "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
     },
     {

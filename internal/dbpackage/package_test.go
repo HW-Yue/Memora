@@ -171,7 +171,7 @@ func TestOpenRejectsMaliciousManifestControlText(t *testing.T) {
 func installContext(ctx context.Context, encoded []byte) context.Context {
 	return security.WithAuthorization(ctx, security.Authorization{
 		Version: security.AuthorizationVersion, Actor: "user:test",
-		AuthorizedDatabases: []string{"work"},
+		AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelStructural,
 		Approval: &security.Approval{
 			Version: security.ApprovalVersion, Action: security.ActionInstallPackage,
 			SubjectSHA256: dbpackage.Hash(encoded), Confirmed: true,

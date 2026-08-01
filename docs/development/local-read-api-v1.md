@@ -9,7 +9,7 @@ Admin 通过与 `memora query` 相同的 MSQL/result envelope 读取数据。Gat
 daemon Unix socket，不打开 Store，不提供 HTML、登录、公网监听或模型 Provider。
 
 启动必须至少给一个 `--scope`，最多 32 个。Gateway 为所有 statement 注入固定的
-`memora.authorization/v1`（actor 为 `user:admin`）；HTTP 请求只能提供参数，不能提供
+`memora.authorization/v2`（actor 为 `user:admin`）；HTTP 请求只能提供参数，不能提供
 Authorization、MutationOptions、approval 或物理访问选项。
 
 ## Session 与 HTTP

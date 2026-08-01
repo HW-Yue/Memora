@@ -27,7 +27,7 @@ func (service *Service) ApplySchemaChangePlan(
 	if err != nil {
 		return schemachangeplan.Receipt{}, err
 	}
-	if err := security.RequireAnyDatabase(ctx, databaseName, table.DatabaseID); err != nil {
+	if err := security.RequireAnyDatabaseLevel(ctx, security.LevelStructural, databaseName, table.DatabaseID); err != nil {
 		return schemachangeplan.Receipt{}, err
 	}
 	if plan.Scope.DatabaseID != table.DatabaseID || plan.Scope.TableID != table.ID ||

@@ -32,7 +32,7 @@ func (service *Service) ApplyRouteMutationPlan(
 	if err != nil {
 		return routemutationplan.Receipt{}, err
 	}
-	if err := security.RequireAnyDatabase(ctx, databaseName, table.DatabaseID); err != nil {
+	if err := security.RequireAnyDatabaseLevel(ctx, security.LevelStructural, databaseName, table.DatabaseID); err != nil {
 		return routemutationplan.Receipt{}, err
 	}
 	if plan.Scope.DatabaseID != table.DatabaseID || plan.Scope.TableID != table.ID ||
