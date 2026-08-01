@@ -1,6 +1,6 @@
 # F156–F163 按证据触发门
 
-状态：执行中；前序空间与资源门见 [F151–F155](./evidence-gates-f151-f163.md)。
+状态：已完成；前序空间与资源门见 [F151–F155](./evidence-gates-f151-f163.md)。
 
 ## F156 Physical Undo
 
@@ -70,6 +70,25 @@
 - 结论：当前 Route 扫描相对 LLM 调用仍是毫秒级小项；不加入 cgo/vDSP、平台构建矩阵和
   浮点等价故障域。无权限的能耗采样不伪造成证据，未来若有稳定 receipt 可重新开门。
 
-## 后续门
+## F163 HNSW Route Backend
 
-F163 到达时追加真实多 Table Route 规模、CPU/memory 门和 ANN Recall 结论。
+状态：已评估，资源进入条件未成立，延后；未实现 HNSW。
+
+- 冻结 workload：四棵 16-way、3 层完整 Table Route 树，共 17,472 Route；384 维
+  float32、Top K 16、单本地 Agent query。
+- 冻结门槛：Apple M-series 上 5 × 30 query 的任一 exact p95 超过 50 ms 或 transient
+  allocation 超过 64 MiB/query；越门后 ANN 必须在冻结 corpus 达到 Recall@16 ≥ 0.98，
+  两层条件同时满足才实现 HNSW。
+- 命令：`go test -run '^$' -bench 'BenchmarkRouteExactResourceGate/routes=17472'
+  -benchmem -benchtime=30x -count 5 ./internal/routeexact`
+- 环境：darwin/arm64，Apple M4，10 logical CPU；相同 pure-Go exact/reference backend。
+- 结果：p95 9.527–9.957 ms，33.171 MB/query，17,500 alloc/query；最坏值分别只占
+  latency/memory 门的 19.9%/49.4%。
+- 结论：exact 资源门未越，故 ANN Recall 条件按冻结的“且”关系短路，不制造无需求 HNSW
+  实现或虚假 Recall receipt。CPU exact 保持默认，可替换 backend 接口边界继续保留。
+
+## 路线结论
+
+F151–F163 全部执行：F152 因证据越门已实现 durable free Page reuse；其余候选均留下
+可复现结论并延后。后续真实规模或产品故事变化时，从对应冻结命令重新测量，不沿用旧机器
+数字作永久结论。

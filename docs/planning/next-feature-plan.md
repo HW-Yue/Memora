@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F150、F152 已完成；F151/F153–F162 已评估并延后，下一项为 F163 HNSW Route Backend evidence gate。用户已于
+状态：F81–F150、F152 已完成；F151/F153–F163 已执行证据门并延后。用户于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -143,11 +143,11 @@ F124a–F124e 的 RED、边界和顺序见
 | F160 PITR | 已评估并延后：65 turn 无时间点恢复/RPO/RTO 故事，latest backup 与 History 不冒充 PITR |
 | F161 Multi-device Sync | 已评估并延后：65 turn 无双设备离线写/合并故事，Host switch 与 Instance Move 不冒充同步 |
 | F162 Apple Accelerate Route Scan | 已评估并延后：M4 4,368×384 exact p95 最高 2.434 ms、8.226 MB，未越资源门 |
-| F163 HNSW Route Backend | CPU exact 在真实 Route 规模下越过资源门且 ANN Recall 通过 |
+| F163 HNSW Route Backend | 已评估并延后：M4 17,472×384 exact p95 最高 9.957 ms、33.171 MB，未越 50 ms/64 MiB 门 |
 
 ## 批准与执行规则
 
-1. 当前下一项是 F163；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. F110–F163 持续执行授权已完成；当前没有自动进入的下一 Feature；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

@@ -1,7 +1,7 @@
 # ADR-0007：Router 权威，候选预测器可组合
 
-状态：Accepted，2026-08-01。取代“禁止任何 Vector/Embedding 路径”的绝对边界，
-不授权立即实现；当前 F97d3–F109 存储顺序保持不变。
+状态：Accepted，2026-08-01；F162/F163 资源门已执行，CPU exact 保持默认，
+Apple Accelerate/HNSW 延后。取代“禁止任何 Vector/Embedding 路径”的绝对边界。
 
 ## 背景
 
@@ -47,6 +47,10 @@ Provider 实现。引擎只接收版本化向量和模型身份，不内置供�
 Apple Accelerate 和 HNSW 都属于证据触发的可替换后端。只有真实 Route 规模下的
 `p95`、CPU/内存压力和 Recall 证明 reference backend 越过冻结门槛，才各自拆出
 独立 Feature。
+
+F162/F163 在 Apple M4 上分别测量 4,368 与 17,472 条、384 维 Route：最大 p95 为
+2.434 ms 与 9.957 ms，内存均未越冻结门，因此不实现 Accelerate/HNSW。结果是当前
+机器与规模下的延后证据，不是永久禁止；复测入口记录在按证据触发门文档中。
 
 ## 开发顺序
 

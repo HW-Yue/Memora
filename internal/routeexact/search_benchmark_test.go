@@ -14,7 +14,7 @@ import (
 var benchmarkResult routeexact.Result
 
 func BenchmarkRouteExactResourceGate(b *testing.B) {
-	for _, routeCount := range []int{4_368} {
+	for _, routeCount := range []int{4_368, 17_472} {
 		b.Run(fmt.Sprintf("routes=%d/dimensions=384", routeCount), func(b *testing.B) {
 			random := rand.New(rand.NewSource(162))
 			nodes := make([]router.Node, routeCount)
