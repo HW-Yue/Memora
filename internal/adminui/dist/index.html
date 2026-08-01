@@ -20,8 +20,8 @@
       <div class="workspace">
         <nav class="sidebar" aria-label="Admin 导航">
           <p class="nav-caption">INSPECT</p>
-          <span class="nav-item is-current">Overview</span>
-          <span class="nav-item">Catalog</span>
+          <a class="nav-item is-current" href="/" data-route data-nav="overview">Overview</a>
+          <a class="nav-item" href="/catalog" data-route data-nav="catalog">Catalog</a>
           <span class="nav-item">Route Tree</span>
           <span class="nav-item">Changes</span>
           <span class="nav-item">Route Traces</span>
@@ -39,7 +39,7 @@
               <p class="status-detail" data-status-detail>验证一次性凭据并连接 Memora daemon…</p>
             </div>
           </section>
-          <section class="route-outlet" aria-label="页面内容">
+          <section class="route-outlet" aria-label="页面内容" data-page-state="loading">
             <p>Admin Shell 已离线加载</p>
             <small data-route-label>/</small>
           </section>

@@ -12,7 +12,9 @@ import (
 )
 
 type LookupIndex interface {
+	DatabaseByID(string) (catalogindex.Locator, error)
 	DatabaseByName(string) (catalogindex.Locator, error)
+	TableByID(string) (catalogindex.Locator, error)
 	TableByName(string, string) (catalogindex.Locator, error)
 	ColumnsForTable(string) ([]catalogindex.Locator, error)
 }
@@ -45,7 +47,7 @@ func (reader *IndexedReader) DescribeTable(
 	if err := ctx.Err(); err != nil {
 		return catalog.Table{}, err
 	}
-	databaseLocator, err := reader.index.DatabaseByName(databaseName)
+	databaseLocator, err := reader.databaseLocator(databaseName)
 	if err != nil {
 		if errors.Is(err, catalogindex.ErrNotFound) {
 			return catalog.Table{}, &catalog.Error{Code: catalog.CodeNotFound, Object: "database", Name: databaseName}
@@ -59,11 +61,12 @@ func (reader *IndexedReader) DescribeTable(
 		return catalog.Table{}, err
 	}
 	if databaseLocator.Kind != catalogindex.KindDatabase ||
-		!matchesName(databaseName, database.value.Name, database.value.Aliases) {
+		database.value.ID != databaseLocator.ID ||
+		!matchesSelector(databaseName, database.value.ID, database.value.Name, database.value.Aliases) {
 		return catalog.Table{}, fmt.Errorf("%w: Database locator and record disagree", ErrCorrupt)
 	}
 
-	tableLocator, err := reader.index.TableByName(databaseLocator.ID, tableName)
+	tableLocator, err := reader.tableLocator(databaseLocator.ID, tableName)
 	if err != nil {
 		if errors.Is(err, catalogindex.ErrNotFound) {
 			return catalog.Table{}, &catalog.Error{Code: catalog.CodeNotFound, Object: "table", Name: tableName}
@@ -78,8 +81,9 @@ func (reader *IndexedReader) DescribeTable(
 	}
 	if tableLocator.Kind != catalogindex.KindTable ||
 		tableLocator.DatabaseID != databaseLocator.ID ||
+		tableRecord.value.ID != tableLocator.ID ||
 		tableRecord.value.DatabaseID != databaseLocator.ID ||
-		!matchesName(tableName, tableRecord.value.Name, tableRecord.value.Aliases) {
+		!matchesSelector(tableName, tableRecord.value.ID, tableRecord.value.Name, tableRecord.value.Aliases) {
 		return catalog.Table{}, fmt.Errorf("%w: Table locator and record disagree", ErrCorrupt)
 	}
 
@@ -127,6 +131,20 @@ func (reader *IndexedReader) DescribeTable(
 		table.Columns = append(table.Columns, column)
 	}
 	return table, nil
+}
+
+func (reader *IndexedReader) databaseLocator(selector string) (catalogindex.Locator, error) {
+	if strings.HasPrefix(selector, "db_") {
+		return reader.index.DatabaseByID(selector)
+	}
+	return reader.index.DatabaseByName(selector)
+}
+
+func (reader *IndexedReader) tableLocator(databaseID, selector string) (catalogindex.Locator, error) {
+	if strings.HasPrefix(selector, "tbl_") {
+		return reader.index.TableByID(selector)
+	}
+	return reader.index.TableByName(databaseID, selector)
 }
 
 func (reader *IndexedReader) Snapshot(ctx context.Context) ([]catalog.Database, error) {
@@ -258,4 +276,8 @@ func matchesName(requested, current string, aliases []string) bool {
 		}
 	}
 	return false
+}
+
+func matchesSelector(requested, id, current string, aliases []string) bool {
+	return requested == id || matchesName(requested, current, aliases)
 }

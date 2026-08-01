@@ -31,6 +31,41 @@ func TestIndexedReaderDescribesAliasedTableWithStoredColumnOrder(t *testing.T) {
 	}
 }
 
+func TestIndexedReaderDescribesTableByStableIDs(t *testing.T) {
+	repository, database, closeFile := indexedCatalogFixture(t)
+	defer closeFile()
+	lookup := indexedCatalogLookup(database)
+	lookup.databaseNameErr = errors.New("DatabaseByName must not resolve a stable ID")
+	lookup.tableNameErr = errors.New("TableByName must not resolve a stable ID")
+	reader, err := NewIndexedReader(repository, lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	table, err := reader.DescribeTable(context.Background(), database.ID, database.Tables[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if table.ID != database.Tables[0].ID || table.DatabaseID != database.ID || len(table.Columns) != 2 {
+		t.Fatalf("DescribeTable() = %#v", table)
+	}
+}
+
+func TestIndexedReaderRejectsStableTableIDFromAnotherDatabase(t *testing.T) {
+	repository, database, closeFile := indexedCatalogFixture(t)
+	defer closeFile()
+	lookup := indexedCatalogLookup(database)
+	lookup.table.DatabaseID = "db_other"
+	reader, err := NewIndexedReader(repository, lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := reader.DescribeTable(context.Background(), database.ID, database.Tables[0].ID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("cross-Database stable Table error = %v", err)
+	}
+}
+
 func TestIndexedReaderRejectsLocatorBodyMismatchAndMapsNotFound(t *testing.T) {
 	repository, database, closeFile := indexedCatalogFixture(t)
 	defer closeFile()
@@ -58,14 +93,27 @@ type fakeCatalogLookup struct {
 	database, table catalogindex.Locator
 	columns         []catalogindex.Locator
 	databaseErr     error
+	databaseNameErr error
+	tableNameErr    error
 }
 
-func (lookup *fakeCatalogLookup) DatabaseByName(string) (catalogindex.Locator, error) {
+func (lookup *fakeCatalogLookup) DatabaseByID(string) (catalogindex.Locator, error) {
 	return lookup.database, lookup.databaseErr
 }
 
-func (lookup *fakeCatalogLookup) TableByName(string, string) (catalogindex.Locator, error) {
+func (lookup *fakeCatalogLookup) DatabaseByName(string) (catalogindex.Locator, error) {
+	if lookup.databaseNameErr != nil {
+		return catalogindex.Locator{}, lookup.databaseNameErr
+	}
+	return lookup.database, lookup.databaseErr
+}
+
+func (lookup *fakeCatalogLookup) TableByID(string) (catalogindex.Locator, error) {
 	return lookup.table, nil
+}
+
+func (lookup *fakeCatalogLookup) TableByName(string, string) (catalogindex.Locator, error) {
+	return lookup.table, lookup.tableNameErr
 }
 
 func (lookup *fakeCatalogLookup) ColumnsForTable(string) ([]catalogindex.Locator, error) {

@@ -17,7 +17,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := bundle.Manifest()
-	if manifest.Version != BundleVersion || len(manifest.Assets) != 3 {
+	if manifest.Version != BundleVersion || len(manifest.Assets) != 4 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	for _, asset := range manifest.Assets {
@@ -52,6 +52,50 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 	fetchAt := strings.Index(javascript, `fetch("/api/v1/session"`)
 	if clearAt < 0 || fetchAt < 0 || clearAt >= fetchAt || !strings.Contains(javascript, "export async function executeMSQL") {
 		t.Fatalf("JavaScript does not clear fragment before bootstrap or expose the module API client")
+	}
+}
+
+func TestCatalogModuleUsesBoundedStableIDMSQLAndDefinesEveryPageState(t *testing.T) {
+	t.Parallel()
+
+	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), `href="/catalog" data-route`) {
+		t.Fatal("Admin shell does not expose stable Catalog navigation")
+	}
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(app), `from "./catalog.js"`) ||
+		!strings.Contains(string(app), "popstate") {
+		t.Fatal("Admin shell does not route Catalog or browser history")
+	}
+	catalog, err := fs.ReadFile(embeddedFiles, "dist/assets/catalog.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(catalog)
+	for _, required := range []string{
+		"SHOW DATABASES LIMIT 32 COMPACT",
+		"DESCRIBE DATABASE",
+		"SHOW TABLES FROM",
+		"DESCRIBE TABLE",
+		"SHOW COLUMNS FROM",
+		"CURSOR :cursor LIMIT 32 COMPACT",
+		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
+		`replaceAll('"', '""')`,
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Catalog module is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{"innerHTML", "INSERT ", "UPDATE ", "DELETE ", "CREATE ", "localStorage", "sessionStorage"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Catalog module contains forbidden %q", forbidden)
+		}
 	}
 }
 

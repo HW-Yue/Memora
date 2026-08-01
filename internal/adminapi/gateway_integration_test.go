@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -38,9 +39,17 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 	})
 
 	created, err := daemon.Execute(context.Background(), dataDir,
-		"CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'; CREATE DATABASE secret PURPOSE 'Secret' SCOPE 'Private'", nil)
+		"CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'; "+
+			"CREATE DATABASE secret PURPOSE 'Secret' SCOPE 'Private'; "+
+			"CREATE TABLE work.notes PURPOSE 'Reviewed notes' ROW SEMANTICS 'One note' "+
+			"(title TEXT NOT NULL PURPOSE 'Title' ROLE title, body TEXT PURPOSE 'Body' ROLE summary)", nil)
 	if err != nil || !created.OK {
 		t.Fatalf("create databases = %#v, %v", created, err)
+	}
+	databaseID, _ := created.Results[0].Rows[0]["database_id"].(string)
+	tableID, _ := created.Results[2].Rows[0]["table_id"].(string)
+	if databaseID == "" || tableID == "" {
+		t.Fatalf("created stable IDs = %q, %q", databaseID, tableID)
 	}
 	gateway, err := Start(context.Background(), Config{
 		DataDir:    dataDir,
@@ -84,6 +93,48 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 	fromDaemon.RequestID = ""
 	if !reflect.DeepEqual(fromAPI, fromDaemon) {
 		t.Fatalf("API envelope differs from daemon envelope\nAPI: %#v\ndaemon: %#v", fromAPI, fromDaemon)
+	}
+
+	for _, journey := range []struct {
+		source      string
+		resultCount int
+		childName   string
+	}{
+		{
+			source: fmt.Sprintf(
+				`DESCRIBE DATABASE %q COMPACT; SHOW TABLES FROM %q LIMIT 32 COMPACT`,
+				databaseID, databaseID,
+			),
+			resultCount: 2, childName: "notes",
+		},
+		{
+			source: fmt.Sprintf(
+				`DESCRIBE TABLE %q.%q COMPACT; SHOW COLUMNS FROM %q.%q LIMIT 32 COMPACT`,
+				databaseID, tableID, databaseID, tableID,
+			),
+			resultCount: 2, childName: "body",
+		},
+	} {
+		payload, err := json.Marshal(map[string]any{"source": journey.source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken, string(payload))
+		if response.StatusCode != http.StatusOK {
+			response.Body.Close()
+			t.Fatalf("Catalog journey status = %d", response.StatusCode)
+		}
+		var catalogEnvelope result.Envelope
+		if err := json.NewDecoder(response.Body).Decode(&catalogEnvelope); err != nil {
+			response.Body.Close()
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if !catalogEnvelope.OK || len(catalogEnvelope.Results) != journey.resultCount ||
+			catalogEnvelope.Results[1].Page == nil || catalogEnvelope.Results[1].Page.Limit != 32 ||
+			len(catalogEnvelope.Results[1].Rows) == 0 || catalogEnvelope.Results[1].Rows[0]["name"] != journey.childName {
+			t.Fatalf("Catalog journey %q = %#v", journey.source, catalogEnvelope)
+		}
 	}
 
 	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken,

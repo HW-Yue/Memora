@@ -1,6 +1,6 @@
 # Admin 与本地可观察性小 Feature 计划
 
-状态：F116 已完成，下一项 F117；F110–F122 持续执行已获用户授权，仍逐项 Review、
+状态：F117 已完成，下一项 F118；F110–F122 持续执行已获用户授权，仍逐项 Review、
 测试与独立合入。
 
 ## 产品形态
@@ -59,7 +59,7 @@ MSQL。第一版只读，使用固定 actor/scope、随机 token、Host/Origin�
 
 | Feature | RED 先证明 | 唯一页面结果 |
 | --- | --- | --- |
-| F117 Catalog Navigation | 用户看不到库/表/结构层级 | Instance→Database→Table→Schema 浏览 |
+| F117 Catalog Navigation | 已完成：用户看不到库/表/结构层级 | Instance→Database→Table→Schema 浏览 |
 | F118 Route Tree Browser | 语义索引只能看扁平 JSON | 按层展开 Route 并显示 locator |
 | F119 Row Document View | 千字 Row 被塞进横向表格 | locator→RowID→完整动态文档详情 |
 | F120 Change Timeline | 用户看不到提交顺序和影响对象 | commit 级变化时间线 |
