@@ -67,7 +67,21 @@
 - 结论：简单有界串行 scheduler 尚未造成 flush 延迟压力；2.39 MB/batch 的 clone allocation
   单独保留为内存优化观察项，不足以授权新的 I/O 并发协议。
 
+## F156 Physical Undo
+
+状态：已评估，结构进入条件未成立，延后。
+
+- 冻结门槛：生产写路径出现 uncommitted dirty Page steal，或 Row body 在 commit 前原位
+  覆盖，任一成立即进入 Physical Undo/Purge 设计。
+- 命令：运行 `TestRuntimeCommitPublishesDurablePagesAndReopenRecovers`、
+  `TestRuntimeRejectsBeforeWALWithoutPoisoning`、`TestCrossObjectMutationFailureLeavesNoPartialObjects`，
+  并审计 `CommitTransaction` 与 `PublishBatch` 的唯一生产调用顺序。
+- 结果：Tree Runtime 先获得带 COMMIT 的 durable WAL transaction，之后才一次发布 Page batch；
+  commit 前 mutation 保持私有，跨对象 staging 失败不留下 Row/History/Relation 部分状态。
+- 结论：当前是 no-steal + immutable revision，不存在 Physical Undo 要撤销的物理状态；Redo
+  recovery 与逻辑补偿继续承担各自边界。
+
 ## 后续门
 
-F156–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
+F157–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
 先另开实现 Feature，不把大实现塞进证据门提交。
