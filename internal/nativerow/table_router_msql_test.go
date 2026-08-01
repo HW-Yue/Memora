@@ -34,6 +34,11 @@ func TestRouteReadProtocolPaginatesChildrenAndLocatorsWithoutRowBodies(t *testin
 	engine := executor.New(dictionary, rows)
 	executeMSQL(t, ctx, engine, "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", executor.Parameters{}, executor.MutationOptions{})
 	executeMSQL(t, ctx, engine, "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title')", executor.Parameters{}, executor.MutationOptions{})
+	emptyRoutes := executeMSQL(t, ctx, engine,
+		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 2", executor.Parameters{}, executor.MutationOptions{})
+	if len(emptyRoutes.Rows) != 0 || emptyRoutes.Page == nil || emptyRoutes.Page.Snapshot == "" || emptyRoutes.Page.Truncated {
+		t.Fatalf("Route page before root creation = %#v", emptyRoutes)
+	}
 	executeMSQL(t, ctx, engine, "CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Notes Router'", executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1})
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		executeMSQL(t, ctx, engine,
@@ -63,7 +68,10 @@ func TestRouteReadProtocolPaginatesChildrenAndLocatorsWithoutRowBodies(t *testin
 		}
 	}
 	described := executeMSQL(t, ctx, engine, "DESCRIBE ROUTE 'route_alpha'", executor.Parameters{}, executor.MutationOptions{})
-	if len(described.Rows) != 1 || len(described.Rows[0]) != 8 || described.Rows[0]["route_id"] != "route_alpha" {
+	if len(described.Rows) != 1 || len(described.Rows[0]) != 10 ||
+		described.Rows[0]["route_id"] != "route_alpha" ||
+		described.Rows[0]["database_id"] != "db_database" ||
+		described.Rows[0]["table_id"] != "tbl_table" {
 		t.Fatalf("Route point read = %#v", described)
 	}
 	remainingChildren := executeMSQL(t, ctx, engine,
@@ -123,6 +131,10 @@ func TestRouteReadProtocolPaginatesChildrenAndLocatorsWithoutRowBodies(t *testin
 	_, err = runMSQL(ctx, engine, "OPEN ROUTE 'route_root' LIMIT 1", executor.Parameters{}, executor.MutationOptions{})
 	if !hasCode(err, string(result.CodeConstraint)) {
 		t.Fatalf("OPEN root error = %v", err)
+	}
+	_, err = runMSQL(ctx, engine, "DESCRIBE ROUTE 'route_missing'", executor.Parameters{}, executor.MutationOptions{})
+	if !hasCode(err, string(result.CodeNotFound)) {
+		t.Fatalf("missing Route error = %v", err)
 	}
 	unauthorized := security.WithAuthorization(ctx, security.Authorization{
 		Version: security.AuthorizationVersion, Actor: "agent:test", AuthorizedDatabases: []string{"private"},

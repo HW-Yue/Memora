@@ -40,19 +40,23 @@ type assetSpec struct {
 var frozenAssets = []assetSpec{
 	{
 		file: "dist/index.html", path: "/", contentType: "text/html; charset=utf-8",
-		hash: "4603520d544f20a410a96289e3449771bb7e3efb231023fa11140f388fcff7c2", size: 2250,
+		hash: "4670b601cb1f4955833914a19594b11c2573d6a703effad0cacd719e04b5801f", size: 2288,
 	},
 	{
 		file: "dist/assets/app.css", path: "/assets/app.css", contentType: "text/css; charset=utf-8",
-		hash: "78aa6edf39f3799a654b658acea2e336368660627d5c70d410112700e2bd3bd6", size: 7460,
+		hash: "6d7eb703c0f88b48c9e31cb4ddd8285d1cb8233062f66af9156448d4ea223e1a", size: 9269,
 	},
 	{
 		file: "dist/assets/app.js", path: "/assets/app.js", contentType: "text/javascript; charset=utf-8",
-		hash: "4e1010bbb2d1403b077ff58c4f021a48245f626fcebbfa304c2772b71f0ebf4c", size: 4202,
+		hash: "bdcedfe5ca70c6e6b94335f65c9d941314391962d481bfe5be33bd80e6e32cfa", size: 4691,
 	},
 	{
 		file: "dist/assets/catalog.js", path: "/assets/catalog.js", contentType: "text/javascript; charset=utf-8",
-		hash: "6df71191a101a2a2a4904d1208395bf341d76933be560348ef4e13f32995325e", size: 15772,
+		hash: "7b1e7a110674784802e10ae95d7f88bd3ac70d24bf92f1c50c3dd10f81a31f69", size: 16078,
+	},
+	{
+		file: "dist/assets/routes.js", path: "/assets/routes.js", contentType: "text/javascript; charset=utf-8",
+		hash: "015e78f49c11abf834da3bf0f9602e4a56d69112333de8a95f0b59e0b64deaf6", size: 16736,
 	},
 }
 

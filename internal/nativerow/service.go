@@ -917,8 +917,11 @@ func (service *Service) ListTableRouterRootsPage(ctx context.Context, databaseID
 	defer release()
 	routes := nativerouter.New(service.repository.file)
 	roots := routes.Roots(tableID)
+	if len(roots) == 0 {
+		return router.PaginateNodes("table-root:"+databaseID+":"+tableID, cursor, limit, []router.Node{})
+	}
 	if len(roots) != 1 || roots[0].DatabaseID != databaseID || roots[0].Deleted {
-		return nil, router.ReadPage{}, nativestore.ErrNotFound
+		return nil, router.ReadPage{}, fmt.Errorf("%w: Table Router root scope", nativestore.ErrCorrupt)
 	}
 	return routes.ShowUnderPage(roots[0].ID, cursor, limit)
 }
@@ -1037,11 +1040,14 @@ func (service *Service) commitRouteNodeChange(
 }
 func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node, error) {
 	value, err := nativerouter.New(service.repository.file).Get(id)
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return router.Node{}, serviceFailure(result.CodeNotFound, "Router node was not found", err)
+	}
 	if err != nil {
 		return router.Node{}, err
 	}
 	if value.Deleted {
-		return router.Node{}, nativestore.ErrNotFound
+		return router.Node{}, serviceFailure(result.CodeNotFound, "Router node was not found", nativestore.ErrNotFound)
 	}
 	return value, nil
 }
@@ -1066,7 +1072,7 @@ func (service *Service) ResolveRouterPath(_ context.Context, databaseID, path st
 			}
 		}
 	}
-	return router.Node{}, nativestore.ErrNotFound
+	return router.Node{}, serviceFailure(result.CodeNotFound, "Router path was not found", nativestore.ErrNotFound)
 }
 func (service *Service) ListRouterChildren(_ context.Context, parentID, cursor string, limit int) ([]router.Node, string, error) {
 	return nativerouter.New(service.repository.file).ShowUnder(parentID, cursor, limit)

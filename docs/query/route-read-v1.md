@@ -17,7 +17,9 @@ SHOW ROUTES UNDER :parent_id [CURSOR :cursor] LIMIT :limit;
 OPEN ROUTE :leaf_id [CURSOR :cursor] LIMIT :limit;
 ```
 
-- `DESCRIBE` 是一个有界 point read，返回 node 元数据与按需 synopsis，不返回 children；
+- `DESCRIBE` 是一个有界 point read，返回 node 元数据、`database_id/table_id` scope 与
+  按需 synopsis，不返回 children；scope 字段供 stable-ID 深链路验证，不加入逐层
+  `SHOW` 的紧凑 Route Frame；
 - `SHOW` 返回一层 child node，默认不返回 synopsis；
 - `OPEN` 只接受 leaf，只返回 `database_id/table_id/row_id/revision` locator；
 - 业务字段和正文只能由后续 `SELECT ... WHERE row_id = ... LIMIT ...` 回表。
@@ -35,6 +37,10 @@ cursor 绑定读取类型、稳定 parent/leaf scope、snapshot 与下一 offset
 encoding 和 checksum。损坏、非 canonical、跨 scope、越界 cursor 返回
 `validation_error`；两页之间 Route 或 membership 变化返回 `revision_conflict`，不能
 静默混合导航状态。
+
+尚未创建 Table Router root 是合法空状态：`SHOW ROUTES FROM TABLE ... AT ROOT` 返回
+带确定性 snapshot 的空 list page，而不是 `not_found` 或 `internal_error`。不存在或已
+删除的 point Route 返回稳定 `not_found`。
 
 ## 类型边界
 

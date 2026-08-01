@@ -34,10 +34,10 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .route-outlet { margin-top: 26px; max-width: 620px; padding: 16px 20px; border: 1px dashed #c4ccc5; border-radius: 12px; color: #77817c; background: rgb(247 248 244 / 60%); }
 .route-outlet p { margin: 0 0 6px; font-size: 13px; font-weight: 650; }
 .route-outlet small { font-family: ui-monospace, "SFMono-Regular", monospace; }
-.route-catalog .hero { display: none; }
-.route-catalog .content { padding-top: 34px; }
-.route-catalog .session-card { margin-top: 0; padding: 11px 14px; box-shadow: none; }
-.route-catalog .status-detail { display: none; }
+.route-catalog .hero, .route-routes .hero { display: none; }
+.route-catalog .content, .route-routes .content { padding-top: 34px; }
+.route-catalog .session-card, .route-routes .session-card { margin-top: 0; padding: 11px 14px; box-shadow: none; }
+.route-catalog .status-detail, .route-routes .status-detail { display: none; }
 .catalog-view { display: grid; gap: 22px; color: #26302b; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; color: #758078; font-size: 12px; }
 .breadcrumbs a { color: #37654f; text-decoration: none; font-weight: 700; }
@@ -67,6 +67,21 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .view-state[data-kind="permission"], .view-state[data-kind="corrupt"] { border-color: #d7bbb5; }
 .load-more { justify-self: start; border: 1px solid #789786; border-radius: 8px; padding: 9px 13px; color: #285641; background: #edf5ed; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .load-more:disabled { cursor: wait; opacity: .55; }
+.route-entry { justify-self: start; border: 1px solid #789786; border-radius: 8px; padding: 9px 13px; color: #285641; background: #edf5ed; font-size: 12px; font-weight: 750; text-decoration: none; }
+.route-list { display: grid; gap: 9px; }
+.route-node { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; padding: 14px 16px; border: 1px solid #d2d9d2; border-radius: 11px; color: inherit; background: rgb(255 255 252 / 72%); text-decoration: none; }
+.route-node:hover { border-color: #7da08b; }
+.route-node strong { font-size: 14px; }
+.route-node p { margin: 5px 0 7px; color: #69756e; font-size: 12px; font-weight: 450; line-height: 1.5; }
+.route-node small { color: #77827b; font-size: 10px; }
+.route-kind { min-width: 48px; border-radius: 999px; padding: 4px 7px; color: #426252; background: #e6efe8; font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 9px; text-align: center; text-transform: uppercase; }
+.route-kind-leaf { color: #725d28; background: #f5edcf; }
+.route-synopsis { border-left: 3px solid #92aa9c; padding: 4px 0 4px 13px; color: #5f6c65; font-size: 12px; font-weight: 450; line-height: 1.65; }
+.locator-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 14px; padding: 13px 15px; border: 1px solid #d6dcd6; border-radius: 10px; background: rgb(255 255 252 / 66%); }
+.locator-card strong, .locator-card small { overflow-wrap: anywhere; font-family: ui-monospace, "SFMono-Regular", monospace; }
+.locator-card strong { font-size: 11px; }
+.locator-card span, .locator-card small { color: #6c7871; font-size: 10px; }
+.locator-card small { grid-column: 1 / -1; }
 
 @media (max-width: 720px) {
   .workspace { grid-template-columns: 1fr; }
@@ -84,6 +99,6 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
   .session-card { background: rgb(25 34 29 / 85%); border-color: #3a4940; }
   .route-outlet { background: rgb(20 28 23 / 70%); border-color: #465249; }
   .catalog-view { color: #e7efe9; }
-  .object-id, .schema-badge, .object-card, .column-row, .view-state { background: rgb(24 34 28 / 85%); border-color: #3d4b42; }
-  .object-card p, .catalog-heading p, .column-row small, .column-purpose { color: #aab7b0; }
+  .object-id, .schema-badge, .object-card, .column-row, .view-state, .route-node, .locator-card { background: rgb(24 34 28 / 85%); border-color: #3d4b42; }
+  .object-card p, .catalog-heading p, .column-row small, .column-purpose, .route-node p, .route-synopsis { color: #aab7b0; }
 }

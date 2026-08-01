@@ -1,4 +1,5 @@
 import { renderCatalog } from "./catalog.js";
+import { renderRoutes } from "./routes.js";
 
 let csrfToken = "";
 let sessionReady = false;
@@ -95,6 +96,7 @@ async function renderCurrentRoute() {
   routeLabel.textContent = path;
   if (path === "/catalog" || path.startsWith("/catalog/")) {
     document.body.classList.add("route-catalog");
+    document.body.classList.remove("route-routes");
     updateNavigation("catalog");
     await renderCatalog(routeOutlet, {
       path,
@@ -103,7 +105,19 @@ async function renderCurrentRoute() {
     });
     return;
   }
+  if (path === "/routes" || path.startsWith("/routes/")) {
+    document.body.classList.remove("route-catalog");
+    document.body.classList.add("route-routes");
+    updateNavigation("routes");
+    await renderRoutes(routeOutlet, {
+      path,
+      executeMSQL,
+      isCurrent: () => window.location.pathname === path
+    });
+    return;
+  }
   document.body.classList.remove("route-catalog");
+  document.body.classList.remove("route-routes");
   updateNavigation("overview");
   routeOutlet.dataset.pageState = "ready";
   routeOutlet.replaceChildren(overviewNode());

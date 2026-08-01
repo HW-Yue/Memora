@@ -17,7 +17,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := bundle.Manifest()
-	if manifest.Version != BundleVersion || len(manifest.Assets) != 4 {
+	if manifest.Version != BundleVersion || len(manifest.Assets) != 5 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	for _, asset := range manifest.Assets {
@@ -52,6 +52,57 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 	fetchAt := strings.Index(javascript, `fetch("/api/v1/session"`)
 	if clearAt < 0 || fetchAt < 0 || clearAt >= fetchAt || !strings.Contains(javascript, "export async function executeMSQL") {
 		t.Fatalf("JavaScript does not clear fragment before bootstrap or expose the module API client")
+	}
+}
+
+func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *testing.T) {
+	t.Parallel()
+
+	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), `href="/routes" data-route`) {
+		t.Fatal("Admin shell does not expose Route Tree navigation")
+	}
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(app), `from "./routes.js"`) ||
+		!strings.Contains(string(app), `path.startsWith("/routes/")`) {
+		t.Fatal("Admin shell does not route the Route Tree module")
+	}
+	catalog, err := fs.ReadFile(embeddedFiles, "dist/assets/catalog.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(catalog), "/routes/${encodeURIComponent") {
+		t.Fatal("Catalog Table does not link to its Route Tree")
+	}
+	routes, err := fs.ReadFile(embeddedFiles, "dist/assets/routes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(routes)
+	for _, required := range []string{
+		"DESCRIBE TABLE", "SHOW ROUTES FROM TABLE", "AT ROOT LIMIT 12",
+		"DESCRIBE ROUTE :route", "SHOW ROUTES UNDER :route", "OPEN ROUTE :route",
+		"CURSOR :cursor LIMIT 12", "CURSOR :cursor LIMIT 20", "parameters", "named",
+		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
+		"database_id", "table_id", "row_id", "revision",
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Route Tree module is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"innerHTML", "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "CREATE ",
+		"localStorage", "sessionStorage",
+	} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Route Tree module contains forbidden %q", forbidden)
+		}
 	}
 }
 
@@ -106,7 +157,7 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/catalog/work", "/routes/route_1"} {
+	for _, path := range []string{"/", "/catalog/work", "/routes/db_work/tbl_notes/route_1"} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Memora Admin") {
@@ -119,7 +170,9 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 			t.Fatalf("GET %s headers = %#v", path, response.Header())
 		}
 	}
-	for _, path := range []string{"/assets/app.js", "/assets/app.css"} {
+	for _, path := range []string{
+		"/assets/app.js", "/assets/app.css", "/assets/catalog.js", "/assets/routes.js",
+	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK || response.Header().Get("ETag") == "" ||

@@ -189,6 +189,13 @@ function columnRow(row) {
   return wrapper;
 }
 
+function routeEntry(databaseID, tableID) {
+  const link = element("a", "route-entry", "浏览 Route Tree");
+  link.href = `/routes/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}`;
+  link.dataset.route = "";
+  return link;
+}
+
 function markPaginationComplete(section) {
   const root = section.closest(".route-outlet");
   if (root) root.dataset.pageState = "ready";
@@ -355,7 +362,8 @@ export async function renderCatalog(root, options) {
       { label: data.object.database_id, href: `/catalog/${encodeURIComponent(data.object.database_id)}` },
       { label: data.object.name }
     ]), heading(data.object.name,
-      data.object.purpose, data.object.table_id, data.object.schema_version, data.object.row_semantics));
+      data.object.purpose, data.object.table_id, data.object.schema_version, data.object.row_semantics),
+    routeEntry(data.object.database_id, data.object.table_id));
     if (data.rows.length === 0) {
       view.append(stateNode("empty", "这个 Table 还没有 Column", "Schema Column 会显示在这里。"));
     } else {

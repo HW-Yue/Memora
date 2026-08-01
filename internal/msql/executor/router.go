@@ -100,10 +100,13 @@ func (engine *Engine) describeRoute(
 		return Output{}, err
 	}
 	row := routeResult(node)
+	row["database_id"] = node.DatabaseID
+	row["table_id"] = node.TableID
 	row["synopsis"] = node.Synopsis
 	return Output{
 		Columns: []result.Column{
-			{Name: "route_id", Type: "ID"}, {Name: "parent_id", Type: "ID", Nullable: true},
+			{Name: "route_id", Type: "ID"}, {Name: "database_id", Type: "ID"},
+			{Name: "table_id", Type: "ID"}, {Name: "parent_id", Type: "ID", Nullable: true},
 			{Name: "path", Type: "TEXT"}, {Name: "name", Type: "TEXT"},
 			{Name: "kind", Type: "TEXT"}, {Name: "purpose", Type: "TEXT"},
 			{Name: "synopsis", Type: "TEXT", Nullable: true}, {Name: "revision", Type: "INTEGER"},
