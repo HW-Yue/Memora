@@ -2,6 +2,10 @@
 
 状态：F25 已冻结派生索引 generation 的验证、发布、pin 与 GC。
 
+边界：本规格只描述历史 F25 的 Router、Agent inverted、mechanical inverted 三类组合
+manifest。F124c Route-only vector generation 使用独立的 Instance 派生目录与 active
+marker；它不复用本规格的三类组合，也不写入 Database Package。
+
 ## 对象
 
 每个 Database 独立维护 Router、Agent inverted、mechanical inverted 三类 generation。generation record 包含 stable generation ID、kind、覆盖 commit sequence、checksum、validated 标记和 staged/active/retired 状态。

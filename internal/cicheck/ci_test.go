@@ -1,11 +1,15 @@
 package cicheck_test
 
 import (
+	"errors"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -136,16 +140,13 @@ func TestGitHubReleaseWorkflowIsTagOnlyAndLeastPrivilege(t *testing.T) {
 	}
 }
 
-func TestRuntimeAndHostContractsContainNoRetiredSemanticRetrieval(t *testing.T) {
+func TestRuntimeAndHostContractsContainNoRetiredRowRetrieval(t *testing.T) {
 	t.Parallel()
 
 	root := repositoryRoot(t)
 	forbidden := []string{
 		"MAT" + "CH ",
 		"FROM DATA" + "BASE",
-		"cos" + "ine",
-		"vec" + "tor",
-		"embed" + "ding",
 		"query" + "_terms",
 		"index" + "_terms",
 		"agent" + "index",
@@ -179,6 +180,47 @@ func TestRuntimeAndHostContractsContainNoRetiredSemanticRetrieval(t *testing.T) 
 				if strings.Contains(string(content), candidate) ||
 					(token != "MATCH " && token != "FROM DATABASE" && strings.Contains(lower, candidate)) {
 					return fmt.Errorf("%s contains retired retrieval token %q", path, token)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRoutePredictorPackagesDoNotImportFactStores(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	forbidden := map[string]struct{}{
+		"github.com/HW-Yue/Memora/internal/row":       {},
+		"github.com/HW-Yue/Memora/internal/history":   {},
+		"github.com/HW-Yue/Memora/internal/relation":  {},
+		"github.com/HW-Yue/Memora/internal/nativerow": {},
+	}
+	for _, name := range []string{"routelexical", "routevector", "routeexact"} {
+		directory := filepath.Join(root, "internal", name)
+		if _, err := os.Stat(directory); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		err := filepath.WalkDir(directory, func(path string, entry os.DirEntry, err error) error {
+			if err != nil || entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+			if err != nil {
+				return err
+			}
+			for _, imported := range file.Imports {
+				path, err := strconv.Unquote(imported.Path.Value)
+				if err != nil {
+					return err
+				}
+				if _, blocked := forbidden[path]; blocked {
+					return fmt.Errorf("%s imports fact store %q", name, path)
 				}
 			}
 			return nil
