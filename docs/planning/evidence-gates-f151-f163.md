@@ -40,7 +40,20 @@
 - 结论：MSQL 已可用有界 scan 执行 typed predicate；继续以语义 Route + RowID 主路径为主，
   不提前引入每次写入都需维护的通用 Secondary Index。
 
+## F154 Buffer Pool Scaling
+
+状态：已评估，进入条件未成立，延后。
+
+- 冻结门槛：32 个 resident hot Page 的 parallel Fetch/Release 在 5 次运行中最慢均值
+  超过 5 µs/op，或 warm-up 后发生 loader miss，才拆分 Buffer Pool instance。
+- 命令：`go test -run '^$' -bench BenchmarkBufferPoolHotHitParallel -benchmem -count 5
+  ./internal/store/buffer`
+- 环境：darwin/arm64，Apple M4，10 logical CPU；32 hot Page、64 Frame、无 I/O。
+- 结果：234.9–236.8 ns/op，48 B/op，1 alloc/op；warm-up 后全部命中。
+- 结论：最慢均值只占门槛 4.74%，当前单 Pool mutex 没有形成资源瓶颈；保留 benchmark，
+  不增加分片映射、跨池预算和 rebalance 故障域。
+
 ## 后续门
 
-F154–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
+F155–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
 先另开实现 Feature，不把大实现塞进证据门提交。
