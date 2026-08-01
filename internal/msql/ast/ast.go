@@ -37,6 +37,7 @@ type Statement struct {
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
 	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
+	ApplySchema   *ApplySchemaChangeStatement  `json:"apply_schema_change,omitempty"`
 	Configuration *ConfigurationStatement      `json:"configuration,omitempty"`
 	Package       *PackageStatement            `json:"package,omitempty"`
 	Export        *ExportStatement             `json:"export,omitempty"`
@@ -221,6 +222,11 @@ type PlanSchemaChangeStatement struct {
 	Proposal *Expression `json:"proposal"`
 }
 
+type ApplySchemaChangeStatement struct {
+	Table Name        `json:"table"`
+	Plan  *Expression `json:"plan"`
+}
+
 type ConfigurationStatement struct {
 	Action          string      `json:"action"`
 	Key             string      `json:"key"`
@@ -378,6 +384,8 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.PlanSchema.Proposal)
 	case statement.ApplyRoute != nil:
 		appendExpression(statement.ApplyRoute.Plan)
+	case statement.ApplySchema != nil:
+		appendExpression(statement.ApplySchema.Plan)
 	case statement.Configuration != nil:
 		appendExpression(statement.Configuration.RouteChildren)
 		appendExpression(statement.Configuration.OpenLocators)

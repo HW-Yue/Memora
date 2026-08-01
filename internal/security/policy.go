@@ -15,6 +15,7 @@ const (
 	ApprovalVersion          = "memora.approval/v1"
 	ActionInstallPackage     = "INSTALL_PACKAGE"
 	ActionApplyRouteMutation = "APPLY_ROUTE_MUTATION"
+	ActionApplySchemaChange  = "APPLY_SCHEMA_CHANGE"
 	maxDatabaseScope         = 32
 )
 

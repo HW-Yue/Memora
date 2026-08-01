@@ -23,6 +23,7 @@ func TestScopedMSQLRejectsQualifiedDatabaseOutsideAuthorization(t *testing.T) {
 	for _, source := range []string{
 		`SELECT title FROM private.notes LIMIT 1`,
 		`PLAN SCHEMA CHANGE FOR TABLE private.notes USING :proposal`,
+		`APPLY SCHEMA CHANGE PLAN :plan FOR TABLE private.notes`,
 	} {
 		document, err := parser.Parse(source)
 		if err != nil {

@@ -104,7 +104,11 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 			statement, err = parser.parsePlanRouteMutation()
 		}
 	case parser.matchWord("APPLY"):
-		statement, err = parser.parseApplyRouteMutation()
+		if parser.checkWord("SCHEMA") {
+			statement, err = parser.parseApplySchemaChange()
+		} else {
+			statement, err = parser.parseApplyRouteMutation()
+		}
 	case parser.matchWord("RELATE"):
 		statement, err = parser.parseRelate()
 	case parser.matchWord("UNRELATE"):
@@ -190,6 +194,30 @@ func (parser *parser) parseApplyRouteMutation() (ast.Statement, error) {
 		return ast.Statement{}, err
 	}
 	return ast.Statement{Kind: "APPLY_ROUTE_MUTATION", ApplyRoute: &ast.ApplyRouteMutationStatement{
+		Table: table, Plan: &plan,
+	}}, nil
+}
+
+func (parser *parser) parseApplySchemaChange() (ast.Statement, error) {
+	for _, word := range []string{"SCHEMA", "CHANGE", "PLAN"} {
+		if _, err := parser.expectWord(word); err != nil {
+			return ast.Statement{}, err
+		}
+	}
+	plan, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	for _, word := range []string{"FOR", "TABLE"} {
+		if _, err := parser.expectWord(word); err != nil {
+			return ast.Statement{}, err
+		}
+	}
+	table, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "APPLY_SCHEMA_CHANGE", ApplySchema: &ast.ApplySchemaChangeStatement{
 		Table: table, Plan: &plan,
 	}}, nil
 }

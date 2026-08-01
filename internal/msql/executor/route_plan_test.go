@@ -12,6 +12,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/routemutationplan"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/schemachangeplan"
 	"github.com/HW-Yue/Memora/internal/security"
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
@@ -131,9 +132,18 @@ func TestApplyRouteMutationMSQLRequiresHashBoundApproval(t *testing.T) {
 
 type planningRows struct {
 	*row.Service
-	nodes    []router.Node
-	locators map[string][]router.Locator
-	applied  bool
+	nodes         []router.Node
+	locators      map[string][]router.Locator
+	applied       bool
+	schemaApplied bool
+}
+
+func (rows *planningRows) ApplySchemaChangePlan(_ context.Context, _, _ string, plan schemachangeplan.Plan) (schemachangeplan.Receipt, error) {
+	rows.schemaApplied = true
+	return schemachangeplan.Receipt{Version: schemachangeplan.ReceiptVersion, PlanID: plan.PlanID,
+		PlanHash: plan.Hash, Status: "committed", ChangeSequence: 10,
+		DatabaseRevision: plan.DatabaseRevision + 1, TableRevision: plan.TableRevision + 1,
+		AppliedActions: len(plan.Actions), Verified: true}, nil
 }
 
 func (rows *planningRows) ListRouterNodes(context.Context) ([]router.Node, error) {

@@ -100,6 +100,8 @@ func statementDatabaseNames(statement ast.Statement) []string {
 		appendQualifiedTable(statement.PlanSchema.Table)
 	case statement.ApplyRoute != nil:
 		appendQualifiedTable(statement.ApplyRoute.Table)
+	case statement.ApplySchema != nil:
+		appendQualifiedTable(statement.ApplySchema.Table)
 	case statement.Relate != nil:
 		appendQualifiedTable(statement.Relate.SourceTable)
 		appendQualifiedTable(statement.Relate.TargetTable)

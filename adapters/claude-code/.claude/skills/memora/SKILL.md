@@ -277,10 +277,29 @@ memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.sche
 The result must be `memora.schema-change-plan/v1`. `review_required` means only
 that current values passed the bounded compatibility scan; it is not approval or
 execution. `blocked` includes bounded RowID-only blockers and must lead to a new
-proposal or explicit Row revisions. A truncated scan is a hard failure. F131 has
-no apply path: show the plan and impact, and never execute its actions through
-ordinary DDL. Ask the user before any destructive, broad, or constraint-tightening
-change.
+proposal or explicit Row revisions. A truncated scan is a hard failure. Show the
+exact plan and impact, and never execute its actions through ordinary DDL. Ask the
+user before any destructive, broad, or constraint-tightening change.
+
+Only after explicit approval, pass the exact unchanged plan through `memora exec`:
+
+```sql
+APPLY SCHEMA CHANGE PLAN :plan FOR TABLE work.notes
+```
+
+Bind `authorization.approval.action=APPLY_SCHEMA_CHANGE` and
+`subject_sha256` to the 64 hexadecimal characters after the plan hash's
+`sha256:` prefix. Keep the same authorized Database scope. Require a
+`memora.schema-change-receipt/v1` with `status=committed` and `verified=true`;
+anything else is not a verified migration. An approval mismatch, changed
+Catalog/Row guard, or stale plan requires fresh inspection and planning.
+
+A reversible receipt may include `compensation_proposal`. It is only inverse
+intent: submit it through `PLAN SCHEMA CHANGE`, review its new impact, and obtain
+a new hash-bound approval before APPLY. Never execute a compensation proposal or
+receipt directly. A destructive plan containing DROP has no automatic
+compensation proposal because History values must not be presented as an
+ordinary reversible Schema action.
 
 ```sh
 memora schema --plan '{"version":"memora.schema-plan/v1","id":"schema-8","actor":"agent:host","source_event_id":"conversation:event-8","reason":"new durable project domain","authorized_databases":["work"],"ensure":{"database":{"name":"work","purpose":"Project knowledge","scope":"Reviewed projects"},"database_synonyms":["projects"],"table":{"name":"notes","purpose":"Durable decisions","row_semantics":"One reviewed decision","columns":[{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title"}]},"table_synonyms":["decisions"]}}'

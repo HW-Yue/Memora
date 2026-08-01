@@ -42,8 +42,9 @@ Column ID 由 Table ID、proposal ID 与 change ID 确定性派生。
 hash。不兼容时仍返回确定计划，但状态为 `blocked`，仅列出最多 32 个 RowID-only blocker
 并保留不兼容总数。blocked 不能执行，也不自动生成 conversion/backfill 值。
 
-F131 始终只读：不修改 Catalog、Row、History 或 Change Log，也没有 APPLY 入口。F132
-负责 approval、重验、执行/补偿与收据；Agent 不得把 plan actions 翻译为普通 DDL。
+F131 的 PLAN 始终只读：不修改 Catalog、Row、History 或 Change Log。F132 通过独立的
+hash-bound APPLY 入口负责 approval、重验、原子执行与收据；Agent 不得把 plan actions
+翻译为普通 DDL。详见 [Schema Change Execution v1](./schema-change-execution-v1.md)。
 
 ## 与旧协议的关系
 

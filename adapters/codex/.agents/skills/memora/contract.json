@@ -17,6 +17,7 @@
   "route_mutation_receipt_version": "memora.route-mutation-receipt/v1",
   "schema_change_proposal_version": "memora.schema-change-proposal/v1",
   "schema_change_plan_version": "memora.schema-change-plan/v1",
+  "schema_change_receipt_version": "memora.schema-change-receipt/v1",
   "maintenance_request_version": "memora.maintenance-request/v1",
   "maintenance_receipt_version": "memora.maintenance-receipt/v1",
   "feedback_event_version": "memora.feedback-event/v1",

@@ -203,7 +203,7 @@ func (service *Service) read(ctx context.Context) ([]catalog.Database, error) {
 	return databases, nil
 }
 
-func (service *Service) mutate(ctx context.Context, change func(*[]catalog.Database) error) error {
+func (service *Service) mutate(ctx context.Context, mutation func(*[]catalog.Database) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -221,14 +221,16 @@ func (service *Service) mutate(ctx context.Context, change func(*[]catalog.Datab
 		return err
 	}
 	before := catalogRevisionMap(databases)
-	if err := change(&databases); err != nil {
+	if err := mutation(&databases); err != nil {
 		return err
 	}
 	sequence, err := service.nextChangeSequence(ctx)
 	if err != nil {
 		return err
 	}
-	envelope, err := changeEnvelope(sequence, service.clock.Now().UTC(), before, databases)
+	envelope, err := changeEnvelope(sequence, service.clock.Now().UTC(), before, databases, change.Metadata{
+		Actor: "system:direct-api", Source: "direct-api", Reason: "Catalog mutation",
+	})
 	if err != nil {
 		return err
 	}
@@ -274,6 +276,7 @@ func changeEnvelope(
 	committedAt time.Time,
 	before map[string]catalogRevision,
 	databases []catalog.Database,
+	metadata change.Metadata,
 ) (change.Envelope, error) {
 	after := catalogRevisionMap(databases)
 	entries := make([]change.Entry, 0)
@@ -295,9 +298,18 @@ func changeEnvelope(
 			AfterRevision: current.revision, SchemaVersion: current.revision,
 		})
 	}
-	return change.NewEnvelope(sequence, committedAt, change.Metadata{
-		Actor: "system:direct-api", Source: "direct-api", Reason: "Catalog mutation",
-	}, entries)
+	for key, previous := range before {
+		if _, exists := after[key]; exists {
+			continue
+		}
+		objectID := strings.SplitN(key, "\x00", 2)[1]
+		entries = append(entries, change.Entry{
+			ObjectKind: previous.kind, DatabaseID: previous.databaseID, TableID: previous.tableID,
+			ObjectID: objectID, Operation: change.OperationDelete, BeforeRevision: previous.revision,
+			AfterRevision: previous.revision + 1, SchemaVersion: previous.revision + 1,
+		})
+	}
+	return change.NewEnvelope(sequence, committedAt, metadata, entries)
 }
 
 func (service *Service) nextChangeSequence(ctx context.Context) (uint64, error) {

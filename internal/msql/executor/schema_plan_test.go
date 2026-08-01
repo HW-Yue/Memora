@@ -3,6 +3,7 @@ package executor_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -10,6 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/schemachangeplan"
+	"github.com/HW-Yue/Memora/internal/security"
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
@@ -65,5 +67,62 @@ func TestPlanSchemaChangeMSQLReturnsBlockedCompatibilityPlanWithoutWriting(t *te
 	after, err := dictionary.DescribeTable(ctx, "work", "notes")
 	if err != nil || after.SchemaVersion != table.SchemaVersion || after.Columns[0].MaxCharacters != 100 {
 		t.Fatalf("planning mutated Table = %#v, %v", after, err)
+	}
+}
+
+func TestApplySchemaChangeMSQLRequiresHashBoundApprovalAndReturnsReceipt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store, err := nativekvstore.Open(filepath.Join(t.TempDir(), "schema-apply.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	dictionary := catalog.New(store, catalog.Options{IDs: &idSource{values: []string{"database", "table", "title"}}})
+	database, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{Name: "work", Purpose: "Work", Scope: "Private"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{Name: "notes", Purpose: "Notes",
+		RowSemantics: "One note", Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT", Purpose: "Title"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	database, err = dictionary.DescribeDatabase(ctx, "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := row.New(store, dictionary, row.Options{})
+	rows := &planningRows{Service: base}
+	plan, err := schemachangeplan.Build(ctx, rows, database, table, schemachangeplan.Proposal{
+		Version: schemachangeplan.ProposalVersion, ID: "proposal_rename", Actor: "agent:test",
+		SourceEventID: "event:rename", Reason: "clarify heading", ExpectedTableRevision: table.SchemaVersion,
+		Changes: []schemachangeplan.ChangeProposal{{ID: "rename", Action: schemachangeplan.ActionRename,
+			ColumnID: table.Columns[0].ID, ExpectedRevision: table.Columns[0].SchemaVersion, NewName: "heading"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := parser.Parse("APPLY SCHEMA CHANGE PLAN :plan FOR TABLE work.notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := executor.New(dictionary, rows)
+	parameters := executor.Parameters{Named: map[string]any{"plan": plan}}
+	if _, err := engine.Execute(ctx, document.Statement, parameters, executor.MutationOptions{}); err == nil {
+		t.Fatal("APPLY without approval unexpectedly succeeded")
+	}
+	approved := security.WithAuthorization(ctx, security.Authorization{Version: security.AuthorizationVersion,
+		Actor: "user:test", AuthorizedDatabases: []string{"work"}, Approval: &security.Approval{
+			Version: security.ApprovalVersion, Action: security.ActionApplySchemaChange,
+			SubjectSHA256: strings.TrimPrefix(plan.Hash, "sha256:"), Confirmed: true,
+		}})
+	output, err := engine.Execute(approved, document.Statement, parameters, executor.MutationOptions{})
+	if err != nil || output.AffectedRows != 1 || !rows.schemaApplied || output.Rows[0]["verified"] != true ||
+		output.Rows[0]["table_revision"] != uint64(2) {
+		t.Fatalf("APPLY SCHEMA output = %#v, %v", output, err)
+	}
+	if _, err := executor.New(dictionary, base).Execute(approved, document.Statement, parameters, executor.MutationOptions{}); code(err) != "unsupported_statement" {
+		t.Fatalf("legacy APPLY error = %v", err)
 	}
 }

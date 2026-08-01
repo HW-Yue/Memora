@@ -11,6 +11,7 @@ import (
 const (
 	ProposalVersion = "memora.schema-change-proposal/v1"
 	PlanVersion     = "memora.schema-change-plan/v1"
+	ReceiptVersion  = "memora.schema-change-receipt/v1"
 )
 
 type Status string
@@ -115,6 +116,20 @@ type Plan struct {
 	Impact           Impact          `json:"impact"`
 	Blockers         []Blocker       `json:"blockers"`
 	Hash             string          `json:"hash"`
+}
+
+type Receipt struct {
+	Version              string    `json:"version"`
+	PlanID               string    `json:"plan_id"`
+	PlanHash             string    `json:"plan_hash"`
+	Status               string    `json:"status"`
+	ChangeSequence       uint64    `json:"change_sequence"`
+	DatabaseRevision     uint64    `json:"database_revision"`
+	TableRevision        uint64    `json:"table_revision"`
+	AppliedActions       int       `json:"applied_actions"`
+	Verified             bool      `json:"verified"`
+	VerificationCode     string    `json:"verification_code,omitempty"`
+	CompensationProposal *Proposal `json:"compensation_proposal,omitempty"`
 }
 
 type RowSource interface {

@@ -28,7 +28,8 @@ Runner 先 `SHOW DATABASES`，再 `SHOW TABLES`。复用只依据提议名称、
 
 本节是 F32 的 host rename runner，继续兼容已有调用。F131 起，新的 Column/constraint
 演化必须先走 [Schema Change Plan v1](../query/schema-change-plan-v1.md)；不得把新计划
-拆回本节的 autocommit DDL。执行与补偿由 F132 接管。
+拆回本节的 autocommit DDL。审批执行与二次规划式补偿见
+[Schema Change Execution v1](../query/schema-change-execution-v1.md)。
 
 Migration Plan 必须声明 Database 当前 schema version、每个对象的预期
 version，以及 `max_affected_objects`。v1 只接受：

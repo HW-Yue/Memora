@@ -50,6 +50,9 @@ func TestCanonicalSkillContract(t *testing.T) {
 	if got, want := bundle.Contract.SchemaChangePlanVersion, schemachangeplan.PlanVersion; got != want {
 		t.Fatalf("Schema change plan version = %q, want %q", got, want)
 	}
+	if got, want := bundle.Contract.SchemaChangeReceiptVersion, schemachangeplan.ReceiptVersion; got != want {
+		t.Fatalf("Schema change receipt version = %q, want %q", got, want)
+	}
 	if got, want := bundle.Contract.ConflictViewVersion, skillconflict.ViewVersion; got != want {
 		t.Fatalf("conflict view version = %q, want %q", got, want)
 	}
@@ -146,7 +149,8 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 		"memora.feedback-event/v1", "memora.feedback-confirmation/v1", "COMPENSATE",
 		"memora.route-mutation-proposal/v1", "memora.route-mutation-plan/v1",
 		"memora.route-mutation-receipt/v1", "PLAN ROUTE MUTATION", "APPLY ROUTE MUTATION",
-		"memora.schema-change-proposal/v1", "memora.schema-change-plan/v1", "PLAN SCHEMA CHANGE",
+		"memora.schema-change-proposal/v1", "memora.schema-change-plan/v1", "memora.schema-change-receipt/v1",
+		"PLAN SCHEMA CHANGE", "APPLY SCHEMA CHANGE", "APPLY_SCHEMA_CHANGE", "compensation_proposal",
 	} {
 		if !strings.Contains(bundle.Markdown, required) {
 			t.Errorf("canonical Skill omits conflict protocol token %q", required)

@@ -17,10 +17,13 @@ import (
 )
 
 const (
-	maximumChanges  = 16
-	maximumColumns  = 256
-	maximumRows     = 1000
-	maximumBlockers = 32
+	maximumChanges     = 16
+	maximumColumns     = 256
+	maximumRows        = 1000
+	maximumBlockers    = 32
+	maximumActorBytes  = 256
+	maximumSourceBytes = 256
+	maximumReasonBytes = 4 << 10
 )
 
 func Build(
@@ -113,8 +116,10 @@ func Build(
 }
 
 func validateIdentity(database catalog.Database, table catalog.Table, proposal Proposal) error {
-	if proposal.Version != ProposalVersion || blank(proposal.ID) || blank(proposal.Actor) ||
-		blank(proposal.SourceEventID) || blank(proposal.Reason) || proposal.ExpectedTableRevision == 0 {
+	if proposal.Version != ProposalVersion || blank(proposal.ID) ||
+		!validMetadataText(proposal.Actor, maximumActorBytes) ||
+		!validMetadataText(proposal.SourceEventID, maximumSourceBytes) ||
+		!validMetadataText(proposal.Reason, maximumReasonBytes) || proposal.ExpectedTableRevision == 0 {
 		return planError(result.CodeValidation, "proposal identity, provenance, and expected Table revision are required")
 	}
 	if database.ID == "" || table.ID == "" || table.DatabaseID != database.ID ||
@@ -286,14 +291,15 @@ func inspectRows(plan *Plan, values []row.Row) error {
 					continue
 				}
 				definition := logical.Definition{Kind: logical.Kind(action.After.Type), MaxCharacters: action.After.MaxCharacters}
-				if _, err := logical.Validate(logical.Constraint{Name: action.After.Name, Definition: definition, Nullable: action.After.Nullable}, value.Values[action.Before.ColumnID]); err != nil {
+				existing := rowValue(value, *action.Before)
+				if _, err := logical.Validate(logical.Constraint{Name: action.After.Name, Definition: definition, Nullable: action.After.Nullable}, existing); err != nil {
 					incompatible[value.ID] = true
 					plan.Impact.RequiresRowRewrite = true
 					appendBlocker(plan, action.ChangeID, value.ID, "ROW_VALUE_INCOMPATIBLE", "existing Row value does not satisfy the proposed constraint")
 				}
 			case ActionDrop:
 				if action.Before != nil {
-					if existing, present := value.Values[action.Before.ColumnID]; present && existing != nil {
+					if existing, present := rowValuePresent(value, *action.Before); present && existing != nil {
 						plan.Impact.PopulatedDroppedValues++
 					}
 				}
@@ -302,6 +308,19 @@ func inspectRows(plan *Plan, values []row.Row) error {
 	}
 	plan.Impact.RowsScanned, plan.Impact.IncompatibleRows = len(values), len(incompatible)
 	return nil
+}
+
+func rowValue(value row.Row, column ColumnShape) any {
+	existing, _ := rowValuePresent(value, column)
+	return existing
+}
+
+func rowValuePresent(value row.Row, column ColumnShape) (any, bool) {
+	if existing, present := value.Values[column.ColumnID]; present {
+		return existing, true
+	}
+	existing, present := value.Values[column.Name]
+	return existing, present
 }
 
 func appendBlocker(plan *Plan, changeID, rowID, code, message string) {
@@ -369,7 +388,7 @@ func validRole(value string) bool {
 }
 
 func cloneShape(value ColumnShape) *ColumnShape {
-	value.Aliases = append([]string(nil), value.Aliases...)
+	value.Aliases = append([]string{}, value.Aliases...)
 	return &value
 }
 
@@ -407,3 +426,7 @@ func planError(code result.Code, format string, arguments ...any) error {
 }
 
 func blank(value string) bool { return strings.TrimSpace(value) == "" }
+
+func validMetadataText(value string, maximumBytes int) bool {
+	return !blank(value) && utf8.ValidString(value) && len(value) <= maximumBytes
+}
