@@ -8,6 +8,8 @@ import (
 
 const Version = "memora.result/v1"
 
+const ListPageVersion = "memora.list-page/v1"
+
 var ErrInvalidEnvelope = errors.New("invalid result envelope")
 
 type Status string
@@ -27,6 +29,15 @@ type Column struct {
 	Nullable bool   `json:"nullable"`
 }
 
+type ListPage struct {
+	Version    string `json:"version"`
+	Limit      uint64 `json:"limit"`
+	Cursor     string `json:"cursor"`
+	Snapshot   string `json:"snapshot"`
+	Truncated  bool   `json:"truncated"`
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
 type StatementResult struct {
 	Index          int          `json:"index"`
 	Statement      string       `json:"statement"`
@@ -39,6 +50,7 @@ type StatementResult struct {
 	CommitSequence *uint64      `json:"commit_sequence,omitempty"`
 	Truncated      bool         `json:"truncated"`
 	NextCursor     string       `json:"next_cursor,omitempty"`
+	Page           *ListPage    `json:"page,omitempty"`
 	Warnings       []Notice     `json:"warnings"`
 	Error          *ResultError `json:"error,omitempty"`
 }

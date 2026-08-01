@@ -111,9 +111,12 @@ func TestScopedCatalogDiscoveryAndRelationsDoNotLeakOtherDatabases(t *testing.T)
 		Version: security.AuthorizationVersion, Actor: "agent:host",
 		AuthorizedDatabases: []string{"work"},
 	})
-	shown, err := execute(scoped, subject, "SHOW DATABASES", executor.Parameters{}, executor.MutationOptions{})
+	shown, err := execute(scoped, subject, "SHOW DATABASES LIMIT 1", executor.Parameters{}, executor.MutationOptions{})
 	if err != nil || len(shown.Rows) != 1 || shown.Rows[0]["name"] != "work" {
 		t.Fatalf("scoped SHOW DATABASES = %#v, %v", shown, err)
+	}
+	if shown.Page == nil || shown.Page.Limit != 1 || shown.Page.Truncated || shown.NextCursor != "" {
+		t.Fatalf("scoped SHOW DATABASES page = %#v", shown.Page)
 	}
 	_, err = execute(scoped, subject,
 		"SHOW RELATIONS FROM work.notes FOR ROW :row DIRECTION OUTGOING LIMIT 10",

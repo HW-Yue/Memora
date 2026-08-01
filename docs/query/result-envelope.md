@@ -1,6 +1,6 @@
 # MSQL Result Envelope v1
 
-状态：F09 已冻结并实现 JSON 类型、校验、golden 和错误码注册表。
+状态：F09 已冻结并实现；F110 以向后兼容字段增加 list-page envelope。
 
 ## 统一外形
 
@@ -40,6 +40,10 @@
 ```
 
 `statement` 是稳定的大写 AST kind，不是 SQLite 或内核名称。`source` 是可定位失败语句的有界原文，参数值不得插值回显。`columns` 描述名称、逻辑 MSQL 类型和 nullable；`rows` 使用 Column 名到 JSON value 的对象。写入可以返回 `affected_rows`、对象 `revision` 和本次事务的 `commit_sequence`。
+
+有界列表可以额外返回 `page`；其 version、limit、输入 cursor、snapshot、truncated 和
+next cursor 契约见 [Metadata Read v1](./metadata-read-v1.md)。`page.truncated` 和
+`page.next_cursor` 必须与 statement 既有字段一致。
 
 状态固定为：
 

@@ -57,3 +57,20 @@ func TestParseCatalogMetadataReportsPreciseErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCatalogListCursorLimitAndParameters(t *testing.T) {
+	t.Parallel()
+
+	document, err := Parse("SHOW TABLES FROM work CURSOR :cursor LIMIT :limit COMPACT")
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	show := document.Statement.Show
+	if show == nil || show.Object != "TABLES" || show.Cursor == nil || show.Limit == nil || !show.Compact {
+		t.Fatalf("SHOW TABLES AST = %#v", show)
+	}
+	parameters := document.Parameters()
+	if len(parameters) != 2 || parameters[0].Name != "cursor" || parameters[1].Name != "limit" {
+		t.Fatalf("Parameters() = %#v", parameters)
+	}
+}

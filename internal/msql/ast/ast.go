@@ -263,6 +263,10 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Select.Limit)
 	case statement.Describe != nil && statement.Describe.Object == "ROUTE":
 		appendExpression(statement.Describe.Route)
+	case statement.Show != nil && (statement.Show.Object == "DATABASES" ||
+		statement.Show.Object == "TABLES" || statement.Show.Object == "COLUMNS"):
+		appendExpression(statement.Show.Cursor)
+		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "CONFIGURATION":
 		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":

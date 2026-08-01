@@ -32,6 +32,20 @@ func TestEnvelopeGolden(t *testing.T) {
 			envelope.NextCursor = "cursor-2"
 			return envelope
 		}(),
+		"paged": func() Envelope {
+			statement := NewStatement(0, "SHOW", "SHOW DATABASES LIMIT 1")
+			statement.Rows = []Row{{"name": "work"}}
+			statement.Truncated = true
+			statement.NextCursor = "cursor-2"
+			statement.Page = &ListPage{
+				Version: ListPageVersion, Limit: 1, Cursor: "", Snapshot: "sha256:snapshot",
+				Truncated: true, NextCursor: "cursor-2",
+			}
+			envelope := NewEnvelope("req-paged", statement)
+			envelope.Truncated = true
+			envelope.NextCursor = "cursor-2"
+			return envelope
+		}(),
 		"batch": NewEnvelope("req-batch",
 			NewStatement(0, "SELECT", "SELECT * FROM notes LIMIT 1"),
 			FailedStatement(1, "SELECT", "SELECT * FROM missing", CodeNotFound, "table missing was not found", false),
@@ -98,5 +112,29 @@ func TestRequestFailureHasStableCodeAndNoStatementResults(t *testing.T) {
 	}
 	if decoded["ok"] != false || decoded["error"].(map[string]any)["code"] != string(CodeInvalidRequest) {
 		t.Fatalf("request failure = %s", encoded)
+	}
+}
+
+func TestListPageEnvelopeRequiresConsistentContinuation(t *testing.T) {
+	t.Parallel()
+
+	statement := NewStatement(0, "SHOW", "SHOW DATABASES LIMIT 2")
+	statement.Truncated = true
+	statement.NextCursor = "next"
+	statement.Page = &ListPage{
+		Version: ListPageVersion, Limit: 2, Cursor: "", Snapshot: "sha256:snapshot",
+		Truncated: true, NextCursor: "next",
+	}
+	envelope := NewEnvelope("req-page", statement)
+	envelope.Truncated = true
+	envelope.NextCursor = "next"
+	if _, err := json.Marshal(envelope); err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	inconsistent := envelope
+	inconsistent.Results[0].Page.Truncated = false
+	if _, err := json.Marshal(inconsistent); !errors.Is(err, ErrInvalidEnvelope) {
+		t.Fatalf("inconsistent page error = %v, want %v", err, ErrInvalidEnvelope)
 	}
 }

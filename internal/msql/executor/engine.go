@@ -157,6 +157,7 @@ type Output struct {
 	CommitSequence *uint64
 	Truncated      bool
 	NextCursor     string
+	Page           *result.ListPage
 }
 
 type Error struct {

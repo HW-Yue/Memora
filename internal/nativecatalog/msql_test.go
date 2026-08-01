@@ -48,7 +48,7 @@ func TestNativeCatalogMSQLSurvivesReopenAndResolvesAliases(t *testing.T) {
 	t.Cleanup(func() { session.Close() })
 	discovered := session.Execute(ctx, executor.BatchRequest{
 		RequestID: "native-catalog-discover",
-		Source:    "SHOW DATABASES; SHOW TABLES FROM work; DESCRIBE TABLE work.notes",
+		Source:    "SHOW DATABASES LIMIT 1; SHOW TABLES FROM work LIMIT 1; DESCRIBE TABLE work.notes",
 	})
 	assertSucceeded(t, discovered, 3)
 	if got := discovered.Results[0].Rows[0]["name"]; got != "work" {
@@ -56,6 +56,13 @@ func TestNativeCatalogMSQLSurvivesReopenAndResolvesAliases(t *testing.T) {
 	}
 	if got := discovered.Results[1].Rows[0]["name"]; got != "knowledge" {
 		t.Fatalf("SHOW TABLES name = %#v", got)
+	}
+	for index := 0; index < 2; index++ {
+		page := discovered.Results[index].Page
+		if page == nil || page.Version != result.ListPageVersion || page.Limit != 1 ||
+			page.Snapshot == "" || page.Truncated || page.NextCursor != "" {
+			t.Fatalf("Catalog page %d = %#v", index, page)
+		}
 	}
 	if got := discovered.Results[2].Rows[0]["table_id"]; got != "tbl_table" {
 		t.Fatalf("DESCRIBE TABLE through old alias table_id = %#v", got)

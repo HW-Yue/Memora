@@ -299,6 +299,7 @@ func successfulStatement(index int, kind, source string, output Output) result.S
 	statement.CommitSequence = output.CommitSequence
 	statement.Truncated = output.Truncated
 	statement.NextCursor = output.NextCursor
+	statement.Page = output.Page
 	return statement
 }
 

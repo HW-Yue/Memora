@@ -30,12 +30,17 @@ func (engine *Engine) catalogStatement(statement ast.Statement) bool {
 func (engine *Engine) executeCatalog(
 	ctx context.Context,
 	statement ast.Statement,
+	bound bindings,
 ) (Output, error) {
 	if engine == nil || engine.catalogBinder == nil {
 		return Output{}, executeError(
 			result.CodeUnsupported,
 			"Catalog DDL and discovery require an autocommit database session",
 		)
+	}
+	pageRequest, paged, err := catalogPageRequestFor(statement, bound)
+	if err != nil {
+		return Output{}, err
 	}
 	value, err := engine.catalogBinder.Execute(ctx, statement)
 	if err != nil {
@@ -48,7 +53,18 @@ func (engine *Engine) executeCatalog(
 	if statement.Show != nil && statement.Show.Object == "DATABASES" {
 		rows = authorizedDatabaseRows(ctx, rows)
 	}
-	return Output{Columns: []result.Column{}, Rows: rows}, nil
+	output := Output{Columns: []result.Column{}, Rows: rows}
+	if paged {
+		rows, page, err := paginateCatalogRows(rows, pageRequest)
+		if err != nil {
+			return Output{}, err
+		}
+		output.Rows = rows
+		output.Truncated = page.Truncated
+		output.NextCursor = page.NextCursor
+		output.Page = page
+	}
+	return output, nil
 }
 
 func authorizedDatabaseRows(ctx context.Context, rows []result.Row) []result.Row {

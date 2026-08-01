@@ -18,7 +18,11 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return Output{}, err
 	}
 	if engine.catalogStatement(statement) {
-		return engine.executeCatalog(ctx, statement)
+		bound, err := bindParameters(statement, parameters)
+		if err != nil {
+			return Output{}, err
+		}
+		return engine.executeCatalog(ctx, statement, bound)
 	}
 	if statement.Select != nil {
 		return engine.Query(ctx, statement, parameters)

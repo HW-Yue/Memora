@@ -46,6 +46,20 @@ func validateStatement(position int, result StatementResult) error {
 	if err := validateNotices(result.Warnings); err != nil {
 		return err
 	}
+	if result.Page != nil {
+		if result.Status != StatusSucceeded {
+			return invalid("result %d failed with list page metadata", position)
+		}
+		if result.Page.Version != ListPageVersion || result.Page.Limit == 0 || result.Page.Snapshot == "" {
+			return invalid("result %d has invalid list page metadata", position)
+		}
+		if result.Page.Truncated != result.Truncated || result.Page.NextCursor != result.NextCursor {
+			return invalid("result %d list page continuation is inconsistent", position)
+		}
+		if result.Page.Truncated != (result.Page.NextCursor != "") {
+			return invalid("result %d list page truncation has no valid continuation", position)
+		}
+	}
 	switch result.Status {
 	case StatusSucceeded:
 		if result.Error != nil {

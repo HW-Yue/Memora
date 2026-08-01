@@ -295,6 +295,22 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 	default:
 		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, TABLES, COLUMNS, HISTORY, RELATIONS, or ROUTES")
 	}
+	if show.Object == "DATABASES" || show.Object == "TABLES" || show.Object == "COLUMNS" {
+		if parser.matchWord("CURSOR") {
+			cursor, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Cursor = &cursor
+		}
+		if parser.matchWord("LIMIT") {
+			limit, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Limit = &limit
+		}
+	}
 	show.Compact = parser.matchWord("COMPACT")
 	return ast.Statement{Kind: "SHOW", Show: show}, nil
 }

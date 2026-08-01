@@ -1,6 +1,6 @@
 # MSQL Catalog DDL v1
 
-状态：F13c 已实现并冻结。
+状态：F13c 已实现；列表读取边界已由 F110 Metadata Read v1 取代。
 
 ## 创建
 
@@ -37,15 +37,18 @@ ALTER TABLE work.notes
 ## 发现
 
 ```sql
-SHOW DATABASES [COMPACT];
-SHOW TABLES FROM work [COMPACT];
-SHOW COLUMNS FROM work.notes [COMPACT];
+SHOW DATABASES [CURSOR :cursor] [LIMIT :limit] [COMPACT];
+SHOW TABLES FROM work [CURSOR :cursor] [LIMIT :limit] [COMPACT];
+SHOW COLUMNS FROM work.notes [CURSOR :cursor] [LIMIT :limit] [COMPACT];
 DESCRIBE DATABASE work [COMPACT];
 DESCRIBE TABLE work.notes [COMPACT];
 DESCRIBE COLUMN work.notes.title [COMPACT];
 ```
 
-`SHOW` 始终是有界列表：Database 不嵌套 Table，Table 不嵌套 Column。`DESCRIBE ... COMPACT` 同样不展开下一层；不带 `COMPACT` 的 `DESCRIBE` 可以返回该对象的完整当前 Schema。
+`SHOW` 始终是有界列表：Database 不嵌套 Table，Table 不嵌套 Column，并按
+[Metadata Read v1](./metadata-read-v1.md) 返回 list page envelope。`DESCRIBE ... COMPACT`
+同样不展开下一层；不带 `COMPACT` 的 `DESCRIBE` 可以返回该对象的完整当前 Schema，
+但不能作为 Admin 的分页列表入口。
 
 ## Rename
 
