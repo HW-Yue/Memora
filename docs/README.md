@@ -164,6 +164,7 @@
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
 - [Instance Format 升级与回滚 v1](./storage/instance-format-upgrade-v1.md) — F49 的兼容状态、v1→v2、完整性备份、迁移 journal 与 `doctor repair`。
 - [Instance Portable Backup v1](./storage/instance-portable-backup-v1.md) — F143 的离线全实例 staging、逐文件完整性与可搬迁产物。
+- [Instance Restore v1](./storage/instance-restore-v1.md) — F144 的显式新目标、staging 重验与原子恢复。
 - [Database 物理目录](./storage/database-file-layout.md) — 每库 data/history、每表 Tablespace 和独立索引 generation。
 
 ## 导出与调研

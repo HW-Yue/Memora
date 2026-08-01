@@ -63,6 +63,81 @@ type Receipt struct {
 	TotalBytes int64  `json:"total_bytes"`
 }
 
+type RestoreReceipt struct {
+	Version    string `json:"version"`
+	Status     string `json:"status"`
+	Path       string `json:"path"`
+	InstanceID string `json:"instance_id"`
+	BackupHash string `json:"backup_hash"`
+	FileCount  int    `json:"file_count"`
+	TotalBytes int64  `json:"total_bytes"`
+}
+
+func Restore(ctx context.Context, backupRoot, target string, options Options) (RestoreReceipt, error) {
+	manifest, err := Verify(backupRoot)
+	if err != nil {
+		return RestoreReceipt{}, err
+	}
+	if err := validateRoots(backupRoot, target); err != nil {
+		return RestoreReceipt{}, err
+	}
+	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+		if err == nil {
+			return RestoreReceipt{}, errors.New("restore target already exists")
+		}
+		return RestoreReceipt{}, fmt.Errorf("inspect restore target: %w", err)
+	}
+	parent := filepath.Dir(target)
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return RestoreReceipt{}, err
+	}
+	staging, err := os.MkdirTemp(parent, ".memora-restore-*")
+	if err != nil {
+		return RestoreReceipt{}, err
+	}
+	defer os.RemoveAll(staging)
+	if err := os.Chmod(staging, 0o700); err != nil {
+		return RestoreReceipt{}, err
+	}
+	for _, file := range manifest.Files {
+		if err := ctx.Err(); err != nil {
+			return RestoreReceipt{}, err
+		}
+		destination := filepath.Join(staging, filepath.FromSlash(file.Path))
+		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+			return RestoreReceipt{}, err
+		}
+		if err := copyFile(filepath.Join(backupRoot, snapshotName, filepath.FromSlash(file.Path)), destination); err != nil {
+			return RestoreReceipt{}, err
+		}
+	}
+	files, total, err := inspectTree(staging)
+	if err != nil || len(files) != len(manifest.Files) || total != manifest.TotalBytes {
+		return RestoreReceipt{}, errors.New("restored staging file set does not match backup")
+	}
+	for index := range files {
+		if files[index] != manifest.Files[index] {
+			return RestoreReceipt{}, errors.New("restored staging file does not match backup")
+		}
+	}
+	metadata, err := instance.Read(staging)
+	if err != nil || metadata.InstanceID != manifest.InstanceID || metadata.FormatVersion != manifest.FormatVersion || metadata.PageSize != manifest.PageSize {
+		return RestoreReceipt{}, errors.New("restored staging Instance metadata does not match backup")
+	}
+	if err := fault(options, "restore_before_publish"); err != nil {
+		return RestoreReceipt{}, err
+	}
+	if err := os.Rename(staging, target); err != nil {
+		return RestoreReceipt{}, fmt.Errorf("publish restored Instance: %w", err)
+	}
+	metadata, err = instance.Read(target)
+	if err != nil || metadata.InstanceID != manifest.InstanceID {
+		return RestoreReceipt{}, errors.New("published restored Instance failed verification")
+	}
+	return RestoreReceipt{Version: "memora.instance-restore-receipt/v1", Status: "restored", Path: target,
+		InstanceID: manifest.InstanceID, BackupHash: manifest.Hash, FileCount: manifest.FileCount, TotalBytes: manifest.TotalBytes}, nil
+}
+
 func Create(ctx context.Context, source, destination string, options Options) (Receipt, error) {
 	if err := validateRoots(source, destination); err != nil {
 		return Receipt{}, err

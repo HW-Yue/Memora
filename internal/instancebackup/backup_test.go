@@ -60,6 +60,60 @@ func TestBackupFaultDoesNotPublishDestination(t *testing.T) {
 	}
 }
 
+func TestRestorePublishesVerifiedInstanceWithoutOverwritingTarget(t *testing.T) {
+	t.Parallel()
+	parent := t.TempDir()
+	source := filepath.Join(parent, "source")
+	if _, err := instance.Initialize(context.Background(), source, instance.Options{Clock: fixedClock{}, IDs: fixedID{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "databases", "payload.bin"), []byte("restore me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(parent, "backup")
+	created, err := instancebackup.Create(context.Background(), source, backup, instancebackup.Options{Clock: fixedClock{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(parent, "restored")
+	receipt, err := instancebackup.Restore(context.Background(), backup, target, instancebackup.Options{})
+	if err != nil || receipt.Status != "restored" || receipt.BackupHash != created.Hash {
+		t.Fatalf("Restore() = %#v, %v", receipt, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(target, "databases", "payload.bin")); err != nil || string(got) != "restore me" {
+		t.Fatalf("restored payload = %q, %v", got, err)
+	}
+	if _, err := instancebackup.Restore(context.Background(), backup, target, instancebackup.Options{}); err == nil {
+		t.Fatal("Restore overwrote existing target")
+	}
+}
+
+func TestRestoreFaultLeavesTargetAbsent(t *testing.T) {
+	t.Parallel()
+	parent := t.TempDir()
+	source := filepath.Join(parent, "source")
+	if _, err := instance.Initialize(context.Background(), source, instance.Options{Clock: fixedClock{}, IDs: fixedID{}}); err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(parent, "backup")
+	if _, err := instancebackup.Create(context.Background(), source, backup, instancebackup.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(parent, "restored")
+	_, err := instancebackup.Restore(context.Background(), backup, target, instancebackup.Options{Fault: func(point string) error {
+		if point == "restore_before_publish" {
+			return os.ErrInvalid
+		}
+		return nil
+	}})
+	if err == nil {
+		t.Fatal("faulted Restore succeeded")
+	}
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("fault published target: %v", statErr)
+	}
+}
+
 type fixedClock struct{}
 
 func (fixedClock) Now() time.Time { return time.Date(2026, 8, 1, 8, 0, 0, 0, time.UTC) }
