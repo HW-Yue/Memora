@@ -182,6 +182,18 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: --candidate must be one strict Host Input JSON object\n",
 		},
 		{
+			name:       "decide requires one operation",
+			args:       []string{"decide"},
+			wantCode:   2,
+			wantStderr: "memora: decide requires exactly one of --decision or --receipt with --workspace\n",
+		},
+		{
+			name:       "decide rejects unknown decision field",
+			args:       []string{"decide", "--decision", `{"candidate_text":"unsafe"}`},
+			wantCode:   2,
+			wantStderr: "memora: --decision must be one strict Worthiness Decision JSON object\n",
+		},
+		{
 			name:       "assimilate rejects raw content field",
 			args:       []string{"assimilate", "--event", `{"content":"raw source text"}`},
 			wantCode:   2,
@@ -289,6 +301,58 @@ func TestRunCaptureSubmitsAndReloadsPendingInput(t *testing.T) {
 	}
 	if !captured || !loaded {
 		t.Fatalf("captured=%t loaded=%t", captured, loaded)
+	}
+}
+
+func TestRunDecideFinalizesAndReloadsWorthinessDecision(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	decision := hostinput.WorthinessDecision{Version: hostinput.WorthinessDecisionVersion,
+		DecisionID: "decision-cli", InputID: "input-cli", Workspace: "project", Actor: "agent:host",
+		InputSHA256: "sha256:" + strings.Repeat("a", 64), ScopeSHA256: "sha256:" + strings.Repeat("b", 64),
+		Verdict: hostinput.VerdictIgnore, Reason: "duplicate", AuthorizedDatabases: []string{"work"},
+		MutationReceipt: skillwrite.Receipt{Version: skillwrite.ReceiptVersion, PlanID: "plan-ignore",
+			Decision: skillwrite.DecisionIgnore, Status: skillwrite.ReceiptIgnored, Changes: []skillwrite.Change{},
+			Ignored: 1, Verified: true, Warnings: []result.Notice{}},
+	}
+	encoded, err := json.Marshal(decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := hostinput.WorthinessReceipt{Version: hostinput.WorthinessReceiptVersion,
+		DecisionID: decision.DecisionID, InputID: decision.InputID, Workspace: decision.Workspace,
+		Status: hostinput.WorthinessFinalized, Verdict: decision.Verdict,
+		DecisionSHA256: "sha256:" + strings.Repeat("c", 64), InputSHA256: decision.InputSHA256,
+		ScopeSHA256: decision.ScopeSHA256, MutationPlanID: decision.MutationReceipt.PlanID, DecidedAt: time.Now().UTC()}
+	decided, loaded := false, false
+	dependencies := Dependencies{HomeDir: func() (string, error) { return home, nil },
+		DecideHostInput: func(_ context.Context, gotDataDir string, got hostinput.WorthinessDecision) (hostinput.WorthinessReceipt, error) {
+			decided = true
+			if gotDataDir != dataDir || got.DecisionID != decision.DecisionID {
+				t.Fatalf("decision = %q, %#v", gotDataDir, got)
+			}
+			return receipt, nil
+		},
+		GetDecision: func(_ context.Context, gotDataDir, gotID, gotWorkspace string) (hostinput.WorthinessResult, error) {
+			loaded = true
+			if gotDataDir != dataDir || gotID != decision.DecisionID || gotWorkspace != decision.Workspace {
+				t.Fatalf("decision lookup = %q, %q, %q", gotDataDir, gotID, gotWorkspace)
+			}
+			return hostinput.WorthinessResult{Decision: decision, Receipt: receipt}, nil
+		},
+	}
+	for _, args := range [][]string{
+		{"decide", "--data-dir", dataDir, "--decision", string(encoded)},
+		{"decide", "--data-dir", dataDir, "--receipt", decision.DecisionID, "--workspace", decision.Workspace},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := RunWithDependencies(args, &stdout, &stderr, BuildInfo{}, dependencies); code != ExitOK {
+			t.Fatalf("decide %v code=%d stderr=%q", args, code, &stderr)
+		}
+	}
+	if !decided || !loaded {
+		t.Fatalf("decided=%t loaded=%t", decided, loaded)
 	}
 }
 

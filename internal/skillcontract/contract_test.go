@@ -60,6 +60,12 @@ func TestCanonicalSkillContract(t *testing.T) {
 	if got, want := bundle.Contract.HostInputReceiptVersion, hostinput.ReceiptVersion; got != want {
 		t.Fatalf("Host Input receipt version = %q, want %q", got, want)
 	}
+	if got, want := bundle.Contract.WorthinessDecisionVersion, hostinput.WorthinessDecisionVersion; got != want {
+		t.Fatalf("Worthiness Decision version = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contract.WorthinessReceiptVersion, hostinput.WorthinessReceiptVersion; got != want {
+		t.Fatalf("Worthiness receipt version = %q, want %q", got, want)
+	}
 	if got, want := bundle.Contract.ConflictViewVersion, skillconflict.ViewVersion; got != want {
 		t.Fatalf("conflict view version = %q, want %q", got, want)
 	}
@@ -159,6 +165,7 @@ func TestCanonicalSkillForbidsPhysicalReadsAndEscalatesConflicts(t *testing.T) {
 		"memora.schema-change-proposal/v1", "memora.schema-change-plan/v1", "memora.schema-change-receipt/v1",
 		"PLAN SCHEMA CHANGE", "APPLY SCHEMA CHANGE", "APPLY_SCHEMA_CHANGE", "compensation_proposal",
 		"memora.host-input/v1", "memora.host-input-receipt/v1", "memora capture", "status=pending",
+		"memora.worthiness-decision/v1", "memora.worthiness-receipt/v1", "memora decide", "status=finalized",
 	} {
 		if !strings.Contains(bundle.Markdown, required) {
 			t.Errorf("canonical Skill omits conflict protocol token %q", required)

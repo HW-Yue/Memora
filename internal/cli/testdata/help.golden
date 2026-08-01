@@ -8,6 +8,7 @@ Commands:
   assimilate  Track, review, and receipt source assimilation
   capture    Capture or reload one bounded pending host input
   daemon     Manage the local daemon
+  decide     Finalize or reload one Host Input worthiness decision
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
   export     Export a deterministic Obsidian Wiki

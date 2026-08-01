@@ -49,6 +49,7 @@ Commands:
   assimilate  Track, review, and receipt source assimilation
   capture    Capture or reload one bounded pending host input
   daemon     Manage the local daemon
+  decide     Finalize or reload one Host Input worthiness decision
   doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
   export     Export a deterministic Obsidian Wiki
@@ -108,6 +109,8 @@ type Dependencies struct {
 	GetSourceReceipt   func(context.Context, string, string) (assimilation.SourceReceipt, error)
 	CaptureHostInput   func(context.Context, string, hostinput.Input) (hostinput.Receipt, error)
 	GetHostInput       func(context.Context, string, string, string) (hostinput.Pending, error)
+	DecideHostInput    func(context.Context, string, hostinput.WorthinessDecision) (hostinput.WorthinessReceipt, error)
+	GetDecision        func(context.Context, string, string, string) (hostinput.WorthinessResult, error)
 	SemanticHealth     func(context.Context, string) (semantichealth.Report, error)
 	Maintain           func(context.Context, string, semantichealth.Request) (semantichealth.Receipt, error)
 	RecordFeedback     func(context.Context, string, feedback.Event) (feedback.Receipt, error)
@@ -136,6 +139,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runAssimilate(args[1:], stdout, stderr, dependencies)
 	case "capture":
 		return runCapture(args[1:], stdout, stderr, dependencies)
+	case "decide":
+		return runDecide(args[1:], stdout, stderr, dependencies)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, dependencies)
 	case "exec", "query":
@@ -238,6 +243,81 @@ func runCapture(args []string, stdout, stderr io.Writer, dependencies Dependenci
 	receipt, err := capture(context.Background(), dataDir, input)
 	if err != nil {
 		return commandError(stderr, "capture host input", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	return ExitOK
+}
+
+func runDecide(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var decisionJSON, receiptID, workspace string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--decision":
+			if index+1 >= len(args) || decisionJSON != "" {
+				return usageError(stderr, "--decision requires one JSON object")
+			}
+			decisionJSON = args[index+1]
+			index++
+		case "--receipt":
+			if index+1 >= len(args) || receiptID != "" {
+				return usageError(stderr, "--receipt requires one decision ID")
+			}
+			receiptID = args[index+1]
+			index++
+		case "--workspace":
+			if index+1 >= len(args) || workspace != "" {
+				return usageError(stderr, "--workspace requires one value")
+			}
+			workspace = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown decide option: %q", args[index]))
+		}
+	}
+	if (decisionJSON == "") == (receiptID == "") || (receiptID != "" && strings.TrimSpace(workspace) == "") ||
+		(decisionJSON != "" && workspace != "") {
+		return usageError(stderr, "decide requires exactly one of --decision or --receipt with --workspace")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if receiptID != "" {
+		load := dependencies.GetDecision
+		if load == nil {
+			load = daemon.GetWorthinessDecision
+		}
+		outcome, err := load(context.Background(), dataDir, receiptID, workspace)
+		if err != nil {
+			return commandError(stderr, "read worthiness decision", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(outcome); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	var decision hostinput.WorthinessDecision
+	decoder := json.NewDecoder(bytes.NewBufferString(decisionJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decision); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--decision must be one strict Worthiness Decision JSON object")
+	}
+	decide := dependencies.DecideHostInput
+	if decide == nil {
+		decide = daemon.DecideHostInput
+	}
+	receipt, err := decide(context.Background(), dataDir, decision)
+	if err != nil {
+		return commandError(stderr, "finalize worthiness decision", err)
 	}
 	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
 		return writeFailure(stderr, err)

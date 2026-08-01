@@ -1,6 +1,6 @@
 # Canonical Skill v1
 
-状态：F28 已冻结基础宿主契约；F30–F41、F124e 与 F133 已扩展稳定流程，并由同一来源生成
+状态：F28 已冻结基础宿主契约；F30–F41、F124e 与 F133–F134 已扩展稳定流程，并由同一来源生成
 Codex/Claude Code 适配层。
 
 ## 唯一来源
@@ -21,9 +21,10 @@ Database、Schema、Router 或候选。
 - `memora.semantic-health/v2`、`memora.maintenance-request/v1` 和 `memora.maintenance-receipt/v1`；
 - `memora.route-mutation-proposal/v1` 和 `memora.route-mutation-plan/v1`；
 - `memora.host-input/v1` 和 `memora.host-input-receipt/v1`；
+- `memora.worthiness-decision/v1` 和 `memora.worthiness-receipt/v1`；
 - `memora.feedback-event/v1`、`memora.feedback-receipt/v1`、`memora.feedback-confirmation/v1` 和确认收据；
 - `memora.speculative-discovery/v1` 的同回合并行发现、全局预算与 Router fallback；
-- `memora assimilate/capture/doctor/query/exec/feedback/maintain/mutate/schema/reflect` 十个逻辑入口。
+- `memora assimilate/capture/decide/doctor/query/exec/feedback/maintain/mutate/schema/reflect` 十一个逻辑入口。
 - `memora.real-host-task/v1`、invocation/receipt 及 Codex/Claude/Kimi 同题矩阵。
 
 每次 CI 都解析契约中的 MSQL 示例，并校验 Skill 中出现的是同一组命令。
@@ -38,6 +39,7 @@ Canonical Skill 定义七个阶段：
 ```text
 capture → discover → query → summarize
          → write → receipt
+         → decide → receipt
          → assimilate → receipt
          → request_user（发生语义冲突或越过风险边界）
 ```
@@ -63,6 +65,8 @@ committed Source Receipt 才表示吸收成功，中断写入必须按 in_doubt 
 revision 后才可修订。逻辑 Undo 追加 COMPENSATE revision，不删除 History。
 短 Host Input 先进入最多 12,000 bytes 的 auxiliary pending inbox；capture receipt
 不回显正文且不等于 worthiness 决策。完整资料仍走 assimilation。
+IGNORE/WRITE/REVISE 只有绑定匹配的 verified Mutation Receipt 后才用 `decide` 终结
+pending；decision API 不执行 MSQL，也不能接受 `committed_unverified`。
 
 ## 安全与上下文预算
 
@@ -87,6 +91,7 @@ Skill 禁止读取或修改物理数据库、索引、日志、Page 和 Instance
 - [Skill 语义冲突交互 v1](./skill-conflict-v1.md)
 - [资料清单与覆盖 v1](./assimilation-coverage-v1.md)
 - [Host Input Capture v1](./host-input-capture-v1.md)
+- [Worthiness Decision v1](./worthiness-decision-v1.md)
 - [资料独立复核与提交 v1](./assimilation-review-v1.md)
 - [语义数据库健康维护 v1](./semantic-health-v1.md)
 - [反馈、修订与逻辑 Undo v1](./feedback-revision-v1.md)

@@ -10,7 +10,7 @@ Use this single source for stable host behavior. It targets `memora.msql.ast/v1`
 and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
-Only use the `memora assimilate`, `memora capture`, `memora doctor`, `memora query`, `memora exec`,
+Only use the `memora assimilate`, `memora capture`, `memora decide`, `memora doctor`, `memora query`, `memora exec`,
 `memora feedback`, `memora maintain`, `memora mutate`, `memora schema`, and
 `memora reflect` interfaces for normal database work. The approval-gated
 `upgrade` and `doctor repair` recovery commands below are the only exception.
@@ -236,6 +236,36 @@ An identical input ID/content replay is success; different content under the
 same ID is a hard revision conflict. `pending` proves only durable capture. Do
 not infer IGNORE/WRITE/REVISE or run MSQL from the receipt; the worthiness
 decision is a separate reviewed step.
+
+## Finalize worthiness
+
+After capture, use normal discovery and bounded queries to decide whether the
+candidate should be ignored, inserted as a new semantic module, or used to
+revise an existing Row. Express and execute that choice through a validated
+Mutation Plan first. Then finalize the pending input with one strict
+`memora.worthiness-decision/v1`:
+
+```sh
+memora decide --decision '{"version":"memora.worthiness-decision/v1","decision_id":"decision-12","input_id":"input-12","workspace":"project-memora","actor":"agent:host","input_sha256":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","scope_sha256":"sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","verdict":"IGNORE","reason":"preflight found the same semantic module","authorized_databases":["work"],"mutation_receipt":{"version":"memora.mutation-receipt/v1","plan_id":"plan-ignore-12","decision":"IGNORE","status":"ignored","changes":[],"ignored":1,"verified":true,"warnings":[]}}'
+```
+
+IGNORE requires the verified ignored receipt from an IGNORE Mutation Plan.
+WRITE requires a committed, verified INSERT receipt; REVISE requires a
+committed, verified REVISE receipt. WRITE/REVISE also name the authorized
+Database/Table and the exact Row ID/revision returned by one matching change.
+Never fabricate a Mutation Receipt and never finalize from
+`committed_unverified`; resolve verification first.
+
+Require `memora.worthiness-receipt/v1` and `status=finalized`. It omits the
+candidate text. After restart, reload the stable decision with:
+
+```sh
+memora decide --receipt decision-12 --workspace project-memora
+```
+
+The engine verifies receipt shape and capture binding, not semantic truth. A
+finalized WRITE/REVISE refers to the preceding MSQL mutation; the decision API
+does not write Rows itself.
 
 ## Assimilate sources
 

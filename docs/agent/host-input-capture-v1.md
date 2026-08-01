@@ -39,7 +39,8 @@ pending candidate；workspace 不匹配不能读取。全局 pending inbox 最�
 
 `pending` 只证明候选被稳定接收，不表示内容正确、重要、非重复或应写入。F133 不做
 Database discovery、查重、Schema/Route 选择和 MSQL mutation。F134 才能把同一 receipt
-推进到 ignore/write/revise 决策，并承担终结 pending 生命周期的责任。
+推进到 ignore/write/revise 决策，并承担终结 pending 生命周期的责任；该闭环已由
+[Worthiness Decision v1](./worthiness-decision-v1.md)实现。
 
 ## 关联
 

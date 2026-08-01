@@ -222,6 +222,46 @@ func GetHostInput(ctx context.Context, dataDir, inputID, workspace string) (host
 	return pending, err
 }
 
+func DecideHostInput(
+	ctx context.Context,
+	dataDir string,
+	decision hostinput.WorthinessDecision,
+) (hostinput.WorthinessReceipt, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return hostinput.WorthinessReceipt{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return hostinput.WorthinessReceipt{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var receipt hostinput.WorthinessReceipt
+	err = client.Call(ctx, "worthiness.decide", decision, &receipt)
+	return receipt, err
+}
+
+func GetWorthinessDecision(
+	ctx context.Context,
+	dataDir, decisionID, workspace string,
+) (hostinput.WorthinessResult, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return hostinput.WorthinessResult{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return hostinput.WorthinessResult{}, err
+	}
+	defer func() { _ = client.Close() }()
+	var outcome hostinput.WorthinessResult
+	err = client.Call(ctx, "worthiness.get", struct {
+		DecisionID string `json:"decision_id"`
+		Workspace  string `json:"workspace"`
+	}{DecisionID: decisionID, Workspace: workspace}, &outcome)
+	return outcome, err
+}
+
 func RecordRouteTrace(
 	ctx context.Context,
 	dataDir string,
@@ -296,6 +336,9 @@ func (handler *databaseHandler) Handle(
 	if request.Method == "host_input.capture" || request.Method == "host_input.get" {
 		return handler.handleHostInput(ctx, request)
 	}
+	if request.Method == "worthiness.decide" || request.Method == "worthiness.get" {
+		return handler.handleWorthiness(ctx, request)
+	}
 	if request.Method == "semantic_health.report" || request.Method == "semantic_health.maintain" {
 		return handler.handleSemanticHealth(ctx, request)
 	}
@@ -364,6 +407,38 @@ func (handler *databaseHandler) handleHostInput(ctx context.Context, request ipc
 		return nil, err
 	}
 	return json.Marshal(hostinput.Pending{Input: input, Receipt: receipt})
+}
+
+func (handler *databaseHandler) handleWorthiness(ctx context.Context, request ipc.Request) (json.RawMessage, error) {
+	processor := handler.hostInputs
+	if processor == nil {
+		return nil, &hostinput.Error{Code: result.CodeInternal, Message: "worthiness service is unavailable"}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
+	decoder.DisallowUnknownFields()
+	if request.Method == "worthiness.decide" {
+		var decision hostinput.WorthinessDecision
+		if err := decoder.Decode(&decision); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+			return nil, &hostinput.Error{Code: result.CodeInvalidRequest, Message: "worthiness payload is invalid"}
+		}
+		receipt, err := processor.Decide(ctx, decision)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(receipt)
+	}
+	var lookup struct {
+		DecisionID string `json:"decision_id"`
+		Workspace  string `json:"workspace"`
+	}
+	if err := decoder.Decode(&lookup); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, &hostinput.Error{Code: result.CodeInvalidRequest, Message: "worthiness lookup payload is invalid"}
+	}
+	decision, receipt, err := processor.GetDecision(ctx, lookup.DecisionID, lookup.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(hostinput.WorthinessResult{Decision: decision, Receipt: receipt})
 }
 
 func (handler *databaseHandler) handleRouteTraceRecord(
