@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/adminui"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
@@ -93,6 +94,10 @@ func Start(ctx context.Context, config Config) (*Gateway, error) {
 	if config.Execute == nil {
 		return nil, errors.New("admin API execute function is nil")
 	}
+	shell, err := adminui.Embedded()
+	if err != nil {
+		return nil, fmt.Errorf("load embedded admin shell: %w", err)
+	}
 	ttl := config.SessionTTL
 	if ttl == 0 {
 		ttl = defaultTTL
@@ -164,6 +169,8 @@ func Start(ctx context.Context, config Config) (*Gateway, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/session", gateway.handleSession)
 	mux.HandleFunc("/api/v1/msql", gateway.handleMSQL)
+	mux.HandleFunc("/api/", gateway.handleUnknownAPI)
+	mux.Handle("/", gateway.shellHandler(shell))
 	gateway.server = &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 2 * time.Second,

@@ -23,7 +23,8 @@ Authorization、MutationOptions、approval 或物理访问选项。
 fragment 中 256-bit bootstrap token 不发送给 HTTP server。前端用它调用一次
 `POST /api/v1/session`（Bearer token）；成功后 token 失效，响应设置 HttpOnly、
 SameSite=Strict session Cookie，并返回独立 CSRF token。Session 默认 15 分钟，进程
-退出或过期后全部凭据失效。
+退出或过期后全部凭据失效。F116 起，页面刷新可在精确 Origin 下用仍有效的 Cookie
+恢复同一 session 的 CSRF；这不会复活或重放 bootstrap token。
 
 所有请求都校验精确 Host；有状态 POST 还必须有与 descriptor 相同的 Origin。
 `POST /api/v1/msql` 同时要求有效 Cookie 和 `X-Memora-CSRF`。只接受

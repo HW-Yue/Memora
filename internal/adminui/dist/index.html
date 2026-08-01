@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Memora Admin</title>
+    <link rel="stylesheet" href="/assets/app.css">
+    <script type="module" src="/assets/app.js"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Memora Admin 首页">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <span>Memora Admin</span>
+        </a>
+        <div class="local-badge">Local · Read only</div>
+      </header>
+      <div class="workspace">
+        <nav class="sidebar" aria-label="Admin 导航">
+          <p class="nav-caption">INSPECT</p>
+          <span class="nav-item is-current">Overview</span>
+          <span class="nav-item">Catalog</span>
+          <span class="nav-item">Route Tree</span>
+          <span class="nav-item">Changes</span>
+          <span class="nav-item">Route Traces</span>
+        </nav>
+        <main class="content" id="app-shell">
+          <section class="hero" aria-labelledby="page-title">
+            <p class="eyebrow">LOCAL SEMANTIC DATABASE</p>
+            <h1 id="page-title">你的知识，由 AI 建模，也由你清楚看见。</h1>
+            <p class="lede">当前版本先建立安全、离线的 Admin 容器。数据浏览页面会按独立 Feature 逐项接入。</p>
+          </section>
+          <section class="session-card" aria-live="polite" data-session-state="bootstrapping">
+            <span class="status-dot" aria-hidden="true"></span>
+            <div>
+              <p class="status-title" data-status-title>正在建立本地只读会话</p>
+              <p class="status-detail" data-status-detail>验证一次性凭据并连接 Memora daemon…</p>
+            </div>
+          </section>
+          <section class="route-outlet" aria-label="页面内容">
+            <p>Admin Shell 已离线加载</p>
+            <small data-route-label>/</small>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

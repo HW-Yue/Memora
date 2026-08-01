@@ -108,6 +108,60 @@ func TestGatewayBootstrapsOnceAndReturnsDaemonEnvelopeWithFixedScope(t *testing.
 	}
 }
 
+func TestGatewayServesEmbeddedShellAndKeepsUnknownAPISeparate(t *testing.T) {
+	t.Parallel()
+
+	gateway := startGateway(t, &executeRecorder{}, []string{"work"})
+	for _, path := range []string{"/", "/catalog/work"} {
+		response, err := http.Get(gateway.Descriptor().Origin + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := readBody(t, response)
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK || !strings.Contains(body, "Memora Admin") ||
+			response.Header.Get("Content-Security-Policy") == "" {
+			t.Fatalf("GET %s status=%d headers=%#v body=%q", path, response.StatusCode, response.Header, body)
+		}
+	}
+	response, err := http.Get(gateway.Descriptor().Origin + "/api/v1/missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotFound || strings.Contains(readBody(t, response), "Memora Admin") {
+		t.Fatalf("unknown API status=%d", response.StatusCode)
+	}
+}
+
+func TestGatewayResumesActiveCookieSessionWithoutReusingBootstrapToken(t *testing.T) {
+	t.Parallel()
+
+	gateway := startGateway(t, &executeRecorder{}, []string{"work"})
+	first, cookie := bootstrap(t, gateway.Descriptor())
+	request, err := newRequest(http.MethodPost, gateway.Descriptor().Origin+"/api/v1/session", "{}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Origin", gateway.Descriptor().Origin)
+	request.AddCookie(cookie)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("resume status=%d body=%s", response.StatusCode, readBody(t, response))
+	}
+	var resumed SessionReceipt
+	if err := json.NewDecoder(response.Body).Decode(&resumed); err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Version != SessionVersion || resumed.CSRFToken == "" || resumed.CSRFToken != first.CSRFToken {
+		t.Fatalf("resumed session = %#v, first = %#v", resumed, first)
+	}
+}
+
 func TestGatewayRejectsExpiredSessionWithoutCallingDaemon(t *testing.T) {
 	t.Parallel()
 

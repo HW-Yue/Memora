@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	osexec "os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -98,6 +99,7 @@ type Dependencies struct {
 		[]executor.StatementInput,
 	) (result.Envelope, error)
 	ServeAdmin         func(context.Context, adminapi.Config, func(adminapi.Descriptor) error) error
+	OpenBrowser        func(string) error
 	Reflect            func(context.Context, string, conversation.Event) (conversation.Receipt, error)
 	Assimilate         func(context.Context, string, assimilation.Event) (assimilation.Receipt, error)
 	SubmitAssimilation func(context.Context, string, assimilation.Submission) (assimilation.SourceReceipt, error)
@@ -928,9 +930,6 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	if len(scopes) == 0 {
 		return usageError(stderr, "admin requires at least one --scope")
 	}
-	if !noOpen {
-		return usageError(stderr, "admin currently requires --no-open")
-	}
 	authorization := security.Authorization{
 		Version:             security.AuthorizationVersion,
 		Actor:               "user:admin",
@@ -951,6 +950,10 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	if serve == nil {
 		serve = serveAdmin
 	}
+	openBrowser := dependencies.OpenBrowser
+	if openBrowser == nil {
+		openBrowser = openSystemBrowser
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	err := serve(ctx, adminapi.Config{
@@ -958,12 +961,25 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 		Scopes:  append([]string(nil), scopes...),
 		Execute: execute,
 	}, func(descriptor adminapi.Descriptor) error {
-		return json.NewEncoder(stdout).Encode(descriptor)
+		if err := json.NewEncoder(stdout).Encode(descriptor); err != nil {
+			return err
+		}
+		if noOpen {
+			return nil
+		}
+		return openBrowser(descriptor.URL)
 	})
 	if err != nil {
 		return commandError(stderr, "serve Admin API", err)
 	}
 	return ExitOK
+}
+
+func openSystemBrowser(target string) error {
+	if err := osexec.Command("open", target).Run(); err != nil {
+		return fmt.Errorf("open system browser: %w", err)
+	}
+	return nil
 }
 
 func serveAdmin(

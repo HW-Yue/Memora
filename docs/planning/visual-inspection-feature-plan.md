@@ -1,6 +1,6 @@
 # Admin 与本地可观察性小 Feature 计划
 
-状态：F115 已完成，下一项 F116；F110–F122 持续执行已获用户授权，仍逐项 Review、
+状态：F116 已完成，下一项 F117；F110–F122 持续执行已获用户授权，仍逐项 Review、
 测试与独立合入。
 
 ## 产品形态
@@ -49,10 +49,11 @@ MSQL。第一版只读，使用固定 actor/scope、随机 token、Host/Origin�
 
 ### F116 Embedded Admin Shell
 
-- RED：发行二进制缺资源、依赖 Node runtime、深链路 404 或 session 泄漏；
-- GREEN：`go:embed` 的 HTML/JS/CSS、路由壳、状态壳和统一 API client；
-- 门：双架构 binary 离线启动、CSP、资源 hash、浏览器 smoke；
-- 不做：任何具体业务页面。
+- 已完成：`go:embed` HTML/JS/CSS、完整性 manifest、深链路壳、session 状态和统一
+  MSQL client；默认打开浏览器，`--no-open` 保留；
+- 已验收：CSP、资源 hash、Cookie session 刷新恢复、真实 binary/Chrome smoke 和
+  双架构离线构建；
+- 未包含：任何具体业务页面。
 
 ## 页面逐个交付
 

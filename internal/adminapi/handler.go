@@ -30,6 +30,26 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
+func (gateway *Gateway) shellHandler(shell http.Handler) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if !gateway.validHost(request) {
+			secureHeaders(response)
+			writeAPIError(response, http.StatusForbidden, "forbidden", "request host is not allowed")
+			return
+		}
+		shell.ServeHTTP(response, request)
+	})
+}
+
+func (gateway *Gateway) handleUnknownAPI(response http.ResponseWriter, request *http.Request) {
+	secureHeaders(response)
+	if !gateway.validHost(request) {
+		writeAPIError(response, http.StatusForbidden, "forbidden", "request host is not allowed")
+		return
+	}
+	writeAPIError(response, http.StatusNotFound, "not_found", "API endpoint was not found")
+}
+
 func (gateway *Gateway) handleSession(response http.ResponseWriter, request *http.Request) {
 	secureHeaders(response)
 	if !gateway.validHost(request) {
@@ -57,7 +77,19 @@ func (gateway *Gateway) handleSession(response http.ResponseWriter, request *htt
 	token := strings.TrimPrefix(request.Header.Get("Authorization"), "Bearer ")
 	gateway.mu.Lock()
 	defer gateway.mu.Unlock()
-	if gateway.expired() || gateway.bootstrapConsumed || token == "" ||
+	if gateway.expired() {
+		writeAPIError(response, http.StatusUnauthorized, "unauthorized", "admin session is invalid")
+		return
+	}
+	if cookie, err := request.Cookie(sessionCookie); err == nil &&
+		sameToken(gateway.sessionHash, cookie.Value) {
+		writeJSON(response, http.StatusOK, SessionReceipt{
+			Version: SessionVersion, CSRFToken: gateway.csrfToken,
+			ExpiresAt: gateway.descriptor.ExpiresAt,
+		})
+		return
+	}
+	if gateway.bootstrapConsumed || token == "" ||
 		!sameToken(gateway.bootstrapHash, token) {
 		writeAPIError(response, http.StatusUnauthorized, "unauthorized", "session bootstrap is invalid")
 		return
@@ -79,7 +111,6 @@ func (gateway *Gateway) handleSession(response http.ResponseWriter, request *htt
 		CSRFToken: gateway.csrfToken,
 		ExpiresAt: gateway.descriptor.ExpiresAt,
 	})
-	gateway.csrfToken = ""
 }
 
 func (gateway *Gateway) handleMSQL(response http.ResponseWriter, request *http.Request) {

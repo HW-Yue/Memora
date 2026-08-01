@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,12 +82,6 @@ func TestRun(t *testing.T) {
 			args:       []string{"admin", "--no-open"},
 			wantCode:   2,
 			wantStderr: "memora: admin requires at least one --scope\n",
-		},
-		{
-			name:       "admin requires explicit no-open in F115",
-			args:       []string{"admin", "--scope", "work"},
-			wantCode:   2,
-			wantStderr: "memora: admin currently requires --no-open\n",
 		},
 		{
 			name:       "exec requires source",
@@ -277,6 +272,70 @@ func TestRunAdminStartsScopedGatewayAndPrintsDescriptor(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &descriptor); err != nil || descriptor.Version != adminapi.SessionVersion {
 		t.Fatalf("descriptor = %#v, %v", descriptor, err)
 	}
+}
+
+func TestRunAdminOpensBrowserByDefaultAndNoOpenOptsOut(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	opened := []string{}
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(context.Context, string, string, []executor.StatementInput) (result.Envelope, error) {
+			return result.Envelope{}, nil
+		},
+		OpenBrowser: func(target string) error {
+			opened = append(opened, target)
+			return nil
+		},
+		ServeAdmin: func(_ context.Context, _ adminapi.Config, ready func(adminapi.Descriptor) error) error {
+			return ready(adminapi.Descriptor{
+				Version:   adminapi.SessionVersion,
+				Origin:    "http://127.0.0.1:49152",
+				URL:       "http://127.0.0.1:49152/#token=fixture",
+				ExpiresAt: time.Now().Add(time.Minute),
+			})
+		},
+	}
+	for _, args := range [][]string{
+		{"admin", "--scope", "work", "--data-dir", dataDir},
+		{"admin", "--scope", "work", "--no-open", "--data-dir", dataDir},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := RunWithDependencies(args, &stdout, &stderr, BuildInfo{}, dependencies); code != ExitOK {
+			t.Fatalf("admin %v code=%d stderr=%q", args, code, &stderr)
+		}
+	}
+	if len(opened) != 1 || opened[0] != "http://127.0.0.1:49152/#token=fixture" {
+		t.Fatalf("opened URLs = %#v", opened)
+	}
+}
+
+func TestServeAdminClosesGatewayWhenBrowserOpenCallbackFails(t *testing.T) {
+	t.Parallel()
+
+	address := ""
+	err := serveAdmin(context.Background(), adminapi.Config{
+		DataDir: "/fixture",
+		Scopes:  []string{"work"},
+		Execute: func(context.Context, string, string, []executor.StatementInput) (result.Envelope, error) {
+			return result.Envelope{}, nil
+		},
+		Random:     bytes.NewReader(bytes.Repeat([]byte{0x66}, 96)),
+		SessionTTL: time.Minute,
+	}, func(descriptor adminapi.Descriptor) error {
+		address = strings.TrimPrefix(descriptor.Origin, "http://")
+		return errors.New("browser unavailable")
+	})
+	if err == nil || address == "" {
+		t.Fatalf("serveAdmin() error=%v address=%q", err, address)
+	}
+	listener, listenErr := net.Listen("tcp4", address)
+	if listenErr != nil {
+		t.Fatalf("Gateway port remained open after browser failure: %v", listenErr)
+	}
+	_ = listener.Close()
 }
 
 func TestRunUpgradeAndDoctorRepairUseBoundedOperations(t *testing.T) {

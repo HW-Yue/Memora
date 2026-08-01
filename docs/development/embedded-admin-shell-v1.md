@@ -1,0 +1,42 @@
+# Embedded Admin Shell v1
+
+状态：F116 已完成并验收；2026-08-01 冻结。
+
+## 用户结果
+
+`memora admin --scope work` 启动 F115 Gateway 并用系统浏览器打开离线 Admin 壳；
+`--no-open` 仍可只打印 session descriptor。HTML、CSS、JavaScript 全部通过
+`go:embed` 编译进同一个 `memora` binary，不需要 Node.js、CDN、外部字体或网络。
+
+F116 只交付导航容器、session 状态和统一 MSQL client。Catalog、Route、Row、Change、
+Diff 与 Trace 页面从 F117 起逐项实现；壳不得猜测或读取业务 Row。
+
+## Bundle 与路由
+
+内嵌 bundle 的文件集合、大小和 SHA-256 在 Go manifest 中冻结。启动前必须验证
+index/JS/CSS 全部存在且逐字节匹配；缺失、增加或 tamper 都拒绝启动，不从磁盘或网络
+回退。asset 返回强 ETag 与 immutable cache，HTML 使用 `no-store`。
+
+`GET /` 和不属于 `/api/`、`/assets/` 的深链路返回同一 `index.html`；已知 asset
+按正确 MIME 返回，未知 asset 与 API 路径为 404。只支持 GET/HEAD，不把 POST
+深链路误路由到 HTML。
+
+## Browser session
+
+启动 URL 仍把 bootstrap token 放在 fragment。模块脚本首先同步调用
+`history.replaceState` 清除 fragment，再用 Bearer token POST `/api/v1/session`。页面
+刷新或深链路重载时，可凭仍有效的 SameSite Cookie 和精确 Origin 恢复同一临时
+session 的 CSRF；一次性 bootstrap token 仍不可重放。CSRF token 只保存在 JavaScript 模块内存，禁止 localStorage、sessionStorage、URL、
+DOM 或日志持久化。统一 `executeMSQL(source, statements)` client 只调用同源
+`/api/v1/msql`，设置 Cookie credentials 与 CSRF header；401 会清除内存 session 并
+进入 expired 状态。
+
+壳明确显示 bootstrapping、ready、error、expired 四种状态。错误文案不显示 token、
+Cookie、参数、Row 或 daemon 内部错误。
+
+## Web 安全与可移植性
+
+HTML 无 inline script/style，Gateway 对壳资源设置只允许 `self` 的 CSP，并禁止
+object、base、frame、form；同时设置 `no-referrer`、`nosniff`、deny framing 和最小
+Permissions-Policy。正式构建仍是 CGO-disabled 的 darwin/arm64 与 darwin/amd64
+单文件二进制；资源不得依赖运行时工作目录。
