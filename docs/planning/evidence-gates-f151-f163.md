@@ -119,7 +119,19 @@
 - 结论：逻辑变化流只是未来武器库，不自行升级成网络拓扑；不引入 replica identity、
   acknowledgement、lag、promotion 或 split-brain 处理。
 
+## F160 PITR
+
+状态：已评估，产品进入条件未成立，延后。
+
+- 冻结门槛：出现恢复到明确 wall-clock/commit sequence 的真实旅程，并冻结恢复窗口、
+  日志保留预算、允许丢失范围和恢复目标验证；普通 latest backup restore 不算 PITR。
+- 命令：用 `jq` 匹配 canonical turn 的 PITR/point-in-time restore，并回归 Instance backup、
+  restore/upgrade 与 History 测试。
+- 结果：65 turn 中明确 PITR 需求 0；当前能力是受校验的 latest snapshot 搬迁恢复和逻辑
+  revision/history，不承诺任意时间点重放。
+- 结论：不因已有 Change Log 就默认无限保留或制造第二套恢复协议；等待真实 RPO/RTO 故事。
+
 ## 后续门
 
-F160–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
+F161–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
 先另开实现 Feature，不把大实现塞进证据门提交。
