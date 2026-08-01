@@ -23,6 +23,7 @@
 | F110–F126 | Admin 读取与 UI、真实宿主契约、Route benchmark、Lexical/Vector/预取和能力报告 |
 | F128–F150 | 语义健康与变更计划、Host Input、Policy、Package 生命周期、备份恢复、MCP/SDK、发行 |
 | F152 | free Page reuse |
+| F164 | 删除失效的 F42 benchmark 与测试型 F43 runtime gate |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -65,6 +66,8 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - session/turn/trace 指标与本地分析；
 - 真实 AI 查询质量和成本报告；
 - 写入时机与 worthiness 质量评测，安排在查询评测稳定之后。
+
+代码清理的保留/删除理由见[旧代码清理边界](../development/legacy-code-boundary.md)。
 
 候选进入实现前仍须按 [Feature 产品门](./feature-product-gate.md)和
 [TDD 协议](./feature-tdd-protocol.md)拆成一个结果一个 Feature。

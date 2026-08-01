@@ -190,6 +190,23 @@ func TestRuntimeAndHostContractsContainNoRetiredRowRetrieval(t *testing.T) {
 	}
 }
 
+func TestHistoricalAIHarnessesStayOutOfActiveTree(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	for _, name := range []string{
+		"internal/benchmark",
+		"internal/runtimegate",
+		"benchmarks/ai-native-v1.json",
+	} {
+		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
+			t.Errorf("historical AI harness remains active: %s", name)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("inspect %s: %v", name, err)
+		}
+	}
+}
+
 func TestRoutePredictorPackagesDoNotImportFactStores(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)

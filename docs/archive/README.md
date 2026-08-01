@@ -8,6 +8,7 @@
 - [早期 Wiki 导出设计](./WIKI_EXPORT_DESIGN_2026-07-29.md)
 - [F00–F163 历史计划与完成证据](./planning/README.md)
 - [被取代的设计与实现规格](./design/README.md)
+- [F42 AI-native v1 冻结题库](./benchmarks/ai-native-v1.json)
 
 归档用途：
 

@@ -58,6 +58,7 @@
 - [Admin Shell](./development/embedded-admin-shell-v1.md)
 - [Route Trace](./query/route-trace-read-v1.md)
 - [评测 Agent 与外置 Hook](./development/evaluation-agent-observability.md)
+- [旧代码清理边界](./development/legacy-code-boundary.md)
 - [签名发布制品](./development/macos-signed-release-artifacts-v2.md)
 - [干净机器验收](./development/clean-machine-acceptance-v1.md)
 
