@@ -1,7 +1,7 @@
 # Route Predictor 小 Feature 计划
 
-状态：规划已确认，2026-08-01；不改变 F97d3–F109 当前执行顺序。F124 Corpus 冻结
-后按 F124a–F124e 逐项 Review、RED、实现和合入，不能整批开工。
+状态：F124 Corpus 已完成；下一项 F124a。F124a–F124e 仍逐项 Review、RED、实现
+和合入，不能整批开工。
 
 ## 目标链路
 

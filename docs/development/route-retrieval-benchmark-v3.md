@@ -1,6 +1,6 @@
 # Route Retrieval Benchmark v3
 
-状态：F124–F126 规划已确认；F124 Corpus 先冻结，F124a–F124e 完成后才运行 F125。
+状态：F124 Corpus 已冻结；F124a–F124e 完成后才运行 F125。
 
 ## 核心问题
 
