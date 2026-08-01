@@ -102,11 +102,12 @@ func FilterDatabase(encoded []byte, name string) ([]byte, catalog.Database, erro
 }
 
 type MergeOptions struct {
-	ReadOnly              bool
-	PackageSHA256         string
-	PackageSnapshotSHA256 string
-	PackageSignerKeyID    string
-	ReplaceDatabaseID     string
+	ReadOnly                bool
+	PackageSHA256           string
+	PackageSnapshotSHA256   string
+	PackageSignerKeyID      string
+	ReplaceDatabaseID       string
+	ReplaceForkBaseSnapshot string
 }
 
 func (service *Service) MergeImport(ctx context.Context, encoded []byte) error {
@@ -156,7 +157,9 @@ func (service *Service) MergeImportWithOptions(ctx context.Context, encoded []by
 	replaced := false
 	for _, existing := range currentCatalog.Databases {
 		if options.ReplaceDatabaseID != "" && existing.ID == options.ReplaceDatabaseID {
-			if !existing.ReadOnly || candidate.ID != existing.ID || !strings.EqualFold(candidate.Name, existing.Name) {
+			allowedReplacement := existing.ReadOnly ||
+				(options.ReplaceForkBaseSnapshot != "" && existing.ForkedFromSnapshotSHA256 == options.ReplaceForkBaseSnapshot)
+			if !allowedReplacement || candidate.ID != existing.ID || !strings.EqualFold(candidate.Name, existing.Name) {
 				return snapshotError(result.CodePermissionDenied, "only the matching installed read-only Database can be replaced")
 			}
 			if err := removeDatabaseAuthority(ctx, tx, existing); err != nil {

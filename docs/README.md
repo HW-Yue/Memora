@@ -29,6 +29,7 @@
 - [Database Package Upgrade v1](./product/database-package-upgrade-v1.md) — F139 的 current/package-bound 计划、审批与原子只读替换。
 - [Database Package Revocation v1](./product/database-package-revocation-v1.md) — F140 的 durable package/signer 负向信任与安装升级门。
 - [Database Package Fork v1](./product/database-package-fork-v1.md) — F141 的只读安装库到身份独立可写分支的确定性派生。
+- [Database Package Merge v1](./product/database-package-merge-v1.md) — F142 的显式 base/local/upstream 三方计划、冲突与原子合入。
 - [质量模型与验收](./product/quality-model.md) — 写入、检索、修改、上下文和接管的效果指标。
 - [语义记录模型](./data/semantic-records.md) — AI 自定义表和字段，记录是短小完整的知识模块。
 - [自描述 Data Dictionary](./data/self-describing-data-dictionary.md) — 让陌生 Agent 在有界输出内理解库、表、字段和边界。

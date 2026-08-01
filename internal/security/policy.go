@@ -17,6 +17,7 @@ const (
 	ActionApplyPackageUpgrade    = "APPLY_PACKAGE_UPGRADE"
 	ActionApplyPackageRevocation = "APPLY_PACKAGE_REVOCATION"
 	ActionForkPackageDatabase    = "FORK_PACKAGE_DATABASE"
+	ActionMergePackageFork       = "MERGE_PACKAGE_FORK"
 	ActionApplyRouteMutation     = "APPLY_ROUTE_MUTATION"
 	ActionApplySchemaChange      = "APPLY_SCHEMA_CHANGE"
 	maxDatabaseScope             = 32
