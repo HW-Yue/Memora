@@ -316,7 +316,7 @@ func (service *Service) newColumn(definition catalog.ColumnDefinition, now time.
 	if err != nil {
 		return catalog.Column{}, err
 	}
-	return catalog.Column{ID: id, Name: definition.Name, Aliases: []string{}, Type: string(parsed.Kind), MaxCharacters: parsed.MaxCharacters, Nullable: definition.Nullable, Purpose: definition.Purpose, SchemaVersion: 1, CreatedAt: now, UpdatedAt: now}, nil
+	return catalog.Column{ID: id, Name: definition.Name, Aliases: []string{}, Type: string(parsed.Kind), MaxCharacters: parsed.MaxCharacters, Nullable: definition.Nullable, Purpose: definition.Purpose, SemanticRole: normalizeSemanticRole(definition.SemanticRole), SchemaVersion: 1, CreatedAt: now, UpdatedAt: now}, nil
 }
 
 func (service *Service) nextID(prefix string) (string, error) {
@@ -341,6 +341,7 @@ func validateTableDefinition(definition catalog.TableDefinition) error {
 		return err
 	}
 	seen := map[string]struct{}{}
+	displayRoles := map[string]string{}
 	for _, column := range definition.Columns {
 		if err := validateColumnDefinition(column); err != nil {
 			return err
@@ -350,6 +351,13 @@ func validateTableDefinition(definition catalog.TableDefinition) error {
 			return catalogFailure(catalog.CodeAlreadyExists, "column", column.Name, "")
 		}
 		seen[key] = struct{}{}
+		role := normalizeSemanticRole(column.SemanticRole)
+		if role == "title" || role == "summary" {
+			if first, ok := displayRoles[role]; ok {
+				return catalogFailure(catalog.CodeValidation, "column", column.Name, "unique "+role+" role; already used by "+first)
+			}
+			displayRoles[role] = column.Name
+		}
 	}
 	return nil
 }
@@ -364,8 +372,22 @@ func validateColumnDefinition(definition catalog.ColumnDefinition) error {
 	if err := required("column", definition.Name, "purpose", definition.Purpose); err != nil {
 		return err
 	}
+	if !validSemanticRole(definition.SemanticRole) {
+		return catalogFailure(catalog.CodeValidation, "column", definition.Name, "a supported semantic role")
+	}
 	_, err := logical.ParseDeclaration(definition.Type)
 	return err
+}
+
+func normalizeSemanticRole(value string) string { return canonical(value) }
+
+func validSemanticRole(value string) bool {
+	switch normalizeSemanticRole(value) {
+	case "", "title", "summary", "identity", "status":
+		return true
+	default:
+		return false
+	}
 }
 
 func locateTable(databases []catalog.Database, databaseName, tableName string) (*catalog.Database, *catalog.Table, error) {

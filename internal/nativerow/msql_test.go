@@ -182,7 +182,7 @@ func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
 	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{Name: "work", Purpose: "Work", Scope: "Projects"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{Name: "notes", Purpose: "Notes", RowSemantics: "One note", Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT(20)", Purpose: "Title"}}}); err != nil {
+	if _, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{Name: "notes", Purpose: "Notes", RowSemantics: "One note", Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT(20)", Purpose: "Title", SemanticRole: "title"}}}); err != nil {
 		t.Fatal(err)
 	}
 	rows := NewService(New(file), dictionary, ServiceOptions{IDs: &testIDs{values: []string{"first"}}, Clock: testClock{value: now.Add(time.Minute)}})
@@ -196,6 +196,15 @@ func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
 	if _, err := rows.Delete(ctx, "work", "notes", inserted.ID, row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 2, Metadata: row.WriteMetadata{Actor: "agent:editor", Source: "feedback", Reason: "remove"}}); err != nil {
 		t.Fatal(err)
 	}
+	engine := executor.New(dictionary, rows)
+	firstHistory := executeMSQL(t, ctx, engine,
+		"SHOW HISTORY FROM work.notes FOR ROW :row_id LIMIT 2",
+		executor.Parameters{Named: map[string]any{"row_id": inserted.ID}}, executor.MutationOptions{})
+	if firstHistory.Page == nil || firstHistory.Page.Snapshot == "" || firstHistory.NextCursor == "" ||
+		len(firstHistory.Rows) != 2 || firstHistory.Rows[0]["values"] != nil {
+		t.Fatalf("native first History page = %#v", firstHistory)
+	}
+	historyCursor := firstHistory.NextCursor
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +216,16 @@ func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
 	t.Cleanup(func() { _ = reopened.Close() })
 	dictionary = nativecatalog.NewService(nativecatalog.New(reopened), nativecatalog.ServiceOptions{})
 	rows = NewService(New(reopened), dictionary, ServiceOptions{})
-	engine := executor.New(dictionary, rows)
+	engine = executor.New(dictionary, rows)
+	continued := executeMSQL(t, ctx, engine,
+		"SHOW HISTORY FROM work.notes FOR ROW :row_id CURSOR :cursor LIMIT 2",
+		executor.Parameters{Named: map[string]any{
+			"row_id": inserted.ID, "cursor": historyCursor,
+		}}, executor.MutationOptions{})
+	if continued.Page == nil || continued.Page.Cursor != historyCursor || continued.Truncated ||
+		len(continued.Rows) != 1 || continued.Rows[0]["revision"] != uint64(1) {
+		t.Fatalf("reopened History continuation = %#v", continued)
+	}
 	shown := executeMSQL(t, ctx, engine,
 		"SHOW HISTORY FROM work.notes FOR ROW :row_id LIMIT 10",
 		executor.Parameters{Named: map[string]any{"row_id": inserted.ID}}, executor.MutationOptions{},
@@ -221,6 +239,10 @@ func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
 	)
 	if len(atFirst.Rows) != 1 || atFirst.Rows[0]["title"] != "initial" || atFirst.Rows[0]["revision"] != uint64(1) {
 		t.Fatalf("AS OF REVISION rows = %#v", atFirst.Rows)
+	}
+	if atFirst.RowDetail == nil || atFirst.RowDetail.Version != result.RowDetailVersion ||
+		atFirst.RowDetail.Display.TitleColumn != "title" || atFirst.Columns[0].SemanticRole != "title" {
+		t.Fatalf("AS OF Row detail = %#v, columns=%#v", atFirst.RowDetail, atFirst.Columns)
 	}
 }
 

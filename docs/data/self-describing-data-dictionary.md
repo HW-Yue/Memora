@@ -41,7 +41,8 @@
 - 类型、可空性、默认值；
 - 文本字段最大字符数等 Column 级约束；
 - 业务含义、单位和格式；
-- `semantic_role`，例如 title、summary、identity、status；
+- `semantic_role`，v1 支持 `title`、`summary`、`identity`、`status`；其中 title 与
+  summary 在单 Table 内各最多一个，缺失时展示端只能回退到 RowID/revision；
 - 索引提示、隐私标签和废弃状态。
 
 名称可以改变，稳定 ID 和历史别名不能丢失。

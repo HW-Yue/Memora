@@ -60,6 +60,18 @@ func validateStatement(position int, result StatementResult) error {
 			return invalid("result %d list page truncation has no valid continuation", position)
 		}
 	}
+	if result.RowDetail != nil {
+		if result.Status != StatusSucceeded || result.RowDetail.Version != RowDetailVersion ||
+			result.RowDetail.DatabaseID == "" || result.RowDetail.DatabaseName == "" ||
+			result.RowDetail.TableID == "" || result.RowDetail.TableName == "" ||
+			result.RowDetail.SchemaVersion == 0 || result.RowDetail.RowSemantics == "" {
+			return invalid("result %d has invalid row detail metadata", position)
+		}
+		display := result.RowDetail.Display
+		if display.TitleColumn == "" && display.Fallback != "row_id_revision" {
+			return invalid("result %d row detail has no title or fallback", position)
+		}
+	}
 	switch result.Status {
 	case StatusSucceeded:
 		if result.Error != nil {

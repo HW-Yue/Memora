@@ -1,6 +1,6 @@
 # MSQL History v1
 
-状态：F17c 已实现。
+状态：F17c 已实现；F112 已补充 History snapshot cursor。
 
 ## AS OF
 
@@ -25,7 +25,7 @@ snapshot 的 system fields 保留历史 `revision`、`commit_sequence`、`schema
 ## SHOW HISTORY
 
 ```sql
-SHOW HISTORY FROM work.notes FOR ROW :row_id LIMIT 20;
+SHOW HISTORY FROM work.notes FOR ROW :row_id [CURSOR :cursor] LIMIT 20;
 ```
 
 Row ID 必须满足 `RELATION_ID`，LIMIT 为 1–1000。结果按最新 revision 优先，列固定为：
@@ -35,7 +35,10 @@ row_id, revision, commit_sequence, schema_version, operation
 row_state, actor, source, reason, updated_at
 ```
 
-SHOW 不回传完整 values；需要内容时再用 AS OF 精确读取。超过 LIMIT 时 statement 和顶层 envelope 标记 `truncated = true`。
+SHOW 不回传完整 values；需要内容时再用 AS OF 精确读取。超过 LIMIT 时 statement 和
+顶层 envelope 标记 `truncated = true`，并返回 `memora.list-page/v1`。cursor 绑定
+Database/Table/Row、完整 revision snapshot 和下一 offset；损坏/跨 Row 返回
+`validation_error`，续读期间 History 变化返回 `revision_conflict`。
 
 ## RESTORE
 

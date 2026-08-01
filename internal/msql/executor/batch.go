@@ -300,6 +300,7 @@ func successfulStatement(index int, kind, source string, output Output) result.S
 	statement.Truncated = output.Truncated
 	statement.NextCursor = output.NextCursor
 	statement.Page = output.Page
+	statement.RowDetail = output.RowDetail
 	return statement
 }
 

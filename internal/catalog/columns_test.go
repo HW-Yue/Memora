@@ -133,6 +133,19 @@ func TestCatalogRejectsInvalidAndDuplicateColumnsAtomically(t *testing.T) {
 		},
 	})
 	assertCode(t, err, catalog.CodeAlreadyExists)
+	_, err = service.CreateTable(ctx, "work", catalog.TableDefinition{
+		Name: "roles", Purpose: "Invalid roles", RowSemantics: "One invalid row",
+		Columns: []catalog.ColumnDefinition{
+			{Name: "heading", Type: "TEXT", Purpose: "Heading", SemanticRole: "title"},
+			{Name: "caption", Type: "TEXT", Purpose: "Caption", SemanticRole: "title"},
+		},
+	})
+	assertCode(t, err, catalog.CodeValidation)
+	_, err = service.CreateTable(ctx, "work", catalog.TableDefinition{
+		Name: "unknown_role", Purpose: "Invalid role", RowSemantics: "One invalid row",
+		Columns: []catalog.ColumnDefinition{{Name: "body", Type: "TEXT", Purpose: "Body", SemanticRole: "guessed"}},
+	})
+	assertCode(t, err, catalog.CodeValidation)
 	tables, err := service.ShowTables(ctx, "work")
 	if err != nil {
 		t.Fatal(err)
@@ -158,6 +171,11 @@ func TestCatalogRejectsInvalidAndDuplicateColumnsAtomically(t *testing.T) {
 	}
 	_, err = service.AddColumn(ctx, "work", "notes", catalog.ColumnDefinition{Name: "BODY", Type: "TEXT", Purpose: "Alias duplicate"})
 	assertCode(t, err, catalog.CodeAlreadyExists)
+	if _, err = service.AddColumn(ctx, "work", "notes", catalog.ColumnDefinition{Name: "title", Type: "TEXT", Purpose: "Title", SemanticRole: "TITLE"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.AddColumn(ctx, "work", "notes", catalog.ColumnDefinition{Name: "caption", Type: "TEXT", Purpose: "Caption", SemanticRole: "title"})
+	assertCode(t, err, catalog.CodeValidation)
 	_, err = service.DescribeColumn(ctx, "work", "notes", "missing")
 	assertCode(t, err, catalog.CodeNotFound)
 }

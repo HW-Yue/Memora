@@ -70,6 +70,13 @@ func (service *Service) AddColumn(ctx context.Context, databaseName, tableName s
 		if _, ok := findColumn(table, definition.Name); ok {
 			return catalogFailure(catalog.CodeAlreadyExists, "column", definition.Name, "")
 		}
+		if role := normalizeSemanticRole(definition.SemanticRole); role == "title" || role == "summary" {
+			for _, existing := range table.Columns {
+				if normalizeSemanticRole(existing.SemanticRole) == role {
+					return catalogFailure(catalog.CodeValidation, "column", definition.Name, "unique "+role+" role")
+				}
+			}
+		}
 		now := service.clock.Now().UTC()
 		created, err = service.newColumn(definition, now)
 		if err != nil {

@@ -10,6 +10,8 @@ const Version = "memora.result/v1"
 
 const ListPageVersion = "memora.list-page/v1"
 
+const RowDetailVersion = "memora.row-detail/v1"
+
 var ErrInvalidEnvelope = errors.New("invalid result envelope")
 
 type Status string
@@ -24,9 +26,29 @@ const (
 type Row map[string]any
 
 type Column struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Nullable bool   `json:"nullable"`
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	Nullable     bool   `json:"nullable"`
+	ColumnID     string `json:"column_id,omitempty"`
+	Purpose      string `json:"purpose,omitempty"`
+	SemanticRole string `json:"semantic_role,omitempty"`
+}
+
+type RowDisplay struct {
+	TitleColumn   string `json:"title_column,omitempty"`
+	SummaryColumn string `json:"summary_column,omitempty"`
+	Fallback      string `json:"fallback,omitempty"`
+}
+
+type RowDetail struct {
+	Version       string     `json:"version"`
+	DatabaseID    string     `json:"database_id"`
+	DatabaseName  string     `json:"database_name"`
+	TableID       string     `json:"table_id"`
+	TableName     string     `json:"table_name"`
+	SchemaVersion uint64     `json:"schema_version"`
+	RowSemantics  string     `json:"row_semantics"`
+	Display       RowDisplay `json:"display"`
 }
 
 type ListPage struct {
@@ -51,6 +73,7 @@ type StatementResult struct {
 	Truncated      bool         `json:"truncated"`
 	NextCursor     string       `json:"next_cursor,omitempty"`
 	Page           *ListPage    `json:"page,omitempty"`
+	RowDetail      *RowDetail   `json:"row_detail,omitempty"`
 	Warnings       []Notice     `json:"warnings"`
 	Error          *ResultError `json:"error,omitempty"`
 }

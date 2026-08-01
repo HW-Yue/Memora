@@ -200,6 +200,13 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Row = &row
+		if parser.matchWord("CURSOR") {
+			cursor, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Cursor = &cursor
+		}
 		if _, err := parser.expectWord("LIMIT"); err != nil {
 			return ast.Statement{}, err
 		}
@@ -502,6 +509,13 @@ func (parser *parser) parseColumnDefinition() (ast.ColumnDefinition, error) {
 			return ast.ColumnDefinition{}, err
 		}
 		column.Purpose = purpose.Value
+	}
+	if parser.matchWord("ROLE") {
+		role, err := parser.parseIdentifier()
+		if err != nil {
+			return ast.ColumnDefinition{}, err
+		}
+		column.SemanticRole = strings.ToLower(role.Value)
 	}
 	return column, nil
 }

@@ -26,7 +26,7 @@ func TestNativeCatalogServiceCreatesAndDiscoversAfterReopen(t *testing.T) {
 	}
 	if _, err := service.CreateTable(ctx, "work", catalog.TableDefinition{
 		Name: "notes", Purpose: "项目笔记", RowSemantics: "一条完整笔记",
-		Columns: []catalog.ColumnDefinition{{Name: "body", Type: "TEXT(3000)", Purpose: "正文"}},
+		Columns: []catalog.ColumnDefinition{{Name: "body", Type: "TEXT(3000)", Purpose: "正文", SemanticRole: "summary"}},
 	}); err != nil {
 		t.Fatalf("CreateTable() error = %v", err)
 	}
@@ -49,7 +49,8 @@ func TestNativeCatalogServiceCreatesAndDiscoversAfterReopen(t *testing.T) {
 		t.Fatalf("ShowTables() = %#v, %v", tables, err)
 	}
 	table, err := service.DescribeTable(ctx, "work", "notes")
-	if err != nil || len(table.Columns) != 1 || table.Columns[0].MaxCharacters != 3000 {
+	if err != nil || len(table.Columns) != 1 || table.Columns[0].MaxCharacters != 3000 ||
+		table.Columns[0].SemanticRole != "summary" {
 		t.Fatalf("DescribeTable() = %#v, %v", table, err)
 	}
 }

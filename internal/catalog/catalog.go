@@ -384,7 +384,7 @@ func validateTableDefinition(definition TableDefinition) error {
 			return err
 		}
 	}
-	return nil
+	return uniqueDisplayRoles(definition.Columns)
 }
 
 func locateTable(state *snapshot, databaseName, tableName string) (*Database, *Table, error) {

@@ -491,12 +491,21 @@ func (service *Service) AsOfCommit(
 	}
 	return project(table, value), nil
 }
-func (service *Service) HistoryPage(ctx context.Context, databaseName, tableName, rowID string, limit int) ([]history.Record, bool, error) {
+func (service *Service) HistoryPage(ctx context.Context, databaseName, tableName, rowID, cursor string, limit int) ([]history.Record, history.ReadPage, error) {
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, history.ReadPage{}, err
+	}
+	defer release()
 	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
-		return nil, false, err
+		return nil, history.ReadPage{}, err
 	}
-	return service.repository.History(table.DatabaseID, table.ID, rowID, limit)
+	records, err := service.repository.HistoryAll(table.DatabaseID, table.ID, rowID)
+	if err != nil {
+		return nil, history.ReadPage{}, err
+	}
+	return history.Paginate(table.DatabaseID+"\x00"+table.ID+"\x00"+rowID, cursor, limit, records)
 }
 func (service *Service) Restore(
 	ctx context.Context,

@@ -150,6 +150,13 @@ func (fields fieldSet) text(id uint16) (string, error) {
 	return string(item.data), nil
 }
 
+func (fields fieldSet) optionalText(id uint16) (string, error) {
+	if _, ok := fields[id]; !ok {
+		return "", nil
+	}
+	return fields.text(id)
+}
+
 func (fields fieldSet) uint64(id uint16) (uint64, error) {
 	item, err := fields.required(id, fieldUint64)
 	if err != nil || len(item.data) != 8 {

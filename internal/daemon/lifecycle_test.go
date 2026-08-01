@@ -153,10 +153,13 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 		if err != nil || !envelope.OK || len(envelope.Results) != 1 {
 			t.Fatalf("Execute(%q) = %#v, %v", source, envelope, err)
 		}
-		return executorResult{rows: envelope.Results[0].Rows}
+		return executorResult{
+			rows: envelope.Results[0].Rows, rowDetail: envelope.Results[0].RowDetail,
+			page: envelope.Results[0].Page, nextCursor: envelope.Results[0].NextCursor,
+		}
 	}
 	execute("CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", nil)
-	execute("CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title')", nil)
+	execute("CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title' ROLE title)", nil)
 	inserted := execute(
 		"INSERT INTO work.notes (title) VALUES ('Page authority')",
 		[]executor.StatementInput{{Mutation: executor.MutationOptions{
@@ -171,8 +174,34 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 		"SELECT title FROM work.notes WHERE row_id = :row LIMIT 1",
 		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
 	)
-	if len(selected.rows) != 1 || selected.rows[0]["title"] != "Page authority" {
+	if len(selected.rows) != 1 || selected.rows[0]["title"] != "Page authority" ||
+		selected.rowDetail == nil || selected.rowDetail.Display.TitleColumn != "title" {
 		t.Fatalf("live Page SELECT = %#v", selected.rows)
+	}
+	execute(
+		"UPDATE work.notes SET title = 'Page authority revised' WHERE row_id = :row",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"row": rowID}},
+			Mutation:   executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1},
+		}},
+	)
+	historyPage := execute(
+		"SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 1",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
+	)
+	if historyPage.page == nil || historyPage.nextCursor == "" || len(historyPage.rows) != 1 ||
+		historyPage.rows[0]["values"] != nil {
+		t.Fatalf("daemon History page = %#v", historyPage)
+	}
+	historyTail := execute(
+		"SHOW HISTORY FROM work.notes FOR ROW :row CURSOR :cursor LIMIT 1",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{
+			"row": rowID, "cursor": historyPage.nextCursor,
+		}}}},
+	)
+	if historyTail.page == nil || historyTail.nextCursor != "" || len(historyTail.rows) != 1 ||
+		historyTail.rows[0]["operation"] != "INSERT" {
+		t.Fatalf("daemon History tail = %#v", historyTail)
 	}
 	cancel()
 	if err := <-done; err != nil {
@@ -188,7 +217,8 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 		"SELECT title FROM work.notes WHERE row_id = :row LIMIT 1",
 		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
 	)
-	if len(selected.rows) != 1 || selected.rows[0]["title"] != "Page authority" {
+	if len(selected.rows) != 1 || selected.rows[0]["title"] != "Page authority revised" ||
+		selected.rowDetail == nil || selected.rowDetail.Display.TitleColumn != "title" {
 		t.Fatalf("reopened Page SELECT = %#v", selected.rows)
 	}
 	stopReopened()
@@ -197,4 +227,9 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 	}
 }
 
-type executorResult struct{ rows []result.Row }
+type executorResult struct {
+	rows       []result.Row
+	rowDetail  *result.RowDetail
+	page       *result.ListPage
+	nextCursor string
+}

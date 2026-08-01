@@ -45,6 +45,11 @@
 next cursor 契约见 [Metadata Read v1](./metadata-read-v1.md)。`page.truncated` 和
 `page.next_cursor` 必须与 statement 既有字段一致。
 
+精确 RowID SELECT 可以额外返回 `row_detail`；`memora.row-detail/v1` 携带当前
+Database/Table 稳定身份、Schema version、row semantics 与显式 display role。缺少
+title role 时必须声明 `row_id_revision` fallback。Column metadata 可向后兼容增加
+`column_id/purpose/semantic_role`；客户端按数组顺序读取，不猜业务列。
+
 状态固定为：
 
 - `succeeded`：语句成功，包括显式执行成功的 `ROLLBACK`；

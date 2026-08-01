@@ -1,6 +1,6 @@
 # MSQL Catalog DDL v1
 
-状态：F13c 已实现；列表读取边界已由 F110 Metadata Read v1 取代。
+状态：F13c 已实现；F110 冻结列表读取，F112 增加 Column semantic role。
 
 ## 创建
 
@@ -18,8 +18,8 @@ CREATE TABLE work.notes
   SCOPE '已确认知识'
   ANTI SCOPE '原始资料'
   (
-    title TEXT NOT NULL PURPOSE '展示标题',
-    body TEXT(1200) PURPOSE '完整语义正文'
+    title TEXT NOT NULL PURPOSE '展示标题' ROLE title,
+    body TEXT(1200) PURPOSE '完整语义正文' ROLE summary
   );
 ```
 
@@ -27,11 +27,14 @@ Parser 允许缺省语义项以保持语法与 AST 分层；Catalog Binder 必�
 
 Column 类型由 F14 冻结；`TEXT` 使用 1200 字符启动上限，`TEXT(n)` 持久化 Column 自己的正整数上限。完整集合和输入规则见 [逻辑类型与字段预算 v1](../data/logical-types.md)。
 
+`ROLE` 可选，v1 接受 `title/summary/identity/status`。title 与 summary 在单个 Table
+内各最多一个；未声明 title 时 Row detail 只能回退到 RowID/revision，不能猜列名。
+
 增加 Column 使用：
 
 ```sql
 ALTER TABLE work.notes
-  ADD COLUMN status TEXT NULL PURPOSE '当前工作流状态';
+  ADD COLUMN status TEXT NULL PURPOSE '当前工作流状态' ROLE status;
 ```
 
 ## 发现

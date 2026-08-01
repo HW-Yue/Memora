@@ -13,7 +13,7 @@ func TestParseCatalogStatementsGolden(t *testing.T) {
 
 	sources := []string{
 		"CREATE DATABASE work PURPOSE 'Project knowledge' SCOPE 'Active projects' ANTI SCOPE 'Personal journals'",
-		"CREATE TABLE work.notes PURPOSE 'Durable notes' SCOPE 'Reviewed knowledge' ANTI SCOPE 'Raw documents' ROW SEMANTICS 'One reviewed note' (title TEXT NOT NULL PURPOSE 'Display title', body TEXT(1200) PURPOSE 'Complete note')",
+		"CREATE TABLE work.notes PURPOSE 'Durable notes' SCOPE 'Reviewed knowledge' ANTI SCOPE 'Raw documents' ROW SEMANTICS 'One reviewed note' (title TEXT NOT NULL PURPOSE 'Display title' ROLE title, body TEXT(1200) PURPOSE 'Complete note' ROLE summary)",
 		"SHOW COLUMNS FROM work.notes COMPACT",
 		"DESCRIBE COLUMN work.notes.title COMPACT",
 		"ALTER DATABASE work RENAME TO projects",

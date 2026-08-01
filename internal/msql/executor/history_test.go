@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
+	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
@@ -68,6 +69,19 @@ func TestExecuteHistoryAsOfShowAndRestore(t *testing.T) {
 		historyOutput.Rows[1]["revision"] != uint64(2) {
 		t.Fatalf("SHOW HISTORY output = %#v", historyOutput)
 	}
+	if historyOutput.Page == nil || historyOutput.Page.Version != result.ListPageVersion ||
+		historyOutput.Page.Snapshot == "" || historyOutput.NextCursor == "" {
+		t.Fatalf("SHOW HISTORY page = %#v", historyOutput.Page)
+	}
+	secondHistory, err := execute(ctx, subject,
+		"SHOW HISTORY FROM work.notes FOR ROW :row_id CURSOR :cursor LIMIT 2",
+		executor.Parameters{Named: map[string]any{
+			"row_id": inserted.ID, "cursor": historyOutput.NextCursor,
+		}}, executor.MutationOptions{})
+	if err != nil || len(secondHistory.Rows) != 1 || secondHistory.Truncated ||
+		secondHistory.Rows[0]["revision"] != uint64(1) {
+		t.Fatalf("SHOW HISTORY second page = %#v, %v", secondHistory, err)
+	}
 
 	restored, err := execute(ctx, subject, `
 		RESTORE work.notes ROW :row_id TO REVISION :revision
@@ -93,6 +107,12 @@ func TestExecuteHistoryAsOfShowAndRestore(t *testing.T) {
 		records[3].Actor != "agent:test" || records[3].Reason != "restore original" {
 		t.Fatalf("RESTORE history = %#v, %v", records, err)
 	}
+	_, err = execute(ctx, subject,
+		"SHOW HISTORY FROM work.notes FOR ROW :row_id CURSOR :cursor LIMIT 2",
+		executor.Parameters{Named: map[string]any{
+			"row_id": inserted.ID, "cursor": historyOutput.NextCursor,
+		}}, executor.MutationOptions{})
+	assertExecutorCode(t, err, result.CodeRevisionConflict)
 }
 
 func TestHistoryStatementsRejectUnboundedOrInvalidTargets(t *testing.T) {

@@ -145,6 +145,9 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 	for index := range projections {
 		output.Columns[index] = projections[index].column
 	}
+	if exact {
+		output.RowDetail = rowDetail(databaseName, table, projections)
+	}
 	for _, candidate := range candidates {
 		matches := true
 		if selectStatement.Where != nil {
@@ -257,8 +260,9 @@ func bindProjections(table catalog.Table, expressions []ast.Expression) ([]proje
 			return nil, executeError(result.CodeValidation, fmt.Sprintf("unknown column %q", name))
 		}
 		projections = append(projections, projection{
-			name:   column.Name,
-			column: result.Column{Name: column.Name, Type: column.Type, Nullable: column.Nullable},
+			name: column.Name,
+			column: result.Column{Name: column.Name, Type: column.Type, Nullable: column.Nullable,
+				ColumnID: column.ID, Purpose: column.Purpose, SemanticRole: column.SemanticRole},
 		})
 	}
 	return projections, nil
@@ -274,11 +278,32 @@ func starProjections(table catalog.Table) []projection {
 	}
 	for _, column := range table.Columns {
 		projections = append(projections, projection{
-			name:   column.Name,
-			column: result.Column{Name: column.Name, Type: column.Type, Nullable: column.Nullable},
+			name: column.Name,
+			column: result.Column{Name: column.Name, Type: column.Type, Nullable: column.Nullable,
+				ColumnID: column.ID, Purpose: column.Purpose, SemanticRole: column.SemanticRole},
 		})
 	}
 	return projections
+}
+
+func rowDetail(databaseName string, table catalog.Table, projections []projection) *result.RowDetail {
+	detail := &result.RowDetail{
+		Version: result.RowDetailVersion, DatabaseID: table.DatabaseID, DatabaseName: databaseName,
+		TableID: table.ID, TableName: table.Name, SchemaVersion: table.SchemaVersion,
+		RowSemantics: table.RowSemantics,
+	}
+	for _, item := range projections {
+		switch item.column.SemanticRole {
+		case "title":
+			detail.Display.TitleColumn = item.column.Name
+		case "summary":
+			detail.Display.SummaryColumn = item.column.Name
+		}
+	}
+	if detail.Display.TitleColumn == "" {
+		detail.Display.Fallback = "row_id_revision"
+	}
+	return detail
 }
 
 func systemProjection(name string) (projection, bool) {

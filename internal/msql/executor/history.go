@@ -34,7 +34,17 @@ func (engine *Engine) showHistory(
 	if limit > maxQueryScan {
 		return Output{}, executeError(result.CodeValidation, "SHOW HISTORY LIMIT must be between 1 and 1000")
 	}
-	records, hasMore, err := engine.rows.HistoryPage(ctx, databaseName, tableName, rowID, int(limit))
+	cursor := ""
+	if show.Cursor != nil {
+		cursor, err = relationshipString(show.Cursor, table, bound, "History cursor")
+		if err != nil || cursor == "" {
+			if err != nil {
+				return Output{}, err
+			}
+			return Output{}, executeError(result.CodeValidation, "History cursor must be non-empty TEXT")
+		}
+	}
+	records, page, err := engine.rows.HistoryPage(ctx, databaseName, tableName, rowID, cursor, int(limit))
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
@@ -56,7 +66,11 @@ func (engine *Engine) showHistory(
 			{Name: "updated_at", Type: "TIMESTAMP"},
 		},
 		Rows:      make([]result.Row, 0, len(records)),
-		Truncated: hasMore,
+		Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
+		Page: &result.ListPage{
+			Version: result.ListPageVersion, Limit: limit, Cursor: cursor,
+			Snapshot: page.Snapshot, Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
+		},
 	}
 	for _, record := range records {
 		output.Rows = append(output.Rows, result.Row{

@@ -95,6 +95,21 @@ func TestDecodeDatabaseIgnoresUnknownField(t *testing.T) {
 	}
 }
 
+func TestColumnSemanticRoleCodecRejectsNonCanonicalOrUnknownValues(t *testing.T) {
+	t.Parallel()
+	column := catalogFixture()[0].Tables[0].Columns[0]
+	for _, role := range []string{"TITLE", "guessed"} {
+		column.SemanticRole = role
+		payload, err := encodeColumn(column, "tbl_decisions", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := decodeColumn(payload); err == nil {
+			t.Fatalf("decodeColumn() accepted semantic role %q", role)
+		}
+	}
+}
+
 func TestCatalogWriteRejectsWrongParent(t *testing.T) {
 	t.Parallel()
 
@@ -185,6 +200,7 @@ func catalogFixture() []catalog.Database {
 							Type:          "TEXT",
 							MaxCharacters: 120,
 							Purpose:       "决策标题",
+							SemanticRole:  "title",
 							SchemaVersion: 1,
 							CreatedAt:     created,
 							UpdatedAt:     updated,

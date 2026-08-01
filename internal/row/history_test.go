@@ -230,7 +230,8 @@ func TestHistoryAsOfAndCompensationRestoreDeletedRow(t *testing.T) {
 	if err != nil || current.Revision != 4 {
 		t.Fatalf("current row = %#v, %v", current, err)
 	}
-	records, hasMore, err := service.HistoryPage(ctx, "work", "notes", inserted.ID, 2)
+	records, page, err := service.HistoryPage(ctx, "work", "notes", inserted.ID, "", 2)
+	hasMore := page.NextCursor != ""
 	if err != nil || !hasMore || len(records) != 2 ||
 		records[0].Revision != 4 || records[0].Operation != history.OperationCompensate ||
 		records[1].Revision != 3 {

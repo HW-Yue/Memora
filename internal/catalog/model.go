@@ -25,10 +25,11 @@ type TableDefinition struct {
 }
 
 type ColumnDefinition struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Nullable bool   `json:"nullable"`
-	Purpose  string `json:"purpose"`
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	Nullable     bool   `json:"nullable"`
+	Purpose      string `json:"purpose"`
+	SemanticRole string `json:"semantic_role,omitempty"`
 }
 
 type Database struct {
@@ -67,6 +68,7 @@ type ColumnSummary struct {
 	MaxCharacters int    `json:"max_characters,omitempty"`
 	Nullable      bool   `json:"nullable"`
 	Purpose       string `json:"purpose"`
+	SemanticRole  string `json:"semantic_role,omitempty"`
 }
 
 type Column struct {
@@ -77,6 +79,7 @@ type Column struct {
 	MaxCharacters int       `json:"max_characters,omitempty"`
 	Nullable      bool      `json:"nullable"`
 	Purpose       string    `json:"purpose"`
+	SemanticRole  string    `json:"semantic_role,omitempty"`
 	SchemaVersion uint64    `json:"schema_version"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`

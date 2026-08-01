@@ -62,37 +62,45 @@ func (repository *Repository) History(databaseID, tableID, rowID string, limit i
 	if limit < 1 || limit > 1000 {
 		return nil, false, fmt.Errorf("%w: history limit must be between 1 and 1000", ErrInvalid)
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindHistory)
+	result, err := repository.HistoryAll(databaseID, tableID, rowID)
 	if err != nil {
 		return nil, false, err
+	}
+	more := len(result) > limit
+	if more {
+		result = result[:limit]
+	}
+	return result, more, nil
+}
+
+func (repository *Repository) HistoryAll(databaseID, tableID, rowID string) ([]history.Record, error) {
+	ids, err := repository.file.IDs(nativestore.ObjectKindHistory)
+	if err != nil {
+		return nil, err
 	}
 	metadata := make([]historyMetadata, 0)
 	for _, recordID := range ids {
 		payload, err := repository.file.Get(nativestore.ObjectKindHistory, recordID)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		item, err := decodeHistory(payload)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		if item.rowID == rowID {
 			metadata = append(metadata, item)
 		}
 	}
 	sort.Slice(metadata, func(left, right int) bool { return metadata[left].revision > metadata[right].revision })
-	more := len(metadata) > limit
-	if more {
-		metadata = metadata[:limit]
-	}
 	result := make([]history.Record, 0, len(metadata))
 	for _, item := range metadata {
 		value, err := repository.ReadRevision(rowID, item.revision)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		if value.DatabaseID != databaseID || value.TableID != tableID {
-			return nil, false, fmt.Errorf("%w: history Row belongs to another table", ErrCorrupt)
+			return nil, fmt.Errorf("%w: history Row belongs to another table", ErrCorrupt)
 		}
 		result = append(result, history.Record{
 			Version: history.Version, DatabaseID: value.DatabaseID, TableID: value.TableID,
@@ -104,7 +112,7 @@ func (repository *Repository) History(databaseID, tableID, rowID string, limit i
 			CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, RecordedAt: item.recordedAt,
 		})
 	}
-	return result, more, nil
+	return result, nil
 }
 
 func (repository *Repository) AllHistory() ([]history.Record, error) {

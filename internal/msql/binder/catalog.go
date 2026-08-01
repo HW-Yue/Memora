@@ -153,7 +153,7 @@ func (binder *Catalog) describe(ctx context.Context, describe *ast.DescribeState
 				table.ColumnSummaries = append(table.ColumnSummaries, dictionary.ColumnSummary{
 					ID: column.ID, Name: column.Name, Type: column.Type,
 					MaxCharacters: column.MaxCharacters, Nullable: column.Nullable,
-					Purpose: column.Purpose,
+					Purpose: column.Purpose, SemanticRole: column.SemanticRole,
 				})
 			}
 			table.Columns = []dictionary.Column{}
@@ -256,7 +256,8 @@ func columnDefinition(column ast.ColumnDefinition) dictionary.ColumnDefinition {
 		typeName += "(" + strings.Join(arguments, ",") + ")"
 	}
 	return dictionary.ColumnDefinition{
-		Name: column.Name.Value, Type: typeName, Nullable: !column.NotNull, Purpose: column.Purpose,
+		Name: column.Name.Value, Type: typeName, Nullable: !column.NotNull,
+		Purpose: column.Purpose, SemanticRole: column.SemanticRole,
 	}
 }
 

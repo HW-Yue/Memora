@@ -58,22 +58,27 @@ func (service *Service) AsOfCommit(
 
 func (service *Service) HistoryPage(
 	ctx context.Context,
-	databaseName, tableName, rowID string,
+	databaseName, tableName, rowID, cursor string,
 	limit int,
-) ([]history.Record, bool, error) {
+) ([]history.Record, history.ReadPage, error) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	tx, err := service.store.Begin(ctx, store.ReadOnly)
 	if err != nil {
-		return nil, false, stableError(err)
+		return nil, history.ReadPage{}, stableError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	table, err := service.catalog.DescribeTableIn(ctx, tx, databaseName, tableName)
 	if err != nil {
-		return nil, false, stableError(err)
+		return nil, history.ReadPage{}, stableError(err)
 	}
-	records, hasMore, err := service.history.ListPageIn(ctx, tx, table.ID, rowID, limit)
-	return records, hasMore, stableError(err)
+	records, err := service.history.ListIn(ctx, tx, table.ID, rowID)
+	if err != nil {
+		return nil, history.ReadPage{}, stableError(err)
+	}
+	reverseHistory(records)
+	pageRecords, page, err := history.Paginate(table.DatabaseID+"\x00"+table.ID+"\x00"+rowID, cursor, limit, records)
+	return pageRecords, page, stableError(err)
 }
 
 func (service *Service) Restore(
@@ -131,17 +136,26 @@ func (transaction *Transaction) AsOfCommit(
 
 func (transaction *Transaction) HistoryPage(
 	ctx context.Context,
-	databaseName, tableName, rowID string,
+	databaseName, tableName, rowID, cursor string,
 	limit int,
-) ([]history.Record, bool, error) {
+) ([]history.Record, history.ReadPage, error) {
 	table, err := transaction.DescribeTable(ctx, databaseName, tableName)
 	if err != nil {
-		return nil, false, err
+		return nil, history.ReadPage{}, err
 	}
-	records, hasMore, err := transaction.service.history.ListPageIn(
-		ctx, transaction.tx, table.ID, rowID, limit,
-	)
-	return records, hasMore, stableError(err)
+	records, err := transaction.service.history.ListIn(ctx, transaction.tx, table.ID, rowID)
+	if err != nil {
+		return nil, history.ReadPage{}, stableError(err)
+	}
+	reverseHistory(records)
+	pageRecords, page, err := history.Paginate(table.DatabaseID+"\x00"+table.ID+"\x00"+rowID, cursor, limit, records)
+	return pageRecords, page, stableError(err)
+}
+
+func reverseHistory(records []history.Record) {
+	for left, right := 0, len(records)-1; left < right; left, right = left+1, right-1 {
+		records[left], records[right] = records[right], records[left]
+	}
 }
 
 func (transaction *Transaction) Restore(

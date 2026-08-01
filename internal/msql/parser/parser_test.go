@@ -63,7 +63,7 @@ func TestParseHistoryStatementsAndParameters(t *testing.T) {
 
 	batch, err := ParseBatch(`
 		SELECT title FROM work.notes AS OF REVISION :revision WHERE row_id = :row_id LIMIT 1;
-		SHOW HISTORY FROM work.notes FOR ROW :row_id LIMIT :limit;
+		SHOW HISTORY FROM work.notes FOR ROW :row_id CURSOR :cursor LIMIT :limit;
 		RESTORE work.notes ROW :row_id TO REVISION :target
 	`)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestParseHistoryStatementsAndParameters(t *testing.T) {
 	}
 	show := batch.Statements[1].Show
 	if show == nil || show.Object != "HISTORY" || show.Table == nil ||
-		show.Row == nil || show.Limit == nil {
+		show.Row == nil || show.Cursor == nil || show.Limit == nil {
 		t.Fatalf("SHOW HISTORY AST = %#v", show)
 	}
 	restore := batch.Statements[2].Restore

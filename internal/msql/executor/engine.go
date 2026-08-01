@@ -33,7 +33,7 @@ type Rows interface {
 	Delete(context.Context, string, string, string, row.WriteOptions) (row.Row, error)
 	AsOfRevision(context.Context, string, string, string, uint64) (row.Row, error)
 	AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error)
-	HistoryPage(context.Context, string, string, string, int) ([]history.Record, bool, error)
+	HistoryPage(context.Context, string, string, string, string, int) ([]history.Record, history.ReadPage, error)
 	Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error)
 	Relate(context.Context, row.RelationDefinition) (relation.Relation, error)
 	GetRelation(context.Context, string) (relation.Relation, error)
@@ -158,6 +158,7 @@ type Output struct {
 	Truncated      bool
 	NextCursor     string
 	Page           *result.ListPage
+	RowDetail      *result.RowDetail
 }
 
 type Error struct {

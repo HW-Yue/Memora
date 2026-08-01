@@ -77,8 +77,8 @@ func TestQueryEvaluatesTypedPredicatesAndStarProjection(t *testing.T) {
 	second := insertQueryRow(t, ctx, rows, map[string]any{"title": "second", "count": 4, "done": true})
 
 	output, err := query(ctx, subject,
-		"SELECT * FROM work.notes WHERE done = TRUE AND count + 1 >= 5 AND commit_sequence = 2 LIMIT 1",
-		executor.Parameters{},
+		"SELECT * FROM work.notes WHERE row_id = :row AND done = TRUE AND count + 1 >= 5 AND commit_sequence = 2 LIMIT 1",
+		executor.Parameters{Named: map[string]any{"row": second.ID}},
 	)
 	if err != nil {
 		t.Fatalf("Query() error = %v", err)
@@ -90,6 +90,17 @@ func TestQueryEvaluatesTypedPredicatesAndStarProjection(t *testing.T) {
 	}
 	if len(output.Columns) != 9 {
 		t.Fatalf("star columns = %#v", output.Columns)
+	}
+	if output.RowDetail == nil || output.RowDetail.Version != result.RowDetailVersion ||
+		output.RowDetail.DatabaseID == "" || output.RowDetail.TableID == "" ||
+		output.RowDetail.SchemaVersion != 1 || output.RowDetail.RowSemantics != "One note" ||
+		output.RowDetail.Display.TitleColumn != "title" ||
+		output.RowDetail.Display.SummaryColumn != "" || output.RowDetail.Display.Fallback != "" {
+		t.Fatalf("row detail = %#v", output.RowDetail)
+	}
+	if output.Columns[5].ColumnID == "" || output.Columns[5].Purpose != "Title" ||
+		output.Columns[5].SemanticRole != "title" {
+		t.Fatalf("title metadata = %#v", output.Columns[5])
 	}
 
 	timeOutput, err := query(ctx, subject,
@@ -157,7 +168,7 @@ func queryFixture(t *testing.T, ctx context.Context) (*executor.Engine, *row.Ser
 	if _, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{
 		Name: "notes", Purpose: "Notes", RowSemantics: "One note",
 		Columns: []catalog.ColumnDefinition{
-			{Name: "title", Type: "TEXT(100)", Purpose: "Title"},
+			{Name: "title", Type: "TEXT(100)", Purpose: "Title", SemanticRole: "title"},
 			{Name: "count", Type: "INTEGER", Nullable: true, Purpose: "Count"},
 			{Name: "done", Type: "BOOLEAN", Nullable: true, Purpose: "Done"},
 			{Name: "at", Type: "TIMESTAMP", Nullable: true, Purpose: "Time"},

@@ -82,10 +82,11 @@ type CreateStatement struct {
 }
 
 type ColumnDefinition struct {
-	Name    Identifier `json:"name"`
-	Type    TypeRef    `json:"type"`
-	NotNull bool       `json:"not_null,omitempty"`
-	Purpose string     `json:"purpose,omitempty"`
+	Name         Identifier `json:"name"`
+	Type         TypeRef    `json:"type"`
+	NotNull      bool       `json:"not_null,omitempty"`
+	Purpose      string     `json:"purpose,omitempty"`
+	SemanticRole string     `json:"semantic_role,omitempty"`
 }
 
 type AlterStatement struct {
@@ -272,6 +273,7 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		appendExpression(statement.Show.Row)
+		appendExpression(statement.Show.Cursor)
 		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "RELATIONS":
 		appendExpression(statement.Show.Row)

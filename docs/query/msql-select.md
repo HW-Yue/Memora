@@ -1,6 +1,6 @@
 # MSQL SELECT Planner v1
 
-状态：F15d 已实现。
+状态：F15d 已实现；F112 已补充 point Row detail metadata。
 
 ## 绑定边界
 
@@ -30,6 +30,12 @@ named/positional 参数由 [MSQL 参数与表达式 v1](./msql-expressions.md) �
 ## 输出
 
 Planner 返回 Result Envelope 可直接采用的 Column metadata 和 Row maps。系统整数保持 revision/schema version，Timestamp 已规范化 UTC，业务值不做字符串插值或再解析。
+
+包含精确 RowID predicate 的 SELECT 还返回 `memora.row-detail/v1`。业务 Column metadata
+携带稳定 Column ID、purpose 与显式 semantic role；`SELECT *` 按 Catalog Column 顺序
+保留全部动态字段。title role 缺失时只声明 `row_id_revision` fallback，禁止猜列名。
+
+完整契约见 [MSQL Row Detail Read v1](./row-detail-read-v1.md)。
 
 ## 关联
 

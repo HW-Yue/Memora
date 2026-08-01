@@ -138,3 +138,23 @@ func TestListPageEnvelopeRequiresConsistentContinuation(t *testing.T) {
 		t.Fatalf("inconsistent page error = %v, want %v", err, ErrInvalidEnvelope)
 	}
 }
+
+func TestRowDetailEnvelopeRequiresDictionaryIdentityAndExplicitFallback(t *testing.T) {
+	t.Parallel()
+	statement := NewStatement(0, "SELECT", "SELECT * FROM work.notes WHERE row_id = :row LIMIT 1")
+	statement.RowDetail = &RowDetail{
+		Version: RowDetailVersion, DatabaseID: "db_work", DatabaseName: "work",
+		TableID: "tbl_notes", TableName: "notes", SchemaVersion: 3,
+		RowSemantics: "One note", Display: RowDisplay{Fallback: "row_id_revision"},
+	}
+	envelope := NewEnvelope("req-row", statement)
+	if _, err := json.Marshal(envelope); err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	invalid := envelope
+	invalid.Results[0].RowDetail.Display.Fallback = ""
+	if _, err := json.Marshal(invalid); !errors.Is(err, ErrInvalidEnvelope) {
+		t.Fatalf("invalid row detail error = %v, want %v", err, ErrInvalidEnvelope)
+	}
+}

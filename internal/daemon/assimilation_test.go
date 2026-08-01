@@ -145,7 +145,7 @@ func TestAssimilationSubmissionCommitsReviewedModulesRelationshipAndReloadableRe
 		if err != nil || current.Revision != 1 || current.Values["title"] != title {
 			t.Fatalf("reviewed Row %q = %#v, %v", rowID, current, err)
 		}
-		records, _, historyErr := rows.HistoryPage(ctx, "work", "notes", rowID, 10)
+		records, _, historyErr := rows.HistoryPage(ctx, "work", "notes", rowID, "", 10)
 		if historyErr != nil || len(records) != 1 ||
 			records[0].SourceKind != "reviewed_source" ||
 			records[0].SourceReceiptID != submissionID ||

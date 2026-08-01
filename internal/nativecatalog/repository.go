@@ -233,7 +233,18 @@ func (repository *Repository) Read() ([]catalog.Database, error) {
 		sort.Slice(database.tables, func(left, right int) bool { return database.tables[left].order < database.tables[right].order })
 		for _, table := range database.tables {
 			sort.Slice(table.columns, func(left, right int) bool { return table.columns[left].order < table.columns[right].order })
+			displayRoles := map[string]struct{}{}
 			for _, column := range table.columns {
+				role := column.value.SemanticRole
+				if !validSemanticRole(role) || role != normalizeSemanticRole(role) {
+					return nil, fmt.Errorf("%w: column %q has invalid semantic role", ErrCorrupt, column.value.ID)
+				}
+				if role == "title" || role == "summary" {
+					if _, exists := displayRoles[role]; exists {
+						return nil, fmt.Errorf("%w: table %q has duplicate %s role", ErrCorrupt, table.value.ID, role)
+					}
+					displayRoles[role] = struct{}{}
+				}
 				table.value.Columns = append(table.value.Columns, column.value)
 			}
 			database.value.Tables = append(database.value.Tables, table.value)
@@ -419,9 +430,20 @@ func validateCatalog(databases []catalog.Database) error {
 			if err := validateIdentity(table.ID, table.Name, table.CreatedAt, table.UpdatedAt, seen); err != nil {
 				return err
 			}
+			displayRoles := map[string]string{}
 			for _, column := range table.Columns {
 				if err := validateIdentity(column.ID, column.Name, column.CreatedAt, column.UpdatedAt, seen); err != nil {
 					return err
+				}
+				if !validSemanticRole(column.SemanticRole) || column.SemanticRole != normalizeSemanticRole(column.SemanticRole) {
+					return fmt.Errorf("%w: column %q has invalid semantic role", ErrInvalid, column.ID)
+				}
+				role := normalizeSemanticRole(column.SemanticRole)
+				if role == "title" || role == "summary" {
+					if _, exists := displayRoles[role]; exists {
+						return fmt.Errorf("%w: table %q has duplicate %s role", ErrInvalid, table.ID, role)
+					}
+					displayRoles[role] = column.ID
 				}
 			}
 		}
@@ -457,11 +479,15 @@ func encodeTable(value catalog.Table, order uint64) ([]byte, error) {
 }
 
 func encodeColumn(value catalog.Column, tableID string, order uint64) ([]byte, error) {
-	return encodeObject([]fieldValue{
+	values := []fieldValue{
 		{1, value.ID}, {2, order}, {3, tableID}, {4, value.Name}, {5, value.Aliases},
 		{6, value.Type}, {7, int64(value.MaxCharacters)}, {8, value.Nullable}, {9, value.Purpose},
 		{10, value.SchemaVersion}, {11, value.CreatedAt.UTC().UnixNano()}, {12, value.UpdatedAt.UTC().UnixNano()},
-	})
+	}
+	if value.SemanticRole != "" {
+		values = append(values, fieldValue{13, value.SemanticRole})
+	}
+	return encodeObject(values)
 }
 
 type fieldValue struct {
@@ -557,13 +583,17 @@ func decodeColumn(payload []byte) (columnRecord, error) {
 	schema, e10 := fields.uint64(10)
 	created, e11 := fields.int64(11)
 	updated, e12 := fields.int64(12)
-	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12); err != nil {
+	semanticRole, e13 := fields.optionalText(13)
+	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13); err != nil {
 		return columnRecord{}, err
 	}
 	if maxChars < 0 || maxChars > math.MaxInt {
 		return columnRecord{}, fmt.Errorf("%w: invalid max characters", ErrCorrupt)
 	}
-	return columnRecord{order: order, tableID: tableID, value: catalog.Column{ID: id, Name: name, Aliases: aliases, Type: kind, MaxCharacters: int(maxChars), Nullable: nullable, Purpose: purpose, SchemaVersion: schema, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
+	if !validSemanticRole(semanticRole) || semanticRole != normalizeSemanticRole(semanticRole) {
+		return columnRecord{}, fmt.Errorf("%w: invalid semantic role", ErrCorrupt)
+	}
+	return columnRecord{order: order, tableID: tableID, value: catalog.Column{ID: id, Name: name, Aliases: aliases, Type: kind, MaxCharacters: int(maxChars), Nullable: nullable, Purpose: purpose, SemanticRole: semanticRole, SchemaVersion: schema, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
 }
 
 func firstError(errors ...error) error {

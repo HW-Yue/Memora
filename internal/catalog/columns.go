@@ -21,6 +21,13 @@ func (service *Service) AddColumn(ctx context.Context, databaseName, tableName s
 		if _, exists := findColumn(table, definition.Name); exists {
 			return duplicate("column", definition.Name)
 		}
+		if role := normalizeSemanticRole(definition.SemanticRole); role == "title" || role == "summary" {
+			for _, existing := range table.Columns {
+				if normalizeSemanticRole(existing.SemanticRole) == role {
+					return &Error{Code: CodeValidation, Object: "column", Name: definition.Name, Field: "unique " + role + " role"}
+				}
+			}
+		}
 		now := service.clock.Now().UTC()
 		created, err = service.newColumn(definition, now)
 		if err != nil {
@@ -106,7 +113,8 @@ func (service *Service) newColumn(definition ColumnDefinition, now time.Time) (C
 	return Column{
 		ID: id, Name: definition.Name, Aliases: []string{}, Type: string(logicalType.Kind),
 		MaxCharacters: logicalType.MaxCharacters,
-		Nullable:      definition.Nullable, Purpose: definition.Purpose, SchemaVersion: 1,
+		Nullable:      definition.Nullable, Purpose: definition.Purpose,
+		SemanticRole: normalizeSemanticRole(definition.SemanticRole), SchemaVersion: 1,
 		CreatedAt: now, UpdatedAt: now,
 	}, nil
 }
@@ -124,8 +132,37 @@ func validateColumnDefinition(definition ColumnDefinition) error {
 	if err := require("column", definition.Name, "purpose", definition.Purpose); err != nil {
 		return err
 	}
+	if !validSemanticRole(definition.SemanticRole) {
+		return &Error{Code: CodeValidation, Object: "column", Name: definition.Name, Field: "a supported semantic role"}
+	}
 	_, err := logical.ParseDeclaration(definition.Type)
 	return err
+}
+
+func normalizeSemanticRole(value string) string { return canonical(value) }
+
+func validSemanticRole(value string) bool {
+	switch normalizeSemanticRole(value) {
+	case "", "title", "summary", "identity", "status":
+		return true
+	default:
+		return false
+	}
+}
+
+func uniqueDisplayRoles(columns []ColumnDefinition) error {
+	seen := map[string]string{}
+	for _, column := range columns {
+		role := normalizeSemanticRole(column.SemanticRole)
+		if role != "title" && role != "summary" {
+			continue
+		}
+		if first, exists := seen[role]; exists {
+			return &Error{Code: CodeValidation, Object: "column", Name: column.Name, Field: "unique " + role + " role; already used by " + first}
+		}
+		seen[role] = column.Name
+	}
+	return nil
 }
 
 func isReservedColumn(name string) bool {
