@@ -35,6 +35,9 @@ const (
 // immutable body source; the Page trees decide which body revision is visible.
 type Authority struct {
 	mu         sync.RWMutex
+	directory  string
+	file       *nativestore.File
+	marker     authorityMarker
 	generation *Generation
 	reader     *Reader
 	catalog    *nativecatalog.IndexedReader
@@ -76,11 +79,16 @@ func OpenAuthority(
 	} else if err != nil {
 		return nil, fmt.Errorf("%w: inspect authority marker: %v", ErrTargetCorrupt, err)
 	}
+	marker, err := decodeAuthorityMarker(absolute)
+	if err != nil {
+		return nil, err
+	}
+	generationDirectory = filepath.Join(absolute, marker.Generation)
 	manifest, err := readManifest(generationDirectory)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := readAuthorityMarker(absolute, manifest); err != nil {
+	if err := marker.validate(manifest); err != nil {
 		return nil, err
 	}
 	generation, err := openLiveGeneration(generationDirectory)
@@ -100,7 +108,8 @@ func OpenAuthority(
 		return nil, err
 	}
 	authority := &Authority{
-		generation: generation, reader: reader, catalog: catalogReader, rows: rowReader,
+		directory: absolute, file: file, marker: marker, generation: generation,
+		reader: reader, catalog: catalogReader, rows: rowReader,
 		writeGate: make(chan struct{}, 1),
 		locks:     objectlock.New(),
 	}
@@ -440,6 +449,8 @@ func (authority *Authority) Generation() *Generation {
 	if authority == nil {
 		return nil
 	}
+	authority.mu.RLock()
+	defer authority.mu.RUnlock()
 	return authority.generation
 }
 

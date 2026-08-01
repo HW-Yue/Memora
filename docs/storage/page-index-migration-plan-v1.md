@@ -1,6 +1,6 @@
 # Page Index Migration Plan v1
 
-状态：F105 Reader 与 F106 apply 均已完成并验收；F107 authority 切换尚未开始。
+状态：F105 Reader 与 F106 apply 均已完成并验收；F107 authority 切换和 F108 整代替换已完成。
 
 ## 唯一结果
 

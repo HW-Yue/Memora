@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -18,6 +20,7 @@ const (
 
 type authorityMarker struct {
 	Version           string `json:"version"`
+	Epoch             uint64 `json:"epoch,omitempty"`
 	Generation        string `json:"generation"`
 	PlanDigest        string `json:"plan_digest"`
 	SourceFingerprint string `json:"source_sha256"`
@@ -40,11 +43,38 @@ func newAuthorityMarker(manifest generationManifest) (authorityMarker, error) {
 	return marker, err
 }
 
+func newReplacementAuthorityMarker(manifest generationManifest, epoch uint64) (authorityMarker, error) {
+	if epoch == 0 {
+		return authorityMarker{}, fmt.Errorf("%w: replacement epoch", ErrInvalid)
+	}
+	marker := authorityMarker{
+		Version: authorityMarkerVersion, Epoch: epoch,
+		Generation: replacementGenerationName(epoch, manifest.PlanDigest),
+		PlanDigest: manifest.PlanDigest, SourceFingerprint: manifest.SourceFingerprint,
+	}
+	digest, err := authorityMarkerDigest(marker)
+	marker.Digest = digest
+	if err == nil {
+		err = marker.validate(manifest)
+	}
+	return marker, err
+}
+
 func (marker authorityMarker) validate(manifest generationManifest) error {
-	if marker.Version != authorityMarkerVersion || marker.Generation != GenerationDirectory ||
+	if err := marker.validateSelf(); err != nil {
+		return err
+	}
+	if marker.PlanDigest != manifest.PlanDigest || marker.SourceFingerprint != manifest.SourceFingerprint {
+		return fmt.Errorf("%w: authority marker binding", ErrTargetCorrupt)
+	}
+	return nil
+}
+
+func (marker authorityMarker) validateSelf() error {
+	if marker.Version != authorityMarkerVersion ||
 		!canonicalSHA256(marker.PlanDigest) || !canonicalSHA256(marker.SourceFingerprint) ||
-		!canonicalSHA256(marker.Digest) || marker.PlanDigest != manifest.PlanDigest ||
-		marker.SourceFingerprint != manifest.SourceFingerprint {
+		!canonicalSHA256(marker.Digest) ||
+		marker.Generation != replacementGenerationName(marker.Epoch, marker.PlanDigest) {
 		return fmt.Errorf("%w: authority marker binding", ErrTargetCorrupt)
 	}
 	digest, err := authorityMarkerDigest(marker)
@@ -55,6 +85,21 @@ func (marker authorityMarker) validate(manifest generationManifest) error {
 }
 
 func authorityMarkerDigest(marker authorityMarker) (string, error) {
+	if marker.Epoch != 0 {
+		payload := struct {
+			Version           string `json:"version"`
+			Epoch             uint64 `json:"epoch"`
+			Generation        string `json:"generation"`
+			PlanDigest        string `json:"plan_digest"`
+			SourceFingerprint string `json:"source_sha256"`
+		}{marker.Version, marker.Epoch, marker.Generation, marker.PlanDigest, marker.SourceFingerprint}
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return "", err
+		}
+		digest := sha256.Sum256(encoded)
+		return hex.EncodeToString(digest[:]), nil
+	}
 	payload := struct {
 		Version           string `json:"version"`
 		Generation        string `json:"generation"`
@@ -69,7 +114,48 @@ func authorityMarkerDigest(marker authorityMarker) (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
+func replacementGenerationName(epoch uint64, planDigest string) string {
+	if epoch == 0 {
+		return GenerationDirectory
+	}
+	if !canonicalSHA256(planDigest) {
+		return ""
+	}
+	return GenerationDirectory + ".g" + fmt.Sprintf("%020d", epoch) + "." + planDigest
+}
+
+func parseReplacementGenerationName(name string) (uint64, string, error) {
+	if name == GenerationDirectory {
+		return 0, "", nil
+	}
+	prefix := GenerationDirectory + ".g"
+	if !strings.HasPrefix(name, prefix) {
+		return 0, "", ErrTargetCorrupt
+	}
+	rest := strings.TrimPrefix(name, prefix)
+	if len(rest) != 20+1+sha256.Size*2 || rest[20] != '.' {
+		return 0, "", ErrTargetCorrupt
+	}
+	epoch, err := strconv.ParseUint(rest[:20], 10, 64)
+	digest := rest[21:]
+	if err != nil || epoch == 0 || !canonicalSHA256(digest) || replacementGenerationName(epoch, digest) != name {
+		return 0, "", ErrTargetCorrupt
+	}
+	return epoch, digest, nil
+}
+
 func readAuthorityMarker(databaseDirectory string, manifest generationManifest) (authorityMarker, error) {
+	marker, err := decodeAuthorityMarker(databaseDirectory)
+	if err != nil {
+		return authorityMarker{}, err
+	}
+	if err := marker.validate(manifest); err != nil {
+		return authorityMarker{}, err
+	}
+	return marker, nil
+}
+
+func decodeAuthorityMarker(databaseDirectory string) (authorityMarker, error) {
 	path := filepath.Join(databaseDirectory, AuthorityMarkerFilename)
 	pathInfo, err := os.Lstat(path)
 	if err != nil || pathInfo.Mode()&os.ModeSymlink != 0 || !pathInfo.Mode().IsRegular() {
@@ -93,7 +179,7 @@ func readAuthorityMarker(databaseDirectory string, manifest generationManifest) 
 	if err := requireJSONEOF(decoder); err != nil {
 		return authorityMarker{}, fmt.Errorf("%w: authority marker trailing data", ErrTargetCorrupt)
 	}
-	if err := marker.validate(manifest); err != nil {
+	if err := marker.validateSelf(); err != nil {
 		return authorityMarker{}, err
 	}
 	return marker, nil

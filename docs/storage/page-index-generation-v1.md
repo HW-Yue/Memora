@@ -1,6 +1,6 @@
 # Page Index Generation v1
 
-状态：F106 已完成并验收；F107 尚未将其切为默认 authority。
+状态：F106 已完成并验收；F107 已将 live generation 切为默认 authority，F108 已支持整代替换。
 
 ## 唯一结果
 

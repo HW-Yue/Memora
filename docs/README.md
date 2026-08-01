@@ -129,6 +129,7 @@
 - [Page Index Migration Plan v1](./storage/page-index-migration-plan-v1.md) — F105 已完成：只读盘点 legacy Record，生成并重验绑定 source digest 的 F98–F100 引导计划。
 - [Page Index Generation v1](./storage/page-index-generation-v1.md) — F106 已完成：以 staging + 原子目录发布构建可重开验证的三树候选 generation。
 - [Page Store Authority v1](./storage/page-store-authority-v1.md) — F107 已完成：live generation 激活、无扫描查询 authority、写入发布与重开补齐。
+- [COW Generation Replacement v1](./storage/cow-generation-replacement-v1.md) — F108 已完成：旁路构建、完整验证、marker 原子切换与旧 generation 保留。
 - [Instance、Database 与 Table](./storage/instance-database-table.md) — 一个本地实例承载多个逻辑数据库。
 - [macOS Instance 数据目录](./storage/macos-instance-directory.md) — 默认 datadir、缓存/日志边界和自定义路径规则。
 - [Instance Format 升级与回滚 v1](./storage/instance-format-upgrade-v1.md) — F49 的兼容状态、v1→v2、完整性备份、迁移 journal 与 `doctor repair`。
@@ -169,6 +170,7 @@
 - [F97b WAL Recovery Open 拆分 Review](./planning/f97b-wal-recovery-open-review.md) — 当前格式无法区分 durable commit 与 speculative tail，建议拆出 durable frontier。
 - [F97b1 Durable WAL Frontier 开工与完成门](./planning/f97b1-durable-wal-frontier-gate.md) — 已完成的双槽 control、outcome unknown、fault matrix 与证据。
 - [F107 Page Store Default Switch 开工与完成门](./planning/f107-page-store-default-switch-gate.md) — 已完成的 RED、发布故障与无 fallback 验收证据。
+- [F108 COW Generation Replacement 开工与完成门](./planning/f108-cow-generation-replacement-gate.md) — 当前 Feature 的 epoch、故障矩阵与原子 swap 完成门。
 - [F97b2 WAL Recovery Open 开工与完成门](./planning/f97b2-wal-recovery-open-gate.md) — repairing open 的严格 authority 校验、可重入截尾与故障矩阵。
 - [F97c1 Tree Control Codec 开工与完成门](./planning/f97c1-tree-control-codec-gate.md) — slot 1 codec、bootstrap 与 corruption 完成证据。
 - [F97c2 Root/Allocator Redo Codec 开工与完成门](./planning/f97c2-root-allocator-redo-gate.md) — metadata payload、版本与字段校验。
