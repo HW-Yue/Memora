@@ -15,6 +15,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/routemutationplan"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
 	"github.com/HW-Yue/Memora/internal/skillconflict"
@@ -93,6 +94,8 @@ type Contract struct {
 	AssimilationReviewVersion          string               `json:"assimilation_review_version"`
 	SourceReceiptVersion               string               `json:"source_receipt_version"`
 	SemanticHealthVersion              string               `json:"semantic_health_version"`
+	RouteMutationProposalVersion       string               `json:"route_mutation_proposal_version"`
+	RouteMutationPlanVersion           string               `json:"route_mutation_plan_version"`
 	MaintenanceRequestVersion          string               `json:"maintenance_request_version"`
 	MaintenanceReceiptVersion          string               `json:"maintenance_receipt_version"`
 	FeedbackEventVersion               string               `json:"feedback_event_version"`
@@ -178,6 +181,8 @@ func (bundle Bundle) Validate() error {
 	requireEqual("assimilation_review_version", contract.AssimilationReviewVersion, assimilation.ReviewVersion)
 	requireEqual("source_receipt_version", contract.SourceReceiptVersion, assimilation.SourceReceiptVersion)
 	requireEqual("semantic_health_version", contract.SemanticHealthVersion, semantichealth.ReportVersion)
+	requireEqual("route_mutation_proposal_version", contract.RouteMutationProposalVersion, routemutationplan.ProposalVersion)
+	requireEqual("route_mutation_plan_version", contract.RouteMutationPlanVersion, routemutationplan.PlanVersion)
 	requireEqual("maintenance_request_version", contract.MaintenanceRequestVersion, semantichealth.RequestVersion)
 	requireEqual("maintenance_receipt_version", contract.MaintenanceReceiptVersion, semantichealth.ReceiptVersion)
 	requireEqual("feedback_event_version", contract.FeedbackEventVersion, feedback.EventVersion)

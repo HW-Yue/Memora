@@ -333,7 +333,7 @@ and stale description findings are review-only; never infer the correct semantic
 SELECT duplicate Rows before proposing MERGE, inspect synonymous fields before a
 Schema plan, and request review before Router splits or description rewrites.
 
-Semantic-health findings are review-only in v1. Do not submit a maintenance
+Semantic-health findings are review-only in v2. Do not submit a maintenance
 mutation for them automatically. Use the normal Schema, Router, or Row mutation
 flow after the AI has inspected the affected logical objects and the user has
 approved any broad or destructive change.
@@ -341,6 +341,21 @@ approved any broad or destructive change.
 ```sh
 memora maintain --report
 ```
+
+For a local Router split, merge, or move, inspect the exact current nodes and leaf
+locators first. Express the semantic names, purposes, source revisions, and complete
+child Route or RowID grouping in `memora.route-mutation-proposal/v1`; do not ask the
+engine to infer the grouping. Generate a review-only plan through MSQL:
+
+```sh
+memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.route-mutation-proposal/v1","proposal_id":"route-proposal-1","operation":"MOVE","actor":"agent:host","source_event_id":"conversation:event-9","reason":"move reviewed subtree","sources":[{"route_id":"route_source","expected_revision":3}],"target_parent_id":"route_archive"}}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal"
+```
+
+Verify that the result is `memora.route-mutation-plan/v1`, `status=review_required`,
+and has base snapshot and plan hashes. F129 has no apply path: show the plan and its
+impact for review, and never translate its actions into ad hoc CREATE/DELETE/UPDATE
+statements. A truncated scan or revision conflict requires a fresh inspection and
+new proposal.
 
 ## Record feedback and revise
 

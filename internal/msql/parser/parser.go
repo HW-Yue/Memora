@@ -97,6 +97,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseSplit()
 	case parser.matchWord("MERGE"):
 		statement, err = parser.parseMerge()
+	case parser.matchWord("PLAN"):
+		statement, err = parser.parsePlanRouteMutation()
 	case parser.matchWord("RELATE"):
 		statement, err = parser.parseRelate()
 	case parser.matchWord("UNRELATE"):
@@ -138,6 +140,28 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 
 func transactionStatement(action string) ast.Statement {
 	return ast.Statement{Kind: action, Transaction: &ast.TransactionStatement{Action: action}}
+}
+
+func (parser *parser) parsePlanRouteMutation() (ast.Statement, error) {
+	for _, word := range []string{"ROUTE", "MUTATION", "FOR", "TABLE"} {
+		if _, err := parser.expectWord(word); err != nil {
+			return ast.Statement{}, err
+		}
+	}
+	table, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("USING"); err != nil {
+		return ast.Statement{}, err
+	}
+	proposal, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "PLAN_ROUTE_MUTATION", PlanRoute: &ast.PlanRouteMutationStatement{
+		Table: table, Proposal: &proposal,
+	}}, nil
 }
 
 func (parser *parser) parseShow() (ast.Statement, error) {

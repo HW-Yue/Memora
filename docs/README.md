@@ -67,6 +67,7 @@
 - [MSQL Catalog DDL v1](./query/catalog-ddl.md) — F13c 的自描述建模、发现、rename 和限定名 Binder 契约。
 - [MSQL Metadata Read v1](./query/metadata-read-v1.md) — F110 的 Database/Table/Column 有界分页、snapshot 与 cursor 契约。
 - [MSQL Route Read v1](./query/route-read-v1.md) — F111 的 point node、单层 children、leaf locator 分页与快照契约。
+- [Route Mutation Plan v1](./query/route-mutation-plan-v1.md) — F129 的只读 split/merge/move proposal 校验与确定性 review plan。
 - [MSQL Row Detail Read v1](./query/row-detail-read-v1.md) — F112 的 Data Dictionary 展示角色、point Row envelope 与 History 快照分页。
 - [MSQL Committed Change Read v1](./query/change-read-v1.md) — F113 的固定 high-water timeline、transaction entry page 与 Database scope cursor。
 - [MSQL Route Trace Read v1](./query/route-trace-read-v1.md) — F114 的短期 trace timeline、step page、retention epoch 与隐私边界。
@@ -194,6 +195,7 @@
 - [F113 Change Read Protocol 开工与完成门](./planning/f113-change-read-protocol-gate.md) — Page change index、固定 snapshot cursor、授权与 daemon/reopen 验收。
 - [F114 Trace Read Protocol 开工与完成门](./planning/f114-trace-read-protocol-gate.md) — bounded receipt、retention、scope cursor 与 daemon/reopen 验收。
 - [F128 Semantic Health Scan 开工与完成门](./planning/f128-semantic-health-scan-gate.md) — Route、membership 与 Schema 结构债务的有界只读扫描。
+- [F129 Route Mutation Plan 开工与完成门](./planning/f129-route-mutation-plan-gate.md) — 只读 Route proposal 重验、确定性 plan 与 no-write 门。
 - [F97b2 WAL Recovery Open 开工与完成门](./planning/f97b2-wal-recovery-open-gate.md) — repairing open 的严格 authority 校验、可重入截尾与故障矩阵。
 - [F97c1 Tree Control Codec 开工与完成门](./planning/f97c1-tree-control-codec-gate.md) — slot 1 codec、bootstrap 与 corruption 完成证据。
 - [F97c2 Root/Allocator Redo Codec 开工与完成门](./planning/f97c2-root-allocator-redo-gate.md) — metadata payload、版本与字段校验。

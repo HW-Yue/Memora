@@ -22,6 +22,9 @@ locator。输出只含 ID、对象名、计数、风险与动作，不含 Row va
 同义 sibling 只是“需要复核的歧义”，不是自动 merge 结论。所有 issue 都是
 `review_required`、`auto_fix=false`；F128 没有语义自动修复。
 
+F129 起，AI 可在读取受影响 Route/locator 后，通过只读 MSQL 生成绑定当前 guard/hash
+的局部 split/merge/move 计划；健康报告本身仍不能成为分组答案或执行授权。
+
 ## 截断与误报边界
 
 Row page 截断时，不对该 Table 生成 `orphan_membership` 或 `unrouted_row`；locator 总预算
@@ -32,3 +35,4 @@ scope/revision 等正证据问题。报告 `truncated=true`，不得把零 issue
 
 - [语义数据库健康维护 v1](./semantic-health-v1.md)
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
+- [Route Mutation Plan v1](../query/route-mutation-plan-v1.md)

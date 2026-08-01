@@ -94,6 +94,8 @@ func statementDatabaseNames(statement ast.Statement) []string {
 		appendQualifiedTable(statement.Restore.Table)
 	case statement.Reshape != nil:
 		appendQualifiedTable(statement.Reshape.Table)
+	case statement.PlanRoute != nil:
+		appendQualifiedTable(statement.PlanRoute.Table)
 	case statement.Relate != nil:
 		appendQualifiedTable(statement.Relate.SourceTable)
 		appendQualifiedTable(statement.Relate.TargetTable)

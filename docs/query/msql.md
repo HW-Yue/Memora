@@ -2,7 +2,7 @@
 
 状态：协议定位已确认；F70 已实现 Table 级逐层 Router 语法，F71 已删除旧语义
 检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE，F79 已实现
-版本化查询预算配置。
+版本化查询预算配置，F129 已实现只读 Route Mutation Plan。
 
 ## 定位
 
@@ -36,7 +36,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 
 - 发现：SHOW INSTANCE/DATABASES/TABLES；
 - 描述：DESCRIBE DATABASE/TABLE；
-- 路由：SHOW ROUTES、OPEN ROUTE；
+- 路由：SHOW ROUTES、OPEN ROUTE、PLAN ROUTE MUTATION；
 - 数据：SELECT、INSERT、UPDATE、DELETE、SPLIT、MERGE；
 - Schema：CREATE/ALTER/DROP；
 - 事务：BEGIN、COMMIT、ROLLBACK、SET TRANSACTION ISOLATION LEVEL；
@@ -87,6 +87,18 @@ mutation options 同时提交来源 revision、每个目标的完整 Route snaps
 `relation_target_ordinals` 明确每条关系归属哪个目标。引擎不猜拆分边界，只在一个
 原生事务里发布 superseded 来源、新目标、History、关系、上层 Route revision 和
 memberships。
+
+Route 树自身需要局部 split/merge/move 时，AI 先显式给出语义命名和完整分组，
+再由只读 MSQL 生成可审阅计划：
+
+```sql
+PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal;
+```
+
+`:proposal` 通过参数绑定传入 `memora.route-mutation-proposal/v1`；结果返回
+`memora.route-mutation-plan/v1`、base snapshot hash 和 plan hash。F129 不提供执行入口，
+也不从 Row 正文、向量或字面索引猜分组。完整契约见
+[Route Mutation Plan v1](./route-mutation-plan-v1.md)。
 
 查询预算通过同一 MSQL 发现和修改，不允许宿主直接改进程变量：
 

@@ -22,6 +22,7 @@ func TestParseCoreStatementsGolden(t *testing.T) {
 		"INSERT INTO notes (title, body) VALUES (:title, :body), ('fallback', NULL)",
 		"UPDATE notes SET title = :title, revision = revision + 1 WHERE row_id = ?",
 		"DELETE FROM notes WHERE row_id = :row_id",
+		"PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal",
 	}
 	var encoded strings.Builder
 	for _, source := range sources {

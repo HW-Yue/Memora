@@ -19,6 +19,7 @@ Database、Schema、Router 或候选。
 - `memora.assimilation-event/v1` 和 `memora.assimilation-receipt/v1`；
 - `memora.assimilation-submission/v1`、`memora.assimilation-review/v1` 和 `memora.source-receipt/v1`；
 - `memora.semantic-health/v2`、`memora.maintenance-request/v1` 和 `memora.maintenance-receipt/v1`；
+- `memora.route-mutation-proposal/v1` 和 `memora.route-mutation-plan/v1`；
 - `memora.feedback-event/v1`、`memora.feedback-receipt/v1`、`memora.feedback-confirmation/v1` 和确认收据；
 - `memora.speculative-discovery/v1` 的同回合并行发现、全局预算与 Router fallback；
 - `memora assimilate/doctor/query/exec/feedback/maintain/mutate/schema/reflect` 九个逻辑入口。

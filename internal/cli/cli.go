@@ -863,7 +863,7 @@ func runExecute(
 		if _, err := readquery.Validate(source); err != nil {
 			return usageError(
 				stderr,
-				"query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE",
+				"query only accepts SHOW, DESCRIBE, SELECT, OPEN ROUTE, or PLAN ROUTE MUTATION",
 			)
 		}
 	}

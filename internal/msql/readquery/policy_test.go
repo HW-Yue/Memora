@@ -30,6 +30,7 @@ func TestValidateAllowsReadBatchAndPreservesParseErrorsForExecutor(t *testing.T)
 	}{
 		{"SHOW DATABASES; DESCRIBE TABLE work.notes; SELECT * FROM work.notes LIMIT 1", 3},
 		{"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 16; OPEN ROUTE :leaf LIMIT 16", 2},
+		{"PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal", 1},
 		{"SELECT * work.notes; SHOW DATABASES", 2},
 		{"unterminated 'string", 0},
 	} {

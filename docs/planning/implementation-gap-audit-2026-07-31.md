@@ -24,7 +24,7 @@ Story Gate 与具体实现；不把历史归档或已撤销的 Vector/MATCH 路�
 | 真实 AI 用户旅程 | Codex/Claude adapter 与脚本化 F80 Story Gate | 真实 Codex、Claude、Kimi 等模型从自然语言自主选择 Database/Table/Route、决定 worthiness、Schema、split/merge，并验证回答质量 |
 | AI-native 质量门 | 八维计分结构、固定场景和脚本 Adapter | 真实 Table Router Adapter；fanout/depth/歧义度能力曲线，并比较 Router-only 与可回退 predictor 的准确率、token/调用数/延迟和跨模型结果 |
 | 持续输入入口 | 显式 `memora reflect` delta/checkpoint/session_end | 宿主可稳定触发的“值得写”判断与会话交接；当前 adapter 只安装 Skill，不保证看见所有宿主活动 |
-| 语义 DBA | 手工 Route CRUD、原子 reshape、重复 Row/同义字段/陈旧描述报告 | Router 容量、错挂、漏挂、歧义、导航失败和结构熵检查；基于真实证据生成局部优化计划 |
+| 语义 DBA | F128 已做 Route/membership 结构扫描，F129 已做 review-only 局部 split/merge/move 计划 | 经批准的 Route Plan 原子执行、导航失败/结构熵证据与真实 AI 优化验收 |
 | 自动维护 | `maintain --report/request` 协议和幂等收据 | 当前实现没有会产生 `auto_fix=true` 的 Issue，`Maintain` 不生成实际 Action；文档所述 Router capacity 与 pending reindex retry 未接入当前代码 |
 | Schema 生命周期 | 自描述建库建表、精确同义词复用、Table/Column rename 补偿 | Column 长度调整、类型/NULL/约束变化、删除字段、Row 数据迁移、影响验证和完整 Schema merge |
 | 多库发现 | `SHOW DATABASES → SHOW TABLES` | Database 数量增长后的有界分页/目录树/根路由；当前 `SHOW DATABASES` 返回整个授权范围，冷库漏检与上下文成本未解决 |

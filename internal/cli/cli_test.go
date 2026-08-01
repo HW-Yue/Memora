@@ -99,13 +99,13 @@ func TestRun(t *testing.T) {
 			name:       "query rejects mutation",
 			args:       []string{"query", "UPDATE work.notes SET title = 'unsafe'"},
 			wantCode:   2,
-			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE\n",
+			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, OPEN ROUTE, or PLAN ROUTE MUTATION\n",
 		},
 		{
 			name:       "query rejects recovered mutation after parse failure",
 			args:       []string{"query", "SELECT * work.notes; DELETE FROM work.notes WHERE row_id = 'row_1'"},
 			wantCode:   2,
-			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, or OPEN ROUTE\n",
+			wantStderr: "memora: query only accepts SHOW, DESCRIBE, SELECT, OPEN ROUTE, or PLAN ROUTE MUTATION\n",
 		},
 		{
 			name:       "mutate requires plan",

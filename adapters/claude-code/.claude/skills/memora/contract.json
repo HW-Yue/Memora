@@ -12,6 +12,8 @@
   "assimilation_review_version": "memora.assimilation-review/v1",
   "source_receipt_version": "memora.source-receipt/v1",
   "semantic_health_version": "memora.semantic-health/v2",
+  "route_mutation_proposal_version": "memora.route-mutation-proposal/v1",
+  "route_mutation_plan_version": "memora.route-mutation-plan/v1",
   "maintenance_request_version": "memora.maintenance-request/v1",
   "maintenance_receipt_version": "memora.maintenance-receipt/v1",
   "feedback_event_version": "memora.feedback-event/v1",
@@ -82,6 +84,11 @@
     {
       "name": "semantic-health",
       "command": "memora maintain --report"
+    },
+    {
+      "name": "route-mutation-plan",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"proposal\":{\"version\":\"memora.route-mutation-proposal/v1\",\"proposal_id\":\"route-proposal-1\",\"operation\":\"MOVE\",\"actor\":\"agent:host\",\"source_event_id\":\"conversation:event-9\",\"reason\":\"move reviewed subtree\",\"sources\":[{\"route_id\":\"route_source\",\"expected_revision\":3}],\"target_parent_id\":\"route_archive\"}}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal\"",
+      "msql": "PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal"
     },
     {
       "name": "record-feedback",
