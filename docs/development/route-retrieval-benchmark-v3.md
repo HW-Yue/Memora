@@ -1,6 +1,6 @@
 # Route Retrieval Benchmark v3
 
-状态：F124 Corpus 与 F124a Frame 已冻结；F124b–F124e 完成后才运行 F125。
+状态：F124 Corpus、F124a Frame 与 F124b Lexical 已冻结；F124c–F124e 完成后才运行 F125。
 
 ## 核心问题
 

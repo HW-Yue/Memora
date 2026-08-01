@@ -597,6 +597,41 @@ func (service *Service) ListChildrenPageIn(
 	return PaginateNodes("parent:"+parentID, cursor, limit, nodes)
 }
 
+// ListNodes returns the current live semantic nodes in stable ID order. It is
+// intentionally separate from Route memberships and never exposes Row data.
+func (service *Service) ListNodes(ctx context.Context) ([]Node, error) {
+	tx, err := service.store.Begin(ctx, store.ReadOnly)
+	if err != nil {
+		return nil, stableError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return service.ListNodesIn(ctx, tx)
+}
+
+func (service *Service) ListNodesIn(ctx context.Context, tx store.Tx) ([]Node, error) {
+	if service == nil || tx == nil {
+		return nil, routerError(result.CodeInternal, "Router node source is unavailable")
+	}
+	entries, err := tx.Scan(ctx, nodeBucket)
+	if err != nil {
+		return nil, stableError(err)
+	}
+	nodes := make([]Node, 0, len(entries))
+	for _, entry := range entries {
+		var node Node
+		if decodeJSON(entry.Value, &node) != nil || node.Version != Version ||
+			node.ID != entry.Key || node.DatabaseID == "" || node.Revision == 0 {
+			return nil, routerError(result.CodeInternal, "Router node source is corrupt")
+		}
+		if !node.Deleted {
+			node.Aliases = append([]string{}, node.Aliases...)
+			nodes = append(nodes, node)
+		}
+	}
+	sort.Slice(nodes, func(left, right int) bool { return nodes[left].ID < nodes[right].ID })
+	return nodes, nil
+}
+
 func (service *Service) nextID() (string, error) {
 	service.mu.Lock()
 	defer service.mu.Unlock()

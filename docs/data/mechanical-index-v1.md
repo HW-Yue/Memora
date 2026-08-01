@@ -1,6 +1,7 @@
 # Mechanical Inverted Index v1
 
-状态：F20a/F20b 已冻结确定性 tokenizer、posting、预算、重建与 Row 自动维护。
+状态：F20a/F20b 的历史 Row 索引规格；当前语义查询不再使用。F124b 是独立的
+Route/Catalog 位置预测器，不读取或复用本规格的 Row posting。
 
 ## Tokenizer v1
 

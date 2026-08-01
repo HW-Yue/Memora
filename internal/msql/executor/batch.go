@@ -301,6 +301,7 @@ func successfulStatement(index int, kind, source string, output Output) result.S
 	statement.NextCursor = output.NextCursor
 	statement.Page = output.Page
 	statement.RowDetail = output.RowDetail
+	statement.Discovery = output.Discovery
 	return statement
 }
 

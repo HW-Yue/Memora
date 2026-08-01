@@ -147,6 +147,10 @@ func TestFrameRejectsInvalidProvenanceLocationsAndScores(t *testing.T) {
 		"nan score": validBatch(discovery.CandidateInput{
 			DatabaseID: "db_work", TableID: "tbl_notes", Reason: "bad score", Score: floatPointer(math.NaN()),
 		}),
+		"unsorted matched fields": validBatch(discovery.CandidateInput{
+			DatabaseID: "db_work", TableID: "tbl_notes", Reason: "bad evidence", Score: floatPointer(2),
+			MatchedFields: []string{"table.purpose", "table.name"},
+		}),
 	}
 	for name, batch := range tests {
 		name, batch := name, batch

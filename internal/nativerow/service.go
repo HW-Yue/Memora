@@ -1051,6 +1051,18 @@ func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node
 	}
 	return value, nil
 }
+func (service *Service) ListRouterNodes(ctx context.Context) ([]router.Node, error) {
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	nodes, err := nativerouter.New(service.repository.file).Nodes()
+	if err != nil {
+		return nil, serviceFailure(result.CodeInternal, "Route candidate source could not be read", err)
+	}
+	return nodes, nil
+}
 func (service *Service) ResolveRouterPath(_ context.Context, databaseID, path string) (router.Node, error) {
 	routes := nativerouter.New(service.repository.file)
 	databases, err := nativecatalog.New(service.repository.file).Read()

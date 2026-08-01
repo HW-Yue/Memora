@@ -57,6 +57,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.showRouteTraces(ctx, statement.Show, bound)
 	case statement.Show != nil && statement.Show.Object == "ROUTE_TRACE":
 		return engine.showRouteTrace(ctx, statement.Show, bound)
+	case statement.Show != nil && statement.Show.Object == "ROUTE_CANDIDATES":
+		return engine.showRouteCandidates(ctx, statement.Show, bound)
 	case statement.Show != nil && statement.Show.Object == "CHANGES":
 		return engine.showCommittedChanges(ctx, statement.Show, bound)
 	case statement.Show != nil && statement.Show.Object == "CHANGE":

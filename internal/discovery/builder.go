@@ -17,6 +17,7 @@ type CandidateInput struct {
 	RouteRevision uint64
 	Reason        string
 	Score         *float64
+	MatchedFields []string
 }
 
 type Batch struct {
@@ -88,6 +89,7 @@ func (builder *Builder) Add(batch Batch) error {
 			DatabaseID: input.DatabaseID, TableID: input.TableID, RouteID: input.RouteID,
 			RouteRevision: input.RouteRevision, Predictor: batch.Predictor, Reason: input.Reason,
 			ScoreKind: batch.ScoreKind, Score: cloneScore(input.Score),
+			MatchedFields: append([]string(nil), input.MatchedFields...),
 		}
 		if err := validateCandidate(candidates[index]); err != nil {
 			return err
@@ -138,6 +140,7 @@ func (builder *Builder) Frame() Frame {
 	for index, candidate := range builder.frame.Candidates {
 		frame.Candidates[index] = candidate
 		frame.Candidates[index].Score = cloneScore(candidate.Score)
+		frame.Candidates[index].MatchedFields = append([]string(nil), candidate.MatchedFields...)
 	}
 	return frame
 }

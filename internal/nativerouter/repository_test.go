@@ -99,6 +99,39 @@ func TestTableRouterShowUnderOpenAndReverseMembershipSurviveReopen(t *testing.T)
 	}
 }
 
+func TestNodesReturnsStableCurrentRoutesAfterReopen(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := New(file)
+	root, err := repository.CreateRoot("route_root", "db_work", "tbl_notes", "Notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreateChild("route_zeta", root.ID, "zeta", router.KindLeaf, "Zeta"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreateChild("route_alpha", root.ID, "alpha", router.KindLeaf, "Alpha"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := nativestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	nodes, err := New(reopened).Nodes()
+	if err != nil || len(nodes) != 3 || nodes[0].ID != "route_alpha" ||
+		nodes[1].ID != "route_root" || nodes[2].ID != "route_zeta" {
+		t.Fatalf("Nodes() = %#v, %v", nodes, err)
+	}
+}
+
 func nativeRouteCode(err error, code result.Code) bool {
 	var stable interface{ StableCode() string }
 	return errors.As(err, &stable) && stable.StableCode() == string(code)

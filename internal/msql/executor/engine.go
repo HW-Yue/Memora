@@ -7,6 +7,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/dbpackage"
+	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/binder"
@@ -64,12 +65,13 @@ type Reshaper interface {
 }
 
 type Engine struct {
-	catalog       Catalog
-	catalogBinder *binder.Catalog
-	rows          Rows
-	points        PointReads
-	packages      PackageManager
-	wiki          WikiExporter
+	catalog          Catalog
+	catalogBinder    *binder.Catalog
+	candidateCatalog routeCandidateCatalog
+	rows             Rows
+	points           PointReads
+	packages         PackageManager
+	wiki             WikiExporter
 }
 
 type PackageManager interface {
@@ -159,6 +161,7 @@ type Output struct {
 	NextCursor     string
 	Page           *result.ListPage
 	RowDetail      *result.RowDetail
+	Discovery      *discovery.Frame
 }
 
 type Error struct {
@@ -178,6 +181,9 @@ func New(dictionary Catalog, rows Rows) *Engine {
 	engine := &Engine{catalog: dictionary, rows: rows}
 	if service, ok := dictionary.(binder.CatalogService); ok {
 		engine.catalogBinder = binder.NewCatalog(service)
+	}
+	if service, ok := dictionary.(routeCandidateCatalog); ok {
+		engine.candidateCatalog = service
 	}
 	return engine
 }

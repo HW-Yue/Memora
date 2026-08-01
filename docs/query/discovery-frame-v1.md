@@ -58,7 +58,9 @@ Catalog 版本。组装器拒绝混入其他 snapshot 或 Catalog revision 的�
 `route_revision`。禁止跳级位置；Route 候选必须完整绑定 Database/Table/Route。
 
 每项还携带 `predictor`、`reason`、`score_kind` 和可选 `score`。`score` 仅在非 `none`
-类型出现且必须有限；不同 score kind 不可直接比较。相同 predictor 不得重复同一位置。
+类型出现且必须有限；不同 score kind 不可直接比较。predictor 可增加排序去重后的
+`matched_fields` 说明命中的语义字段，但不得回显 query 或正文。相同 predictor 不得
+重复同一位置。
 
 候选不含 RowID、Row 正文、snippet、embedding 或答案字段。客户端必须把
 `usage=navigation_only` 当作权威边界，并继续读取 Router 和 SQL Row。

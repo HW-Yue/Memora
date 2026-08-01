@@ -81,6 +81,32 @@ func TestRouterBuildsMultiBranchTreeAndMaintainsMultiLeafReverseMembership(t *te
 	}
 }
 
+func TestListNodesReturnsStableCurrentSemanticNodes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer databaseStore.Close()
+	service := router.New(databaseStore, router.Options{IDs: &idSource{values: []string{"root", "beta", "alpha"}}})
+	tx := mustBegin(t, ctx, databaseStore)
+	root, err := service.CreateRootIn(ctx, tx, "db_work", "Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustCreateNode(t, ctx, service, tx, root.ID, "beta", router.KindLeaf)
+	mustCreateNode(t, ctx, service, tx, root.ID, "alpha", router.KindLeaf)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	nodes, err := service.ListNodes(ctx)
+	if err != nil || len(nodes) != 3 || nodes[0].ID != "route_alpha" ||
+		nodes[1].ID != "route_beta" || nodes[2].ID != "route_root" {
+		t.Fatalf("ListNodes() = %#v, %v", nodes, err)
+	}
+}
+
 func TestRouterSupportsExplicitSplitMergeDeleteAndTransactionRollback(t *testing.T) {
 	t.Parallel()
 

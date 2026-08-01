@@ -1,6 +1,6 @@
 # 语义路由投机预取
 
-状态：方向已由 ADR-0007 接受；F124a Discovery Frame 已冻结，下一项实现字面位置预测器。
+状态：方向已由 ADR-0007 接受；F124a Frame 与 F124b 字面位置已冻结，下一项为 Route Vector Generation。
 
 ## 动机
 

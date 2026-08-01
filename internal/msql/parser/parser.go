@@ -250,6 +250,45 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		show.Limit = &limit
 	case parser.matchWord("ROUTE"):
 		switch {
+		case parser.matchWord("CANDIDATES"):
+			show.Object = "ROUTE_CANDIDATES"
+			if _, err := parser.expectWord("FROM"); err != nil {
+				return ast.Statement{}, err
+			}
+			if _, err := parser.expectWord("ALL"); err != nil {
+				return ast.Statement{}, err
+			}
+			if _, err := parser.expectWord("TABLES"); err != nil {
+				return ast.Statement{}, err
+			}
+			if _, err := parser.expectWord("USING"); err != nil {
+				return ast.Statement{}, err
+			}
+			if _, err := parser.expectWord("LEXICAL"); err != nil {
+				return ast.Statement{}, err
+			}
+			show.Predictor = "LEXICAL"
+			query, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Query = &query
+			if _, err := parser.expectWord("LIMIT"); err != nil {
+				return ast.Statement{}, err
+			}
+			limit, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Limit = &limit
+			if _, err := parser.expectWord("BYTES"); err != nil {
+				return ast.Statement{}, err
+			}
+			byteLimit, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.ByteLimit = &byteLimit
 		case parser.matchWord("TRACES"):
 			show.Object = "ROUTE_TRACES"
 			if parser.matchWord("IN") {
@@ -290,23 +329,25 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 				show.Database = &name
 			}
 		default:
-			return ast.Statement{}, parser.unexpected("TRACE or TRACES")
+			return ast.Statement{}, parser.unexpected("CANDIDATES, TRACE, or TRACES")
 		}
-		if parser.matchWord("CURSOR") {
+		if show.Object != "ROUTE_CANDIDATES" && parser.matchWord("CURSOR") {
 			cursor, err := parser.parseExpression(1)
 			if err != nil {
 				return ast.Statement{}, err
 			}
 			show.Cursor = &cursor
 		}
-		if _, err := parser.expectWord("LIMIT"); err != nil {
-			return ast.Statement{}, err
+		if show.Object != "ROUTE_CANDIDATES" {
+			if _, err := parser.expectWord("LIMIT"); err != nil {
+				return ast.Statement{}, err
+			}
+			limit, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Limit = &limit
 		}
-		limit, err := parser.parseExpression(1)
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		show.Limit = &limit
 	case parser.matchWord("HISTORY"):
 		show.Object = "HISTORY"
 		if _, err := parser.expectWord("FROM"); err != nil {
@@ -428,7 +469,7 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		}
 		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, TABLES, COLUMNS, CHANGES, CHANGE, ROUTE TRACE, HISTORY, RELATIONS, or ROUTES")
+		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, TABLES, COLUMNS, CHANGES, CHANGE, ROUTE CANDIDATES/TRACE, HISTORY, RELATIONS, or ROUTES")
 	}
 	if show.Object == "DATABASES" || show.Object == "TABLES" || show.Object == "COLUMNS" {
 		if parser.matchWord("CURSOR") {

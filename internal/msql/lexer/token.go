@@ -47,16 +47,16 @@ func (token Token) IsKeyword(keyword string) bool {
 }
 
 var keywords = map[string]struct{}{
-	"ADD": {}, "AGAINST": {}, "ALTER": {}, "AND": {}, "ANTI": {}, "AS": {}, "AT": {}, "BEGIN": {},
-	"BY": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
+	"ADD": {}, "AGAINST": {}, "ALL": {}, "ALTER": {}, "AND": {}, "ANTI": {}, "AS": {}, "AT": {}, "BEGIN": {},
+	"BY": {}, "BYTES": {}, "CANDIDATES": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
 	"DATABASES": {}, "DELETE": {}, "DESCRIBE": {}, "DOCTOR": {}, "DROP": {},
 	"EXPLAIN": {}, "EXPORT": {}, "FALSE": {}, "FOR": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
-	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LIMIT": {}, "MATCH": {},
+	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LEXICAL": {}, "LIMIT": {}, "MATCH": {},
 	"NOT": {}, "NULL": {}, "OF": {}, "ON": {}, "OPEN": {}, "OR": {},
 	"ONLY": {}, "ORDER": {}, "PACK": {}, "PACKAGE": {}, "PROFILE": {}, "PURGE": {}, "PURPOSE": {}, "READ": {},
 	"RENAME": {}, "RESTORE": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "ROW": {},
 	"SCOPE": {}, "SELECT": {}, "SEMANTICS": {}, "SET": {}, "SHOW": {}, "START": {},
 	"COLUMN": {}, "COLUMNS": {}, "TABLE": {}, "TABLES": {}, "TO": {},
-	"TRANSACTION": {}, "TRUE": {}, "TRUSTED": {}, "UPDATE": {}, "VALUES": {}, "WHERE": {}, "WIKI": {},
+	"TRANSACTION": {}, "TRUE": {}, "TRUSTED": {}, "UPDATE": {}, "USING": {}, "VALUES": {}, "WHERE": {}, "WIKI": {},
 	"RELATE": {}, "UNRELATE": {},
 }

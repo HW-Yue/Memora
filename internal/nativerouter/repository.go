@@ -371,6 +371,24 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 	return result, nil
 }
 
+// Nodes returns current live semantic nodes in stable ID order. Memberships
+// are deliberately outside this read surface.
+func (repository *Repository) Nodes() ([]router.Node, error) {
+	nodes, err := repository.nodes()
+	if err != nil {
+		return nil, err
+	}
+	live := nodes[:0]
+	for _, node := range nodes {
+		if !node.Deleted {
+			node.Aliases = append([]string{}, node.Aliases...)
+			live = append(live, node)
+		}
+	}
+	sort.Slice(live, func(left, right int) bool { return live[left].ID < live[right].ID })
+	return live, nil
+}
+
 func (repository *Repository) memberships() ([]router.Membership, error) {
 	return repository.latestMemberships(false)
 }

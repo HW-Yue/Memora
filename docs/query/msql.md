@@ -144,6 +144,17 @@ Router 的 Row、子树或 Table generation 重建必须映射为 MSQL `REINDEX`
 
 所有语句使用 [MSQL Result Envelope v1](./result-envelope.md)。`SELECT`、`SHOW`、`DESCRIBE`、写入和管理语句只改变 statement result 的字段取值，不各自定义顶层结构。单语句也进入 `results[]`；错误、warning、截断、batch 顺序和未知字段兼容规则已经冻结。
 
+F124b 增加参数化 Route 候选原语：
+
+```sql
+SHOW ROUTE CANDIDATES FROM ALL TABLES
+USING LEXICAL :query LIMIT :candidate_limit BYTES :utf8_byte_limit;
+```
+
+它只在 `discovery` 返回授权范围内的 Database/Table/Route 位置，`rows[]` 为空；零命中
+成功且不能排除其他 Table。词法、snapshot 与预算见
+[Lexical Route Locations v1](./lexical-route-locations-v1.md)。
+
 ## 多语句请求
 
 MSQL v0 必须允许一次 request 携带由分号分隔的多条语句，使 Agent 能在一次往返中完成一组发现或查询。Parser 解析完整 statement list，不能用字符串切分代替语法解析。

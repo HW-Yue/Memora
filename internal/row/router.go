@@ -201,6 +201,16 @@ func (transaction *Transaction) ListRouterChildrenPage(
 	return nodes, page, stableError(err)
 }
 
+func (service *Service) ListRouterNodes(ctx context.Context) ([]router.Node, error) {
+	nodes, err := service.routes.ListNodes(ctx)
+	return nodes, stableError(err)
+}
+
+func (transaction *Transaction) ListRouterNodes(ctx context.Context) ([]router.Node, error) {
+	nodes, err := transaction.service.routes.ListNodesIn(ctx, transaction.tx)
+	return nodes, stableError(err)
+}
+
 func (service *Service) ListRouterLeaf(
 	ctx context.Context,
 	leafID string,

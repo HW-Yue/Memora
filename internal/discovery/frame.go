@@ -56,6 +56,7 @@ type Candidate struct {
 	Reason        string    `json:"reason"`
 	ScoreKind     ScoreKind `json:"score_kind"`
 	Score         *float64  `json:"score,omitempty"`
+	MatchedFields []string  `json:"matched_fields,omitempty"`
 }
 
 type Frame struct {
@@ -160,6 +161,8 @@ func (frame *Frame) UnmarshalJSON(data []byte) error {
 
 var predictorPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]*(/v[1-9][0-9]*)?$`)
 
+var matchedFieldPattern = regexp.MustCompile(`^(database|table|route)\.[a-z][a-z0-9_]*$`)
+
 func validateBudget(value Budget) error {
 	if value.CandidateLimit == 0 || value.CandidateLimit > 1024 ||
 		value.UTF8ByteLimit == 0 || value.UTF8ByteLimit > 1024*1024 {
@@ -200,6 +203,11 @@ func validateCandidate(value Candidate) error {
 	}
 	if value.RouteID == "" && value.RouteRevision != 0 {
 		return invalid("route_revision requires route_id")
+	}
+	for index, field := range value.MatchedFields {
+		if !matchedFieldPattern.MatchString(field) || (index > 0 && value.MatchedFields[index-1] >= field) {
+			return invalid("matched_fields must be sorted unique semantic field names")
+		}
 	}
 	if value.ScoreKind == ScoreNone {
 		if value.Score != nil {

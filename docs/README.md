@@ -78,6 +78,7 @@
 - [Index Discovery v1](./query/index-discovery-v1.md) — 已撤销的 F23 候选融合历史实现。
 - [MSQL Result Envelope v1](./query/result-envelope.md) — 单条/批量统一结果、稳定错误码、warning 与截断兼容规则。
 - [Discovery Frame v1](./query/discovery-frame-v1.md) — F124a 的同 snapshot、全局预算、predictor 来源与导航-only 候选契约。
+- [Lexical Route Locations v1](./query/lexical-route-locations-v1.md) — F124b 对当前语义元数据的字面位置聚合与零命中回退。
 - [Agent 语义目录索引（Router）](./query/semantic-routing.md) — 每个 Table 一棵多层语义树，AI 逐层找到叶子 RowID。
 - [语义路由投机预取](./query/speculative-route-prefetch.md) — 已确认方向：用 Catalog、倒排位置提示和少量根 Route 预取减少模型调用，预测失败时确定性回退。
 - [语义树检索质量链路](./query/retrieval-quality.md) — AI 从 Table Router 逐层导航到 RowID，再 SQL 回表。
