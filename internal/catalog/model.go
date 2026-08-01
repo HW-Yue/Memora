@@ -40,6 +40,7 @@ type Database struct {
 	Scope         string    `json:"scope"`
 	AntiScope     string    `json:"anti_scope,omitempty"`
 	SchemaVersion uint64    `json:"schema_version"`
+	ReadOnly      bool      `json:"read_only,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 	Tables        []Table   `json:"tables"`

@@ -44,9 +44,10 @@ memora install work.memora-db --trusted
 snapshot SHA-256 校验。未知 envelope 字段、损坏内容、不支持版本均以稳定
 `validation_error` 拒绝。包总大小上限为 64 MiB；manifest 文本必须是有效 UTF-8、单行且在字段预算内。
 
-安装是一个原子 Store transaction。目标已有相同 Database ID、大小写不敏感的同名库、
+安装是一个原子 Store transaction，并按 [Install v2](./database-package-install-v2.md) 将库标记为
+持久化只读。目标已有相同 Database ID、大小写不敏感的同名库、
 相同 Table ID 或 Relation ID 时返回 `already_exists`，不会覆盖或隐式 merge。
-未信任包仍可只读打开；安装返回 Database ID、名称、package hash 和 snapshot hash 收据。
+未信任包仍可只读打开；安装返回 Database ID、名称、package/snapshot hash、只读状态和签名收据。
 
 ## v1 边界
 

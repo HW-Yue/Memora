@@ -5,28 +5,49 @@ import (
 	"strings"
 
 	"github.com/HW-Yue/Memora/internal/msql/ast"
+	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
 )
 
 func (engine *Engine) authorizeStatement(ctx context.Context, statement ast.Statement) error {
 	authorization, present := security.AuthorizationFrom(ctx)
-	if !present {
-		return nil
-	}
-	if err := authorization.Validate(); err != nil {
-		return normalizeError(err)
+	if present {
+		if err := authorization.Validate(); err != nil {
+			return normalizeError(err)
+		}
 	}
 	level := statementRiskLevel(statement)
 	databases := statementDatabaseNames(statement)
 	for _, database := range databases {
-		if err := engine.authorizeDatabaseReferenceAtLevel(ctx, level, database); err != nil {
-			return err
+		if present {
+			if err := engine.authorizeDatabaseReferenceAtLevel(ctx, level, database); err != nil {
+				return err
+			}
+		}
+		if level != security.LevelRead {
+			if err := engine.requireWritableDatabaseReference(ctx, database); err != nil {
+				return err
+			}
 		}
 	}
-	if len(databases) == 0 && level != security.LevelRead {
+	if present && len(databases) == 0 && level != security.LevelRead {
 		if err := security.RequireLevel(ctx, level); err != nil {
 			return normalizeError(err)
 		}
+	}
+	return nil
+}
+
+func (engine *Engine) requireWritableDatabaseReference(ctx context.Context, reference string) error {
+	if engine == nil || engine.catalog == nil {
+		return nil
+	}
+	database, err := engine.catalog.DescribeDatabase(ctx, reference)
+	if err != nil {
+		return nil
+	}
+	if database.ReadOnly {
+		return executeError(result.CodePermissionDenied, "installed Database is read-only; fork it before mutation")
 	}
 	return nil
 }

@@ -373,12 +373,21 @@ func (engine *Engine) authorizeRouterID(ctx context.Context, routeID string) err
 }
 
 func (engine *Engine) authorizeRouterIDAtLevel(ctx context.Context, level security.RiskLevel, routeID string) error {
-	if _, present := security.AuthorizationFrom(ctx); !present {
+	_, authorized := security.AuthorizationFrom(ctx)
+	if !authorized && level == security.LevelRead {
 		return nil
 	}
 	node, err := engine.rows.GetRouterNode(ctx, routeID)
 	if err != nil {
 		return normalizeError(err)
+	}
+	if level != security.LevelRead {
+		if err := engine.requireWritableDatabaseReference(ctx, node.DatabaseID); err != nil {
+			return err
+		}
+	}
+	if !authorized {
+		return nil
 	}
 	return engine.authorizeDatabaseReferenceAtLevel(ctx, level, node.DatabaseID)
 }

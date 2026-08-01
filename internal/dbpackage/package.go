@@ -70,10 +70,13 @@ type InstallOptions struct {
 }
 
 type InstallReceipt struct {
-	DatabaseID     string `json:"database_id"`
-	Name           string `json:"name"`
-	PackageSHA256  string `json:"package_sha256"`
-	SnapshotSHA256 string `json:"snapshot_sha256"`
+	DatabaseID        string `json:"database_id"`
+	Name              string `json:"name"`
+	PackageSHA256     string `json:"package_sha256"`
+	SnapshotSHA256    string `json:"snapshot_sha256"`
+	ReadOnly          bool   `json:"read_only"`
+	SignerKeyID       string `json:"signer_key_id,omitempty"`
+	SignatureVerified bool   `json:"signature_verified"`
 }
 
 type Error struct {
@@ -285,12 +288,17 @@ func (service *Service) Install(ctx context.Context, encoded []byte, options Ins
 	if err != nil {
 		return InstallReceipt{}, err
 	}
-	if err := service.snapshots.MergeImport(ctx, opened.Snapshot); err != nil {
+	if err := service.snapshots.MergeImportWithOptions(ctx, opened.Snapshot, snapshot.MergeOptions{ReadOnly: true}); err != nil {
 		return InstallReceipt{}, err
+	}
+	signerKeyID, signatureVerified := "", false
+	if opened.Signature != nil {
+		signerKeyID, signatureVerified = opened.Signature.KeyID, opened.Signature.Verified
 	}
 	return InstallReceipt{
 		DatabaseID: opened.Manifest.DatabaseID, Name: opened.Manifest.Name,
 		PackageSHA256: opened.PackageSHA256, SnapshotSHA256: opened.Manifest.SnapshotSHA256,
+		ReadOnly: true, SignerKeyID: signerKeyID, SignatureVerified: signatureVerified,
 	}, nil
 }
 

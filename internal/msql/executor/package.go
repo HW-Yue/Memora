@@ -75,11 +75,13 @@ func (engine *Engine) executePackage(
 			return Output{}, normalizeError(err)
 		}
 		return Output{
-			Columns: packageColumns("database_id", "name", "package_sha256", "snapshot_sha256"),
+			Columns: packageColumns("database_id", "name", "package_sha256", "snapshot_sha256", "read_only", "signer_key_id", "signature_verified"),
 			Rows: []result.Row{{
 				"database_id": receipt.DatabaseID, "name": receipt.Name,
 				"package_sha256":  receipt.PackageSHA256,
 				"snapshot_sha256": receipt.SnapshotSHA256,
+				"read_only":       receipt.ReadOnly, "signer_key_id": receipt.SignerKeyID,
+				"signature_verified": receipt.SignatureVerified,
 			}},
 			AffectedRows: 1,
 		}, nil
@@ -106,7 +108,7 @@ func packageColumns(names ...string) []result.Column {
 	columns := make([]result.Column, 0, len(names))
 	for _, name := range names {
 		typeName := "TEXT"
-		if name == "read_only" {
+		if name == "read_only" || name == "signature_verified" {
 			typeName = "BOOLEAN"
 		} else if name == "object_count" {
 			typeName = "INTEGER"

@@ -91,11 +91,11 @@ func (engine *Engine) unrelate(
 	if !strings.HasPrefix(relationID, "rel_") || strings.TrimPrefix(relationID, "rel_") == "" {
 		return Output{}, executeError(result.CodeValidation, "relation ID must use the rel_ prefix")
 	}
+	existing, err := engine.rows.GetRelation(ctx, relationID)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
 	if _, present := security.AuthorizationFrom(ctx); present {
-		existing, err := engine.rows.GetRelation(ctx, relationID)
-		if err != nil {
-			return Output{}, normalizeError(err)
-		}
 		level := security.LevelWrite
 		if !strings.EqualFold(existing.Source.DatabaseID, existing.Target.DatabaseID) {
 			level = security.LevelStructural
@@ -103,6 +103,12 @@ func (engine *Engine) unrelate(
 		if err := engine.authorizeRelationAtLevel(ctx, existing, level); err != nil {
 			return Output{}, err
 		}
+	}
+	if err := engine.requireWritableDatabaseReference(ctx, existing.Source.DatabaseID); err != nil {
+		return Output{}, err
+	}
+	if err := engine.requireWritableDatabaseReference(ctx, existing.Target.DatabaseID); err != nil {
+		return Output{}, err
 	}
 	deleted, err := engine.rows.DeleteRelation(ctx, relationID, options.ExpectedRevision)
 	if err != nil {

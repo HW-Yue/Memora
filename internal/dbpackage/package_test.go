@@ -101,7 +101,10 @@ func TestOpenIsReadOnlyAndTrustedInstallPreservesAuthorityWithoutDerivedIndexes(
 	source := openStore(t, "source.db")
 	defer source.Close()
 	seedSource(t, ctx, source)
-	encoded, manifest, err := dbpackage.New(source).Pack(ctx, "work", "Alice")
+	seed := sha256.Sum256([]byte("memora-f138-install-test-key"))
+	encoded, manifest, err := dbpackage.New(source).PackSigned(ctx, "work", "Alice", dbpackage.Signer{
+		KeyID: "alice:install", PrivateKey: ed25519.NewKeyFromSeed(seed[:]),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,8 +127,13 @@ func TestOpenIsReadOnlyAndTrustedInstallPreservesAuthorityWithoutDerivedIndexes(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.DatabaseID != "db_work" || receipt.Name != "work" || receipt.PackageSHA256 != dbpackage.Hash(encoded) {
+	if receipt.DatabaseID != "db_work" || receipt.Name != "work" || receipt.PackageSHA256 != dbpackage.Hash(encoded) ||
+		!receipt.ReadOnly || !receipt.SignatureVerified || receipt.SignerKeyID != "alice:install" {
 		t.Fatalf("receipt = %#v", receipt)
+	}
+	installedDatabase, err := catalog.New(target, catalog.Options{}).DescribeDatabase(ctx, "work")
+	if err != nil || !installedDatabase.ReadOnly {
+		t.Fatalf("installed Database = %#v, %v", installedDatabase, err)
 	}
 	rows := row.New(target, catalog.New(target, catalog.Options{}), row.Options{})
 	stored, err := rows.Get(ctx, "work", "notes", "row_note")

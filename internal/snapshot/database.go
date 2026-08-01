@@ -101,7 +101,15 @@ func FilterDatabase(encoded []byte, name string) ([]byte, catalog.Database, erro
 	return encodedFiltered, selected, nil
 }
 
+type MergeOptions struct {
+	ReadOnly bool
+}
+
 func (service *Service) MergeImport(ctx context.Context, encoded []byte) error {
+	return service.MergeImportWithOptions(ctx, encoded, MergeOptions{})
+}
+
+func (service *Service) MergeImportWithOptions(ctx context.Context, encoded []byte, options MergeOptions) error {
 	incoming, err := decodeDocument(encoded)
 	if err != nil {
 		return err
@@ -135,6 +143,7 @@ func (service *Service) MergeImport(ctx context.Context, encoded []byte) error {
 		return stableError(getErr)
 	}
 	candidate := incomingCatalog.Databases[0]
+	candidate.ReadOnly = options.ReadOnly
 	existingTableIDs := map[string]bool{}
 	for _, existing := range currentCatalog.Databases {
 		if existing.ID == candidate.ID || strings.EqualFold(existing.Name, candidate.Name) {

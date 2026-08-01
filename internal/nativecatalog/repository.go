@@ -463,11 +463,15 @@ func validateIdentity(id, name string, createdAt, updatedAt time.Time, seen map[
 }
 
 func encodeDatabase(value catalog.Database, order uint64) ([]byte, error) {
-	return encodeObject([]fieldValue{
+	values := []fieldValue{
 		{1, value.ID}, {2, order}, {3, value.Name}, {4, value.Aliases}, {5, value.Purpose},
 		{6, value.Scope}, {7, value.AntiScope}, {8, value.SchemaVersion},
 		{9, value.CreatedAt.UTC().UnixNano()}, {10, value.UpdatedAt.UTC().UnixNano()},
-	})
+	}
+	if value.ReadOnly {
+		values = append(values, fieldValue{11, true})
+	}
+	return encodeObject(values)
 }
 
 func encodeTable(value catalog.Table, order uint64) ([]byte, error) {
@@ -537,10 +541,11 @@ func decodeDatabase(payload []byte) (databaseRecord, error) {
 	schema, e8 := fields.uint64(8)
 	created, e9 := fields.int64(9)
 	updated, e10 := fields.int64(10)
-	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10); err != nil {
+	readOnly, e11 := fields.optionalBool(11)
+	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11); err != nil {
 		return databaseRecord{}, err
 	}
-	return databaseRecord{order: order, value: catalog.Database{ID: id, Name: name, Aliases: aliases, Purpose: purpose, Scope: scope, AntiScope: anti, SchemaVersion: schema, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
+	return databaseRecord{order: order, value: catalog.Database{ID: id, Name: name, Aliases: aliases, Purpose: purpose, Scope: scope, AntiScope: anti, SchemaVersion: schema, ReadOnly: readOnly, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
 }
 
 func decodeTable(payload []byte) (tableRecord, error) {

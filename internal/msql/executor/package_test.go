@@ -75,12 +75,25 @@ func TestPackageOperationsRunThroughMSQLExecutor(t *testing.T) {
 		},
 	})
 	installed := executePackage(t, installCtx, targetEngine, `INSTALL PACKAGE ? TRUSTED`, executor.Parameters{Positional: []any{encoded}})
-	if installed.AffectedRows != 1 || len(installed.Rows) != 1 || installed.Rows[0]["name"] != "work" {
+	if installed.AffectedRows != 1 || len(installed.Rows) != 1 || installed.Rows[0]["name"] != "work" || installed.Rows[0]["read_only"] != true {
 		t.Fatalf("INSTALL output = %#v", installed)
 	}
 	if stored, err := targetRows.Get(ctx, "work", "notes", "row_note"); err != nil || stored.Values["body"] != "portable" {
 		t.Fatalf("installed row = %#v, %v", stored, err)
 	}
+	_, err = execute(writePackageContext(ctx), targetEngine,
+		`INSERT INTO work.notes (body) VALUES ('must fail')`, executor.Parameters{},
+		executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1})
+	if code(err) != "permission_denied" {
+		t.Fatalf("write to installed package error = %v", err)
+	}
+}
+
+func writePackageContext(ctx context.Context) context.Context {
+	return security.WithAuthorization(ctx, security.Authorization{
+		Version: security.AuthorizationVersion, Actor: "agent:test",
+		AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelWrite,
+	})
 }
 
 func executePackage(t *testing.T, ctx context.Context, engine *executor.Engine, source string, parameters executor.Parameters) executor.Output {

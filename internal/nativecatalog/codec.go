@@ -181,6 +181,13 @@ func (fields fieldSet) bool(id uint16) (bool, error) {
 	return item.data[0] == 1, nil
 }
 
+func (fields fieldSet) optionalBool(id uint16) (bool, error) {
+	if _, ok := fields[id]; !ok {
+		return false, nil
+	}
+	return fields.bool(id)
+}
+
 func (fields fieldSet) textList(id uint16) ([]string, error) {
 	item, err := fields.required(id, fieldTextList)
 	if err != nil || len(item.data) < 4 {
