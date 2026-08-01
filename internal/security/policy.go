@@ -11,12 +11,13 @@ import (
 )
 
 const (
-	AuthorizationVersion     = "memora.authorization/v2"
-	ApprovalVersion          = "memora.approval/v1"
-	ActionInstallPackage     = "INSTALL_PACKAGE"
-	ActionApplyRouteMutation = "APPLY_ROUTE_MUTATION"
-	ActionApplySchemaChange  = "APPLY_SCHEMA_CHANGE"
-	maxDatabaseScope         = 32
+	AuthorizationVersion      = "memora.authorization/v2"
+	ApprovalVersion           = "memora.approval/v1"
+	ActionInstallPackage      = "INSTALL_PACKAGE"
+	ActionApplyPackageUpgrade = "APPLY_PACKAGE_UPGRADE"
+	ActionApplyRouteMutation  = "APPLY_ROUTE_MUTATION"
+	ActionApplySchemaChange   = "APPLY_SCHEMA_CHANGE"
+	maxDatabaseScope          = 32
 )
 
 type RiskLevel string

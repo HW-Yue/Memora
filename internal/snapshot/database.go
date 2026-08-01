@@ -102,7 +102,11 @@ func FilterDatabase(encoded []byte, name string) ([]byte, catalog.Database, erro
 }
 
 type MergeOptions struct {
-	ReadOnly bool
+	ReadOnly              bool
+	PackageSHA256         string
+	PackageSnapshotSHA256 string
+	PackageSignerKeyID    string
+	ReplaceDatabaseID     string
 }
 
 func (service *Service) MergeImport(ctx context.Context, encoded []byte) error {
@@ -144,21 +148,40 @@ func (service *Service) MergeImportWithOptions(ctx context.Context, encoded []by
 	}
 	candidate := incomingCatalog.Databases[0]
 	candidate.ReadOnly = options.ReadOnly
+	candidate.PackageSHA256 = options.PackageSHA256
+	candidate.PackageSnapshotSHA256 = options.PackageSnapshotSHA256
+	candidate.PackageSignerKeyID = options.PackageSignerKeyID
 	existingTableIDs := map[string]bool{}
+	nextDatabases := make([]catalog.Database, 0, len(currentCatalog.Databases)+1)
+	replaced := false
 	for _, existing := range currentCatalog.Databases {
+		if options.ReplaceDatabaseID != "" && existing.ID == options.ReplaceDatabaseID {
+			if !existing.ReadOnly || candidate.ID != existing.ID || !strings.EqualFold(candidate.Name, existing.Name) {
+				return snapshotError(result.CodePermissionDenied, "only the matching installed read-only Database can be replaced")
+			}
+			if err := removeDatabaseAuthority(ctx, tx, existing); err != nil {
+				return err
+			}
+			replaced = true
+			continue
+		}
 		if existing.ID == candidate.ID || strings.EqualFold(existing.Name, candidate.Name) {
 			return snapshotError(result.CodeAlreadyExists, "Database identity or name already exists")
 		}
+		nextDatabases = append(nextDatabases, existing)
 		for _, table := range existing.Tables {
 			existingTableIDs[table.ID] = true
 		}
+	}
+	if options.ReplaceDatabaseID != "" && !replaced {
+		return snapshotError(result.CodeRevisionConflict, "installed Database changed before package replacement")
 	}
 	for _, table := range candidate.Tables {
 		if existingTableIDs[table.ID] {
 			return snapshotError(result.CodeAlreadyExists, "Table identity already exists")
 		}
 	}
-	currentCatalog.Databases = append(currentCatalog.Databases, candidate)
+	currentCatalog.Databases = append(nextDatabases, candidate)
 	mergedCatalog, _ := json.Marshal(currentCatalog)
 	if err := tx.Put(ctx, catalogBucket, catalogKey, mergedCatalog); err != nil {
 		return stableError(err)
@@ -230,6 +253,66 @@ func (service *Service) MergeImportWithOptions(ctx context.Context, encoded []by
 	}
 	if err := tx.Commit(); err != nil {
 		return stableError(err)
+	}
+	return nil
+}
+
+func removeDatabaseAuthority(ctx context.Context, tx store.Tx, database catalog.Database) error {
+	tableIDs := make(map[string]bool, len(database.Tables))
+	for _, table := range database.Tables {
+		tableIDs[table.ID] = true
+		entries, err := tx.Scan(ctx, rowPrefix+table.ID)
+		if err != nil {
+			return stableError(err)
+		}
+		for _, entry := range entries {
+			if err := tx.Delete(ctx, rowPrefix+table.ID, entry.Key); err != nil {
+				return stableError(err)
+			}
+		}
+		if err := tx.Delete(ctx, rowIndex, table.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return stableError(err)
+		}
+	}
+	for _, bucket := range []string{historyRows, historyIndex} {
+		entries, err := tx.Scan(ctx, bucket)
+		if err != nil {
+			return stableError(err)
+		}
+		for _, entry := range entries {
+			tableID := strings.SplitN(entry.Key, "\x00", 2)[0]
+			if tableIDs[tableID] {
+				if err := tx.Delete(ctx, bucket, entry.Key); err != nil {
+					return stableError(err)
+				}
+			}
+		}
+	}
+	for _, bucket := range []string{relationNow, relationPast, relationOut, relationIn} {
+		entries, err := tx.Scan(ctx, bucket)
+		if err != nil {
+			return stableError(err)
+		}
+		for _, entry := range entries {
+			remove := strings.HasPrefix(entry.Key, database.ID+"\x00")
+			if bucket == relationNow || bucket == relationPast {
+				var value struct {
+					Source struct {
+						DatabaseID string `json:"database_id"`
+					} `json:"source"`
+					Target struct {
+						DatabaseID string `json:"database_id"`
+					} `json:"target"`
+				}
+				remove = json.Unmarshal(entry.Value, &value) == nil &&
+					(value.Source.DatabaseID == database.ID || value.Target.DatabaseID == database.ID)
+			}
+			if remove {
+				if err := tx.Delete(ctx, bucket, entry.Key); err != nil {
+					return stableError(err)
+				}
+			}
+		}
 	}
 	return nil
 }

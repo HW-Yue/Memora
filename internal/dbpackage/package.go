@@ -288,12 +288,15 @@ func (service *Service) Install(ctx context.Context, encoded []byte, options Ins
 	if err != nil {
 		return InstallReceipt{}, err
 	}
-	if err := service.snapshots.MergeImportWithOptions(ctx, opened.Snapshot, snapshot.MergeOptions{ReadOnly: true}); err != nil {
-		return InstallReceipt{}, err
-	}
 	signerKeyID, signatureVerified := "", false
 	if opened.Signature != nil {
 		signerKeyID, signatureVerified = opened.Signature.KeyID, opened.Signature.Verified
+	}
+	if err := service.snapshots.MergeImportWithOptions(ctx, opened.Snapshot, snapshot.MergeOptions{
+		ReadOnly: true, PackageSHA256: opened.PackageSHA256,
+		PackageSnapshotSHA256: opened.Manifest.SnapshotSHA256, PackageSignerKeyID: signerKeyID,
+	}); err != nil {
+		return InstallReceipt{}, err
 	}
 	return InstallReceipt{
 		DatabaseID: opened.Manifest.DatabaseID, Name: opened.Manifest.Name,

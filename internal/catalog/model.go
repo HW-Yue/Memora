@@ -33,17 +33,20 @@ type ColumnDefinition struct {
 }
 
 type Database struct {
-	ID            string    `json:"database_id"`
-	Name          string    `json:"name"`
-	Aliases       []string  `json:"aliases"`
-	Purpose       string    `json:"purpose"`
-	Scope         string    `json:"scope"`
-	AntiScope     string    `json:"anti_scope,omitempty"`
-	SchemaVersion uint64    `json:"schema_version"`
-	ReadOnly      bool      `json:"read_only,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	Tables        []Table   `json:"tables"`
+	ID                    string    `json:"database_id"`
+	Name                  string    `json:"name"`
+	Aliases               []string  `json:"aliases"`
+	Purpose               string    `json:"purpose"`
+	Scope                 string    `json:"scope"`
+	AntiScope             string    `json:"anti_scope,omitempty"`
+	SchemaVersion         uint64    `json:"schema_version"`
+	ReadOnly              bool      `json:"read_only,omitempty"`
+	PackageSHA256         string    `json:"package_sha256,omitempty"`
+	PackageSnapshotSHA256 string    `json:"package_snapshot_sha256,omitempty"`
+	PackageSignerKeyID    string    `json:"package_signer_key_id,omitempty"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	Tables                []Table   `json:"tables"`
 }
 
 type Table struct {

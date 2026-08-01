@@ -471,6 +471,15 @@ func encodeDatabase(value catalog.Database, order uint64) ([]byte, error) {
 	if value.ReadOnly {
 		values = append(values, fieldValue{11, true})
 	}
+	if value.PackageSHA256 != "" {
+		values = append(values, fieldValue{12, value.PackageSHA256})
+	}
+	if value.PackageSnapshotSHA256 != "" {
+		values = append(values, fieldValue{13, value.PackageSnapshotSHA256})
+	}
+	if value.PackageSignerKeyID != "" {
+		values = append(values, fieldValue{14, value.PackageSignerKeyID})
+	}
 	return encodeObject(values)
 }
 
@@ -542,10 +551,13 @@ func decodeDatabase(payload []byte) (databaseRecord, error) {
 	created, e9 := fields.int64(9)
 	updated, e10 := fields.int64(10)
 	readOnly, e11 := fields.optionalBool(11)
-	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11); err != nil {
+	packageHash, e12 := fields.optionalText(12)
+	packageSnapshotHash, e13 := fields.optionalText(13)
+	packageSigner, e14 := fields.optionalText(14)
+	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14); err != nil {
 		return databaseRecord{}, err
 	}
-	return databaseRecord{order: order, value: catalog.Database{ID: id, Name: name, Aliases: aliases, Purpose: purpose, Scope: scope, AntiScope: anti, SchemaVersion: schema, ReadOnly: readOnly, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
+	return databaseRecord{order: order, value: catalog.Database{ID: id, Name: name, Aliases: aliases, Purpose: purpose, Scope: scope, AntiScope: anti, SchemaVersion: schema, ReadOnly: readOnly, PackageSHA256: packageHash, PackageSnapshotSHA256: packageSnapshotHash, PackageSignerKeyID: packageSigner, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
 }
 
 func decodeTable(payload []byte) (tableRecord, error) {

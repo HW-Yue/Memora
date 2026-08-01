@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F138 已完成；下一项为 F139 Package Upgrade。用户已于
+状态：F81–F139 已完成；下一项为 F140 Package Revocation。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -114,7 +114,7 @@ F124a–F124e 的 RED、边界和顺序见
 | --- | --- |
 | F137 Package Signature | 已完成：Database Package 可携带确定性 Ed25519 签名并离线验证 |
 | F138 Package Install | 已完成：已验证包原子安装为引擎强制的持久化只读 Database |
-| F139 Package Upgrade | 已安装包可显式计划和升级 |
+| F139 Package Upgrade | 已完成：已安装只读包可按 current/package-bound 计划审批并原子升级 |
 | F140 Package Revocation | 被撤销版本无法继续安装或升级 |
 | F141 Package Fork | 已安装库可派生独立可写分支 |
 | F142 Package Merge | fork 变化可生成并执行显式合并计划 |
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F139；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F140；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；
