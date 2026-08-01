@@ -1,19 +1,19 @@
 # Speculative Discovery Skill v1
 
-状态：F124e 已冻结并实现。
+状态：F124e 已冻结基础投机发现；F135 已升级为 v2 Catalog Atlas profile。
 
 ## 目标
 
 Canonical Skill 在一次模型续推之前生成一组彼此独立、可并行的只读 `memora query`
-调用：Configuration/Database、每个授权 Database 的紧凑 Table、Lexical 候选、可选
-Vector 候选，以及至多两个由同主题 Route Frame 提示的 Table 根 Route。数据库调用数
+调用：扁平 Catalog Atlas、Lexical 候选、可选 Vector 候选，以及至多两个由同主题
+Route Frame 提示的 Table 根 Route。数据库调用数
 可以增加，但中间不需要模型逐条决定，目标是减少 LLM 调用次数。
 
 ## Profile 与预算
 
-版本为 `memora.speculative-discovery/v1`。默认硬上限：
+版本为 `memora.speculative-discovery/v2`。默认硬上限：
 
-- 最多 4 个 Database 进入投机 profile，超过后回到普通逐步发现；
+- 最多 32 个精确授权 Database；Atlas 首页最多 64 个条目和 8192 UTF-8 JSON bytes；
 - 全部 predictor 合计 8 个候选和 4096 UTF-8 bytes；
 - Lexical + Vector 同时启用时按 4/4 candidates、2048/2048 bytes 确定性分配；
 - 最多预取 2 个 Table root，每个最多 12 个 Route；
@@ -22,6 +22,10 @@ Vector 候选，以及至多两个由同主题 Route Frame 提示的 Table 根 R
 每项 Database-specific 调用都携带相同的精确授权集合。query/vector 只通过参数传递。
 Vector 只有宿主已提供同 space 的归一化向量时才加入；无 encoder、unavailable 或 stale
 不失败，Lexical 和 Router 仍继续。
+
+Atlas coverage 独立记录 snapshot、pages、entries、complete 和 next cursor。partial 不允许
+声称冷库不存在，也不阻止 predictor 指向首屏外 Table；宿主无需模型选择即可按 cursor
+续页。只有 `complete=true` 才证明该授权 snapshot 的库表目录已覆盖。
 
 ## Route Frame
 

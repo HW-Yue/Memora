@@ -297,9 +297,11 @@ func (document Document) Parameters() []Parameter {
 	case statement.Describe != nil && statement.Describe.Object == "ROUTE":
 		appendExpression(statement.Describe.Route)
 	case statement.Show != nil && (statement.Show.Object == "DATABASES" ||
-		statement.Show.Object == "TABLES" || statement.Show.Object == "COLUMNS"):
+		statement.Show.Object == "TABLES" || statement.Show.Object == "COLUMNS" ||
+		statement.Show.Object == "CATALOG_ATLAS"):
 		appendExpression(statement.Show.Cursor)
 		appendExpression(statement.Show.Limit)
+		appendExpression(statement.Show.ByteLimit)
 	case statement.Show != nil && statement.Show.Object == "CONFIGURATION":
 		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":

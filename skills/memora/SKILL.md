@@ -80,7 +80,7 @@ fits; do not invent a table from a name alone.
 
 ```sh
 memora doctor
-memora query "SHOW CONFIGURATION; SHOW DATABASES"
+memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW TABLES FROM work COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "DESCRIBE TABLE work.notes COMPACT"
 memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v1","actor":"agent:host","authorized_databases":["work"]}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
@@ -88,15 +88,16 @@ memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authoriz
 
 ## Speculative discovery
 
-Use `memora.speculative-discovery/v1` when a new question can benefit from
+Use `memora.speculative-discovery/v2` when a new question can benefit from
 fewer model continuations. In the same model turn, dispatch independent bounded
-calls for Configuration/Databases, compact Tables in each exact authorized
-Database, lexical Route candidates, an optional vector candidate query, and at
+calls for one flat Catalog Atlas page, lexical Route candidates, an optional
+vector candidate query, and at
 most two root Route prefetches from the current same-topic Route Frame. Run the
 independent calls in parallel when the host supports it; do not wait for a model
 decision between their millisecond-scale results.
 
-Use this profile only for at most four authorized Databases. Across all
+Use this profile for at most 32 exact authorized Databases. The Atlas page has
+at most 64 entries and 8,192 UTF-8 row JSON bytes. Across all
 predictors allow at most 8 candidates and 4,096 candidate UTF-8 bytes; when both
 Lexical and Vector run, allocate 4 candidates and 2,048 bytes to each. Prefetch
 at most two Table roots with at most 12 Routes each, issue at most 10 tool calls,
@@ -104,6 +105,12 @@ and keep the total working context within 12,000 UTF-8 bytes. Record topic ID,
 exact calls, output bytes, truncation, each predictor snapshot/catalog revision
 and each root page snapshot. Keep different predictor snapshots separate and
 require their Catalog revisions to agree.
+
+Track Atlas snapshot, pages, entries seen, `complete`, and next cursor. If
+coverage is partial, follow the cursor without asking the model to choose a
+Database. Do not claim a cold Database/Table is absent until coverage is
+complete. A predictor may point to a Table outside the current Atlas page; use
+normal Router fallback while deterministic Atlas continuation remains available.
 
 Always pass the lexical question as a parameter. Add Vector only when the host
 already has a normalized query vector and the exact generation space digest;
@@ -117,8 +124,9 @@ memora query --input '{"parameters":{"named":{"lexical_query":"crash recovery","
 
 Treat every Discovery candidate and prefetched Route as `navigation_only`.
 They are neither answers nor evidence, and scores with different kinds are not
-comparable. Explicitly choose one or more Tables from the complete compact
-Catalog; a zero-hit Table remains selectable. Reuse a prefetched root only when
+comparable. Explicitly choose one or more Tables from the compact Atlas; a
+zero-hit Table remains selectable, and partial Atlas coverage is never an
+exclusion filter. Reuse a prefetched root only when
 its topic, Table, Catalog revision, page snapshot and Route revisions are still
 current. For a selected Table without a valid prefetch, issue the ordinary Router root fallback
 and continue the normal layer-by-layer state machine.
@@ -142,7 +150,7 @@ results instead of inventing a fallback.
 Use this bounded state machine:
 
 ```text
-SHOW CONFIGURATION + SHOW DATABASES → SHOW TABLES → DESCRIBE TABLE
+SHOW CATALOG ATLAS → deterministic continuation if partial → DESCRIBE TABLE
 → SHOW ROUTES FROM TABLE ... AT ROOT
 → choose one node → SHOW ROUTES UNDER ... (repeat as needed)
 → OPEN ROUTE on a leaf

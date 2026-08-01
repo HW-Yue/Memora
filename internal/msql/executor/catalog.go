@@ -20,7 +20,7 @@ func (engine *Engine) catalogStatement(statement ast.Statement) bool {
 		return false
 	}
 	switch statement.Show.Object {
-	case "DATABASES", "TABLES", "COLUMNS":
+	case "DATABASES", "TABLES", "COLUMNS", "CATALOG_ATLAS":
 		return true
 	default:
 		return false
@@ -41,6 +41,9 @@ func (engine *Engine) executeCatalog(
 	pageRequest, paged, err := catalogPageRequestFor(statement, bound)
 	if err != nil {
 		return Output{}, err
+	}
+	if statement.Show != nil && statement.Show.Object == "CATALOG_ATLAS" {
+		return engine.executeCatalogAtlas(ctx, pageRequest)
 	}
 	value, err := engine.catalogBinder.Execute(ctx, statement)
 	if err != nil {

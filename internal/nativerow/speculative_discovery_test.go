@@ -69,7 +69,7 @@ func TestSpeculativeDiscoveryPlanRunsAgainstRealNativeMSQLWithoutFactEvidence(t 
 		PrefetchTables:       []skilldiscovery.TableRef{{Database: "work", Table: "notes"}},
 		PrefetchFrameTopicID: "topic:recovery",
 		CandidateLimit:       8, CandidateUTF8ByteLimit: 4096,
-		TableLimit: 16, RootLimit: 12, ContextUTF8ByteLimit: 12000,
+		AtlasEntryLimit: 64, AtlasUTF8ByteLimit: 4096, RootLimit: 12, ContextUTF8ByteLimit: 12000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -78,10 +78,7 @@ func TestSpeculativeDiscoveryPlanRunsAgainstRealNativeMSQLWithoutFactEvidence(t 
 	defer session.Close()
 	responses := make([]result.Envelope, 0, len(plan.Calls))
 	for _, call := range plan.Calls {
-		var inputs []executor.StatementInput
-		if call.Kind != skilldiscovery.CallCatalog {
-			inputs = []executor.StatementInput{call.Input}
-		}
+		inputs := []executor.StatementInput{call.Input}
 		envelope := session.Execute(ctx, executor.BatchRequest{
 			RequestID: call.ID, Source: call.MSQL, Statements: inputs,
 		})

@@ -23,7 +23,7 @@ Database、Schema、Router 或候选。
 - `memora.host-input/v1` 和 `memora.host-input-receipt/v1`；
 - `memora.worthiness-decision/v1` 和 `memora.worthiness-receipt/v1`；
 - `memora.feedback-event/v1`、`memora.feedback-receipt/v1`、`memora.feedback-confirmation/v1` 和确认收据；
-- `memora.speculative-discovery/v1` 的同回合并行发现、全局预算与 Router fallback；
+- `memora.speculative-discovery/v2` 的 Catalog Atlas 覆盖、同回合候选、全局预算与 Router fallback；
 - `memora assimilate/capture/decide/doctor/query/exec/feedback/maintain/mutate/schema/reflect` 十一个逻辑入口。
 - `memora.real-host-task/v1`、invocation/receipt 及 Codex/Claude/Kimi 同题矩阵。
 

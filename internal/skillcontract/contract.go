@@ -78,6 +78,8 @@ type ProviderBoundary struct {
 type SpeculativeDiscovery struct {
 	Version            string `json:"version"`
 	MaxDatabases       int    `json:"max_databases"`
+	AtlasEntries       int    `json:"atlas_entries"`
+	AtlasUTF8Bytes     int    `json:"atlas_utf8_bytes"`
 	CandidateRows      int    `json:"candidate_rows"`
 	CandidateUTF8Bytes int    `json:"candidate_utf8_bytes"`
 	PrefetchTables     int    `json:"prefetch_tables"`
@@ -317,7 +319,9 @@ func validateSpeculativeDiscovery(profile SpeculativeDiscovery) []string {
 		))
 	}
 	for name, values := range map[string][2]int{
-		"max_databases":        {profile.MaxDatabases, 4},
+		"max_databases":        {profile.MaxDatabases, 32},
+		"atlas_entries":        {profile.AtlasEntries, 64},
+		"atlas_utf8_bytes":     {profile.AtlasUTF8Bytes, 8192},
 		"candidate_rows":       {profile.CandidateRows, 8},
 		"candidate_utf8_bytes": {profile.CandidateUTF8Bytes, 4096},
 		"prefetch_tables":      {profile.PrefetchTables, 2},

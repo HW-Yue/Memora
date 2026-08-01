@@ -264,6 +264,11 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		}
 	case parser.matchWord("DATABASES"):
 		show.Object = "DATABASES"
+	case parser.matchWord("CATALOG"):
+		if _, err := parser.expectWord("ATLAS"); err != nil {
+			return ast.Statement{}, err
+		}
+		show.Object = "CATALOG_ATLAS"
 	case parser.matchWord("TABLES"):
 		show.Object = "TABLES"
 		if parser.matchWord("FROM") {
@@ -587,9 +592,9 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		}
 		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, TABLES, COLUMNS, CHANGES, CHANGE, ROUTE CANDIDATES/TRACE, HISTORY, RELATIONS, or ROUTES")
+		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, CATALOG ATLAS, TABLES, COLUMNS, CHANGES, CHANGE, ROUTE CANDIDATES/TRACE, HISTORY, RELATIONS, or ROUTES")
 	}
-	if show.Object == "DATABASES" || show.Object == "TABLES" || show.Object == "COLUMNS" {
+	if show.Object == "DATABASES" || show.Object == "TABLES" || show.Object == "COLUMNS" || show.Object == "CATALOG_ATLAS" {
 		if parser.matchWord("CURSOR") {
 			cursor, err := parser.parseExpression(1)
 			if err != nil {
@@ -604,8 +609,18 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			}
 			show.Limit = &limit
 		}
+		if show.Object == "CATALOG_ATLAS" && parser.matchWord("BYTES") {
+			byteLimit, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.ByteLimit = &byteLimit
+		}
 	}
 	show.Compact = parser.matchWord("COMPACT")
+	if show.Object == "CATALOG_ATLAS" && !show.Compact {
+		return ast.Statement{}, parser.unexpected("COMPACT")
+	}
 	return ast.Statement{Kind: "SHOW", Show: show}, nil
 }
 

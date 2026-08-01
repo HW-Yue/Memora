@@ -9,7 +9,7 @@
 Table 和顶层 Route 开始逐层选择，不能要求调用方预先生成完整 Route path 或
 `query_terms`。
 
-新任务可先使用 `memora.speculative-discovery/v1`，在一次模型回合并行读取紧凑
+新任务可先使用 `memora.speculative-discovery/v2`，在一次模型回合并行读取紧凑
 Catalog、Lexical、可选 Vector 和至多两个同主题 Table root。它只提前准备下一层
 Route Frame；候选未命中的 Table 仍可选择，错误/旧 topic 预取必须走正常 root fallback。
 后续权威状态机和 SELECT evidence 门不变。

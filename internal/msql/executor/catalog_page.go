@@ -21,6 +21,9 @@ const (
 	maximumCatalogPageLimit = uint64(256)
 	maximumCatalogCursor    = 4096
 	catalogCursorVersion    = "memora.catalog-cursor/v1"
+	defaultAtlasByteLimit   = uint64(16_384)
+	minimumAtlasByteLimit   = uint64(512)
+	maximumAtlasByteLimit   = uint64(65_536)
 )
 
 type catalogPageRequest struct {
@@ -28,6 +31,7 @@ type catalogPageRequest struct {
 	cursor  string
 	scope   string
 	decoded *catalogCursor
+	bytes   uint64
 }
 
 type catalogCursor struct {
@@ -47,10 +51,13 @@ type catalogCursorCore struct {
 
 func catalogPageRequestFor(statement ast.Statement, bound bindings) (catalogPageRequest, bool, error) {
 	show := statement.Show
-	if show == nil || (show.Object != "DATABASES" && show.Object != "TABLES" && show.Object != "COLUMNS") {
+	if show == nil || (show.Object != "DATABASES" && show.Object != "TABLES" && show.Object != "COLUMNS" && show.Object != "CATALOG_ATLAS") {
 		return catalogPageRequest{}, false, nil
 	}
 	request := catalogPageRequest{limit: defaultCatalogPageLimit, scope: catalogPageScope(show)}
+	if show.Object == "CATALOG_ATLAS" {
+		request.bytes = defaultAtlasByteLimit
+	}
 	if show.Limit != nil {
 		limit, err := historyPositiveInteger(show.Limit, catalog.Table{}, bound, "Catalog list LIMIT")
 		if err != nil {
@@ -77,6 +84,17 @@ func catalogPageRequestFor(statement ast.Statement, bound bindings) (catalogPage
 			return catalogPageRequest{}, true, executeError(result.CodeValidation, "Catalog cursor is invalid for this list")
 		}
 		request.cursor, request.decoded = cursor, &decoded
+	}
+	if show.Object == "CATALOG_ATLAS" && show.ByteLimit != nil {
+		byteLimit, err := historyPositiveInteger(show.ByteLimit, catalog.Table{}, bound, "Catalog Atlas BYTES")
+		if err != nil {
+			return catalogPageRequest{}, true, err
+		}
+		if byteLimit < minimumAtlasByteLimit || byteLimit > maximumAtlasByteLimit {
+			return catalogPageRequest{}, true, executeError(result.CodeValidation,
+				fmt.Sprintf("Catalog Atlas BYTES must be between %d and %d", minimumAtlasByteLimit, maximumAtlasByteLimit))
+		}
+		request.bytes = byteLimit
 	}
 	return request, true, nil
 }

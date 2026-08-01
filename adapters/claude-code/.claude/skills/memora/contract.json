@@ -29,8 +29,10 @@
   "feedback_confirmation_version": "memora.feedback-confirmation/v1",
   "feedback_confirmation_receipt_version": "memora.feedback-confirmation-receipt/v1",
   "speculative_discovery": {
-    "version": "memora.speculative-discovery/v1",
-    "max_databases": 4,
+    "version": "memora.speculative-discovery/v2",
+    "max_databases": 32,
+    "atlas_entries": 64,
+    "atlas_utf8_bytes": 8192,
     "candidate_rows": 8,
     "candidate_utf8_bytes": 4096,
     "prefetch_tables": 2,
@@ -124,9 +126,9 @@
       "command": "memora doctor"
     },
     {
-      "name": "discover-databases",
-      "command": "memora query \"SHOW CONFIGURATION; SHOW DATABASES\"",
-      "msql": "SHOW CONFIGURATION; SHOW DATABASES"
+      "name": "catalog-atlas",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"limit\":64,\"bytes\":8192}},\"authorization\":{\"version\":\"memora.authorization/v1\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"]}}' \"SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT\"",
+      "msql": "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
     },
     {
       "name": "discover-tables",

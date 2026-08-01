@@ -48,7 +48,7 @@ func (token Token) IsKeyword(keyword string) bool {
 
 var keywords = map[string]struct{}{
 	"ADD": {}, "AGAINST": {}, "ALL": {}, "ALTER": {}, "AND": {}, "ANTI": {}, "AS": {}, "AT": {}, "BEGIN": {},
-	"BY": {}, "BYTES": {}, "CANDIDATES": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
+	"ATLAS": {}, "BY": {}, "BYTES": {}, "CANDIDATES": {}, "CATALOG": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
 	"DATABASES": {}, "DELETE": {}, "DESCRIBE": {}, "DOCTOR": {}, "DROP": {},
 	"EXPLAIN": {}, "EXPORT": {}, "FALSE": {}, "FOR": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
 	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LEXICAL": {}, "LIMIT": {}, "MATCH": {},

@@ -74,3 +74,28 @@ func TestParseCatalogListCursorLimitAndParameters(t *testing.T) {
 		t.Fatalf("Parameters() = %#v", parameters)
 	}
 }
+
+func TestParseCatalogAtlasCarriesCursorEntryAndByteBudgets(t *testing.T) {
+	t.Parallel()
+	document, err := Parse("SHOW CATALOG ATLAS CURSOR :cursor LIMIT :limit BYTES :bytes COMPACT")
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	show := document.Statement.Show
+	if show == nil || show.Object != "CATALOG_ATLAS" || show.Cursor == nil || show.Limit == nil ||
+		show.ByteLimit == nil || !show.Compact {
+		t.Fatalf("SHOW CATALOG ATLAS AST = %#v", show)
+	}
+	parameters := document.Parameters()
+	if len(parameters) != 3 || parameters[0].Name != "cursor" || parameters[1].Name != "limit" ||
+		parameters[2].Name != "bytes" {
+		t.Fatalf("Parameters() = %#v", parameters)
+	}
+}
+
+func TestCatalogAtlasRequiresCompactShape(t *testing.T) {
+	t.Parallel()
+	if _, err := Parse("SHOW CATALOG ATLAS LIMIT 64 BYTES 8192"); err == nil {
+		t.Fatal("expanded Catalog Atlas unexpectedly parsed")
+	}
+}

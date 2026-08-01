@@ -34,6 +34,7 @@ Memora 是一套由 AI 自主建模、读写、整理和持续优化的个人语
 ```sql
 SHOW DATABASES COMPACT;
 SHOW TABLES FROM project_memora COMPACT;
+SHOW CATALOG ATLAS LIMIT 64 BYTES 8192 COMPACT;
 DESCRIBE TABLE project_memora.decisions COMPACT;
 SHOW ROUTES FROM TABLE project_memora.decisions AT ROOT LIMIT 12;
 SHOW ROUTES UNDER :route_id LIMIT 12;

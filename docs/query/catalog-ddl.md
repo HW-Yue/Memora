@@ -1,6 +1,7 @@
 # MSQL Catalog DDL v1
 
-状态：F13c 已实现；F110 冻结列表读取，F112 增加 Column semantic role。
+状态：F13c 已实现；F110 冻结列表读取，F112 增加 Column semantic role，F135 增加
+跨库 Catalog Atlas。
 
 ## 创建
 
@@ -43,6 +44,7 @@ ALTER TABLE work.notes
 SHOW DATABASES [CURSOR :cursor] [LIMIT :limit] [COMPACT];
 SHOW TABLES FROM work [CURSOR :cursor] [LIMIT :limit] [COMPACT];
 SHOW COLUMNS FROM work.notes [CURSOR :cursor] [LIMIT :limit] [COMPACT];
+SHOW CATALOG ATLAS [CURSOR :cursor] [LIMIT :limit] [BYTES :bytes] COMPACT;
 DESCRIBE DATABASE work [COMPACT];
 DESCRIBE TABLE work.notes [COMPACT];
 DESCRIBE COLUMN work.notes.title [COMPACT];
@@ -52,6 +54,9 @@ DESCRIBE COLUMN work.notes.title [COMPACT];
 [Metadata Read v1](./metadata-read-v1.md) 返回 list page envelope。`DESCRIBE ... COMPACT`
 同样不展开下一层；不带 `COMPACT` 的 `DESCRIBE` 可以返回该对象的完整当前 Schema，
 但不能作为 Admin 的分页列表入口。
+
+Atlas 把授权 Database 与其 Table 的短语义元数据扁平分页，不展开 Column/Route/Row；
+同时受 entry 与 rows JSON byte 预算约束。完整契约见 [Catalog Atlas v1](./catalog-atlas-v1.md)。
 
 ## Rename
 

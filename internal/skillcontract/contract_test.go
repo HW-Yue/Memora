@@ -218,7 +218,9 @@ func TestCanonicalSkillSpeculativeDiscoveryIsBoundedAndFallbackSafe(t *testing.T
 	}
 	for _, required := range []string{
 		"## Speculative discovery",
-		"memora.speculative-discovery/v1",
+		"memora.speculative-discovery/v2",
+		"SHOW CATALOG ATLAS",
+		"coverage is partial",
 		"navigation_only",
 		"same model turn",
 		"ordinary Router root fallback",
@@ -237,6 +239,8 @@ func TestCanonicalSkillSpeculativeDiscoveryIsBoundedAndFallbackSafe(t *testing.T
 		SpeculativeDiscovery struct {
 			Version            string `json:"version"`
 			MaxDatabases       int    `json:"max_databases"`
+			AtlasEntries       int    `json:"atlas_entries"`
+			AtlasUTF8Bytes     int    `json:"atlas_utf8_bytes"`
 			CandidateRows      int    `json:"candidate_rows"`
 			CandidateUTF8Bytes int    `json:"candidate_utf8_bytes"`
 			PrefetchTables     int    `json:"prefetch_tables"`
@@ -247,7 +251,8 @@ func TestCanonicalSkillSpeculativeDiscoveryIsBoundedAndFallbackSafe(t *testing.T
 		t.Fatal(err)
 	}
 	profile := machine.SpeculativeDiscovery
-	if profile.Version != "memora.speculative-discovery/v1" || profile.MaxDatabases != 4 ||
+	if profile.Version != "memora.speculative-discovery/v2" || profile.MaxDatabases != 32 ||
+		profile.AtlasEntries != 64 || profile.AtlasUTF8Bytes != 8192 ||
 		profile.CandidateRows != 8 || profile.CandidateUTF8Bytes != 4096 ||
 		profile.PrefetchTables != 2 || profile.MaxToolCalls != 10 {
 		t.Fatalf("speculative discovery profile = %#v", profile)

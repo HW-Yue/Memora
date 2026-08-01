@@ -67,6 +67,7 @@
 - [MSQL Parser Core v1](./query/msql-parser.md) — F11 已冻结的单语句 AST、表达式优先级、参数与精确 Parser 错误。
 - [MSQL Batch 与事务边界 v1](./query/msql-batch-transactions.md) — F12/F16 的可恢复多语句解析、原子事务执行和跨 request IPC session。
 - [MSQL Catalog DDL v1](./query/catalog-ddl.md) — F13c 的自描述建模、发现、rename 和限定名 Binder 契约。
+- [Catalog Atlas v1](./query/catalog-atlas-v1.md) — F135 的 Database+Table 扁平双预算分页、授权 snapshot 与冷库覆盖证明。
 - [MSQL Metadata Read v1](./query/metadata-read-v1.md) — F110 的 Database/Table/Column 有界分页、snapshot 与 cursor 契约。
 - [MSQL Route Read v1](./query/route-read-v1.md) — F111 的 point node、单层 children、leaf locator 分页与快照契约。
 - [Route Mutation Plan v1](./query/route-mutation-plan-v1.md) — F129 的只读 split/merge/move proposal 校验与确定性 review plan。

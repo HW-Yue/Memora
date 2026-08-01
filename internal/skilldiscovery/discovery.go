@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"unicode/utf8"
 
@@ -16,15 +17,16 @@ import (
 	"github.com/HW-Yue/Memora/internal/security"
 )
 
-const Version = "memora.speculative-discovery/v1"
+const Version = "memora.speculative-discovery/v2"
 
 const (
-	maxDatabases      = 4
+	maxDatabases      = 32
 	maxCandidates     = 8
 	maxCandidateBytes = 4096
 	maxPrefetchTables = 2
 	maxToolCalls      = 10
-	maxTableRows      = 16
+	maxAtlasEntries   = 64
+	maxAtlasBytes     = 8192
 	maxRootRows       = 12
 	maxContextBytes   = 12000
 )
@@ -35,7 +37,6 @@ type CallKind string
 
 const (
 	CallCatalog      CallKind = "catalog"
-	CallTables       CallKind = "tables"
 	CallLexical      CallKind = "lexical"
 	CallVector       CallKind = "vector"
 	CallRootPrefetch CallKind = "root_prefetch"
@@ -62,7 +63,8 @@ type Request struct {
 	PrefetchFrameTopicID   string
 	CandidateLimit         int
 	CandidateUTF8ByteLimit int
-	TableLimit             int
+	AtlasEntryLimit        int
+	AtlasUTF8ByteLimit     int
 	RootLimit              int
 	ContextUTF8ByteLimit   int
 }
@@ -73,6 +75,8 @@ type Budget struct {
 	CandidateUTF8ByteLimit int
 	PrefetchTableLimit     int
 	ContextUTF8ByteLimit   int
+	AtlasEntryLimit        int
+	AtlasUTF8ByteLimit     int
 }
 
 type Call struct {
@@ -83,6 +87,8 @@ type Call struct {
 	Table                  *TableRef
 	CandidateLimit         int
 	CandidateUTF8ByteLimit int
+	AtlasEntryLimit        int
+	AtlasUTF8ByteLimit     int
 }
 
 type Plan struct {
@@ -120,6 +126,14 @@ type CatalogTable struct {
 	Row        result.Row
 }
 
+type CatalogCoverage struct {
+	Snapshot    string
+	Pages       int
+	EntriesSeen int
+	Complete    bool
+	NextCursor  string
+}
+
 type PrefetchedRoot struct {
 	TableRef
 	Snapshot  string
@@ -132,6 +146,7 @@ type Frame struct {
 	TopicID              string
 	CatalogRevision      string
 	CatalogPageSnapshots []string
+	CatalogCoverage      CatalogCoverage
 	CatalogDatabases     []result.Row
 	CatalogTables        []CatalogTable
 	Predictors           []Predictor
@@ -143,6 +158,9 @@ type Frame struct {
 	authorizedDatabases  []string
 	rootLimit            int
 	actor                string
+	atlasEntryLimit      int
+	atlasUTF8ByteLimit   int
+	contextUTF8ByteLimit int
 }
 
 type Selection struct {
@@ -163,6 +181,7 @@ func Build(request Request) (Plan, error) {
 		MaxToolCalls: maxToolCalls, CandidateLimit: request.CandidateLimit,
 		CandidateUTF8ByteLimit: request.CandidateUTF8ByteLimit,
 		PrefetchTableLimit:     maxPrefetchTables, ContextUTF8ByteLimit: request.ContextUTF8ByteLimit,
+		AtlasEntryLimit: request.AtlasEntryLimit, AtlasUTF8ByteLimit: request.AtlasUTF8ByteLimit,
 	}
 	plan := Plan{
 		Version: Version, TopicID: request.TopicID, AuthorizedDatabases: authorized,
@@ -170,16 +189,12 @@ func Build(request Request) (Plan, error) {
 	}
 	plan.Calls = append(plan.Calls, Call{
 		ID: "discover-01-catalog", Kind: CallCatalog,
-		MSQL: "SHOW CONFIGURATION; SHOW DATABASES LIMIT 32 COMPACT",
+		MSQL: "SHOW CATALOG ATLAS LIMIT :atlas_limit BYTES :atlas_bytes COMPACT",
+		Input: authorizedInput(request.Actor, authorized, map[string]any{
+			"atlas_limit": int64(request.AtlasEntryLimit), "atlas_bytes": int64(request.AtlasUTF8ByteLimit),
+		}),
+		AtlasEntryLimit: request.AtlasEntryLimit, AtlasUTF8ByteLimit: request.AtlasUTF8ByteLimit,
 	})
-	for _, database := range authorized {
-		plan.Calls = append(plan.Calls, Call{
-			ID: fmt.Sprintf("discover-%02d-tables", len(plan.Calls)+1), Kind: CallTables,
-			MSQL:  fmt.Sprintf("SHOW TABLES FROM %s LIMIT %d COMPACT", quoteIdentifier(database), request.TableLimit),
-			Input: authorizedInput(request.Actor, authorized, nil),
-			Table: &TableRef{Database: database},
-		})
-	}
 	lexicalLimit, lexicalBytes := request.CandidateLimit, request.CandidateUTF8ByteLimit
 	vectorLimit, vectorBytes := 0, 0
 	if request.Vector != nil {
@@ -238,6 +253,8 @@ func Finalize(plan Plan, responses []result.Envelope) (Frame, error) {
 		Predictors: []Predictor{}, Candidates: []discovery.Candidate{},
 		PrefetchedRoots: []PrefetchedRoot{}, authorizedDatabases: append([]string(nil), plan.AuthorizedDatabases...),
 		rootLimit: plan.rootLimit, actor: plan.actor, CatalogPageSnapshots: []string{},
+		atlasEntryLimit: plan.Budget.AtlasEntryLimit, atlasUTF8ByteLimit: plan.Budget.AtlasUTF8ByteLimit,
+		contextUTF8ByteLimit: plan.Budget.ContextUTF8ByteLimit,
 	}
 	for index, call := range plan.Calls {
 		envelope := responses[index]
@@ -256,32 +273,9 @@ func Finalize(plan Plan, responses []result.Envelope) (Frame, error) {
 		frame.Audit.OutputUTF8Bytes += len(encoded)
 		switch call.Kind {
 		case CallCatalog:
-			if !envelope.OK || len(envelope.Results) != 2 || envelope.Results[1].Page == nil ||
-				envelope.Results[1].Page.Snapshot == "" {
-				return Frame{}, invalid("Catalog discovery failed")
+			if err := consumeCatalogAtlas(&frame, call, envelope, true); err != nil {
+				return Frame{}, err
 			}
-			frame.CatalogDatabases = cloneRows(envelope.Results[1].Rows)
-			frame.CatalogPageSnapshots = append(frame.CatalogPageSnapshots, envelope.Results[1].Page.Snapshot)
-			frame.Truncated = frame.Truncated || envelope.Truncated
-		case CallTables:
-			if !envelope.OK || len(envelope.Results) != 1 || call.Table == nil ||
-				envelope.Results[0].Page == nil || envelope.Results[0].Page.Snapshot == "" {
-				return Frame{}, invalid("Table discovery failed")
-			}
-			frame.CatalogPageSnapshots = append(frame.CatalogPageSnapshots, envelope.Results[0].Page.Snapshot)
-			for _, row := range envelope.Results[0].Rows {
-				name, _ := row["name"].(string)
-				databaseID, _ := row["database_id"].(string)
-				tableID, _ := row["table_id"].(string)
-				if name == "" || databaseID == "" || tableID == "" {
-					return Frame{}, invalid("Table discovery row is incomplete")
-				}
-				frame.CatalogTables = append(frame.CatalogTables, CatalogTable{
-					TableRef:   TableRef{Database: call.Table.Database, Table: name},
-					DatabaseID: databaseID, TableID: tableID, Row: cloneRow(row),
-				})
-			}
-			frame.Truncated = frame.Truncated || envelope.Truncated
 		case CallLexical, CallVector:
 			if err := consumePredictor(&frame, call, envelope); err != nil {
 				return Frame{}, err
@@ -320,7 +314,7 @@ func (frame Frame) SelectTable(topicID string, table TableRef) (Selection, error
 		return Selection{}, invalid("selected Table is outside the authorized discovery scope")
 	}
 	current := frame.Reusable(topicID)
-	if current && !frameHasTable(frame, table) {
+	if current && frame.CatalogCoverage.Complete && !frameHasTable(frame, table) {
 		return Selection{}, invalid("selected Table is absent from the current Catalog frame")
 	}
 	selection := Selection{TableRef: table, DiscardedStaleFrame: !current}
@@ -337,6 +331,61 @@ func (frame Frame) SelectTable(topicID string, table TableRef) (Selection, error
 	fallback := fallbackCall(frame.actor, frame.authorizedDatabases, frame.rootLimit, table)
 	selection.Fallback = &fallback
 	return selection, nil
+}
+
+func (frame Frame) NextCatalogPage(topicID string) (Call, bool, error) {
+	if !frame.Reusable(topicID) {
+		return Call{}, false, invalid("Catalog continuation requires the current topic Frame")
+	}
+	if frame.CatalogCoverage.Complete {
+		return Call{}, false, nil
+	}
+	if frame.CatalogCoverage.NextCursor == "" {
+		return Call{}, false, invalid("partial Catalog coverage omitted its continuation")
+	}
+	call := Call{ID: fmt.Sprintf("discover-catalog-page-%02d", frame.CatalogCoverage.Pages+1), Kind: CallCatalog,
+		MSQL: "SHOW CATALOG ATLAS CURSOR :atlas_cursor LIMIT :atlas_limit BYTES :atlas_bytes COMPACT",
+		Input: authorizedInput(frame.actor, frame.authorizedDatabases, map[string]any{
+			"atlas_cursor": frame.CatalogCoverage.NextCursor, "atlas_limit": int64(frame.atlasEntryLimit),
+			"atlas_bytes": int64(frame.atlasUTF8ByteLimit),
+		}), AtlasEntryLimit: frame.atlasEntryLimit, AtlasUTF8ByteLimit: frame.atlasUTF8ByteLimit}
+	return cloneCall(call), true, nil
+}
+
+func (frame Frame) ContinueCatalog(topicID string, call Call, envelope result.Envelope) (Frame, error) {
+	want, available, err := frame.NextCatalogPage(topicID)
+	if err != nil || !available {
+		if err != nil {
+			return Frame{}, err
+		}
+		return Frame{}, invalid("Catalog coverage is already complete")
+	}
+	if call.ID != want.ID || call.Kind != want.Kind || call.MSQL != want.MSQL ||
+		!reflectCallInput(call.Input, want.Input) {
+		return Frame{}, invalid("Catalog continuation call does not match the current cursor")
+	}
+	if envelope.RequestID != call.ID {
+		return Frame{}, invalid("Catalog continuation response is not bound to its call")
+	}
+	if err := envelope.Validate(); err != nil {
+		return Frame{}, invalid("Catalog continuation response is invalid: %v", err)
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return Frame{}, invalid("Catalog continuation cannot be audited: %v", err)
+	}
+	next := cloneFrame(frame)
+	next.Audit.ToolCalls++
+	next.Audit.MSQLStatements += len(envelope.Results)
+	next.Audit.OutputUTF8Bytes += len(encoded)
+	if err := consumeCatalogAtlas(&next, call, envelope, false); err != nil {
+		return Frame{}, err
+	}
+	if next.Audit.OutputUTF8Bytes > next.contextUTF8ByteLimit {
+		next.invalidated, next.Truncated = true, true
+		next.Candidates, next.PrefetchedRoots = []discovery.Candidate{}, []PrefetchedRoot{}
+	}
+	return cloneFrame(next), nil
 }
 
 func consumePredictor(frame *Frame, call Call, envelope result.Envelope) error {
@@ -368,6 +417,120 @@ func consumePredictor(frame *Frame, call Call, envelope result.Envelope) error {
 	frame.Candidates = append(frame.Candidates, cloneCandidates(value.Candidates)...)
 	frame.Truncated = frame.Truncated || value.Truncated || envelope.Truncated
 	return nil
+}
+
+func consumeCatalogAtlas(frame *Frame, call Call, envelope result.Envelope, initial bool) error {
+	resultIndex := 0
+	if initial {
+		if !envelope.OK || len(envelope.Results) != 1 {
+			return invalid("initial Catalog Atlas discovery failed")
+		}
+	} else if !envelope.OK || len(envelope.Results) != 1 {
+		return invalid("Catalog Atlas continuation failed")
+	}
+	statement := envelope.Results[resultIndex]
+	if statement.Page == nil || statement.Page.Snapshot == "" || len(statement.Rows) > call.AtlasEntryLimit ||
+		(statement.Page.Truncated && len(statement.Rows) == 0) {
+		return invalid("Catalog Atlas page is missing its bounded snapshot")
+	}
+	if statement.Page.Truncated != statement.Truncated || statement.Truncated != envelope.Truncated {
+		return invalid("Catalog Atlas truncation metadata is inconsistent")
+	}
+	if statement.Truncated == (statement.NextCursor == "") || statement.NextCursor != statement.Page.NextCursor {
+		return invalid("Catalog Atlas continuation metadata is inconsistent")
+	}
+	if frame.CatalogCoverage.Snapshot == "" {
+		frame.CatalogCoverage.Snapshot = statement.Page.Snapshot
+	} else if frame.CatalogCoverage.Snapshot != statement.Page.Snapshot {
+		return invalid("Catalog Atlas continuation changed snapshot")
+	}
+	knownDatabases, knownTables := map[string]bool{}, map[string]bool{}
+	for _, row := range frame.CatalogDatabases {
+		identity, _ := row["database_id"].(string)
+		knownDatabases[identity] = true
+	}
+	for _, table := range frame.CatalogTables {
+		knownTables[table.TableID] = true
+	}
+	for _, row := range statement.Rows {
+		if _, leaked := row["row_id"]; leaked {
+			return invalid("Catalog Atlas leaked a Row locator")
+		}
+		if _, leaked := row["columns"]; leaked {
+			return invalid("Catalog Atlas expanded Columns")
+		}
+		if _, leaked := row["route_id"]; leaked {
+			return invalid("Catalog Atlas leaked a Route")
+		}
+		kind, _ := row["kind"].(string)
+		database, _ := row["database"].(string)
+		databaseID, _ := row["database_id"].(string)
+		if database == "" || databaseID == "" || !catalogDatabaseAuthorized(*frame, row) {
+			return invalid("Catalog Atlas row is outside the authorized scope")
+		}
+		switch kind {
+		case "database":
+			if knownDatabases[databaseID] {
+				return invalid("Catalog Atlas repeated a Database")
+			}
+			knownDatabases[databaseID] = true
+			frame.CatalogDatabases = append(frame.CatalogDatabases, cloneRow(row))
+		case "table":
+			table, _ := row["table"].(string)
+			tableID, _ := row["table_id"].(string)
+			if table == "" || tableID == "" || knownTables[tableID] {
+				return invalid("Catalog Atlas Table row is incomplete or repeated")
+			}
+			knownTables[tableID] = true
+			frame.CatalogTables = append(frame.CatalogTables, CatalogTable{TableRef: TableRef{
+				Database: database, Table: table}, DatabaseID: databaseID, TableID: tableID, Row: cloneRow(row)})
+		default:
+			return invalid("Catalog Atlas row kind is unsupported")
+		}
+	}
+	frame.CatalogPageSnapshots = append(frame.CatalogPageSnapshots, statement.Page.Snapshot)
+	frame.CatalogCoverage.Pages++
+	frame.CatalogCoverage.EntriesSeen += len(statement.Rows)
+	frame.CatalogCoverage.Complete = !statement.Truncated
+	frame.CatalogCoverage.NextCursor = statement.NextCursor
+	return nil
+}
+
+func catalogDatabaseAuthorized(frame Frame, row result.Row) bool {
+	selectors := []string{}
+	for _, key := range []string{"database_id", "database"} {
+		if value, ok := row[key].(string); ok {
+			selectors = append(selectors, value)
+		}
+	}
+	appendAliases := func(value any) {
+		switch aliases := value.(type) {
+		case []string:
+			selectors = append(selectors, aliases...)
+		case []any:
+			for _, alias := range aliases {
+				if text, ok := alias.(string); ok {
+					selectors = append(selectors, text)
+				}
+			}
+		}
+	}
+	if kind, _ := row["kind"].(string); kind == "database" {
+		appendAliases(row["aliases"])
+	}
+	databaseID, _ := row["database_id"].(string)
+	for _, database := range frame.CatalogDatabases {
+		knownID, _ := database["database_id"].(string)
+		if knownID == databaseID {
+			appendAliases(database["aliases"])
+		}
+	}
+	for _, selector := range selectors {
+		if containsString(frame.authorizedDatabases, selector) {
+			return true
+		}
+	}
+	return false
 }
 
 func consumeRoot(frame *Frame, call Call, envelope result.Envelope) error {
@@ -427,7 +590,8 @@ func validateRequest(request Request) error {
 	}
 	if request.CandidateLimit < 1 || request.CandidateLimit > maxCandidates ||
 		request.CandidateUTF8ByteLimit < 256 || request.CandidateUTF8ByteLimit > maxCandidateBytes ||
-		request.TableLimit < 1 || request.TableLimit > maxTableRows ||
+		request.AtlasEntryLimit < 1 || request.AtlasEntryLimit > maxAtlasEntries ||
+		request.AtlasUTF8ByteLimit < 512 || request.AtlasUTF8ByteLimit > maxAtlasBytes ||
 		request.RootLimit < 1 || request.RootLimit > maxRootRows ||
 		request.ContextUTF8ByteLimit < 256 || request.ContextUTF8ByteLimit > maxContextBytes {
 		return invalid("discovery budgets exceed the canonical profile")
@@ -634,6 +798,10 @@ func cloneValue(value any) any {
 	default:
 		return value
 	}
+}
+
+func reflectCallInput(left, right executor.StatementInput) bool {
+	return reflect.DeepEqual(left, right)
 }
 
 func invalid(format string, arguments ...any) error {
