@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F150、F152 已完成；F151/F153–F158 已评估并延后，下一项为 F159 Replication evidence gate。用户已于
+状态：F81–F150、F152 已完成；F151/F153–F159 已评估并延后，下一项为 F160 PITR evidence gate。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -139,7 +139,7 @@ F124a–F124e 的 RED、边界和顺序见
 | F156 Physical Undo | 已评估并延后：生产路径保持 durable commit 后 publish、no-steal 与 immutable revision |
 | F157 Advanced MVCC | 已评估并延后：65 个 canonical turn 无 multi-writer/强隔离需求，现有 snapshot 对拍通过 |
 | F158 Lock Waits/Deadlock | 已评估并延后：65 turn 无等待需求，opposite-order 保持 one-winner/no-deadlock |
-| F159 Replication | 明确出现主从副本故事 |
+| F159 Replication | 已评估并延后：65 turn 无 primary/replica/failover 故事，Change Log 仅保留为未来输入 |
 | F160 PITR | 明确出现时间点恢复故事 |
 | F161 Multi-device Sync | 明确出现多设备双向同步故事 |
 | F162 Apple Accelerate Route Scan | 纯 Go CPU exact 的 p95/能耗越过冻结门槛且结果等价 |
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F159；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F160；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；

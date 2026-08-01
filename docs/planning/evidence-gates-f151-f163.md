@@ -107,7 +107,19 @@
 - 结论：对本地 Agent 写入，快速返回稳定 conflict 让上层重新读取/重计划更可解释；不引入
   等待队列、公平性、超时和 wait-for graph。
 
+## F159 Replication
+
+状态：已评估，产品进入条件未成立，延后。
+
+- 冻结门槛：出现明确 primary→replica 旅程，包含拓扑、期望 RPO/RTO、读一致性与
+  failover owner；仅“换宿主读取同一 Instance”不算复制。
+- 命令：用 `jq` 匹配 canonical turn 的 replica/replication/standby/failover，并运行
+  committed Change Log cursor/index 测试，确认未来输入基础没有腐化。
+- 结果：65 turn 中明确复制需求 0；Change Log 仍可按 commit sequence 确定性读取。
+- 结论：逻辑变化流只是未来武器库，不自行升级成网络拓扑；不引入 replica identity、
+  acknowledgement、lag、promotion 或 split-brain 处理。
+
 ## 后续门
 
-F159–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
+F160–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
 先另开实现 Feature，不把大实现塞进证据门提交。
