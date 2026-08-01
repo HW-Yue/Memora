@@ -1159,6 +1159,30 @@ func TestRunInstanceMoveUsesExplicitPathsAndEmitsReceipt(t *testing.T) {
 	}
 }
 
+func TestRunMCPServesOnlyProtocolMessagesOnStdout(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "instance")
+	input := `{"jsonrpc":"2.0","id":"list","method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}` + "\n"
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return root, nil },
+		Stdin:   strings.NewReader(input),
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunWithDependencies([]string{"mcp", "--data-dir", dataDir}, &stdout, &stderr, BuildInfo{Version: "0.1-test"}, dependencies)
+	if code != ExitOK || stderr.Len() != 0 {
+		t.Fatalf("mcp code = %d, stderr = %q", code, &stderr)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &response); err != nil {
+		t.Fatalf("stdout is not one JSON-RPC response: %v: %q", err, &stdout)
+	}
+	if response["jsonrpc"] != "2.0" || response["result"] == nil {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
 func golden(t *testing.T, name string) string {
 	t.Helper()
 

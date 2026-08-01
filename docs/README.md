@@ -58,6 +58,7 @@
 - [Conversation Delta 交接 v1](./agent/conversation-delta-v1.md) — F33 的显式事件、幂等去重、checkpoint 和缺失上下文处理。
 - [Host Input Capture v1](./agent/host-input-capture-v1.md) — F133 的有界 pending 候选、非回显 hash receipt、幂等与重启恢复边界。
 - [Worthiness Decision v1](./agent/worthiness-decision-v1.md) — F134 的 AI ignore/write/revise 终结判断、Mutation Receipt 绑定与原子 pending 转移。
+- [MCP Adapter v1](./agent/mcp-adapter-v1.md) — F146 的双时代 MCP stdio、唯一 MSQL 工具与 daemon/Authorization 边界。
 - [Skill 语义冲突交互 v1](./agent/skill-conflict-v1.md) — F34 的并列来源/revision 差异、用户决议和 Mutation Plan 绑定。
 - [资料清单与覆盖 v1](./agent/assimilation-coverage-v1.md) — F35 的临时 inventory、窗口去重、未读范围和中断恢复。
 - [资料独立复核与提交 v1](./agent/assimilation-review-v1.md) — F36 的隔离复核、语义提交门禁、来源锚点和 Source Receipt。

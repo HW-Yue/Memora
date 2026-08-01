@@ -25,6 +25,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/instancemove"
 	"github.com/HW-Yue/Memora/internal/instanceupgrade"
+	"github.com/HW-Yue/Memora/internal/mcpadapter"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/readquery"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -59,6 +60,7 @@ Commands:
   init       Initialize a local instance
   install    Install an explicitly trusted database package
   maintain   Report and retry low-risk semantic maintenance
+  mcp        Serve MCP over newline-delimited stdio
   move       Safely move an Instance to another directory or device
   mutate     Execute a validated Mutation Plan
   open       Inspect a database package read-only
@@ -89,12 +91,14 @@ type versionOutput struct {
 func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
 	return RunWithDependencies(args, stdout, stderr, build, Dependencies{
 		HomeDir: os.UserHomeDir,
+		Stdin:   os.Stdin,
 	})
 }
 
 type Dependencies struct {
 	HomeDir     func() (string, error)
 	LookupEnv   func(string) (string, bool)
+	Stdin       io.Reader
 	Clock       instance.Clock
 	IDs         instance.IDSource
 	ExecuteMSQL func(
@@ -163,6 +167,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runDatabasePackage(args[0], args[1:], stdout, stderr, dependencies)
 	case "maintain":
 		return runMaintain(args[1:], stdout, stderr, dependencies)
+	case "mcp":
+		return runMCP(args[1:], stdout, stderr, build, dependencies)
 	case "parse":
 		return runParse(args[1:], stdout, stderr, dependencies)
 	case "reflect":
@@ -1415,6 +1421,23 @@ func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	}
 	if !response.OK {
 		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runMCP(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
+	dataDir, code := daemonDataDir(args, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	input := dependencies.Stdin
+	if input == nil {
+		input = os.Stdin
+	}
+	execute := dependencies.ExecuteMSQL
+	server := mcpadapter.New(mcpadapter.Config{DataDir: dataDir, Version: build.Version, Execute: execute})
+	if err := server.Serve(context.Background(), input, stdout); err != nil {
+		return commandError(stderr, "serve MCP stdio", err)
 	}
 	return ExitOK
 }
