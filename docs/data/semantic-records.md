@@ -60,7 +60,10 @@ AI 决定 `depends_on`、`contradicts`、`part_of` 等关系语义；引擎负�
 
 所有修改都必须通过 MSQL/SQL 进入统一事务执行器。`row_id` 永不因正文、Schema、Router 归属或索引重建而改变；UPDATE 创建新语义 revision，逻辑 DELETE 将当前状态改为 deleted 并默认保留历史。物理清除使用单独的高风险 PURGE。
 
-Row 修改或删除时，引擎必须在同一事务中更新当前 Record、物理索引、机械 posting、关系引用和 Binlog。Agent 维护的完整 `index_terms` 与 Router 叶子归属也必须通过声明式 MSQL 替换或失效，不能留下指向旧内容的活跃引用。
+Row 修改或删除时，引擎必须在同一事务中更新当前 Record、物理索引、关系引用、
+Route locator 和 Change Log。普通 UPDATE 未改变语义边界时可以保留现有 Route
+membership，并把 locator 推进到新 Row revision；改变边界时，Agent 必须通过声明式
+MSQL 提交完整叶子快照。DELETE 原子清除可见 membership。
 
 ## 未决问题
 

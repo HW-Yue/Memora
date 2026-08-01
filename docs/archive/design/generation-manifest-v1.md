@@ -50,6 +50,6 @@ staged generation 和 active generation 不由该路径误删。当前原型由 
 
 ## 关联
 
-- [Database 物理目录](./database-file-layout.md)
-- [物理与检索索引](./indexing.md)
-- [Pending Reindex v1](../data/pending-reindex-v1.md)
+- [Database 物理目录](../../storage/database-file-layout.md)
+- [物理与检索索引](../../storage/indexing.md)
+- [Pending Reindex v1（历史）](./pending-reindex-v1.md)

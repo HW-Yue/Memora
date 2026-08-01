@@ -42,7 +42,7 @@ Canonical Skill 只在用户明确要求或显式 conversation checkpoint 时运
 
 ## 关联
 
-- [Pending Reindex v1](../../data/pending-reindex-v1.md)
+- [Pending Reindex v1（历史）](./pending-reindex-v1.md)
 - [Router Tree v1](./router-tree-v1.md)
 - [Skill 写入流程 v1](../../agent/skill-write-v1.md)
 - [Skill Schema 生命周期 v1](../../agent/skill-schema-lifecycle-v1.md)

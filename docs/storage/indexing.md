@@ -45,7 +45,8 @@ Database/Table/Route ID、revision、来源和有界分数；AI 仍读取 Router
 - 当前 Record 与普通物理索引按同一事务可见；
 - 所有旧 Route membership 通过反向索引立即失效；
 - 新 membership 绑定新 Row revision 后原子启用；
-- 暂无 AI 语义结果时标记 `pending_reindex`，不能继续暴露旧定位；
+- 未提供新快照的普通 UPDATE 保留现有 membership，并原子推进 locator revision；
+- 改变语义边界或恢复 live Row 时必须提交完整 Route 快照；
 - History 保留旧 revision，Router 不复制正文。
 
 ## Generation

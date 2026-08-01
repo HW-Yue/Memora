@@ -9,23 +9,30 @@ Policy，再由本 Executor 执行；直接 `exec` 仍是底层逻辑 MSQL 入�
 
 ## Request options
 
-MSQL source、parameter values 和 mutation guard 分字段提交：
+MSQL source 与每条 statement 的 parameter、mutation guard、authorization 分字段提交。
+下面是单条 `StatementInput`：
 
 ```json
 {
-  "source": "UPDATE work.notes SET title = :title WHERE row_id = :row_id",
   "parameters": {
     "named": {"title": "新标题", "row_id": "row_..."},
     "positional": []
   },
-  "expected_schema_version": 3,
-  "expected_revision": 7,
-  "max_affected_rows": 1,
-  "actor": "agent:codex",
-  "source": "conversation:event-42",
-  "reason": "用户确认新标题",
-  "index_terms": ["新标题", "项目状态"],
-  "route_leaf_ids": ["route_project", "route_recent"]
+  "mutation": {
+    "expected_schema_version": 3,
+    "expected_revision": 7,
+    "max_affected_rows": 1,
+    "actor": "agent:codex",
+    "source": "conversation:event-42",
+    "reason": "用户确认新标题",
+    "route_leaf_ids": ["route_project", "route_recent"]
+  },
+  "authorization": {
+    "version": "memora.authorization/v2",
+    "actor": "agent:codex",
+    "authorized_databases": ["work"],
+    "default_level": "L1"
+  }
 }
 ```
 
@@ -33,11 +40,14 @@ INSERT 要求非零 `expected_schema_version` 和 1–1000 的 `max_affected_row
 
 F17a 的 `actor`、`source` 和 `reason` 也属于结构化 options，并原样进入已提交 History provenance；它们不参与 Parser、predicate 或 value expression。
 
-F19b 的 `index_terms` 是 Agent 针对提交后完整 Row 生成的完整词项快照，不属于 SQL source 或某个 Column。非 nil 空数组表示显式空快照；字段缺失表示未提供。词项与 Row、History 在同一事务提交，参数中的 SQL 形文本不会被重新解析。
+`route_leaf_ids` 是提交后完整 Router membership 快照，位于结构化 option 而不是
+SQL source。非 nil 空数组显式清空；目标必须是同一 Database 的 leaf。快照、Row
+revision、History、Route locator 和 Change Log 原子提交，DELETE 始终清空 membership。
 
-F22b 的 `route_leaf_ids` 是提交后完整 Router membership 快照，同样位于结构化 option 而不是 SQL source。非 nil 空数组显式清空，字段缺失表示本次未提供；目标必须是同一 Database 的 leaf。快照、Row revision、History 与 Router 正反向索引原子提交，DELETE 始终清空 membership。
-
-F24 起，UPDATE/RESTORE 缺少任一语义快照不会沿用旧 revision：对应 Agent/Router 通道立即失效，并为提交后的 Row revision 原子写入 durable `pending_reindex`。机械索引照常同步更新。两个快照都提供时不排队；DELETE 清除待处理任务。worker 的 lease、失败、重试和 stale revision 规则见 [Pending Reindex v1](../data/pending-reindex-v1.md)。
+普通 UPDATE 缺少 `route_leaf_ids` 时保留当前 membership，并把 locator revision
+推进到新 Row revision；这只适用于语义边界没有改变的修改。INSERT 由 Skill 提交完整
+快照，RESTORE 到 live Row 也强制要求完整快照。当前没有 Row 级 Agent posting 或
+`pending_reindex` 队列。
 
 ## INSERT
 

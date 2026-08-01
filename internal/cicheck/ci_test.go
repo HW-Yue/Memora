@@ -218,6 +218,17 @@ func TestHardCodedSkillQueryRunnerStaysOutOfActiveTree(t *testing.T) {
 	}
 }
 
+func TestRetiredRowAgentIndexGenerationStaysOutOfActiveTree(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(repositoryRoot(t), "internal", "generation")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("retired Row Agent-index generation service remains active: internal/generation")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("inspect internal/generation: %v", err)
+	}
+}
+
 func TestRoutePredictorPackagesDoNotImportFactStores(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)

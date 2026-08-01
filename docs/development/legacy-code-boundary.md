@@ -11,6 +11,8 @@
   ADR、Feature 状态与新评测架构表达；F164 已删除；
 - F30 `internal/skillquery`：硬编码一个未接入产品的 Agent 查询循环，与 Canonical Skill
   和后续内置评测 Agent 重复；F165 已删除；
+- F25 `internal/generation`：只服务于 Router/Agent/mechanical 三类旧组合 manifest，
+  不在生产依赖图中；F167 已删除，旧规格移入归档；
 - 历史 `MATCH`：主语法和执行器已在 F71 删除；F166 已清除 Lexer、Policy、测试工具
   和当前文档中的可用语句残留，并用 Parser/CI 回归约束锁定。
 

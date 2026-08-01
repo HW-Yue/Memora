@@ -32,6 +32,6 @@ worker 使用有期限 lease。过期 lease 可被其他 worker 接管；旧 tok
 
 ## 关联
 
-- [Agent Inverted Index v1（历史）](../archive/design/agent-index-v1.md)
-- [Router Tree v1（历史）](../archive/design/router-tree-v1.md)
-- [MSQL Mutation Executor v1](../query/msql-mutation.md)
+- [Agent Inverted Index v1（历史）](./agent-index-v1.md)
+- [Router Tree v1（历史）](./router-tree-v1.md)
+- [MSQL Mutation Executor v1](../../query/msql-mutation.md)

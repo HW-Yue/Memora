@@ -10,3 +10,8 @@ Router、Sub-agent 查询拆分、旧发布门和被新版规格取代的文档�
 - [MSQL](../../query/msql.md)
 - [Table 级语义 Router](../../query/semantic-routing.md)
 - [后续路线](../../planning/future-roadmap.md)
+
+本轮收口新增归档：
+
+- [旧 Row Agent/mechanical/Router 组合 Generation Manifest](./generation-manifest-v1.md)
+- [旧 Row Agent index Pending Reindex](./pending-reindex-v1.md)

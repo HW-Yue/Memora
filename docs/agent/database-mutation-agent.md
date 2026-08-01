@@ -70,23 +70,25 @@ RELATE      只新增或修正关系
 
 `source_event_id` 用于幂等重试。confidence 不是正确性证明，数据库也不根据它创建 `candidate/disputed` 状态。Skill 发现待写内容与现有 Row 语义冲突时，必须读取并向用户并列展示冲突内容；得到用户指示后重新生成 SQL 修改方案，不能让引擎猜测真伪或自动选边。低置信且无法向用户说明的内容不应自动提交。
 
-## 语义索引词项
+## 语义 Route 快照
 
-每个 INSERT、REVISE、MERGE 或 SPLIT 结果必须为对应 Row 输出去重后的字符串列表：
+每个 INSERT、REVISE、MERGE 或 SPLIT 结果必须为对应 Row 输出完整、去重的 Route
+叶子快照：
 
 ```json
 {
-  "index_terms": ["Memora", "MSQL", "个人数据库", "倒排索引"]
+  "route_leaf_ids": ["route_storage", "route_ai_native"]
 }
 ```
 
-词项可以来自 Row 的任意字段，不记录来源字段，也不携带逐词权重。每次产生新 revision 时，Agent 必须重新输出完整词项列表，不能提交增删 diff。引擎自动关联 `row_id` 和 `revision`，并在同一事务中原子替换上一 revision 的全部 Agent posting。Database 级 Agent/机械通道权重不属于单条 Row 的写入结果。
+一个 `row_id` 可以属于多个叶子。快照绑定新 Row revision，并与 Row、History、
+Route 正反向索引和 Change Log 在同一事务中发布；不能提交增删 diff，也不能让引擎
+从正文自动猜归属。Policy 的启动上限为 32 个 membership。
 
-同一提交还要输出完整 Router membership 快照；一个 `row_id` 可以属于多个叶子。Mutation Agent 将业务 UPDATE、词项替换和 Route membership 替换组合成一个 MSQL 事务，任一步失败都回滚，不能让 Row 与发现索引处于不同 revision。
-
-直接 SQL 修改若没有预先生成语义索引快照，写入仍可成功，但旧词项和 Router 引用立即失效，新 revision 进入 `pending_reindex`。后台 Mutation/Reindex Agent 必须携带 expected revision；过期结果不得覆盖更新后的 Row。
-
-`index_terms` 的启动预算为 24 个、启动 Policy 上限为 64 个。两者存于 Database 配置，建库后是否允许 AI 调整留到配置生命周期设计；超出当前预算时 Agent 应先删除低价值词项，不能把正文机械拆词塞入语义通道。
+普通底层 SQL UPDATE 未提供快照时保留现有 membership，并推进 locator revision；
+因此 Mutation Agent 只要修改可能改变语义边界，就必须显式提交新快照。直接 SQL 不会
+创建 Row 级 Agent posting，也没有后台 `pending_reindex` 兜底。Route 树本身需要改名、
+split、merge 或 move 时，使用独立的 Route Mutation Plan 和 revision-bound approval。
 
 ## 风险边界
 

@@ -38,8 +38,8 @@ CLI 在任何 Tool 调用前严格解码并校验：
 - 最多 8 个步骤；普通单 Row 步骤 `max_affected_rows = 1`，reshape 预算等于
   有界来源与目标总数；
 - UPDATE/DELETE 带 expected schema/revision；
-- INSERT/UPDATE 带非 nil 的完整 Agent index 和 Route membership 快照；
-- index terms 最多 64 个、Route memberships 最多 32 个，均非空且去重。
+- INSERT/UPDATE 带非 nil 的完整 Route membership 快照；
+- Route memberships 最多 32 个，稳定 ID 非空且去重。
 
 显式空数组表示提交空快照；字段缺失不等于空快照。语义冲突、高风险或
 越权仍由 Skill 请求用户，不能用扩展 `authorized_databases` 绕过。
@@ -55,8 +55,8 @@ preflight query → one mutation batch → verify query → receipt
 单步使用 autocommit；MERGE/SPLIT 语句自身由原生 coordinator 原子提交，不再
 外包一层无法跨 authority 保证的 `BEGIN ... COMMIT`。
 daemon 的统一 BatchSession 再执行 Parser、guard、revision 和影响行数校验。
-Row、History、机械索引、Agent index、Route membership 和 pending_reindex
-继续由 Row transaction 原子更新，没有 Skill 专用 Store 旁路。
+Row、History、物理索引、Route membership 和 Change Log 继续由 Row transaction
+原子更新，没有 Skill 专用 Store 旁路。
 
 ## Mutation Receipt
 
