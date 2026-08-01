@@ -43,6 +43,7 @@
 - [Canonical Skill v1](./agent/canonical-skill-v1.md) — F28 的唯一宿主规则源、版本 lint、冲突边界和上下文预算。
 - [宿主模型与 CC Switch 兼容边界](./agent/host-provider-compatibility.md) — Provider 由宿主管理，兼容自定义 OpenAI/Anthropic 协议地址且密钥不进入 Memora。
 - [Real Host Contract v1](./agent/real-host-contract-v1.md) — F123 的同题 Task、宿主/Provider 矩阵、预算与脱敏执行收据。
+- [AI Story Gate v2](./agent/ai-story-gate-v2.md) — F127 将机械运行时门与真实双宿主 AI 用户故事证据分层。
 - [Skill 查询流程 v1](./agent/skill-query-v1.md) — F30 历史实现与 Table 级逐层 Route 目标状态机。
 - [Speculative Discovery Skill v1](./agent/speculative-discovery-skill-v1.md) — F124e 在一个模型回合组合有界 Catalog、候选、根 Route 预取与确定性回退。
 - [Skill 写入流程 v1](./agent/skill-write-v1.md) — F31 的七种语义决策、Mutation Plan、Policy、短事务和紧凑收据。
@@ -216,7 +217,7 @@
 - [Route Predictor 小 Feature 计划](./planning/route-predictor-feature-plan.md) — F124a–F124e 的候选契约、字面位置、Route 向量、CPU exact 与 Skill 投机预取。
 - [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
 - [F72 AI-native 用户故事门](./planning/f72-ai-native-story-gate.md) — 全部产品故事、实际 MSQL、proof 文件、宿主与许可的最终验收。
-- [F80 真实发行用户故事门](./planning/f80-real-release-story-gate.md) — 双宿主、隔离 Instance、公开 CLI 和 mutation 后顶层 Route 重查的运行时 PASS。
+- [F80 发行运行时机械故事门](./planning/f80-real-release-story-gate.md) — 双 adapter、隔离 Instance、公开 CLI 和 mutation 后顶层 Route 重查的机械前置门。
 - [AI-native 真实使用审计](./planning/ai-native-live-ux-audit-2026-07-30.md) — 以发行二进制实测冷启动、Route、修改、恢复和维护；撤销 F72 的产品级 PASS。
 - [真实审计后 Feature 计划](./planning/post-audit-feature-plan.md) — F73–F80 修复修改、恢复、反馈、维护、reshape、Route synopsis、来源与真实故事门。
 - [F52 原生文件格式开工门](./planning/f52-native-format-gate.md) — 下一 Feature 的故事、格式、边界与待确认项。

@@ -1,6 +1,7 @@
 # 当前实现缺口审计
 
-状态：讨论稿，待用户 Review；只记录现状，不代表后续 Feature 已批准或开工。
+状态：历史基线讨论稿；F81–F127 已推进，其中 F127 已把机械门与真实 AI evidence 分层，
+但 32 份真实 Provider journey evidence 仍未提供。
 
 审计基线：`main` 提交 `7d1863a`。对照产品宪章、当前规划、公开 CLI/Skill、E2E、
 Story Gate 与具体实现；不把历史归档或已撤销的 Vector/MATCH 路径算作待实现目标。

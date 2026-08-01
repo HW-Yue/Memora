@@ -1,6 +1,6 @@
 # F81 之后的小 Feature 规划
 
-状态：F81–F126 已完成；下一项为 F127 Story Gate v2。用户已于
+状态：F81–F127 已完成；下一项为 F128 Semantic Health Scan。用户已于
 2026-08-01 明确授权持续执行至 F163，不在中间 Feature 等待重复授权。一个 Feature
 只交付一个可独立测试、验收、合入和回滚的主要结果。Milestone 只表达依赖，不允许
 合并实施。
@@ -89,7 +89,7 @@ Vector 作为可回退候选预测器，禁止 Row/chunk Vector、隐藏答案�
 | F124e Speculative Discovery Skill | 已完成：Skill 组合候选与根 Route，miss 后确定性回退 |
 | F125 Route Benchmark Runner | 已完成：真实 host/model 五 arm 盲测矩阵与可重验原始报告 |
 | F126 Route Capability Report | 已完成：分桶能力、成本曲线与共同默认门；无真实 source 时保持 Router |
-| F127 Story Gate v2 | 每个 `US-*` 由匹配的真实 AI 旅程验收 |
+| F127 Story Gate v2 | 已完成证据契约：每个 `US-*` 要求双宿主旅程；真实 evidence 当前 INCOMPLETE |
 
 F124a–F124e 的 RED、边界和顺序见
 [Route Predictor 小 Feature 计划](./route-predictor-feature-plan.md)。
@@ -147,7 +147,7 @@ F124a–F124e 的 RED、边界和顺序见
 
 ## 批准与执行规则
 
-1. 当前下一项是 F127；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
+1. 当前下一项是 F128；持续执行授权覆盖 F110–F163，不在中间 Feature 停工等待重复授权；
 2. 每项先提交产品门、精确 RED 清单与失败证据；
 3. 最小 GREEN 后补齐边界/故障测试，再独立合入 `main`；
 4. 出现第二个主要结果、独立协议、故障域或用户旅程时立即拆 Feature；
