@@ -12,6 +12,12 @@ if [[ -z "$version" || $# -gt 2 ]]; then
   printf 'usage: scripts/release.sh VERSION [NEW_OUTPUT_DIRECTORY]\n' >&2
   exit 2
 fi
+signing_key=${MEMORA_RELEASE_SIGNING_KEY_FILE:-}
+signer_key_id=${MEMORA_RELEASE_SIGNER_KEY_ID:-}
+if [[ -z "$signing_key" || -z "$signer_key_id" ]]; then
+  printf 'release: MEMORA_RELEASE_SIGNING_KEY_FILE and MEMORA_RELEASE_SIGNER_KEY_ID are required\n' >&2
+  exit 1
+fi
 if ! git diff --quiet || ! git diff --cached --quiet; then
   printf 'release: tracked worktree changes must be committed before building\n' >&2
   exit 1
@@ -30,4 +36,6 @@ go run ./cmd/build-release \
   --output "$output" \
   --version "$version" \
   --commit "$commit" \
-  --source-date-epoch "$source_epoch"
+  --source-date-epoch "$source_epoch" \
+  --signing-key "$signing_key" \
+  --signer-key-id "$signer_key_id"

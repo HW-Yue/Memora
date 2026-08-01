@@ -1,6 +1,7 @@
 # macOS Release 制品 v1
 
-状态：F47 实现规格；制品与双许可证契约已冻结。
+状态：F47 历史兼容规格；正式签名集合已由
+[macOS Signed Release Artifacts v2](./macos-signed-release-artifacts-v2.md) 取代。
 
 ## 目标与平台
 
@@ -63,7 +64,9 @@ Smoke 校验 checksum 和布局，然后执行 `version`、`init`、daemon start
 
 ## Gatekeeper 边界
 
-F47 制品尚未承诺 Apple Developer ID 签名或 notarization。Installer/smoke 在已验证 checksum 的二进制无法执行时使用 `spctl` 区分 Gatekeeper 拒绝，并指向 System Settings 的 Privacy & Security；不能把拦截误报为版本不匹配，也不能替换已有 binary。签名与 notarization 在发布自动化前另行冻结。
+F47 制品未承诺签名；F149 已增加发布者 Ed25519 detached signature，但仍不等于 Apple
+Developer ID/notarization。Installer/smoke 在已验证 checksum 的二进制无法执行时使用 `spctl`
+区分 Gatekeeper 拒绝；不能把拦截误报为版本不匹配，也不能替换已有 binary。
 
 ## 关联
 

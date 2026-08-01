@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"debug/macho"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -23,6 +25,7 @@ import (
 )
 
 const ManifestVersion = "memora.release/v1"
+const SignatureVersion = "memora.release-signature/v1"
 
 const (
 	licenseName    = "LICENSE"
@@ -44,6 +47,22 @@ type Options struct {
 	Commit         string
 	SourceEpoch    int64
 	GoCommand      string
+	Signer         *Signer
+}
+
+type Signer struct {
+	KeyID      string
+	PrivateKey ed25519.PrivateKey
+}
+
+type Signature struct {
+	Version         string `json:"version"`
+	Algorithm       string `json:"algorithm"`
+	KeyID           string `json:"key_id"`
+	PublicKey       string `json:"public_key"`
+	ManifestSHA256  string `json:"manifest_sha256"`
+	ChecksumsSHA256 string `json:"checksums_sha256"`
+	Signature       string `json:"signature"`
 }
 
 type Artifact struct {
@@ -156,6 +175,11 @@ func Build(ctx context.Context, options Options) (Manifest, error) {
 	); err != nil {
 		return Manifest{}, fmt.Errorf("write release checksums: %w", err)
 	}
+	if normalized.Signer != nil {
+		if err := signRelease(staging, *normalized.Signer); err != nil {
+			return Manifest{}, err
+		}
+	}
 	if _, err := Verify(staging); err != nil {
 		return Manifest{}, fmt.Errorf("verify staged release: %w", err)
 	}
@@ -183,7 +207,11 @@ func Verify(directory string) (Manifest, error) {
 	if err := validateManifest(manifest); err != nil {
 		return Manifest{}, err
 	}
-	if err := verifyReleaseFileSet(directory, manifest); err != nil {
+	hasSignature, err := hasRegularSignature(directory)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if err := verifyReleaseFileSet(directory, manifest, hasSignature); err != nil {
 		return Manifest{}, err
 	}
 	checksums, err := readChecksums(filepath.Join(directory, "checksums.txt"))
@@ -210,6 +238,22 @@ func Verify(directory string) (Manifest, error) {
 			return Manifest{}, err
 		}
 	}
+	if hasSignature {
+		if _, err := verifySignature(directory, nil, false); err != nil {
+			return Manifest{}, err
+		}
+	}
+	return manifest, nil
+}
+
+func VerifySigned(directory string, trusted map[string]ed25519.PublicKey) (Manifest, error) {
+	manifest, err := Verify(directory)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if _, err := verifySignature(directory, trusted, true); err != nil {
+		return Manifest{}, err
+	}
 	return manifest, nil
 }
 
@@ -227,6 +271,11 @@ func validateOptions(options Options) (Options, time.Time, error) {
 	}
 	if options.GoCommand == "" {
 		options.GoCommand = "go"
+	}
+	if options.Signer != nil {
+		if err := validateSigner(*options.Signer); err != nil {
+			return Options{}, time.Time{}, err
+		}
 	}
 	for label, path := range map[string]string{
 		"repository root":  options.RepositoryRoot,
@@ -400,7 +449,7 @@ func verifyArchive(path, arch string, manifest Manifest) error {
 	return nil
 }
 
-func verifyReleaseFileSet(directory string, manifest Manifest) error {
+func verifyReleaseFileSet(directory string, manifest Manifest, hasSignature bool) error {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return fmt.Errorf("read release directory: %w", err)
@@ -411,6 +460,9 @@ func verifyReleaseFileSet(directory string, manifest Manifest) error {
 	}
 	for _, artifact := range manifest.Artifacts {
 		expected[artifact.Name] = false
+	}
+	if hasSignature {
+		expected["release.sig"] = false
 	}
 	if len(entries) != len(expected) {
 		return errors.New("release directory has an unexpected file set")
@@ -431,6 +483,117 @@ func verifyReleaseFileSet(directory string, manifest Manifest) error {
 		}
 	}
 	return nil
+}
+
+func validateSigner(signer Signer) error {
+	keyID := strings.TrimSpace(signer.KeyID)
+	if keyID == "" || keyID != signer.KeyID || len(keyID) > 128 || len(signer.PrivateKey) != ed25519.PrivateKeySize {
+		return errors.New("release signer is invalid")
+	}
+	for _, character := range keyID {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || strings.ContainsRune("._:-", character) {
+			continue
+		}
+		return errors.New("release signer key ID is invalid")
+	}
+	return nil
+}
+
+func signRelease(directory string, signer Signer) error {
+	manifestHash, _, err := hashFile(filepath.Join(directory, "release.json"))
+	if err != nil {
+		return err
+	}
+	checksumsHash, _, err := hashFile(filepath.Join(directory, "checksums.txt"))
+	if err != nil {
+		return err
+	}
+	publicKey := signer.PrivateKey.Public().(ed25519.PublicKey)
+	signature := Signature{Version: SignatureVersion, Algorithm: "Ed25519", KeyID: signer.KeyID,
+		PublicKey: base64.StdEncoding.EncodeToString(publicKey), ManifestSHA256: manifestHash,
+		ChecksumsSHA256: checksumsHash}
+	payload, err := signaturePayload(signature)
+	if err != nil {
+		return err
+	}
+	signature.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(signer.PrivateKey, payload))
+	encoded, err := json.MarshalIndent(signature, "", "  ")
+	if err != nil {
+		return err
+	}
+	encoded = append(encoded, '\n')
+	if err := os.WriteFile(filepath.Join(directory, "release.sig"), encoded, 0o644); err != nil {
+		return fmt.Errorf("write release signature: %w", err)
+	}
+	return nil
+}
+
+func verifySignature(directory string, trusted map[string]ed25519.PublicKey, requireTrust bool) (Signature, error) {
+	encoded, err := os.ReadFile(filepath.Join(directory, "release.sig"))
+	if err != nil {
+		return Signature{}, errors.New("signed release requires release.sig")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	var signature Signature
+	if decoder.Decode(&signature) != nil || decoder.Decode(&struct{}{}) != io.EOF ||
+		signature.Version != SignatureVersion || signature.Algorithm != "Ed25519" || !validHash(signature.ManifestSHA256) ||
+		!validHash(signature.ChecksumsSHA256) {
+		return Signature{}, errors.New("release signature is invalid")
+	}
+	if validateSigner(Signer{KeyID: signature.KeyID, PrivateKey: make(ed25519.PrivateKey, ed25519.PrivateKeySize)}) != nil {
+		return Signature{}, errors.New("release signature key ID is invalid")
+	}
+	publicKey, publicErr := base64.StdEncoding.Strict().DecodeString(signature.PublicKey)
+	signed, signatureErr := base64.StdEncoding.Strict().DecodeString(signature.Signature)
+	if publicErr != nil || signatureErr != nil || len(publicKey) != ed25519.PublicKeySize || len(signed) != ed25519.SignatureSize {
+		return Signature{}, errors.New("release signature encoding is invalid")
+	}
+	manifestHash, _, manifestErr := hashFile(filepath.Join(directory, "release.json"))
+	checksumsHash, _, checksumsErr := hashFile(filepath.Join(directory, "checksums.txt"))
+	if manifestErr != nil || checksumsErr != nil || signature.ManifestSHA256 != manifestHash || signature.ChecksumsSHA256 != checksumsHash {
+		return Signature{}, errors.New("release signature payload hashes do not match")
+	}
+	payload, err := signaturePayload(signature)
+	if err != nil || !ed25519.Verify(ed25519.PublicKey(publicKey), payload, signed) {
+		return Signature{}, errors.New("release signature verification failed")
+	}
+	if requireTrust {
+		trustedKey, ok := trusted[signature.KeyID]
+		if !ok || !bytes.Equal(trustedKey, publicKey) {
+			return Signature{}, errors.New("release signer is not trusted")
+		}
+	}
+	return signature, nil
+}
+
+func signaturePayload(signature Signature) ([]byte, error) {
+	unsigned := struct {
+		Version         string `json:"version"`
+		Algorithm       string `json:"algorithm"`
+		KeyID           string `json:"key_id"`
+		PublicKey       string `json:"public_key"`
+		ManifestSHA256  string `json:"manifest_sha256"`
+		ChecksumsSHA256 string `json:"checksums_sha256"`
+	}{signature.Version, signature.Algorithm, signature.KeyID, signature.PublicKey,
+		signature.ManifestSHA256, signature.ChecksumsSHA256}
+	encoded, err := json.Marshal(unsigned)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte("Memora Release Signature v1\n"), encoded...), nil
+}
+
+func hasRegularSignature(directory string) (bool, error) {
+	info, err := os.Lstat(filepath.Join(directory, "release.sig"))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return false, errors.New("release signature is not a regular file")
+	}
+	return true, nil
 }
 
 func validateManifest(manifest Manifest) error {

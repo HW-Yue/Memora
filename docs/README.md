@@ -49,6 +49,7 @@
 - [Policy Enforcement v2](./development/policy-enforcement-v2.md) — L0–L3、逐库上限与动态对象的引擎强制授权。
 - [Go SDK v1](./development/go-sdk-v1.md) — F147 的公开版本化 Client、MSQL wire 与 daemon 长连接。
 - [macOS LaunchAgent v1](./development/macos-launch-agent-v1.md) — F148 的用户级 daemon 注册、异常重启与可回滚安装。
+- [macOS Signed Release Artifacts v2](./development/macos-signed-release-artifacts-v2.md) — F149 的可复现双架构集合与 Ed25519 trust root 验证。
 - [Canonical Skill v1](./agent/canonical-skill-v1.md) — F28 的唯一宿主规则源、版本 lint、冲突边界和上下文预算。
 - [宿主模型与 CC Switch 兼容边界](./agent/host-provider-compatibility.md) — Provider 由宿主管理，兼容自定义 OpenAI/Anthropic 协议地址且密钥不进入 Memora。
 - [Real Host Contract v1](./agent/real-host-contract-v1.md) — F123 的同题 Task、宿主/Provider 矩阵、预算与脱敏执行收据。

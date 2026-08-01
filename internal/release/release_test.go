@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"io"
 	"os"
@@ -126,6 +127,52 @@ func TestVerifyRejectsCorruptedArtifact(t *testing.T) {
 	}
 	if _, err := release.Verify(output); err == nil {
 		t.Fatal("Verify() accepted a corrupted release artifact")
+	}
+}
+
+func TestBuildSignedProducesDeterministicTrustedRelease(t *testing.T) {
+	t.Parallel()
+
+	seed := make([]byte, ed25519.SeedSize)
+	for index := range seed {
+		seed[index] = byte(index + 1)
+	}
+	privateKey := ed25519.NewKeyFromSeed(seed)
+	signer := &release.Signer{KeyID: "memora:test-release", PrivateKey: privateKey}
+	root := releaseFixture(t, true)
+	firstDir := filepath.Join(t.TempDir(), "release")
+	secondDir := filepath.Join(t.TempDir(), "release")
+	options := release.Options{RepositoryRoot: root, OutputDir: firstDir, Version: testVersion,
+		Commit: testCommit, SourceEpoch: testEpoch, Signer: signer}
+	if _, err := release.Build(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	options.OutputDir = secondDir
+	if _, err := release.Build(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range releaseFiles(t, firstDir) {
+		left, _ := os.ReadFile(filepath.Join(firstDir, name))
+		right, _ := os.ReadFile(filepath.Join(secondDir, name))
+		if !reflect.DeepEqual(left, right) {
+			t.Fatalf("signed release file %s is not deterministic", name)
+		}
+	}
+	trusted := map[string]ed25519.PublicKey{"memora:test-release": privateKey.Public().(ed25519.PublicKey)}
+	if _, err := release.VerifySigned(firstDir, trusted); err != nil {
+		t.Fatalf("VerifySigned() error = %v", err)
+	}
+	if _, err := release.VerifySigned(firstDir, map[string]ed25519.PublicKey{}); err == nil {
+		t.Fatal("VerifySigned() accepted an unknown signer")
+	}
+	signaturePath := filepath.Join(firstDir, "release.sig")
+	encoded, _ := os.ReadFile(signaturePath)
+	encoded[len(encoded)/2] ^= 1
+	if err := os.WriteFile(signaturePath, encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := release.Verify(firstDir); err == nil {
+		t.Fatal("Verify() accepted a corrupted signature")
 	}
 }
 
