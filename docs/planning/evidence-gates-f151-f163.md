@@ -1,4 +1,4 @@
-# F151–F163 按证据触发门
+# F151–F155 按证据触发门
 
 状态：执行中；每个门先冻结条件与 workload，再记录结果。未越门槛只代表当前延后，
 不是永久取消。
@@ -67,71 +67,6 @@
 - 结论：简单有界串行 scheduler 尚未造成 flush 延迟压力；2.39 MB/batch 的 clone allocation
   单独保留为内存优化观察项，不足以授权新的 I/O 并发协议。
 
-## F156 Physical Undo
-
-状态：已评估，结构进入条件未成立，延后。
-
-- 冻结门槛：生产写路径出现 uncommitted dirty Page steal，或 Row body 在 commit 前原位
-  覆盖，任一成立即进入 Physical Undo/Purge 设计。
-- 命令：运行 `TestRuntimeCommitPublishesDurablePagesAndReopenRecovers`、
-  `TestRuntimeRejectsBeforeWALWithoutPoisoning`、`TestCrossObjectMutationFailureLeavesNoPartialObjects`，
-  并审计 `CommitTransaction` 与 `PublishBatch` 的唯一生产调用顺序。
-- 结果：Tree Runtime 先获得带 COMMIT 的 durable WAL transaction，之后才一次发布 Page batch；
-  commit 前 mutation 保持私有，跨对象 staging 失败不留下 Row/History/Relation 部分状态。
-- 结论：当前是 no-steal + immutable revision，不存在 Physical Undo 要撤销的物理状态；Redo
-  recovery 与逻辑补偿继续承担各自边界。
-
-## F157 Advanced MVCC
-
-状态：已评估，产品进入条件未成立，延后。
-
-- 冻结门槛：canonical journey 中出现 multi-writer 或明确要求 serializable、repeatable
-  read、snapshot isolation 中任一强隔离语义，才扩展当前最小 MVCC。
-- 命令：用 `jq` 在 65 个 canonical turn 匹配上述需求，并运行 snapshot reference-model
-  与 same-base concurrent update 测试。
-- 结果：明确需求 0；固定 snapshot 分页与后续 mutation 对拍一致，同一 base revision 的
-  并发更新仍只有一个成功。
-- 结论：单 writer、snapshot sequence、immutable revision 和精确对象写锁覆盖现有旅程；
-  不增加 transaction graph、predicate lock 或多 writer validation。
-
-## F158 Lock Waits/Deadlock
-
-状态：已评估，产品进入条件未成立，延后。
-
-- 冻结门槛：至少两个 canonical journey 因 fail-fast `conflict` 无法完成、且有明确可接受
-  wait budget，才加入 lock wait、timeout 和 deadlock detector。
-- 命令：用 `jq` 匹配 65 个 turn 的 lock-wait/deadlock 需求，并执行
-  `go test -v ./internal/store/objectlock`。
-- 结果：明确需求 0；seeded reference model、原子 batch conflict、cancel 和 opposite-order
-  并发全部通过，后者产生一个 winner 而不等待/死锁。
-- 结论：对本地 Agent 写入，快速返回稳定 conflict 让上层重新读取/重计划更可解释；不引入
-  等待队列、公平性、超时和 wait-for graph。
-
-## F159 Replication
-
-状态：已评估，产品进入条件未成立，延后。
-
-- 冻结门槛：出现明确 primary→replica 旅程，包含拓扑、期望 RPO/RTO、读一致性与
-  failover owner；仅“换宿主读取同一 Instance”不算复制。
-- 命令：用 `jq` 匹配 canonical turn 的 replica/replication/standby/failover，并运行
-  committed Change Log cursor/index 测试，确认未来输入基础没有腐化。
-- 结果：65 turn 中明确复制需求 0；Change Log 仍可按 commit sequence 确定性读取。
-- 结论：逻辑变化流只是未来武器库，不自行升级成网络拓扑；不引入 replica identity、
-  acknowledgement、lag、promotion 或 split-brain 处理。
-
-## F160 PITR
-
-状态：已评估，产品进入条件未成立，延后。
-
-- 冻结门槛：出现恢复到明确 wall-clock/commit sequence 的真实旅程，并冻结恢复窗口、
-  日志保留预算、允许丢失范围和恢复目标验证；普通 latest backup restore 不算 PITR。
-- 命令：用 `jq` 匹配 canonical turn 的 PITR/point-in-time restore，并回归 Instance backup、
-  restore/upgrade 与 History 测试。
-- 结果：65 turn 中明确 PITR 需求 0；当前能力是受校验的 latest snapshot 搬迁恢复和逻辑
-  revision/history，不承诺任意时间点重放。
-- 结论：不因已有 Change Log 就默认无限保留或制造第二套恢复协议；等待真实 RPO/RTO 故事。
-
 ## 后续门
 
-F161–F163 到达时在本文件追加冻结条件、命令、环境、原始摘要和结论；如果条件成立，
-先另开实现 Feature，不把大实现塞进证据门提交。
+F156–F163 见 [后续证据门](./evidence-gates-f156-f163.md)。
