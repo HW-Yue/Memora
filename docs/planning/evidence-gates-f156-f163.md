@@ -54,6 +54,22 @@
 - 结果：明确需求 0；当前只有同一 Instance 的多 Host 访问和显式离线搬迁。
 - 结论：不引入 device clock、causal frontier、双向 conflict resolution 或云端协调者。
 
+## F162 Apple Accelerate Route Scan
+
+状态：已评估，资源进入条件未成立，延后。
+
+- 冻结 workload：16-way、3 层完整语义树共 4,368 Route，384 维 float32、Top K 16；
+  代表一次 Table Route navigation 的保守上界。
+- 冻结门槛：Apple M-series 上 5 × 30 query 的任一 p95 超过 10 ms，或 transient allocation
+  超过 16 MiB/query，并且 Accelerate 可保持 reference 等价，才实现平台 backend。
+- 命令：`go test -run '^$' -bench BenchmarkRouteExactResourceGate -benchmem
+  -benchtime=30x -count 5 ./internal/routeexact`
+- 环境：darwin/arm64，Apple M4，10 logical CPU；pure-Go float64 accumulate exact backend。
+- 结果：p95 2.393–2.434 ms，8.226 MB/query，4,391 alloc/query；分别低于门槛 75.7%
+  与 49.8%。独立随机 reference、tie-break 与授权先过滤测试全绿。
+- 结论：当前 Route 扫描相对 LLM 调用仍是毫秒级小项；不加入 cgo/vDSP、平台构建矩阵和
+  浮点等价故障域。无权限的能耗采样不伪造成证据，未来若有稳定 receipt 可重新开门。
+
 ## 后续门
 
-F162–F163 到达时在本文件追加冻结门槛、命令、环境、原始摘要和结论。
+F163 到达时追加真实多 Table Route 规模、CPU/memory 门和 ANN Recall 结论。

@@ -170,7 +170,7 @@ func (value source) ListRouterNodes(context.Context) ([]router.Node, error) {
 	return result, nil
 }
 
-func generation(t *testing.T, nodes []router.Node, vectors map[string][]float32) (*routevector.Generation, string) {
+func generation(t testing.TB, nodes []router.Node, vectors map[string][]float32) (*routevector.Generation, string) {
 	t.Helper()
 	service, err := routevector.New(t.TempDir(), source(nodes), routevector.Options{})
 	if err != nil {
