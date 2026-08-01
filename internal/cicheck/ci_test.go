@@ -207,6 +207,17 @@ func TestHistoricalAIHarnessesStayOutOfActiveTree(t *testing.T) {
 	}
 }
 
+func TestHardCodedSkillQueryRunnerStaysOutOfActiveTree(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(repositoryRoot(t), "internal", "skillquery")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("hard-coded Skill query runner remains active: internal/skillquery")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("inspect internal/skillquery: %v", err)
+	}
+}
+
 func TestRoutePredictorPackagesDoNotImportFactStores(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)

@@ -6,7 +6,7 @@
 ## 从这里开始
 
 - [当前产品基线](./product/current-product.md) — 产品现在是什么、已经能做什么、还缺什么；
-- [Feature 状态](./planning/feature-status.md) — F00–F163 的权威完成、撤销、证据不完整和延期账本；
+- [Feature 状态](./planning/feature-status.md) — Feature 的权威完成、撤销、证据不完整和延期账本；
 - [后续路线](./planning/future-roadmap.md) — 真实 AI 证据、内置评测 Agent、外置 Hook 和后期候选；
 - [AI-native 产品宪章](./product/ai-native-product-charter.md) — 最高层产品原则和永久边界；
 - [Feature 产品门](./planning/feature-product-gate.md)与

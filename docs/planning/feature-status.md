@@ -24,6 +24,7 @@
 | F128–F150 | 语义健康与变更计划、Host Input、Policy、Package 生命周期、备份恢复、MCP/SDK、发行 |
 | F152 | free Page reuse |
 | F164 | 删除失效的 F42 benchmark 与测试型 F43 runtime gate |
+| F165 | 删除未接入产品链路的硬编码 `internal/skillquery` Runner |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
