@@ -34,10 +34,10 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .route-outlet { margin-top: 26px; max-width: 620px; padding: 16px 20px; border: 1px dashed #c4ccc5; border-radius: 12px; color: #77817c; background: rgb(247 248 244 / 60%); }
 .route-outlet p { margin: 0 0 6px; font-size: 13px; font-weight: 650; }
 .route-outlet small { font-family: ui-monospace, "SFMono-Regular", monospace; }
-.route-catalog .hero, .route-routes .hero, .route-rows .hero, .route-changes .hero { display: none; }
-.route-catalog .content, .route-routes .content, .route-rows .content, .route-changes .content { padding-top: 34px; }
-.route-catalog .session-card, .route-routes .session-card, .route-rows .session-card, .route-changes .session-card { margin-top: 0; padding: 11px 14px; box-shadow: none; }
-.route-catalog .status-detail, .route-routes .status-detail, .route-rows .status-detail, .route-changes .status-detail { display: none; }
+.route-catalog .hero, .route-routes .hero, .route-rows .hero, .route-changes .hero, .route-diffs .hero { display: none; }
+.route-catalog .content, .route-routes .content, .route-rows .content, .route-changes .content, .route-diffs .content { padding-top: 34px; }
+.route-catalog .session-card, .route-routes .session-card, .route-rows .session-card, .route-changes .session-card, .route-diffs .session-card { margin-top: 0; padding: 11px 14px; box-shadow: none; }
+.route-catalog .status-detail, .route-routes .status-detail, .route-rows .status-detail, .route-changes .status-detail, .route-diffs .status-detail { display: none; }
 .catalog-view { display: grid; gap: 22px; color: #26302b; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; color: #758078; font-size: 12px; }
 .breadcrumbs a { color: #37654f; text-decoration: none; font-weight: 700; }
@@ -125,12 +125,25 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .change-operation { border-radius: 999px; padding: 3px 7px; color: #426252; background: #e6efe8; font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 8px; }
 .change-operation[data-operation="delete"], .change-operation[data-operation="compensate"] { color: #7b433d; background: #f3dfda; }
 .change-operation[data-operation="split"], .change-operation[data-operation="merge"] { color: #725d28; background: #f5edcf; }
+.revision-link { justify-self: start; color: #35634c; font-size: 10px; font-weight: 750; text-decoration: none; }
+.revision-link:hover { text-decoration: underline; }
+.diff-view { gap: 26px; }
+.diff-field-list { display: grid; gap: 12px; }
+.diff-field { display: grid; gap: 10px; padding: 17px 18px; border: 1px solid #c8d4ca; border-radius: 12px; background: rgb(255 255 252 / 76%); }
+.diff-field[data-changed="false"] { border-color: #d8ddd8; opacity: .72; }
+.diff-values { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.diff-side { min-width: 0; border: 1px solid #d9dfda; border-radius: 9px; background: rgb(248 249 245 / 76%); }
+.diff-side-heading { display: flex; align-items: baseline; justify-content: space-between; padding: 9px 11px; border-bottom: 1px solid #dfe3df; }
+.diff-side-heading strong { font-size: 10px; text-transform: uppercase; }
+.diff-side-heading span { color: #77827b; font-size: 9px; }
+.diff-value { min-height: 50px; overflow-x: auto; margin: 0; padding: 11px; color: #26312b; font-family: inherit; font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 720px) {
   .workspace { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .content { padding-top: 48px; }
   .topbar { padding: 0 18px; }
+  .diff-values { grid-template-columns: 1fr; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -142,7 +155,8 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
   .session-card { background: rgb(25 34 29 / 85%); border-color: #3a4940; }
   .route-outlet { background: rgb(20 28 23 / 70%); border-color: #465249; }
   .catalog-view { color: #e7efe9; }
-  .object-id, .schema-badge, .object-card, .column-row, .view-state, .route-node, .locator-card, .row-field, .history-card, .change-card, .change-entry { background: rgb(24 34 28 / 85%); border-color: #3d4b42; }
+  .object-id, .schema-badge, .object-card, .column-row, .view-state, .route-node, .locator-card, .row-field, .history-card, .change-card, .change-entry, .diff-field, .diff-side { background: rgb(24 34 28 / 85%); border-color: #3d4b42; }
   .object-card p, .catalog-heading p, .column-row small, .column-purpose, .route-node p, .route-synopsis, .row-field-purpose, .history-card p, .history-card small, .change-card p, .change-card small, .change-entry p, .change-entry small { color: #aab7b0; }
   .row-field-value { color: #e7efe9; }
+  .diff-value { color: #e7efe9; }
 }

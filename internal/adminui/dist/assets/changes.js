@@ -324,6 +324,13 @@ function entryCard(row) {
   if (row.related_object_ids.length) {
     card.append(element("small", "", `related ${row.related_object_ids.join(" · ")}`));
   }
+  if (row.object_kind === "row" && row.before_revision > 0) {
+    const link = element("a", "revision-link", "比较 before / after");
+    link.href = `/diffs/${encodeURIComponent(row.database_id)}/${encodeURIComponent(row.table_id)}/` +
+      `${encodeURIComponent(row.object_id)}/${row.before_revision}/${row.after_revision}`;
+    link.dataset.route = "";
+    card.append(link);
+  }
   return card;
 }
 

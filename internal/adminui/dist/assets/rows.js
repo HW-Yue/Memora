@@ -265,7 +265,7 @@ function documentSection(current) {
   return section;
 }
 
-function historyCard(row) {
+function historyCard(row, databaseID, tableID) {
   const card = element("article", "history-card");
   const header = element("div", "history-card-heading");
   header.append(element("strong", "", `revision ${row.revision}`),
@@ -273,6 +273,13 @@ function historyCard(row) {
   card.append(header, element("p", "", `${row.row_state} · commit ${row.commit_sequence} · schema v${row.schema_version}`));
   const provenance = [row.actor, row.source_kind, row.source, row.reason].filter((value) => value);
   if (provenance.length) card.append(element("small", "", provenance.join(" · ")));
+  if (row.revision > 1) {
+    const link = element("a", "revision-link", "与上一 revision 比较");
+    link.href = `/diffs/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}/` +
+      `${encodeURIComponent(row.row_id)}/${row.revision - 1}/${row.revision}`;
+    link.dataset.route = "";
+    card.append(link);
+  }
   return card;
 }
 
@@ -281,19 +288,22 @@ function markHistoryComplete(section, finalState) {
   if (root) root.dataset.pageState = finalState;
 }
 
-function historySection(history, loadMore, finalState) {
+function historySection(history, loadMore, finalState, databaseID, tableID) {
   const section = element("section", "catalog-section history-section");
   const header = element("div", "section-heading");
   header.append(element("h3", "", "History"),
     element("span", "", `snapshot ${history.page.snapshot.slice(0, 18)}…`));
   const list = element("div", "history-list");
-  for (const row of history.rows) list.append(historyCard(row));
+  for (const row of history.rows) list.append(historyCard(row, databaseID, tableID));
   section.append(header, list);
-  if (history.page.truncated) addHistoryContinuation(section, list, history.rows, history.page, loadMore, finalState);
+  if (history.page.truncated) {
+    addHistoryContinuation(section, list, history.rows, history.page, loadMore,
+      finalState, databaseID, tableID);
+  }
   return section;
 }
 
-function addHistoryContinuation(section, list, rows, page, loadMore, finalState) {
+function addHistoryContinuation(section, list, rows, page, loadMore, finalState, databaseID, tableID) {
   const button = element("button", "load-more", "加载更早 revision");
   button.type = "button";
   button.addEventListener("click", async () => {
@@ -311,10 +321,13 @@ function addHistoryContinuation(section, list, rows, page, loadMore, finalState)
         if (revisions.has(row.revision)) throw new RowViewError("corrupt", "History continuation duplicated a revision");
         revisions.add(row.revision);
         rows.push(row);
-        list.append(historyCard(row));
+        list.append(historyCard(row, databaseID, tableID));
       }
       button.remove();
-      if (next.page.truncated) addHistoryContinuation(section, list, rows, next.page, loadMore, finalState);
+      if (next.page.truncated) {
+        addHistoryContinuation(section, list, rows, next.page, loadMore,
+          finalState, databaseID, tableID);
+      }
       else markHistoryComplete(section, finalState);
     } catch (error) {
       const [kind, stateTitle, detail] = errorState(error);
@@ -361,7 +374,8 @@ export async function renderRow(root, options) {
     if (data.history.rows.length) {
       const finalState = data.current.row ? "ready" : "empty";
       view.append(historySection(data.history,
-        (cursor) => loadHistory(options.executeMSQL, databaseID, tableID, rowID, cursor), finalState));
+        (cursor) => loadHistory(options.executeMSQL, databaseID, tableID, rowID, cursor),
+        finalState, databaseID, tableID));
     } else {
       view.append(stateNode("empty", "还没有 History", "这个 RowID 没有可见 revision metadata。"));
     }

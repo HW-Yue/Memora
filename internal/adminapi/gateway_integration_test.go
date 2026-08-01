@@ -95,6 +95,18 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 	if rootRouteID == "" || branchRouteID == "" || leafRouteID == "" || rowID == "" {
 		t.Fatalf("Route journey IDs = %q, %q, %q, %q", rootRouteID, branchRouteID, leafRouteID, rowID)
 	}
+	updated, err := daemon.Execute(context.Background(), dataDir,
+		"UPDATE work.notes SET title = 'manifest v2', body = 'revised body' WHERE row_id = :row",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"row": rowID}},
+			Mutation: executor.MutationOptions{
+				ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
+				RouteLeafIDs: []string{leafRouteID},
+			},
+		}})
+	if err != nil || !updated.OK {
+		t.Fatalf("update routed Row = %#v, %v", updated, err)
+	}
 	gateway, err := Start(context.Background(), Config{
 		DataDir:    dataDir,
 		Scopes:     []string{"work"},
@@ -275,15 +287,51 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || !rowEnvelope.OK || len(rowEnvelope.Results) != 2 ||
 		len(rowEnvelope.Results[0].Rows) != 1 || rowEnvelope.Results[0].Rows[0]["row_id"] != rowID ||
-		rowEnvelope.Results[0].Rows[0]["body"] != "private body" ||
+		rowEnvelope.Results[0].Rows[0]["body"] != "revised body" ||
 		rowEnvelope.Results[0].RowDetail == nil || rowEnvelope.Results[0].RowDetail.DatabaseID != databaseID ||
 		rowEnvelope.Results[0].RowDetail.TableID != tableID ||
 		rowEnvelope.Results[0].RowDetail.Display.TitleColumn != "title" ||
 		rowEnvelope.Results[0].RowDetail.Display.SummaryColumn != "body" ||
-		len(rowEnvelope.Results[1].Rows) != 1 || len(rowEnvelope.Results[1].Rows[0]) != 14 ||
+		len(rowEnvelope.Results[1].Rows) != 2 || len(rowEnvelope.Results[1].Rows[0]) != 14 ||
 		rowEnvelope.Results[1].Rows[0]["row_id"] != rowID || rowEnvelope.Results[1].Rows[0]["body"] != nil ||
 		rowEnvelope.Results[1].Page == nil || rowEnvelope.Results[1].Page.Limit != 20 {
 		t.Fatalf("Row document journey = status %d, %#v", response.StatusCode, rowEnvelope)
+	}
+
+	diffSource := fmt.Sprintf(
+		"SELECT * FROM %q.%q AS OF REVISION :before WHERE row_id = :row LIMIT 1; "+
+			"SELECT * FROM %q.%q AS OF REVISION :after WHERE row_id = :row LIMIT 1",
+		databaseID, tableID, databaseID, tableID,
+	)
+	payload, err = json.Marshal(map[string]any{
+		"source": diffSource,
+		"statements": []map[string]any{
+			{"parameters": executor.Parameters{Named: map[string]any{"row": rowID, "before": 1}}},
+			{"parameters": executor.Parameters{Named: map[string]any{"row": rowID, "after": 2}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken, string(payload))
+	var diffEnvelope result.Envelope
+	if err := json.NewDecoder(response.Body).Decode(&diffEnvelope); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !diffEnvelope.OK || len(diffEnvelope.Results) != 2 ||
+		len(diffEnvelope.Results[0].Rows) != 1 || len(diffEnvelope.Results[1].Rows) != 1 ||
+		diffEnvelope.Results[0].Rows[0]["row_id"] != rowID ||
+		diffEnvelope.Results[1].Rows[0]["row_id"] != rowID ||
+		diffEnvelope.Results[0].Rows[0]["revision"] != float64(1) ||
+		diffEnvelope.Results[1].Rows[0]["revision"] != float64(2) ||
+		diffEnvelope.Results[0].Rows[0]["body"] != "private body" ||
+		diffEnvelope.Results[1].Rows[0]["body"] != "revised body" ||
+		diffEnvelope.Results[0].RowDetail == nil || diffEnvelope.Results[1].RowDetail == nil ||
+		!reflect.DeepEqual(diffEnvelope.Results[0].Columns, diffEnvelope.Results[1].Columns) ||
+		!reflect.DeepEqual(diffEnvelope.Results[0].RowDetail, diffEnvelope.Results[1].RowDetail) {
+		t.Fatalf("Row revision diff journey = status %d, %#v", response.StatusCode, diffEnvelope)
 	}
 
 	changeSource := fmt.Sprintf(

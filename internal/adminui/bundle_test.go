@@ -17,7 +17,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := bundle.Manifest()
-	if manifest.Version != BundleVersion || len(manifest.Assets) != 7 {
+	if manifest.Version != BundleVersion || len(manifest.Assets) != 8 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	for _, asset := range manifest.Assets {
@@ -52,6 +52,54 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 	fetchAt := strings.Index(javascript, `fetch("/api/v1/session"`)
 	if clearAt < 0 || fetchAt < 0 || clearAt >= fetchAt || !strings.Contains(javascript, "export async function executeMSQL") {
 		t.Fatalf("JavaScript does not clear fragment before bootstrap or expose the module API client")
+	}
+}
+
+func TestRowRevisionDiffModuleUsesTwoBoundedParameterizedAsOfPointReads(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(app), `from "./diffs.js"`) ||
+		!strings.Contains(string(app), `path.startsWith("/diffs/")`) {
+		t.Fatal("Admin shell does not route the Row revision diff module")
+	}
+	rows, err := fs.ReadFile(embeddedFiles, "dist/assets/rows.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes, err := fs.ReadFile(embeddedFiles, "dist/assets/changes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rows), "/diffs/${encodeURIComponent") ||
+		!strings.Contains(string(changes), "/diffs/${encodeURIComponent") {
+		t.Fatal("History and Row change entries do not link to revision diff")
+	}
+	diffs, err := fs.ReadFile(embeddedFiles, "dist/assets/diffs.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(diffs)
+	for _, required := range []string{
+		"SELECT * FROM", "AS OF REVISION :before", "AS OF REVISION :after",
+		"WHERE row_id = :row LIMIT 1", "parameters", "named", "row_detail",
+		"memora.row-detail/v1", "column_id", "semantic_role", "TextEncoder",
+		"MAX_BODY_BYTES", "loading", "ready", "empty", "permission", "corrupt", "over_budget",
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Row revision diff module is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"innerHTML", "SHOW HISTORY", "SHOW CHANGE", "DESCRIBE ROUTE", "INSERT ", "UPDATE ",
+		"DELETE ", "RESTORE ", "CREATE ", "localStorage", "sessionStorage",
+	} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Row revision diff module contains forbidden %q", forbidden)
+		}
 	}
 }
 
@@ -248,7 +296,7 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 	}
 	for _, path := range []string{
 		"/", "/catalog/work", "/routes/db_work/tbl_notes/route_1", "/rows/db_work/tbl_notes/row_1",
-		"/changes/db_work",
+		"/changes/db_work", "/diffs/db_work/tbl_notes/row_1/1/2",
 	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
@@ -264,7 +312,7 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 	}
 	for _, path := range []string{
 		"/assets/app.js", "/assets/app.css", "/assets/catalog.js", "/assets/routes.js", "/assets/rows.js",
-		"/assets/changes.js",
+		"/assets/changes.js", "/assets/diffs.js",
 	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
