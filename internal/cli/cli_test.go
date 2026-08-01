@@ -22,6 +22,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/instancemove"
 	"github.com/HW-Yue/Memora/internal/instanceupgrade"
+	"github.com/HW-Yue/Memora/internal/launchagent"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillschema"
@@ -1180,6 +1181,37 @@ func TestRunMCPServesOnlyProtocolMessagesOnStdout(t *testing.T) {
 	}
 	if response["jsonrpc"] != "2.0" || response["result"] == nil {
 		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestRunServiceInstallUsesCurrentUserAndExplicitInstance(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "instance")
+	executable := filepath.Join(root, "memora")
+	var gotAction string
+	var gotConfig launchagent.Config
+	dependencies := Dependencies{
+		HomeDir:    func() (string, error) { return root, nil },
+		UserID:     func() int { return 502 },
+		Executable: func() (string, error) { return executable, nil },
+		ManageLaunchAgent: func(_ context.Context, action string, config launchagent.Config) (launchagent.Receipt, error) {
+			gotAction, gotConfig = action, config
+			return launchagent.Receipt{Version: launchagent.ReceiptVersion, Status: "installed", Installed: true, Loaded: true}, nil
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunWithDependencies([]string{"service", "install", "--data-dir", dataDir}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK {
+		t.Fatalf("service code = %d, stderr = %s", code, &stderr)
+	}
+	if gotAction != "install" || gotConfig.HomeDir != root || gotConfig.DataDir != dataDir || gotConfig.Executable != executable || gotConfig.UID != 502 {
+		t.Fatalf("service call = %q, %#v", gotAction, gotConfig)
+	}
+	var receipt launchagent.Receipt
+	if err := json.Unmarshal(stdout.Bytes(), &receipt); err != nil || !receipt.Loaded {
+		t.Fatalf("receipt = %#v, error = %v", receipt, err)
 	}
 }
 

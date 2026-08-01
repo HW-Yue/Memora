@@ -25,6 +25,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/instancemove"
 	"github.com/HW-Yue/Memora/internal/instanceupgrade"
+	"github.com/HW-Yue/Memora/internal/launchagent"
 	"github.com/HW-Yue/Memora/internal/mcpadapter"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/readquery"
@@ -69,6 +70,7 @@ Commands:
   query      Query MSQL through the local daemon
   reflect    Ingest an explicit conversation event
   schema     Execute a validated Schema Plan
+  service    Manage the macOS user LaunchAgent
   upgrade    Plan or apply a transactional Instance format upgrade
   version    Show build version
 
@@ -92,6 +94,7 @@ func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
 	return RunWithDependencies(args, stdout, stderr, build, Dependencies{
 		HomeDir: os.UserHomeDir,
 		Stdin:   os.Stdin,
+		UserID:  os.Getuid,
 	})
 }
 
@@ -99,6 +102,7 @@ type Dependencies struct {
 	HomeDir     func() (string, error)
 	LookupEnv   func(string) (string, bool)
 	Stdin       io.Reader
+	UserID      func() int
 	Clock       instance.Clock
 	IDs         instance.IDSource
 	ExecuteMSQL func(
@@ -126,6 +130,7 @@ type Dependencies struct {
 	RepairUpgrade      func(context.Context, string, string, instanceupgrade.Options) (instanceupgrade.Receipt, error)
 	MoveInstance       func(context.Context, string, string, string, instancemove.Options) (instancemove.Receipt, error)
 	Executable         func() (string, error)
+	ManageLaunchAgent  func(context.Context, string, launchagent.Config) (launchagent.Receipt, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -175,6 +180,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runReflect(args[1:], stdout, stderr, dependencies)
 	case "schema":
 		return runSchema(args[1:], stdout, stderr, dependencies)
+	case "service":
+		return runService(args[1:], stdout, stderr, dependencies)
 	case "upgrade":
 		return runUpgrade(args[1:], stdout, stderr, dependencies)
 	case "version":
@@ -1421,6 +1428,56 @@ func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	}
 	if !response.OK {
 		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runService(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	if len(args) == 0 {
+		return usageError(stderr, "service requires install, status, or uninstall")
+	}
+	action := args[0]
+	if action != "install" && action != "status" && action != "uninstall" {
+		return usageError(stderr, fmt.Sprintf("unknown service action: %q", action))
+	}
+	dataDir, code := daemonDataDir(args[1:], stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	homeDir := dependencies.HomeDir
+	if homeDir == nil {
+		homeDir = os.UserHomeDir
+	}
+	home, err := homeDir()
+	if err != nil {
+		return commandError(stderr, "resolve user home", err)
+	}
+	uid := os.Getuid()
+	if dependencies.UserID != nil {
+		uid = dependencies.UserID()
+	}
+	configuration := launchagent.Config{HomeDir: home, DataDir: dataDir, UID: uid}
+	if action == "install" {
+		executable := dependencies.Executable
+		if executable == nil {
+			executable = os.Executable
+		}
+		configuration.Executable, err = executable()
+		if err != nil {
+			return commandError(stderr, "resolve executable", err)
+		}
+		configuration.Executable = filepath.Clean(configuration.Executable)
+	}
+	manage := dependencies.ManageLaunchAgent
+	if manage == nil {
+		manage = launchagent.Manage
+	}
+	receipt, err := manage(context.Background(), action, configuration)
+	if err != nil {
+		return commandError(stderr, "manage user service", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
 	}
 	return ExitOK
 }

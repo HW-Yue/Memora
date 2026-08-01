@@ -26,6 +26,7 @@ Commands:
   query      Query MSQL through the local daemon
   reflect    Ingest an explicit conversation event
   schema     Execute a validated Schema Plan
+  service    Manage the macOS user LaunchAgent
   upgrade    Plan or apply a transactional Instance format upgrade
   version    Show build version
 

@@ -105,6 +105,9 @@ Record，不进入逻辑 Database snapshot、Wiki 或 Database Package；`memora
 
 Unix socket 不放入 datadir，避免自定义深层路径超过 macOS `AF_UNIX` 上限。它位于仅当前用户可访问的临时运行目录，文件名由规范化 datadir 稳定派生；具体协议与清理规则见 [本地 IPC 协议](../development/ipc-protocol.md)。
 
+F148 已确定使用当前用户 GUI session 的 LaunchAgent；每个 data dir 独立派生 label，异常退出
+重启、正常退出保持停止，详见 [macOS LaunchAgent v1](../development/macos-launch-agent-v1.md)。
+
 ## 传统数据库参考边界
 
 Page/B+ Tree/Buffer Pool/Redo WAL 参考 MySQL 的职责和正确性顺序，但 Memora 的
@@ -113,7 +116,6 @@ Page/B+ Tree/Buffer Pool/Redo WAL 参考 MySQL 的职责和正确性顺序，但
 ## 尚未确认
 
 - daemon lock/PID 与 `system.memora` 怎样分离运行态和持久态；
-- launchd 使用 LaunchAgent 还是其他用户级启动方式；
 - 备份、快照和导出包默认输出位置；
 - 自定义 datadir 位于外接盘或网络文件系统时的支持边界。
 
