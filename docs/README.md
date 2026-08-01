@@ -238,6 +238,7 @@
 - [存储内核小 Feature 计划](./planning/row-read-foundation-feature-plan.md) — F81–F109 的 Page、WAL、Buffer Pool、B+ Tree、真实 RowID、MVCC、迁移、COW 与 Change Log。
 - [Admin 与本地可观察性小 Feature 计划](./planning/visual-inspection-feature-plan.md) — F109–F122 的读取协议、loopback API、内嵌前端及逐页面验收。
 - [F81 之后的 Feature 规划](./planning/next-feature-plan.md) — 取数基础、可视化、真实 AI 质量、语义自治、产品化和按数据触发的存储演进。
+- [F151–F163 按证据触发门](./planning/evidence-gates-f151-f163.md) — 空间、并发、恢复、同步与 Route 加速候选的冻结门槛和可复现结论。
 - [Route Predictor 小 Feature 计划](./planning/route-predictor-feature-plan.md) — F124a–F124e 的候选契约、字面位置、Route 向量、CPU exact 与 Skill 投机预取。
 - [原生闭环后续 Feature 计划](./planning/native-features-review.md) — 已批准的 F53a–F72 拆分、依赖、闭环与门禁。
 - [F72 AI-native 用户故事门](./planning/f72-ai-native-story-gate.md) — 全部产品故事、实际 MSQL、proof 文件、宿主与许可的最终验收。
