@@ -1,4 +1,5 @@
 import { renderCatalog } from "./catalog.js";
+import { renderChanges } from "./changes.js";
 import { renderRoutes } from "./routes.js";
 import { renderRow } from "./rows.js";
 
@@ -99,6 +100,7 @@ async function renderCurrentRoute() {
     document.body.classList.add("route-catalog");
     document.body.classList.remove("route-routes");
     document.body.classList.remove("route-rows");
+    document.body.classList.remove("route-changes");
     updateNavigation("catalog");
     await renderCatalog(routeOutlet, {
       path,
@@ -111,6 +113,7 @@ async function renderCurrentRoute() {
     document.body.classList.remove("route-catalog");
     document.body.classList.add("route-routes");
     document.body.classList.remove("route-rows");
+    document.body.classList.remove("route-changes");
     updateNavigation("routes");
     await renderRoutes(routeOutlet, {
       path,
@@ -123,8 +126,22 @@ async function renderCurrentRoute() {
     document.body.classList.remove("route-catalog");
     document.body.classList.remove("route-routes");
     document.body.classList.add("route-rows");
+    document.body.classList.remove("route-changes");
     updateNavigation("routes");
     await renderRow(routeOutlet, {
+      path,
+      executeMSQL,
+      isCurrent: () => window.location.pathname === path
+    });
+    return;
+  }
+  if (path === "/changes" || path.startsWith("/changes/")) {
+    document.body.classList.remove("route-catalog");
+    document.body.classList.remove("route-routes");
+    document.body.classList.remove("route-rows");
+    document.body.classList.add("route-changes");
+    updateNavigation("changes");
+    await renderChanges(routeOutlet, {
       path,
       executeMSQL,
       isCurrent: () => window.location.pathname === path
@@ -134,6 +151,7 @@ async function renderCurrentRoute() {
   document.body.classList.remove("route-catalog");
   document.body.classList.remove("route-routes");
   document.body.classList.remove("route-rows");
+  document.body.classList.remove("route-changes");
   updateNavigation("overview");
   routeOutlet.dataset.pageState = "ready";
   routeOutlet.replaceChildren(overviewNode());

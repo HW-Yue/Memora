@@ -34,10 +34,10 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .route-outlet { margin-top: 26px; max-width: 620px; padding: 16px 20px; border: 1px dashed #c4ccc5; border-radius: 12px; color: #77817c; background: rgb(247 248 244 / 60%); }
 .route-outlet p { margin: 0 0 6px; font-size: 13px; font-weight: 650; }
 .route-outlet small { font-family: ui-monospace, "SFMono-Regular", monospace; }
-.route-catalog .hero, .route-routes .hero, .route-rows .hero { display: none; }
-.route-catalog .content, .route-routes .content, .route-rows .content { padding-top: 34px; }
-.route-catalog .session-card, .route-routes .session-card, .route-rows .session-card { margin-top: 0; padding: 11px 14px; box-shadow: none; }
-.route-catalog .status-detail, .route-routes .status-detail, .route-rows .status-detail { display: none; }
+.route-catalog .hero, .route-routes .hero, .route-rows .hero, .route-changes .hero { display: none; }
+.route-catalog .content, .route-routes .content, .route-rows .content, .route-changes .content { padding-top: 34px; }
+.route-catalog .session-card, .route-routes .session-card, .route-rows .session-card, .route-changes .session-card { margin-top: 0; padding: 11px 14px; box-shadow: none; }
+.route-catalog .status-detail, .route-routes .status-detail, .route-rows .status-detail, .route-changes .status-detail { display: none; }
 .catalog-view { display: grid; gap: 22px; color: #26302b; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; color: #758078; font-size: 12px; }
 .breadcrumbs a { color: #37654f; text-decoration: none; font-weight: 700; }
@@ -101,6 +101,30 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .history-card-heading span { border-radius: 999px; padding: 3px 7px; color: #426252; background: #e6efe8; font-size: 9px; }
 .history-card-heading time { justify-self: end; color: #748078; font-size: 10px; }
 .history-card p, .history-card small { margin: 0; color: #68756e; font-size: 10px; font-weight: 450; line-height: 1.5; }
+.change-view { gap: 26px; }
+.change-list { display: grid; gap: 11px; }
+.change-card { display: grid; gap: 10px; padding: 16px 17px; border: 1px solid #d2d9d2; border-radius: 12px; background: rgb(255 255 252 / 72%); }
+.change-card-heading { display: flex; gap: 18px; align-items: flex-start; justify-content: space-between; }
+.change-card-heading > div { display: grid; gap: 5px; min-width: 0; }
+.change-card-heading strong { font-size: 14px; }
+.change-card-heading code { overflow: hidden; color: #738078; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.change-card-heading time { color: #748078; font-size: 10px; white-space: nowrap; }
+.change-reason { color: #4e5d55; font-size: 13px !important; font-weight: 520 !important; line-height: 1.55; }
+.change-card > small { color: #748078; font-size: 10px; }
+.change-expand { justify-self: start; border: 0; padding: 4px 0; color: #35634c; background: transparent; font: inherit; font-size: 11px; font-weight: 750; cursor: pointer; }
+.change-expand:disabled { cursor: wait; opacity: .55; }
+.change-entries { display: grid; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1px solid #dbe0db; }
+.change-entries h4 { margin: 0; font-size: 12px; }
+.change-entry-list { display: grid; gap: 7px; }
+.change-entry { display: grid; gap: 6px; padding: 11px 12px; border: 1px solid #d9ded9; border-radius: 9px; background: rgb(248 249 245 / 74%); }
+.change-entry-heading { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.change-entry-heading > div { display: grid; gap: 3px; min-width: 0; }
+.change-entry-heading strong { font-size: 11px; text-transform: uppercase; }
+.change-entry-heading code { overflow-wrap: anywhere; color: #5e6b64; font-size: 10px; }
+.change-entry p, .change-entry small { margin: 0; color: #6c7871; font-size: 9px; font-weight: 450; line-height: 1.5; overflow-wrap: anywhere; }
+.change-operation { border-radius: 999px; padding: 3px 7px; color: #426252; background: #e6efe8; font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 8px; }
+.change-operation[data-operation="delete"], .change-operation[data-operation="compensate"] { color: #7b433d; background: #f3dfda; }
+.change-operation[data-operation="split"], .change-operation[data-operation="merge"] { color: #725d28; background: #f5edcf; }
 
 @media (max-width: 720px) {
   .workspace { grid-template-columns: 1fr; }
@@ -118,7 +142,7 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
   .session-card { background: rgb(25 34 29 / 85%); border-color: #3a4940; }
   .route-outlet { background: rgb(20 28 23 / 70%); border-color: #465249; }
   .catalog-view { color: #e7efe9; }
-  .object-id, .schema-badge, .object-card, .column-row, .view-state, .route-node, .locator-card, .row-field, .history-card { background: rgb(24 34 28 / 85%); border-color: #3d4b42; }
-  .object-card p, .catalog-heading p, .column-row small, .column-purpose, .route-node p, .route-synopsis, .row-field-purpose, .history-card p, .history-card small { color: #aab7b0; }
+  .object-id, .schema-badge, .object-card, .column-row, .view-state, .route-node, .locator-card, .row-field, .history-card, .change-card, .change-entry { background: rgb(24 34 28 / 85%); border-color: #3d4b42; }
+  .object-card p, .catalog-heading p, .column-row small, .column-purpose, .route-node p, .route-synopsis, .row-field-purpose, .history-card p, .history-card small, .change-card p, .change-card small, .change-entry p, .change-entry small { color: #aab7b0; }
   .row-field-value { color: #e7efe9; }
 }

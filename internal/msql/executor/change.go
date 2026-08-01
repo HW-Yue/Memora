@@ -88,11 +88,18 @@ func (engine *Engine) showCommittedChanges(
 			"commit_sequence": value.CommitSequence, "committed_at": value.CommittedAt,
 			"actor": value.Actor, "source": value.Source, "reason": value.Reason,
 			"source_receipt_id": value.SourceReceiptID,
-			"database_ids":      append([]string(nil), value.DatabaseIDs...),
-			"entry_count":       uint64(len(value.Entries)), "checksum": value.Checksum,
+			"database_ids":      visibleChangeDatabaseIDs(value.DatabaseIDs, databaseID),
+			"entry_count":       uint64(len(scopedChangeEntries(value.Entries, databaseID))), "checksum": value.Checksum,
 		})
 	}
 	return output, nil
+}
+
+func visibleChangeDatabaseIDs(values []string, databaseID string) []string {
+	if databaseID != "" {
+		return []string{databaseID}
+	}
+	return append([]string(nil), values...)
 }
 
 func (engine *Engine) showCommittedChange(
@@ -168,7 +175,7 @@ func (engine *Engine) showCommittedChange(
 			"operation": string(entry.Operation), "before_revision": entry.BeforeRevision,
 			"after_revision": entry.AfterRevision, "schema_version": entry.SchemaVersion,
 			"history_locator":    entry.HistoryLocator,
-			"related_object_ids": append([]string(nil), entry.RelatedObjectIDs...),
+			"related_object_ids": append([]string{}, entry.RelatedObjectIDs...),
 		})
 	}
 	return output, nil

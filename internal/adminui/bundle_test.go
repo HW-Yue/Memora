@@ -17,7 +17,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := bundle.Manifest()
-	if manifest.Version != BundleVersion || len(manifest.Assets) != 6 {
+	if manifest.Version != BundleVersion || len(manifest.Assets) != 7 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	for _, asset := range manifest.Assets {
@@ -52,6 +52,51 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 	fetchAt := strings.Index(javascript, `fetch("/api/v1/session"`)
 	if clearAt < 0 || fetchAt < 0 || clearAt >= fetchAt || !strings.Contains(javascript, "export async function executeMSQL") {
 		t.Fatalf("JavaScript does not clear fragment before bootstrap or expose the module API client")
+	}
+}
+
+func TestChangeTimelineModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
+	t.Parallel()
+
+	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), `href="/changes" data-route data-nav="changes"`) {
+		t.Fatal("Admin shell does not expose Changes navigation")
+	}
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(app), `from "./changes.js"`) ||
+		!strings.Contains(string(app), `path === "/changes"`) ||
+		!strings.Contains(string(app), `path.startsWith("/changes/")`) {
+		t.Fatal("Admin shell does not route the Change timeline module")
+	}
+	changes, err := fs.ReadFile(embeddedFiles, "dist/assets/changes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(changes)
+	for _, required := range []string{
+		"SHOW DATABASES LIMIT 32 COMPACT", "DESCRIBE DATABASE", "SHOW CHANGES IN DATABASE",
+		"CURSOR :cursor LIMIT 20", "SHOW CHANGE :transaction IN DATABASE", "LIMIT 32",
+		"CURSOR :cursor LIMIT 32", "parameters", "named", "transaction_id", "commit_sequence",
+		"database_ids", "entry_count", "object_kind", "history_locator", "related_object_ids",
+		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Change timeline module is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"innerHTML", "SELECT ", "SHOW HISTORY", " AS OF ", "INSERT ", "UPDATE ", "DELETE ",
+		"CREATE ", "localStorage", "sessionStorage",
+	} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Change timeline module contains forbidden %q", forbidden)
+		}
 	}
 }
 
@@ -203,6 +248,7 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 	}
 	for _, path := range []string{
 		"/", "/catalog/work", "/routes/db_work/tbl_notes/route_1", "/rows/db_work/tbl_notes/row_1",
+		"/changes/db_work",
 	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
@@ -218,6 +264,7 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 	}
 	for _, path := range []string{
 		"/assets/app.js", "/assets/app.css", "/assets/catalog.js", "/assets/routes.js", "/assets/rows.js",
+		"/assets/changes.js",
 	} {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))

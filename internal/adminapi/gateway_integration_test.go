@@ -286,6 +286,66 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 		t.Fatalf("Row document journey = status %d, %#v", response.StatusCode, rowEnvelope)
 	}
 
+	changeSource := fmt.Sprintf(
+		"DESCRIBE DATABASE %q COMPACT; SHOW CHANGES IN DATABASE %q LIMIT 20",
+		databaseID, databaseID,
+	)
+	payload, err = json.Marshal(map[string]any{"source": changeSource})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken, string(payload))
+	var changeEnvelope result.Envelope
+	if err := json.NewDecoder(response.Body).Decode(&changeEnvelope); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !changeEnvelope.OK || len(changeEnvelope.Results) != 2 ||
+		len(changeEnvelope.Results[0].Rows) != 1 ||
+		changeEnvelope.Results[0].Rows[0]["database_id"] != databaseID ||
+		len(changeEnvelope.Results[1].Rows) == 0 || changeEnvelope.Results[1].Page == nil ||
+		changeEnvelope.Results[1].Page.Limit != 20 {
+		t.Fatalf("Change timeline journey = status %d, %#v", response.StatusCode, changeEnvelope)
+	}
+	changeSummary := changeEnvelope.Results[1].Rows[0]
+	transactionID, _ := changeSummary["transaction_id"].(string)
+	databaseIDs, _ := changeSummary["database_ids"].([]any)
+	entryCount, _ := changeSummary["entry_count"].(float64)
+	if len(changeSummary) != 11 || transactionID == "" || entryCount == 0 ||
+		len(databaseIDs) != 1 || databaseIDs[0] != databaseID || changeSummary["entries"] != nil {
+		t.Fatalf("Change summary scope = %#v", changeSummary)
+	}
+	changeEntrySource := fmt.Sprintf("SHOW CHANGE :transaction IN DATABASE %q LIMIT 32", databaseID)
+	payload, err = json.Marshal(map[string]any{
+		"source": changeEntrySource,
+		"statements": []map[string]any{{
+			"parameters": executor.Parameters{Named: map[string]any{"transaction": transactionID}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken, string(payload))
+	var changeEntryEnvelope result.Envelope
+	if err := json.NewDecoder(response.Body).Decode(&changeEntryEnvelope); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || !changeEntryEnvelope.OK ||
+		len(changeEntryEnvelope.Results) != 1 || changeEntryEnvelope.Results[0].Page == nil ||
+		changeEntryEnvelope.Results[0].Page.Limit != 32 ||
+		len(changeEntryEnvelope.Results[0].Rows) != int(entryCount) {
+		t.Fatalf("Change entry journey = status %d, %#v", response.StatusCode, changeEntryEnvelope)
+	}
+	for _, entry := range changeEntryEnvelope.Results[0].Rows {
+		if len(entry) != 12 || entry["transaction_id"] != transactionID ||
+			entry["database_id"] != databaseID || entry["values"] != nil || entry["body"] != nil {
+			t.Fatalf("Change entry scope = %#v", entry)
+		}
+	}
+
 	response = callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken,
 		`{"source":"SHOW TABLES FROM secret LIMIT 16 COMPACT"}`)
 	defer response.Body.Close()

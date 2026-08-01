@@ -229,6 +229,7 @@
 - [Catalog Navigation v1](./development/catalog-navigation-v1.md) — F117 的 stable-ID Database→Table→Schema 有界浏览与页面状态。
 - [Route Tree Browser v1](./development/route-tree-browser-v1.md) — F118 的 Table Route 逐层浏览、leaf locator 与有界页面状态。
 - [Row Document View v1](./development/row-document-view-v1.md) — F119 的 Data Dictionary 动态文档、RowID 深链路与 History 页面。
+- [Change Timeline v1](./development/change-timeline-v1.md) — F120 的 Database scoped 事务时间线、懒加载 entry 与固定快照分页。
 - [Scripted Host Harness v1](./development/scripted-host-harness-v1.md) — F29 的无模型 transcript 重放、错误注入、最终数据库和用户回复断言。
 - [Codex Adapter v1](./development/codex-adapter-v1.md) — F40 从 Canonical Skill 确定性派生 Codex metadata、命令规则与 e2e fixture。
 - [Claude Code Adapter v1](./development/claude-code-adapter-v1.md) — F41 的 `.claude/skills` 包装、turn 级命令权限与跨宿主 digest 兼容。

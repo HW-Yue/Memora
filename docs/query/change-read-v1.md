@@ -21,6 +21,8 @@ SHOW CHANGES [IN DATABASE work]
 - 每行是一笔完整事务的 summary：version、transaction ID、commit sequence、时间、
   actor/source/reason、可选 receipt、可见 database scope、entry count 与 checksum；
 - summary 不包含 entries、Row values、prompt、PageID 或模型推理。
+- `IN DATABASE` 的 summary 只返回所选稳定 Database ID，并把 `entry_count` 收敛为该
+  Database 的可见 entry 数；跨库事务的其他 scope 不进入单库 Admin 响应。
 
 首屏固定 Page index 当前 high-water 为 snapshot。后续新 commit 不改变旧 snapshot；cursor
 绑定全局/Database scope、snapshot high-water 和已消费 commit sequence，因此分页不重、
@@ -35,6 +37,7 @@ SHOW CHANGE :transaction_id [IN DATABASE work] [CURSOR :cursor] LIMIT :limit;
 结果按 envelope 内 canonical entry 顺序分页。每行只返回稳定 object scope、operation、
 before/after revision、Schema version、History locator 和 related object IDs。完整 Row
 内容仍按 locator/RowID 使用 SELECT/History 读取。
+空 `related_object_ids` 确定编码为 `[]`，与非 nullable `ID_LIST` column contract 一致。
 
 entry cursor 绑定 transaction checksum、scope 和 offset。损坏、跨事务或跨 Database
 使用返回 `validation_error`；envelope checksum 不一致视为 corruption，不返回半笔事务。

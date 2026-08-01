@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -69,6 +70,9 @@ func TestShowChangePaginatesEntriesAndBindsCursor(t *testing.T) {
 	for _, value := range first.Rows {
 		if _, leaked := value["values"]; leaked {
 			t.Fatalf("entry Page leaked Row values: %#v", value)
+		}
+		if related, ok := value["related_object_ids"].([]string); !ok || related == nil {
+			t.Fatalf("entry Page related IDs are not a non-null list: %#v", value)
 		}
 	}
 	second, err := execute(ctx, subject,
@@ -137,6 +141,41 @@ func TestScopedAuthorizationRequiresExplicitChangeDatabase(t *testing.T) {
 	assertExecutorCode(t, err, result.CodePermissionDenied)
 	if _, err := execute(scoped, subject, "SHOW CHANGES IN DATABASE work LIMIT 10", executor.Parameters{}, executor.MutationOptions{}); err != nil {
 		t.Fatalf("scoped SHOW CHANGES error = %v", err)
+	}
+}
+
+func TestScopedChangeTimelineRedactsOtherDatabaseIDs(t *testing.T) {
+	ctx := context.Background()
+	dictionary, baseRows, closeStore := changeDependencies(t, ctx)
+	defer closeStore()
+	value, err := change.NewEnvelope(1, time.Unix(1, 0).UTC(), change.Metadata{
+		Actor: "agent:test", Source: "msql", Reason: "cross database transaction",
+	}, []change.Entry{
+		{
+			ObjectKind: change.ObjectRow, DatabaseID: "db_database", TableID: "tbl_table",
+			ObjectID: "row_work", Operation: change.OperationInsert, AfterRevision: 1,
+			SchemaVersion: 1, HistoryLocator: "row_work@00000000000000000001",
+		},
+		{
+			ObjectKind: change.ObjectRow, DatabaseID: "db_other", TableID: "tbl_other",
+			ObjectID: "row_secret", Operation: change.OperationInsert, AfterRevision: 1,
+			SchemaVersion: 1, HistoryLocator: "row_secret@00000000000000000001",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := &changeReadRows{Rows: baseRows, changes: []change.Envelope{value}}
+	subject := executor.New(dictionary, rows)
+	output, err := execute(ctx, subject, "SHOW CHANGES IN DATABASE work LIMIT 10", executor.Parameters{}, executor.MutationOptions{})
+	if err != nil || len(output.Rows) != 1 {
+		t.Fatalf("scoped timeline = %#v, %v", output, err)
+	}
+	if got := output.Rows[0]["database_ids"]; !reflect.DeepEqual(got, []string{"db_database"}) {
+		t.Fatalf("scoped database_ids = %#v", got)
+	}
+	if got := output.Rows[0]["entry_count"]; got != uint64(1) {
+		t.Fatalf("scoped entry_count = %#v", got)
 	}
 }
 
