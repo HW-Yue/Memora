@@ -7,7 +7,7 @@
 
 - `main` 当前到 F170，Leaf → Row `0..1` 与 lexical reference index 均已通过完整 CI 并合入；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F170 已完成 reference 对拍、并发 one-winner 与完整 CI；下一项从最新 `main` 单独 Review F171；
+- F170 已完成并合入；F171 已从最新 `main` 单独 Review，准备进入 RED；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。

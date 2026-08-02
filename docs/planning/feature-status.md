@@ -67,7 +67,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F171–F174：持久化、原子发布、rebuild 与有界 MSQL lexical location；F170 reference model 已完成；
+- F171–F174：持久化、原子发布、rebuild 与有界 MSQL lexical location；F171 已批准并进入 RED；
 - F175a–F186：共享 MSQL Service、Bootstrap、Kimi-compatible Provider、查询 Agent 与外部质量门；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
