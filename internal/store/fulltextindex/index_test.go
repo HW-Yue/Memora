@@ -203,6 +203,28 @@ func TestPersistentIndexDuplicateAndWALFaultBatchLeaveOldRoot(t *testing.T) {
 	}
 }
 
+func TestPersistentIndexReturnsCanonicalObjectInventory(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+	first := document("row_b", 3, "second")
+	second := document("row_a", 7, "first")
+	if _, err := index.Bootstrap(1, []fulltext.Document{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	tombstone := second
+	tombstone.Revision, tombstone.State, tombstone.Fields = 8, fulltext.StateDeleted, nil
+	if _, err := index.Replace(2, tombstone); err != nil {
+		t.Fatal(err)
+	}
+	objects, err := index.Objects()
+	if err != nil || len(objects) != 2 {
+		t.Fatalf("Objects() = %#v, %v", objects, err)
+	}
+	if objects[0].ObjectID != "row_a" || objects[0].Revision != 8 || objects[0].State != fulltext.StateDeleted ||
+		objects[0].Digest == "" || objects[1].ObjectID != "row_b" || objects[1].Revision != 3 {
+		t.Fatalf("canonical Objects() = %#v", objects)
+	}
+}
+
 func TestPersistentIndexLargeBootstrapSplitsAndMatchesReference(t *testing.T) {
 	_, _, runtime, index := newTestIndex(t)
 	documents := make([]fulltext.Document, 500)

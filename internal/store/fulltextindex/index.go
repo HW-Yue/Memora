@@ -264,6 +264,10 @@ func (index *Index) AllPostings() ([]fulltext.Posting, error) {
 	return index.readPostings(allPostingPrefix(), true)
 }
 
+func (index *Index) Objects() ([]fulltext.Object, error) {
+	return nil, fmt.Errorf("%w: object inventory is not implemented", ErrInvalid)
+}
+
 func (index *Index) readPostings(prefix []byte, validateAll bool) ([]fulltext.Posting, error) {
 	if index == nil || index.runtime == nil {
 		return nil, fmt.Errorf("%w: posting read", ErrInvalid)

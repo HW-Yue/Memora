@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/fulltext"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -331,7 +332,7 @@ func TestAuthorityRowPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
 }
 
 func TestAuthorityCatalogPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
-	for _, phase := range []authorityPhase{phaseCatalogBodyCommitted, phaseCatalogPublished} {
+	for _, phase := range []authorityPhase{phaseCatalogBodyCommitted, phaseCatalogPublished, phaseCatalogFulltextPublished} {
 		t.Run(string(phase), func(t *testing.T) {
 			ctx := context.Background()
 			directory, file, authority := newAuthorityFixture(t)
@@ -375,6 +376,7 @@ func TestAuthorityCatalogPublicationFaultsPoisonAndReopenConverges(t *testing.T)
 			if err != nil || got.Name != "recovered" {
 				t.Fatalf("reopened recovered Database = %+v, %v", got, err)
 			}
+			assertCatalogPosting(t, reopened.Generation(), "recovered", fulltext.KindDatabase, got.ID, got.SchemaVersion)
 		})
 	}
 }

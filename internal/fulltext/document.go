@@ -88,6 +88,16 @@ type Document struct {
 	Fields         []Field
 }
 
+type Object struct {
+	Kind       ObjectKind
+	DatabaseID string
+	TableID    string
+	ObjectID   string
+	Revision   uint64
+	State      State
+	Digest     string
+}
+
 // CompiledDocument is the validated canonical input shared by the reference
 // model and durable posting stores. Callers must treat Postings as immutable.
 type CompiledDocument struct {

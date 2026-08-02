@@ -30,12 +30,13 @@ var errFulltextRebuildRequired = errors.New("Fulltext generation requires COW re
 type authorityPhase string
 
 const (
-	phaseCatalogBodyCommitted authorityPhase = "catalog-body-committed"
-	phaseCatalogPublished     authorityPhase = "catalog-published"
-	phaseRowBodyCommitted     authorityPhase = "row-body-committed"
-	phaseRowVersionPublished  authorityPhase = "row-version-published"
-	phaseRowFulltextPublished authorityPhase = "row-fulltext-published"
-	phaseRowCurrentPublished  authorityPhase = "row-current-published"
+	phaseCatalogBodyCommitted     authorityPhase = "catalog-body-committed"
+	phaseCatalogPublished         authorityPhase = "catalog-published"
+	phaseCatalogFulltextPublished authorityPhase = "catalog-fulltext-published"
+	phaseRowBodyCommitted         authorityPhase = "row-body-committed"
+	phaseRowVersionPublished      authorityPhase = "row-version-published"
+	phaseRowFulltextPublished     authorityPhase = "row-fulltext-published"
+	phaseRowCurrentPublished      authorityPhase = "row-current-published"
 )
 
 // Authority owns one activated live generation. The native File remains the
