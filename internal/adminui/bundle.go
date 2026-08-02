@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const BundleVersion = "memora.admin-bundle/v1"
+const BundleVersion = "memora.admin-bundle/v2"
 
 //go:embed dist
 var embeddedFiles embed.FS
@@ -40,7 +40,7 @@ type assetSpec struct {
 var frozenAssets = []assetSpec{
 	{
 		file: "dist/index.html", path: "/", contentType: "text/html; charset=utf-8",
-		hash: "79e93f654d6df2f77fb5a35154f50864145be5f8fd1a2ca8da39fe8fdc9a81f3", size: 2366,
+		hash: "5d81a2f1d4b598c645eca1bbd9dd5e4ae271fd1046e5f4c8744db4fc07688f97", size: 2374,
 	},
 	{
 		file: "dist/assets/app.css", path: "/assets/app.css", contentType: "text/css; charset=utf-8",
@@ -48,7 +48,7 @@ var frozenAssets = []assetSpec{
 	},
 	{
 		file: "dist/assets/app.js", path: "/assets/app.js", contentType: "text/javascript; charset=utf-8",
-		hash: "a45911cad9e1b0bc93ec206cca4cc1172037dafbd09e3a2e2c21cdf86538458a", size: 7620,
+		hash: "9aefaf4ba1444c446395e5b21132577f40f51f24642dd4e75610531482d71b35", size: 7644,
 	},
 	{
 		file: "dist/assets/catalog.js", path: "/assets/catalog.js", contentType: "text/javascript; charset=utf-8",
@@ -181,11 +181,11 @@ func (bundle *Bundle) ServeHTTP(response http.ResponseWriter, request *http.Requ
 	serveAsset(response, request, bundle.index, false)
 }
 
-func serveAsset(response http.ResponseWriter, request *http.Request, asset bundledAsset, immutable bool) {
+func serveAsset(response http.ResponseWriter, request *http.Request, asset bundledAsset, revalidate bool) {
 	response.Header().Set("Content-Type", asset.ContentType)
 	response.Header().Set("ETag", `"sha256:`+asset.SHA256+`"`)
-	if immutable {
-		response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	if revalidate {
+		response.Header().Set("Cache-Control", "no-cache, must-revalidate")
 	} else {
 		response.Header().Set("Cache-Control", "no-store")
 	}

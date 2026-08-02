@@ -1,9 +1,9 @@
-import { renderCatalog } from "./catalog.js";
-import { renderChanges } from "./changes.js";
-import { renderDiff } from "./diffs.js";
-import { renderRoutes } from "./routes.js";
-import { renderRow } from "./rows.js";
-import { renderTraces } from "./traces.js";
+import { renderCatalog } from "./catalog.js?v=2";
+import { renderChanges } from "./changes.js?v=2";
+import { renderDiff } from "./diffs.js?v=2";
+import { renderRoutes } from "./routes.js?v=2";
+import { renderRow } from "./rows.js?v=2";
+import { renderTraces } from "./traces.js?v=2";
 
 let csrfToken = "";
 let sessionReady = false;

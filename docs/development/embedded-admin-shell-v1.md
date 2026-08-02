@@ -15,7 +15,9 @@ Diff 与 Trace 页面从 F117 起逐项实现；壳不得猜测或读取业务 R
 
 内嵌 bundle 的文件集合、大小和 SHA-256 在 Go manifest 中冻结。启动前必须验证
 index/JS/CSS 全部存在且逐字节匹配；缺失、增加或 tamper 都拒绝启动，不从磁盘或网络
-回退。asset 返回强 ETag 与 immutable cache，HTML 使用 `no-store`。
+回退。HTML 使用 `no-store`；稳定 asset URL 返回强 ETag 与 `no-cache`，每次使用前必须
+重新验证。bundle generation 同时进入 HTML 入口和 ES module import URL，升级二进制后
+不能继续执行旧版本标记为 immutable 的缓存脚本。
 
 `GET /` 和不属于 `/api/`、`/assets/` 的深链路返回同一 `index.html`；已知 asset
 按正确 MIME 返回，未知 asset 与 API 路径为 404。只支持 GET/HEAD，不把 POST

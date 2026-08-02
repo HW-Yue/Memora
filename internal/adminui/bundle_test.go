@@ -35,7 +35,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 			t.Fatalf("index contains forbidden %q", forbidden)
 		}
 	}
-	if !strings.Contains(text, `src="/assets/app.js"`) || !strings.Contains(text, `href="/assets/app.css"`) {
+	if !strings.Contains(text, `src="/assets/app.js?v=2"`) || !strings.Contains(text, `href="/assets/app.css?v=2"`) {
 		t.Fatalf("index does not use embedded assets: %s", text)
 	}
 	script, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
@@ -69,7 +69,7 @@ func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./traces.js"`) ||
+	if !strings.Contains(string(app), `from "./traces.js?v=2"`) ||
 		!strings.Contains(string(app), `path === "/traces"`) ||
 		!strings.Contains(string(app), `path.startsWith("/traces/")`) {
 		t.Fatal("Admin shell does not route the Route Trace module")
@@ -108,7 +108,7 @@ func TestRowRevisionDiffModuleUsesTwoBoundedParameterizedAsOfPointReads(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./diffs.js"`) ||
+	if !strings.Contains(string(app), `from "./diffs.js?v=2"`) ||
 		!strings.Contains(string(app), `path.startsWith("/diffs/")`) {
 		t.Fatal("Admin shell does not route the Row revision diff module")
 	}
@@ -163,7 +163,7 @@ func TestChangeTimelineModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./changes.js"`) ||
+	if !strings.Contains(string(app), `from "./changes.js?v=2"`) ||
 		!strings.Contains(string(app), `path === "/changes"`) ||
 		!strings.Contains(string(app), `path.startsWith("/changes/")`) {
 		t.Fatal("Admin shell does not route the Change timeline module")
@@ -201,7 +201,7 @@ func TestRowDocumentModuleUsesDictionaryMetadataAndBoundedParameterizedMSQL(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./rows.js"`) ||
+	if !strings.Contains(string(app), `from "./rows.js?v=2"`) ||
 		!strings.Contains(string(app), `path.startsWith("/rows/")`) {
 		t.Fatal("Admin shell does not route the Row document module")
 	}
@@ -252,7 +252,7 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./routes.js"`) ||
+	if !strings.Contains(string(app), `from "./routes.js?v=2"`) ||
 		!strings.Contains(string(app), `path.startsWith("/routes/")`) {
 		t.Fatal("Admin shell does not route the Route Tree module")
 	}
@@ -303,7 +303,7 @@ func TestCatalogModuleUsesBoundedStableIDMSQLAndDefinesEveryPageState(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./catalog.js"`) ||
+	if !strings.Contains(string(app), `from "./catalog.js?v=2"`) ||
 		!strings.Contains(string(app), "popstate") {
 		t.Fatal("Admin shell does not route Catalog or browser history")
 	}
@@ -364,8 +364,15 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK || response.Header().Get("ETag") == "" ||
-			response.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+			response.Header().Get("Cache-Control") != "no-cache, must-revalidate" {
 			t.Fatalf("GET %s status=%d headers=%#v", path, response.Code, response.Header())
+		}
+		conditional := httptest.NewRequest(http.MethodGet, path, nil)
+		conditional.Header.Set("If-None-Match", response.Header().Get("ETag"))
+		notModified := httptest.NewRecorder()
+		bundle.ServeHTTP(notModified, conditional)
+		if notModified.Code != http.StatusNotModified {
+			t.Fatalf("conditional GET %s status=%d", path, notModified.Code)
 		}
 	}
 	for _, path := range []string{"/assets/missing.js", "/api/v1/unknown"} {
