@@ -81,8 +81,8 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 ## 新候选
 
 - F178（已完成）：Agent Event/Trace/Usage 信封与并发安全内存 recorder；
-- F179（实现中）：Eino/薄状态机 runtime spike 与 ADR；
-- F180–F186：Provider 实现、查询 Agent 与外部质量门；
+- F179（已完成）：选择 Memora-owned 薄 loop，Eino 保留为复杂编排候选；
+- F180–F186：Provider 实现、查询 Agent 与外部质量门；下一项为 F180；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent

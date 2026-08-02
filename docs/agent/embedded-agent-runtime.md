@@ -1,7 +1,8 @@
 # 可选内置 Agent Runtime
 
-状态：F43 已决定面向用户的 v0 Runtime defer；F175c–F177 已交付评测 Agent 所需的 MSQL-only
-边界、无模型 Bootstrap 与厂商中立 Provider port，但 Trace、实现、loop 与产品入口仍需后续 Feature。
+状态：F43 已决定面向用户的 v0 Runtime defer；F175c–F178 已交付评测 Agent 所需的 MSQL-only
+边界、无模型 Bootstrap、厂商中立 Provider port 与 Trace。F179 决定首个 benchmark Query Agent
+采用 Memora-owned 薄 loop；Provider 实现、loop 与产品入口仍需后续 Feature。
 
 ## 定位
 
@@ -59,6 +60,9 @@ CI 必须检查 Agent package import allowlist，并用 fake `MSQLExecutor` 证�
 类型检查、Policy 和事务语义不能分叉；旧讨论稿中的自然语言 `mode/budget/scope` 信封已被该协议取代。
 
 ## Agent Loop
+
+F179 已接受 [ADR-0009](../decisions/0009-memora-owned-agent-loop.md)：F180/F181 使用显式有界状态机，
+不引入 Eino 生产依赖。该选择只针对当前固定只读链；runtime 构造边界保持可替换。
 
 ```text
 接收意图

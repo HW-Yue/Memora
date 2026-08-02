@@ -35,7 +35,8 @@
 - [F176：确定性 Query Bootstrap Frame](./planning/f176-query-bootstrap-frame.md) — 已完成的 Atlas、lexical、root 预取与全局上下文预算链路。
 - [F177：Memora-owned Provider Port](./planning/f177-provider-port.md) — 已完成的厂商中立 completion/tool-call 协议与 scripted fake。
 - [F178：Agent Trace Envelope](./planning/f178-agent-trace-envelope.md) — 已完成的正文脱敏 Event/Usage/Cost 与可重放 recorder。
-- [F179：Agent Runtime Spike](./planning/f179-runtime-spike.md) — 已批准的 Eino/薄状态机可复现实测与 ADR 完成门。
+- [F179：Agent Runtime Spike](./planning/f179-runtime-spike.md) — Eino/薄状态机的可复现实测与完成门。
+- [ADR-0009：Memora-owned 薄 Agent Loop](./decisions/0009-memora-owned-agent-loop.md) — F180/F181 不引入通用 Agent 框架的当前决策。
 
 ## 当前产品规格
 

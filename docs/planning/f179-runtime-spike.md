@@ -1,6 +1,6 @@
 # F179：Agent Runtime Spike 与 ADR
 
-规划状态：已通过单项 Review，批准执行可复现实测与架构决策。
+规划状态：已完成并通过完成门。
 
 ## 唯一主要结果
 
@@ -36,3 +36,13 @@ Trace-owned 与单一可执行文件边界时才进入生产依赖。否则 F180
 用户执行授权：2026-08-03 用户要求持续顺序完成后续 Feature。本 Review 只批准上述 F179 范围。
 
 开工前结论：PASS。
+
+## 完成结果
+
+- 两个隔离 module 的 cancel、tool dispatch、checkpoint/resume 测试已从 RED 转为 GREEN；
+- Apple M4/16 GiB、macOS 15.7.3、Go 1.26.5 下完成七次 RSS 与 stripped binary/package/module 对照；
+- Eino v0.9.13 功能与 Apache-2.0 许可满足要求，但叠加当前 Memora 入口使二进制增加 8,368,544 B；
+- [ADR-0009](../decisions/0009-memora-owned-agent-loop.md) 已选择 F180/F181 使用 Memora-owned 薄 loop；
+- Eino 仅存在于可复现 spike 的嵌套 module，主模块 `go.mod/go.sum` 未变化。
+
+完成门结论：PASS。
