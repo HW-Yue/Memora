@@ -270,6 +270,68 @@ func TestRoutePredictorPackagesDoNotImportFactStores(t *testing.T) {
 	}
 }
 
+func TestAgentPackagesOnlyImportNeutralMSQLProtocol(t *testing.T) {
+	t.Parallel()
+
+	directory := filepath.Join(repositoryRoot(t), "internal", "agent")
+	if err := checkAgentImports(directory); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgentImportGuardRejectsDatabaseRuntimeDependency(t *testing.T) {
+	t.Parallel()
+
+	directory := filepath.Join(t.TempDir(), "agent")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("package agent\nimport _ \"github.com/HW-Yue/Memora/internal/store\"\n")
+	if err := os.WriteFile(filepath.Join(directory, "bad.go"), content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkAgentImports(directory); err == nil || !strings.Contains(err.Error(), "internal/store") {
+		t.Fatalf("checkAgentImports() error = %v", err)
+	}
+}
+
+func checkAgentImports(directory string) error {
+	const (
+		modulePrefix    = "github.com/HW-Yue/Memora/"
+		agentPrefix     = modulePrefix + "internal/agent"
+		neutralProtocol = modulePrefix + "protocol/msql"
+	)
+	return filepath.WalkDir(directory, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() || filepath.Ext(path) != ".go" {
+			return walkErr
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		testFile := strings.HasSuffix(path, "_test.go")
+		for _, imported := range file.Imports {
+			importPath, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				return err
+			}
+			if importPath == neutralProtocol || standardLibraryImport(importPath) {
+				continue
+			}
+			if testFile && (importPath == agentPrefix || strings.HasPrefix(importPath, agentPrefix+"/")) {
+				continue
+			}
+			return fmt.Errorf("%s imports forbidden Agent dependency %q", path, importPath)
+		}
+		return nil
+	})
+}
+
+func standardLibraryImport(importPath string) bool {
+	first, _, _ := strings.Cut(importPath, "/")
+	return first != "" && !strings.Contains(first, ".")
+}
+
 func TestPersonalFreeCommercialPaidLicenseShipsEverywhere(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)
