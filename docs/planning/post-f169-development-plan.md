@@ -5,9 +5,9 @@
 
 ## 当前出发点
 
-- `main` 当前到 F174，全内容 lexical generation、在线 publication、显式 rebuild 与有界位置查询已通过完整 CI 并合入；
+- `main` 当前到 F175a，全内容 lexical 位置链路与中立 MSQL wire protocol 已通过完整 CI 并合入；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F170–F174 已完成；F175a 已通过单项 Review，正在抽取中立 MSQL wire protocol；
+- F170–F175a 已完成；下一项从最新 `main` 单独 Review F175b 共享 MSQL Service；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -59,7 +59,7 @@ F174 已冻结内置 Agent 可依赖的全文查询。倒排结果是候选武�
 
 | Feature | 唯一主要结果 | 关键完成证据 |
 | --- | --- | --- |
-| F175a（实现中） | 中立 `protocol/msql` | SDK wire golden 不变，协议不依赖 runtime/internal |
+| F175a（已完成） | 中立 `protocol/msql` | SDK wire golden 不变，协议不依赖 runtime/internal |
 | F175b | 单实例共享 `MSQLService` | IPC/adapter parity、独立 Session、取消/回滚、并发与 race |
 | F175c | Agent MSQL-only port 与 fake harness | import allowlist；Agent 测试不打开 Instance |
 | F176 | 确定性 Query Bootstrap Frame | Atlas + lexical + 可选根 Route 预取；snapshot/byte budget/回退 |

@@ -1,6 +1,6 @@
 # Agent 的 MSQL 边界与依赖注入
 
-状态：方向性规格，作为内置 Agent 开工前的强制架构约束。
+状态：架构约束；F175a 已完成中立协议包，F175b/F175c 继续完成共享 Service 与 Agent 守卫。
 
 ## 决定
 
@@ -33,8 +33,8 @@ Go 没有内建依赖注入容器，但接口、构造函数和显式组装本�
 
 ## 中立协议包
 
-当前 `sdk/memora` 同时依赖 `internal/daemon` 和 `internal/ipc`，daemon 内的 Agent 反向导入
-它会形成依赖环。因此应先抽出一个无运行时依赖的协议包：
+`sdk/memora` 的 Client 仍依赖 daemon/IPC；daemon 内的 Agent 反向导入 SDK 会形成依赖环。
+F175a 已抽出无运行时依赖的协议包：
 
 ```text
 protocol/msql     Request、Envelope、版本常量、Validate；仅依赖标准库
@@ -43,7 +43,8 @@ internal/msql     数据库执行实现
 internal/agent    仅导入 protocol/msql，不导入 sdk/memora 或数据库内核
 ```
 
-协议抽取不改变现有 wire format，也不允许协议包导入任何 `internal/*`。
+协议抽取未改变现有 wire format；SDK 公共类型现在是 protocol aliases，静态测试禁止协议包
+生产文件导入任何非标准库。共享执行实现仍由 F175b 完成。
 
 ## Agent 拥有端口
 

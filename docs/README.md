@@ -29,7 +29,7 @@
 - [F173c：Lexical Rebuild 与 Snapshot Parity](./planning/f173c-lexical-rebuild-parity.md) — 已完成的全量 COW rebuild、规范摘要与 MSQL 维护契约。
 - [F174：有界 Lexical Location 查询](./planning/f174-bounded-lexical-locations.md) — 已完成的权限先行、预算与 cursor 查询链路；
 - [Lexical Locations v1](./query/lexical-locations-v1.md) — 全内容倒排位置的 MSQL 与回表协议。
-- [F175a：中立 MSQL Wire Protocol](./planning/f175a-neutral-msql-protocol.md) — 已批准的公共 Request/Envelope 与 SDK 零 wire 变更实现门。
+- [F175a：中立 MSQL Wire Protocol](./planning/f175a-neutral-msql-protocol.md) — 已完成的公共 Request/Envelope 与 SDK 零 wire 变更抽取。
 
 ## 当前产品规格
 
