@@ -1,6 +1,6 @@
 # Feature 状态
 
-状态：2026-08-02 当前权威实现账本；旧完成门和执行过程位于
+状态：2026-08-03 当前权威实现账本；旧完成门和执行过程位于
 [`archive/planning/`](../archive/planning/README.md)。
 
 ## 状态定义
@@ -66,13 +66,15 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- 内置标准评测 Agent；
-- 只观测 Memora 调用的外置 Agent Hook；
-- session/turn/trace 指标与本地分析；
-- 真实 AI 查询质量和成本报告；
-- 写入时机与 worthiness 质量评测，安排在查询评测稳定之后。
+- F170–F174：当前 Row 与语义表面的全内容倒排位置；
+- F175a–F186：共享 MSQL Service、Bootstrap、Kimi-compatible Provider、查询 Agent 与外部质量门；
+- F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
+- F201–F205：DOCX/PDF/OCR 证据扩展、外置 Hook 和 Admin 私有分析。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent
   判断并留下 revision/理由，引擎不提供统一语义常量；
+
+具体拆分以[后续开发序列](./post-f169-development-plan.md)为准。写入时机与 worthiness
+质量评测仍安排在查询、写入和 Hook 观测稳定之后。
 
 代码清理的保留/删除理由见[旧代码清理边界](../development/legacy-code-boundary.md)。
 

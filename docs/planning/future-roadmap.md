@@ -1,6 +1,6 @@
 # 后续路线
 
-状态：2026-08-02 当前方向；只描述下一阶段目标，不构成批量 Feature 实现授权。
+状态：2026-08-03 当前方向；只描述下一阶段目标，不构成批量 Feature 实现授权。
 
 F169 之后的逐项依赖、候选编号和完成门见
 [F169 之后的开发序列](./post-f169-development-plan.md)。本文继续维护阶段目标，不重复展开 Feature。
@@ -29,11 +29,12 @@ Codex、Claude Code 等外置 Agent 不作为统一静态基准，只通过 Hook
 
 优先顺序：
 
-1. 冻结 observation/receipt 和 run/session/turn/trace 身份；
-2. 实现隔离的 Provider driver 和内置评测 Agent；
-3. 接入现有 Route Benchmark Runner 与本地报告；
-4. 实现外置 Hook 和本地分析视图；
-5. 最后再评测写入时机、write/ignore 和 Skill prompt 质量。
+1. 抽出中立 MSQL 协议，建立 IPC/内置 adapter 共用的单实例执行服务和依赖守卫；
+2. 无模型组装 Atlas + lexical + 可选根 Route 的 Bootstrap Frame，先测上下文和投机成本；
+3. 冻结 Provider port 与 run/session/turn/trace，再接 Kimi 等真实 OpenAI-compatible API；
+4. 实现只读 Query Agent、冻结 corpus、接外部评分并通过发布门；
+5. 再开放交互 QuerySession，随后验证单网页写入和整本 EPUB；
+6. 外置 Hook、Admin 分析和写入时机评测放在主垂直链证据之后。
 
 API Key 只进入操作系统密钥存储或进程环境，不进入 Database、日志、报告或导出。评测 Agent
 不能拥有绕过 Parser、Policy、预算和事务的内部接口。
@@ -64,6 +65,8 @@ Compaction、Secondary Index、Buffer Pool 分片、高级 I/O、Physical Undo�
 
 - [当前产品基线](../product/current-product.md)
 - [F169 之后的开发序列](./post-f169-development-plan.md)
+- [查询 Agent Feature 序列](./query-agent-feature-sequence.md)
+- [资料吸收 Agent Feature 序列](./assimilation-agent-feature-sequence.md)
 - [Feature 状态](./feature-status.md)
 - [评测 Agent 与 Hook](../development/evaluation-agent-observability.md)
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)

@@ -9,7 +9,9 @@
 - [Feature 状态](./planning/feature-status.md) — Feature 的权威完成、撤销、证据不完整和延期账本；
 - [后续路线](./planning/future-roadmap.md) — 真实 AI 证据、内置评测 Agent、外置 Hook 和后期候选；
 - [F169 之后的开发序列](./planning/post-f169-development-plan.md) — 倒排索引、最小内置 Agent、
-  外部答案测评、DeepSeek 写入和长资料吸收的逐项顺序；
+  外部答案测评、可替换 Provider 写入和长资料吸收的逐项顺序；
+- [查询 Agent Feature 序列](./planning/query-agent-feature-sequence.md)与
+  [资料吸收 Agent Feature 序列](./planning/assimilation-agent-feature-sequence.md) — 两条独立垂直链；
 - [AI-native 产品宪章](./product/ai-native-product-charter.md) — 最高层产品原则和永久边界；
 - [Feature 产品门](./planning/feature-product-gate.md)与
   [TDD 协议](./planning/feature-tdd-protocol.md) — 新开发的拆分、授权和验收规则。

@@ -29,9 +29,9 @@ Row 的新增、修改、删除、拆分和合并必须同步失效或重建 mem
 
 ```text
 自然语言意图
-→ SHOW DATABASES：读取有限库名与用途
-→ SHOW TABLES：读取所选库内有限表名、Row 语义与边界
-→ DESCRIBE TABLE：读取 Schema 与顶层 Route 摘要
+→ Bootstrap：完整有界 Catalog Atlas + lexical locations + 可选根 Route 预取
+→ 第一次模型调用：一次选择多个 Table、预取 Route 或 RowID location
+→ DESCRIBE TABLE：只读取所选 Table 的 Schema
 → SHOW ROUTES：每次只展开所选节点的一层
 → OPEN ROUTE：叶子确定性返回零个或一个 RowID
 → SELECT ... WHERE row_id = ?：读取真实数据
@@ -39,6 +39,9 @@ Row 的新增、修改、删除、拆分和合并必须同步失效或重建 mem
 ```
 
 AI 每次选择一个或少量分支，并将当前路径、候选节点、预算和 snapshot 组成紧凑 `Route Frame`。旧层级退出上下文后不再携带。
+
+Bootstrap 是 Agent-owned MSQL 编排，不是引擎自动 Planner。Catalog 超预算时必须显式分页，
+lexical 零命中或错误预取不能排除未读 Table；它只用廉价数据库工作换取更少模型续推。
 
 ## SQL 边界
 

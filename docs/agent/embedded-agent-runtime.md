@@ -84,10 +84,10 @@ actor、权限、预算和审批状态可以不同，但语法解析、AST、类
 
 循环必须有确定性的最大步数、token、时间、返回字符、扫描行数和修改行数。达到预算时显式返回 `truncated` 或 `budget_exhausted`，不能无限自治。
 
-查询采用两阶段分工。内置 Runtime 依次发现 Database、Table、Schema 和 Table
-顶层 Route，再逐层选择有限子节点，直到 Leaf 返回唯一 RowID；主 Agent 根据
-定位生成 MSQL `SELECT` 回表读取真实 Row。发现结果不能包含正文，也不能直接
-作为最终答案。
+查询采用 Bootstrap + Route/SQL 两段分工。第一次模型调用前，Runtime 只通过 MSQL
+取得完整有界 Catalog Atlas、全内容 lexical locations，并可投机预取最多两张高可能性 Table 的根 Route；模型在第一次调用中一次选择多个 Table，并选择已预取 Route、要求
+展开其他 Route 或按 lexical RowID 发起 `SELECT`。之后只保留所选 Schema、当前 Route
+Frame 与 SQL 事实 Row，不再携带整个 Atlas。发现结果不能直接作为最终答案。
 
 Runtime 校验每层节点数、最大深度、Leaf 单 Row 不变量和跨 Leaf 回表总预算。Data Dictionary
 提供已知 alias，MSQL 负责正式传递，Policy 强制权限与预算。Runtime 不生成
