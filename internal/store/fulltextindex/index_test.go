@@ -100,6 +100,27 @@ func TestPersistentIndexReplacementIsAtomicRevisionedAndIdempotent(t *testing.T)
 	}
 }
 
+func TestPersistentIndexReadsPostingPrefixesOnlyInsideExplicitDatabaseScope(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+	work := document("row_work", 1, "shared work")
+	secret := document("row_secret", 1, "shared secret")
+	secret.DatabaseID, secret.TableID = "db_secret", "tbl_secret"
+	if _, err := index.Bootstrap(1, []fulltext.Document{work, secret}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := index.PostingsInDatabases("shared", []string{"db_work"})
+	if err != nil || len(got) != 1 || got[0].DatabaseID != "db_work" || got[0].ObjectID != "row_work" {
+		t.Fatalf("scoped postings = %#v, %v", got, err)
+	}
+	empty, err := index.PostingsInDatabases("shared", nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty scope postings = %#v, %v", empty, err)
+	}
+	if _, err := index.PostingsInDatabases("shared", []string{"db_work", "db_work"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("duplicate scope error = %v", err)
+	}
+}
+
 func TestPersistentIndexBatchReplacementUsesOneAtomicRevisionStep(t *testing.T) {
 	_, _, runtime, index := newTestIndex(t)
 	first := document("row_1", 1, "first old")
