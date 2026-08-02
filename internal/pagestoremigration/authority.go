@@ -126,6 +126,11 @@ func OpenAuthority(
 	if err := authority.reconcile(ctx); err != nil {
 		return nil, errors.Join(err, generation.Close(), changeTree.Close())
 	}
+	if authority.generation.fulltext == nil {
+		if _, err := authority.ReplaceGeneration(ctx); err != nil {
+			return nil, errors.Join(err, authority.Close())
+		}
+	}
 	return authority, nil
 }
 

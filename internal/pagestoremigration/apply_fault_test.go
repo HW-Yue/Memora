@@ -19,7 +19,7 @@ import (
 func TestPrePublicationFaultsLeaveNoVisibleOrStagedGeneration(t *testing.T) {
 	phases := []applyPhase{
 		phaseStagingCreated, phaseCatalogBuilt, phaseCurrentBuilt,
-		phaseVersionsBuilt, phaseManifestSynced, phaseBeforeRename,
+		phaseVersionsBuilt, phaseFulltextBuilt, phaseManifestSynced, phaseBeforeRename,
 	}
 	for _, phase := range phases {
 		t.Run(string(phase), func(t *testing.T) {

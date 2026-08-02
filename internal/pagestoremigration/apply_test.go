@@ -19,7 +19,7 @@ import (
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
-func TestApplierPublishesReopenableThreeTreeGenerationWithoutChangingLegacy(t *testing.T) {
+func TestApplierPublishesReopenableFourTreeGenerationWithoutChangingNativeBodies(t *testing.T) {
 	directory := t.TempDir()
 	sourcePath := filepath.Join(directory, "database.memora")
 	file, first, second := migrationFixtureAt(t, sourcePath)
@@ -60,6 +60,9 @@ func TestApplierPublishesReopenableThreeTreeGenerationWithoutChangingLegacy(t *t
 	defer generation.Close()
 	if generation.PlanDigest() != plan.Digest || generation.SourceFingerprint() != plan.SourceFingerprint {
 		t.Fatalf("Generation binding = %q / %q", generation.PlanDigest(), generation.SourceFingerprint())
+	}
+	if generation.Fulltext() == nil {
+		t.Fatal("Generation is missing Fulltext Tree")
 	}
 	database, err := generation.Catalog().DatabaseByID(plan.Catalog[0].ID)
 	if err != nil || database.ID != plan.Catalog[0].ID {
@@ -230,10 +233,20 @@ func TestOpenGenerationRejectsManifestPageWALAndDirectoryCorruption(t *testing.T
 		{"Page", func(t *testing.T, directory string) {
 			flipLastByte(t, filepath.Join(directory, "catalog.pages"))
 		}},
+		{"Fulltext Page", func(t *testing.T, directory string) {
+			flipLastByte(t, filepath.Join(directory, "fulltext.pages"))
+		}},
 		{"WAL", func(t *testing.T, directory string) {
 			matches, err := filepath.Glob(filepath.Join(directory, "versions.wal", "segment-*.wal"))
 			if err != nil || len(matches) != 1 {
 				t.Fatalf("WAL files = %v, %v", matches, err)
+			}
+			flipLastByte(t, matches[0])
+		}},
+		{"Fulltext WAL", func(t *testing.T, directory string) {
+			matches, err := filepath.Glob(filepath.Join(directory, "fulltext.wal", "segment-*.wal"))
+			if err != nil || len(matches) != 1 {
+				t.Fatalf("Fulltext WAL files = %v, %v", matches, err)
 			}
 			flipLastByte(t, matches[0])
 		}},

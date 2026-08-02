@@ -43,6 +43,9 @@ func TestProjectSkipsNullAndAllowsEmptyLiveRow(t *testing.T) {
 	t.Parallel()
 
 	table := projectionTable()
+	table.Columns = []catalog.Column{{
+		ID: "col_nullable", Type: "TEXT", MaxCharacters: 1200, Nullable: true, SchemaVersion: 3,
+	}}
 	value := projectionRow()
 	value.Values = map[string]any{"col_nullable": nil}
 	document, err := Project(table, value)
@@ -52,6 +55,23 @@ func TestProjectSkipsNullAndAllowsEmptyLiveRow(t *testing.T) {
 	index, err := fulltext.Build([]fulltext.Document{document})
 	if err != nil || len(index.AllPostings()) != 0 {
 		t.Fatalf("Build(empty live) = %#v, %v", index, err)
+	}
+}
+
+func TestProjectSkipsValidBlankText(t *testing.T) {
+	t.Parallel()
+
+	table := projectionTable()
+	table.Columns = []catalog.Column{{
+		ID: "col_text", Type: "TEXT", MaxCharacters: 1200, SchemaVersion: 3,
+	}}
+	for _, text := range []string{"", " \t\n"} {
+		value := projectionRow()
+		value.Values = map[string]any{"col_text": text}
+		document, err := Project(table, value)
+		if err != nil || len(document.Fields) != 0 {
+			t.Fatalf("Project(%q) = %#v, %v", text, document, err)
+		}
 	}
 }
 

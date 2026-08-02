@@ -19,14 +19,16 @@ import (
 )
 
 const (
-	GenerationDirectory = "page-index-v1"
-	generationVersion   = "memora.page-index-generation/v1"
-	manifestFileName    = "manifest.json"
-	maxManifestBytes    = 64 << 10
+	GenerationDirectory     = "page-index-v1"
+	generationVersion       = "memora.page-index-generation/v2"
+	legacyGenerationVersion = "memora.page-index-generation/v1"
+	manifestFileName        = "manifest.json"
+	maxManifestBytes        = 64 << 10
 
-	catalogSpaceID = uint64(0x4d454d434154) // MEMCAT
-	currentSpaceID = uint64(0x4d454d435552) // MEMCUR
-	versionSpaceID = uint64(0x4d454d564552) // MEMVER
+	catalogSpaceID  = uint64(0x4d454d434154) // MEMCAT
+	currentSpaceID  = uint64(0x4d454d435552) // MEMCUR
+	versionSpaceID  = uint64(0x4d454d564552) // MEMVER
+	fulltextSpaceID = uint64(0x4d454d465458) // MEMFTX
 )
 
 var (
@@ -65,20 +67,24 @@ var expectedTrees = []treeManifest{
 	{Kind: "catalog", SpaceID: catalogSpaceID, PageFile: "catalog.pages", WALDirectory: "catalog.wal"},
 	{Kind: "current", SpaceID: currentSpaceID, PageFile: "current.pages", WALDirectory: "current.wal"},
 	{Kind: "versions", SpaceID: versionSpaceID, PageFile: "versions.pages", WALDirectory: "versions.wal"},
+	{Kind: "fulltext", SpaceID: fulltextSpaceID, PageFile: "fulltext.pages", WALDirectory: "fulltext.wal"},
 }
 
+var legacyExpectedTrees = append([]treeManifest(nil), expectedTrees[:3]...)
+
 func (manifest generationManifest) validate() error {
-	if manifest.Version != generationVersion || manifest.PlanVersion != PlanVersion ||
+	expected, validVersion := manifestTreeSpecifications(manifest.Version, manifest.PlanVersion)
+	if !validVersion ||
 		!canonicalSHA256(manifest.PlanDigest) || !canonicalSHA256(manifest.SourceFingerprint) ||
 		!canonicalSHA256(manifest.ContentDigest) || !canonicalSHA256(manifest.Digest) ||
-		len(manifest.Trees) != len(expectedTrees) {
+		len(manifest.Trees) != len(expected) {
 		return ErrTargetCorrupt
 	}
 	for index, tree := range manifest.Trees {
-		expected := expectedTrees[index]
+		expectedTree := expected[index]
 		state := tree.State.runtimeState(tree.SpaceID)
-		if tree.Kind != expected.Kind || tree.SpaceID != expected.SpaceID ||
-			tree.PageFile != expected.PageFile || tree.WALDirectory != expected.WALDirectory ||
+		if tree.Kind != expectedTree.Kind || tree.SpaceID != expectedTree.SpaceID ||
+			tree.PageFile != expectedTree.PageFile || tree.WALDirectory != expectedTree.WALDirectory ||
 			state.RootPageID == 0 {
 			return ErrTargetCorrupt
 		}
@@ -91,6 +97,17 @@ func (manifest generationManifest) validate() error {
 		return ErrTargetCorrupt
 	}
 	return nil
+}
+
+func manifestTreeSpecifications(version, planVersion string) ([]treeManifest, bool) {
+	switch {
+	case version == generationVersion && planVersion == PlanVersion:
+		return expectedTrees, true
+	case version == legacyGenerationVersion && planVersion == legacyPlanVersion:
+		return legacyExpectedTrees, true
+	default:
+		return nil, false
+	}
 }
 
 func treeStateFromRuntime(state treecontrol.State) treeStateManifest {
@@ -212,8 +229,8 @@ func writeManifest(directory string, manifest generationManifest) error {
 	return nil
 }
 
-func contentDigest(directory string) (string, error) {
-	if err := validateGenerationEntries(directory); err != nil {
+func contentDigest(directory string, trees []treeManifest) (string, error) {
+	if err := validateGenerationEntries(directory, trees); err != nil {
 		return "", err
 	}
 	paths := make([]string, 0)
@@ -275,13 +292,13 @@ func contentDigest(directory string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func validateGenerationEntries(directory string) error {
+func validateGenerationEntries(directory string, trees []treeManifest) error {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return fmt.Errorf("%w: read generation directory: %v", ErrTargetCorrupt, err)
 	}
 	expected := map[string]bool{manifestFileName: false}
-	for _, tree := range expectedTrees {
+	for _, tree := range trees {
 		expected[tree.PageFile] = false
 		expected[tree.WALDirectory] = true
 	}

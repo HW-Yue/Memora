@@ -32,10 +32,12 @@ func TestNativeReaderBuildsCatalogCurrentAndEveryRowVersion(t *testing.T) {
 	}
 	if plan.Version != pagestoremigration.PlanVersion || len(plan.SourceFingerprint) != 64 ||
 		len(plan.Digest) != 64 || len(plan.Catalog) != 1 || len(plan.CurrentRows) != 1 ||
-		len(plan.RowVersions) != 2 {
+		len(plan.CurrentRowBodies) != 1 || len(plan.RowVersions) != 2 {
 		t.Fatalf("migration Plan = %#v", plan)
 	}
 	if plan.CurrentRows[0].RowID != second.ID || plan.CurrentRows[0].Revision != second.Revision ||
+		plan.CurrentRowBodies[0].ID != second.ID || plan.CurrentRowBodies[0].Revision != second.Revision ||
+		plan.CurrentRowBodies[0].Values["col_title"] != second.Values["col_title"] ||
 		plan.RowVersions[0].Revision != first.Revision || plan.RowVersions[1].Revision != second.Revision {
 		t.Fatalf("migration Row locators = %#v / %#v", plan.CurrentRows, plan.RowVersions)
 	}
@@ -232,13 +234,31 @@ func TestReaderRejectsSourceChangeAndInvalidRowHistories(t *testing.T) {
 func TestPlanValidateRejectsCallerMutation(t *testing.T) {
 	file, _, _ := migrationFixture(t)
 	reader, _ := pagestoremigration.NewNativeReader(file)
-	plan, err := reader.Build(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name   string
+		mutate func(*pagestoremigration.Plan)
+	}{
+		{"version locator", func(plan *pagestoremigration.Plan) { plan.RowVersions[0].Revision = 99 }},
+		{"body locator", func(plan *pagestoremigration.Plan) { plan.CurrentRowBodies[0].Revision++ }},
+		{"body schema", func(plan *pagestoremigration.Plan) { plan.CurrentRowBodies[0].SchemaVersion++ }},
+		{"body projection", func(plan *pagestoremigration.Plan) {
+			plan.CurrentRowBodies[0].Values["col_unknown"] = "poison"
+		}},
+		{"body digest", func(plan *pagestoremigration.Plan) {
+			plan.CurrentRowBodies[0].Values["col_title"] = "different but valid"
+		}},
 	}
-	plan.RowVersions[0].Revision = 99
-	if err := plan.Validate(); !errors.Is(err, pagestoremigration.ErrInvalid) {
-		t.Fatalf("mutated Plan Validate() error = %v", err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan, err := reader.Build(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(&plan)
+			if err := plan.Validate(); !errors.Is(err, pagestoremigration.ErrInvalid) {
+				t.Fatalf("mutated Plan Validate() error = %v", err)
+			}
+		})
 	}
 }
 

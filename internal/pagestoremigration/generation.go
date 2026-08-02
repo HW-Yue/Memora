@@ -9,6 +9,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
+	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
@@ -33,6 +34,7 @@ type Generation struct {
 	catalog   *catalogindex.Index
 	current   *currentrowindex.Index
 	versions  *rowversionindex.Index
+	fulltext  *fulltextindex.Index
 	closed    bool
 }
 
@@ -59,11 +61,11 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 		return nil, err
 	}
 	if strict {
-		digest, err := contentDigest(directory)
+		digest, err := contentDigest(directory, manifest.Trees)
 		if err != nil || digest != manifest.ContentDigest {
 			return nil, fmt.Errorf("%w: generation content digest", ErrTargetCorrupt)
 		}
-	} else if err := validateGenerationEntries(directory); err != nil {
+	} else if err := validateGenerationEntries(directory, manifest.Trees); err != nil {
 		return nil, err
 	}
 
@@ -93,6 +95,8 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 			generation.current, err = currentrowindex.Open(tree.runtime)
 		case "versions":
 			generation.versions, err = rowversionindex.Open(tree.runtime)
+		case "fulltext":
+			generation.fulltext, err = fulltextindex.Open(tree.runtime)
 		default:
 			err = ErrTargetCorrupt
 		}
@@ -101,7 +105,7 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 		}
 	}
 	if strict {
-		afterOpen, err := contentDigest(directory)
+		afterOpen, err := contentDigest(directory, manifest.Trees)
 		if err != nil || afterOpen != manifest.ContentDigest {
 			return nil, fmt.Errorf("%w: recovery changed generation content", ErrTargetCorrupt)
 		}
@@ -158,6 +162,13 @@ func (generation *Generation) RowVersions() *rowversionindex.Index {
 		return nil
 	}
 	return generation.versions
+}
+
+func (generation *Generation) Fulltext() *fulltextindex.Index {
+	if generation == nil {
+		return nil
+	}
+	return generation.fulltext
 }
 
 func (generation *Generation) PlanDigest() string {

@@ -14,13 +14,17 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/rowfulltext"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 )
 
-const PlanVersion = "memora.page-index-migration-plan/v1"
+const (
+	PlanVersion       = "memora.page-index-migration-plan/v2"
+	legacyPlanVersion = "memora.page-index-migration-plan/v1"
+)
 
 var (
 	ErrInvalid       = errors.New("Page index migration plan is invalid")
@@ -40,6 +44,7 @@ type Plan struct {
 	RecordCounts      []RecordCount             `json:"record_counts"`
 	Catalog           []catalog.Database        `json:"catalog"`
 	CurrentRows       []currentrowindex.Locator `json:"current_rows"`
+	CurrentRowBodies  []row.Row                 `json:"current_row_bodies"`
 	RowVersions       []rowversionindex.Locator `json:"row_versions"`
 	Digest            string                    `json:"digest"`
 }
@@ -231,6 +236,7 @@ func planRows(plan *Plan, rows []row.Row) error {
 	})
 	plan.RowVersions = make([]rowversionindex.Locator, 0, len(rows))
 	plan.CurrentRows = make([]currentrowindex.Locator, 0)
+	plan.CurrentRowBodies = make([]row.Row, 0)
 	for index, value := range rows {
 		locator := rowversionindex.Locator{
 			DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID,
@@ -244,6 +250,7 @@ func planRows(plan *Plan, rows []row.Row) error {
 				SchemaRevision: locator.SchemaRevision, Revision: locator.Revision,
 				CommitSequence: locator.CommitSequence, State: locator.State,
 			})
+			plan.CurrentRowBodies = append(plan.CurrentRowBodies, cloneRow(value))
 		}
 	}
 	return nil
@@ -254,7 +261,7 @@ func (plan Plan) Validate() error { return validatePlan(plan, true) }
 func validatePlan(plan Plan, checkDigest bool) error {
 	if plan.Version != PlanVersion || !validSHA256(plan.SourceFingerprint) ||
 		!validCounts(plan.RecordCounts) || catalogindex.Validate(plan.Catalog) != nil {
-		return ErrInvalid
+		return invalidPlan("header, source, counts, or Catalog")
 	}
 	tables := make(map[string]catalog.Table)
 	databaseCount, tableCount, columnCount := uint64(len(plan.Catalog)), uint64(0), uint64(0)
@@ -268,15 +275,15 @@ func validatePlan(plan Plan, checkDigest bool) error {
 	if recordCount(plan.RecordCounts, nativestore.ObjectKindDatabase) < databaseCount ||
 		recordCount(plan.RecordCounts, nativestore.ObjectKindTable) < tableCount ||
 		recordCount(plan.RecordCounts, nativestore.ObjectKindColumn) < columnCount {
-		return ErrInvalid
+		return invalidPlan("Catalog record counts")
 	}
 	current := make(map[string]currentrowindex.Locator, len(plan.CurrentRows))
 	for index, locator := range plan.CurrentRows {
 		if index > 0 && plan.CurrentRows[index-1].RowID >= locator.RowID {
-			return ErrInvalid
+			return invalidPlan("current Row order")
 		}
 		if _, duplicate := current[locator.RowID]; duplicate {
-			return ErrInvalid
+			return invalidPlan("duplicate current Row")
 		}
 		current[locator.RowID] = locator
 	}
@@ -287,44 +294,62 @@ func validatePlan(plan Plan, checkDigest bool) error {
 		if !exists || table.DatabaseID != locator.DatabaseID ||
 			table.SchemaVersion != locator.SchemaRevision || locator.RowID == "" || locator.Revision == 0 ||
 			(locator.State != row.StateLive && locator.State != row.StateDeleted && locator.State != row.StateSuperseded) {
-			return ErrInvalid
+			return invalidPlan("Row version scope, schema, revision, or state")
 		}
 		if index > 0 {
 			prior := plan.RowVersions[index-1]
 			if prior.RowID > locator.RowID || (prior.RowID == locator.RowID && prior.Revision >= locator.Revision) {
-				return ErrInvalid
+				return invalidPlan("Row version order")
 			}
 		}
 		prior, found := previous[locator.RowID]
 		if (!found && locator.Revision != 1) ||
 			(found && (locator.DatabaseID != prior.DatabaseID || locator.TableID != prior.TableID ||
 				locator.Revision != prior.Revision+1)) {
-			return ErrInvalid
+			return invalidPlan("Row revision sequence")
 		}
 		if locator.CommitSequence == 0 {
 			if positive[locator.RowID] {
-				return ErrInvalid
+				return invalidPlan("zero commit after positive commit")
 			}
 		} else {
 			if found && prior.CommitSequence != 0 && locator.CommitSequence < prior.CommitSequence {
-				return ErrInvalid
+				return invalidPlan("Row commit sequence regressed")
 			}
 			positive[locator.RowID] = true
 		}
 		previous[locator.RowID] = locator
 	}
 	if len(current) != len(previous) || recordCount(plan.RecordCounts, nativestore.ObjectKindRow) != uint64(len(plan.RowVersions)) {
-		return ErrInvalid
+		return invalidPlan("current/version cardinality")
 	}
 	for rowID, latest := range previous {
 		currentLocator, exists := current[rowID]
 		if !exists || !sameLocator(currentLocator, latest) {
-			return ErrInvalid
+			return invalidPlan("current/version locator mismatch")
+		}
+	}
+	if len(plan.CurrentRowBodies) != len(plan.CurrentRows) {
+		return invalidPlan("current Row body cardinality")
+	}
+	for index, body := range plan.CurrentRowBodies {
+		if index > 0 && plan.CurrentRowBodies[index-1].ID >= body.ID {
+			return invalidPlan("current Row body order")
+		}
+		locator, exists := current[body.ID]
+		table, tableExists := tables[body.TableID]
+		if !exists || !tableExists || locator.DatabaseID != body.DatabaseID || locator.TableID != body.TableID ||
+			locator.SchemaRevision != body.SchemaVersion || locator.Revision != body.Revision ||
+			locator.CommitSequence != body.CommitSequence || locator.State != body.State {
+			return invalidPlan("current Row body/locator mismatch")
+		}
+		if _, err := rowfulltext.Project(table, body); err != nil {
+			return invalidPlan("current Row body projection: %v", err)
 		}
 	}
 	if checkDigest {
 		if !validSHA256(plan.Digest) {
-			return ErrInvalid
+			return invalidPlan("Plan digest encoding")
 		}
 		want, err := planDigest(plan)
 		if err != nil || want != plan.Digest {
@@ -332,6 +357,10 @@ func validatePlan(plan Plan, checkDigest bool) error {
 		}
 	}
 	return nil
+}
+
+func invalidPlan(format string, arguments ...any) error {
+	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, arguments...))
 }
 
 func sameLocator(current currentrowindex.Locator, version rowversionindex.Locator) bool {
@@ -348,14 +377,27 @@ func planDigest(plan Plan) (string, error) {
 		RecordCounts      []RecordCount             `json:"record_counts"`
 		Catalog           []catalog.Database        `json:"catalog"`
 		CurrentRows       []currentrowindex.Locator `json:"current_rows"`
+		CurrentRowBodies  []row.Row                 `json:"current_row_bodies"`
 		RowVersions       []rowversionindex.Locator `json:"row_versions"`
-	}{plan.Version, plan.SourceFingerprint, plan.RecordCounts, plan.Catalog, plan.CurrentRows, plan.RowVersions}
+	}{
+		plan.Version, plan.SourceFingerprint, plan.RecordCounts, plan.Catalog,
+		plan.CurrentRows, plan.CurrentRowBodies, plan.RowVersions,
+	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:]), nil
+}
+
+func cloneRow(value row.Row) row.Row {
+	values := value.Values
+	value.Values = make(map[string]any, len(values))
+	for key, item := range values {
+		value.Values[key] = item
+	}
+	return value
 }
 
 func validSHA256(value string) bool {

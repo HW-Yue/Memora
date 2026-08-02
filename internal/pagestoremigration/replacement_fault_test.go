@@ -54,7 +54,7 @@ func TestReplacementPreMarkerFaultsKeepOldAuthority(t *testing.T) {
 
 func TestReplacementBuildTreeFaultsKeepOldAuthority(t *testing.T) {
 	for _, phase := range []applyPhase{
-		phaseCatalogBuilt, phaseCurrentBuilt, phaseVersionsBuilt, phaseManifestSynced,
+		phaseCatalogBuilt, phaseCurrentBuilt, phaseVersionsBuilt, phaseFulltextBuilt, phaseManifestSynced,
 	} {
 		t.Run(string(phase), func(t *testing.T) {
 			ctx := context.Background()

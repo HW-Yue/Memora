@@ -146,7 +146,7 @@ func normalizeDocument(value Document) (normalizedDocument, []Posting, string, e
 	if len(value.Fields) > maximumFields {
 		return normalizedDocument{}, nil, "", documentError("field count exceeds %d", maximumFields)
 	}
-	if value.State == StateLive && len(value.Fields) == 0 {
+	if value.State == StateLive && value.Kind != KindRow && len(value.Fields) == 0 {
 		return normalizedDocument{}, nil, "", documentError("live document requires at least one field")
 	}
 	if value.State != StateLive && len(value.Fields) != 0 {

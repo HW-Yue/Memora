@@ -7,11 +7,15 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/rowfulltext"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
+	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
@@ -33,6 +37,7 @@ const (
 	phaseCatalogBuilt   applyPhase = "catalog-built"
 	phaseCurrentBuilt   applyPhase = "current-built"
 	phaseVersionsBuilt  applyPhase = "versions-built"
+	phaseFulltextBuilt  applyPhase = "fulltext-built"
 	phaseManifestSynced applyPhase = "manifest-synced"
 	phaseBeforeReverify applyPhase = "before-source-reverify"
 	phaseBeforeRename   applyPhase = "before-rename"
@@ -173,12 +178,12 @@ func (applier *Applier) build(
 		}
 		specification.State = treeStateFromRuntime(state)
 		manifest.Trees[index] = specification
-		phase := []applyPhase{phaseCatalogBuilt, phaseCurrentBuilt, phaseVersionsBuilt}[index]
+		phase := []applyPhase{phaseCatalogBuilt, phaseCurrentBuilt, phaseVersionsBuilt, phaseFulltextBuilt}[index]
 		if err := applier.checkpoint(ctx, phase); err != nil {
 			return generationManifest{}, err
 		}
 	}
-	manifest.ContentDigest, err = contentDigest(staging)
+	manifest.ContentDigest, err = contentDigest(staging, expectedTrees)
 	if err != nil {
 		return generationManifest{}, err
 	}
@@ -286,6 +291,18 @@ func buildTree(
 		if err != nil {
 			return treecontrol.State{}, err
 		}
+	case "fulltext":
+		index, err := fulltextindex.Open(runtime)
+		if err == nil {
+			var documents []fulltext.Document
+			documents, err = rowDocuments(plan)
+			if err == nil {
+				_, err = index.Bootstrap(1, documents)
+			}
+		}
+		if err != nil {
+			return treecontrol.State{}, err
+		}
 	default:
 		return treecontrol.State{}, ErrInvalid
 	}
@@ -301,6 +318,12 @@ func buildTree(
 
 func migrationCapacity(plan Plan) (uint64, error) {
 	objects := uint64(len(plan.CurrentRows))
+	for _, body := range plan.CurrentRowBodies {
+		if objects > math.MaxUint64-1-uint64(len(body.Values))*2 {
+			return 0, ErrInvalid
+		}
+		objects += 1 + uint64(len(body.Values))*2
+	}
 	if uint64(len(plan.RowVersions)) > (math.MaxUint64-objects)/4 {
 		return 0, ErrInvalid
 	}
@@ -324,7 +347,8 @@ func migrationCapacity(plan Plan) (uint64, error) {
 }
 
 func verifyGenerationPlan(ctx context.Context, generation *Generation, plan Plan) error {
-	if generation == nil || generation.catalog == nil || generation.current == nil || generation.versions == nil {
+	if generation == nil || generation.catalog == nil || generation.current == nil ||
+		generation.versions == nil || generation.fulltext == nil {
 		return ErrTargetCorrupt
 	}
 	if generation.PlanDigest() != plan.Digest || generation.SourceFingerprint() != plan.SourceFingerprint {
@@ -336,7 +360,55 @@ func verifyGenerationPlan(ctx context.Context, generation *Generation, plan Plan
 	if err := verifyCurrentRows(ctx, generation.current, plan); err != nil {
 		return err
 	}
-	return verifyRowVersions(ctx, generation.versions, plan)
+	if err := verifyRowVersions(ctx, generation.versions, plan); err != nil {
+		return err
+	}
+	return verifyFulltext(ctx, generation.fulltext, plan)
+}
+
+func rowDocuments(plan Plan) ([]fulltext.Document, error) {
+	tables := make(map[string]catalog.Table)
+	for _, database := range plan.Catalog {
+		for _, table := range database.Tables {
+			tables[table.ID] = table
+		}
+	}
+	documents := make([]fulltext.Document, 0, len(plan.CurrentRowBodies))
+	for _, body := range plan.CurrentRowBodies {
+		table, exists := tables[body.TableID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		document, err := rowfulltext.Project(table, body)
+		if err != nil {
+			return nil, fmt.Errorf("%w: Row fulltext document: %v", ErrInvalid, err)
+		}
+		documents = append(documents, document)
+	}
+	return documents, nil
+}
+
+func verifyFulltext(ctx context.Context, index *fulltextindex.Index, plan Plan) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	documents, err := rowDocuments(plan)
+	if err != nil {
+		return err
+	}
+	reference, err := fulltext.Build(documents)
+	if err != nil {
+		return err
+	}
+	got, err := index.AllPostings()
+	if err != nil {
+		return fmt.Errorf("%w: Fulltext Tree: %v", ErrTargetCorrupt, err)
+	}
+	want := reference.AllPostings()
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("%w: Fulltext postings disagree with Plan", ErrTargetCorrupt)
+	}
+	return nil
 }
 
 func verifyCatalog(ctx context.Context, index *catalogindex.Index, databases []catalog.Database) error {
