@@ -6,8 +6,8 @@
 ## 当前出发点
 
 - `main` 当前到 F169，Leaf → Row `0..1` 已通过完整 CI 并合入；
-- 当前文档分支已汇总内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界；
-- `feature/F170-inverted-index-surface` 只有待批准规格，且仍基于 F168，尚未开始产品代码；
+- 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
+- `feature/F170-inverted-index-surface` 已从最新 `main` 重建并通过单项 Review，正在进入 RED；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 先合入当前规划文档，再从最新 `main` 重建 F170 分支，不从多个未合入分支继续堆代码。
@@ -33,11 +33,11 @@ MVCC 或索引实现。Provider、SourceStore、Document IR、Session 和 Checkp
 当前 `assimilation.record/submit/receipt` 私有 IPC 是已识别迁移项，不进入内置 Agent 工具面。
 CI 将以 import allowlist 和 fake `MSQLExecutor` 锁定该边界。
 
-## M0：收口当前分支
+## M0：前置收口（已完成）
 
-1. 校验并合入当前 Agent、资料吸收、外部评测和后续 Feature 规划文档；
-2. 从最新 `main` 重建 F170 的独立开发分支；
-3. Review F170 的词项、对象范围、revision replacement 和永久边界；单项通过后才进入 RED。
+1. 已校验并合入 Agent、资料吸收、外部评测和后续 Feature 规划文档；
+2. 已从最新 `main` 重建 F170 的独立开发分支；
+3. F170 的词项、对象范围、snapshot seed、revision replacement 和永久边界已通过 Review。
 
 ## M1：完成倒排索引武器（F170–F174）
 

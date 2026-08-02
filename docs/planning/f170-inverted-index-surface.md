@@ -1,6 +1,6 @@
 # F170：全内容倒排语义模型
 
-规划状态：待批准；用户已确认总方向，本文范围仍需 Review 后才能写产品代码。
+规划状态：已批准；2026-08-03 单项 Review 通过，获准按 RED → GREEN → REFACTOR 实现。
 
 ## 唯一主要结果
 
@@ -50,7 +50,7 @@ document replacement 的比较使用去重、稳定排序后的 posting 集合�
 
 ## 变更模型
 
-Reference Index 只接受完整对象 replacement：
+Reference Index 只接受完整对象 snapshot 或 replacement：
 
 ```text
 Replace(current document at revision N)
@@ -58,7 +58,8 @@ Replace(current document at revision N)
 → add every posting owned by revision N
 ```
 
-- 初始 revision 必须为 1；
+- `Build` 从当前 snapshot 建立新 Index，允许每个对象从任意正 revision 开始，不要求读取 History；
+- 空增量 Index 的首次 `Replace` revision 必须为 1；
 - 新 revision 必须严格等于当前 revision + 1；
 - Database/Table/Object identity 不能跨 revision 改变；
 - 相同 replacement 幂等；
@@ -103,6 +104,7 @@ go test ./internal/fulltext
 - `TestReferenceIndexDeleteAndSupersedeRemovePostings`；
 - `TestReferenceIndexTokenizesChineseAndLatinDeterministically`；
 - `TestReferenceIndexRejectsStaleOrPartialReplacement`；
+- `TestReferenceIndexBuildSeedsArbitraryCurrentRevisions`；
 - 固定 seed 的随机 revision 序列与简单 map reference 对拍。
 
 完成时执行受影响包、`go test ./...`、`go test -race ./...` 和 `go vet ./...`。
@@ -116,9 +118,9 @@ go test ./internal/fulltext
 - Agent 不访问 posting/Page 私有接口；
 - F170 不形成第二套生产查询路径。
 
-用户执行授权：待本文 Review 后确认。
+用户执行授权：2026-08-03 用户要求开始顺序执行后续 Feature；本 Review 只批准 F170 的上述范围。
 
-开工前结论：REVISE，等待用户批准 F170 的单项范围。
+开工前结论：PASS。
 
 ## 关联
 
