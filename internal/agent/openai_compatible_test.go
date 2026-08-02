@@ -279,12 +279,49 @@ func TestOpenAICompatibleProviderRejectsOversizeBeforeSecretOrNetwork(t *testing
 	}
 }
 
+func TestOpenAICompatibleProviderRedactsResolverAndTransportErrors(t *testing.T) {
+	t.Parallel()
+
+	const leaked = "sk-should-never-cross-provider-boundary"
+	request := providerRequest([]agent.ProviderMessage{{Role: agent.ProviderRoleUser, Content: "hello"}})
+	t.Run("resolver", func(t *testing.T) {
+		var calls atomic.Int64
+		config := openAICompatibleConfigWithTransport("https://provider.test/v1", roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return validAnswerHTTPResponse(), nil
+		}))
+		provider, err := agent.NewOpenAICompatibleProvider(config, &scriptedSecretResolver{err: errors.New(leaked)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = provider.Complete(context.Background(), request)
+		if !errors.Is(err, agent.ErrProviderSecretUnavailable) || strings.Contains(fmt.Sprint(err), leaked) || calls.Load() != 0 {
+			t.Fatalf("Complete() error = %v, calls = %d", err, calls.Load())
+		}
+	})
+	t.Run("transport", func(t *testing.T) {
+		config := openAICompatibleConfigWithTransport("https://provider.test/v1", roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+			return nil, errors.New(leaked)
+		}))
+		provider, err := agent.NewOpenAICompatibleProvider(config, &scriptedSecretResolver{values: []string{"secret"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = provider.Complete(context.Background(), request)
+		if !errors.Is(err, agent.ErrProviderTransport) || strings.Contains(fmt.Sprint(err), leaked) {
+			t.Fatalf("Complete() error = %v", err)
+		}
+	})
+}
+
 func TestOpenAICompatibleProviderPreservesCancellationWithoutRetry(t *testing.T) {
 	t.Parallel()
 
 	var calls atomic.Int64
+	ctx, cancel := context.WithCancel(context.Background())
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		calls.Add(1)
+		cancel()
 		<-request.Context().Done()
 		return nil, request.Context().Err()
 	})
@@ -295,8 +332,6 @@ func TestOpenAICompatibleProviderPreservesCancellationWithoutRetry(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 	_, err = provider.Complete(ctx, providerRequest([]agent.ProviderMessage{{Role: agent.ProviderRoleUser, Content: "hello"}}))
 	if !errors.Is(err, context.Canceled) || calls.Load() != 1 {
 		t.Fatalf("Complete() error = %v, calls = %d", err, calls.Load())
