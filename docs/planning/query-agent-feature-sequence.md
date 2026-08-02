@@ -53,7 +53,7 @@ F170–F174 全内容 lexical location
 | --- | --- | --- |
 | F176（已完成） | 确定性 Query Bootstrap Frame assembler | 无模型测试覆盖 Atlas、lexical、预取命中/回退、snapshot 与 byte budget |
 | F177（已完成） | Memora-owned Provider port 与 scripted fake | 无厂商类型泄漏；确定性 tool-call transcript |
-| F178（实现中） | Agent Event/Trace/Usage 信封 | run/session/turn、模型、工具、token、费用、分段耗时可重放且正文脱敏 |
+| F178（已完成） | Agent Event/Trace/Usage 信封 | run/session/turn、模型、工具、token、费用、分段耗时可重放且正文脱敏 |
 
 Trace 必须早于第一个真实 Provider，避免先上线模型调用、后补不可复现的埋点。Bootstrap
 先于 loop，使上下文预算、投机成本和 MSQL 旅程可以在完全没有 API Key 时独立验证。

@@ -1,6 +1,6 @@
 # F178：Agent Event / Trace / Usage 信封
 
-规划状态：已通过单项 Review，批准按 RED → GREEN → REFACTOR 实现。
+规划状态：已完成并通过完成门。
 
 ## 唯一主要结果
 
@@ -37,3 +37,13 @@ hidden reasoning 或错误正文的字段。
 用户执行授权：2026-08-03 用户要求持续顺序完成后续 Feature。本 Review 只批准上述 F178 范围。
 
 开工前结论：PASS。
+
+## 完成结果
+
+- `internal/agent` 已提供版本化 Event/Envelope、正文 digest、usage/cost Summary 与并发安全内存 recorder；
+- Append 在同一临界区原子提交连续 sequence、事件和增量 Summary，Snapshot 深拷贝全部可变状态；
+- JSON replay 可重算 Summary 并拒绝 identity、sequence、duration 或统计篡改；
+- 结构反射与敏感 fixture 证明 contract 不含正文、参数、密钥、hidden reasoning 或错误正文；
+- RED 编译失败、Agent 单元/并发 race、import allowlist、完整 CI 与独立 cross-build 均已通过。
+
+完成门结论：PASS。
