@@ -30,6 +30,7 @@
 - [F174：有界 Lexical Location 查询](./planning/f174-bounded-lexical-locations.md) — 已完成的权限先行、预算与 cursor 查询链路；
 - [Lexical Locations v1](./query/lexical-locations-v1.md) — 全内容倒排位置的 MSQL 与回表协议。
 - [F175a：中立 MSQL Wire Protocol](./planning/f175a-neutral-msql-protocol.md) — 已完成的公共 Request/Envelope 与 SDK 零 wire 变更抽取。
+- [F175b：单实例共享 MSQL Service](./planning/f175b-shared-msql-service.md) — 已批准的 IPC/同进程共核、Session 隔离与取消实现门。
 
 ## 当前产品规格
 
