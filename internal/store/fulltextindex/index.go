@@ -265,7 +265,64 @@ func (index *Index) AllPostings() ([]fulltext.Posting, error) {
 }
 
 func (index *Index) Objects() ([]fulltext.Object, error) {
-	return nil, fmt.Errorf("%w: object inventory is not implemented", ErrInvalid)
+	if index == nil || index.runtime == nil {
+		return nil, fmt.Errorf("%w: object inventory", ErrInvalid)
+	}
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return []fulltext.Object{}, nil
+	}
+	searcher, err := index.searcher(state)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := scanAll(searcher)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]fulltext.Object, 0)
+	postings := 0
+	for _, entry := range entries {
+		if len(entry.Key) < 2 || entry.Key[0] != keyVersion {
+			return nil, fmt.Errorf("%w: unknown physical key", ErrCorrupt)
+		}
+		if entry.Key[1] == keyKindPosting {
+			postings++
+		}
+		if entry.Key[1] != keyKindObject {
+			continue
+		}
+		kind, objectID, err := decodeObjectKey(entry.Key)
+		if err != nil {
+			return nil, err
+		}
+		object, err := decodeObjectValue(entry.Value, kind, objectID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, fulltext.Object{
+			Kind: object.kind, DatabaseID: object.databaseID, TableID: object.tableID,
+			ObjectID: object.objectID, Revision: object.revision, State: object.state, Digest: object.digest,
+		})
+	}
+	if err := validateAllRecords(searcher, postings); err != nil {
+		return nil, err
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].Kind != result[right].Kind {
+			return result[left].Kind < result[right].Kind
+		}
+		if result[left].DatabaseID != result[right].DatabaseID {
+			return result[left].DatabaseID < result[right].DatabaseID
+		}
+		if result[left].TableID != result[right].TableID {
+			return result[left].TableID < result[right].TableID
+		}
+		return result[left].ObjectID < result[right].ObjectID
+	})
+	return result, nil
 }
 
 func (index *Index) readPostings(prefix []byte, validateAll bool) ([]fulltext.Posting, error) {

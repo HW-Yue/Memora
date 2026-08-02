@@ -405,6 +405,9 @@ func TestPersistentIndexRejectsCorruptTreeWithoutFallback(t *testing.T) {
 	if _, err := reopened.Postings("durable"); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("corrupt Postings() error = %v", err)
 	}
+	if _, err := reopened.Objects(); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("corrupt Objects() error = %v", err)
+	}
 }
 
 func TestPersistentIndexConcurrentReadersObserveCompleteRevisions(t *testing.T) {

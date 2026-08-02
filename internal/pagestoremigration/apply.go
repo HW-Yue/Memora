@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/fulltext"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowfulltext"
@@ -296,7 +297,7 @@ func buildTree(
 		index, err := fulltextindex.Open(runtime)
 		if err == nil {
 			var documents []fulltext.Document
-			documents, err = rowDocuments(plan)
+			documents, err = generationDocuments(plan)
 			if err == nil {
 				_, err = index.Bootstrap(1, documents)
 			}
@@ -371,6 +372,18 @@ func rowDocuments(plan Plan) ([]fulltext.Document, error) {
 	return projectRowDocuments(plan.Catalog, plan.CurrentRowBodies)
 }
 
+func generationDocuments(plan Plan) ([]fulltext.Document, error) {
+	catalogDocuments, err := catalogfulltext.Project(plan.Catalog)
+	if err != nil {
+		return nil, fmt.Errorf("%w: Catalog fulltext documents: %v", ErrInvalid, err)
+	}
+	rowValues, err := rowDocuments(plan)
+	if err != nil {
+		return nil, err
+	}
+	return append(catalogDocuments, rowValues...), nil
+}
+
 func projectRowDocuments(databases []catalog.Database, bodies []row.Row) ([]fulltext.Document, error) {
 	tables := make(map[string]catalog.Table)
 	for _, database := range databases {
@@ -402,7 +415,7 @@ func verifyFulltext(ctx context.Context, index *fulltextindex.Index, plan Plan) 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	documents, err := rowDocuments(plan)
+	documents, err := generationDocuments(plan)
 	if err != nil {
 		return err
 	}

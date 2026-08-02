@@ -84,8 +84,11 @@ func TestTombstoneAdvancesCatalogObjectRevision(t *testing.T) {
 func TestProjectRejectsIdentityRevisionAndKindDrift(t *testing.T) {
 	tests := []func(*catalog.Database){
 		func(database *catalog.Database) { database.SchemaVersion = 0 },
+		func(database *catalog.Database) { database.Name = " " },
 		func(database *catalog.Database) { database.Tables[0].DatabaseID = "db_other" },
+		func(database *catalog.Database) { database.Tables[0].RowSemantics = "" },
 		func(database *catalog.Database) { database.Tables[0].Columns[0].SchemaVersion = 0 },
+		func(database *catalog.Database) { database.Tables[0].Columns[0].Type = "\t" },
 	}
 	for index, mutate := range tests {
 		database := catalogFixture()

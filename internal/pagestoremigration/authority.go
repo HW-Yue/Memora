@@ -10,7 +10,9 @@ import (
 	"sync/atomic"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/change"
+	"github.com/HW-Yue/Memora/internal/fulltext"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerow"
@@ -464,6 +466,14 @@ func (authority *Authority) PublishCatalog(
 	if err := authority.healthyLocked(ctx); err != nil {
 		return err
 	}
+	current, err := authority.catalog.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	documents, err := catalogTransitionDocuments(current, databases)
+	if err != nil {
+		return err
+	}
 	if err := commit(); err != nil {
 		return err
 	}
@@ -476,6 +486,16 @@ func (authority *Authority) PublishCatalog(
 	}
 	if err == nil {
 		err = authority.checkpointPhase(phaseCatalogPublished)
+	}
+	if err == nil && len(documents) != 0 {
+		var id uint64
+		id, err = authority.nextTransactionID("fulltext")
+		if err == nil {
+			_, err = authority.generation.fulltext.ReplaceBatch(id, documents)
+		}
+	}
+	if err == nil {
+		err = authority.checkpointPhase(phaseCatalogFulltextPublished)
 	}
 	if err != nil {
 		return authority.poisonPublication("Catalog body", err)
@@ -610,12 +630,38 @@ func (authority *Authority) appendVersions(plan Plan) error {
 }
 
 func (authority *Authority) reconcileFulltext(plan Plan) error {
-	if authority.generation.fulltext == nil || len(plan.CurrentRowBodies) == 0 {
+	if authority.generation.fulltext == nil {
 		return nil
 	}
-	documents, err := rowDocuments(plan)
+	documents, err := generationDocuments(plan)
 	if err != nil {
 		return err
+	}
+	objects, err := authority.generation.fulltext.Objects()
+	if err != nil {
+		return err
+	}
+	current := make(map[string]struct{}, len(documents))
+	for _, document := range documents {
+		if isCatalogKind(document.Kind) {
+			current[catalogObjectKey(document.Kind, document.ObjectID)] = struct{}{}
+		}
+	}
+	for _, object := range objects {
+		if !isCatalogKind(object.Kind) || object.State != fulltext.StateLive {
+			continue
+		}
+		if _, exists := current[catalogObjectKey(object.Kind, object.ObjectID)]; exists {
+			continue
+		}
+		tombstone, err := catalogfulltext.Tombstone(object)
+		if err != nil {
+			return err
+		}
+		documents = append(documents, tombstone)
+	}
+	if len(documents) == 0 {
+		return nil
 	}
 	id, err := authority.nextTransactionID("fulltext")
 	if err != nil {
@@ -626,6 +672,51 @@ func (authority *Authority) reconcileFulltext(plan Plan) error {
 		return fmt.Errorf("%w: %v", errFulltextRebuildRequired, err)
 	}
 	return err
+}
+
+func catalogTransitionDocuments(
+	current, next []catalog.Database,
+) ([]fulltext.Document, error) {
+	currentDocuments, err := catalogfulltext.Project(current)
+	if err != nil {
+		return nil, fmt.Errorf("%w: current Catalog fulltext projection: %v", ErrTargetCorrupt, err)
+	}
+	nextDocuments, err := catalogfulltext.Project(next)
+	if err != nil {
+		return nil, fmt.Errorf("%w: next Catalog fulltext projection: %v", ErrInvalid, err)
+	}
+	nextObjects := make(map[string]struct{}, len(nextDocuments))
+	for _, document := range nextDocuments {
+		nextObjects[catalogObjectKey(document.Kind, document.ObjectID)] = struct{}{}
+	}
+	result := append([]fulltext.Document(nil), nextDocuments...)
+	for _, document := range currentDocuments {
+		if _, exists := nextObjects[catalogObjectKey(document.Kind, document.ObjectID)]; exists {
+			continue
+		}
+		compiled, err := fulltext.Compile(document)
+		if err != nil {
+			return nil, fmt.Errorf("%w: current Catalog document: %v", ErrTargetCorrupt, err)
+		}
+		tombstone, err := catalogfulltext.Tombstone(fulltext.Object{
+			Kind: compiled.Kind, DatabaseID: compiled.DatabaseID, TableID: compiled.TableID,
+			ObjectID: compiled.ObjectID, Revision: compiled.Revision, State: compiled.State,
+			Digest: compiled.Digest,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%w: Catalog tombstone: %v", ErrTargetCorrupt, err)
+		}
+		result = append(result, tombstone)
+	}
+	return result, nil
+}
+
+func isCatalogKind(kind fulltext.ObjectKind) bool {
+	return kind == fulltext.KindDatabase || kind == fulltext.KindTable || kind == fulltext.KindColumn
+}
+
+func catalogObjectKey(kind fulltext.ObjectKind, objectID string) string {
+	return string(kind) + "\x00" + objectID
 }
 
 func (authority *Authority) advanceCurrent(plan Plan) error {

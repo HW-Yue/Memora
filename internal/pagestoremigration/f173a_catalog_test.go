@@ -2,12 +2,16 @@ package pagestoremigration
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/schemachangeplan"
+	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
 func TestGenerationSeedIncludesCatalogAndRowDocuments(t *testing.T) {
@@ -107,6 +111,69 @@ func TestAuthorityCatalogDropPublishesTombstone(t *testing.T) {
 		}
 	}
 	t.Fatal("dropped Column tombstone is missing")
+}
+
+func TestAuthorityRejectsInvalidCatalogProjectionBeforeBodyCommit(t *testing.T) {
+	ctx := context.Background()
+	_, _, authority := newAuthorityFixture(t)
+	committed := false
+	err := authority.PublishCatalog(ctx, []catalog.Database{{
+		ID: "db_invalid", Name: "invalid", Purpose: "Invalid", Scope: "Tests",
+	}}, func() error {
+		committed = true
+		return nil
+	})
+	if err == nil || committed {
+		t.Fatalf("invalid Catalog projection commit=%v error=%v", committed, err)
+	}
+	if _, err := authority.ShowDatabases(ctx); err != nil {
+		t.Fatalf("preflight error poisoned Authority: %v", err)
+	}
+}
+
+func TestAuthorityCatalogFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	for _, tree := range authority.generation.trees {
+		if tree.manifest.Kind == "fulltext" {
+			if err := tree.set.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	dictionary := nativecatalog.NewService(
+		nativecatalog.New(file), nativecatalog.ServiceOptions{Authority: authority},
+	)
+	_, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{
+		Name: "walcatalog", Purpose: "Catalog WAL recovery", Scope: "Tests",
+	})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("Catalog Fulltext WAL fault error = %v", err)
+	}
+	if _, err := authority.ShowDatabases(ctx); !errors.Is(err, ErrAuthorityPoisoned) {
+		t.Fatalf("WAL fault did not poison Authority: %v", err)
+	}
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopenedFile.Close()
+	reopened, err := OpenAuthority(ctx, reopenedFile, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	database, err := reopened.DescribeDatabase(ctx, "walcatalog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCatalogPosting(t, reopened.Generation(), "walcatalog", fulltext.KindDatabase, database.ID, database.SchemaVersion)
 }
 
 type emptySchemaRows struct{}
