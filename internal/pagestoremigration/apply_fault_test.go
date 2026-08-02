@@ -269,7 +269,9 @@ func faultPlan(t *testing.T) (*Reader, Plan, *faultMigrationSource) {
 		case nativestore.ObjectKindRow:
 			count = 2
 		case nativestore.ObjectKindRoute:
-			count = uint64(len(routes))
+			for _, route := range routes {
+				count += route.Revision
+			}
 		}
 		counts = append(counts, RecordCount{Kind: kind, Count: count})
 	}

@@ -78,7 +78,7 @@ func TestNativeReaderBindsCanonicalCurrentRoutesIntoPlanV3(t *testing.T) {
 		t.Fatal(err)
 	}
 	if plan.Version != "memora.page-index-migration-plan/v3" || len(plan.CurrentRoutes) != 2 ||
-		plan.CurrentRoutes[0].ID != root.ID || plan.CurrentRoutes[1].ID != leaf.ID {
+		plan.CurrentRoutes[0].ID != leaf.ID || plan.CurrentRoutes[1].ID != root.ID {
 		t.Fatalf("Route Plan v3 = %#v", plan)
 	}
 	plan.CurrentRoutes[1].Purpose = "digest tampered"
@@ -92,11 +92,44 @@ func TestReaderRejectsRouteOutsideCurrentCatalogTable(t *testing.T) {
 	route := router.Node{Version: router.Version, ID: "route_wrong", DatabaseID: "db_work", TableID: "tbl_other",
 		Name: "wrong", Path: "/", Kind: router.KindRoot, Purpose: "Wrong scope", Revision: 1}
 	source := &fakeSource{
-		states: []pagestoremigration.SourceState{sourceState(5, 0)}, catalog: database, routes: []router.Node{route},
+		states: []pagestoremigration.SourceState{sourceStateWithRoutes(5, 0, 1)}, catalog: database, routes: []router.Node{route},
 	}
 	reader, _ := pagestoremigration.NewReader(source)
 	if _, err := reader.Build(context.Background()); !errors.Is(err, pagestoremigration.ErrCorrupt) {
 		t.Fatalf("out-of-scope Route Build() error = %v", err)
+	}
+}
+
+func TestReaderRejectsCyclicOrMultipleRootRouteTree(t *testing.T) {
+	database, _, _ := migrationValues()
+	tests := []struct {
+		name   string
+		routes []router.Node
+	}{
+		{"cycle", []router.Node{
+			{Version: router.Version, ID: "route_a", DatabaseID: "db_work", TableID: "tbl_notes",
+				ParentID: "route_b", Name: "a", Path: "/a", Kind: router.KindBranch, Purpose: "A", Revision: 1},
+			{Version: router.Version, ID: "route_b", DatabaseID: "db_work", TableID: "tbl_notes",
+				ParentID: "route_a", Name: "b", Path: "/b", Kind: router.KindBranch, Purpose: "B", Revision: 1},
+		}},
+		{"multiple roots", []router.Node{
+			{Version: router.Version, ID: "route_root_a", DatabaseID: "db_work", TableID: "tbl_notes",
+				Name: "root", Path: "/", Kind: router.KindRoot, Purpose: "A", Revision: 1},
+			{Version: router.Version, ID: "route_root_b", DatabaseID: "db_work", TableID: "tbl_notes",
+				Name: "root", Path: "/", Kind: router.KindRoot, Purpose: "B", Revision: 1},
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := &fakeSource{
+				states:  []pagestoremigration.SourceState{sourceStateWithRoutes(6, 0, len(test.routes))},
+				catalog: database, routes: test.routes,
+			}
+			reader, _ := pagestoremigration.NewReader(source)
+			if _, err := reader.Build(context.Background()); !errors.Is(err, pagestoremigration.ErrCorrupt) {
+				t.Fatalf("invalid Route tree Build() error = %v", err)
+			}
+		})
 	}
 }
 
@@ -233,6 +266,25 @@ func TestNativeReaderRejectsUnknownKindAndCorruptPayload(t *testing.T) {
 		reader, _ := pagestoremigration.NewNativeReader(file)
 		if _, err := reader.Build(context.Background()); !errors.Is(err, pagestoremigration.ErrCorrupt) {
 			t.Fatalf("wrong Row Record identity Build() error = %v", err)
+		}
+	})
+	t.Run("Route Record identity", func(t *testing.T) {
+		file, _, _ := migrationFixture(t)
+		routes := nativerouter.New(file)
+		root, err := routes.CreateRoot("route_root", "db_work", "tbl_notes", "All notes")
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload, err := file.Get(nativestore.ObjectKindRoute, root.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Put(nativestore.ObjectKindRoute, 1, "route_wrong_record", payload); err != nil {
+			t.Fatal(err)
+		}
+		reader, _ := pagestoremigration.NewNativeReader(file)
+		if _, err := reader.Build(context.Background()); !errors.Is(err, pagestoremigration.ErrCorrupt) {
+			t.Fatalf("wrong Route Record identity Build() error = %v", err)
 		}
 	})
 }
@@ -484,6 +536,10 @@ func (source *fakeSource) Routes(context.Context) ([]router.Node, error) {
 }
 
 func sourceState(seed byte, rowCount int) pagestoremigration.SourceState {
+	return sourceStateWithRoutes(seed, rowCount, 0)
+}
+
+func sourceStateWithRoutes(seed byte, rowCount, routeCount int) pagestoremigration.SourceState {
 	var fingerprint [32]byte
 	for index := range fingerprint {
 		fingerprint[index] = seed
@@ -496,6 +552,8 @@ func sourceState(seed byte, rowCount int) pagestoremigration.SourceState {
 			count = 1
 		} else if kind == nativestore.ObjectKindRow {
 			count = uint64(rowCount)
+		} else if kind == nativestore.ObjectKindRoute {
+			count = uint64(routeCount)
 		}
 		counts = append(counts, pagestoremigration.RecordCount{Kind: kind, Count: count})
 	}

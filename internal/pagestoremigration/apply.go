@@ -13,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowfulltext"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
@@ -342,6 +343,17 @@ func migrationCapacity(plan Plan) (uint64, error) {
 			objects += 1 + uint64(len(table.Columns))
 		}
 	}
+	for _, route := range plan.CurrentRoutes {
+		aliases := uint64(len(route.Aliases))
+		if aliases > (math.MaxUint64-13)/2 {
+			return 0, ErrInvalid
+		}
+		required := uint64(13) + aliases*2
+		if objects > math.MaxUint64-required {
+			return 0, ErrInvalid
+		}
+		objects += required
+	}
 	if objects > math.MaxUint64-128 {
 		return 0, ErrInvalid
 	}
@@ -381,7 +393,12 @@ func generationDocuments(plan Plan) ([]fulltext.Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(catalogDocuments, rowValues...), nil
+	routeDocuments, err := routefulltext.Project(plan.CurrentRoutes)
+	if err != nil {
+		return nil, fmt.Errorf("%w: Route fulltext documents: %v", ErrInvalid, err)
+	}
+	documents := append(catalogDocuments, routeDocuments...)
+	return append(documents, rowValues...), nil
 }
 
 func projectRowDocuments(databases []catalog.Database, bodies []row.Row) ([]fulltext.Document, error) {

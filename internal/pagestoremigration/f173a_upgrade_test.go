@@ -74,7 +74,7 @@ func buildRowOnlyV2Generation(t *testing.T, directory string, plan Plan) {
 		t.Fatal(err)
 	}
 	manifest := generationManifest{
-		Version: generationVersion, PlanVersion: PlanVersion,
+		Version: rowGenerationVersion, PlanVersion: rowPlanVersion,
 		PlanDigest: plan.Digest, SourceFingerprint: plan.SourceFingerprint,
 		Trees: make([]treeManifest, len(expectedTrees)),
 	}

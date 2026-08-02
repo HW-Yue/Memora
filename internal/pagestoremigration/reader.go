@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
+	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowfulltext"
@@ -24,7 +25,8 @@ import (
 )
 
 const (
-	PlanVersion       = "memora.page-index-migration-plan/v2"
+	PlanVersion       = "memora.page-index-migration-plan/v3"
+	rowPlanVersion    = "memora.page-index-migration-plan/v2"
 	legacyPlanVersion = "memora.page-index-migration-plan/v1"
 )
 
@@ -103,6 +105,10 @@ func (reader *Reader) Build(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	routes, err := reader.source.Routes(ctx)
+	if err != nil {
+		return Plan{}, err
+	}
 	after, err := reader.source.Inventory(ctx)
 	if err != nil {
 		return Plan{}, err
@@ -117,6 +123,7 @@ func (reader *Reader) Build(ctx context.Context) (Plan, error) {
 	if err := planRows(&plan, rows); err != nil {
 		return Plan{}, err
 	}
+	planRoutes(&plan, routes)
 	if err := validatePlan(plan, false); err != nil {
 		return Plan{}, fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}
@@ -271,6 +278,16 @@ func planRows(plan *Plan, rows []row.Row) error {
 	return nil
 }
 
+func planRoutes(plan *Plan, routes []router.Node) {
+	plan.CurrentRoutes = append([]router.Node(nil), routes...)
+	for index := range plan.CurrentRoutes {
+		plan.CurrentRoutes[index].Aliases = append([]string(nil), plan.CurrentRoutes[index].Aliases...)
+	}
+	sort.Slice(plan.CurrentRoutes, func(left, right int) bool {
+		return plan.CurrentRoutes[left].ID < plan.CurrentRoutes[right].ID
+	})
+}
+
 func (plan Plan) Validate() error { return validatePlan(plan, true) }
 
 func validatePlan(plan Plan, checkDigest bool) error {
@@ -291,6 +308,34 @@ func validatePlan(plan Plan, checkDigest bool) error {
 		recordCount(plan.RecordCounts, nativestore.ObjectKindTable) < tableCount ||
 		recordCount(plan.RecordCounts, nativestore.ObjectKindColumn) < columnCount {
 		return invalidPlan("Catalog record counts")
+	}
+	routeByID := make(map[string]router.Node, len(plan.CurrentRoutes))
+	minimumRouteRecords := uint64(0)
+	for index, node := range plan.CurrentRoutes {
+		table, exists := tables[node.TableID]
+		if index > 0 && plan.CurrentRoutes[index-1].ID >= node.ID {
+			return invalidPlan("current Route order")
+		}
+		if !exists || table.DatabaseID != node.DatabaseID {
+			return invalidPlan("current Route Catalog scope")
+		}
+		if _, duplicate := routeByID[node.ID]; duplicate {
+			return invalidPlan("duplicate current Route")
+		}
+		if minimumRouteRecords > ^uint64(0)-node.Revision {
+			return invalidPlan("Route revision count overflow")
+		}
+		minimumRouteRecords += node.Revision
+		routeByID[node.ID] = node
+	}
+	if recordCount(plan.RecordCounts, nativestore.ObjectKindRoute) < minimumRouteRecords {
+		return invalidPlan("Route record count")
+	}
+	if err := validateRouteTree(plan.CurrentRoutes, routeByID); err != nil {
+		return err
+	}
+	if _, err := routefulltext.Project(plan.CurrentRoutes); err != nil {
+		return invalidPlan("current Route projection: %v", err)
 	}
 	current := make(map[string]currentrowindex.Locator, len(plan.CurrentRows))
 	for index, locator := range plan.CurrentRows {
@@ -374,6 +419,39 @@ func validatePlan(plan Plan, checkDigest bool) error {
 	return nil
 }
 
+func validateRouteTree(routes []router.Node, byID map[string]router.Node) error {
+	roots := make(map[string]int)
+	for _, node := range routes {
+		if node.Kind != router.KindRoot {
+			continue
+		}
+		if node.ParentID != "" || node.Path != "/" {
+			return invalidPlan("Route root identity")
+		}
+		roots[node.TableID]++
+		if roots[node.TableID] > 1 {
+			return invalidPlan("multiple Route roots for Table")
+		}
+	}
+	for _, node := range routes {
+		seen := make(map[string]struct{})
+		current := node
+		for current.Kind != router.KindRoot {
+			if _, cycle := seen[current.ID]; cycle {
+				return invalidPlan("Route parent cycle")
+			}
+			seen[current.ID] = struct{}{}
+			parent, exists := byID[current.ParentID]
+			if !exists || parent.DatabaseID != node.DatabaseID || parent.TableID != node.TableID ||
+				parent.Kind == router.KindLeaf {
+				return invalidPlan("Route parent identity")
+			}
+			current = parent
+		}
+	}
+	return nil
+}
+
 func invalidPlan(format string, arguments ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, arguments...))
 }
@@ -394,9 +472,10 @@ func planDigest(plan Plan) (string, error) {
 		CurrentRows       []currentrowindex.Locator `json:"current_rows"`
 		CurrentRowBodies  []row.Row                 `json:"current_row_bodies"`
 		RowVersions       []rowversionindex.Locator `json:"row_versions"`
+		CurrentRoutes     []router.Node             `json:"current_routes"`
 	}{
 		plan.Version, plan.SourceFingerprint, plan.RecordCounts, plan.Catalog,
-		plan.CurrentRows, plan.CurrentRowBodies, plan.RowVersions,
+		plan.CurrentRows, plan.CurrentRowBodies, plan.RowVersions, plan.CurrentRoutes,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -457,7 +536,7 @@ func equalCounts(left, right []RecordCount) bool {
 
 func classifySourceError(err error) error {
 	if errors.Is(err, nativestore.ErrCorrupt) || errors.Is(err, nativecatalog.ErrCorrupt) ||
-		errors.Is(err, nativerow.ErrCorrupt) {
+		errors.Is(err, nativerouter.ErrCorrupt) || errors.Is(err, nativerow.ErrCorrupt) {
 		return fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}
 	return err

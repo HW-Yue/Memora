@@ -16,6 +16,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerow"
+	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/store/changeindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
@@ -643,18 +644,23 @@ func (authority *Authority) reconcileFulltext(plan Plan) error {
 	}
 	current := make(map[string]struct{}, len(documents))
 	for _, document := range documents {
-		if isCatalogKind(document.Kind) {
+		if isReconciledFulltextKind(document.Kind) {
 			current[catalogObjectKey(document.Kind, document.ObjectID)] = struct{}{}
 		}
 	}
 	for _, object := range objects {
-		if !isCatalogKind(object.Kind) || object.State != fulltext.StateLive {
+		if !isReconciledFulltextKind(object.Kind) || object.State != fulltext.StateLive {
 			continue
 		}
 		if _, exists := current[catalogObjectKey(object.Kind, object.ObjectID)]; exists {
 			continue
 		}
-		tombstone, err := catalogfulltext.Tombstone(object)
+		var tombstone fulltext.Document
+		if isCatalogKind(object.Kind) {
+			tombstone, err = catalogfulltext.Tombstone(object)
+		} else {
+			tombstone, err = routefulltext.Tombstone(object)
+		}
 		if err != nil {
 			return err
 		}
@@ -713,6 +719,10 @@ func catalogTransitionDocuments(
 
 func isCatalogKind(kind fulltext.ObjectKind) bool {
 	return kind == fulltext.KindDatabase || kind == fulltext.KindTable || kind == fulltext.KindColumn
+}
+
+func isReconciledFulltextKind(kind fulltext.ObjectKind) bool {
+	return isCatalogKind(kind) || kind == fulltext.KindRoute
 }
 
 func catalogObjectKey(kind fulltext.ObjectKind, objectID string) string {

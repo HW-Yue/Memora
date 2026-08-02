@@ -262,3 +262,27 @@ func TestRouteSynopsisEncodingReadsRecordsWrittenBeforeSynopsis(t *testing.T) {
 		t.Fatal("validateSynopsis() accepted more than 1000 characters")
 	}
 }
+
+func TestNodesRejectsRouteRevisionGap(t *testing.T) {
+	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	repository := New(file)
+	root, err := repository.CreateRoot("route_root", "db_work", "tbl_notes", "All notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.Revision = 3
+	payload, err := encodeNode(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Put(nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(root.ID, root.Revision), payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Nodes(); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("revision-gap Nodes() error = %v", err)
+	}
+}

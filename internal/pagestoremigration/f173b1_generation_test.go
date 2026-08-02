@@ -40,9 +40,17 @@ func TestGenerationV3SeedIncludesCatalogRouteAndRowDocuments(t *testing.T) {
 	defer generation.Close()
 	assertCatalogPosting(t, generation, "work", fulltext.KindDatabase, "db_work", 1)
 	assertCatalogPosting(t, generation, "architecture", fulltext.KindRoute, "route_branch", 2)
-	postings, err := generation.Fulltext().Postings("first")
-	if err != nil || len(postings) != 1 || postings[0].Kind != fulltext.KindRow {
-		t.Fatalf("Row seed postings = %#v, %v", postings, err)
+	objects, err := generation.Fulltext().Objects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundDeletedRow := false
+	for _, object := range objects {
+		foundDeletedRow = foundDeletedRow ||
+			(object.Kind == fulltext.KindRow && object.ObjectID == "row_one" && object.State == fulltext.StateDeleted)
+	}
+	if !foundDeletedRow {
+		t.Fatalf("deleted current Row seed object = %#v", objects)
 	}
 }
 

@@ -28,9 +28,9 @@ func TestGenerationBuildIncludesDurableFulltextTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Version != "memora.page-index-generation/v2" ||
-		manifest.PlanVersion != "memora.page-index-migration-plan/v2" || len(manifest.Trees) != 4 {
-		t.Fatalf("generation v2 manifest = %#v", manifest)
+	if manifest.Version != "memora.page-index-generation/v3" ||
+		manifest.PlanVersion != "memora.page-index-migration-plan/v3" || len(manifest.Trees) != 4 {
+		t.Fatalf("generation v3 manifest = %#v", manifest)
 	}
 }
 

@@ -20,7 +20,8 @@ import (
 
 const (
 	GenerationDirectory     = "page-index-v1"
-	generationVersion       = "memora.page-index-generation/v2"
+	generationVersion       = "memora.page-index-generation/v3"
+	rowGenerationVersion    = "memora.page-index-generation/v2"
 	legacyGenerationVersion = "memora.page-index-generation/v1"
 	manifestFileName        = "manifest.json"
 	maxManifestBytes        = 64 << 10
@@ -102,6 +103,8 @@ func (manifest generationManifest) validate() error {
 func manifestTreeSpecifications(version, planVersion string) ([]treeManifest, bool) {
 	switch {
 	case version == generationVersion && planVersion == PlanVersion:
+		return expectedTrees, true
+	case version == rowGenerationVersion && planVersion == rowPlanVersion:
 		return expectedTrees, true
 	case version == legacyGenerationVersion && planVersion == legacyPlanVersion:
 		return legacyExpectedTrees, true

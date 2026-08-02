@@ -486,7 +486,7 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	logicalIDs := make(map[string]struct{}, len(ids))
+	histories := make(map[string][]router.Node, len(ids))
 	for _, id := range ids {
 		payload, err := repository.file.Get(nativestore.ObjectKindRoute, id)
 		if err != nil {
@@ -496,15 +496,29 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		logicalIDs[value.ID] = struct{}{}
-	}
-	result := make([]router.Node, 0, len(logicalIDs))
-	for id := range logicalIDs {
-		value, err := repository.Get(id)
-		if err != nil {
-			return nil, err
+		if nodeRecordID(value.ID, value.Revision) != id {
+			return nil, fmt.Errorf("%w: route Record identity mismatch", ErrCorrupt)
 		}
-		result = append(result, value)
+		histories[value.ID] = append(histories[value.ID], value)
+	}
+	result := make([]router.Node, 0, len(histories))
+	for id, history := range histories {
+		sort.Slice(history, func(left, right int) bool { return history[left].Revision < history[right].Revision })
+		for index, value := range history {
+			if value.Revision != uint64(index+1) || value.ID != id {
+				return nil, fmt.Errorf("%w: Route %q revision sequence", ErrCorrupt, id)
+			}
+			if index == 0 {
+				continue
+			}
+			previous := history[index-1]
+			if previous.Deleted || value.Version != previous.Version ||
+				value.DatabaseID != previous.DatabaseID || value.TableID != previous.TableID ||
+				value.Kind != previous.Kind {
+				return nil, fmt.Errorf("%w: Route %q revision identity", ErrCorrupt, id)
+			}
+		}
+		result = append(result, history[len(history)-1])
 	}
 	return result, nil
 }
