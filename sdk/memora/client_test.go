@@ -9,7 +9,13 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/ipc"
+	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 	"github.com/HW-Yue/Memora/sdk/memora"
+)
+
+var (
+	_ protocolmsql.Request = memora.Request{}
+	_ memora.Request       = protocolmsql.Request{}
 )
 
 func TestClientExecuteUsesVersionedMSQLWireContract(t *testing.T) {
@@ -27,6 +33,10 @@ func TestClientExecuteUsesVersionedMSQLWireContract(t *testing.T) {
 	}
 	if transport.method != "msql.execute" || transport.source != request.Source || transport.statementCount != 1 {
 		t.Fatalf("wire call = %q, %q, %d", transport.method, transport.source, transport.statementCount)
+	}
+	wantPayload := `{"source":"SHOW DATABASES LIMIT 8","statements":[{"parameters":{},"mutation":{},"authorization":{"version":"memora.authorization/v2","actor":"sdk:test","authorized_databases":["work"],"default_level":"L0"}}]}`
+	if string(transport.payloadJSON) != wantPayload {
+		t.Fatalf("SDK payload changed:\n got %s\nwant %s", transport.payloadJSON, wantPayload)
 	}
 	if envelope.Version != memora.EnvelopeVersion || !envelope.OK || len(envelope.Results) != 1 {
 		t.Fatalf("envelope = %#v", envelope)
@@ -134,6 +144,7 @@ type fakeTransport struct {
 	calls          int
 	closes         int
 	callErr        error
+	payloadJSON    []byte
 }
 
 func (transport *fakeTransport) Call(_ context.Context, method string, payload, target any) error {
@@ -142,6 +153,7 @@ func (transport *fakeTransport) Call(_ context.Context, method string, payload, 
 	transport.calls++
 	transport.method = method
 	encoded, _ := json.Marshal(payload)
+	transport.payloadJSON = append([]byte(nil), encoded...)
 	var request struct {
 		Source     string            `json:"source"`
 		Statements []json.RawMessage `json:"statements"`
