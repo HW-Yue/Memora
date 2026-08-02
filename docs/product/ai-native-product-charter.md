@@ -22,8 +22,8 @@ Memora 是一套由 AI 自主建模、读写、整理和持续优化的个人语
 - 每个 Table 有自己的多层语义索引树；内部节点是短描述，每个 Leaf 只保存零个或
   一个 RowID/locator；同一 Row 可以属于多个 Leaf。
 - AI 用 SQL 一层一层查看有限分支，选中下一层，直到得到 RowID，再用 `SELECT` 回表读取事实。
-- Catalog、字面位置和 Route-only Vector 可以作为可丢弃的候选预测器；它们只把
-  AI 导向显式 Route，不返回事实或取代语义树。
+- Catalog、全内容字面位置和 Route-only Vector 可以作为可丢弃的候选预测器。Lexical
+  可以返回当前 RowID 或 Route 位置，Vector 仍只返回 Route；二者都不返回事实或取代语义树。
 - Router 只负责发现和导航，不能返回正文或直接充当答案。
 - 普通对话陈述、文档/仓库锚点和已复核来源必须分级；没有 Source Receipt 的
   写入不能冒充 reviewed fact。
@@ -92,7 +92,8 @@ SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 ## 永久边界
 
 - 禁止把 Row、文档 chunk、正文或事实 Embedding 作为权威语义主索引、答案来源或
-  不可回退路径；只允许 ADR-0007 定义的 Route-only 派生候选预测器。
+  不可回退路径；Vector 仍限于 ADR-0007 的 Route surface。ADR-0008 允许为当前 live Row
+  与语义索引建立可重建倒排 postings，但只能返回位置，最终事实必须 SQL 回表。
 - 禁止全库扫描后把大量内容塞给模型选择；必须逐层缩小 Route Frame。
 - 禁止 Agent 绕过 SQL 直接操作存储、索引文件或隐藏管理 API。
 - 禁止要求普通用户日常设计 Schema、调索引或修复内部一致性。

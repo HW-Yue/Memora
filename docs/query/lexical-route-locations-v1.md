@@ -1,6 +1,7 @@
 # Lexical Route Locations v1
 
-状态：F124b 已实现并冻结；只提供可回退导航候选，不恢复旧 Row 倒排查询。
+状态：F124b 已实现并冻结；它仍只提供 Route 导航候选。ADR-0008 已确认另建全内容倒排
+位置协议，不能通过悄悄扩展本 v1 envelope 加入 RowID。
 
 ## 语法
 

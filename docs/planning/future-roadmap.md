@@ -53,9 +53,13 @@ Compaction、Secondary Index、Buffer Pool 分片、高级 I/O、Physical Undo�
 锁等待/死锁、Replication、PITR、多设备同步、Accelerate 与 HNSW 保持延后。只有真实 workload
 越过已冻结资源或产品门，才创建对应 Feature；不以数据库功能清单为理由提前实现。
 
+全内容倒排索引不再属于本节的证据候选。ADR-0008 已确认需求，按 F170–F174 依次交付
+reference model、持久化 posting、Row/Catalog/Route 原子维护和有界 MSQL location 查询。
+
 ## 永久边界
 
-- 不把完整文档、chunk、Row Embedding 或聊天转录变成权威事实索引；
+- 不把完整文档、chunk、Row Embedding 或聊天转录变成权威事实索引；当前 live Row 与
+  语义索引允许建立可重建 lexical postings，但命中只返回位置；
 - Agent 只做逻辑语义决策，所有正式操作经过公开 MSQL；
 - Router/predictor 只导航，最终事实始终 SQL 回表；
 - 大模型质量与引擎正确性分层测试，不用一方替代另一方；

@@ -99,8 +99,9 @@ v0 的 AI 来自 Codex/Claude Code 等外部宿主；未来若增加内置 Runti
 ## 永久语义权威边界
 
 Memora 的语义发现以 AI 维护、AI 可读的显式 Router 为权威，不以 Row、文档 chunk、
-正文事实的 Embedding 或相似度排名代替语义结构。可回退的字面位置和 Route-only
-Vector 只提供候选位置，不能直接回答、扩大授权范围或排除零命中 Table。语义能力来自：
+正文事实的 Embedding 或相似度排名代替语义结构。ADR-0008 允许全内容 Lexical 返回
+RowID 或 Route 位置，Vector 仍限于 Route；两者不能直接回答、扩大授权范围或把零命中
+解释成 Database/Table 不相关。语义能力来自：
 
 ```text
 AI 维护可读的 Table 级多层语义树
@@ -110,9 +111,9 @@ AI 维护可读的 Table 级多层语义树
 + 最终 SELECT 回表
 ```
 
-候选预测器必须通过 MSQL 暴露 provenance、snapshot 和预算；命中后仍读 Router 并以
-RowID SQL 回表，缺失或误预测时确定性回退普通 Router。既有将机械词项、字符向量与
-事实候选混合打分的实现只可作为历史原型，不能继续充当主查询路径。
+候选预测器必须通过 MSQL 暴露 provenance、snapshot 和预算。Route 命中后仍读 Router，
+Row 命中后必须用命中的当前 revision 执行 SQL 回表；缺失或误预测时回退普通 Router。
+既有将机械词项、字符向量与事实候选混合打分并直接作答的实现仍只可作为历史原型。
 
 ## 反例测试
 

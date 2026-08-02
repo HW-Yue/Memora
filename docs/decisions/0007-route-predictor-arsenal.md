@@ -1,7 +1,8 @@
 # ADR-0007：Router 权威，候选预测器可组合
 
 状态：Accepted，2026-08-01；F162/F163 资源门已执行，CPU exact 保持默认，
-Apple Accelerate/HNSW 延后。取代“禁止任何 Vector/Embedding 路径”的绝对边界。
+Apple Accelerate/HNSW 延后。2026-08-02 起，Lexical 仅限 Route 的边界由
+[ADR-0008](./0008-full-content-inverted-index.md)取代；本文 Vector 边界继续有效。
 
 ## 背景
 

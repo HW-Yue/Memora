@@ -1,8 +1,8 @@
 # 物理与语义索引
 
 状态：职责边界已确认；B+ Tree 是必做的持久化主索引，Page、树和业务索引由
-F81–F106 逐项 Review。F19–F23 的混合倒排主路径已撤销；ADR-0007 只允许可回退的
-Route 候选预测器。
+F81–F106 逐项 Review。F19–F23 的混合答案路径仍撤销；ADR-0008 已确认增加当前 Row 与
+语义索引的可重建倒排位置索引，F170 以后分阶段实现。
 
 ## 两套职责
 
@@ -34,9 +34,11 @@ AI 使用的语义索引：
 - 把机械 N-gram 命中包装成语义相似度；
 - 全库扫描后把正文交给模型挑选。
 
-允许通过 MSQL 显式调用字面位置聚合或 Route-only Vector 候选。它们只能返回
-Database/Table/Route ID、revision、来源和有界分数；AI 仍读取 Router 并 SQL 回表。
-完整边界见 [ADR-0007](../decisions/0007-route-predictor-arsenal.md)。
+允许通过 MSQL 显式调用全内容字面位置或 Route-only Vector 候选。Lexical 可以返回
+Database/Table/Route/Row ID 与 revision；Vector 仍不含 Row。两者都只返回位置、来源和
+有界分数，AI 必须读取 Router 或 SQL 回表。完整边界见
+[ADR-0007](../decisions/0007-route-predictor-arsenal.md)与
+[ADR-0008](../decisions/0008-full-content-inverted-index.md)。
 
 ## Row 与 Route 原子性
 

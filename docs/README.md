@@ -17,6 +17,9 @@
   [TDD 协议](./planning/feature-tdd-protocol.md) — 新开发的拆分、授权和验收规则。
 - [F169：Route Leaf 单 Row 不变量](./planning/f169-single-row-route-leaf.md) — 修复 Leaf
   候选桶缺陷，冻结一个 Leaf 最多一个活跃 Row。
+- [ADR-0008：全内容倒排索引](./decisions/0008-full-content-inverted-index.md) — 当前 Row 与
+  语义索引进入可重建 lexical postings，最终事实仍由 SQL 回表；
+- [F170：全内容倒排语义模型](./planning/f170-inverted-index-surface.md) — 首个待 Review 的实现项。
 
 ## 当前产品规格
 

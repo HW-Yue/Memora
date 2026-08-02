@@ -66,7 +66,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F170–F174：当前 Row 与语义表面的全内容倒排位置；
+- F170–F174：当前 Row 与语义表面的全内容倒排位置；ADR-0008 已接受，F170 计划待 Review；
 - F175a–F186：共享 MSQL Service、Bootstrap、Kimi-compatible Provider、查询 Agent 与外部质量门；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
