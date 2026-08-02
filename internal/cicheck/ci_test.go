@@ -310,6 +310,7 @@ func checkAgentImports(directory string) error {
 			return err
 		}
 		testFile := strings.HasSuffix(path, "_test.go")
+		testSupport := strings.Contains(filepath.ToSlash(path), "/internal/agent/agenttest/")
 		for _, imported := range file.Imports {
 			importPath, err := strconv.Unquote(imported.Path.Value)
 			if err != nil {
@@ -318,7 +319,7 @@ func checkAgentImports(directory string) error {
 			if importPath == neutralProtocol || standardLibraryImport(importPath) {
 				continue
 			}
-			if testFile && (importPath == agentPrefix || strings.HasPrefix(importPath, agentPrefix+"/")) {
+			if (testFile || testSupport) && (importPath == agentPrefix || strings.HasPrefix(importPath, agentPrefix+"/")) {
 				continue
 			}
 			return fmt.Errorf("%s imports forbidden Agent dependency %q", path, importPath)
