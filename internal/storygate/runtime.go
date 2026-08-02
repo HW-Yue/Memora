@@ -207,10 +207,19 @@ func (journey *runtimeJourney) run() error {
 	if _, err := journey.jsonCommand("feedback-record", "feedback", "--data-dir", journey.options.DataDir, "--event", mustJSON(feedbackEvent)); err != nil {
 		return err
 	}
+	secondaryLeaf, err := journey.envelope(
+		"route-secondary-leaf-create", "exec",
+		mutationInput(map[string]any{"parent": branchID, "name": "publication", "kind": "leaf", "purpose": "Manifest publication"}, map[string]any{"max_affected_rows": 1}),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
+	)
+	if err != nil {
+		return err
+	}
+	secondaryLeafID := stringRow(secondaryLeaf, 0, "route_id")
 	split, err := journey.envelope(
 		"row-split", "exec", mutationInput(map[string]any{"row": rowID, "first": "manifest atomicity", "second": "manifest publication"}, map[string]any{
 			"expected_schema_version": 1, "expected_revision": 4, "max_affected_rows": 3,
-			"target_route_leaf_ids": [][]string{{leafID}, {leafID}}, "actor": "agent:" + journey.options.Host,
+			"target_route_leaf_ids": [][]string{{leafID}, {secondaryLeafID}}, "actor": "agent:" + journey.options.Host,
 			"source": "story:split", "reason": "runtime semantic split",
 		}), "SPLIT work.notes ROW :row INTO (title) VALUES (:first), (:second)",
 	)
@@ -218,7 +227,10 @@ func (journey *runtimeJourney) run() error {
 		return fmt.Errorf("runtime SPLIT failed: %w", err)
 	}
 	firstID, secondID := stringRow(split, 0, "row_id"), stringRow(split, 1, "row_id")
-	if err := journey.discover("after-split", branchID, leafID, map[string]uint64{firstID: 1, secondID: 1}); err != nil {
+	if err := journey.discover("after-split-first", branchID, leafID, map[string]uint64{firstID: 1}); err != nil {
+		return err
+	}
+	if err := journey.discover("after-split-second", branchID, secondaryLeafID, map[string]uint64{secondID: 1}); err != nil {
 		return err
 	}
 	merged, err := journey.envelope(
@@ -236,10 +248,19 @@ func (journey *runtimeJourney) run() error {
 	if err := journey.discover("after-merge", branchID, leafID, map[string]uint64{mergedID: 1}); err != nil {
 		return err
 	}
-	if err := journey.assimilate(leafID); err != nil {
+	sourceLeaf, err := journey.envelope(
+		"route-source-leaf-create", "exec",
+		mutationInput(map[string]any{"parent": branchID, "name": "reviewed-source", "kind": "leaf", "purpose": "Reviewed source module"}, map[string]any{"max_affected_rows": 1}),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
+	)
+	if err != nil {
 		return err
 	}
-	if err := journey.discoverAtLeast("after-assimilation", branchID, leafID, 2); err != nil {
+	sourceLeafID := stringRow(sourceLeaf, 0, "route_id")
+	if err := journey.assimilate(sourceLeafID); err != nil {
+		return err
+	}
+	if err := journey.discoverAtLeast("after-assimilation", branchID, sourceLeafID, 1); err != nil {
 		return err
 	}
 	if _, err := journey.jsonCommand("semantic-health", "maintain", "--data-dir", journey.options.DataDir, "--report"); err != nil {
@@ -251,7 +272,7 @@ func (journey *runtimeJourney) run() error {
 	if _, err := journey.envelope(
 		"configuration-alter", "exec", mutationInput(nil, map[string]any{
 			"expected_revision": 1, "actor": "agent:" + journey.options.Host, "reason": "runtime budget check",
-		}), "ALTER CONFIGURATION QUERY_BUDGETS SET ROUTE_CHILDREN 6, OPEN_LOCATORS 12, SELECT_SCAN 100, SELECT_ROWS 5, ROUTE_FRAME_NODES 6",
+		}), "ALTER CONFIGURATION QUERY_BUDGETS SET ROUTE_CHILDREN 6, OPEN_LOCATORS 1, SELECT_SCAN 100, SELECT_ROWS 5, ROUTE_FRAME_NODES 6",
 	); err != nil {
 		return err
 	}
@@ -268,7 +289,10 @@ func (journey *runtimeJourney) run() error {
 	if _, err := journey.command("daemon-restart-start", "daemon", "start", "--data-dir", journey.options.DataDir); err != nil {
 		return err
 	}
-	if err := journey.discoverAtLeast("after-restart", branchID, leafID, 2); err != nil {
+	if err := journey.discoverAtLeast("after-restart-merged", branchID, leafID, 1); err != nil {
+		return err
+	}
+	if err := journey.discoverAtLeast("after-restart-source", branchID, sourceLeafID, 1); err != nil {
 		return err
 	}
 	_, err = journey.jsonCommand("final-doctor", "doctor", "--data-dir", journey.options.DataDir)
@@ -414,10 +438,19 @@ func (journey *runtimeJourney) route(tag, branchID, leafID string) (result.Envel
 		return result.Envelope{}, fmt.Errorf("%s root rediscovery failed: %w", tag, err)
 	}
 	children, err := journey.envelope(tag+"-children", "query", mutationInput(map[string]any{"route": branchID}, nil), "SHOW ROUTES UNDER :route LIMIT 12")
-	if err != nil || stringRow(children, 0, "route_id") != leafID {
+	foundLeaf := false
+	if err == nil && len(children.Results) > 0 {
+		for _, child := range children.Results[0].Rows {
+			if child["route_id"] == leafID && child["kind"] == "leaf" {
+				foundLeaf = true
+				break
+			}
+		}
+	}
+	if err != nil || !foundLeaf {
 		return result.Envelope{}, fmt.Errorf("%s child rediscovery failed: %w", tag, err)
 	}
-	return journey.envelope(tag+"-open", "query", mutationInput(map[string]any{"leaf": leafID}, nil), "OPEN ROUTE :leaf LIMIT 24")
+	return journey.envelope(tag+"-open", "query", mutationInput(map[string]any{"leaf": leafID}, nil), "OPEN ROUTE :leaf LIMIT 1")
 }
 
 func (journey *runtimeJourney) envelope(id, command string, input *string, msql string) (result.Envelope, error) {
@@ -485,11 +518,11 @@ func (journey *runtimeJourney) storyResults() []StoryResult {
 		"US-SCHEMA":     {"schema-create", "after-insert-schema"},
 		"US-DBA":        {"semantic-health", "final-doctor"},
 		"US-OPTIMIZE":   {"row-split", "row-merge", "after-merge-root"},
-		"US-SPLIT":      {"row-split", "after-split-root", "after-split-open"},
+		"US-SPLIT":      {"row-split", "after-split-first-root", "after-split-first-open", "after-split-second-open"},
 		"US-CONFLICT":   {"history-conflict"},
 		"US-ASSIMILATE": {"assimilation-submit", "after-assimilation-root", "after-assimilation-open"},
-		"US-RECOVER":    {"row-restore", "after-restore-root", "after-restart-root"},
-		"US-ENGINE":     {"configuration-alter", "configuration-restore", "after-restart-open"},
+		"US-RECOVER":    {"row-restore", "after-restore-root", "after-restart-merged-root"},
+		"US-ENGINE":     {"configuration-alter", "configuration-restore", "after-restart-merged-open"},
 		"US-DEVELOPER":  {"version", "final-doctor"},
 	}
 	mutation := map[string]bool{

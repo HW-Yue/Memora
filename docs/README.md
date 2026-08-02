@@ -11,6 +11,8 @@
 - [AI-native 产品宪章](./product/ai-native-product-charter.md) — 最高层产品原则和永久边界；
 - [Feature 产品门](./planning/feature-product-gate.md)与
   [TDD 协议](./planning/feature-tdd-protocol.md) — 新开发的拆分、授权和验收规则。
+- [F169：Route Leaf 单 Row 不变量](./planning/f169-single-row-route-leaf.md) — 修复 Leaf
+  候选桶缺陷，冻结一个 Leaf 最多一个活跃 Row。
 
 ## 当前产品规格
 
@@ -29,6 +31,8 @@
 - [Canonical Skill](./agent/canonical-skill-v1.md)
 - [MSQL](./query/msql.md)
 - [语义 Router](./query/semantic-routing.md)
+- [Route Branch Fan-out 策略](./query/route-branch-fanout-policy.md) — Database 自治目标、
+  Agent 语义重构与可审计例外的候选规则；
 - [检索质量链路](./query/retrieval-quality.md)
 - [投机 Route 预取](./query/speculative-route-prefetch.md)
 - [CPU 精确 Route Match](./query/cpu-exact-route-match-v1.md)

@@ -24,8 +24,8 @@ Corpus 使用完整的 6×5 组合，共 30 个独立 scenario：
   multi-device sync。
 
 每层候选顺序由自带的确定性 shuffle 固定。路径上的 branch 与兄弟 decoy 都是可展开
-节点，避免用 `kind` 猜答案；叶子均带 distractor RowID，最终仍由 ground truth 指定唯一
-RowID。负例保留完整树，但期望停止且不读任何 Row。
+节点，避免用 `kind` 猜答案；每个 Leaf 只带一个 RowID，干扰项由 sibling Leaf 表达，
+最终仍由 ground truth 指定唯一 RowID。负例保留完整树，但期望停止且不读任何 Row。
 
 ## Fixture 与不变量
 

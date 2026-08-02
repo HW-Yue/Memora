@@ -1,8 +1,8 @@
 # Agent 语义目录索引（Router）
 
 状态：已实现；F70 将主路切换到 Table 级逐层导航，F76 暴露原子 reshape，
-F77 增加按需中间 Route synopsis，F111 冻结 snapshot cursor 读取协议；ADR-0007
-允许可回退的 Route 候选预测器。
+F77 增加按需中间 Route synopsis，F111 冻结 snapshot cursor 读取协议，F169
+将 Leaf 冻结为单 Row locator；ADR-0007 允许可回退的 Route 候选预测器。
 
 ## 定义
 
@@ -14,14 +14,14 @@ Index 或候选评分器。每个 Table 有自己的 root，因为只有 Table �
 Database: project_memora
 └── Table: decisions
     ├── 产品边界
-    │   ├── AI 与引擎职责 → [row_id...]
-    │   └── 永久非目标     → [row_id...]
+    │   ├── AI 与引擎职责 → row_id
+    │   └── 永久非目标     → row_id
     ├── 查询流程
     └── 存储与恢复
 ```
 
 Database 只负责将 AI 导向 Table；Table 的 Data Dictionary 说明一条 Row 代表
-什么；Router 再把 AI 从 Table 导向有限 RowID。
+什么；Router 再把 AI 从 Table 确定性导向 RowID。
 
 ## 节点与 membership
 
@@ -33,13 +33,14 @@ Database 只负责将 AI 导向 Table；Table 的 Data Dictionary 说明一条 R
 - 启动预算约 8～12 个子分支；
 - snapshot、cursor 和 `truncated`。
 
-叶子把子分支替换为有限 locator：
+叶子把子分支替换为零个或一个活跃 locator：
 
 ```text
 table_id + row_id + row_revision + membership_revision
 ```
 
-同一 Row 可属于多个叶子，但正文只存一份。引擎维护
+一个 Leaf 不能同时指向两个 Row；同一 Row 可以属于多个 Leaf，但正文只存一份。
+引擎维护
 `row_id → memberships` 反向索引，因此 revise、delete、split 和 merge 不需要
 扫描整棵树即可失效旧引用。
 
@@ -53,7 +54,7 @@ SHOW TABLES FROM project_memora LIMIT 16 COMPACT;
 DESCRIBE TABLE project_memora.decisions COMPACT;
 SHOW ROUTES FROM TABLE project_memora.decisions AT ROOT LIMIT 12;
 SHOW ROUTES UNDER :route_id LIMIT 12;
-OPEN ROUTE :leaf_id LIMIT 20;
+OPEN ROUTE :leaf_id LIMIT 1;
 SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 ```
 
@@ -68,9 +69,9 @@ prompt，也不等同于物理 Buffer Pool。
 Router/OPEN 只返回节点或 locator，不能返回正文、生成答案或自动退化为
 Row/chunk Embedding、全库正文扫描和混合相似度答案。
 
-`SHOW ROUTES` 与 `OPEN ROUTE` 都返回 `memora.list-page/v1`；cursor 绑定当前
-parent/leaf、完整可见序列 snapshot 和下一 offset。Route 或 membership 在续页间变化
-时必须返回冲突并重新导航，不能重漏。精确字段见 [Route Read v1](./route-read-v1.md)。
+`SHOW ROUTES` 与 `OPEN ROUTE` 都返回 `memora.list-page/v1`。`SHOW` 的 cursor 绑定
+parent、完整可见序列 snapshot 和下一 offset；合法 Leaf 的 `OPEN` 不产生 next cursor。
+精确字段见 [Route Read v1](./route-read-v1.md)。
 
 可选 predictor 可以依据 Catalog、字面位置或 Route-only Vector 返回带来源的候选
 Route ID，帮助 AI 预取根节点或缩短冷启动。候选不能跳过显式 Route 选择、扩大权限、
@@ -78,8 +79,11 @@ Route ID，帮助 AI 预取根节点或缩短冷启动。候选不能跳过显�
 
 ## 语义维护
 
-物理 Page 满时由引擎自动 split；语义节点拥挤或含混时，引擎只报告结构事实，
-由 AI 决定怎样命名、拆分、合并和移动 membership。
+物理 Page 满时由引擎自动 split；语义 Branch 拥挤或含混时，引擎只报告结构事实，
+由 AI 决定怎样命名、拆分或移动。Branch 达到本 Database 由 Agent 设定的目标 fan-out
+后，Agent 重新判断语义重构、带理由继续增加或修订目标值；候选规则见
+[Route Branch Fan-out 策略](./route-branch-fanout-policy.md)。
+已占用 Leaf 不接收第二个 Row，AI 必须创建新的语义 Leaf，必要时先增加 Branch。
 
 维护粒度：
 

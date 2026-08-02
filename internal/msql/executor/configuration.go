@@ -18,7 +18,7 @@ type configurationRows interface {
 
 func legacyQueryBudgets() nativeconfig.QueryBudgets {
 	return nativeconfig.QueryBudgets{
-		RouteChildren: 100, OpenLocators: 100, SelectScan: maxQueryScan,
+		RouteChildren: 100, OpenLocators: 1, SelectScan: maxQueryScan,
 		SelectRows: maxQueryScan, RouteFrameNodes: 100,
 	}
 }

@@ -95,7 +95,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		"SHOW ROUTES UNDER :route LIMIT 12")
 	opened := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 20")
+		"OPEN ROUTE :leaf LIMIT 1")
 	if len(top.Results[0].Rows) != 1 || top.Results[0].Rows[0]["route_id"] != branchID ||
 		len(children.Results[0].Rows) != 1 || children.Results[0].Rows[0]["route_id"] != leafID ||
 		len(opened.Results[0].Rows) != 1 || opened.Results[0].Rows[0]["row_id"] != rowID {
@@ -186,7 +186,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	}
 	openedAfterUpdate := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 20")
+		"OPEN ROUTE :leaf LIMIT 1")
 	if len(openedAfterUpdate.Results[0].Rows) != 1 ||
 		openedAfterUpdate.Results[0].Rows[0]["row_id"] != rowID ||
 		openedAfterUpdate.Results[0].Rows[0]["revision"] != float64(2) {
@@ -205,7 +205,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	}
 	reopenedRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 20")
+		"OPEN ROUTE :leaf LIMIT 1")
 	if len(reopenedRoute.Results[0].Rows) != 1 ||
 		reopenedRoute.Results[0].Rows[0]["row_id"] != rowID ||
 		reopenedRoute.Results[0].Rows[0]["revision"] != float64(2) {
@@ -222,7 +222,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		"DELETE FROM work.notes WHERE row_id = :row")
 	deletedRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 20")
+		"OPEN ROUTE :leaf LIMIT 1")
 	if len(deletedRoute.Results[0].Rows) != 0 {
 		t.Fatalf("Route after DELETE = %#v", deletedRoute)
 	}
@@ -238,7 +238,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		"RESTORE work.notes ROW :row TO REVISION :revision")
 	restoredRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 20")
+		"OPEN ROUTE :leaf LIMIT 1")
 	if restored.Results[0].Revision == nil || *restored.Results[0].Revision != 4 ||
 		len(restoredRoute.Results[0].Rows) != 1 ||
 		restoredRoute.Results[0].Rows[0]["row_id"] != rowID ||
@@ -285,7 +285,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	}
 	openedAfterFeedback := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 20")
+		"OPEN ROUTE :leaf LIMIT 1")
 	if len(openedAfterFeedback.Results[0].Rows) != 1 ||
 		openedAfterFeedback.Results[0].Rows[0]["row_id"] != rowID ||
 		openedAfterFeedback.Results[0].Rows[0]["revision"] != float64(5) {
@@ -296,10 +296,24 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	if health.Status != "healthy" || health.Hash == "" || health.IssueCount != 0 {
 		t.Fatalf("native semantic health = %#v", health)
 	}
+	anchorLeaf := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{"parent": branchID, "name": "relation-anchor", "kind": "leaf", "purpose": "Relation anchor Row"},
+			map[string]any{"max_affected_rows": 1},
+		),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose")
+	anchorLeafID, _ := anchorLeaf.Results[0].Rows[0]["route_id"].(string)
+	secondLeaf := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{"parent": branchID, "name": "manifest-generation", "kind": "leaf", "purpose": "Manifest generation Row"},
+			map[string]any{"max_affected_rows": 1},
+		),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose")
+	secondLeafID, _ := secondLeaf.Results[0].Rows[0]["route_id"].(string)
 	anchor := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
 		"--input", statementInput(nil, map[string]any{
 			"expected_schema_version": 1, "max_affected_rows": 1,
-			"route_leaf_ids": []string{leafID},
+			"route_leaf_ids": []string{anchorLeafID},
 			"actor":          "agent:e2e", "source": "e2e:anchor", "reason": "reshape relation anchor",
 		}),
 		"INSERT INTO work.notes (title) VALUES ('reshape relation anchor')")
@@ -318,7 +332,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 			},
 			map[string]any{
 				"expected_schema_version": 1, "expected_revision": 5, "max_affected_rows": 3,
-				"target_route_leaf_ids":    [][]string{{leafID}, {leafID}},
+				"target_route_leaf_ids":    [][]string{{leafID}, {secondLeafID}},
 				"relation_target_ordinals": map[string]int{relationID: 1},
 				"route_updates": []map[string]any{{
 					"route_id": branchID, "expected_revision": 2,
@@ -336,11 +350,18 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	secondID, _ := split.Results[0].Rows[1]["row_id"].(string)
 	splitRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 20")
+		"OPEN ROUTE :leaf LIMIT 1")
 	if !routeContainsRevision(splitRoute, firstID, 1) ||
-		!routeContainsRevision(splitRoute, secondID, 1) ||
+		routeContainsRevision(splitRoute, secondID, 1) ||
 		routeContainsRevision(splitRoute, rowID, 6) {
 		t.Fatalf("Route after SPLIT = %#v", splitRoute)
+	}
+	secondSplitRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": secondLeafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 1")
+	if !routeContainsRevision(secondSplitRoute, secondID, 1) ||
+		routeContainsRevision(secondSplitRoute, firstID, 1) {
+		t.Fatalf("second Route after SPLIT = %#v", secondSplitRoute)
 	}
 	branchAfterSplit := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12")
@@ -380,11 +401,17 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	mergedID, _ := merge.Results[0].Rows[0]["row_id"].(string)
 	mergedRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 20")
+		"OPEN ROUTE :leaf LIMIT 1")
 	if !routeContainsRevision(mergedRoute, mergedID, 1) ||
 		routeContainsRevision(mergedRoute, firstID, 2) ||
 		routeContainsRevision(mergedRoute, secondID, 2) {
 		t.Fatalf("Route after MERGE = %#v", mergedRoute)
+	}
+	emptySecondRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": secondLeafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 1")
+	if len(emptySecondRoute.Results[0].Rows) != 0 {
+		t.Fatalf("second Route after MERGE = %#v", emptySecondRoute)
 	}
 	branchAfterMerge := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12")

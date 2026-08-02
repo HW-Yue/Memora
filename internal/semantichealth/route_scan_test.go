@@ -49,7 +49,10 @@ func TestRouteHealthFindsOnlyDeterministicStructuralDebtAndIsOrderIndependent(t 
 	source.nodes = append(source.nodes, router.Node{Version: router.Version, ID: "route_broken",
 		DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_missing",
 		Kind: router.KindLeaf, Name: "broken", Purpose: "Broken", Revision: 1})
-	source.locators["route_leaf_a"] = []router.Locator{{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_current", Revision: 2}}
+	source.locators["route_leaf_a"] = []router.Locator{
+		{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_current", Revision: 2},
+		{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_missing", Revision: 1},
+	}
 	source.locators["route_leaf_b"] = []router.Locator{{DatabaseID: "db_other", TableID: "tbl_other", RowID: "row_current", Revision: 3}}
 	source.locators["route_leaf_c"] = []router.Locator{{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_missing", Revision: 1}}
 
@@ -59,7 +62,8 @@ func TestRouteHealthFindsOnlyDeterministicStructuralDebtAndIsOrderIndependent(t 
 		t.Fatal(err)
 	}
 	wantKinds := map[semantichealth.Kind]bool{
-		semantichealth.KindRouteCapacity: false, semantichealth.KindAmbiguousSiblings: false,
+		semantichealth.KindRouteCapacity: false, semantichealth.KindMultiRowLeaf: false,
+		semantichealth.KindAmbiguousSiblings:     false,
 		semantichealth.KindInvalidRouteStructure: false, semantichealth.KindUnroutedRow: false,
 		semantichealth.KindOrphanMembership: false, semantichealth.KindStaleMembership: false,
 		semantichealth.KindInvalidMembershipScope: false,

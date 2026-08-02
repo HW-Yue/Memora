@@ -40,11 +40,10 @@ func TestPlanRouteMutationMSQLReturnsReviewPlanWithoutWriting(t *testing.T) {
 	base := row.New(store, dictionary, row.Options{})
 	rows := &planningRows{Service: base, nodes: []router.Node{
 		{Version: router.Version, ID: "route_root", DatabaseID: database.ID, TableID: table.ID, Kind: router.KindRoot, Name: "root", Path: "/", Purpose: "Root", Revision: 1},
-		{Version: router.Version, ID: "route_source", DatabaseID: database.ID, TableID: table.ID, ParentID: "route_root", Kind: router.KindLeaf, Name: "source", Path: "/source", Purpose: "Source", Revision: 2},
-	}, locators: map[string][]router.Locator{"route_source": {
-		{DatabaseID: database.ID, TableID: table.ID, RowID: "row_a", Revision: 1},
-		{DatabaseID: database.ID, TableID: table.ID, RowID: "row_b", Revision: 1},
-	}}}
+		{Version: router.Version, ID: "route_source", DatabaseID: database.ID, TableID: table.ID, ParentID: "route_root", Kind: router.KindBranch, Name: "source", Path: "/source", Purpose: "Source", Revision: 2},
+		{Version: router.Version, ID: "route_a", DatabaseID: database.ID, TableID: table.ID, ParentID: "route_source", Kind: router.KindLeaf, Name: "old-a", Path: "/source/old-a", Purpose: "A", Revision: 1},
+		{Version: router.Version, ID: "route_b", DatabaseID: database.ID, TableID: table.ID, ParentID: "route_source", Kind: router.KindLeaf, Name: "old-b", Path: "/source/old-b", Purpose: "B", Revision: 1},
+	}, locators: map[string][]router.Locator{}}
 	engine := executor.New(dictionary, rows)
 	document, err := parser.Parse("PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal")
 	if err != nil {
@@ -55,8 +54,8 @@ func TestPlanRouteMutationMSQLReturnsReviewPlanWithoutWriting(t *testing.T) {
 		Actor: "agent:test", SourceEventID: "event_1", Reason: "split",
 		Sources: []routemutationplan.SourceRef{{RouteID: "route_source", ExpectedRevision: 2}},
 		Targets: []routemutationplan.TargetProposal{
-			{Key: "a", Name: "a", Purpose: "A", RowIDs: []string{"row_a"}},
-			{Key: "b", Name: "b", Purpose: "B", RowIDs: []string{"row_b"}},
+			{Key: "a", Name: "a", Purpose: "A", ChildRouteIDs: []string{"route_a"}},
+			{Key: "b", Name: "b", Purpose: "B", ChildRouteIDs: []string{"route_b"}},
 		},
 	}
 	output, err := engine.Execute(ctx, document.Statement,
@@ -65,7 +64,7 @@ func TestPlanRouteMutationMSQLReturnsReviewPlanWithoutWriting(t *testing.T) {
 		output.Rows[0]["plan_id"] == "" || output.AffectedRows != 0 {
 		t.Fatalf("PLAN ROUTE output = %#v, %v", output, err)
 	}
-	if len(rows.nodes) != 2 || len(rows.locators["route_source"]) != 2 {
+	if len(rows.nodes) != 4 || len(rows.locators) != 0 {
 		t.Fatalf("planning mutated source = %#v %#v", rows.nodes, rows.locators)
 	}
 }
@@ -92,11 +91,10 @@ func TestApplyRouteMutationMSQLRequiresHashBoundApproval(t *testing.T) {
 	}
 	rows := &planningRows{Service: row.New(store, dictionary, row.Options{}), nodes: []router.Node{
 		{Version: router.Version, ID: "route_root", DatabaseID: database.ID, TableID: table.ID, Kind: router.KindRoot, Name: "root", Path: "/", Purpose: "Root", Revision: 1},
-		{Version: router.Version, ID: "route_source", DatabaseID: database.ID, TableID: table.ID, ParentID: "route_root", Kind: router.KindLeaf, Name: "source", Path: "/source", Purpose: "Source", Revision: 1},
-	}, locators: map[string][]router.Locator{"route_source": {
-		{DatabaseID: database.ID, TableID: table.ID, RowID: "row_a", Revision: 1},
-		{DatabaseID: database.ID, TableID: table.ID, RowID: "row_b", Revision: 1},
-	}}}
+		{Version: router.Version, ID: "route_source", DatabaseID: database.ID, TableID: table.ID, ParentID: "route_root", Kind: router.KindBranch, Name: "source", Path: "/source", Purpose: "Source", Revision: 1},
+		{Version: router.Version, ID: "route_a", DatabaseID: database.ID, TableID: table.ID, ParentID: "route_source", Kind: router.KindLeaf, Name: "old-a", Path: "/source/old-a", Purpose: "A", Revision: 1},
+		{Version: router.Version, ID: "route_b", DatabaseID: database.ID, TableID: table.ID, ParentID: "route_source", Kind: router.KindLeaf, Name: "old-b", Path: "/source/old-b", Purpose: "B", Revision: 1},
+	}, locators: map[string][]router.Locator{}}
 	plan, err := routemutationplan.Build(ctx, rows, routemutationplan.Scope{
 		DatabaseID: database.ID, Database: "work", TableID: table.ID, Table: "notes",
 	}, routemutationplan.Proposal{
@@ -104,8 +102,8 @@ func TestApplyRouteMutationMSQLRequiresHashBoundApproval(t *testing.T) {
 		Actor: "agent:test", SourceEventID: "event_1", Reason: "split",
 		Sources: []routemutationplan.SourceRef{{RouteID: "route_source", ExpectedRevision: 1}},
 		Targets: []routemutationplan.TargetProposal{
-			{Key: "a", Name: "a", Purpose: "A", RowIDs: []string{"row_a"}},
-			{Key: "b", Name: "b", Purpose: "B", RowIDs: []string{"row_b"}},
+			{Key: "a", Name: "a", Purpose: "A", ChildRouteIDs: []string{"route_a"}},
+			{Key: "b", Name: "b", Purpose: "B", ChildRouteIDs: []string{"route_b"}},
 		},
 	})
 	if err != nil {

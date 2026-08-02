@@ -23,6 +23,7 @@ const (
 	KindSynonymousColumns      Kind = "synonymous_columns"
 	KindStaleDescription       Kind = "stale_description"
 	KindRouteCapacity          Kind = "route_capacity"
+	KindMultiRowLeaf           Kind = "multi_row_leaf"
 	KindAmbiguousSiblings      Kind = "ambiguous_siblings"
 	KindInvalidRouteStructure  Kind = "invalid_route_structure"
 	KindUnroutedRow            Kind = "unrouted_row"

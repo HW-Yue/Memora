@@ -163,10 +163,15 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	memberships := make([]router.Membership, 0, len(options.RouteLeafIDs))
 	for _, leafID := range options.RouteLeafIDs {
 		membership := router.Membership{LeafID: leafID, MembershipRevision: 1, Locator: router.Locator{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID, Revision: value.Revision}}
+		memberships = append(memberships, membership)
+	}
+	if err := routes.ValidateMembershipChanges(memberships); err != nil {
+		return row.Row{}, err
+	}
+	for _, membership := range memberships {
 		if err := routes.StageMembership(transaction, membership); err != nil {
 			return row.Row{}, err
 		}
-		memberships = append(memberships, membership)
 	}
 	if err := stageRowChange(transaction, changeSequence, value, history.OperationInsert, options.Metadata, memberships); err != nil {
 		return row.Row{}, err
@@ -387,6 +392,9 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 			return err
 		}
 		changedMemberships = append(changedMemberships, membership)
+	}
+	if err := routes.ValidateMembershipChanges(changedMemberships); err != nil {
+		return err
 	}
 	changeSequence, err := service.NextChangeSequence(ctx)
 	if err != nil {
@@ -1107,6 +1115,15 @@ func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor s
 	}
 	defer release()
 	return nativerouter.New(service.repository.file).OpenPage(leafID, cursor, limit)
+}
+
+func (service *Service) InspectRouterLeafPage(ctx context.Context, leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	defer release()
+	return nativerouter.New(service.repository.file).InspectLeafPage(leafID, cursor, limit)
 }
 
 func findRoutePath(routes *nativerouter.Repository, parentID, path string) (router.Node, bool) {

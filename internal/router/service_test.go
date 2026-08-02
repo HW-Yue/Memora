@@ -81,6 +81,43 @@ func TestRouterBuildsMultiBranchTreeAndMaintainsMultiLeafReverseMembership(t *te
 	}
 }
 
+func TestRouterLeafRejectsSecondActiveRow(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer databaseStore.Close()
+	service := router.New(databaseStore, router.Options{
+		IDs: &idSource{values: []string{"root", "primary", "alias"}},
+	})
+	tx := mustBegin(t, ctx, databaseStore)
+	root, err := service.CreateRootIn(ctx, tx, "db_work", "Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary := mustCreateNode(t, ctx, service, tx, root.ID, "primary", router.KindLeaf)
+	alias := mustCreateNode(t, ctx, service, tx, root.ID, "alias", router.KindLeaf)
+	first := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 1}
+	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{primary.ID, alias.ID}); err != nil {
+		t.Fatal(err)
+	}
+	second := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_second", Revision: 1}
+	_, err = service.ReplaceMembershipsIn(ctx, tx, second, []string{primary.ID})
+	assertCode(t, err, result.CodeConstraint)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for _, leafID := range []string{primary.ID, alias.ID} {
+		locators, err := service.ListLeaf(ctx, leafID, 10)
+		if err != nil || len(locators) != 1 || locators[0].RowID != first.RowID {
+			t.Fatalf("leaf %s after rejected attach = %#v, %v", leafID, locators, err)
+		}
+	}
+}
+
 func TestListNodesReturnsStableCurrentSemanticNodes(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -107,7 +144,7 @@ func TestListNodesReturnsStableCurrentSemanticNodes(t *testing.T) {
 	}
 }
 
-func TestRouterSupportsExplicitSplitMergeDeleteAndTransactionRollback(t *testing.T) {
+func TestRouterSupportsExplicitMoveDeleteAndTransactionRollback(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -117,7 +154,7 @@ func TestRouterSupportsExplicitSplitMergeDeleteAndTransactionRollback(t *testing
 	}
 	defer databaseStore.Close()
 	service := router.New(databaseStore, router.Options{
-		IDs: &idSource{values: []string{"root", "combined", "left", "right", "merged", "rolled"}},
+		IDs: &idSource{values: []string{"root", "combined", "left", "right", "moved", "rolled"}},
 	})
 	tx := mustBegin(t, ctx, databaseStore)
 	root, err := service.CreateRootIn(ctx, tx, "db_work", "Work")
@@ -132,7 +169,7 @@ func TestRouterSupportsExplicitSplitMergeDeleteAndTransactionRollback(t *testing
 	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{combined.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, second, []string{combined.ID}); err != nil {
+	if _, err := service.ReplaceMembershipsIn(ctx, tx, second, []string{right.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{left.ID}); err != nil {
@@ -144,22 +181,16 @@ func TestRouterSupportsExplicitSplitMergeDeleteAndTransactionRollback(t *testing
 	if err := service.DeleteNodeIn(ctx, tx, combined.ID, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.DeleteNodeIn(ctx, tx, right.ID, 1); err != nil {
-		t.Fatal(err)
-	}
-	merged := mustCreateNode(t, ctx, service, tx, root.ID, "merged", router.KindLeaf)
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{merged.ID}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, second, []string{merged.ID}); err != nil {
+	moved := mustCreateNode(t, ctx, service, tx, root.ID, "moved", router.KindLeaf)
+	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{moved.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := service.ListLeaf(ctx, merged.ID, 10)
-	if err != nil || len(rows) != 2 {
-		t.Fatalf("merged rows = %#v, %v", rows, err)
+	rows, err := service.ListLeaf(ctx, moved.ID, 10)
+	if err != nil || len(rows) != 1 || rows[0].RowID != first.RowID {
+		t.Fatalf("moved Row = %#v, %v", rows, err)
 	}
 
 	tx = mustBegin(t, ctx, databaseStore)
@@ -173,13 +204,13 @@ func TestRouterSupportsExplicitSplitMergeDeleteAndTransactionRollback(t *testing
 	if _, err := service.Get(ctx, rolled.ID); err == nil {
 		t.Fatal("rolled-back Router node remained visible")
 	}
-	rows, err = service.ListLeaf(ctx, merged.ID, 10)
-	if err != nil || len(rows) != 2 {
+	rows, err = service.ListLeaf(ctx, moved.ID, 10)
+	if err != nil || len(rows) != 1 || rows[0].RowID != first.RowID {
 		t.Fatalf("memberships after rollback = %#v, %v", rows, err)
 	}
 }
 
-func TestRouterEnforcesCapacityAndProvidesStableChildCursor(t *testing.T) {
+func TestRouterEnforcesSingleRowLeafAndProvidesStableChildCursor(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -190,7 +221,7 @@ func TestRouterEnforcesCapacityAndProvidesStableChildCursor(t *testing.T) {
 	defer databaseStore.Close()
 	service := router.New(databaseStore, router.Options{
 		IDs:         &idSource{values: []string{"root", "a", "b", "overflow"}},
-		MaxChildren: 2, MaxLeafRows: 2,
+		MaxChildren: 2,
 	})
 	tx := mustBegin(t, ctx, databaseStore)
 	root, err := service.CreateRootIn(ctx, tx, "db_work", "Work")
@@ -207,15 +238,13 @@ func TestRouterEnforcesCapacityAndProvidesStableChildCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx = mustBegin(t, ctx, databaseStore)
-	for _, rowID := range []string{"row_first", "row_second"} {
-		if _, err := service.ReplaceMembershipsIn(ctx, tx, router.Locator{
-			DatabaseID: "db_work", TableID: "tbl_notes", RowID: rowID, Revision: 1,
-		}, []string{a.ID}); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := service.ReplaceMembershipsIn(ctx, tx, router.Locator{
+		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 1,
+	}, []string{a.ID}); err != nil {
+		t.Fatal(err)
 	}
 	_, err = service.ReplaceMembershipsIn(ctx, tx, router.Locator{
-		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_third", Revision: 1,
+		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_second", Revision: 1,
 	}, []string{a.ID})
 	assertCode(t, err, result.CodeConstraint)
 	if err := tx.Commit(); err != nil {
@@ -235,12 +264,8 @@ func TestRouterEnforcesCapacityAndProvidesStableChildCursor(t *testing.T) {
 	_, _, err = service.ListChildren(ctx, a.ID, "", 1)
 	assertCode(t, err, result.CodeConstraint)
 	leafFirst, leafPage, err := service.ListLeafCursorPage(ctx, a.ID, "", 1)
-	if err != nil || len(leafFirst) != 1 || leafPage.Snapshot == "" || leafPage.NextCursor == "" {
-		t.Fatalf("first legacy leaf page = %#v, %#v, %v", leafFirst, leafPage, err)
-	}
-	leafSecond, continued, err := service.ListLeafCursorPage(ctx, a.ID, leafPage.NextCursor, 1)
-	if err != nil || len(leafSecond) != 1 || continued.Snapshot != leafPage.Snapshot || continued.NextCursor != "" {
-		t.Fatalf("second legacy leaf page = %#v, %#v, %v", leafSecond, continued, err)
+	if err != nil || len(leafFirst) != 1 || leafPage.Snapshot == "" || leafPage.NextCursor != "" {
+		t.Fatalf("single-Row legacy leaf page = %#v, %#v, %v", leafFirst, leafPage, err)
 	}
 
 	tx = mustBegin(t, ctx, databaseStore)
@@ -257,8 +282,10 @@ func TestRouterEnforcesCapacityAndProvidesStableChildCursor(t *testing.T) {
 	}
 	_, _, err = service.ListChildren(ctx, root.ID, cursor, 1)
 	assertCode(t, err, result.CodeRevisionConflict)
-	_, _, err = service.ListLeafCursorPage(ctx, a.ID, leafPage.NextCursor, 1)
-	assertCode(t, err, result.CodeRevisionConflict)
+	current, currentPage, err := service.ListLeafCursorPage(ctx, a.ID, "", 1)
+	if err != nil || len(current) != 1 || current[0].Revision != 2 || currentPage.NextCursor != "" {
+		t.Fatalf("revised single-Row leaf = %#v, %#v, %v", current, currentPage, err)
+	}
 }
 
 func mustCreateNode(

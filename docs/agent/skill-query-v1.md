@@ -1,7 +1,7 @@
 # Skill 查询流程 v1
 
 状态：F124e 当前契约。F30 的 full Route path 与检索 fallback 已被取代；AI
-逐层选择 Table Route，并只对叶子返回的 Row locator 执行精确回表。
+逐层选择 Table Route，并只对叶子返回的唯一 Row locator 执行精确回表。
 
 ## 输入与职责
 
@@ -32,13 +32,15 @@ Route 行只能包含短节点描述或定位，永远不能进入 evidence。�
 
 ## 预算与停止
 
-Canonical Skill v1 约束候选最多 24 条、SELECT 最多 10 条。状态机还要求：
+Canonical Skill v1 约束每个 Leaf 只能返回一个 locator，跨已明确选择的多个 Leaf
+累计 SELECT 最多 10 条。状态机还要求：
 
 - Database、Table 和投影字段必须显式提供；
 - 标识符统一引用，值只通过参数传递；
 - 重复 locator 只 SELECT 一次；
 - 跨 Database/Table、缺 ID 或 revision 的 locator 丢弃；
-- 候选超过回表预算时设置 `truncated`。
+- 叶子出现多个 locator 时视为结构缺陷并停止，不能分页消费；
+- 多个已选择 Leaf 的回表总量超过预算时设置 `truncated`。
 
 有足够 SELECT evidence、候选耗尽、硬预算到达、权限拒绝或后续调用已不能
 改变结果时停止。`AnswerReady` 只在至少存在一条 evidence 时为真。

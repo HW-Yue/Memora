@@ -23,12 +23,12 @@ DESCRIBE TABLE "db_..."."tbl_..." COMPACT;
 SHOW ROUTES FROM TABLE "db_..."."tbl_..." AT ROOT LIMIT 12;
 DESCRIBE ROUTE :route;
 SHOW ROUTES UNDER :route [CURSOR :cursor] LIMIT 12;
-OPEN ROUTE :route [CURSOR :cursor] LIMIT 20;
+OPEN ROUTE :route LIMIT 1;
 ```
 
 Route ID 和 cursor 只作为 statement parameters；Table stable ID 使用与 Catalog 相同的
-严格 quoted-identifier 规则。页面一次只保留当前 node、当前层最多 12 个 child 或
-20 个 locator。continuation 必须保持同一 snapshot；冲突时不混入旧树。
+严格 quoted-identifier 规则。页面一次只保留当前 node、当前层最多 12 个 child，
+Leaf 只显示零个或一个 locator。children continuation 必须保持同一 snapshot。
 
 ## 投影与状态
 

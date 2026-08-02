@@ -270,8 +270,8 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	javascript := string(routes)
 	for _, required := range []string{
 		"DESCRIBE TABLE", "SHOW ROUTES FROM TABLE", "AT ROOT LIMIT 12",
-		"DESCRIBE ROUTE :route", "SHOW ROUTES UNDER :route", "OPEN ROUTE :route",
-		"CURSOR :cursor LIMIT 12", "CURSOR :cursor LIMIT 20", "parameters", "named",
+		"DESCRIBE ROUTE :route", "SHOW ROUTES UNDER :route", "OPEN ROUTE :route LIMIT 1",
+		"CURSOR :cursor LIMIT 12", "Route leaf must contain at most one locator", "parameters", "named",
 		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
 		"database_id", "table_id", "row_id", "revision",
 	} {
@@ -281,7 +281,7 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	}
 	for _, forbidden := range []string{
 		"innerHTML", "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "CREATE ",
-		"localStorage", "sessionStorage",
+		"localStorage", "sessionStorage", "OPEN ROUTE :route CURSOR",
 	} {
 		if strings.Contains(javascript, forbidden) {
 			t.Errorf("Route Tree module contains forbidden %q", forbidden)

@@ -22,19 +22,23 @@ func TestApprovedRoutePlanCommitsRoutesMembershipsAndChangeAtomically(t *testing
 	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{})
 	base := nativerow.NewService(rows, dictionary, nativerow.ServiceOptions{})
 	service := NewService(base, dictionary, rows, routes, New(file, rows, routes))
-	if err := routes.Attach("route_leaf", router.Locator{
-		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_target", Revision: 1,
+	alias, err := routes.CreateChild("route_alias", "route_root", "alias", router.KindLeaf, "Alias for the same Row")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := routes.Attach(alias.ID, router.Locator{
+		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_source", Revision: 1,
 	}, 1); err != nil {
 		t.Fatal(err)
 	}
 	proposal := routemutationplan.Proposal{
-		Version: routemutationplan.ProposalVersion, ID: "proposal_split", Operation: routemutationplan.OperationSplit,
-		Actor: "agent:test", SourceEventID: "event:route-review", Reason: "split reviewed leaf",
-		Sources: []routemutationplan.SourceRef{{RouteID: "route_leaf", ExpectedRevision: 1}},
-		Targets: []routemutationplan.TargetProposal{
-			{Key: "current", Name: "current", Purpose: "Current", RowIDs: []string{"row_source"}},
-			{Key: "archive", Name: "archive", Purpose: "Archive", RowIDs: []string{"row_target"}},
+		Version: routemutationplan.ProposalVersion, ID: "proposal_merge", Operation: routemutationplan.OperationMerge,
+		Actor: "agent:test", SourceEventID: "event:route-review", Reason: "merge equivalent Row aliases",
+		Sources: []routemutationplan.SourceRef{
+			{RouteID: "route_leaf", ExpectedRevision: 1},
+			{RouteID: alias.ID, ExpectedRevision: 1},
 		},
+		Targets: []routemutationplan.TargetProposal{{Key: "canonical", Name: "canonical", Purpose: "Canonical Row locator"}},
 	}
 	plan, err := routemutationplan.Build(context.Background(), service,
 		routemutationplan.Scope{DatabaseID: "db_work", Database: "work", TableID: "tbl_notes", Table: "notes"}, proposal)
@@ -44,7 +48,7 @@ func TestApprovedRoutePlanCommitsRoutesMembershipsAndChangeAtomically(t *testing
 	ctx := approvedRoutePlanContext(plan)
 	receipt, err := service.ApplyRouteMutationPlan(ctx, "work", "notes", plan)
 	if err != nil || !receipt.Verified || receipt.Status != "committed" || receipt.ChangeSequence == 0 ||
-		receipt.CreatedNodes != 2 || receipt.DeletedNodes != 1 || receipt.MembershipRevisions != 4 {
+		receipt.CreatedNodes != 1 || receipt.DeletedNodes != 2 || receipt.MembershipRevisions != 3 {
 		t.Fatalf("ApplyRouteMutationPlan() = %#v, %v", receipt, err)
 	}
 	if _, err := routes.Get("route_leaf"); err != nil {
@@ -59,7 +63,7 @@ func TestApprovedRoutePlanCommitsRoutesMembershipsAndChangeAtomically(t *testing
 	changes, more, err := nativechange.New(file).ListAfter(0, 10)
 	if err != nil || more || len(changes) != 1 ||
 		countEntries(changes[0], change.ObjectRouteNode) != 3 ||
-		countEntries(changes[0], change.ObjectRouteMembership) != 4 {
+		countEntries(changes[0], change.ObjectRouteMembership) != 3 {
 		t.Fatalf("Route plan Change Log = %#v, %v, %v", changes, more, err)
 	}
 	if err := file.Close(); err != nil {
@@ -95,20 +99,17 @@ func TestRoutePlanRequiresExactApprovalAndFreshSnapshotWithoutPartialWrites(t *t
 	if err == nil {
 		t.Fatal("fixture MOVE should reject same parent")
 	}
-	// Build a valid leaf split after adding a second membership.
-	if err := routes.Attach("route_leaf", router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_target", Revision: 1}, 1); err != nil {
+	target, err := routes.CreateChild("route_target", "route_root", "target", router.KindBranch, "Move target")
+	if err != nil {
 		t.Fatal(err)
 	}
 	plan, err = routemutationplan.Build(context.Background(), service,
 		routemutationplan.Scope{DatabaseID: "db_work", Database: "work", TableID: "tbl_notes", Table: "notes"},
 		routemutationplan.Proposal{
-			Version: routemutationplan.ProposalVersion, ID: "proposal_split", Operation: routemutationplan.OperationSplit,
-			Actor: "agent:test", SourceEventID: "event:split", Reason: "split",
-			Sources: []routemutationplan.SourceRef{{RouteID: "route_leaf", ExpectedRevision: 1}},
-			Targets: []routemutationplan.TargetProposal{
-				{Key: "one", Name: "one", Purpose: "One", RowIDs: []string{"row_source"}},
-				{Key: "two", Name: "two", Purpose: "Two", RowIDs: []string{"row_target"}},
-			},
+			Version: routemutationplan.ProposalVersion, ID: "proposal_move_valid", Operation: routemutationplan.OperationMove,
+			Actor: "agent:test", SourceEventID: "event:move-valid", Reason: "move",
+			Sources:        []routemutationplan.SourceRef{{RouteID: "route_leaf", ExpectedRevision: 1}},
+			TargetParentID: target.ID,
 		})
 	if err != nil {
 		t.Fatal(err)

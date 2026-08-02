@@ -19,7 +19,8 @@ Memora 是一套由 AI 自主建模、读写、整理和持续优化的个人语
 ## 数据与索引的产品形态
 
 - 持久化单位是完整、可独立修改的语义 Row，不是文档 chunk、Embedding 或聊天转录。
-- 每个 Table 有自己的多层语义索引树；内部节点是短描述，叶子只保存 RowID/locator。
+- 每个 Table 有自己的多层语义索引树；内部节点是短描述，每个 Leaf 只保存零个或
+  一个 RowID/locator；同一 Row 可以属于多个 Leaf。
 - AI 用 SQL 一层一层查看有限分支，选中下一层，直到得到 RowID，再用 `SELECT` 回表读取事实。
 - Catalog、字面位置和 Route-only Vector 可以作为可丢弃的候选预测器；它们只把
   AI 导向显式 Route，不返回事实或取代语义树。
@@ -38,7 +39,7 @@ SHOW CATALOG ATLAS LIMIT 64 BYTES 8192 COMPACT;
 DESCRIBE TABLE project_memora.decisions COMPACT;
 SHOW ROUTES FROM TABLE project_memora.decisions AT ROOT LIMIT 12;
 SHOW ROUTES UNDER :route_id LIMIT 12;
-OPEN ROUTE :leaf_id LIMIT 20;
+OPEN ROUTE :leaf_id LIMIT 1;
 SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 ```
 

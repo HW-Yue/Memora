@@ -13,7 +13,7 @@ import (
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
-func TestRouteReadProtocolPaginatesChildrenAndLocatorsWithoutRowBodies(t *testing.T) {
+func TestRouteReadProtocolPaginatesChildrenAndReturnsOneLocatorWithoutRowBodies(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -47,10 +47,11 @@ func TestRouteReadProtocolPaginatesChildrenAndLocatorsWithoutRowBodies(t *testin
 				"parent": "route_root", "name": name, "purpose": name + " notes",
 			}}, executor.MutationOptions{MaxAffectedRows: 1})
 	}
-	for _, name := range []string{"first", "second", "third"} {
+	for index, name := range []string{"first", "second", "third"} {
+		leafID := []string{"route_alpha", "route_beta", "route_gamma"}[index]
 		executeMSQL(t, ctx, engine, "INSERT INTO work.notes (title) VALUES (:title)",
 			executor.Parameters{Named: map[string]any{"title": name}}, executor.MutationOptions{
-				ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{"route_alpha"},
+				ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{leafID},
 			})
 	}
 
@@ -83,23 +84,16 @@ func TestRouteReadProtocolPaginatesChildrenAndLocatorsWithoutRowBodies(t *testin
 		t.Fatalf("second children page = %#v", remainingChildren)
 	}
 
-	locators := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_alpha' LIMIT 2", executor.Parameters{}, executor.MutationOptions{})
+	locators := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_alpha' LIMIT 1", executor.Parameters{}, executor.MutationOptions{})
 	if locators.Page == nil || locators.Page.Version != result.ListPageVersion ||
-		locators.Page.Snapshot == "" || !locators.Truncated || locators.NextCursor == "" || len(locators.Rows) != 2 {
-		t.Fatalf("first locator page = %#v", locators)
+		locators.Page.Snapshot == "" || locators.Truncated || locators.NextCursor != "" || len(locators.Rows) != 1 {
+		t.Fatalf("single locator page = %#v", locators)
 	}
 	for _, locator := range locators.Rows {
 		if len(locator) != 4 || locator["row_id"] == "" || locator["title"] != nil {
 			t.Fatalf("locator leaked Row body = %#v", locator)
 		}
 	}
-	remainingLocators := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_alpha' CURSOR :cursor LIMIT 2",
-		executor.Parameters{Named: map[string]any{"cursor": locators.NextCursor}}, executor.MutationOptions{})
-	if remainingLocators.Page == nil || remainingLocators.Page.Snapshot != locators.Page.Snapshot ||
-		remainingLocators.Truncated || len(remainingLocators.Rows) != 1 {
-		t.Fatalf("second locator page = %#v", remainingLocators)
-	}
-
 	executeMSQL(t, ctx, engine,
 		"CREATE ROUTE UNDER 'route_root' NAME 'delta' KIND 'leaf' PURPOSE 'Delta notes'",
 		executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1})
@@ -117,13 +111,8 @@ func TestRouteReadProtocolPaginatesChildrenAndLocatorsWithoutRowBodies(t *testin
 	}
 	executeMSQL(t, ctx, engine, "INSERT INTO work.notes (title) VALUES ('fourth')",
 		executor.Parameters{}, executor.MutationOptions{
-			ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{"route_alpha"},
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{"route_delta"},
 		})
-	_, err = runMSQL(ctx, engine, "OPEN ROUTE 'route_alpha' CURSOR :cursor LIMIT 2",
-		executor.Parameters{Named: map[string]any{"cursor": locators.NextCursor}}, executor.MutationOptions{})
-	if !hasCode(err, string(result.CodeRevisionConflict)) {
-		t.Fatalf("changed locator snapshot error = %v", err)
-	}
 	_, err = runMSQL(ctx, engine, "SHOW ROUTES UNDER 'route_alpha' LIMIT 1", executor.Parameters{}, executor.MutationOptions{})
 	if !hasCode(err, string(result.CodeConstraint)) {
 		t.Fatalf("SHOW under leaf error = %v", err)
@@ -176,7 +165,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	described := executeMSQL(t, ctx, engine, "DESCRIBE TABLE work.notes COMPACT", executor.Parameters{}, executor.MutationOptions{})
 	top := executeMSQL(t, ctx, engine, "SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12", executor.Parameters{}, executor.MutationOptions{})
 	children := executeMSQL(t, ctx, engine, "SHOW ROUTES UNDER :route LIMIT 12", executor.Parameters{Named: map[string]any{"route": "route_branch"}}, executor.MutationOptions{})
-	opened := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 20", executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
+	opened := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 1", executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
 	selected := executeMSQL(t, ctx, engine, "SELECT * FROM work.notes WHERE row_id = :row LIMIT 1", executor.Parameters{Named: map[string]any{"row": "row_first"}}, executor.MutationOptions{})
 	if len(databases.Rows) != 1 || len(tables.Rows) != 1 || len(described.Rows) != 1 {
 		t.Fatalf("discovery frames = %#v, %#v, %#v", databases.Rows, tables.Rows, described.Rows)
@@ -201,7 +190,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 			RouteLeafIDs: []string{"route_leaf"},
 		},
 	)
-	openedAfterUpdate := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 20",
+	openedAfterUpdate := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 1",
 		executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
 	if updated.Revision == nil || *updated.Revision != 2 ||
 		len(openedAfterUpdate.Rows) != 1 ||
@@ -217,7 +206,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 			RouteLeafIDs: []string{},
 		},
 	)
-	openedWithoutMembership := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 20",
+	openedWithoutMembership := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 1",
 		executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
 	if len(openedWithoutMembership.Rows) != 0 {
 		t.Fatalf("cleared Route locator = %#v", openedWithoutMembership)
@@ -230,7 +219,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 			RouteLeafIDs: []string{"route_leaf"},
 		},
 	)
-	openedAfterReattach := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 20",
+	openedAfterReattach := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 1",
 		executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
 	if reattached.Revision == nil || *reattached.Revision != 4 ||
 		len(openedAfterReattach.Rows) != 1 ||
@@ -252,7 +241,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 		executor.Parameters{Named: map[string]any{"row": "row_first"}},
 		executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 4, MaxAffectedRows: 1},
 	)
-	openedAfterDelete := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 20",
+	openedAfterDelete := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 1",
 		executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
 	if len(openedAfterDelete.Rows) != 0 {
 		t.Fatalf("deleted Route locator = %#v", openedAfterDelete)
@@ -265,7 +254,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 			RouteLeafIDs: []string{"route_leaf"},
 		},
 	)
-	openedAfterRestore := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 20",
+	openedAfterRestore := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 1",
 		executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
 	if restored.Revision == nil || *restored.Revision != 6 ||
 		len(openedAfterRestore.Rows) != 1 ||
@@ -284,7 +273,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	dictionary = nativecatalog.NewService(nativecatalog.New(reopened), nativecatalog.ServiceOptions{})
 	rows = NewService(New(reopened), dictionary, ServiceOptions{})
 	engine = executor.New(dictionary, rows)
-	afterRestart := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_leaf' LIMIT 20", executor.Parameters{}, executor.MutationOptions{})
+	afterRestart := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_leaf' LIMIT 1", executor.Parameters{}, executor.MutationOptions{})
 	if len(afterRestart.Rows) != 1 || afterRestart.Rows[0]["row_id"] != "row_first" ||
 		afterRestart.Rows[0]["revision"] != uint64(6) {
 		t.Fatalf("OPEN after restart = %#v", afterRestart)

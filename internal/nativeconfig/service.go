@@ -56,7 +56,7 @@ type Service struct {
 
 func Defaults() QueryBudgets {
 	return QueryBudgets{
-		RouteChildren: 12, OpenLocators: 24, SelectScan: 1000,
+		RouteChildren: 12, OpenLocators: 1, SelectScan: 1000,
 		SelectRows: 10, RouteFrameNodes: 12,
 	}
 }

@@ -157,7 +157,7 @@
     },
     {
       "name": "open-route",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"leaf\":\"route_storage\",\"limit\":24}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"OPEN ROUTE :leaf LIMIT :limit\"",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"leaf\":\"route_storage\",\"limit\":1}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"OPEN ROUTE :leaf LIMIT :limit\"",
       "msql": "OPEN ROUTE :leaf LIMIT :limit"
     },
     {

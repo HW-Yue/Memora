@@ -62,11 +62,18 @@ RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision;
 `SELECT`。`route_frame_nodes` 由宿主 Skill 在跨语句 Route Frame 中执行，
 数据库负责给所有宿主返回同一当前值。
 
-启动默认值是 Route children 12、locator 24、SELECT scan 1000、SELECT rows 10、
-Route Frame nodes 12。引擎另保留不可由配置突破的资源安全上限。
+启动默认值是 Route children 12、locator 1、SELECT scan 1000、SELECT rows 10、
+Route Frame nodes 12。F169 后 `open_locators` 是兼容字段：历史 revision 可以保留较大
+数值，但它不能突破每个 Leaf `0..1` 的产品基数。引擎另保留不可由配置突破的资源安全上限。
 其中 12 只是当前启动默认值，不代表模型准确率已经证明它最优或安全。
 完整 revision 链进入 logical snapshot，因此复制、迁移和 Database package 不会
 悄悄退回宿主默认值。
+
+`route_children` 当前是一次 Route 读取的查询预算，不直接等同于 Branch 的结构 fan-out。
+Branch 的 Database 级自治目标、例外记录和维护协议按
+[Route Branch Fan-out 策略](../query/route-branch-fanout-policy.md)单独设计。目标值由建模
+Agent 决定，不提供全局产品默认值，也不能因为某次目标恰好等于读取预算就复用成一个
+含义含混的开关。
 
 ## 配置记录
 

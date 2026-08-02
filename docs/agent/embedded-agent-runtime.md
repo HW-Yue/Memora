@@ -67,11 +67,11 @@ actor、权限、预算和审批状态可以不同，但语法解析、AST、类
 循环必须有确定性的最大步数、token、时间、返回字符、扫描行数和修改行数。达到预算时显式返回 `truncated` 或 `budget_exhausted`，不能无限自治。
 
 查询采用两阶段分工。内置 Runtime 依次发现 Database、Table、Schema 和 Table
-顶层 Route，再逐层选择有限子节点，直到叶子只返回候选 RowID；主 Agent 根据
+顶层 Route，再逐层选择有限子节点，直到 Leaf 返回唯一 RowID；主 Agent 根据
 定位生成 MSQL `SELECT` 回表读取真实 Row。发现结果不能包含正文，也不能直接
 作为最终答案。
 
-Runtime 校验每层节点数、最大深度、叶子 locator 和回表预算。Data Dictionary
+Runtime 校验每层节点数、最大深度、Leaf 单 Row 不变量和跨 Leaf 回表总预算。Data Dictionary
 提供已知 alias，MSQL 负责正式传递，Policy 强制权限与预算。Runtime 不生成
 `query_terms` 交给评分器，也不执行 MATCH/Vector/cosine 降级。
 

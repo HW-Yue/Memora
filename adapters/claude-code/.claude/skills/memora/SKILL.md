@@ -147,10 +147,11 @@ RowID lookup.
 
 Compare the user's intent with the bounded Route descriptions returned by each
 call. Choose a node explicitly, request only its immediate children, and repeat
-until a leaf is reached. `OPEN ROUTE` returns locators only; never answer from
-those candidates. Select projected semantic fields by Row ID, then summarize
-only the returned rows. Report empty, truncated, stale, or permission-limited
-results instead of inventing a fallback.
+until a leaf is reached. Every leaf locates at most one active Row, and
+`OPEN ROUTE` returns only that Row's locator; never answer from the locator.
+Select projected semantic fields by Row ID, then summarize only the returned
+Row. Report empty, stale, or permission-limited results instead of inventing a
+fallback.
 
 Use this bounded state machine:
 
@@ -171,16 +172,16 @@ at most once when it can materially affect the answer.
 
 ```sh
 memora query --input '{"parameters":{"named":{"parent":"route_architecture","limit":12}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES UNDER :parent LIMIT :limit"
-memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":24}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "OPEN ROUTE :leaf LIMIT :limit"
+memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":1}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "OPEN ROUTE :leaf LIMIT :limit"
 memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
 
-Read the current `query_budgets` row before navigation. The bundled 12 Router
-rows, 24 candidate locators, 10 selected rows, and 12,000 context characters are
-startup ceilings, not permission to exceed a smaller database revision. Use the
-smaller of the bundled ceiling and current `route_children`, `open_locators`,
-`select_rows`, and `route_frame_nodes`. Follow cursors only while another page
-can materially change the answer. Drop the Route Frame when its schema or route
+Read the current `query_budgets` row before navigation. The bundled ceilings are
+12 Router rows, one locator per opened leaf, 10 selected rows across explicitly
+chosen leaves, and 12,000 context characters. `open_locators` is retained as a
+compatibility budget but cannot raise a leaf above its `0..1` cardinality. Use
+the smaller current limits for the remaining budgets. A locator cursor is never
+expected from a valid leaf. Drop the Route Frame when its schema or route
 revision is stale, the topic changes, or the task ends.
 
 Stop when enough SELECT evidence answers the question, all candidates are
@@ -208,7 +209,9 @@ read-only preflight with explicit Row expectations. IGNORE has no steps. INSERT,
 REVISE, MOVE, and RELATE have one step; MERGE is one UPDATE plus DELETE steps;
 SPLIT is one UPDATE plus INSERT steps. Keep at most eight steps. Every INSERT or
 UPDATE supplies the complete `route_leaf_ids` snapshot, including an explicit
-empty array. Submit the plan through `mutate` so
+empty array. Before attaching a new Row, verify that every target leaf is empty;
+an occupied leaf requires a new semantic leaf, while the same Row may still use
+multiple distinct leaves. Submit the plan through `mutate` so
 Policy validation occurs before any Tool call and multi-step changes share one
 short transaction.
 

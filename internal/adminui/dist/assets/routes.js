@@ -1,5 +1,5 @@
 const CHILD_LIMIT = 12;
-const LOCATOR_LIMIT = 20;
+const LOCATOR_LIMIT = 1;
 
 class RouteViewError extends Error {
   constructor(code, message) {
@@ -303,14 +303,18 @@ async function loadChildren(executeMSQL, databaseID, tableID, routeID, cursor = 
   };
 }
 
-async function loadLocators(executeMSQL, databaseID, tableID, routeID, cursor = "") {
-  const source = cursor ? "OPEN ROUTE :route CURSOR :cursor LIMIT 20" : "OPEN ROUTE :route LIMIT 20";
-  const named = cursor ? { route: routeID, cursor } : { route: routeID };
+async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
+  const source = "OPEN ROUTE :route LIMIT 1";
+  const named = { route: routeID };
   const result = resultsFrom(await executeMSQL(source, [statementInput(named)]), 1)[0];
-  return {
+  const data = {
     rows: locatorRows(result, databaseID, tableID),
     page: validatePage(result, LOCATOR_LIMIT)
   };
+  if (data.rows.length > 1 || data.page.truncated || data.page.next_cursor) {
+    throw new RouteViewError("corrupt", "Route leaf must contain at most one locator");
+  }
+  return data;
 }
 
 function landingView() {
@@ -377,7 +381,7 @@ export async function renderRoutes(root, options) {
       view.append(stateNode("empty", title, "当前语义索引层没有可见对象。"));
     } else if (node.kind === "leaf") {
       view.append(pagedSection("Row locators", data.rows, data.page, locatorCard,
-        (cursor) => loadLocators(options.executeMSQL, databaseID, tableID, routeID, cursor)));
+        () => loadLocators(options.executeMSQL, databaseID, tableID, routeID)));
     } else {
       view.append(pagedSection("Child routes", data.rows, data.page,
         (row) => routeCard(row, databaseID, tableID),

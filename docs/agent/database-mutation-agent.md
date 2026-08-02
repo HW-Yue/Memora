@@ -81,7 +81,8 @@ RELATE      只新增或修正关系
 }
 ```
 
-一个 `row_id` 可以属于多个叶子。快照绑定新 Row revision，并与 Row、History、
+一个 `row_id` 可以属于多个叶子，但每个叶子最多一个活跃 `row_id`。INSERT 必须使用
+空 Leaf；已占用时创建新语义 Leaf，必要时增加 Branch。快照绑定新 Row revision，并与 Row、History、
 Route 正反向索引和 Change Log 在同一事务中发布；不能提交增删 diff，也不能让引擎
 从正文自动猜归属。Policy 的启动上限为 32 个 membership。
 

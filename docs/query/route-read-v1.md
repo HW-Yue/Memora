@@ -5,7 +5,7 @@
 ## 目的
 
 Admin 与 Agent 使用同一条 MSQL 链路逐层读取 Table Router：point node、children page、
-leaf locator page。Route 只负责导航，任何读取都不得夹带 Row 正文、答案、embedding
+single locator leaf。Route 只负责导航，任何读取都不得夹带 Row 正文、答案、embedding
 或物理 Store 信息。
 
 ## 分层语法
@@ -21,22 +21,24 @@ OPEN ROUTE :leaf_id [CURSOR :cursor] LIMIT :limit;
   按需 synopsis，不返回 children；scope 字段供 stable-ID 深链路验证，不加入逐层
   `SHOW` 的紧凑 Route Frame；
 - `SHOW` 返回一层 child node，默认不返回 synopsis；
-- `OPEN` 只接受 leaf，只返回 `database_id/table_id/row_id/revision` locator；
+- `OPEN` 只接受 leaf，只返回零个或一个 `database_id/table_id/row_id/revision` locator；
 - 业务字段和正文只能由后续 `SELECT ... WHERE row_id = ... LIMIT ...` 回表。
 
-`LIMIT` 必填，仍受当前动态 Route children/open locator 预算限制。cursor 必须是 TEXT
-literal 或 parameter。
+`LIMIT` 必填；Canonical Skill 对 `OPEN` 固定使用 1。cursor 语法为兼容保留，但合法
+Leaf 不会产生 next cursor。
 
 ## List page
 
 `SHOW` 与 `OPEN` 复用 `memora.list-page/v1`，每次都返回 version、limit、输入 cursor、
-snapshot、truncated 和可选 next cursor。snapshot 是当前 scope 内完整、可见 node 或
-locator 序列的确定性 SHA-256。
+snapshot、truncated 和可选 next cursor。`OPEN` 的 visible locator 集合基数是 `0..1`。
 
 cursor 绑定读取类型、稳定 parent/leaf scope、snapshot 与下一 offset，并使用 canonical
 encoding 和 checksum。损坏、非 canonical、跨 scope、越界 cursor 返回
 `validation_error`；两页之间 Route 或 membership 变化返回 `revision_conflict`，不能
 静默混合导航状态。
+
+历史实例若存在一个 Leaf 多个活跃 Row，`OPEN` 返回 `constraint_violation`，不得把它
+分页成候选桶继续查询；AI DBA 必须先完成语义 reshape。
 
 尚未创建 Table Router root 是合法空状态：`SHOW ROUTES FROM TABLE ... AT ROOT` 返回
 带确定性 snapshot 的空 list page，而不是 `not_found` 或 `internal_error`。不存在或已

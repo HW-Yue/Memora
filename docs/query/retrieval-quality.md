@@ -19,7 +19,9 @@
 - revision、有效时间、provenance 和 Source Receipt；
 - 一个或多个 Table 级 Route leaf membership。
 
-每个 Route 内部节点具有稳定 ID、短语义描述、范围边界和有限子节点；叶子只保存 RowID。AI 负责节点的语义质量，引擎负责 ID、容量、revision、一致性和原子发布。
+每个 Route 内部节点具有稳定 ID、短语义描述、范围边界和有限子节点；每个 Leaf 只保存
+零个或一个 RowID。同一 Row 可以从多个 Leaf 到达。AI 负责节点语义质量，引擎强制
+Leaf 单 Row 基数、revision、一致性和原子发布。
 
 Row 的新增、修改、删除、拆分和合并必须同步失效或重建 membership，不能留下指向旧 revision 或已删除 Row 的静默索引。
 
@@ -31,7 +33,7 @@ Row 的新增、修改、删除、拆分和合并必须同步失效或重建 mem
 → SHOW TABLES：读取所选库内有限表名、Row 语义与边界
 → DESCRIBE TABLE：读取 Schema 与顶层 Route 摘要
 → SHOW ROUTES：每次只展开所选节点的一层
-→ OPEN ROUTE：叶子只返回有限 RowID
+→ OPEN ROUTE：叶子确定性返回零个或一个 RowID
 → SELECT ... WHERE row_id = ?：读取真实数据
 → 必要时沿关系执行新的有界查询
 ```
@@ -45,7 +47,7 @@ AI 每次选择一个或少量分支，并将当前路径、候选节点、预�
 ```sql
 SHOW ROUTES FROM TABLE project_memora.decisions AT ROOT LIMIT 12;
 SHOW ROUTES UNDER :route_id LIMIT 12;
-OPEN ROUTE :leaf_id LIMIT 20;
+OPEN ROUTE :leaf_id LIMIT 1;
 SELECT title, summary, revision
 FROM project_memora.decisions
 WHERE row_id = :row_id
@@ -60,6 +62,7 @@ LIMIT 1;
 - 结果为空：检查 scope、alias、Schema 和 Route 缺口，形成可审计维护候选；
 - 分支过多：由 AI DBA 拆分或重命名局部节点，不提高无限上下文预算；
 - Row 难以归类：允许多叶 membership，但不复制 Row；
+- Leaf 已占用：新建语义 Leaf，必要时增加 Branch，不能把第二个 Row 塞入原 Leaf；
 - membership 陈旧：拒绝冒充最新结果，按 expected revision 局部重建；
 - 语义树损坏：从权威 Row、关系和当前规则重建新 generation，校验后原子切换。
 
@@ -70,7 +73,7 @@ LIMIT 1;
 - 按每层 fanout、树深、兄弟节点歧义度和 host/model 分桶的逐层正确率；
 - 满足准确率、调用数和 Route Frame 门槛时，每个模型及共同目标模型集合的安全 fanout；
 - 找到目标所需的 SQL 调用数、回退次数和最大 Route Frame；
-- 叶子无关 RowID 率与漏挂、错挂、陈旧 membership 数；
+- Leaf 单 Row 违反数与漏挂、错挂、陈旧 membership 数；
 - split/merge 后从顶层重新找到新 Row 的成功率；
 - snapshot、权限和 revision 正确率；
 - 新宿主/新模型在同一标准流程下的等价性。

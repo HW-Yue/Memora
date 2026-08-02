@@ -14,7 +14,7 @@ import (
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
-func TestPublicSplitFailureRollsBackRowsHistoryRelationsAndMemberships(t *testing.T) {
+func TestPublicSplitIntoSameLeafRollsBackRowsHistoryRelationsAndMemberships(t *testing.T) {
 	t.Parallel()
 
 	_, file, rows, routes, source, edge, membership := mutationFixture(t)
@@ -27,7 +27,7 @@ func TestPublicSplitFailureRollsBackRowsHistoryRelationsAndMemberships(t *testin
 		[]map[string]any{{"title": "first"}, {"title": "second"}},
 		row.ReshapeOptions{
 			ExpectedSchemaVersion: 1, ExpectedRevision: 1,
-			TargetRouteLeafIDs:     [][]string{{membership.LeafID}, {"route_missing"}},
+			TargetRouteLeafIDs:     [][]string{{membership.LeafID}, {membership.LeafID}},
 			RelationTargetOrdinals: map[string]int{edge.ID: 1},
 			Metadata:               row.WriteMetadata{Actor: "agent:test", Source: "test", Reason: "rollback"},
 		},
@@ -63,6 +63,10 @@ func TestSplitThenMergeUpdatesSemanticStructureAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	secondLeaf, err := routes.CreateChild("route_second", root.ID, "second", router.KindLeaf, "Second split Row")
+	if err != nil {
+		t.Fatal(err)
+	}
 	superseded := source
 	superseded.Revision, superseded.State, superseded.UpdatedAt = 2, row.StateSuperseded, now
 	first := newReshapeRow(source, "row_first", "first", now)
@@ -70,6 +74,8 @@ func TestSplitThenMergeUpdatesSemanticStructureAtomically(t *testing.T) {
 	root.Revision, root.Purpose = 2, "Root after split"
 	oldMembership := membership
 	oldMembership.MembershipRevision, oldMembership.Revision, oldMembership.Deleted = 2, 2, true
+	secondMembership := membership
+	secondMembership.LeafID = secondLeaf.ID
 	metadata := row.WriteMetadata{Actor: "agent:test", Source: "reshape", Reason: "semantic boundary"}
 	plan := ReshapePlan{
 		Sources: Plan{
@@ -78,7 +84,7 @@ func TestSplitThenMergeUpdatesSemanticStructureAtomically(t *testing.T) {
 			Memberships: []router.Membership{
 				oldMembership,
 				reshapeMembership(membership, first.ID, 1, 1, false),
-				reshapeMembership(membership, second.ID, 1, 1, false),
+				reshapeMembership(secondMembership, second.ID, 1, 1, false),
 			},
 		},
 		Targets: []RowChange{{Row: first, Metadata: metadata, RecordedAt: now, Initial: true}, {Row: second, Metadata: metadata, RecordedAt: now, Initial: true}},
@@ -101,9 +107,11 @@ func TestSplitThenMergeUpdatesSemanticStructureAtomically(t *testing.T) {
 	if got, _ := routes.Get(root.ID); got.Revision != 2 || got.Purpose != root.Purpose {
 		t.Fatalf("split route = %#v", got)
 	}
-	locators, _, err := routes.Open(membership.LeafID, 10)
-	if err != nil || len(locators) != 2 {
-		t.Fatalf("split memberships = %#v, %v", locators, err)
+	for leafID, rowID := range map[string]string{membership.LeafID: first.ID, secondLeaf.ID: second.ID} {
+		locators, _, err := routes.Open(leafID, 10)
+		if err != nil || len(locators) != 1 || locators[0].RowID != rowID {
+			t.Fatalf("split membership %s = %#v, %v", leafID, locators, err)
+		}
 	}
 
 	mergedAt := now.Add(time.Hour)
@@ -117,7 +125,7 @@ func TestSplitThenMergeUpdatesSemanticStructureAtomically(t *testing.T) {
 			Routes:  []router.Node{root},
 			Memberships: []router.Membership{
 				reshapeMembership(membership, first.ID, 2, 2, true),
-				reshapeMembership(membership, second.ID, 2, 2, true),
+				reshapeMembership(secondMembership, second.ID, 2, 2, true),
 				reshapeMembership(membership, merged.ID, 1, 1, false),
 			},
 		},
@@ -129,7 +137,7 @@ func TestSplitThenMergeUpdatesSemanticStructureAtomically(t *testing.T) {
 	if got, err := rows.Read(merged.ID); err != nil || got.Values["col_title"] != "merged" {
 		t.Fatalf("merged target = %#v, %v", got, err)
 	}
-	locators, _, err = routes.Open(membership.LeafID, 10)
+	locators, _, err := routes.Open(membership.LeafID, 10)
 	if err != nil || len(locators) != 1 || locators[0].RowID != merged.ID {
 		t.Fatalf("merged memberships = %#v, %v", locators, err)
 	}

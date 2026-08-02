@@ -5,12 +5,14 @@
 ## 只读快照
 
 `memora maintain --report` 返回 `memora.semantic-health/v2`。扫描读取当前 Catalog、每表
-最多 1,000 个 live Row、全部 live Route node，并以 cursor 读取全局最多 10,000 个 leaf
-locator。输出只含 ID、对象名、计数、风险与动作，不含 Row values、历史正文或模型判断。
+最多 1,000 个 live Row、全部 live Route node，并检查全局最多 10,000 个 leaf locator。
+输出只含 ID、对象名、计数、风险与动作，不含 Row values、历史正文或模型判断。
 
 ## 确定性 issue
 
-- `route_capacity`：root/branch 的 live child ≥12，或 leaf locator ≥100；
+- `route_capacity`：root/branch 的 live child ≥12；
+- `multi_row_leaf`：历史或损坏状态让一个 Leaf 出现多个活跃 Row locator；报告携带
+  Leaf ID 与受影响 RowID，供 AI DBA 做单调减少的语义重塑；
 - `ambiguous_siblings`：同 parent 的规范化 name/alias 相交；
 - `invalid_route_structure`：Table root 数不为 1、parent 缺失/跨 Table、kind/层级不合法；
 - `unrouted_row`：完成扫描的 Table 中 live Row 没有 live membership；
@@ -23,7 +25,8 @@ locator。输出只含 ID、对象名、计数、风险与动作，不含 Row va
 `review_required`、`auto_fix=false`；F128 没有语义自动修复。
 
 F129 起，AI 可在读取受影响 Route/locator 后，通过只读 MSQL 生成绑定当前 guard/hash
-的局部 split/merge/move 计划；健康报告本身仍不能成为分组答案或执行授权。
+的局部 split/merge/move 计划；F169 后 Leaf 不再以容量 split。健康报告本身仍不能成为
+分组答案或执行授权。
 
 ## 截断与误报边界
 

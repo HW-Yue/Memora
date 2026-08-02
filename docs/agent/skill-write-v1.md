@@ -40,6 +40,8 @@ CLI 在任何 Tool 调用前严格解码并校验：
 - UPDATE/DELETE 带 expected schema/revision；
 - INSERT/UPDATE 带非 nil 的完整 Route membership 快照；
 - Route memberships 最多 32 个，稳定 ID 非空且去重。
+- 每个目标 Leaf 最多一个活跃 Row；INSERT 必须先确认 Leaf 为空，UPDATE 可以保留
+  当前 Row 的 membership，同一 Row 仍可属于多个 Leaf。
 
 显式空数组表示提交空快照；字段缺失不等于空快照。语义冲突、高风险或
 越权仍由 Skill 请求用户，不能用扩展 `authorized_databases` 绕过。

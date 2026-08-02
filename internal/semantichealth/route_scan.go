@@ -12,7 +12,6 @@ import (
 
 const (
 	maximumRouteChildren = 12
-	maximumLeafLocators  = 100
 	maximumLocatorScan   = 10_000
 	locatorPageSize      = 1000
 )
@@ -103,9 +102,14 @@ func scanRoutes(
 		if !complete {
 			state.routesComplete, truncated = false, true
 		}
-		if len(locators) >= maximumLeafLocators {
-			issues = append(issues, nodeIssue(state, node, KindRouteCapacity,
-				"review_route_split", []string{node.ID}, "", len(locators)))
+		if len(locators) > 1 {
+			objects := make([]string, 0, len(locators)+1)
+			objects = append(objects, node.ID)
+			for _, locator := range locators {
+				objects = append(objects, locator.RowID)
+			}
+			issues = append(issues, nodeIssue(state, node, KindMultiRowLeaf,
+				"review_route_reshape", objects, "", len(locators)))
 		}
 		for _, locator := range locators {
 			if locator.DatabaseID != node.DatabaseID || locator.TableID != node.TableID {
@@ -154,7 +158,16 @@ func scanLeaf(ctx context.Context, source Source, leafID string, remaining *int)
 			return locators, false, nil
 		}
 		limit := min(locatorPageSize, *remaining)
-		page, receipt, err := source.ListRouterLeafPage(ctx, leafID, cursor, limit)
+		var page []router.Locator
+		var receipt router.ReadPage
+		var err error
+		if inspector, ok := source.(interface {
+			InspectRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
+		}); ok {
+			page, receipt, err = inspector.InspectRouterLeafPage(ctx, leafID, cursor, limit)
+		} else {
+			page, receipt, err = source.ListRouterLeafPage(ctx, leafID, cursor, limit)
+		}
 		if err != nil {
 			return nil, false, err
 		}

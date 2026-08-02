@@ -24,7 +24,6 @@ const (
 	leafBucket      = "router_leaf_members"
 	reverseBucket   = "router_row_memberships"
 	defaultChildren = 12
-	defaultLeafRows = 100
 	maxPageSize     = 100
 	maxNameRunes    = 64
 	maxPurposeRunes = 800
@@ -37,14 +36,12 @@ type IDSource interface {
 type Options struct {
 	IDs         IDSource
 	MaxChildren int
-	MaxLeafRows int
 }
 
 type Service struct {
 	store       store.Store
 	ids         IDSource
 	maxChildren int
-	maxLeafRows int
 	mu          sync.Mutex
 }
 
@@ -63,18 +60,12 @@ func New(database store.Store, options Options) *Service {
 	if options.MaxChildren == 0 {
 		options.MaxChildren = defaultChildren
 	}
-	if options.MaxLeafRows == 0 {
-		options.MaxLeafRows = defaultLeafRows
-	}
 	if options.MaxChildren < 1 {
 		options.MaxChildren = 1
 	}
-	if options.MaxLeafRows < 1 {
-		options.MaxLeafRows = 1
-	}
 	return &Service{
 		store: database, ids: options.IDs,
-		maxChildren: options.MaxChildren, maxLeafRows: options.MaxLeafRows,
+		maxChildren: options.MaxChildren,
 	}
 }
 
@@ -271,18 +262,15 @@ func (service *Service) ReplaceMembershipsIn(
 			return nil, routerError(result.CodeRevisionConflict, "Router membership revision is stale")
 		}
 	}
-	oldLeaves := make(map[string]struct{}, len(oldLeafIDs))
-	for _, leafID := range oldLeafIDs {
-		oldLeaves[leafID] = struct{}{}
-	}
 	for _, leafID := range leafIDs {
 		locators, err := loadLocators(ctx, tx, leafID)
 		if err != nil {
 			return nil, err
 		}
-		_, replacingExisting := oldLeaves[leafID]
-		if len(locators) >= service.maxLeafRows && !replacingExisting {
-			return nil, routerError(result.CodeConstraint, "Router leaf capacity exceeded; semantic split is required")
+		for _, existing := range locators {
+			if !sameRow(existing, locator) {
+				return nil, routerError(result.CodeConstraint, "Router leaf already locates another Row; create a distinct semantic leaf")
+			}
 		}
 	}
 	for _, leafID := range oldLeafIDs {
@@ -493,6 +481,9 @@ func (service *Service) ListLeafCursorPageIn(
 	locators, err := loadLocators(ctx, tx, leafID)
 	if err != nil {
 		return nil, ReadPage{}, err
+	}
+	if len(locators) > 1 {
+		return nil, ReadPage{}, routerError(result.CodeConstraint, "Router leaf locates multiple Rows and requires semantic reshape")
 	}
 	return PaginateLocators("leaf:"+leafID, cursor, limit, locators)
 }

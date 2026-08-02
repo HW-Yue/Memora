@@ -61,9 +61,12 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 
 	dictionary := catalog.New(databaseStore, catalog.Options{})
 	service := row.New(databaseStore, dictionary, row.Options{
-		IDs:    &phaseBIDs{values: []string{"seed", "after-import", "rolled-back"}},
-		Router: router.Options{IDs: &phaseBIDs{values: []string{"root-1", "leaf-1", "root-2", "leaf-2"}}},
-		Clock:  phaseBClock{},
+		IDs: &phaseBIDs{values: []string{"seed", "after-import", "rolled-back"}},
+		Router: router.Options{IDs: &phaseBIDs{values: []string{
+			"root-1", "leaf-1", "root-2", "leaf-2",
+			"transaction-update-leaf", "transaction-insert-leaf", "rollback-leaf",
+		}}},
+		Clock: phaseBClock{},
 	})
 	page, truncated, err := service.ListPage(ctx, "work", "notes", 1000)
 	if err != nil || !truncated || len(page) != 1000 || page[0].ID != "row_00000" {
@@ -111,6 +114,9 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	if locators, _, err := service.ListRouterLeaf(ctx, leaf2.ID, 10); err != nil || len(locators) != 1 || locators[0].RowID != seed.ID {
 		t.Fatalf("rebuilt Router = %#v, %v", locators, err)
 	}
+	updateLeaf := phaseBLeaf(t, ctx, service, leaf2.ParentID, "transaction-update")
+	insertLeaf := phaseBLeaf(t, ctx, service, leaf2.ParentID, "transaction-insert")
+	rollbackLeaf := phaseBLeaf(t, ctx, service, leaf2.ParentID, "rollback")
 
 	transaction, err := service.BeginTransaction(ctx)
 	if err != nil {
@@ -120,7 +126,7 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 		"title": "transaction update",
 	}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
-		RouteLeafIDs: []string{leaf2.ID},
+		RouteLeafIDs: []string{updateLeaf.ID},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +134,7 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 	inserted, err := transaction.Insert(ctx, "work", "notes", map[string]any{
 		"title": "transaction insert",
 	}, row.WriteOptions{
-		ExpectedSchemaVersion: 1, RouteLeafIDs: []string{leaf2.ID},
+		ExpectedSchemaVersion: 1, RouteLeafIDs: []string{insertLeaf.ID},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +153,7 @@ func TestPhaseBExitTenThousandRowsRebuildRestartAndSnapshotHash(t *testing.T) {
 		"title": "must roll back",
 	}, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: 1,
-		RouteLeafIDs: []string{leaf2.ID},
+		RouteLeafIDs: []string{rollbackLeaf.ID},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -238,6 +244,22 @@ func phaseBSnapshot(t *testing.T, count int) []byte {
 		t.Fatal(err)
 	}
 	return encoded
+}
+
+func phaseBLeaf(
+	t *testing.T,
+	ctx context.Context,
+	service *row.Service,
+	parentID, name string,
+) router.Node {
+	t.Helper()
+	leaf, err := service.CreateRouterNode(ctx, parentID, router.NodeDefinition{
+		Name: name, Kind: router.KindLeaf, Purpose: "Phase B " + name + " row",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return leaf
 }
 
 func phaseBRoute(

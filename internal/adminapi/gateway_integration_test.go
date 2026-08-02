@@ -260,10 +260,10 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 			},
 		},
 		{
-			source:     "OPEN ROUTE :route LIMIT 20",
+			source:     "OPEN ROUTE :route LIMIT 1",
 			statements: []map[string]any{{"parameters": executor.Parameters{Named: map[string]any{"route": leafRouteID}}}},
 			resultRows: 1,
-			pageLimit:  20,
+			pageLimit:  1,
 			assert: func(t *testing.T, statement result.StatementResult) {
 				row := statement.Rows[0]
 				if len(row) != 4 || row["database_id"] != databaseID || row["table_id"] != tableID ||

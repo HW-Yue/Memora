@@ -38,19 +38,30 @@ func TestNativeDaemonPlansAndAppliesApprovedRouteSplit(t *testing.T) {
 		}},
 	)
 	rootID, _ := rootResult.Results[0].Rows[0]["route_id"].(string)
-	leafResult := executeTraceMSQL(t, dataDir,
+	branchResult := executeTraceMSQL(t, dataDir,
 		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
 		[]executor.StatementInput{{
 			Parameters: executor.Parameters{Named: map[string]any{
-				"parent": rootID, "name": "source", "kind": "leaf", "purpose": "Source",
+				"parent": rootID, "name": "source", "kind": "branch", "purpose": "Source",
 			}},
 			Mutation: executor.MutationOptions{MaxAffectedRows: 1},
 		}},
 	)
-	leafID, _ := leafResult.Results[0].Rows[0]["route_id"].(string)
-	rowIDs := []string{}
+	branchID, _ := branchResult.Results[0].Rows[0]["route_id"].(string)
+	leafIDs := []string{}
 	for _, title := range []string{"first", "second"} {
-		inserted := executeTraceMSQL(t, dataDir,
+		leafResult := executeTraceMSQL(t, dataDir,
+			"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
+			[]executor.StatementInput{{
+				Parameters: executor.Parameters{Named: map[string]any{
+					"parent": branchID, "name": title, "kind": "leaf", "purpose": title + " Row",
+				}},
+				Mutation: executor.MutationOptions{MaxAffectedRows: 1},
+			}},
+		)
+		leafID, _ := leafResult.Results[0].Rows[0]["route_id"].(string)
+		leafIDs = append(leafIDs, leafID)
+		executeTraceMSQL(t, dataDir,
 			"INSERT INTO work.notes (title) VALUES (:title)",
 			[]executor.StatementInput{{
 				Parameters: executor.Parameters{Named: map[string]any{"title": title}},
@@ -60,16 +71,14 @@ func TestNativeDaemonPlansAndAppliesApprovedRouteSplit(t *testing.T) {
 				},
 			}},
 		)
-		rowID, _ := inserted.Results[0].Rows[0]["row_id"].(string)
-		rowIDs = append(rowIDs, rowID)
 	}
 	proposal := routemutationplan.Proposal{
 		Version: routemutationplan.ProposalVersion, ID: "proposal_native", Operation: routemutationplan.OperationSplit,
-		Actor: "agent:test", SourceEventID: "event_1", Reason: "split source leaf",
-		Sources: []routemutationplan.SourceRef{{RouteID: leafID, ExpectedRevision: 1}},
+		Actor: "agent:test", SourceEventID: "event_1", Reason: "split source branch",
+		Sources: []routemutationplan.SourceRef{{RouteID: branchID, ExpectedRevision: 1}},
 		Targets: []routemutationplan.TargetProposal{
-			{Key: "first", Name: "first", Purpose: "First", RowIDs: []string{rowIDs[0]}},
-			{Key: "second", Name: "second", Purpose: "Second", RowIDs: []string{rowIDs[1]}},
+			{Key: "first", Name: "first-group", Purpose: "First", ChildRouteIDs: []string{leafIDs[0]}},
+			{Key: "second", Name: "second-group", Purpose: "Second", ChildRouteIDs: []string{leafIDs[1]}},
 		},
 	}
 	planned := executeTraceMSQL(t, dataDir,
@@ -80,11 +89,11 @@ func TestNativeDaemonPlansAndAppliesApprovedRouteSplit(t *testing.T) {
 		planned.Results[0].AffectedRows != 0 {
 		t.Fatalf("native Route plan = %#v", planned.Results[0])
 	}
-	opened := executeTraceMSQL(t, dataDir, "OPEN ROUTE :leaf LIMIT 10", []executor.StatementInput{{
-		Parameters: executor.Parameters{Named: map[string]any{"leaf": leafID}},
+	children := executeTraceMSQL(t, dataDir, "SHOW ROUTES UNDER :branch LIMIT 12", []executor.StatementInput{{
+		Parameters: executor.Parameters{Named: map[string]any{"branch": branchID}},
 	}})
-	if len(opened.Results[0].Rows) != 2 {
-		t.Fatalf("PLAN mutated source leaf = %#v", opened.Results[0])
+	if len(children.Results[0].Rows) != 2 {
+		t.Fatalf("PLAN mutated source branch = %#v", children.Results[0])
 	}
 	encodedPlan, err := json.Marshal(planned.Results[0].Rows[0]["route_mutation_plan"])
 	if err != nil {
@@ -110,8 +119,8 @@ func TestNativeDaemonPlansAndAppliesApprovedRouteSplit(t *testing.T) {
 		t.Fatalf("native Route apply = %#v", applied.Results[0])
 	}
 	for _, create := range plan.Creates {
-		target := executeTraceMSQL(t, dataDir, "OPEN ROUTE :leaf LIMIT 10", []executor.StatementInput{{
-			Parameters: executor.Parameters{Named: map[string]any{"leaf": create.RouteID}},
+		target := executeTraceMSQL(t, dataDir, "SHOW ROUTES UNDER :branch LIMIT 12", []executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"branch": create.RouteID}},
 		}})
 		if len(target.Results[0].Rows) != 1 {
 			t.Fatalf("applied target %s = %#v", create.RouteID, target.Results[0])

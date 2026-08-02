@@ -105,7 +105,7 @@ Vector 只提供候选位置，不能直接回答、扩大授权范围或排除�
 ```text
 AI 维护可读的 Table 级多层语义树
 + AI 用 MSQL 逐层选择有限分支
-+ 叶子只返回 RowID
++ 每个叶子只返回零个或一个 RowID
 + 结构化 SQL filter 与关系遍历
 + 最终 SELECT 回表
 ```

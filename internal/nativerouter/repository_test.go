@@ -49,10 +49,6 @@ func TestTableRouterShowUnderOpenAndReverseMembershipSurviveReopen(t *testing.T)
 	if err := repository.Attach(principles.ID, locator, 1); err != nil {
 		t.Fatal(err)
 	}
-	secondLocator := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_second", Revision: 1}
-	if err := repository.Attach(decisions.ID, secondLocator, 1); err != nil {
-		t.Fatal(err)
-	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -79,13 +75,8 @@ func TestTableRouterShowUnderOpenAndReverseMembershipSurviveReopen(t *testing.T)
 		t.Fatalf("ShowUnderPage(second) = %#v, %#v, %v", secondPage, continued, err)
 	}
 	locators, locatorPage, err := repository.OpenPage(decisions.ID, "", 1)
-	if err != nil || len(locators) != 1 || locatorPage.Snapshot == "" || locatorPage.NextCursor == "" {
-		t.Fatalf("OpenPage(first) = %#v, %#v, %v", locators, locatorPage, err)
-	}
-	remaining, locatorContinued, err := repository.OpenPage(decisions.ID, locatorPage.NextCursor, 1)
-	if err != nil || len(remaining) != 1 || locatorContinued.Snapshot != locatorPage.Snapshot ||
-		locatorContinued.NextCursor != "" || remaining[0] == locators[0] {
-		t.Fatalf("OpenPage(second) = %#v, %#v, %v", remaining, locatorContinued, err)
+	if err != nil || len(locators) != 1 || locatorPage.Snapshot == "" || locatorPage.NextCursor != "" {
+		t.Fatalf("OpenPage(single Row) = %#v, %#v, %v", locators, locatorPage, err)
 	}
 	if _, err := repository.CreateChild("route_extra", root.ID, "额外", router.KindLeaf, "额外知识"); err != nil {
 		t.Fatal(err)
@@ -96,6 +87,112 @@ func TestTableRouterShowUnderOpenAndReverseMembershipSurviveReopen(t *testing.T)
 	memberships, err := repository.Memberships(locator.RowID)
 	if err != nil || len(memberships) != 2 || memberships[0].LeafID == memberships[1].LeafID {
 		t.Fatalf("Memberships() = %#v, %v", memberships, err)
+	}
+}
+
+func TestOpenRejectsLegacyLeafWithMultipleLiveRows(t *testing.T) {
+	t.Parallel()
+
+	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	repository := New(file)
+	root, err := repository.CreateRoot("route_root", "db_work", "tbl_notes", "Notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := repository.CreateChild("route_leaf", root.ID, "one", router.KindLeaf, "One Row")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := router.Membership{LeafID: leaf.ID, MembershipRevision: 1, Locator: router.Locator{
+		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 1,
+	}}
+	if err := repository.Attach(first.LeafID, first.Locator, first.MembershipRevision); err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.RowID = "row_second"
+	payload, err := encodeMembership(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(second), payload); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := repository.OpenPage(leaf.ID, "", 10); !nativeRouteCode(err, result.CodeConstraint) {
+		t.Fatalf("OPEN legacy multi-Row leaf error = %v", err)
+	}
+	deleted := first
+	deleted.MembershipRevision, deleted.Deleted = 2, true
+	if err := repository.ValidateMembershipChanges([]router.Membership{deleted}); err != nil {
+		t.Fatalf("monotonic legacy repair validation = %v", err)
+	}
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.StageMembership(transaction, deleted); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	locators, _, err := repository.OpenPage(leaf.ID, "", 1)
+	if err != nil || len(locators) != 1 || locators[0].RowID != second.RowID {
+		t.Fatalf("OPEN after monotonic legacy repair = %#v, %v", locators, err)
+	}
+}
+
+func TestValidateMembershipChangesAllowsAtomicLeafTransfer(t *testing.T) {
+	t.Parallel()
+
+	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	repository := New(file)
+	root, err := repository.CreateRoot("route_root", "db_work", "tbl_notes", "Notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := repository.CreateChild("route_leaf", root.ID, "exact", router.KindLeaf, "Exact Row")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := router.Membership{LeafID: leaf.ID, MembershipRevision: 1, Locator: router.Locator{
+		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 1,
+	}}
+	if err := repository.Attach(first.LeafID, first.Locator, first.MembershipRevision); err != nil {
+		t.Fatal(err)
+	}
+	deleted := first
+	deleted.MembershipRevision, deleted.Deleted = 2, true
+	second := first
+	second.RowID = "row_second"
+	changes := []router.Membership{deleted, second}
+	if err := repository.ValidateMembershipChanges(changes); err != nil {
+		t.Fatalf("atomic transfer validation = %v", err)
+	}
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, membership := range changes {
+		if err := repository.StageMembership(transaction, membership); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	locators, _, err := repository.OpenPage(leaf.ID, "", 1)
+	if err != nil || len(locators) != 1 || locators[0].RowID != second.RowID {
+		t.Fatalf("OPEN after atomic transfer = %#v, %v", locators, err)
 	}
 }
 

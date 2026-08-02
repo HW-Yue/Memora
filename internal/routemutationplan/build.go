@@ -20,7 +20,7 @@ const (
 	maximumSources      = 12
 	maximumTargets      = 12
 	maximumChildren     = 12
-	maximumLeafLocators = 100
+	maximumLeafLocators = 1
 	maximumLocatorScan  = 2_000
 	maximumLocatorPages = 100
 	locatorPageSize     = 100
@@ -209,25 +209,7 @@ func (b *builder) buildSplit() error {
 			}
 		}
 	} else if source.Kind == router.KindLeaf {
-		locators, err := b.leafLocators(source)
-		if err != nil {
-			return err
-		}
-		if err := completeRowAssignment(b.proposal.Targets, locators); err != nil {
-			return err
-		}
-		byRow := locatorMap(locators)
-		for index, target := range b.proposal.Targets {
-			if len(target.RowIDs) > maximumLeafLocators {
-				return planError(result.CodeConstraint, "split target %q exceeds leaf capacity", target.Key)
-			}
-			for _, rowID := range target.RowIDs {
-				locator := byRow[rowID]
-				b.plan.MembershipMoves = append(b.plan.MembershipMoves, MembershipMove{
-					RowID: rowID, Revision: locator.Revision, FromLeafIDs: []string{source.ID}, ToLeafID: creates[index].RouteID,
-				})
-			}
-		}
+		return planError(result.CodeConstraint, "single-Row Route leaf cannot be split; split the Row or restructure a branch")
 	} else {
 		return planError(result.CodeConstraint, "SPLIT source must be a branch or leaf")
 	}
@@ -316,7 +298,7 @@ func (b *builder) buildMerge() error {
 			}
 		}
 		if len(merged) > maximumLeafLocators {
-			return planError(result.CodeConstraint, "MERGE target exceeds leaf capacity")
+			return planError(result.CodeConstraint, "MERGE would place distinct Rows in one Route leaf")
 		}
 		for _, move := range merged {
 			move.FromLeafIDs = uniqueSorted(move.FromLeafIDs)
@@ -510,28 +492,6 @@ func completeChildAssignment(targets []TargetProposal, children []router.Node) e
 	return nil
 }
 
-func completeRowAssignment(targets []TargetProposal, locators []router.Locator) error {
-	want, got := map[string]bool{}, map[string]bool{}
-	for _, locator := range locators {
-		want[locator.RowID] = true
-	}
-	for _, target := range targets {
-		if len(target.RowIDs) == 0 || len(target.ChildRouteIDs) != 0 {
-			return planError(result.CodeValidation, "leaf SPLIT targets require only non-empty row_ids")
-		}
-		for _, id := range target.RowIDs {
-			if !want[id] || got[id] {
-				return planError(result.CodeConstraint, "leaf SPLIT assignment is incomplete or duplicated")
-			}
-			got[id] = true
-		}
-	}
-	if len(got) != len(want) {
-		return planError(result.CodeConstraint, "leaf SPLIT assignment is incomplete or duplicated")
-	}
-	return nil
-}
-
 func (b *builder) guardParent(parent router.Node) {
 	b.addNodeGuard(parent)
 	b.addChildSet(parent.ID)
@@ -647,14 +607,6 @@ func validRouteName(name string) bool {
 		}
 	}
 	return true
-}
-
-func locatorMap(values []router.Locator) map[string]router.Locator {
-	result := make(map[string]router.Locator, len(values))
-	for _, value := range values {
-		result[value.RowID] = value
-	}
-	return result
 }
 
 func uniqueSorted(values []string) []string {

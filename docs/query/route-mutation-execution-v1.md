@@ -19,7 +19,7 @@ APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes;
 
 - 每个 Node guard 的稳定 ID、Table scope 与 revision；
 - 每个 guarded parent 的完整 direct child ID 集合；
-- 每个 guarded leaf 的完整 RowID/revision locator 集合；
+- 每个 guarded leaf 的完整 `0..1` RowID/revision locator 集合；
 - plan identity、plan hash、base snapshot hash、action shape 与影响计数。
 
 任何差异返回稳定冲突且零写入。branch 子节点被重挂时，计划 guard 覆盖整棵移动
@@ -31,6 +31,9 @@ APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes;
 membership tombstone/attach revision 与一个 Committed Change envelope。执行器在提交前
 证明所有 action 都被物化且删除节点不再拥有 live child；事务 staging 或 commit 失败
 时不发布部分对象。
+
+提交前还会按最终状态验证 `Leaf → active Row` 基数。原子 move 可以先 tombstone 旧
+occupant 再写入新 occupant；最终仍有两个不同 Row 时返回 `constraint_violation` 且零写入。
 
 成功返回 `memora.route-mutation-receipt/v1`，包含 plan ID/hash、operation、change
 sequence、各类覆盖计数与 `verified=true`。Receipt 是本次提交结果，不允许 Agent 据此

@@ -27,7 +27,7 @@ DESCRIBE TABLE project_memora.design_topics COMPACT;
 SHOW ROUTES FROM TABLE project_memora.design_topics AT ROOT LIMIT 12;
 SHOW ROUTES UNDER :route_id LIMIT 12;
 DESCRIBE ROUTE :route_id; -- 仅当短 purpose 无法稳定选择时
-OPEN ROUTE :leaf_id LIMIT 20;
+OPEN ROUTE :leaf_id LIMIT 1;
 SELECT ... WHERE row_id = :row_id LIMIT 1;
 ```
 
@@ -66,7 +66,8 @@ EXPORT WIKI TO :path PROFILE :profile;
 CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得插值进 MSQL；目标必须是绝对规范化路径。语句只允许 autocommit，不读取或回流 Vault 中的人类编辑。投影、稳定路径、manifest 与增量规则见 [Obsidian Wiki 导出](../export/obsidian-wiki.md)。
 
 语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
-所选 Table 的短 Route 节点，直到叶子得到 RowID。aliases、旧名称和关系是可读
+所选 Table 的短 Route 节点，直到 Leaf 得到唯一 RowID。一个 Leaf 最多一个活跃 Row，
+同一 Row 可以属于多个 Leaf。aliases、旧名称和关系是可读
 数据库内容，由 AI 在判断或明确 SQL filter 中使用，不进入隐藏相似度融合。
 `SHOW ROUTES` 默认只返回短 purpose；可选的 0–1000 字符 synopsis 只通过
 `DESCRIBE ROUTE` 按需读取，并用 revision-guarded

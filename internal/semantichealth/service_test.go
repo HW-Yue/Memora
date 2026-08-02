@@ -51,7 +51,7 @@ func TestHealthReportIsDeterministicAndNeverAutoMutatesSemanticIssues(t *testing
 	if err != nil || !reflect.DeepEqual(first, second) {
 		t.Fatalf("reports differ: %#v %#v, %v", first, second, err)
 	}
-	if first.Status != "attention" || first.IssueCount != 3 || first.AutoFixCount != 0 || first.Hash == "" {
+	if first.Status != "attention" || first.IssueCount != 4 || first.AutoFixCount != 0 || first.Hash == "" {
 		t.Fatalf("report = %#v", first)
 	}
 	for _, issue := range first.Issues {

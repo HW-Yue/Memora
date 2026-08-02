@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
@@ -118,6 +119,9 @@ func (repository *Repository) prepareChild(id, parentID, name string, kind route
 func (repository *Repository) Attach(leafID string, locator router.Locator, membershipRevision uint64) error {
 	value := router.Membership{LeafID: leafID, MembershipRevision: membershipRevision, Locator: locator}
 	if err := repository.validateMembership(value); err != nil {
+		return err
+	}
+	if err := repository.ValidateMembershipChanges([]router.Membership{value}); err != nil {
 		return err
 	}
 	payload, err := encodeMembership(value)
@@ -325,6 +329,16 @@ func (repository *Repository) Open(leafID string, limit int) ([]router.Locator, 
 }
 
 func (repository *Repository) OpenPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
+	return repository.openPage(leafID, cursor, limit, true)
+}
+
+// InspectLeafPage is a maintenance-only read used to diagnose and monotonically
+// repair legacy multi-Row leaves. Normal Router reads must use OpenPage.
+func (repository *Repository) InspectLeafPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
+	return repository.openPage(leafID, cursor, limit, false)
+}
+
+func (repository *Repository) openPage(leafID, cursor string, limit int, enforceSingleRow bool) ([]router.Locator, router.ReadPage, error) {
 	leaf, err := repository.Get(leafID)
 	if err != nil {
 		return nil, router.ReadPage{}, err
@@ -342,8 +356,72 @@ func (repository *Repository) OpenPage(leafID, cursor string, limit int) ([]rout
 			locators = append(locators, membership.Locator)
 		}
 	}
+	if enforceSingleRow && len(locators) > 1 {
+		return nil, router.ReadPage{}, &router.Error{
+			Code:    result.CodeConstraint,
+			Message: "Router leaf locates multiple Rows and requires semantic reshape",
+		}
+	}
 	sort.Slice(locators, func(left, right int) bool { return locators[left].RowID < locators[right].RowID })
 	return router.PaginateLocators("leaf:"+leafID, cursor, limit, locators)
+}
+
+// ValidateMembershipChanges checks the touched leaves in the final live state.
+// A Row may remain in multiple leaves, but a healthy leaf locates at most one
+// live Row. A legacy invalid leaf may only decrease its occupant count, which
+// permits bounded repair without allowing new ambiguity. Callers must invoke it
+// before staging an atomic write set.
+func (repository *Repository) ValidateMembershipChanges(changes []router.Membership) error {
+	current, err := repository.latestMemberships(false)
+	if err != nil {
+		return err
+	}
+	latestChanges := make(map[string]router.Membership, len(changes))
+	touchedLeaves := make(map[string]bool, len(changes))
+	for _, membership := range changes {
+		key := membershipKey(membership)
+		touchedLeaves[membership.LeafID] = true
+		if existing, ok := latestChanges[key]; !ok || membership.MembershipRevision > existing.MembershipRevision {
+			latestChanges[key] = membership
+		}
+	}
+	currentByLeaf := make(map[string]map[string]router.Membership, len(touchedLeaves))
+	for leafID := range touchedLeaves {
+		currentByLeaf[leafID] = map[string]router.Membership{}
+	}
+	for _, membership := range current {
+		if touchedLeaves[membership.LeafID] {
+			currentByLeaf[membership.LeafID][membership.RowID] = membership
+		}
+	}
+	finalByLeaf := make(map[string]map[string]router.Membership, len(currentByLeaf))
+	for leafID, occupants := range currentByLeaf {
+		finalByLeaf[leafID] = make(map[string]router.Membership, len(occupants))
+		for rowID, membership := range occupants {
+			finalByLeaf[leafID][rowID] = membership
+		}
+	}
+	for _, membership := range latestChanges {
+		if membership.Deleted {
+			delete(finalByLeaf[membership.LeafID], membership.RowID)
+		} else {
+			finalByLeaf[membership.LeafID][membership.RowID] = membership
+		}
+	}
+	for leafID, occupants := range finalByLeaf {
+		currentCount, finalCount := len(currentByLeaf[leafID]), len(occupants)
+		if finalCount > 1 && !(currentCount > 1 && finalCount < currentCount) {
+			return &router.Error{
+				Code:    result.CodeConstraint,
+				Message: "Router leaf already locates another Row; create a distinct semantic leaf",
+			}
+		}
+	}
+	return nil
+}
+
+func membershipKey(value router.Membership) string {
+	return value.LeafID + "\x00" + value.RowID
 }
 
 func (repository *Repository) Memberships(rowID string) ([]router.Membership, error) {

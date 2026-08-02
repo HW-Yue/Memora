@@ -95,6 +95,9 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 	if err != nil {
 		return err
 	}
+	if err := coordinator.router.ValidateMembershipChanges(plan.Memberships); err != nil {
+		return err
+	}
 	transaction, err := coordinator.file.Begin()
 	if err != nil {
 		return err
@@ -152,6 +155,9 @@ func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, e
 	}
 	sequence, err := coordinator.changeSequence()
 	if err != nil {
+		return 0, err
+	}
+	if err := coordinator.router.ValidateMembershipChanges(plan.Memberships); err != nil {
 		return 0, err
 	}
 	transaction, err := coordinator.file.Begin()

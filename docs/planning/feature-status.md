@@ -28,6 +28,7 @@
 | F166 | 清除已撤销 `MATCH` 的 Lexer、Policy、Host 与当前文档残留 |
 | F167 | 删除旧 Row Agent-index generation，并归档 `pending_reindex` 规格 |
 | F168 | Admin 默认固定监听 `127.0.0.1:3888`，占用时拒绝随机降级 |
+| F169 | Route Leaf 冻结为最多一个活跃 Row；旧项目数据已迁为 15 个单 Row Leaf |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -70,6 +71,8 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - session/turn/trace 指标与本地分析；
 - 真实 AI 查询质量和成本报告；
 - 写入时机与 worthiness 质量评测，安排在查询评测稳定之后。
+- Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent
+  判断并留下 revision/理由，引擎不提供统一语义常量；
 
 代码清理的保留/删除理由见[旧代码清理边界](../development/legacy-code-boundary.md)。
 

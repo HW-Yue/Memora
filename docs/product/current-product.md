@@ -10,7 +10,8 @@ Memora 是面向 AI 的本地个人语义数据库。Codex、Claude Code 等宿�
 索引、恢复与物理正确性。
 
 权威数据是自描述 Database 中可独立修改的语义 Row，不是聊天记录、文档 chunk 或
-Embedding。每个 Table 有多层语义 Route；AI 逐层导航到 RowID，再用 SQL 回表读取事实。
+Embedding。每个 Table 有多层语义 Route；每个 Leaf 最多定位一个活跃 Row，同一 Row
+可以属于多个 Leaf。AI 逐层导航到唯一 RowID，再用 SQL 回表读取事实。
 Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成为事实来源。
 
 ## 已实现的使用入口
