@@ -263,6 +263,54 @@ func TestBootstrapRootFailureAndByteSkipRemainFallbacks(t *testing.T) {
 	}
 }
 
+func TestBootstrapRootExecutorFailureIsOptionalButCancellationPropagates(t *testing.T) {
+	t.Parallel()
+
+	budget := agent.DefaultBootstrapBudget()
+	authorization := bootstrapAuthorization()
+	query := "optional prefetch"
+	table := tableIdentity{DatabaseID: "db", TableID: "table", Database: "work", Table: "notes"}
+	initial := agenttest.MSQLStep{
+		Request: initialBootstrapRequest(query, authorization, budget),
+		Envelope: bootstrapEnvelope(
+			atlasResult(0, []protocolmsql.Row{{
+				"kind": "table", "database_id": table.DatabaseID, "database": table.Database,
+				"table_id": table.TableID, "table": table.Table,
+			}}, page("atlas", false, "")),
+			lexicalResult(1, []protocolmsql.Row{{
+				"kind": "route", "database_id": table.DatabaseID, "table_id": table.TableID,
+			}}, page("lexical", false, "")),
+		),
+	}
+	t.Run("executor unavailable", func(t *testing.T) {
+		fake := agenttest.NewScriptedMSQL(initial, agenttest.MSQLStep{
+			Request: rootRequest(authorization, budget, table), Error: errors.New("optional root backend unavailable"),
+		})
+		frame, err := bootstrapAssembler(t, fake).Assemble(context.Background(), agent.BootstrapRequest{
+			Query: query, Authorization: authorization, Budget: budget,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(frame.Roots) != 1 || frame.Roots[0].Status != agent.RootPrefetchUnavailable ||
+			frame.Roots[0].Code != "executor_error" || !frame.NeedsRootFallback(table.DatabaseID, table.TableID) {
+			t.Fatalf("Frame = %#v", frame)
+		}
+	})
+	t.Run("context cancellation", func(t *testing.T) {
+		cancelled := errors.Join(context.Canceled, errors.New("root request stopped"))
+		fake := agenttest.NewScriptedMSQL(initial, agenttest.MSQLStep{
+			Request: rootRequest(authorization, budget, table), Error: cancelled,
+		})
+		_, err := bootstrapAssembler(t, fake).Assemble(context.Background(), agent.BootstrapRequest{
+			Query: query, Authorization: authorization, Budget: budget,
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Assemble() error = %v, want context.Canceled", err)
+		}
+	})
+}
+
 func TestBootstrapValidatesRequestAndPropagatesCancellationWithoutRetry(t *testing.T) {
 	t.Parallel()
 
