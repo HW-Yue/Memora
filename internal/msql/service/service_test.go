@@ -110,9 +110,12 @@ func TestSessionsOwnIndependentTransactionStateAndCloseRollsBack(t *testing.T) {
 func TestQueuedCallObservesItsOwnCancellation(t *testing.T) {
 	t.Parallel()
 
-	blocking := newBlockingCatalog()
-	service := msqlservice.New(context.Background(), msqlservice.Config{Catalog: blocking})
-	defer service.Close()
+	var blocking *blockingCatalog
+	service, _, closeFixture := newFixtureWithCatalog(t, context.Background(), func(base executor.Catalog) executor.Catalog {
+		blocking = newBlockingCatalog(base)
+		return blocking
+	})
+	defer closeFixture()
 	session, err := service.OpenSession("agent:serial")
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +124,7 @@ func TestQueuedCallObservesItsOwnCancellation(t *testing.T) {
 	activeDone := make(chan protocolmsql.Envelope, 1)
 	go func() {
 		envelope, _ := session.ExecuteMSQL(context.Background(), request(
-			"DESCRIBE DATABASE work", protocolmsql.StatementInput{
+			"SELECT title FROM work.notes LIMIT 1", protocolmsql.StatementInput{
 				Authorization: authorization(protocolmsql.LevelRead),
 			},
 		))
@@ -133,7 +136,7 @@ func TestQueuedCallObservesItsOwnCancellation(t *testing.T) {
 	cancelQueued()
 	started := time.Now()
 	_, err = session.ExecuteMSQL(queuedContext, request(
-		"DESCRIBE DATABASE work", protocolmsql.StatementInput{
+		"SELECT title FROM work.notes LIMIT 1", protocolmsql.StatementInput{
 			Authorization: authorization(protocolmsql.LevelRead),
 		},
 	))
@@ -169,8 +172,12 @@ func TestSessionAndServiceCloseCancelActiveCalls(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			blocking := newBlockingCatalog()
-			service := msqlservice.New(context.Background(), msqlservice.Config{Catalog: blocking})
+			var blocking *blockingCatalog
+			service, _, closeFixture := newFixtureWithCatalog(t, context.Background(), func(base executor.Catalog) executor.Catalog {
+				blocking = newBlockingCatalog(base)
+				return blocking
+			})
+			defer closeFixture()
 			sessionID := "agent:" + test.name
 			session, err := service.OpenSession(sessionID)
 			if err != nil {
@@ -179,7 +186,7 @@ func TestSessionAndServiceCloseCancelActiveCalls(t *testing.T) {
 			done := make(chan protocolmsql.Envelope, 1)
 			go func() {
 				envelope, _ := session.ExecuteMSQL(context.Background(), request(
-					"DESCRIBE DATABASE work", protocolmsql.StatementInput{
+					"SELECT title FROM work.notes LIMIT 1", protocolmsql.StatementInput{
 						Authorization: authorization(protocolmsql.LevelRead),
 					},
 				))
@@ -207,7 +214,7 @@ func TestSessionAndServiceCloseCancelActiveCalls(t *testing.T) {
 				t.Fatal("active call did not return after close")
 			}
 			if _, err := session.ExecuteMSQL(context.Background(), request(
-				"DESCRIBE DATABASE work", protocolmsql.StatementInput{
+				"SELECT title FROM work.notes LIMIT 1", protocolmsql.StatementInput{
 					Authorization: authorization(protocolmsql.LevelRead),
 				},
 			)); !errors.Is(err, msqlservice.ErrSessionClosed) {
@@ -231,6 +238,14 @@ func TestServiceCloseRejectsNewSessions(t *testing.T) {
 }
 
 func newFixture(t *testing.T, ctx context.Context) (*msqlservice.Service, *row.Service, func()) {
+	return newFixtureWithCatalog(t, ctx, nil)
+}
+
+func newFixtureWithCatalog(
+	t *testing.T,
+	ctx context.Context,
+	decorate func(executor.Catalog) executor.Catalog,
+) (*msqlservice.Service, *row.Service, func()) {
 	t.Helper()
 	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
 	if err != nil {
@@ -252,7 +267,11 @@ func newFixture(t *testing.T, ctx context.Context) (*msqlservice.Service, *row.S
 		t.Fatal(err)
 	}
 	rows := row.New(databaseStore, dictionary, row.Options{})
-	service := msqlservice.New(ctx, msqlservice.Config{Catalog: dictionary, Rows: rows})
+	var configuredCatalog executor.Catalog = dictionary
+	if decorate != nil {
+		configuredCatalog = decorate(dictionary)
+	}
+	service := msqlservice.New(ctx, msqlservice.Config{Catalog: configuredCatalog, Rows: rows})
 	return service, rows, func() {
 		if err := service.Close(); err != nil {
 			t.Errorf("Service.Close() error = %v", err)
@@ -292,27 +311,28 @@ func batchRequest(id, source string, count int) executor.BatchRequest {
 }
 
 type blockingCatalog struct {
-	started chan struct{}
-	unblock chan struct{}
-	once    sync.Once
+	delegate executor.Catalog
+	started  chan struct{}
+	unblock  chan struct{}
+	once     sync.Once
 }
 
-func newBlockingCatalog() *blockingCatalog {
-	return &blockingCatalog{started: make(chan struct{}), unblock: make(chan struct{})}
+func newBlockingCatalog(delegate executor.Catalog) *blockingCatalog {
+	return &blockingCatalog{delegate: delegate, started: make(chan struct{}), unblock: make(chan struct{})}
 }
 
-func (blocking *blockingCatalog) DescribeDatabase(ctx context.Context, _ string) (catalog.Database, error) {
+func (blocking *blockingCatalog) DescribeDatabase(ctx context.Context, name string) (catalog.Database, error) {
+	return blocking.delegate.DescribeDatabase(ctx, name)
+}
+
+func (blocking *blockingCatalog) DescribeTable(ctx context.Context, database, table string) (catalog.Table, error) {
 	blocking.once.Do(func() { close(blocking.started) })
 	select {
 	case <-ctx.Done():
-		return catalog.Database{}, ctx.Err()
+		return catalog.Table{}, ctx.Err()
 	case <-blocking.unblock:
-		return catalog.Database{Name: "work", Purpose: "Work", Scope: "Projects"}, nil
+		return blocking.delegate.DescribeTable(ctx, database, table)
 	}
-}
-
-func (blocking *blockingCatalog) DescribeTable(context.Context, string, string) (catalog.Table, error) {
-	return catalog.Table{}, errors.New("unexpected DescribeTable call")
 }
 
 func (blocking *blockingCatalog) waitStarted(t *testing.T) {
