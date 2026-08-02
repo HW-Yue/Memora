@@ -70,8 +70,8 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F173a–F174：Catalog/Route 原子发布、rebuild 与有界 MSQL lexical location；F172 的
-  generation wiring（F172a）和在线 Row publication（F172b）均已完成；
+- F173a–F174：Catalog/Route 原子发布、rebuild 与有界 MSQL lexical location；原 F173a 已按独立
+  publication 协议拆为 Catalog（F173a）、Route（F173b）和 rebuild（F173c），F173a 已批准；
 - F175a–F186：共享 MSQL Service、Bootstrap、Kimi-compatible Provider、查询 Agent 与外部质量门；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。

@@ -23,6 +23,7 @@
 - [F171：持久化 Posting Store](./planning/f171-persistent-posting-store.md) — 已完成的 Page/WAL/B+ Tree 物理层。
 - [F172a：Row Posting Generation](./planning/f172a-row-posting-generation.md) — 已完成的 Row 投影、generation v2 与 v1 COW 升级。
 - [F172b：Live Row Posting Publication](./planning/f172b-live-row-posting-publication.md) — 已完成的在线 Row posting 原子替换与恢复。
+- [F173a：Catalog Posting Publication](./planning/f173a-catalog-posting-publication.md) — 已批准的 Catalog seed、在线替换与恢复。
 
 ## 当前产品规格
 
