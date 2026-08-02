@@ -220,6 +220,23 @@ func TestTraceRecorderConcurrentAppendHasContinuousSequence(t *testing.T) {
 	}
 	base := time.Date(2026, 8, 3, 13, 0, 0, 0, time.UTC)
 	errorsOut := make(chan error, writers)
+	done := make(chan struct{})
+	readerErrors := make(chan error, 1)
+	go func() {
+		for {
+			select {
+			case <-done:
+				readerErrors <- nil
+				return
+			default:
+				snapshot := recorder.Snapshot()
+				if validationErr := snapshot.Validate(); validationErr != nil {
+					readerErrors <- validationErr
+					return
+				}
+			}
+		}
+	}()
 	var group sync.WaitGroup
 	for index := 0; index < writers; index++ {
 		group.Add(1)
@@ -237,11 +254,15 @@ func TestTraceRecorderConcurrentAppendHasContinuousSequence(t *testing.T) {
 		}(index)
 	}
 	group.Wait()
+	close(done)
 	close(errorsOut)
 	for appendErr := range errorsOut {
 		if appendErr != nil {
 			t.Fatal(appendErr)
 		}
+	}
+	if readerErr := <-readerErrors; readerErr != nil {
+		t.Fatalf("concurrent Snapshot().Validate() error = %v", readerErr)
 	}
 	snapshot := recorder.Snapshot()
 	if len(snapshot.Events) != writers || snapshot.Summary.Events != writers {
