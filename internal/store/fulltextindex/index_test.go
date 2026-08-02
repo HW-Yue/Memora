@@ -2,13 +2,20 @@ package fulltextindex
 
 import (
 	"errors"
+	"fmt"
+	"math/rand"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/store/btree"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
+	"github.com/HW-Yue/Memora/internal/store/treecontrol"
 	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
@@ -91,6 +98,221 @@ func TestPersistentIndexReplacementIsAtomicRevisionedAndIdempotent(t *testing.T)
 	if _, err := index.Replace(6, document("row_1", 5, "skipped")); !errors.Is(err, ErrConflict) {
 		t.Fatalf("skipped Replace() error = %v", err)
 	}
+}
+
+func TestPersistentIndexLargeBootstrapSplitsAndMatchesReference(t *testing.T) {
+	_, _, runtime, index := newTestIndex(t)
+	documents := make([]fulltext.Document, 500)
+	for number := range documents {
+		documents[number] = document(
+			fmt.Sprintf("row_%04d", number), uint64(1+number%9),
+			fmt.Sprintf("shared token%04d", number),
+		)
+	}
+	if _, err := index.Bootstrap(1, documents); err != nil {
+		t.Fatal(err)
+	}
+	root, err := runtime.Read(runtime.State().RootPageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := btree.Decode(root)
+	if err != nil || node.Kind != btree.KindInternal {
+		t.Fatalf("root after split = %+v, %v", node, err)
+	}
+	reference, err := fulltext.Build(documents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPostingsEqual(t, index, reference.AllPostings())
+	shared, err := index.Postings("shared")
+	if err != nil || len(shared) != len(documents) {
+		t.Fatalf("shared postings = %d, %v", len(shared), err)
+	}
+}
+
+func TestPersistentIndexBootstrapBytesIgnoreDocumentOrder(t *testing.T) {
+	documents := make([]fulltext.Document, 30)
+	for number := range documents {
+		documents[number] = document(
+			fmt.Sprintf("row_%03d", number), uint64(number+1), fmt.Sprintf("stable value%d", number),
+		)
+	}
+	reversed := append([]fulltext.Document(nil), documents...)
+	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
+		reversed[left], reversed[right] = reversed[right], reversed[left]
+	}
+	build := func(name string, values []fulltext.Document) ([]byte, treecontrol.State) {
+		directory := filepath.Join(t.TempDir(), name)
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		pagePath := filepath.Join(directory, "fulltext.pages")
+		set, manager, runtime, index := openTestIndex(t, filepath.Join(directory, "wal"), pagePath, false)
+		defer func() { _ = set.Close(); _ = manager.Close() }()
+		if _, err := index.Bootstrap(1, values); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := runtime.FlushDirty(1024); err != nil {
+			t.Fatal(err)
+		}
+		if err := manager.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := os.ReadFile(pagePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded, runtime.State()
+	}
+	left, leftState := build("left", documents)
+	right, rightState := build("right", reversed)
+	if leftState != rightState || !reflect.DeepEqual(left, right) {
+		t.Fatalf("canonical bootstrap differs: left=%+v/%d right=%+v/%d", leftState, len(left), rightState, len(right))
+	}
+}
+
+func TestPersistentIndexRandomRevisionSequenceMatchesReference(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+	if _, err := index.Bootstrap(1, nil); err != nil {
+		t.Fatal(err)
+	}
+	random := rand.New(rand.NewSource(171))
+	current := map[string]fulltext.Document{}
+	for step := 0; step < 120; step++ {
+		objectID := fmt.Sprintf("row_%d", random.Intn(8))
+		revision := uint64(1)
+		if previous, exists := current[objectID]; exists {
+			revision = previous.Revision + 1
+		}
+		value := document(objectID, revision, fmt.Sprintf("shared value%d", random.Intn(12)))
+		if revision > 1 && random.Intn(6) == 0 {
+			if random.Intn(2) == 0 {
+				value.State = fulltext.StateDeleted
+			} else {
+				value.State = fulltext.StateSuperseded
+			}
+			value.Fields = nil
+		}
+		if _, err := index.Replace(uint64(step+2), value); err != nil {
+			t.Fatalf("step %d Replace(): %v", step, err)
+		}
+		current[objectID] = value
+		documents := make([]fulltext.Document, 0, len(current))
+		for _, document := range current {
+			documents = append(documents, document)
+		}
+		reference, err := fulltext.Build(documents)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := index.AllPostings()
+		if err != nil || !reflect.DeepEqual(got, reference.AllPostings()) {
+			t.Fatalf("step %d postings = %#v, %v; want %#v", step, got, err, reference.AllPostings())
+		}
+	}
+}
+
+func TestPersistentIndexRejectsScopeChangesAndOversizedTerms(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+	if _, err := index.Bootstrap(1, []fulltext.Document{document("row_1", 1, "initial")}); err != nil {
+		t.Fatal(err)
+	}
+	moved := document("row_1", 2, "moved")
+	moved.DatabaseID, moved.TableID = "db_other", "tbl_other"
+	if _, err := index.Replace(2, moved); !errors.Is(err, ErrConflict) {
+		t.Fatalf("scope change error = %v", err)
+	}
+	tooLarge := document("row_2", 1, strings.Repeat("a", maximumComponent+1))
+	if _, err := index.Replace(3, tooLarge); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("oversized term error = %v", err)
+	}
+	assertSinglePosting(t, index, "initial", 1, 1)
+}
+
+func TestPersistentIndexCommitFaultKeepsOldRootReadable(t *testing.T) {
+	set, _, _, index := newTestIndex(t)
+	if _, err := index.Bootstrap(1, []fulltext.Document{document("row_1", 1, "old")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := set.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.Replace(2, document("row_1", 2, "new")); err == nil {
+		t.Fatal("Replace() succeeded with closed WAL")
+	}
+	assertSinglePosting(t, index, "old", 1, 1)
+	if got, err := index.Postings("new"); err != nil || len(got) != 0 {
+		t.Fatalf("new postings after failed commit = %#v, %v", got, err)
+	}
+}
+
+func TestPersistentIndexRejectsCorruptTreeWithoutFallback(t *testing.T) {
+	directory := t.TempDir()
+	walPath := filepath.Join(directory, "wal")
+	pagePath := filepath.Join(directory, "fulltext.pages")
+	set, manager, runtime, index := openTestIndex(t, walPath, pagePath, false)
+	if _, err := index.Bootstrap(1, []fulltext.Document{document("row_1", 1, "durable")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.FlushDirty(64); err != nil {
+		t.Fatal(err)
+	}
+	root, err := manager.Read(runtime.State().RootPageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.Payload[0] ^= 0xff
+	if err := manager.Write(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := set.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedSet, reopenedManager, _, reopened := openTestIndex(t, walPath, pagePath, true)
+	defer func() { _ = reopenedSet.Close(); _ = reopenedManager.Close() }()
+	if _, err := reopened.Postings("durable"); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("corrupt Postings() error = %v", err)
+	}
+}
+
+func TestPersistentIndexConcurrentReadersObserveCompleteRevisions(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+	if _, err := index.Bootstrap(1, []fulltext.Document{document("row_1", 1, "shared value1")}); err != nil {
+		t.Fatal(err)
+	}
+	var wait sync.WaitGroup
+	errorsSeen := make(chan error, 8)
+	for reader := 0; reader < 8; reader++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for range 100 {
+				postings, err := index.Postings("shared")
+				if err != nil || len(postings) != 1 || postings[0].Revision < 1 || postings[0].Revision > 40 {
+					errorsSeen <- fmt.Errorf("shared postings = %#v: %w", postings, err)
+					return
+				}
+			}
+		}()
+	}
+	for revision := uint64(2); revision <= 40; revision++ {
+		if _, err := index.Replace(revision, document("row_1", revision, fmt.Sprintf("shared value%d", revision))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wait.Wait()
+	close(errorsSeen)
+	for err := range errorsSeen {
+		t.Fatal(err)
+	}
+	assertSinglePosting(t, index, "shared", 40, 1)
 }
 
 func document(objectID string, revision uint64, text string) fulltext.Document {

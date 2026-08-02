@@ -18,8 +18,9 @@ import (
 const DocumentVersion = "memora.fulltext.document/v1"
 
 const (
-	maximumFields = 1024
-	maximumValues = 1024
+	maximumFields    = 1024
+	maximumValues    = 1024
+	maximumTermBytes = 2048
 )
 
 var (
@@ -85,6 +86,31 @@ type Document struct {
 	State          State
 	Complete       bool
 	Fields         []Field
+}
+
+// CompiledDocument is the validated canonical input shared by the reference
+// model and durable posting stores. Callers must treat Postings as immutable.
+type CompiledDocument struct {
+	Kind       ObjectKind
+	DatabaseID string
+	TableID    string
+	ObjectID   string
+	Revision   uint64
+	State      State
+	Digest     string
+	Postings   []Posting
+}
+
+func Compile(value Document) (CompiledDocument, error) {
+	normalized, postings, digest, err := normalizeDocument(value)
+	if err != nil {
+		return CompiledDocument{}, err
+	}
+	return CompiledDocument{
+		Kind: normalized.Kind, DatabaseID: normalized.DatabaseID, TableID: normalized.TableID,
+		ObjectID: normalized.ObjectID, Revision: normalized.Revision, State: normalized.State,
+		Digest: digest, Postings: append([]Posting(nil), postings...),
+	}, nil
 }
 
 type normalizedValue struct {
@@ -217,6 +243,9 @@ func documentPostings(value normalizedDocument) ([]Posting, error) {
 		}
 		sort.Strings(terms)
 		for _, term := range terms {
+			if len(term) > maximumTermBytes {
+				return nil, documentError("field %q contains a term larger than %d bytes", field.ID, maximumTermBytes)
+			}
 			postings = append(postings, Posting{
 				Term: term, Kind: value.Kind, DatabaseID: value.DatabaseID, TableID: value.TableID,
 				ObjectID: value.ObjectID, Revision: value.Revision, FieldID: field.ID,

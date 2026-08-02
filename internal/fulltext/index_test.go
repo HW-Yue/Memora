@@ -213,6 +213,28 @@ func TestReferenceIndexCanonicalReplayIgnoresFieldAndValueOrder(t *testing.T) {
 	}
 }
 
+func TestCompileExportsCanonicalSnapshotAndBoundsPhysicalTerms(t *testing.T) {
+	t.Parallel()
+
+	value := document(KindRow, "db_work", "tbl_notes", "row_1", 9,
+		field("col_title", TextValue("Compiled compiled")))
+	compiled, err := Compile(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.Kind != KindRow || compiled.ObjectID != "row_1" || compiled.Revision != 9 ||
+		compiled.State != StateLive || !strings.HasPrefix(compiled.Digest, "sha256:") ||
+		len(compiled.Postings) != 1 || compiled.Postings[0].Frequency != 2 {
+		t.Fatalf("Compile() = %#v", compiled)
+	}
+
+	tooLarge := value
+	tooLarge.Fields = []Field{field("col_title", TextValue(strings.Repeat("a", maximumTermBytes+1)))}
+	if _, err := Compile(tooLarge); !errors.Is(err, ErrInvalidDocument) {
+		t.Fatalf("oversized Compile() error = %v", err)
+	}
+}
+
 func TestReferenceIndexConcurrentRevisionHasOneWinner(t *testing.T) {
 	t.Parallel()
 
