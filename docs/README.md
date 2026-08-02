@@ -20,7 +20,7 @@
 - [ADR-0008：全内容倒排索引](./decisions/0008-full-content-inverted-index.md) — 当前 Row 与
   语义索引进入可重建 lexical postings，最终事实仍由 SQL 回表；
 - [F170：全内容倒排语义模型](./planning/f170-inverted-index-surface.md) — 已完成的无 I/O reference index；
-- [F171：持久化 Posting Store](./planning/f171-persistent-posting-store.md) — 已批准的 Page/WAL/B+ Tree 物理层。
+- [F171：持久化 Posting Store](./planning/f171-persistent-posting-store.md) — 已完成的 Page/WAL/B+ Tree 物理层。
 
 ## 当前产品规格
 

@@ -30,6 +30,7 @@
 | F168 | Admin 默认固定监听 `127.0.0.1:3888`，占用时拒绝随机降级 |
 | F169 | Route Leaf 冻结为最多一个活跃 Row；旧项目数据已迁为 15 个单 Row Leaf |
 | F170 | 全内容 lexical reference index；Row 与语义表面共用确定性 tokenizer 和 revision replacement |
+| F171 | 可重开的 Page/WAL/B+ Tree posting store；object/owner/posting 单计划原子替换 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -67,7 +68,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F171–F174：持久化、原子发布、rebuild 与有界 MSQL lexical location；F171 已批准并进入 RED；
+- F172–F174：Row/Catalog/Route 原子发布、rebuild 与有界 MSQL lexical location；F171 已完成；
 - F175a–F186：共享 MSQL Service、Bootstrap、Kimi-compatible Provider、查询 Agent 与外部质量门；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。

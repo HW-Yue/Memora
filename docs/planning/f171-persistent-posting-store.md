@@ -1,6 +1,6 @@
 # F171：持久化 Posting Store
 
-规划状态：已批准；2026-08-03 单项 Review 通过，可进入 RED → GREEN → REFACTOR。
+规划状态：已完成；2026-08-03 单项 Review、RED → GREEN → REFACTOR 与完整 CI 均通过。
 
 ## 唯一主要结果
 
@@ -96,6 +96,16 @@ corruption corpus、commit fault 和 reader/writer race。完成时执行受影�
 用户执行授权：2026-08-03 用户要求顺序完成后续 Feature；本 Review 只批准 F171 上述范围。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- 500 对象建树触发 internal root，结果与 F170 reference index 完全一致；
+- 120 步固定 seed revision 序列、乱序输入 Page bytes、replay 和 tombstone 均通过；
+- durable WAL/unflushed Page reopen、Page bit flip、closed-WAL commit fault 均得到预期状态；
+- codec corruption corpus 和 object/owner/posting 全镜像校验通过；
+- `go test -race ./internal/store/fulltextindex` 与 `./scripts/ci.sh`：PASS。
+
+完成门结论：PASS。生产 Row 发布仍由 F172 接入。
 
 ## 关联
 

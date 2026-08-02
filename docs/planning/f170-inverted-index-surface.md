@@ -43,7 +43,8 @@ F170 不持久化 Page、不接入 Row 写事务、不增加 MSQL。它冻结后
 
 首版沿用 F124b 的确定性规则：Unicode letter/digit 连续 run 小写折叠，连续汉字生成相邻
 bigram，单个汉字保留 singleton，标点和空白是边界。单个字段内重复 term 记录 frequency；
-document replacement 的比较使用去重、稳定排序后的 posting 集合。
+document replacement 的比较使用去重、稳定排序后的 posting 集合。单 term 最多 2048 UTF-8 bytes，
+以保证 F171 普通 B+ Tree Page 能直接承载；超限 document 稳定拒绝。
 
 每条 posting 至少携带 object kind、Database/Table/Object ID、revision、field ID 和 frequency。
 不携带原值。相同输入必须产生字节级稳定的 document digest 与 posting 顺序。

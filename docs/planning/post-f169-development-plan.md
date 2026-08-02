@@ -5,9 +5,9 @@
 
 ## 当前出发点
 
-- `main` 当前到 F170，Leaf → Row `0..1` 与 lexical reference index 均已通过完整 CI 并合入；
+- `main` 当前到 F171，lexical reference index 与持久化 posting store 均已通过完整 CI 并合入；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F170 已完成并合入；F171 已从最新 `main` 单独 Review，准备进入 RED；
+- F170–F171 已完成；下一项从最新 `main` 单独 Review F172 Row posting 发布；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -44,7 +44,7 @@ CI 将以 import allowlist 和 fake `MSQLExecutor` 锁定该边界。
 | Feature | 唯一主要结果 | 关键完成证据 |
 | --- | --- | --- |
 | F170（已完成） | 无 I/O lexical reference index | 随机 revision 序列与简单 map 对拍 |
-| F171 | Page/WAL 持久化 posting store | reopen、corruption、split、fault injection、race |
+| F171（已完成） | Page/WAL 持久化 posting store | reopen、corruption、split、fault injection、race |
 | F172 | live Row revision 原子替换 posting | insert/revise/delete/supersede 故障矩阵 |
 | F173a | Catalog 与 Route revision 接入 posting | rename、alias、delete、move 后无陈旧位置 |
 | F173b | 全量 rebuild 与 snapshot 校验 | 在线状态与重建结果字节级对拍 |
