@@ -6,6 +6,9 @@ Memora v0 不内置模型 Provider，也不接收或保存模型密钥。自然�
 Codex、Claude Code 等宿主中；Memora 只接收宿主生成的 MSQL、授权对象和逻辑
 Mutation Plan。
 
+F177 已增加不访问网络的 Agent-owned Provider port，供后续隔离 benchmark Agent 使用；这没有改变
+上述 v0 产品边界，也没有引入 endpoint、密钥或任何具体厂商实现。
+
 ## 兼容规则
 
 - OpenAI-compatible 只表示协议兼容，不表示 `openai.com`；base URL、模型名和

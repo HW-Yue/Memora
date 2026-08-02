@@ -42,6 +42,7 @@
 | F175b | 单实例共享 MSQL Service；独立 Session、IPC/同进程共核、取消/回滚与并发隔离 |
 | F175c | Agent consumer-owned MSQL port、单次协议验证 gateway、scripted fake 与全树 import allowlist |
 | F176 | 无模型 Query Bootstrap Frame；Atlas 续页、lexical、root 投机预取、独立 snapshot 与 12 KB 默认总预算 |
+| F177 | 厂商中立非流式 Provider port；严格 message/tool/usage 验证、单次 gateway 与 scripted fake |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -79,7 +80,6 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F177（实现中）：Memora-owned Provider port、严格验证与 scripted fake；
 - F178–F186：Trace、Provider 实现、查询 Agent 与外部质量门；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。

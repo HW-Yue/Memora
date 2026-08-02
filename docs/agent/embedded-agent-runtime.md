@@ -1,7 +1,7 @@
 # 可选内置 Agent Runtime
 
-状态：F43 已决定面向用户的 v0 Runtime defer；F175c/F176 已交付评测 Agent 所需的 MSQL-only
-边界和无模型 Bootstrap，但 Provider、loop 与产品入口仍需后续独立 Feature。
+状态：F43 已决定面向用户的 v0 Runtime defer；F175c–F177 已交付评测 Agent 所需的 MSQL-only
+边界、无模型 Bootstrap 与厂商中立 Provider port，但 Trace、实现、loop 与产品入口仍需后续 Feature。
 
 ## 定位
 

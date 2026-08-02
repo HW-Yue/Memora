@@ -33,7 +33,7 @@
 - [F175b：单实例共享 MSQL Service](./planning/f175b-shared-msql-service.md) — 已批准的 IPC/同进程共核、Session 隔离与取消实现门。
 - [F175c：Agent MSQL-only Port](./planning/f175c-agent-msql-port.md) — 已完成的消费者接口、scripted fake 与 import allowlist 边界。
 - [F176：确定性 Query Bootstrap Frame](./planning/f176-query-bootstrap-frame.md) — 已完成的 Atlas、lexical、root 预取与全局上下文预算链路。
-- [F177：Memora-owned Provider Port](./planning/f177-provider-port.md) — 已批准的厂商中立 completion/tool-call 协议与 scripted fake 实现门。
+- [F177：Memora-owned Provider Port](./planning/f177-provider-port.md) — 已完成的厂商中立 completion/tool-call 协议与 scripted fake。
 
 ## 当前产品规格
 

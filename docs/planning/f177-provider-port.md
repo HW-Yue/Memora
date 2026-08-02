@@ -1,6 +1,6 @@
 # F177：Memora-owned Provider Port
 
-规划状态：已通过单项 Review，批准按 RED → GREEN → REFACTOR 实现。
+规划状态：已完成；RED → GREEN → REFACTOR 与完整 CI 通过。
 
 ## 唯一主要结果
 
@@ -37,3 +37,14 @@ v1 为一次性 completion，不预留伪 streaming channel。真正流式交互
 用户执行授权：2026-08-03 用户要求持续顺序完成后续 Feature。本 Review 只批准上述 F177 范围。
 
 开工前结论：PASS。
+
+## 完成结论
+
+- `Provider`、Request/Response、message/tool-call、finish reason 与 usage 类型已由 Memora 拥有；
+- `ProviderGateway` 双向验证且严格单次调用，model identity 必须与请求一致；
+- role/字段组合、工具唯一性、JSON object schema/arguments、调用结果配对与 token 总数均强校验；
+- `agenttest.ScriptedProvider` 已覆盖多轮 transcript、错误、漏调、多调、错序和并发；
+- port 无网络、凭据、endpoint、厂商 SDK 或 hidden reasoning 字段；import guard 保持全绿；
+- format/vet/unit/race/integration/e2e 与独立 cross-build 全绿。
+
+完成结论：PASS。下一项为 F178 Agent Event/Trace/Usage 信封。
