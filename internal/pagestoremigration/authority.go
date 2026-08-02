@@ -17,12 +17,15 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/store/changeindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
+	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/objectlock"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 )
 
 var ErrAuthorityPoisoned = errors.New("Page Store authority requires reopen recovery")
+
+var errFulltextRebuildRequired = errors.New("Fulltext generation requires COW rebuild")
 
 type authorityPhase string
 
@@ -124,10 +127,11 @@ func OpenAuthority(
 		locks:     objectlock.New(),
 	}
 	authority.writeGate <- struct{}{}
-	if err := authority.reconcile(ctx); err != nil {
-		return nil, errors.Join(err, generation.Close(), changeTree.Close())
+	reconcileErr := authority.reconcile(ctx)
+	if reconcileErr != nil && !errors.Is(reconcileErr, errFulltextRebuildRequired) {
+		return nil, errors.Join(reconcileErr, generation.Close(), changeTree.Close())
 	}
-	if authority.generation.fulltext == nil {
+	if reconcileErr != nil || authority.generation.fulltext == nil {
 		if _, err := authority.ReplaceGeneration(ctx); err != nil {
 			return nil, errors.Join(err, authority.Close())
 		}
@@ -341,6 +345,14 @@ func (authority *Authority) PublishRows(
 	if err := authority.healthyLocked(ctx); err != nil {
 		return err
 	}
+	databases, err := authority.catalog.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	documents, err := projectRowDocuments(databases, values)
+	if err != nil {
+		return err
+	}
 	if err := commit(); err != nil {
 		return err
 	}
@@ -371,6 +383,16 @@ func (authority *Authority) PublishRows(
 	}
 	if err == nil {
 		err = authority.checkpointPhase(phaseRowVersionPublished)
+	}
+	if err == nil {
+		fulltextID, idErr := authority.nextTransactionID("fulltext")
+		err = idErr
+		if err == nil {
+			_, err = authority.generation.fulltext.ReplaceBatch(fulltextID, documents)
+		}
+	}
+	if err == nil {
+		err = authority.checkpointPhase(phaseRowFulltextPublished)
 	}
 	if err == nil {
 		currentID, idErr := authority.nextTransactionID("current")
@@ -559,6 +581,9 @@ func (authority *Authority) reconcile(ctx context.Context) error {
 	if err := authority.appendVersions(plan); err != nil {
 		return err
 	}
+	if err := authority.reconcileFulltext(plan); err != nil {
+		return err
+	}
 	return authority.advanceCurrent(plan)
 }
 
@@ -580,6 +605,25 @@ func (authority *Authority) appendVersions(plan Plan) error {
 		return err
 	}
 	_, err = authority.generation.versions.Append(id, plan.RowVersions)
+	return err
+}
+
+func (authority *Authority) reconcileFulltext(plan Plan) error {
+	if authority.generation.fulltext == nil || len(plan.CurrentRowBodies) == 0 {
+		return nil
+	}
+	documents, err := rowDocuments(plan)
+	if err != nil {
+		return err
+	}
+	id, err := authority.nextTransactionID("fulltext")
+	if err != nil {
+		return err
+	}
+	_, err = authority.generation.fulltext.ReplaceBatch(id, documents)
+	if errors.Is(err, fulltextindex.ErrConflict) {
+		return fmt.Errorf("%w: %v", errFulltextRebuildRequired, err)
+	}
 	return err
 }
 

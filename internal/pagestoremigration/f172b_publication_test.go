@@ -2,12 +2,18 @@ package pagestoremigration
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativemutation"
+	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/row"
+	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
 func TestAuthorityPublishesInsertUpdateAndDeletePostings(t *testing.T) {
@@ -54,6 +60,161 @@ func TestAuthorityRejectsInvalidRowProjectionBeforeBodyCommit(t *testing.T) {
 	}
 }
 
+func TestAuthorityPublishesMultipleRowsInOneFulltextTransaction(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	columnID := table.Columns[0].ID
+	values := []row.Row{
+		{ID: "row_batch_a", DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion,
+			Revision: 1, CommitSequence: 1, State: row.StateLive,
+			Values: map[string]any{columnID: "alpha shared"}},
+		{ID: "row_batch_b", DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion,
+			Revision: 1, CommitSequence: 1, State: row.StateLive,
+			Values: map[string]any{columnID: "beta shared"}},
+	}
+	before := fulltextTreeRevision(t, authority)
+	committed := false
+	if err := authority.PublishRows(ctx, values, func() error {
+		committed = true
+		return nil
+	}); err != nil || !committed {
+		t.Fatalf("PublishRows(batch) committed=%v error=%v", committed, err)
+	}
+	if after := fulltextTreeRevision(t, authority); after != before+1 {
+		t.Fatalf("Fulltext batch revision = %d, want %d", after, before+1)
+	}
+	postings, err := authority.Generation().Fulltext().Postings("shared")
+	if err != nil || len(postings) != 2 || postings[0].ObjectID == postings[1].ObjectID {
+		t.Fatalf("batch postings = %#v, %v", postings, err)
+	}
+}
+
+func TestCoordinatorPublishesMultiRowMutationToOneFulltextRevision(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	_, rows, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	first, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "first old"}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "second old"}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := nativerow.New(file)
+	firstBody, err := repository.Read(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBody, err := repository.Read(second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := firstBody.UpdatedAt.Add(time.Minute)
+	firstBody.Revision, firstBody.CommitSequence, firstBody.UpdatedAt = 2, 0, now
+	firstBody.Values[table.Columns[0].ID] = "first merged"
+	secondBody.Revision, secondBody.CommitSequence, secondBody.UpdatedAt = 2, 0, now
+	secondBody.Values[table.Columns[0].ID] = "second merged"
+	before := fulltextTreeRevision(t, authority)
+	err = nativemutation.New(file, repository, nativerouter.New(file), authority).Commit(nativemutation.Plan{
+		Changes: []nativemutation.RowChange{
+			{Row: firstBody, Operation: history.OperationMerge, RecordedAt: now},
+			{Row: secondBody, Operation: history.OperationMerge, RecordedAt: now},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after := fulltextTreeRevision(t, authority); after != before+1 {
+		t.Fatalf("coordinator Fulltext revision = %d, want %d", after, before+1)
+	}
+	assertNoRowPosting(t, authority, "old")
+	postings, err := authority.Generation().Fulltext().Postings("merged")
+	if err != nil || len(postings) != 2 || postings[0].Revision != 2 || postings[1].Revision != 2 {
+		t.Fatalf("coordinator batch postings = %#v, %v", postings, err)
+	}
+}
+
+func TestAuthorityFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, rows, table, inserted := authorityValues(t, ctx, file, authority)
+	for _, tree := range authority.generation.trees {
+		if tree.manifest.Kind == "fulltext" {
+			if err := tree.set.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	_, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "wal recovered"}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: inserted.Revision,
+	})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("Fulltext WAL fault Update() error = %v", err)
+	}
+	if _, err := authority.Capture(ctx); !errors.Is(err, ErrAuthorityPoisoned) {
+		t.Fatalf("WAL fault did not poison Authority: %v", err)
+	}
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopenedFile.Close()
+	reopened, err := OpenAuthority(ctx, reopenedFile, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	assertNoRowPosting(t, reopened, "indexed")
+	assertRowPosting(t, reopened, "wal", inserted.ID, 2)
+	assertRowPosting(t, reopened, "recovered", inserted.ID, 2)
+}
+
+func TestAuthorityReopenFulltextReplayDoesNotAppendWAL(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, _, _, inserted := authorityValues(t, ctx, file, authority)
+	nextBefore, err := authority.nextTransactionID("fulltext")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopenedFile.Close()
+	reopened, err := OpenAuthority(ctx, reopenedFile, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	nextAfter, err := reopened.nextTransactionID("fulltext")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nextAfter != nextBefore {
+		t.Fatalf("replay appended Fulltext WAL transaction: before=%d after=%d", nextBefore, nextAfter)
+	}
+	assertRowPosting(t, reopened, "indexed", inserted.ID, 1)
+}
+
 func TestAuthorityReopenUsesCOWForSkippedFulltextRevisions(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
@@ -87,7 +248,7 @@ func TestAuthorityReopenUsesCOWForSkippedFulltextRevisions(t *testing.T) {
 	assertNoRowPosting(t, reopened, "second")
 	assertRowPosting(t, reopened, "third", inserted.ID, 3)
 
-	old, err := OpenGeneration(filepath.Join(directory, GenerationDirectory))
+	old, err := openLiveGeneration(filepath.Join(directory, GenerationDirectory))
 	if err != nil {
 		t.Fatalf("old generation was not preserved: %v", err)
 	}
@@ -110,4 +271,15 @@ func assertNoRowPosting(t *testing.T, authority *Authority, term string) {
 	if err != nil || len(postings) != 0 {
 		t.Fatalf("Postings(%q) = %#v, %v", term, postings, err)
 	}
+}
+
+func fulltextTreeRevision(t *testing.T, authority *Authority) uint64 {
+	t.Helper()
+	for _, tree := range authority.generation.trees {
+		if tree.manifest.Kind == "fulltext" {
+			return tree.runtime.State().Revision
+		}
+	}
+	t.Fatal("Authority generation has no Fulltext Tree")
+	return 0
 }

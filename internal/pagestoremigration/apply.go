@@ -12,6 +12,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowfulltext"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
@@ -367,14 +368,23 @@ func verifyGenerationPlan(ctx context.Context, generation *Generation, plan Plan
 }
 
 func rowDocuments(plan Plan) ([]fulltext.Document, error) {
+	return projectRowDocuments(plan.Catalog, plan.CurrentRowBodies)
+}
+
+func projectRowDocuments(databases []catalog.Database, bodies []row.Row) ([]fulltext.Document, error) {
 	tables := make(map[string]catalog.Table)
-	for _, database := range plan.Catalog {
+	for _, database := range databases {
 		for _, table := range database.Tables {
 			tables[table.ID] = table
 		}
 	}
-	documents := make([]fulltext.Document, 0, len(plan.CurrentRowBodies))
-	for _, body := range plan.CurrentRowBodies {
+	documents := make([]fulltext.Document, 0, len(bodies))
+	seen := make(map[string]struct{}, len(bodies))
+	for _, body := range bodies {
+		if _, duplicate := seen[body.ID]; duplicate {
+			return nil, fmt.Errorf("%w: duplicate Row fulltext document", ErrInvalid)
+		}
+		seen[body.ID] = struct{}{}
 		table, exists := tables[body.TableID]
 		if !exists {
 			return nil, ErrInvalid

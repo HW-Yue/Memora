@@ -165,6 +165,44 @@ func TestPersistentIndexInvalidBatchLeavesEveryObjectUnchanged(t *testing.T) {
 	}
 }
 
+func TestPersistentIndexDuplicateAndWALFaultBatchLeaveOldRoot(t *testing.T) {
+	set, _, _, index := newTestIndex(t)
+	first := document("row_1", 1, "first old")
+	second := document("row_2", 1, "second old")
+	if _, err := index.Bootstrap(1, []fulltext.Document{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	first.Revision, first.Fields = 2, []fulltext.Field{{
+		ID: "col_text", Values: []fulltext.Value{fulltext.TextValue("first new")},
+	}}
+	if _, err := index.ReplaceBatch(2, []fulltext.Document{first, first}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("duplicate batch error = %v", err)
+	}
+	second.Revision, second.Fields = 2, []fulltext.Field{{
+		ID: "col_text", Values: []fulltext.Value{fulltext.TextValue("second new")},
+	}}
+	if err := set.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.ReplaceBatch(2, []fulltext.Document{first, second}); err == nil {
+		t.Fatal("ReplaceBatch() succeeded with closed WAL")
+	}
+	for _, term := range []string{"first", "second", "old"} {
+		postings, err := index.Postings(term)
+		if err != nil || len(postings) == 0 {
+			t.Fatalf("old Postings(%q) = %#v, %v", term, postings, err)
+		}
+		for _, posting := range postings {
+			if posting.Revision != 1 {
+				t.Fatalf("failed WAL batch changed revision to %d", posting.Revision)
+			}
+		}
+	}
+	if postings, err := index.Postings("new"); err != nil || len(postings) != 0 {
+		t.Fatalf("failed WAL batch exposed new postings = %#v, %v", postings, err)
+	}
+}
+
 func TestPersistentIndexLargeBootstrapSplitsAndMatchesReference(t *testing.T) {
 	_, _, runtime, index := newTestIndex(t)
 	documents := make([]fulltext.Document, 500)
