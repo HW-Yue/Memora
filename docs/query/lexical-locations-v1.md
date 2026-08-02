@@ -15,6 +15,9 @@ LIMIT :location_limit BYTES :utf8_byte_limit;
 - `CURSOR` 只能继续完全相同的 query、授权 scope 和 lexical snapshot；
 - 返回普通 `rows[]` 与标准 `page`，不复用 Route-only Discovery Frame。
 
+该语句读取当前已提交的派生 generation，因此只允许 autocommit；显式 Row transaction 中不暴露
+lexical 端口，避免把未提交 Row 与已提交 posting 混成一个虚假快照。
+
 ## 位置行
 
 每个当前对象最多返回一行：

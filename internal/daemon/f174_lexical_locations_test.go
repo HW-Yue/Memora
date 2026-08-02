@@ -90,7 +90,6 @@ func TestNativeDaemonLexicalLocationsReturnCurrentAuthorizedPositionsAndReopen(t
 	if continued.Results[0].Page == nil || continued.Results[0].Page.Snapshot != first.Results[0].Page.Snapshot {
 		t.Fatalf("continued lexical page = %#v", continued.Results[0])
 	}
-
 	stop()
 	if err := <-done; err != nil {
 		t.Fatal(err)

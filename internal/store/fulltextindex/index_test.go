@@ -427,6 +427,9 @@ func TestPersistentIndexRejectsCorruptTreeWithoutFallback(t *testing.T) {
 	if _, err := reopened.Postings("durable"); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("corrupt Postings() error = %v", err)
 	}
+	if _, err := reopened.PostingsInDatabases(context.Background(), []string{"durable"}, []string{"db_work"}); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("corrupt scoped Postings() error = %v", err)
+	}
 	if _, err := reopened.Objects(); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("corrupt Objects() error = %v", err)
 	}
@@ -444,7 +447,9 @@ func TestPersistentIndexConcurrentReadersObserveCompleteRevisions(t *testing.T) 
 		go func() {
 			defer wait.Done()
 			for range 100 {
-				postings, err := index.Postings("shared")
+				postings, err := index.PostingsInDatabases(
+					context.Background(), []string{"shared"}, []string{"db_work"},
+				)
 				if err != nil || len(postings) != 1 || postings[0].Revision < 1 || postings[0].Revision > 40 {
 					errorsSeen <- fmt.Errorf("shared postings = %#v: %w", postings, err)
 					return
