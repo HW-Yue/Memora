@@ -33,6 +33,24 @@ v0 由 Codex/Claude Code 按 Canonical Skill 生成 MSQL，并调用本地 daemo
 
 “统一入口”指统一进入 MSQL 执行核心，不把自然语言并入 MSQL Grammar。自然语言始终先由 Agent 转换为明确的 MSQL。
 
+## 硬依赖边界
+
+内置 Agent 模块只能通过一个由调用方注入的版本化 `MSQLExecutor` 端口访问 Memora：
+
+```text
+internal/agent/* → MSQL Request/Result Port → Lexer/Parser/Binder/Policy/Transaction/Executor
+```
+
+Agent 可以拥有 Provider、Source Reader、Document IR、Session、Checkpoint、Event 和 Trace 等运行时
+组件，但它们是 Agent-owned operational state，不是访问用户 Database 的替代通道。Agent 包禁止
+直接依赖 Catalog、Row、Router、Relation、History、Assimilation Controller、Store、Page、WAL、
+MVCC 和任何索引实现；同进程部署也不能放宽该规则。
+
+若 Agent 需要的发现、资料覆盖、复核、提交、收据或管理能力尚未由 MSQL 表达，开发顺序必须是
+先冻结并实现 MSQL，再让 Agent 使用。现有 `assimilation.*` 私有 IPC 不属于未来 Agent 合法工具面。
+CI 必须检查 Agent package import allowlist，并用 fake `MSQLExecutor` 证明 Agent 测试不打开 Instance、
+不读取数据库文件且不调用引擎 Go API。
+
 ## 统一请求信封
 
 内部 loop 与外部调用方使用同一种逻辑请求：
@@ -122,6 +140,7 @@ memora config model ...      配置模型，密钥单独安全保存
 - 模型输出采用工具调用还是严格 JSON；
 - `ask` 最终返回人类回答、Context Pack，还是由调用方选择；
 - 同一 loop 是否处理资料吸收，还是使用独立任务类型。
+- 现有资料吸收私有 IPC 迁移到 MSQL 的语法、授权、预算和兼容边界。
 
 ## 关联
 

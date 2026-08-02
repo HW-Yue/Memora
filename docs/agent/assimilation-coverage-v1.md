@@ -2,6 +2,10 @@
 
 状态：F35 已实现并冻结。
 
+本文记录当前外部宿主协议，不授权未来内置 Agent 调用 `assimilation.record` 私有 IPC。内置 Agent
+只保留本协议的 coverage 语义：纯阅读任务状态可以迁为 Agent-owned workspace；任何需要进入
+Memora 的状态或操作必须先获得正式 MSQL surface。
+
 ## 任务事件
 
 宿主通过 `memora assimilate --event <JSON>` 发送

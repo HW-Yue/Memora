@@ -22,6 +22,16 @@ F169 单 Row leaf
 → F195–F199 格式扩展与真实使用观测
 ```
 
+## Agent 永久依赖边界
+
+`internal/agent/*` 访问 Memora 的唯一端口是版本化 MSQL Request/Result；同进程也必须经过 Parser、
+Policy 和事务执行器。Agent 不得 import Catalog、Row、Router、Assimilation、Store、Page、WAL、
+MVCC 或索引实现。Provider、SourceStore、Document IR、Session 和 Checkpoint 可以由 Agent 持有，
+但不能读取或修改用户 Database。缺失能力先增加 MSQL Feature，再开发对应 Agent 节点。
+
+当前 `assimilation.record/submit/receipt` 私有 IPC 是已识别迁移项，不进入内置 Agent 工具面。
+CI 将以 import allowlist 和 fake `MSQLExecutor` 锁定该边界。
+
 ## M0：收口当前分支
 
 1. Review F169 的 Leaf → Row 0..1 不变量、迁移、Admin 和全仓证据，合入后更新状态账本；
@@ -45,6 +55,7 @@ F174 以前不让内置 Agent 依赖未冻结的全文查询。倒排结果是�
 
 | Feature | 唯一主要结果 | 关键边界 |
 | --- | --- | --- |
+| F175a | Agent MSQL-only port 与依赖守卫 | 禁止引擎包 import；fake executor 可独立运行全部 Agent 测试 |
 | F175 | Memora-owned Provider 接口 | 框架/厂商类型不进入 MSQL、Store 或持久协议 |
 | F176 | OpenAI-compatible HTTP Provider | 首个 DeepSeek V4 Flash、懒初始化、无厂商 SDK、密钥不落盘 |
 | F177 | Runtime spike 与 ADR | Eino 对照薄自研 loop；体积、RSS、取消、checkpoint、许可证实测 |
@@ -78,6 +89,7 @@ Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才�
 | F188 | 与格式无关的 Document IR v1 和稳定 source anchor |
 | F189 | EPUB 确定性适配器，保留 spine、目录、章节、脚注和资源清单 |
 | F190 | `ReadExtent` 与 coverage 调度，证明所有必读范围被处理 |
+| F190a | 以正式 MSQL 替代内置 Agent 所需的 `assimilation.*` 私有 IPC |
 | F191 | DeepSeek 写入 draft/claim ledger 和有来源约束的 MSQL 候选 |
 | F192 | 问题即时输出、用户回答、暂停和恢复受影响分支 |
 | F193 | 隔离复核、短事务提交、全局 reconciliation 和 Source Receipt |

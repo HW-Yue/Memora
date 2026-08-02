@@ -15,6 +15,15 @@ MSQL 不以兼容 MySQL 为目标，不承诺 MySQL 的完整 Grammar、行为�
 
 Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop 必须提交同一种 MSQL Request，并经过同一套 Lexer、Parser、AST、Binder、Policy、事务和执行器。`pack`、`install`、`open`、`export`、`doctor` 等 CLI 命令只是对应 MSQL 的参数化便捷入口，不能拥有绕过 MSQL 的实现路径。自然语言由 Agent 转换为 MSQL，不属于 MSQL Grammar。
 
+未来内置 Agent 对 Memora 的依赖只有版本化 `ExecuteMSQL` 端口。即使 Agent 与 daemon 在同一 Go
+进程中，也必须提交完整 MSQL Request 并经过上述全部阶段；不能把“同进程调用”解释为直接调用
+Catalog、Row、Router、Assimilation Controller、Store 或索引包。Agent 需要而 Grammar 尚未表达的
+数据库能力，必须先作为独立 MSQL Feature 实现，不能为 Agent 增加私有 RPC 或 Go 后门。
+
+现有 `assimilation.record`、`assimilation.submit` 和 `assimilation.receipt` IPC 是早期宿主协议，
+尚未满足这一未来内置 Agent 边界。新 Agent 禁止依赖它们；长资料 Runtime 开工前必须把需要保留的
+覆盖、复核、提交和收据操作迁移为 MSQL surface，或把纯任务状态移出 Memora 成为 Agent-owned 状态。
+
 宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。直接使用内部 Go API 或本地用户运行的普通 SQL 可走可信本地操作员路径，但 `PACK DATABASE`、`EXPORT WIKI` 和 `INSTALL PACKAGE` 没有无 scope/approval 降级。完整边界见 [Policy Enforcement v2](../development/policy-enforcement-v2.md)。
 
 ## 标准进入流程
@@ -143,6 +152,7 @@ revision。首批配置只控制查询/上下文预算，不覆盖权限、事�
 - Route 只返回导航元数据；
 - Route 叶子只返回数据项定位，主 Agent 必须再用 SELECT 回表；
 - 所有 CLI 管理操作必须映射为 MSQL，不能直接调用旁路引擎接口；
+- 内置 Agent 只能依赖版本化 MSQL 请求/结果信封，不得 import 或调用引擎领域包；
 - 长文本使用参数绑定；
 - 查询必须有结果和输出预算；
 - 更新应带 expected revision；

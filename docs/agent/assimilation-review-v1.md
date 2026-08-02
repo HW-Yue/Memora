@@ -3,6 +3,10 @@
 状态：F36 实现规格；F78 已增加来源强度和 challenge-bound review，旧的
 “仅比较 context ID”门已被取代。
 
+本文记录当前外部宿主提交协议，不授权未来内置 Agent 调用 `assimilation.submit` 或
+`assimilation.receipt` 私有 IPC。内置 Agent 必须通过正式 MSQL 触发所有 Memora 复核门、语义提交和
+Source Receipt 操作；现有 Controller 语义可以复用，Go 包和旁路 RPC 不能成为 Agent 依赖。
+
 ## 提交对象
 
 宿主在 F35 返回 `coverage_complete` 后，通过
