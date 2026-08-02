@@ -1,6 +1,6 @@
 # F173a：Catalog Posting Publication
 
-规划状态：已批准；2026-08-03 架构 Review 将原 Catalog/Route Feature 拆分，本项可进入 TDD。
+规划状态：已完成；2026-08-03 通过完整完成门并获准合入。
 
 ## 拆分理由
 
@@ -85,6 +85,18 @@ COW replacement，以当前 Plan 一次 seed 全部 Catalog/Row documents。结�
 RED 入口：`go test ./internal/catalogfulltext ./internal/store/fulltextindex ./internal/pagestoremigration`。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- `Project` 确定性覆盖 Database/Table/Column，空白可选字段跳过，非法层级、revision 和必填语义拒绝；
+- generation seed 与 reopen reference 同时包含当前 Catalog 和当前 Row；
+- create/rename/drop、三个 publication checkpoint、真实 Fulltext WAL 故障和 poison/reopen 均已验证；
+- Fulltext object inventory 会校验 object/owner/posting mirror，损坏时 fail closed；
+- Row-only v2 且 Catalog revision gap 的 fixture 自动发布 COW epoch，旧 generation 保留；
+- 实现提交 `6701508`；`./scripts/ci.sh` 的 format、vet、unit、race、integration、e2e、cross-build 全绿。
+
+完成门结论：PASS。未覆盖 Route publication、显式 rebuild 和用户可见 lexical query，分别由
+F173b、F173c、F174 承担。
 
 ## 关联
 

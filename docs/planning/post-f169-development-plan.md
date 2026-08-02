@@ -5,9 +5,9 @@
 
 ## 当前出发点
 
-- `main` 当前到 F172b，Row lexical generation 与在线 publication 已通过完整 CI 并合入；
+- `main` 当前到 F173a，Row 与 Catalog lexical generation/在线 publication 已通过完整 CI 并合入；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F170–F172b 已完成；下一项从最新 `main` 单独 Review F173a Catalog/Route posting publication；
+- F170–F173a 已完成；下一项从最新 `main` 单独 Review F173b Route posting publication；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -47,7 +47,7 @@ CI 将以 import allowlist 和 fake `MSQLExecutor` 锁定该边界。
 | F171（已完成） | Page/WAL 持久化 posting store | reopen、corruption、split、fault injection、race |
 | F172a（已完成） | Row 投影与四树 generation v2 | Plan/reference、v1 COW 升级、staging fault |
 | F172b（已完成） | live Row revision 原子替换 posting | insert/revise/delete/supersede 故障矩阵 |
-| F173a | Catalog revision 接入 posting | Database/Table/Column rename、alias、drop 后无陈旧位置 |
+| F173a（已完成） | Catalog revision 接入 posting | Database/Table/Column rename、alias、drop 后无陈旧位置 |
 | F173b | Route revision 接入 posting | create、rename、delete、move 后无陈旧位置 |
 | F173c | 全量 rebuild 与 snapshot 校验 | 在线状态与重建结果字节级对拍 |
 | F174 | 有界 MSQL lexical location 查询 | 只返回位置、预算/cursor、最终 SQL 回表 |
