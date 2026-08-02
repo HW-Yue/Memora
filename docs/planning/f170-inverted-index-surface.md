@@ -1,6 +1,6 @@
 # F170：全内容倒排语义模型
 
-规划状态：已批准；2026-08-03 单项 Review 通过，获准按 RED → GREEN → REFACTOR 实现。
+规划状态：已完成；2026-08-03 单项 Review、RED → GREEN → REFACTOR 与完整 CI 均通过。
 
 ## 唯一主要结果
 
@@ -121,6 +121,16 @@ go test ./internal/fulltext
 用户执行授权：2026-08-03 用户要求开始顺序执行后续 Feature；本 Review 只批准 F170 的上述范围。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- `internal/fulltext` 实现 canonical document、revision replacement、posting frequency 和稳定排序；
+- `internal/lexical` 成为全内容索引与 Route lexical discovery 共用的唯一 tokenizer；
+- 500 步固定 seed reference 对拍、乱序 canonical replay、并发 revision one-winner 均通过；
+- `go test -race ./internal/fulltext ./internal/lexical ./internal/routelexical`：PASS；
+- `./scripts/ci.sh`：format、vet、unit、全量 race、integration、e2e、cross-build 全部 PASS。
+
+完成门结论：PASS。F170 仍只是无 I/O reference model；F171 才开始持久化。
 
 ## 关联
 
