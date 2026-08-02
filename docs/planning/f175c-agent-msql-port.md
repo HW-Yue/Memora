@@ -1,6 +1,6 @@
 # F175c：Agent MSQL-only Port 与 Fake Harness
 
-规划状态：已通过单项 Review，批准按 RED → GREEN → REFACTOR 实现。
+规划状态：已完成；RED → GREEN → REFACTOR 与完整 CI 通过。
 
 ## 唯一主要结果
 
@@ -36,3 +36,13 @@ Envelope/error、记录调用并在结束时验证没有漏调或多调。它不
 用户执行授权：2026-08-03 用户要求持续顺序完成后续 Feature。本 Review 只批准上述 F175c 范围。
 
 开工前结论：PASS。
+
+## 完成结论
+
+- `internal/agent.MSQLExecutor` 与 `Runtime` 已落地，构造函数拒绝缺失端口；
+- outbound Request 和 inbound Envelope 均在 Agent 边界验证，executor error 原样返回且不自动重试；
+- `internal/agent/agenttest.ScriptedMSQL` 已覆盖精确顺序、调用记录、漏调、多调、错误与并发；
+- CI import guard 覆盖 Agent 生产和测试文件，并以违规 `internal/store` fixture 证明守卫有效；
+- Agent 测试只使用内存 fake，完整 format/vet/unit/race/integration/e2e/cross-build 全绿。
+
+完成结论：PASS。下一项为 F176 确定性 Query Bootstrap Frame。

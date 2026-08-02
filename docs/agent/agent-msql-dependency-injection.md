@@ -1,6 +1,6 @@
 # Agent 的 MSQL 边界与依赖注入
 
-状态：架构约束；F175a/F175b 已完成中立协议包与共享 Service，F175c 正在实现 Agent port 与依赖守卫。
+状态：已落地的架构约束；F175a–F175c 已完成中立协议、共享 Service、Agent port 与依赖守卫。
 
 ## 决定
 
@@ -140,6 +140,10 @@ Fx 能提供运行时依赖图和生命周期管理，但第一版对象图不�
 - context 取消、超时、并发和 race 测试；
 - Agent 测试不得打开真实 Instance 来绕过 fake 端口；
 - `sdk/memora` 协议类型兼容测试，证明协议抽取不破坏外部调用方。
+
+F175c 已提供 `internal/agent.Runtime` 的显式构造注入、`internal/agent/agenttest` scripted fake，
+并在 CI 中解析 Agent 全树 import AST。生产代码只能导入标准库与 `protocol/msql`；测试只能额外
+导入 Agent 自有包，因此无法通过测试便利性绕开边界打开 Instance。
 
 ## 关联
 

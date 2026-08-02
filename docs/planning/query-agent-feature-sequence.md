@@ -43,7 +43,7 @@ F170–F174 全内容 lexical location
 | --- | --- | --- |
 | F175a（已完成） | 抽出仅含版本化 Request/Envelope 的 `protocol/msql` | SDK wire golden 不变；协议包不 import `internal/*` |
 | F175b（已完成） | 单实例共享 `MSQLService`，IPC 与同进程 adapter 共用 | parity、独立 Session、取消/回滚、并发冲突和 race |
-| F175c（实现中） | 建立 `internal/agent` 的 MSQL-only port 与 fake harness | import allowlist；Agent 测试不打开 Instance |
+| F175c（已完成） | 建立 `internal/agent` 的 MSQL-only port 与 fake harness | import allowlist；Agent 测试不打开 Instance |
 
 三项不能合并成一个大 Feature：协议兼容、运行时并发和架构依赖是三个独立故障域。
 
