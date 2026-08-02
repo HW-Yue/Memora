@@ -5,9 +5,9 @@
 
 ## 当前出发点
 
-- `main` 当前到 F175c，lexical 位置、中立协议、共享执行 Service 与 Agent MSQL-only 边界已通过完整 CI 并合入；
+- `main` 当前到 F176，lexical 位置、中立协议、共享 Service、Agent MSQL-only 边界和 Query Bootstrap 已通过完整 CI 并合入；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F170–F175c 已完成；F176 已通过单项 Review，正在实现 Query Bootstrap Frame；
+- F170–F176 已完成；下一项从最新 `main` 单独 Review F177 Provider port；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -62,7 +62,7 @@ F174 已冻结内置 Agent 可依赖的全文查询。倒排结果是候选武�
 | F175a（已完成） | 中立 `protocol/msql` | SDK wire golden 不变，协议不依赖 runtime/internal |
 | F175b（已完成） | 单实例共享 `MSQLService` | IPC/adapter parity、独立 Session、取消/回滚、并发与 race |
 | F175c（已完成） | Agent MSQL-only port 与 fake harness | import allowlist；Agent 测试不打开 Instance |
-| F176（实现中） | 确定性 Query Bootstrap Frame | Atlas + lexical + 可选根 Route 预取；snapshot/byte budget/回退 |
+| F176（已完成） | 确定性 Query Bootstrap Frame | Atlas + lexical + 可选根 Route 预取；snapshot/byte budget/回退 |
 | F177 | Memora-owned Provider port | scripted fake；框架/厂商类型不进入数据库协议 |
 | F178 | Agent Event / Trace / Usage 信封 | 第一次真实模型调用前已可重放调用、token、费用和分段耗时 |
 

@@ -32,7 +32,7 @@
 - [F175a：中立 MSQL Wire Protocol](./planning/f175a-neutral-msql-protocol.md) — 已完成的公共 Request/Envelope 与 SDK 零 wire 变更抽取。
 - [F175b：单实例共享 MSQL Service](./planning/f175b-shared-msql-service.md) — 已批准的 IPC/同进程共核、Session 隔离与取消实现门。
 - [F175c：Agent MSQL-only Port](./planning/f175c-agent-msql-port.md) — 已完成的消费者接口、scripted fake 与 import allowlist 边界。
-- [F176：确定性 Query Bootstrap Frame](./planning/f176-query-bootstrap-frame.md) — 已批准的 Atlas、lexical、root 预取与全局上下文预算实现门。
+- [F176：确定性 Query Bootstrap Frame](./planning/f176-query-bootstrap-frame.md) — 已完成的 Atlas、lexical、root 预取与全局上下文预算链路。
 
 ## 当前产品规格
 

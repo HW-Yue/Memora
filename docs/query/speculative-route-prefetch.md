@@ -1,7 +1,7 @@
 # 语义路由投机预取
 
-状态：F124a–F124e 已实现 Frame、字面位置、vector generation、CPU exact 与
-Canonical Skill 同回合投机发现；下一项由 F125 验证真实收益。
+状态：F176 已将 Atlas、全内容 lexical locations 与最多两个 Table root 组装为确定性
+Agent Bootstrap Frame；是否默认采用仍由 F185 真实答案门验证。
 
 ## 动机
 

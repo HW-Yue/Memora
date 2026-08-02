@@ -1,7 +1,7 @@
 # 可选内置 Agent Runtime
 
-状态：F43 已决定面向用户的 v0 Runtime defer；2026-08-02 另确认内置评测 Agent 为后期候选，
-实现仍需独立 Review。
+状态：F43 已决定面向用户的 v0 Runtime defer；F175c/F176 已交付评测 Agent 所需的 MSQL-only
+边界和无模型 Bootstrap，但 Provider、loop 与产品入口仍需后续独立 Feature。
 
 ## 定位
 

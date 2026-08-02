@@ -1,7 +1,7 @@
 # 语义树检索质量链路
 
-状态：产品目标已确认；F70/F71 已切到 Table 级 Router，真实模型的 fanout/depth
-能力仍待 F124–F126 验证。
+状态：产品目标已确认；F176 已实现无模型 Bootstrap Frame，真实 Query Agent 与最终答案质量
+仍待 F177–F185 Provider、loop 和外部评分链验证。
 
 ## 目标
 
