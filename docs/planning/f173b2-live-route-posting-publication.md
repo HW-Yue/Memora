@@ -1,6 +1,6 @@
 # F173b2：Live Route Posting Publication
 
-规划状态：已批准；2026-08-03 已完成写路径 Review，本项可进入 TDD。
+规划状态：已完成；2026-08-03 已通过 TDD、完整 CI 与完成门。
 
 ## 唯一主要结果
 
@@ -77,9 +77,15 @@ poison；Authority 在 reopen 时由 F173b1 Plan v3 收敛，revision gap 必要
 - 显式 rebuild 与用户可见 lexical query 留给 F173c、F174；
 - 用户连续执行授权覆盖本项，不扩张相邻 Feature 的主要结果。
 
-RED 入口：`go test ./internal/routefulltext ./internal/nativerow ./internal/nativemutation ./internal/pagestoremigration`。
+## 完成证据
 
-开工前结论：PASS。
+- direct root/node create、Branch rename + descendant path revision、synopsis update 与 delete 均发布最新 posting/tombstone；
+- Route Plan 的 move 与同批 create+delete、Row+Route reshape 都只推进一次 Fulltext root revision；
+- 非法 Catalog scope 在 body commit 前拒绝；Route checkpoint 与真实 Fulltext WAL 故障均 poison，reopen 收敛；
+- 已一致 Route 重开不追加 Fulltext WAL；`./scripts/ci.sh` 的 format、vet、unit、race、integration、e2e
+  以及独立 cross-build 全部通过。
+
+完成门结论：PASS。F173c 承担显式全量 rebuild 与 snapshot parity，F174 承担用户可见查询。
 
 ## 关联
 

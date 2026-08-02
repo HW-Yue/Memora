@@ -35,6 +35,7 @@
 | F172b | 在线 Row posting batch publication；故障 poison/reopen；revision gap 自动 COW 重建 |
 | F173a | Catalog Database/Table/Column posting seed 与在线原子发布；drop tombstone、故障恢复和 Row-only v2 COW 升级 |
 | F173b1 | Route 确定性投影、Plan/generation v3、v2 增量/COW 升级与删除恢复 |
+| F173b2 | direct CRUD、Route Plan 与 Row+Route reshape 统一原子发布 Route posting；故障 poison/reopen 收敛 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -72,7 +73,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F173b2–F174：Route 在线发布、rebuild 与有界 MSQL lexical location；F173b2 已批准；
+- F173c–F174：显式 rebuild 与有界 MSQL lexical location；
 - F175a–F186：共享 MSQL Service、Bootstrap、Kimi-compatible Provider、查询 Agent 与外部质量门；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
