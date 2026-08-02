@@ -224,6 +224,9 @@ func NewWithPointReadsAndRouteVectors(
 ) *Engine {
 	engine := New(dictionary, rows)
 	engine.points, engine.routeVectors = points, vectors
+	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
+		engine.lexical = maintenance
+	}
 	return engine
 }
 

@@ -125,6 +125,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		}
 	case parser.matchWord("INSTALL"):
 		statement, err = parser.parseInstallPackage()
+	case parser.matchWord("REBUILD"):
+		statement, err = parser.parseRebuildLexicalIndex()
 	case parser.matchWord("BEGIN"):
 		statement = transactionStatement("BEGIN")
 	case parser.matchWord("START"):
@@ -146,6 +148,17 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 	}
 	statement.Span = lexer.Span{Start: start, End: parser.previous().Span.End}
 	return statement, nil
+}
+
+func (parser *parser) parseRebuildLexicalIndex() (ast.Statement, error) {
+	for _, word := range []string{"LEXICAL", "INDEX"} {
+		if _, err := parser.expectWord(word); err != nil {
+			return ast.Statement{}, err
+		}
+	}
+	return ast.Statement{
+		Kind: "REBUILD_LEXICAL_INDEX", Rebuild: &ast.RebuildStatement{Object: "LEXICAL_INDEX"},
+	}, nil
 }
 
 func transactionStatement(action string) ast.Statement {

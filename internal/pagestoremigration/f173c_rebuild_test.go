@@ -24,6 +24,15 @@ func TestLexicalRebuildReportsCanonicalSnapshotParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	retired, err := rows.CreateRouterNode(ctx, root.ID, router.NodeDefinition{
+		Name: "retired", Kind: router.KindLeaf, Purpose: "Retired decisions",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rows.DeleteRouterNode(ctx, retired.ID, retired.Revision); err != nil {
+		t.Fatal(err)
+	}
 	beforeGeneration := authority.marker.Generation
 	receipt, err := authority.ReplaceGeneration(ctx)
 	if err != nil {

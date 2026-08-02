@@ -2,14 +2,18 @@ package pagestoremigration
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 
+	"github.com/HW-Yue/Memora/internal/fulltext"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativerow"
+	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 )
 
 type ReplacementReceipt struct {
@@ -82,6 +86,7 @@ func (authority *Authority) replaceGeneration(
 	if authority.marker.Epoch == math.MaxUint64 {
 		return ReplacementReceipt{}, fmt.Errorf("%w: generation epoch exhausted", ErrTargetCorrupt)
 	}
+	previousSnapshotSHA256, _ := fulltextSnapshotSHA256(authority.generation.fulltext)
 	plan, err := authority.reader.Build(ctx)
 	if err != nil {
 		return ReplacementReceipt{}, err
@@ -150,9 +155,10 @@ func (authority *Authority) replaceGeneration(
 		return ReplacementReceipt{}, err
 	}
 	verifyErr := verifyGenerationPlan(ctx, strict, plan)
+	snapshotSHA256, snapshotErr := fulltextSnapshotSHA256(strict.fulltext)
 	closeErr := strict.Close()
-	if verifyErr != nil || closeErr != nil {
-		return ReplacementReceipt{}, errors.Join(verifyErr, closeErr)
+	if verifyErr != nil || snapshotErr != nil || closeErr != nil {
+		return ReplacementReceipt{}, errors.Join(verifyErr, snapshotErr, closeErr)
 	}
 	live, err := operations.liveOpen(target)
 	if err != nil {
@@ -219,8 +225,47 @@ func (authority *Authority) replaceGeneration(
 	closeErr = previous.Close()
 	return ReplacementReceipt{
 		PreviousGeneration: previousName, Generation: generationName,
-		Epoch: epoch, PlanDigest: plan.Digest, Reused: reused,
+		Epoch: epoch, PlanDigest: plan.Digest, SourceFingerprint: plan.SourceFingerprint,
+		PreviousSnapshotSHA256: previousSnapshotSHA256, SnapshotSHA256: snapshotSHA256,
+		Parity:   previousSnapshotSHA256 != "" && previousSnapshotSHA256 == snapshotSHA256,
+		Verified: true, Reused: reused,
 	}, closeErr
+}
+
+const fulltextSnapshotVersion = "memora.fulltext.snapshot/v1"
+
+type canonicalFulltextSnapshot struct {
+	Version  string             `json:"version"`
+	Objects  []fulltext.Object  `json:"objects"`
+	Postings []fulltext.Posting `json:"postings"`
+}
+
+func fulltextSnapshotSHA256(index *fulltextindex.Index) (string, error) {
+	if index == nil {
+		return "", fmt.Errorf("%w: Fulltext snapshot", ErrInvalid)
+	}
+	objects, err := index.Objects()
+	if err != nil {
+		return "", err
+	}
+	liveObjects := objects[:0]
+	for _, object := range objects {
+		if object.State == fulltext.StateLive {
+			liveObjects = append(liveObjects, object)
+		}
+	}
+	postings, err := index.AllPostings()
+	if err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(canonicalFulltextSnapshot{
+		Version: fulltextSnapshotVersion, Objects: liveObjects, Postings: postings,
+	})
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(encoded)
+	return fmt.Sprintf("sha256:%x", digest), nil
 }
 
 func verifyReplacementTarget(

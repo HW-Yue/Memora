@@ -24,6 +24,9 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		}
 		return engine.executeCatalog(ctx, statement, bound)
 	}
+	if statement.Rebuild != nil {
+		return engine.rebuildLexicalIndex(ctx, statement.Rebuild)
+	}
 	if statement.Select != nil {
 		return engine.Query(ctx, statement, parameters)
 	}

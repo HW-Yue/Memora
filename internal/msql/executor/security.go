@@ -87,6 +87,7 @@ func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 		statement.UpdateRoute != nil, statement.DeleteRoute != nil,
 		statement.ApplyRoute != nil, statement.ApplySchema != nil,
 		statement.Configuration != nil,
+		statement.Rebuild != nil,
 		statement.Package != nil && statement.Package.Action == "INSTALL":
 		return security.LevelStructural
 	default:

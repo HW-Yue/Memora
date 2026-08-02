@@ -33,11 +33,12 @@ publication 和旧 generation 保留语义。虽然用户目标是 lexical rebui
 Authority 在 gate 内读取旧 Fulltext 的规范快照，构建并验证新 generation，再计算新快照：
 
 ```text
-snapshot = version + sorted Objects + sorted Postings
+snapshot = version + sorted live Objects + sorted Postings
 sha256 = SHA-256(canonical JSON(snapshot))
 ```
 
-`verified=true` 只表示新 generation 已与 native Plan/reference 全量对拍；`parity` 表示旧在线 logical
+删除/取代 tombstone 是代内 revision guard，不属于可查询 lexical snapshot，因此不进入摘要；新 generation
+仍由 reference verifier 独立验证所需 tombstone。`verified=true` 只表示新 generation 已与 native Plan/reference 全量对拍；`parity` 表示旧在线 logical
 snapshot 与新 snapshot 摘要相同。旧索引缺失或不可读时允许 rebuild 修复，旧摘要为空且 parity=false；
 新快照无法读取或 reference 不一致时禁止 marker 切换。
 

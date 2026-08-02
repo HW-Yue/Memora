@@ -222,8 +222,9 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		_ = securityStore.Close()
 		return err
 	}
+	pageServices := &nativePageServices{Authority: authority}
 	handler := newNativeDatabaseHandler(
-		ctx, dictionary, rowsWithTraces, authority, routeVectors, auxiliaryStore,
+		ctx, dictionary, rowsWithTraces, pageServices, routeVectors, auxiliaryStore,
 		security.New(securityStore, security.Options{}), traces,
 		func(context.Context) ([]byte, error) { return nativesnapshot.NewNative(nativeFile).Export() },
 	)
