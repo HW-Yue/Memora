@@ -5,9 +5,9 @@
 
 ## 当前出发点
 
-- `main` 当前到 F173b2，Catalog/Route/Row lexical generation 与在线 publication 已通过完整 CI 并合入；
+- `main` 当前到 F173c，Catalog/Route/Row lexical generation、在线 publication 与显式 rebuild 已通过完整 CI 并合入；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F170–F173b2 已完成；下一项从最新 `main` 单独 Review F173c 全量 rebuild 与 snapshot parity；
+- F170–F173c 已完成；下一项从最新 `main` 单独 Review F174 有界 MSQL lexical location query；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -50,7 +50,7 @@ CI 将以 import allowlist 和 fake `MSQLExecutor` 锁定该边界。
 | F173a（已完成） | Catalog revision 接入 posting | Database/Table/Column rename、alias、drop 后无陈旧位置 |
 | F173b1（已完成） | Route 投影、generation v3 与 reopen | v2 增量/COW 升级、删除恢复后无陈旧位置 |
 | F173b2（已完成） | live Route revision 原子发布 posting | direct CRUD、Route Plan、reshape 的 fault/reopen |
-| F173c（已批准） | 全量 rebuild 与 snapshot 校验 | 在线状态与重建结果规范摘要对拍 |
+| F173c（已完成） | 全量 rebuild 与 snapshot 校验 | 在线状态与重建结果规范摘要对拍 |
 | F174 | 有界 MSQL lexical location 查询 | 只返回位置、预算/cursor、最终 SQL 回表 |
 
 F174 以前不让内置 Agent 依赖未冻结的全文查询。倒排结果是候选武器，不成为答案或新真相源。

@@ -24,7 +24,7 @@ db_<stable-id>/
 └── indexes/              可重建派生索引
 ```
 
-`data/` 和 `history/` 不得被 REINDEX 或缓存清理删除。`indexes/` 可以按 generation 丢弃，但必须能从当前 Row、Schema、关系和索引规则重建。
+`data/` 和 `history/` 不得被 `REBUILD LEXICAL INDEX` 或缓存清理删除。`indexes/` 可以按 generation 丢弃，但必须能从当前 Row、Schema、关系和索引规则重建。
 
 ## 每表 Tablespace
 

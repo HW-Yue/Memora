@@ -4,6 +4,7 @@
 检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE，F79 已实现
 版本化查询预算配置，F129/F130 已实现 Route Mutation Plan 与审批执行，F131/F132 已实现
 Schema Change Plan 与审批执行。
+F173c 已实现 `REBUILD LEXICAL INDEX` 的全量 COW generation 维护语句。
 
 ## 定位
 
@@ -52,7 +53,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 事务：BEGIN、COMMIT、ROLLBACK、SET TRANSACTION ISOLATION LEVEL；
 - 历史：SHOW HISTORY、AS OF REVISION/COMMIT_SEQUENCE、RESTORE 补偿；
 - 关系：RELATE、SHOW RELATIONS、UNRELATE；
-- 管理：PACK、INSTALL、OPEN、EXPORT、DOCTOR、REINDEX；
+- 管理：PACK、INSTALL、OPEN、EXPORT、DOCTOR、REBUILD LEXICAL INDEX；
 - 配置：SHOW CONFIGURATION/HISTORY、ALTER CONFIGURATION、RESTORE CONFIGURATION；
 
 Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。F44 已冻结的写法：
@@ -73,6 +74,16 @@ EXPORT WIKI TO :path PROFILE :profile;
 ```
 
 CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得插值进 MSQL；目标必须是绝对规范化路径。语句只允许 autocommit，不读取或回流 Vault 中的人类编辑。投影、稳定路径、manifest 与增量规则见 [Obsidian Wiki 导出](../export/obsidian-wiki.md)。
+
+F173c 冻结 instance-wide lexical generation 维护语句：
+
+```sql
+REBUILD LEXICAL INDEX;
+```
+
+它是仅 autocommit 的 L2 structural operation，通过 staging generation、reference verification 和
+原子 marker swap 完成；结果返回 generation/epoch、source/plan digest、规范 snapshot SHA-256、
+`parity`、`verified` 与 `reused`，不返回 posting 或 Row 内容。
 
 语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
 所选 Table 的短 Route 节点，直到 Leaf 得到唯一 RowID。一个 Leaf 最多一个活跃 Row，
@@ -180,9 +191,8 @@ PURGE 是独立高风险语句。
 与 Row revision 原子推进；提供 snapshot 时则以显式完整集合为准。需要改变语义
 边界时必须提供新 snapshot，不能让引擎根据正文自动猜测。
 
-Router 的 Row、子树或 Table generation 重建必须映射为 MSQL `REINDEX` 类
-声明式语句。重建在新 generation 中进行，验证后原子切换；少量修改只能走
-增量路径，不能无条件启动整表重建。
+全内容 lexical generation 重建固定使用 `REBUILD LEXICAL INDEX`；Router 的局部语义重构继续使用
+Route Mutation Plan，不复用该维护语句。少量索引修改走在线增量 publication，不能无条件启动全量重建。
 
 ## 统一响应
 

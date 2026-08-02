@@ -26,7 +26,7 @@
 - [F173a：Catalog Posting Publication](./planning/f173a-catalog-posting-publication.md) — 已完成的 Catalog seed、在线替换、删除 tombstone 与恢复。
 - [F173b1：Route Posting Generation](./planning/f173b1-route-posting-generation.md) — 已完成的 Route 投影、generation v3 与 reopen reconciliation。
 - [F173b2：Live Route Posting Publication](./planning/f173b2-live-route-posting-publication.md) — 已完成的 direct/plan/reshape 统一 Route publication。
-- [F173c：Lexical Rebuild 与 Snapshot Parity](./planning/f173c-lexical-rebuild-parity.md) — 已批准的全量 COW rebuild、规范摘要与 MSQL 维护契约。
+- [F173c：Lexical Rebuild 与 Snapshot Parity](./planning/f173c-lexical-rebuild-parity.md) — 已完成的全量 COW rebuild、规范摘要与 MSQL 维护契约。
 
 ## 当前产品规格
 

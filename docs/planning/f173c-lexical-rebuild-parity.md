@@ -1,6 +1,6 @@
 # F173c：Lexical Rebuild 与 Snapshot Parity
 
-规划状态：已批准；2026-08-03 已完成实现前 Review，用户连续执行授权覆盖本项。
+规划状态：已完成；2026-08-03 已通过 TDD、完整 CI 与完成门。
 
 ## 唯一主要结果
 
@@ -70,6 +70,17 @@ snapshot 与新 snapshot 摘要相同。旧索引缺失或不可读时允许 reb
 - 一个主要结果、一个故障域，开工前结论：PASS。
 
 RED 入口：`go test ./internal/msql/parser ./internal/msql/executor ./internal/pagestoremigration ./internal/daemon`。
+
+## 完成证据
+
+- Parser/AST、L2 Policy、缺失 port 与显式事务 rejection 均有稳定测试；
+- 健康在线索引（含已删除 Route tombstone）重建摘要一致且 `parity=true`；
+- native truth 绕过在线 publication 后，重建报告 `parity=false` 并恢复最新 Row postings；
+- daemon 通过同一 MSQL 入口完成 rebuild，重开后 epoch 继续前进且摘要不变；
+- 既有 replacement build/rename/fsync/marker/reopen 故障矩阵继续覆盖该命令；
+- `./scripts/ci.sh` 的 format、vet、unit、race、integration、e2e 及独立 cross-build 全部通过。
+
+完成门结论：PASS。F174 承担用户可见的有界 lexical location query。
 
 ## 关联
 
