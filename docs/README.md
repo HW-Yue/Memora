@@ -22,6 +22,7 @@
 - [F170：全内容倒排语义模型](./planning/f170-inverted-index-surface.md) — 已完成的无 I/O reference index；
 - [F171：持久化 Posting Store](./planning/f171-persistent-posting-store.md) — 已完成的 Page/WAL/B+ Tree 物理层。
 - [F172a：Row Posting Generation](./planning/f172a-row-posting-generation.md) — 已完成的 Row 投影、generation v2 与 v1 COW 升级。
+- [F172b：Live Row Posting Publication](./planning/f172b-live-row-posting-publication.md) — 已批准的在线 Row posting 原子替换与恢复。
 
 ## 当前产品规格
 
