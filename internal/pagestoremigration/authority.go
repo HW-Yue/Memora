@@ -344,8 +344,14 @@ func (authority *Authority) AsOfCommit(
 func (authority *Authority) PublishRows(
 	ctx context.Context, values []row.Row, commit func() error,
 ) error {
-	if authority == nil || ctx == nil || len(values) == 0 || commit == nil {
-		return fmt.Errorf("%w: Row publication", ErrInvalid)
+	return authority.PublishMutation(ctx, values, nil, commit)
+}
+
+func (authority *Authority) PublishMutation(
+	ctx context.Context, rows []row.Row, routes []router.Node, commit func() error,
+) error {
+	if authority == nil || ctx == nil || len(rows)+len(routes) == 0 || commit == nil {
+		return fmt.Errorf("%w: Row/Route publication", ErrInvalid)
 	}
 	authority.mu.Lock()
 	defer authority.mu.Unlock()
@@ -356,19 +362,31 @@ func (authority *Authority) PublishRows(
 	if err != nil {
 		return err
 	}
-	documents, err := projectRowDocuments(databases, values)
+	rowDocuments, err := projectRowDocuments(databases, rows)
 	if err != nil {
 		return err
 	}
+	routeDocuments, err := projectRouteChangeDocuments(databases, routes)
+	if err != nil {
+		return err
+	}
+	documents := append(rowDocuments, routeDocuments...)
 	if err := commit(); err != nil {
 		return err
 	}
-	if err := authority.checkpointPhase(phaseRowBodyCommitted); err != nil {
-		return authority.poisonPublication("Row body", err)
+	if len(rows) != 0 {
+		if err := authority.checkpointPhase(phaseRowBodyCommitted); err != nil {
+			return authority.poisonPublication("Row/Route body", err)
+		}
 	}
-	versions := make([]rowversionindex.Locator, 0, len(values))
-	current := make([]currentrowindex.Update, 0, len(values))
-	for _, value := range values {
+	if len(routes) != 0 {
+		if err := authority.checkpointPhase(phaseRouteBodyCommitted); err != nil {
+			return authority.poisonPublication("Row/Route body", err)
+		}
+	}
+	versions := make([]rowversionindex.Locator, 0, len(rows))
+	current := make([]currentrowindex.Update, 0, len(rows))
+	for _, value := range rows {
 		version := rowversionindex.Locator{
 			DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID,
 			SchemaRevision: value.SchemaVersion, Revision: value.Revision,
@@ -384,12 +402,15 @@ func (authority *Authority) PublishRows(
 			},
 		})
 	}
-	versionID, err := authority.nextTransactionID("versions")
-	if err == nil {
-		_, err = authority.generation.versions.Append(versionID, versions)
-	}
-	if err == nil {
-		err = authority.checkpointPhase(phaseRowVersionPublished)
+	if len(rows) != 0 {
+		versionID, versionErr := authority.nextTransactionID("versions")
+		err = versionErr
+		if err == nil {
+			_, err = authority.generation.versions.Append(versionID, versions)
+		}
+		if err == nil {
+			err = authority.checkpointPhase(phaseRowVersionPublished)
+		}
 	}
 	if err == nil {
 		fulltextID, idErr := authority.nextTransactionID("fulltext")
@@ -398,29 +419,26 @@ func (authority *Authority) PublishRows(
 			_, err = authority.generation.fulltext.ReplaceBatch(fulltextID, documents)
 		}
 	}
-	if err == nil {
+	if err == nil && len(rows) != 0 {
 		err = authority.checkpointPhase(phaseRowFulltextPublished)
 	}
-	if err == nil {
+	if err == nil && len(routes) != 0 {
+		err = authority.checkpointPhase(phaseRouteFulltextPublished)
+	}
+	if err == nil && len(rows) != 0 {
 		currentID, idErr := authority.nextTransactionID("current")
 		err = idErr
 		if err == nil {
 			_, err = authority.generation.current.Apply(currentID, current)
 		}
 	}
-	if err == nil {
+	if err == nil && len(rows) != 0 {
 		err = authority.checkpointPhase(phaseRowCurrentPublished)
 	}
 	if err != nil {
-		return authority.poisonPublication("Row body", err)
+		return authority.poisonPublication("Row/Route body", err)
 	}
 	return nil
-}
-
-func (authority *Authority) PublishMutation(
-	context.Context, []row.Row, []router.Node, func() error,
-) error {
-	return fmt.Errorf("%w: combined Row/Route publication is not implemented", ErrInvalid)
 }
 
 func (authority *Authority) SnapshotCatalog(ctx context.Context) ([]catalog.Database, error) {

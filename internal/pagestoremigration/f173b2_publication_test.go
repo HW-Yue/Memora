@@ -70,16 +70,28 @@ func TestCoordinatorRoutePlanPublishesMovedPathInOneFulltextRevision(t *testing.
 	ctx := context.Background()
 	_, file, authority := newAuthorityFixture(t)
 	_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
-	root, _ := rows.CreateTableRouterRoot(ctx, "work", "notes", "All notes", "")
-	left, _ := rows.CreateRouterNode(ctx, root.ID, router.NodeDefinition{
+	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "All notes", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, err := rows.CreateRouterNode(ctx, root.ID, router.NodeDefinition{
 		Name: "sourcebranch", Kind: router.KindBranch, Purpose: "Source",
 	})
-	right, _ := rows.CreateRouterNode(ctx, root.ID, router.NodeDefinition{
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := rows.CreateRouterNode(ctx, root.ID, router.NodeDefinition{
 		Name: "targetbranch", Kind: router.KindBranch, Purpose: "Target",
 	})
-	leaf, _ := rows.CreateRouterNode(ctx, left.ID, router.NodeDefinition{
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := rows.CreateRouterNode(ctx, left.ID, router.NodeDefinition{
 		Name: "moveme", Kind: router.KindLeaf, Purpose: "Moved leaf",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	release, err := rows.BeginAuthorityWrite(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -109,10 +121,16 @@ func TestCoordinatorPublishesRowAndRouteInOneFulltextRevision(t *testing.T) {
 	ctx := context.Background()
 	_, file, authority := newAuthorityFixture(t)
 	_, rows, table, inserted := authorityValues(t, ctx, file, authority)
-	root, _ := rows.CreateTableRouterRoot(ctx, "work", "notes", "All notes", "")
-	leaf, _ := rows.CreateRouterNode(ctx, root.ID, router.NodeDefinition{
+	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "All notes", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := rows.CreateRouterNode(ctx, root.ID, router.NodeDefinition{
 		Name: "combined", Kind: router.KindLeaf, Purpose: "Combined mutation",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	body, err := nativerow.New(file).Read(inserted.ID)
 	if err != nil {
 		t.Fatal(err)

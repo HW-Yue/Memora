@@ -963,16 +963,43 @@ func (service *Service) RenameRouterNode(ctx context.Context, id, name string, e
 	if err != nil {
 		return router.Node{}, err
 	}
-	if current.Revision != expected || current.Kind == router.KindRoot || strings.TrimSpace(name) == "" {
+	name = strings.TrimSpace(name)
+	if current.Revision != expected || current.Kind == router.KindRoot || name == "" {
 		return router.Node{}, ErrRevisionConflict
 	}
 	parent, err := routes.Get(current.ParentID)
 	if err != nil {
 		return router.Node{}, err
 	}
+	for _, sibling := range routes.Children(current.ParentID) {
+		if sibling.ID != current.ID && strings.EqualFold(sibling.Name, name) {
+			return router.Node{}, ErrRevisionConflict
+		}
+	}
+	oldName, oldPath := current.Name, current.Path
+	current.Aliases = appendRouteAlias(current.Aliases, oldName)
 	current.Name, current.Path, current.Revision = name, strings.TrimSuffix(parent.Path, "/")+"/"+name, current.Revision+1
-	return service.commitRouteNodeChange(ctx, change.OperationUpdate, "rename Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
-		return current, routes.StageNode(transaction, current)
+	nodes, err := routes.Nodes()
+	if err != nil {
+		return router.Node{}, err
+	}
+	changed := []router.Node{current}
+	descendantPrefix := strings.TrimSuffix(oldPath, "/") + "/"
+	for _, node := range nodes {
+		if node.ID == current.ID || !strings.HasPrefix(node.Path, descendantPrefix) {
+			continue
+		}
+		node.Path = strings.TrimSuffix(current.Path, "/") + "/" + strings.TrimPrefix(node.Path, descendantPrefix)
+		node.Revision++
+		changed = append(changed, node)
+	}
+	return service.commitRouteNodeChanges(ctx, current.ID, change.OperationUpdate, "rename Route node", func(transaction *nativestore.Transaction) ([]router.Node, error) {
+		for _, node := range changed {
+			if err := routes.StageNode(transaction, node); err != nil {
+				return nil, err
+			}
+		}
+		return changed, nil
 	})
 }
 func (service *Service) UpdateRouterSynopsis(ctx context.Context, id, synopsis string, expected uint64) (router.Node, error) {
@@ -1021,23 +1048,56 @@ func (service *Service) commitRouteNodeChange(
 	reason string,
 	stage func(*nativestore.Transaction) (router.Node, error),
 ) (router.Node, error) {
+	return service.commitRouteNodeChanges(ctx, "", operation, reason, func(transaction *nativestore.Transaction) ([]router.Node, error) {
+		value, err := stage(transaction)
+		if err != nil {
+			return nil, err
+		}
+		return []router.Node{value}, nil
+	})
+}
+
+func (service *Service) commitRouteNodeChanges(
+	ctx context.Context,
+	primaryID string,
+	operation change.Operation,
+	reason string,
+	stage func(*nativestore.Transaction) ([]router.Node, error),
+) (router.Node, error) {
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
 		return router.Node{}, err
 	}
 	defer func() { _ = transaction.Rollback() }()
-	value, err := stage(transaction)
-	if err != nil {
+	values, err := stage(transaction)
+	if err != nil || len(values) == 0 {
+		if err == nil {
+			err = fmt.Errorf("Route mutation did not stage any nodes")
+		}
 		return router.Node{}, err
+	}
+	if primaryID == "" {
+		primaryID = values[0].ID
 	}
 	sequence, err := service.NextChangeSequence(ctx)
 	if err != nil {
 		return router.Node{}, err
 	}
+	entries := make([]change.Entry, 0, len(values))
+	primary := router.Node{}
+	for _, value := range values {
+		entries = append(entries, nativechange.RouteNodeEntry(value, operation))
+		if value.ID == primaryID {
+			primary = value
+		}
+	}
+	if primary.ID == "" {
+		return router.Node{}, fmt.Errorf("Route mutation primary node is missing")
+	}
 	envelope, err := change.NewEnvelope(
 		sequence, service.clock.Now().UTC(),
 		change.Metadata{Actor: "system:direct-api", Source: "direct-api", Reason: reason},
-		[]change.Entry{nativechange.RouteNodeEntry(value, operation)},
+		entries,
 	)
 	if err != nil {
 		return router.Node{}, err
@@ -1045,7 +1105,25 @@ func (service *Service) commitRouteNodeChange(
 	if err := nativechange.Stage(transaction, envelope); err != nil {
 		return router.Node{}, err
 	}
-	return value, transaction.Commit()
+	commit := transaction.Commit
+	if service.authority != nil {
+		commit = func() error { return service.authority.PublishMutation(ctx, nil, values, transaction.Commit) }
+	}
+	return primary, commit()
+}
+
+func appendRouteAlias(aliases []string, alias string) []string {
+	alias = strings.TrimSpace(alias)
+	result := append([]string(nil), aliases...)
+	if alias == "" {
+		return result
+	}
+	for _, current := range result {
+		if strings.EqualFold(strings.TrimSpace(current), alias) {
+			return result
+		}
+	}
+	return append(result, alias)
 }
 func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node, error) {
 	value, err := nativerouter.New(service.repository.file).Get(id)

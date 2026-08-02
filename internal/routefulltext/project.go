@@ -14,21 +14,54 @@ import (
 var ErrInvalid = errors.New("Route fulltext projection is invalid")
 
 func Project(nodes []router.Node) ([]fulltext.Document, error) {
+	for _, node := range nodes {
+		if node.Deleted {
+			return nil, fmt.Errorf("%w: Route %q is deleted", ErrInvalid, node.ID)
+		}
+	}
+	return project(nodes)
+}
+
+// ProjectChanges projects the current revision of every changed Route. Unlike
+// Project, it accepts deleted nodes because live publication must replace the
+// previous document with a tombstone at the revision already committed by the
+// native Route record.
+func ProjectChanges(nodes []router.Node) ([]fulltext.Document, error) {
+	return project(nodes)
+}
+
+func project(nodes []router.Node) ([]fulltext.Document, error) {
 	ordered := append([]router.Node(nil), nodes...)
 	sort.Slice(ordered, func(left, right int) bool { return ordered[left].ID < ordered[right].ID })
 	documents := make([]fulltext.Document, 0, len(ordered))
 	seen := make(map[string]struct{}, len(ordered))
 	for _, node := range ordered {
-		if node.Version != router.Version || node.Deleted || node.Revision == 0 ||
+		if node.Version != router.Version || node.Revision == 0 ||
 			node.DatabaseID == "" || node.TableID == "" || node.ID == "" ||
-			strings.TrimSpace(node.Name) == "" || strings.TrimSpace(node.Path) == "" ||
-			strings.TrimSpace(node.Purpose) == "" || !validKind(node.Kind) {
+			!validKind(node.Kind) {
 			return nil, fmt.Errorf("%w: Route %q identity or semantic surface", ErrInvalid, node.ID)
 		}
 		if _, duplicate := seen[node.ID]; duplicate {
 			return nil, fmt.Errorf("%w: duplicate Route %q", ErrInvalid, node.ID)
 		}
 		seen[node.ID] = struct{}{}
+		document := fulltext.Document{
+			Version: fulltext.DocumentVersion, Kind: fulltext.KindRoute,
+			DatabaseID: node.DatabaseID, TableID: node.TableID, ObjectID: node.ID,
+			Revision: node.Revision, State: fulltext.StateLive, Complete: true,
+		}
+		if node.Deleted {
+			document.State = fulltext.StateDeleted
+			if _, err := fulltext.Compile(document); err != nil {
+				return nil, fmt.Errorf("%w: Route %q: %v", ErrInvalid, node.ID, err)
+			}
+			documents = append(documents, document)
+			continue
+		}
+		if strings.TrimSpace(node.Name) == "" || strings.TrimSpace(node.Path) == "" ||
+			strings.TrimSpace(node.Purpose) == "" {
+			return nil, fmt.Errorf("%w: Route %q semantic surface", ErrInvalid, node.ID)
+		}
 		fields := []fulltext.Field{
 			textField("name", node.Name),
 			textValuesField("aliases", node.Aliases),
@@ -36,11 +69,6 @@ func Project(nodes []router.Node) ([]fulltext.Document, error) {
 			textField("kind", string(node.Kind)),
 			textField("purpose", node.Purpose),
 			textField("synopsis", node.Synopsis),
-		}
-		document := fulltext.Document{
-			Version: fulltext.DocumentVersion, Kind: fulltext.KindRoute,
-			DatabaseID: node.DatabaseID, TableID: node.TableID, ObjectID: node.ID,
-			Revision: node.Revision, State: fulltext.StateLive, Complete: true,
 		}
 		for _, field := range fields {
 			if len(field.Values) != 0 {
@@ -53,10 +81,6 @@ func Project(nodes []router.Node) ([]fulltext.Document, error) {
 		documents = append(documents, document)
 	}
 	return documents, nil
-}
-
-func ProjectChanges([]router.Node) ([]fulltext.Document, error) {
-	return nil, fmt.Errorf("%w: change projection is not implemented", ErrInvalid)
 }
 
 func Tombstone(object fulltext.Object) (fulltext.Document, error) {

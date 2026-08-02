@@ -143,7 +143,7 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 		for _, change := range changes {
 			values = append(values, change.Row)
 		}
-		return coordinator.pages.PublishRows(context.Background(), values, transaction.Commit)
+		return coordinator.pages.PublishMutation(context.Background(), values, plan.Routes, transaction.Commit)
 	}
 	return transaction.Commit()
 }
@@ -199,7 +199,13 @@ func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, e
 	if err := nativechange.Stage(transaction, envelope); err != nil {
 		return 0, err
 	}
-	if err := transaction.Commit(); err != nil {
+	commit := transaction.Commit
+	if coordinator.pages != nil && len(plan.Routes) != 0 {
+		commit = func() error {
+			return coordinator.pages.PublishMutation(context.Background(), nil, plan.Routes, transaction.Commit)
+		}
+	}
+	if err := commit(); err != nil {
 		return 0, err
 	}
 	return sequence, nil

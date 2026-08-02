@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/fulltext"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowfulltext"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
@@ -424,6 +425,28 @@ func projectRowDocuments(databases []catalog.Database, bodies []row.Row) ([]full
 			return nil, fmt.Errorf("%w: Row fulltext document: %v", ErrInvalid, err)
 		}
 		documents = append(documents, document)
+	}
+	return documents, nil
+}
+
+func projectRouteChangeDocuments(
+	databases []catalog.Database, nodes []router.Node,
+) ([]fulltext.Document, error) {
+	tables := make(map[string]catalog.Table)
+	for _, database := range databases {
+		for _, table := range database.Tables {
+			tables[table.ID] = table
+		}
+	}
+	for _, node := range nodes {
+		table, exists := tables[node.TableID]
+		if !exists || table.DatabaseID != node.DatabaseID {
+			return nil, fmt.Errorf("%w: Route fulltext scope", ErrInvalid)
+		}
+	}
+	documents, err := routefulltext.ProjectChanges(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("%w: Route fulltext document: %v", ErrInvalid, err)
 	}
 	return documents, nil
 }
