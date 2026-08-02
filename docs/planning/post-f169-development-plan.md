@@ -7,7 +7,7 @@
 
 - `main` 当前到 F177，Query Bootstrap 与厂商中立 Provider port 已在既有 MSQL-only 基础上通过完整 CI 并合入；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F170–F178 已完成；下一项从最新 `main` 单独 Review F179 Runtime spike 与 ADR；
+- F170–F178 已完成；F179 已通过单项 Review，正在执行 Runtime spike 与 ADR；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -74,7 +74,7 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 
 | Feature | 唯一主要结果 | 公开结果 |
 | --- | --- | --- |
-| F179 | Runtime spike 与 ADR | Eino 对照薄自研 loop 的体积、RSS、取消、checkpoint、许可证 |
+| F179（实现中） | Runtime spike 与 ADR | Eino 对照薄自研 loop 的体积、RSS、取消、checkpoint、许可证 |
 | F180 | OpenAI-compatible HTTP Provider | Kimi 真实 smoke、懒初始化、无厂商 SDK、密钥不落盘 |
 | F181 | 只读 benchmark Query Agent | 只用 MSQL，输出 final answer + SELECT evidence + Trace |
 | F182 | 冻结 answer corpus/manifest | source、snapshot、问题、隐藏答案、版本与许可完整 |

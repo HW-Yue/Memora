@@ -62,7 +62,7 @@ Trace 必须早于第一个真实 Provider，避免先上线模型调用、后�
 
 | Feature | 唯一主要结果 | 完成证据 |
 | --- | --- | --- |
-| F179 | Eino 与薄自研 loop 的 spike/ADR | 二进制、RSS、取消、checkpoint、tool-call、许可证对照 |
+| F179（实现中） | Eino 与薄自研 loop 的 spike/ADR | 二进制、RSS、取消、checkpoint、tool-call、许可证对照 |
 | F180 | OpenAI-compatible HTTP Provider | Kimi 真实 API smoke；懒初始化；Key 只从 SecretResolver/进程环境进入请求 |
 | F181 | 只读 Query Agent | 只调用 MSQL；输出 final answer、实际 SELECT evidence 与完整 Trace |
 
