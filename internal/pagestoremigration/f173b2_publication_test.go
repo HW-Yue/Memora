@@ -117,6 +117,50 @@ func TestCoordinatorRoutePlanPublishesMovedPathInOneFulltextRevision(t *testing.
 	assertRoutePosting(t, authority, "targetbranch", leaf.ID, "path", moved.Revision)
 }
 
+func TestCoordinatorRoutePlanPublishesCreateAndDeleteInOneFulltextRevision(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "All notes", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, err := rows.CreateRouterNode(ctx, root.ID, router.NodeDefinition{
+		Name: "retired", Kind: router.KindLeaf, Purpose: "Retired leaf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := router.Node{
+		Version: router.Version, ID: "route_replacement", DatabaseID: root.DatabaseID, TableID: root.TableID,
+		ParentID: root.ID, Name: "replacement", Path: "/replacement", Kind: router.KindLeaf,
+		Purpose: "Replacement leaf", Revision: 1,
+	}
+	removed.Revision, removed.Deleted = removed.Revision+1, true
+	release, err := rows.BeginAuthorityWrite(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	before := fulltextTreeRevision(t, authority)
+	_, err = nativemutation.New(file, nativerow.New(file), nativerouter.New(file), authority).CommitRoutePlan(
+		nativemutation.RoutePlanCommit{
+			Routes: []router.Node{created, removed}, Created: map[string]bool{created.ID: true},
+			Metadata:    change.Metadata{Actor: "agent:test", Source: "event:replace", Reason: "replace Route"},
+			CommittedAt: time.Now().UTC(),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after := fulltextTreeRevision(t, authority); after != before+1 {
+		t.Fatalf("Route Plan Fulltext revision = %d, want %d", after, before+1)
+	}
+	assertRoutePosting(t, authority, "replacement", created.ID, "name", created.Revision)
+	assertNoRoutePostingForObject(t, authority, "retired", removed.ID)
+	assertFulltextObject(t, authority, fulltext.KindRoute, removed.ID, removed.Revision, fulltext.StateDeleted)
+}
+
 func TestCoordinatorPublishesRowAndRouteInOneFulltextRevision(t *testing.T) {
 	ctx := context.Background()
 	_, file, authority := newAuthorityFixture(t)
@@ -248,6 +292,44 @@ func TestAuthorityRouteFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
 	}
 	defer reopened.Close()
 	assertRoutePosting(t, reopened, "recovered", root.ID, "purpose", root.Revision)
+}
+
+func TestAuthorityReopenPublishedRouteDoesNotAppendFulltextWAL(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "Stable route", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextBefore, err := authority.nextTransactionID("fulltext")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopenedFile.Close()
+	reopened, err := OpenAuthority(ctx, reopenedFile, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	nextAfter, err := reopened.nextTransactionID("fulltext")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nextAfter != nextBefore {
+		t.Fatalf("Route replay appended Fulltext WAL transaction: before=%d after=%d", nextBefore, nextAfter)
+	}
+	assertRoutePosting(t, reopened, "stable", root.ID, "purpose", root.Revision)
 }
 
 func assertRoutePosting(
