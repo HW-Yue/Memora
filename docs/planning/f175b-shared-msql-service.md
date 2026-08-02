@@ -1,6 +1,6 @@
 # F175b：单实例共享 MSQL Service
 
-规划状态：已通过单项 Review，批准按 RED → GREEN → REFACTOR 实现。
+规划状态：已完成；RED → GREEN → REFACTOR 与完整 CI 通过。
 
 ## 唯一主要结果
 
@@ -37,3 +37,13 @@
 用户执行授权：2026-08-03 用户要求持续顺序完成后续 Feature。本 Review 只批准上述 F175b 范围。
 
 开工前结论：PASS。
+
+## 完成结论
+
+- `internal/msql/service` 已成为实例级依赖与 Session 生命周期所有者；daemon 不再维护第二套 Session map；
+- `ExecuteMSQL` 对中立协议执行验证和显式 DTO 转换，`ExecuteBatch` 仅保留本地 IPC/旧内部工作流兼容；
+- 可取消 gate 保证同 Session 串行，同时让 queued call 独立响应取消；close 先取消 active call 再回滚；
+- 已验证真实 Row 写入、事务隔离、断线回滚、expected-revision one-winner、IPC parity 和旧 SDK wire；
+- `format`、`vet`、全量 unit/race、integration、e2e 与独立 cross-build 全部通过。
+
+完成结论：PASS。下一项为 F175c Agent MSQL-only port 与 fake harness。

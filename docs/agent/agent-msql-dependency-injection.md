@@ -1,6 +1,6 @@
 # Agent 的 MSQL 边界与依赖注入
 
-状态：架构约束；F175a 已完成中立协议包，F175b/F175c 继续完成共享 Service 与 Agent 守卫。
+状态：架构约束；F175a/F175b 已完成中立协议包与共享 Service，F175c 继续完成 Agent port 与依赖守卫。
 
 ## 决定
 
@@ -44,7 +44,7 @@ internal/agent    仅导入 protocol/msql，不导入 sdk/memora 或数据库内
 ```
 
 协议抽取未改变现有 wire format；SDK 公共类型现在是 protocol aliases，静态测试禁止协议包
-生产文件导入任何非标准库。共享执行实现仍由 F175b 完成。
+生产文件导入任何非标准库。F175b 已将依赖和 Session 生命周期收敛到实例级共享 Service。
 
 ## Agent 拥有端口
 
@@ -80,21 +80,23 @@ daemon 启动层是唯一同时认识 Agent 与数据库实现的位置，例如
 
 ```go
 type agentMSQLAdapter struct {
-	service *MSQLService
+	session *msqlservice.Session
 }
 
 func (a *agentMSQLAdapter) ExecuteMSQL(
 	ctx context.Context,
 	req msql.Request,
 ) (msql.Envelope, error) {
-	return a.service.ExecuteMSQL(ctx, req)
+	return a.session.ExecuteMSQL(ctx, req)
 }
 
 var _ agent.MSQLExecutor = (*agentMSQLAdapter)(nil)
 ```
 
-IPC 的 `msql.execute` 与同进程 adapter 必须调用同一个 `MSQLService.ExecuteMSQL`。禁止 adapter
-直接调用 Store、Catalog、Row、Router、索引或内部事务对象。
+composition root 从同一个 `msqlservice.Service` 为 IPC connection 和 Agent run 打开独立 Session。
+IPC 的可信兼容 adapter 与同进程的不可信 protocol adapter 最终调用同一个 Batch core；后者必须先
+验证 `protocol/msql.Request`，且不能触发旧 CLI 的零 StatementInput 模式。禁止 adapter 直接调用
+Store、Catalog、Row、Router、索引或内部事务对象。
 
 ## 依赖方向
 
