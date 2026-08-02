@@ -1,6 +1,6 @@
 # Page Store Authority v1
 
-状态：F107 已完成；2026-08-03 随 F172a 补充 generation v2 边界。
+状态：F107 已完成；2026-08-03 随 F173b1 补充 generation v3 边界。
 
 ## 结果与边界
 
@@ -22,11 +22,12 @@ F106 generation 目录、Plan digest 和 source fingerprint，并带自身 SHA-2
 3. 原子写 marker、fsync 文件、rename，并 fsync 数据库目录；
 4. marker 存在后只按 live 模式打开树：验证 marker/manifest 绑定、目录类型、Tree space
    和 WAL/Page recovery，不再要求 live 字节等于迁移基线；
-5. 对外监听前扫描一次已提交正文并幂等补齐 Catalog、Version、Current 三棵 authority Tree；
-6. 若 marker 指向合法三树 v1，启动过程用 COW replacement 发布四树 v2 后才返回；不原地修改 v1。
+5. 对外监听前扫描已提交 Catalog、Row 与 Route，并幂等补齐 Catalog、Version、Fulltext、Current；
+6. 若 marker 指向合法三树 v1，启动过程用 COW replacement 发布四树 v3 后才返回；不原地修改 v1；
+7. 合法四树 v2 可原地收敛 revision-one Route，revision gap 则 COW 发布 v3。
 
-F172a 保证 v2 激活 seed，F172b 保证在线 Row revision 同步替换 Fulltext；Fulltext 仍是派生索引，
-不改变三棵 authority Tree 与正文的权威关系。
+F172a/F173a/F173b1 依次冻结 Row、Catalog、Route seed/recovery，F172b 保证在线 Row revision
+同步替换 Fulltext；Fulltext 仍是派生索引，不改变三棵 authority Tree 与正文的权威关系。
 
 marker 缺失时不能把已变化的 generation 猜成 authority；marker 损坏、绑定不一致或
 live Tree 损坏都 fail closed。

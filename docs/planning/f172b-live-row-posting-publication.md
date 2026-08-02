@@ -40,7 +40,8 @@ Fulltext 增加 batch replacement，但复用 F171 object/owner/posting、revisi
 
 ## Reopen reconciliation
 
-启动仍以 native body 构建 Plan v2，并依次收敛 Catalog、Version、Fulltext、Current。Fulltext 当前 revision
+F172b 完成时启动以 native body 构建 Plan v2；当前已由 F173b1 的 Plan v3 取代，收敛顺序仍为
+Catalog、Version、Fulltext、Current。Fulltext 当前 revision
 与 body 连续时幂等 replacement；相同 revision/same digest 为 replay。
 
 若绕过 Authority 的旧写入造成 revision gap，不允许 Fulltext 跳号覆盖，因为这会掩盖漏删旧 posting；

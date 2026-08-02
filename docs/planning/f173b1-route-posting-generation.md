@@ -1,6 +1,6 @@
 # F173b1：Route Posting Generation
 
-规划状态：已批准；2026-08-03 架构 Review 从原 F173b 拆出快照/升级协议，本项可进入 TDD。
+规划状态：已完成；2026-08-03 通过完整完成门并获准合入。
 
 ## 拆分理由
 
@@ -81,6 +81,19 @@ Authority 从 v3 Plan 投影当前 Catalog/Route/Row，并读取 Fulltext object
 RED 入口：`go test ./internal/routefulltext ./internal/pagestoremigration`。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- `routefulltext.Project` 覆盖 name/aliases/path/kind/purpose/synopsis，并稳定拒绝非法身份、状态和 kind；
+- Plan v3 将 canonical current Routes 纳入 source binding/digest，校验 Catalog scope、父树、cycle、root 和记录下界；
+- generation v3 seed 已与 Catalog/Route/Row reference postings 对拍；
+- v2 缺失 Route rev1 原地增量补齐，删除生成 tombstone，first rev2 则 COW 且保留旧 generation；
+- native Route record ID、revision gap 和 revision identity 损坏均 fail closed；
+- 实现提交 `6e5c45f`；`./scripts/ci.sh` 的 format、vet、unit、race、integration、e2e 全绿，
+  cross-build 单独复跑全绿。
+
+完成门结论：PASS。未覆盖在线 Route publication、显式 rebuild 和用户可见 lexical query，分别由
+F173b2、F173c、F174 承担。
 
 ## 关联
 

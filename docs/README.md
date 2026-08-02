@@ -24,7 +24,7 @@
 - [F172a：Row Posting Generation](./planning/f172a-row-posting-generation.md) — 已完成的 Row 投影、generation v2 与 v1 COW 升级。
 - [F172b：Live Row Posting Publication](./planning/f172b-live-row-posting-publication.md) — 已完成的在线 Row posting 原子替换与恢复。
 - [F173a：Catalog Posting Publication](./planning/f173a-catalog-posting-publication.md) — 已完成的 Catalog seed、在线替换、删除 tombstone 与恢复。
-- [F173b1：Route Posting Generation](./planning/f173b1-route-posting-generation.md) — 已批准的 Route 投影、generation v3 与 reopen reconciliation。
+- [F173b1：Route Posting Generation](./planning/f173b1-route-posting-generation.md) — 已完成的 Route 投影、generation v3 与 reopen reconciliation。
 
 ## 当前产品规格
 
@@ -63,7 +63,7 @@
 - [MVCC、Undo 与 Redo 边界](./storage/mvcc-undo-redo.md)
 - [持久化 B+ Tree 索引](./storage/indexing.md)
 - [Page Store Authority](./storage/page-store-authority-v1.md)
-- [Page Index Generation v2](./storage/page-index-generation-v2.md)
+- [Page Index Generation v3](./storage/page-index-generation-v3.md)
 - [Change Log 与未来同步](./storage/binlog-and-sync.md)
 - [备份](./storage/instance-portable-backup-v1.md)、
   [恢复](./storage/instance-restore-v1.md)与[搬迁](./storage/instance-move-v1.md)

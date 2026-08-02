@@ -1,10 +1,10 @@
 # Page Index Generation v2
 
-状态：F172a 已完成；本规格是当前新写 generation 格式，v1 只读兼容用于自动升级。
+状态：已被 [Generation v3](./page-index-generation-v3.md) 取代；保留为 v2 兼容格式说明。
 
 ## 结果
 
-Generation v2 在 v1 的 Catalog、Current Row、Row Version 三棵树之外增加 Fulltext Tree，保证
+Generation v2 在 v1 的 Catalog、Current Row、Row Version 三棵树之外增加 Fulltext Tree，当时保证
 激活及在线 Row revision 发布后，所有当前 Row 都有可重开的 lexical 派生位置。
 
 ## 固定布局
@@ -23,7 +23,7 @@ page-index-v1[.g<epoch>.<plan-digest>]/
 
 ## 构建与发布
 
-Migration Plan v2 绑定 Catalog、所有 version locator、current locator 和当前 Row body。四棵树在隐藏
+Migration Plan v2 绑定 Catalog、所有 version locator、current locator 和当前 Row body。该版本四棵树在隐藏
 staging 中分别 bootstrap、flush、sync、strict reopen 与 reference 校验；随后 content digest、manifest
 digest、source reverify、atomic rename 和父目录 fsync 沿用 v1 协议。
 
@@ -33,7 +33,8 @@ digest、source reverify、atomic rename 和父目录 fsync 沿用 v1 协议。
 ## v1 compatibility
 
 合法 v1 manifest 和三树 inventory 仍可 fail-closed 打开，但只能作为升级源。Authority 用现有 COW
-replacement 生成 v2 并原子切 marker；不向 v1 目录原地补文件。损坏 v1 仍拒绝，不能借升级绕过校验。
+replacement 生成四树 generation 并原子切 marker；当前新 build 写 v3，不向 v1 目录原地补文件。
+损坏 v1 仍拒绝，不能借升级绕过校验。
 
 ## 关联
 

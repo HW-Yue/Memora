@@ -41,7 +41,7 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - 16 KiB Page、Page File、WAL、durable frontier、checkpoint 与 crash recovery；
 - 单 Instance Buffer Pool、WAL-before-data、young/old 淘汰；
 - 持久化 B+ Tree 的 point/range、split、delete、rebalance 和多层原子提交；
-- Catalog、当前 Row、Row Version 三类权威索引，Catalog/Row Fulltext 派生树及 Table Row cursor；
+- Catalog、当前 Row、Row Version 三类权威索引，Catalog/Route/Row Fulltext 派生树及 Table Row cursor；
 - statement snapshot、精确对象写锁、Change Log 和 COW generation replacement；
 - free Page reuse；旧 SQLite 只保留为显式迁移工具，不是运行时 fallback。
 
@@ -51,8 +51,9 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - 外置 Agent Hook、统一 session 指标和本地分析平台尚未实现；
 - 内置评测 Agent 尚未实现，面向用户的 `memora ask` 继续延后；
 - “何时值得写入”的质量评测后置，近期先评测查询、Route 和事实读取；
-- ADR-0008 的 reference model、持久化 posting store、当前 Row 与 Catalog seed/在线 publication 已完成，
-  但尚未接入 Route 发布和 RowID location MSQL；当前用户入口仍只有 F124b 的 Route lexical 候选；
+- ADR-0008 的 reference model、持久化 posting store、Catalog/Route/Row seed、Row/Catalog 在线 publication
+  和 Route reopen recovery 已完成，但尚未接入在线 Route publication 与 RowID location MSQL；当前用户入口
+  仍只有 F124b 的 Route lexical 候选；
 - Query Workspace 的跨会话恢复、跨 session topic 身份仍未冻结；
 - Compaction、Secondary Index、Advanced MVCC、Replication、PITR、多设备同步、
   Apple Accelerate 与 HNSW 均未达到证据门，当前不实现。
