@@ -5,16 +5,16 @@
 
 ## 当前出发点
 
-- `main` 当前到 F168；
-- `feature/F169-single-row-route-leaf` 已有实现与 Admin 资源复核，尚未合入；
-- `feature/F170-inverted-index-surface` 只有待批准规格，尚未开始产品代码；
-- 内置吸收 Agent 与外部标准测评结论分别位于独立文档分支，尚未合入；
+- `main` 当前到 F169，Leaf → Row `0..1` 已通过完整 CI 并合入；
+- 当前文档分支已汇总内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界；
+- `feature/F170-inverted-index-surface` 只有待批准规格，且仍基于 F168，尚未开始产品代码；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
-先完成分支 Review 和合入，不从多个未合入分支继续堆代码。总体依赖为：
+先合入当前规划文档，再从最新 `main` 重建 F170 分支，不从多个未合入分支继续堆代码。
+总体依赖为：
 
 ```text
-F169 单 Row leaf
+F169 单 Row leaf（已完成）
 → F170–F174 全内容倒排位置
 → F175a–F175c 统一 MSQL 执行入口与 Agent 依赖守卫
 → F176–F181 Bootstrap / Provider / Trace / 最小 Query Agent
@@ -35,9 +35,9 @@ CI 将以 import allowlist 和 fake `MSQLExecutor` 锁定该边界。
 
 ## M0：收口当前分支
 
-1. Review F169 的 Leaf → Row 0..1 不变量、迁移、Admin 和全仓证据，合入后更新状态账本；
-2. Review 并合入内置吸收 Agent、单网页快速路径和外部测评边界文档；
-3. Review F170 的词项、对象范围、revision replacement 和永久边界；只有单项获准后才进入 RED。
+1. 校验并合入当前 Agent、资料吸收、外部评测和后续 Feature 规划文档；
+2. 从最新 `main` 重建 F170 的独立开发分支；
+3. Review F170 的词项、对象范围、revision replacement 和永久边界；单项通过后才进入 RED。
 
 ## M1：完成倒排索引武器（F170–F174）
 
