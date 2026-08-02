@@ -14,8 +14,10 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/pagestoremigration"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
@@ -56,6 +58,45 @@ func TestEmptyNativeDatabaseProducesValidBoundPlan(t *testing.T) {
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNativeReaderBindsCanonicalCurrentRoutesIntoPlanV3(t *testing.T) {
+	file, _, _ := migrationFixture(t)
+	routes := nativerouter.New(file)
+	root, err := routes.CreateRoot("route_root", "db_work", "tbl_notes", "All notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := routes.CreateChild("route_leaf", root.ID, "architecture", router.KindLeaf, "Architecture decisions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, _ := pagestoremigration.NewNativeReader(file)
+	plan, err := reader.Build(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Version != "memora.page-index-migration-plan/v3" || len(plan.CurrentRoutes) != 2 ||
+		plan.CurrentRoutes[0].ID != root.ID || plan.CurrentRoutes[1].ID != leaf.ID {
+		t.Fatalf("Route Plan v3 = %#v", plan)
+	}
+	plan.CurrentRoutes[1].Purpose = "digest tampered"
+	if err := plan.Validate(); !errors.Is(err, pagestoremigration.ErrInvalid) {
+		t.Fatalf("tampered Route Plan Validate() error = %v", err)
+	}
+}
+
+func TestReaderRejectsRouteOutsideCurrentCatalogTable(t *testing.T) {
+	database, _, _ := migrationValues()
+	route := router.Node{Version: router.Version, ID: "route_wrong", DatabaseID: "db_work", TableID: "tbl_other",
+		Name: "wrong", Path: "/", Kind: router.KindRoot, Purpose: "Wrong scope", Revision: 1}
+	source := &fakeSource{
+		states: []pagestoremigration.SourceState{sourceState(5, 0)}, catalog: database, routes: []router.Node{route},
+	}
+	reader, _ := pagestoremigration.NewReader(source)
+	if _, err := reader.Build(context.Background()); !errors.Is(err, pagestoremigration.ErrCorrupt) {
+		t.Fatalf("out-of-scope Route Build() error = %v", err)
 	}
 }
 
@@ -421,6 +462,7 @@ type fakeSource struct {
 	calls   int
 	catalog []catalog.Database
 	rows    []row.Row
+	routes  []router.Node
 }
 
 func (source *fakeSource) Inventory(context.Context) (pagestoremigration.SourceState, error) {
@@ -435,6 +477,10 @@ func (source *fakeSource) Catalog(context.Context) ([]catalog.Database, error) {
 
 func (source *fakeSource) RowVersions(context.Context) ([]row.Row, error) {
 	return append([]row.Row(nil), source.rows...), nil
+}
+
+func (source *fakeSource) Routes(context.Context) ([]router.Node, error) {
+	return append([]router.Node(nil), source.routes...), nil
 }
 
 func sourceState(seed byte, rowCount int) pagestoremigration.SourceState {

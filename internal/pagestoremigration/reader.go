@@ -12,7 +12,9 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowfulltext"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
@@ -46,6 +48,7 @@ type Plan struct {
 	CurrentRows       []currentrowindex.Locator `json:"current_rows"`
 	CurrentRowBodies  []row.Row                 `json:"current_row_bodies"`
 	RowVersions       []rowversionindex.Locator `json:"row_versions"`
+	CurrentRoutes     []router.Node             `json:"current_routes"`
 	Digest            string                    `json:"digest"`
 }
 
@@ -58,6 +61,7 @@ type Source interface {
 	Inventory(context.Context) (SourceState, error)
 	Catalog(context.Context) ([]catalog.Database, error)
 	RowVersions(context.Context) ([]row.Row, error)
+	Routes(context.Context) ([]router.Node, error)
 }
 
 type Reader struct{ source Source }
@@ -225,6 +229,17 @@ func (source *nativeSource) RowVersions(ctx context.Context) ([]row.Row, error) 
 		return nil, err
 	}
 	return value, nil
+}
+
+func (source *nativeSource) Routes(ctx context.Context) ([]router.Node, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	values, err := nativerouter.New(source.file).Nodes()
+	if err != nil {
+		return nil, classifySourceError(err)
+	}
+	return values, ctx.Err()
 }
 
 func planRows(plan *Plan, rows []row.Row) error {

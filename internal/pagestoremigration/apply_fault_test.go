@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
@@ -195,6 +196,7 @@ type faultMigrationSource struct {
 	state     SourceState
 	databases []catalog.Database
 	rows      []row.Row
+	routes    []router.Node
 }
 
 func (source *faultMigrationSource) Inventory(context.Context) (SourceState, error) {
@@ -212,6 +214,10 @@ func (source *faultMigrationSource) Catalog(context.Context) ([]catalog.Database
 
 func (source *faultMigrationSource) RowVersions(context.Context) ([]row.Row, error) {
 	return append([]row.Row(nil), source.rows...), nil
+}
+
+func (source *faultMigrationSource) Routes(context.Context) ([]router.Node, error) {
+	return append([]router.Node(nil), source.routes...), nil
 }
 
 func (source *faultMigrationSource) changeFingerprint() {
@@ -236,6 +242,16 @@ func faultPlan(t *testing.T) (*Reader, Plan, *faultMigrationSource) {
 		ID: "db_work", Name: "work", Aliases: []string{"job"}, Purpose: "Work", Scope: "Personal",
 		SchemaVersion: 1, CreatedAt: now, UpdatedAt: now, Tables: []catalog.Table{table},
 	}
+	routes := []router.Node{
+		{Version: router.Version, ID: "route_root", DatabaseID: database.ID, TableID: table.ID,
+			Name: "root", Path: "/", Kind: router.KindRoot, Purpose: "All notes", Revision: 1},
+		{Version: router.Version, ID: "route_branch", DatabaseID: database.ID, TableID: table.ID,
+			ParentID: "route_root", Name: "architecture", Path: "/architecture", Kind: router.KindBranch,
+			Purpose: "Architecture decisions", Synopsis: "System boundaries", Revision: 2},
+		{Version: router.Version, ID: "route_leaf", DatabaseID: database.ID, TableID: table.ID,
+			ParentID: "route_branch", Name: "storage", Path: "/architecture/storage", Kind: router.KindLeaf,
+			Purpose: "Storage decisions", Revision: 1},
+	}
 	first := row.Row{
 		ID: "row_one", DatabaseID: database.ID, TableID: table.ID, SchemaVersion: 1,
 		Revision: 1, CommitSequence: 10, State: row.StateLive,
@@ -252,12 +268,14 @@ func faultPlan(t *testing.T) (*Reader, Plan, *faultMigrationSource) {
 			count = 1
 		case nativestore.ObjectKindRow:
 			count = 2
+		case nativestore.ObjectKindRoute:
+			count = uint64(len(routes))
 		}
 		counts = append(counts, RecordCount{Kind: kind, Count: count})
 	}
 	source := &faultMigrationSource{
 		state:     SourceState{Fingerprint: [32]byte{1}, Counts: counts},
-		databases: []catalog.Database{database}, rows: []row.Row{first, second},
+		databases: []catalog.Database{database}, rows: []row.Row{first, second}, routes: routes,
 	}
 	reader, err := NewReader(source)
 	if err != nil {
