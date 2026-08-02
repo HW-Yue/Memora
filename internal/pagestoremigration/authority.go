@@ -31,6 +31,7 @@ const (
 	phaseCatalogPublished     authorityPhase = "catalog-published"
 	phaseRowBodyCommitted     authorityPhase = "row-body-committed"
 	phaseRowVersionPublished  authorityPhase = "row-version-published"
+	phaseRowFulltextPublished authorityPhase = "row-fulltext-published"
 	phaseRowCurrentPublished  authorityPhase = "row-current-published"
 )
 

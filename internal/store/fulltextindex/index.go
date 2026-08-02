@@ -207,6 +207,10 @@ func (index *Index) Replace(transactionID uint64, document fulltext.Document) (R
 	}, nil
 }
 
+func (index *Index) ReplaceBatch(transactionID uint64, documents []fulltext.Document) (Receipt, error) {
+	return Receipt{}, fmt.Errorf("%w: batch replacement is not implemented", ErrInvalid)
+}
+
 func (index *Index) Postings(term string) ([]fulltext.Posting, error) {
 	prefix, err := postingPrefix(term)
 	if err != nil {

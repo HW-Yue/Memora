@@ -275,7 +275,7 @@ func TestAuthorityMarkerPublicationFaultsAreRecoverableOrOutcomeUnknown(t *testi
 
 func TestAuthorityRowPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
 	for _, phase := range []authorityPhase{
-		phaseRowBodyCommitted, phaseRowVersionPublished, phaseRowCurrentPublished,
+		phaseRowBodyCommitted, phaseRowVersionPublished, phaseRowFulltextPublished, phaseRowCurrentPublished,
 	} {
 		t.Run(string(phase), func(t *testing.T) {
 			ctx := context.Background()
@@ -324,6 +324,8 @@ func TestAuthorityRowPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
 			if err != nil || got.Revision != 2 || got.Values["title"] != "recovered" {
 				t.Fatalf("reopened recovered Get() = %+v, %v", got, err)
 			}
+			assertNoRowPosting(t, reopened, "indexed")
+			assertRowPosting(t, reopened, "recovered", inserted.ID, 2)
 		})
 	}
 }

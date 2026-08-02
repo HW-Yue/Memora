@@ -100,6 +100,71 @@ func TestPersistentIndexReplacementIsAtomicRevisionedAndIdempotent(t *testing.T)
 	}
 }
 
+func TestPersistentIndexBatchReplacementUsesOneAtomicRevisionStep(t *testing.T) {
+	_, _, runtime, index := newTestIndex(t)
+	first := document("row_1", 1, "first old")
+	second := document("row_2", 1, "second old")
+	if _, err := index.Bootstrap(1, []fulltext.Document{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	before := runtime.State()
+	first.Revision, first.Fields = 2, []fulltext.Field{{ID: "col_text", Values: []fulltext.Value{fulltext.TextValue("first new")}}}
+	second.Revision, second.Fields = 2, []fulltext.Field{{ID: "col_text", Values: []fulltext.Value{fulltext.TextValue("second new")}}}
+	receipt, err := index.ReplaceBatch(2, []fulltext.Document{second, first})
+	if err != nil || !receipt.Changed || receipt.Added != 4 || receipt.Removed != 4 {
+		t.Fatalf("ReplaceBatch() = %+v, %v", receipt, err)
+	}
+	if after := runtime.State(); after.Revision != before.Revision+1 {
+		t.Fatalf("batch state revision = %d, want %d", after.Revision, before.Revision+1)
+	}
+	for _, term := range []string{"first", "second", "new"} {
+		postings, err := index.Postings(term)
+		if err != nil || len(postings) == 0 {
+			t.Fatalf("Postings(%q) = %#v, %v", term, postings, err)
+		}
+		for _, posting := range postings {
+			if posting.Revision != 2 {
+				t.Fatalf("Postings(%q) retained revision %d", term, posting.Revision)
+			}
+		}
+	}
+	if stale, err := index.Postings("old"); err != nil || len(stale) != 0 {
+		t.Fatalf("stale batch postings = %#v, %v", stale, err)
+	}
+	replay, err := index.ReplaceBatch(3, []fulltext.Document{first, second})
+	if err != nil || !replay.Replay || replay.Changed {
+		t.Fatalf("ReplaceBatch(replay) = %+v, %v", replay, err)
+	}
+}
+
+func TestPersistentIndexInvalidBatchLeavesEveryObjectUnchanged(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+	first := document("row_1", 1, "first old")
+	second := document("row_2", 1, "second old")
+	if _, err := index.Bootstrap(1, []fulltext.Document{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	first.Revision, first.Fields = 2, []fulltext.Field{{ID: "col_text", Values: []fulltext.Value{fulltext.TextValue("first new")}}}
+	second.Revision = 3
+	if _, err := index.ReplaceBatch(2, []fulltext.Document{first, second}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("invalid ReplaceBatch() error = %v", err)
+	}
+	for _, term := range []string{"first", "second", "old"} {
+		postings, err := index.Postings(term)
+		if err != nil || len(postings) == 0 {
+			t.Fatalf("old Postings(%q) = %#v, %v", term, postings, err)
+		}
+		for _, posting := range postings {
+			if posting.Revision != 1 {
+				t.Fatalf("failed batch changed revision to %d", posting.Revision)
+			}
+		}
+	}
+	if postings, err := index.Postings("new"); err != nil || len(postings) != 0 {
+		t.Fatalf("failed batch exposed new postings = %#v, %v", postings, err)
+	}
+}
+
 func TestPersistentIndexLargeBootstrapSplitsAndMatchesReference(t *testing.T) {
 	_, _, runtime, index := newTestIndex(t)
 	documents := make([]fulltext.Document, 500)
