@@ -1,6 +1,6 @@
 # F174：有界 Lexical Location 查询
 
-规划状态：已通过单项 Review，批准按 RED → GREEN → REFACTOR 实现。
+规划状态：已完成；2026-08-03 单项 Review、RED → GREEN → REFACTOR 与完整 CI 均通过。
 
 ## 唯一主要结果
 
@@ -44,3 +44,16 @@ Agent 和 MSQL Executor 不 import Page/B+ Tree 私有实现。F124b Route disco
 用户执行授权：2026-08-03 用户要求持续顺序完成后续 Feature。本 Review 只批准上述 F174 范围。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- Parser、AST 和参数顺序已冻结，旧 Route-only Discovery Frame 未被扩展；
+- Page Store 按 `(term, database_id)` 前缀在一个读锁窗口读取，空 scope 不扫描，支持取消；
+- location domain 完成唯一词项/字段聚合、稳定排序、规范 snapshot、byte/row budget 与防篡改 cursor；
+- Executor 在 posting port 前读取 Catalog 并解析授权 database_id，且再次拒绝后端越界位置；
+- daemon 旅程证明 Row 与 Route 命中、按 revision SQL 回表、Row 更新/删除、授权隔离、cursor、
+  daemon reopen 和 `REBUILD LEXICAL INDEX` parity；
+- scoped corruption、并发 revision readers 和全量 race 均通过，不存在 Row scan fallback；
+- `./scripts/ci.sh` 的 format、vet、unit、race、integration、e2e 全绿；cross-build 独立复跑全绿。
+
+完成门结论：PASS。F170–F174 的全内容 lexical 位置武器已闭环；F175a 开始统一 MSQL wire 边界。

@@ -4,7 +4,8 @@
 检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE，F79 已实现
 版本化查询预算配置，F129/F130 已实现 Route Mutation Plan 与审批执行，F131/F132 已实现
 Schema Change Plan 与审批执行。
-F173c 已实现 `REBUILD LEXICAL INDEX` 的全量 COW generation 维护语句。
+F173c 已实现 `REBUILD LEXICAL INDEX` 的全量 COW generation 维护语句；F174 已实现只返回
+当前位置、必须 SQL 回表的全内容 lexical query。
 
 ## 定位
 
@@ -48,6 +49,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 发现：SHOW INSTANCE/DATABASES/TABLES；
 - 描述：DESCRIBE DATABASE/TABLE；
 - 路由：SHOW ROUTES、OPEN ROUTE、PLAN/APPLY ROUTE MUTATION；
+- 位置：SHOW LEXICAL LOCATIONS；
 - 数据：SELECT、INSERT、UPDATE、DELETE、SPLIT、MERGE；
 - Schema：CREATE/ALTER、PLAN SCHEMA CHANGE 与 APPLY SCHEMA CHANGE；
 - 事务：BEGIN、COMMIT、ROLLBACK、SET TRANSACTION ISOLATION LEVEL；
@@ -84,6 +86,19 @@ REBUILD LEXICAL INDEX;
 它是仅 autocommit 的 L2 structural operation，通过 staging generation、reference verification 和
 原子 marker swap 完成；结果返回 generation/epoch、source/plan digest、规范 snapshot SHA-256、
 `parity`、`verified` 与 `reused`，不返回 posting 或 Row 内容。
+
+F174 冻结全内容倒排位置语句：
+
+```sql
+SHOW LEXICAL LOCATIONS FROM ALL TABLES
+USING :query [CURSOR :cursor]
+LIMIT :location_limit BYTES :utf8_byte_limit;
+```
+
+它只返回当前授权 Database 内的 Database/Table/Column/Route/Row identity、revision 和可解释
+命中计数，不返回正文或答案。Executor 在物理 posting read 前解析授权 database_id；Row 命中必须
+再用 `SELECT ... AS OF REVISION ... WHERE row_id = ...` 回表。完整契约见
+[Lexical Locations v1](./lexical-locations-v1.md)。
 
 语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
 所选 Table 的短 Route 节点，直到 Leaf 得到唯一 RowID。一个 Leaf 最多一个活跃 Row，

@@ -27,7 +27,7 @@
 - [F173b1：Route Posting Generation](./planning/f173b1-route-posting-generation.md) — 已完成的 Route 投影、generation v3 与 reopen reconciliation。
 - [F173b2：Live Route Posting Publication](./planning/f173b2-live-route-posting-publication.md) — 已完成的 direct/plan/reshape 统一 Route publication。
 - [F173c：Lexical Rebuild 与 Snapshot Parity](./planning/f173c-lexical-rebuild-parity.md) — 已完成的全量 COW rebuild、规范摘要与 MSQL 维护契约。
-- [F174：有界 Lexical Location 查询](./planning/f174-bounded-lexical-locations.md) — 已批准的权限先行、预算与 cursor 实现门；
+- [F174：有界 Lexical Location 查询](./planning/f174-bounded-lexical-locations.md) — 已完成的权限先行、预算与 cursor 查询链路；
 - [Lexical Locations v1](./query/lexical-locations-v1.md) — 全内容倒排位置的 MSQL 与回表协议。
 
 ## 当前产品规格
