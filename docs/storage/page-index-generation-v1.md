@@ -1,6 +1,7 @@
 # Page Index Generation v1
 
-状态：F106 已完成并验收；F107 已将 live generation 切为默认 authority，F108 已支持整代替换。
+状态：历史兼容格式；F106–F108 已完成。新写格式由
+[Generation v2](./page-index-generation-v2.md)取代，v1 仅保留只读升级能力。
 
 ## 唯一结果
 

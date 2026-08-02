@@ -45,7 +45,8 @@ CI 将以 import allowlist 和 fake `MSQLExecutor` 锁定该边界。
 | --- | --- | --- |
 | F170（已完成） | 无 I/O lexical reference index | 随机 revision 序列与简单 map 对拍 |
 | F171（已完成） | Page/WAL 持久化 posting store | reopen、corruption、split、fault injection、race |
-| F172 | live Row revision 原子替换 posting | insert/revise/delete/supersede 故障矩阵 |
+| F172a | Row 投影与四树 generation v2 | Plan/reference、v1 COW 升级、staging fault |
+| F172b | live Row revision 原子替换 posting | insert/revise/delete/supersede 故障矩阵 |
 | F173a | Catalog 与 Route revision 接入 posting | rename、alias、delete、move 后无陈旧位置 |
 | F173b | 全量 rebuild 与 snapshot 校验 | 在线状态与重建结果字节级对拍 |
 | F174 | 有界 MSQL lexical location 查询 | 只返回位置、预算/cursor、最终 SQL 回表 |

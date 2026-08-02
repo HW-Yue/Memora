@@ -21,6 +21,7 @@
   语义索引进入可重建 lexical postings，最终事实仍由 SQL 回表；
 - [F170：全内容倒排语义模型](./planning/f170-inverted-index-surface.md) — 已完成的无 I/O reference index；
 - [F171：持久化 Posting Store](./planning/f171-persistent-posting-store.md) — 已完成的 Page/WAL/B+ Tree 物理层。
+- [F172a：Row Posting Generation](./planning/f172a-row-posting-generation.md) — 已批准的 Row 投影与 generation v2 接线。
 
 ## 当前产品规格
 
@@ -59,6 +60,7 @@
 - [MVCC、Undo 与 Redo 边界](./storage/mvcc-undo-redo.md)
 - [持久化 B+ Tree 索引](./storage/indexing.md)
 - [Page Store Authority](./storage/page-store-authority-v1.md)
+- [Page Index Generation v2](./storage/page-index-generation-v2.md)
 - [Change Log 与未来同步](./storage/binlog-and-sync.md)
 - [备份](./storage/instance-portable-backup-v1.md)、
   [恢复](./storage/instance-restore-v1.md)与[搬迁](./storage/instance-move-v1.md)
