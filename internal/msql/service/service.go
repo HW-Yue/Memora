@@ -34,12 +34,14 @@ type Config struct {
 
 // Service owns the session registry for one Memora instance.
 type Service struct {
-	mu       sync.Mutex
-	context  context.Context
-	cancel   context.CancelFunc
-	config   Config
-	sessions map[string]*Session
-	closed   bool
+	mu        sync.Mutex
+	context   context.Context
+	cancel    context.CancelFunc
+	config    Config
+	sessions  map[string]*Session
+	closed    bool
+	closeDone chan struct{}
+	closeErr  error
 }
 
 // New constructs one shared service. It does not open a session or allocate
@@ -50,10 +52,11 @@ func New(ctx context.Context, config Config) *Service {
 	}
 	serviceContext, cancel := context.WithCancel(ctx)
 	return &Service{
-		context:  serviceContext,
-		cancel:   cancel,
-		config:   config,
-		sessions: make(map[string]*Session),
+		context:   serviceContext,
+		cancel:    cancel,
+		config:    config,
+		sessions:  make(map[string]*Session),
+		closeDone: make(chan struct{}),
 	}
 }
 
@@ -80,9 +83,9 @@ func (service *Service) OpenSession(id string) (*Session, error) {
 // session is idempotent.
 func (service *Service) CloseSession(id string) error {
 	service.mu.Lock()
+	defer service.mu.Unlock()
 	session := service.sessions[id]
 	delete(service.sessions, id)
-	service.mu.Unlock()
 	if session == nil {
 		return nil
 	}
@@ -94,8 +97,10 @@ func (service *Service) CloseSession(id string) error {
 func (service *Service) Close() error {
 	service.mu.Lock()
 	if service.closed {
+		done := service.closeDone
 		service.mu.Unlock()
-		return nil
+		<-done
+		return service.closeErr
 	}
 	service.closed = true
 	service.cancel()
@@ -113,6 +118,8 @@ func (service *Service) Close() error {
 	for _, session := range sessions {
 		closeErr = errors.Join(closeErr, session.Close())
 	}
+	service.closeErr = closeErr
+	close(service.closeDone)
 	return closeErr
 }
 

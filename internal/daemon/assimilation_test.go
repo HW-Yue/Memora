@@ -154,7 +154,7 @@ func TestAssimilationSubmissionCommitsReviewedModulesRelationshipAndReloadableRe
 		}
 	}
 	batch, _ := handler.session("submit-session")
-	relations := batch.Execute(ctx, executor.BatchRequest{
+	relations := batch.ExecuteBatch(ctx, executor.BatchRequest{
 		RequestID: "verify-relation", Source: "SHOW RELATIONS FROM work.notes FOR ROW :row DIRECTION OUTGOING LIMIT 10",
 		Statements: []executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": firstID}}}},
 	})

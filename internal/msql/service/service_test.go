@@ -237,6 +237,97 @@ func TestServiceCloseRejectsNewSessions(t *testing.T) {
 	}
 }
 
+func TestExecuteMSQLRejectsProtocolRequestBeforeTrustedBatchCompatibility(t *testing.T) {
+	t.Parallel()
+
+	service := msqlservice.New(context.Background(), msqlservice.Config{})
+	defer service.Close()
+	session, err := service.OpenSession("agent:validation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = session.ExecuteMSQL(context.Background(), protocolmsql.Request{
+		Version: protocolmsql.RequestVersion,
+		Source:  "SELECT * FROM work.notes LIMIT 1",
+	})
+	if !errors.Is(err, protocolmsql.ErrInvalidRequest) {
+		t.Fatalf("ExecuteMSQL() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestConcurrentExpectedRevisionWritesAcrossSessionsHaveOneWinner(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service, rows, closeFixture := newFixture(t, ctx)
+	defer closeFixture()
+	inserted, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "initial"}, row.WriteOptions{
+		ExpectedSchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessions := make([]*msqlservice.Session, 2)
+	for index := range sessions {
+		sessions[index], err = service.OpenSession("agent:writer-" + string(rune('a'+index)))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := make(chan struct{})
+	results := make(chan protocolmsql.Envelope, len(sessions))
+	for index, session := range sessions {
+		index, session := index, session
+		go func() {
+			<-start
+			envelope, executeErr := session.ExecuteMSQL(ctx, request(
+				"UPDATE work.notes SET title = :title WHERE row_id = :row_id",
+				protocolmsql.StatementInput{
+					Parameters: protocolmsql.Parameters{Named: map[string]any{
+						"title": "writer-" + string(rune('a'+index)), "row_id": inserted.ID,
+					}},
+					Mutation: protocolmsql.MutationOptions{
+						ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
+					},
+					Authorization: authorization(protocolmsql.LevelWrite),
+				},
+			))
+			if executeErr != nil {
+				t.Errorf("ExecuteMSQL() error = %v", executeErr)
+			}
+			results <- envelope
+		}()
+	}
+	close(start)
+	succeeded, conflicted := 0, 0
+	for range sessions {
+		envelope := <-results
+		if len(envelope.Results) != 1 {
+			t.Fatalf("envelope = %#v", envelope)
+		}
+		switch envelope.Results[0].Status {
+		case protocolmsql.Status(result.StatusSucceeded):
+			succeeded++
+		case protocolmsql.Status(result.StatusFailed):
+			if envelope.Results[0].Error == nil ||
+				envelope.Results[0].Error.Code != protocolmsql.Code(result.CodeRevisionConflict) {
+				t.Fatalf("failed write = %#v", envelope.Results[0])
+			}
+			conflicted++
+		default:
+			t.Fatalf("write status = %q", envelope.Results[0].Status)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("succeeded = %d, conflicted = %d", succeeded, conflicted)
+	}
+	current, err := rows.Get(ctx, "work", "notes", inserted.ID)
+	if err != nil || current.Revision != 2 {
+		t.Fatalf("current row = %#v, %v", current, err)
+	}
+}
+
 func newFixture(t *testing.T, ctx context.Context) (*msqlservice.Service, *row.Service, func()) {
 	return newFixtureWithCatalog(t, ctx, nil)
 }

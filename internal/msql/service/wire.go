@@ -117,13 +117,21 @@ func toProtocolStatement(value result.StatementResult) (protocolmsql.StatementRe
 			NextCursor: value.Page.NextCursor,
 		}
 	}
-	rowDetail, err := marshalOpaque(value.RowDetail)
-	if err != nil {
-		return protocolmsql.StatementResult{}, err
+	var rowDetail json.RawMessage
+	if value.RowDetail != nil {
+		encoded, err := json.Marshal(value.RowDetail)
+		if err != nil {
+			return protocolmsql.StatementResult{}, err
+		}
+		rowDetail = json.RawMessage(encoded)
 	}
-	discovery, err := marshalOpaque(value.Discovery)
-	if err != nil {
-		return protocolmsql.StatementResult{}, err
+	var discovery json.RawMessage
+	if value.Discovery != nil {
+		encoded, err := json.Marshal(value.Discovery)
+		if err != nil {
+			return protocolmsql.StatementResult{}, err
+		}
+		discovery = json.RawMessage(encoded)
 	}
 	return protocolmsql.StatementResult{
 		Index: value.Index, Statement: value.Statement, Source: value.Source,
@@ -133,17 +141,6 @@ func toProtocolStatement(value result.StatementResult) (protocolmsql.StatementRe
 		NextCursor: value.NextCursor, Page: page, RowDetail: rowDetail, Discovery: discovery,
 		Warnings: toProtocolNotices(value.Warnings), Error: toProtocolError(value.Error),
 	}, nil
-}
-
-func marshalOpaque(value any) (json.RawMessage, error) {
-	if value == nil {
-		return nil, nil
-	}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(encoded), nil
 }
 
 func toProtocolNotices(values []result.Notice) []protocolmsql.Notice {

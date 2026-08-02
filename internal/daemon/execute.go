@@ -20,6 +20,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
+	msqlservice "github.com/HW-Yue/Memora/internal/msql/service"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/routetrace"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -36,20 +37,17 @@ type executePayload struct {
 }
 
 type databaseHandler struct {
-	mu           sync.Mutex
-	context      context.Context
-	dictionary   executor.Catalog
-	rows         executor.Rows
-	points       executor.PointReads
-	routeVectors executor.RouteVectorReader
-	legacyRows   *row.Service
-	store        store.Store
-	export       func(context.Context) ([]byte, error)
-	security     *security.Service
-	traces       *routetrace.Service
-	hostInputs   *hostinput.Service
-	sessions     map[string]*executor.BatchSession
-	closed       bool
+	context    context.Context
+	dictionary executor.Catalog
+	rows       executor.Rows
+	store      store.Store
+	export     func(context.Context) ([]byte, error)
+	security   *security.Service
+	traces     *routetrace.Service
+	hostInputs *hostinput.Service
+	msql       *msqlservice.Service
+	closeOnce  sync.Once
+	closeErr   error
 }
 
 func newDatabaseHandler(
@@ -70,14 +68,18 @@ func newDatabaseHandlerWithSecurity(
 	database store.Store,
 	securityService *security.Service,
 ) *databaseHandler {
-	return &databaseHandler{
-		context: ctx, dictionary: dictionary, rows: rows, legacyRows: rows, store: database,
+	handler := &databaseHandler{
+		context: ctx, dictionary: dictionary, rows: rows, store: database,
 		export: func(callContext context.Context) ([]byte, error) {
 			return snapshot.New(database).Export(callContext)
 		},
 		security: securityService, hostInputs: hostinput.New(database, hostinput.Options{}),
-		sessions: make(map[string]*executor.BatchSession),
 	}
+	handler.msql = msqlservice.New(ctx, msqlservice.Config{
+		Catalog: dictionary, Rows: rows,
+		Packages: dbpackage.New(database), Wiki: wikiexport.New(database),
+	})
+	return handler
 }
 
 func newNativeDatabaseHandler(
@@ -91,10 +93,13 @@ func newNativeDatabaseHandler(
 	traces *routetrace.Service,
 	export func(context.Context) ([]byte, error),
 ) *databaseHandler {
-	return &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, points: points,
-		routeVectors: routeVectors, store: auxiliary,
+	handler := &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, store: auxiliary,
 		export: export, security: securityService, traces: traces,
-		hostInputs: hostinput.New(auxiliary, hostinput.Options{}), sessions: make(map[string]*executor.BatchSession)}
+		hostInputs: hostinput.New(auxiliary, hostinput.Options{})}
+	handler.msql = msqlservice.New(ctx, msqlservice.Config{
+		Catalog: dictionary, Rows: rows, Points: points, RouteVectors: routeVectors,
+	})
+	return handler
 }
 
 type routeTraceRecordPayload struct {
@@ -371,7 +376,7 @@ func (handler *databaseHandler) Handle(
 			request.RequestID, result.CodeInvalidRequest, "MSQL daemon session is closed", false,
 		))
 	}
-	envelope := batch.Execute(ctx, executor.BatchRequest{
+	envelope := batch.ExecuteBatch(ctx, executor.BatchRequest{
 		RequestID: request.RequestID, Source: payload.Source, Statements: payload.Statements,
 	})
 	return json.Marshal(envelope)
@@ -636,7 +641,7 @@ func (handler *databaseHandler) handleFeedback(
 		return nil, &feedback.Error{Code: result.CodeInvalidRequest, Message: "MSQL daemon session is closed"}
 	}
 	tool := skillwrite.ToolFunc(func(callContext context.Context, call skillwrite.Call) (result.Envelope, error) {
-		return batch.Execute(callContext, call.Request), nil
+		return batch.ExecuteBatch(callContext, call.Request), nil
 	})
 	processor := feedback.New(handler.store, handler.rows, tool)
 	decoder := json.NewDecoder(bytes.NewReader(request.Payload))
@@ -681,7 +686,7 @@ func (handler *databaseHandler) handleAssimilationSubmission(
 		return nil, &assimilation.SubmissionError{Code: result.CodeInvalidRequest, Message: "MSQL daemon session is closed"}
 	}
 	tool := skillwrite.ToolFunc(func(callContext context.Context, call skillwrite.Call) (result.Envelope, error) {
-		return batch.Execute(callContext, call.Request), nil
+		return batch.ExecuteBatch(callContext, call.Request), nil
 	})
 	receipt, err := assimilation.New(handler.store).Submit(ctx, submission, tool)
 	if err != nil {
@@ -742,7 +747,7 @@ func (handler *databaseHandler) handleReflect(
 		return nil, &conversation.Error{Code: result.CodeInvalidRequest, Message: "MSQL daemon session is closed"}
 	}
 	tool := skillwrite.ToolFunc(func(callContext context.Context, call skillwrite.Call) (result.Envelope, error) {
-		return batch.Execute(callContext, call.Request), nil
+		return batch.ExecuteBatch(callContext, call.Request), nil
 	})
 	receipt, err := conversation.New(conversation.NewJournal(handler.store), tool).Process(ctx, event)
 	if err != nil {
@@ -752,67 +757,22 @@ func (handler *databaseHandler) handleReflect(
 }
 
 func (handler *databaseHandler) SessionClosed(_ context.Context, session ipc.Session) error {
-	handler.mu.Lock()
-	batch := handler.sessions[session.ID]
-	delete(handler.sessions, session.ID)
-	handler.mu.Unlock()
-	if batch == nil {
-		return handler.security.Flush(handler.context)
-	}
-	closeErr := batch.Close()
+	closeErr := handler.msql.CloseSession(session.ID)
 	flushErr := handler.security.Flush(handler.context)
 	return errors.Join(closeErr, flushErr)
 }
 
 func (handler *databaseHandler) Close() error {
-	handler.mu.Lock()
-	if handler.closed {
-		handler.mu.Unlock()
-		return nil
-	}
-	handler.closed = true
-	sessions := make([]*executor.BatchSession, 0, len(handler.sessions))
-	for id, session := range handler.sessions {
-		sessions = append(sessions, session)
-		delete(handler.sessions, id)
-	}
-	handler.mu.Unlock()
-
-	var first error
-	for _, session := range sessions {
-		if err := session.Close(); err != nil && first == nil {
-			first = err
-		}
-	}
-	if err := handler.security.Flush(handler.context); err != nil && first == nil {
-		first = err
-	}
-	return first
+	handler.closeOnce.Do(func() {
+		handler.closeErr = errors.Join(
+			handler.msql.Close(),
+			handler.security.Flush(handler.context),
+		)
+	})
+	return handler.closeErr
 }
 
-func (handler *databaseHandler) session(id string) (*executor.BatchSession, bool) {
-	handler.mu.Lock()
-	defer handler.mu.Unlock()
-	if handler.closed {
-		return nil, false
-	}
-	if session := handler.sessions[id]; session != nil {
-		return session, true
-	}
-	session := executor.NewBatchSessionWithManagement(
-		handler.context, handler.dictionary, handler.rows, nil, nil,
-	)
-	if handler.points != nil {
-		session = executor.NewBatchSessionWithPointReadsAndRouteVectors(
-			handler.context, handler.dictionary, handler.rows, handler.points, handler.routeVectors,
-		)
-	}
-	if handler.legacyRows != nil {
-		session = executor.NewBatchSessionWithManagement(
-			handler.context, handler.dictionary, handler.rows,
-			dbpackage.New(handler.store), wikiexport.New(handler.store),
-		)
-	}
-	handler.sessions[id] = session
-	return session, true
+func (handler *databaseHandler) session(id string) (*msqlservice.Session, bool) {
+	session, err := handler.msql.OpenSession(id)
+	return session, err == nil
 }
