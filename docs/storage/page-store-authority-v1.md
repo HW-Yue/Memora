@@ -1,11 +1,11 @@
 # Page Store Authority v1
 
-状态：F107 已完成；2026-08-01 冻结并验收。
+状态：F107 已完成；2026-08-03 随 F172a 补充 generation v2 边界。
 
 ## 结果与边界
 
-- `page-index-v1/` 中的 Catalog、Current Row、Row Version 三棵持久树成为新实例和
-  已迁移实例的唯一查询 authority。
+- generation 中的 Catalog、Current Row、Row Version 三棵持久树是新实例和已迁移实例的
+  查询 authority；F172a 增加的 Fulltext Tree 是可重建派生索引，不成为正文 authority。
 - `database.memora` 继续保存不可变对象正文，并且只在写入和启动恢复时作为 source；
   正常 Catalog/Row 查询不得枚举它的 Record 清单，也不得把它作为索引 miss fallback。
 - F106 `manifest.json` 是只读迁移基线。激活后树允许继续演进，不能再用基线
@@ -22,7 +22,11 @@ F106 generation 目录、Plan digest 和 source fingerprint，并带自身 SHA-2
 3. 原子写 marker、fsync 文件、rename，并 fsync 数据库目录；
 4. marker 存在后只按 live 模式打开树：验证 marker/manifest 绑定、目录类型、Tree space
    和 WAL/Page recovery，不再要求 live 字节等于迁移基线；
-5. 对外监听前扫描一次已提交正文并幂等补齐 Catalog、Version、Current 三树。
+5. 对外监听前扫描一次已提交正文并幂等补齐 Catalog、Version、Current 三棵 authority Tree；
+6. 若 marker 指向合法三树 v1，启动过程用 COW replacement 发布四树 v2 后才返回；不原地修改 v1。
+
+F172a 只保证 v2 激活时 Fulltext 与当前 Row body 一致；在线 Row publication 从 F172b 接入，
+因此本规格下方既有发布协议仍只描述三棵 authority Tree。
 
 marker 缺失时不能把已变化的 generation 猜成 authority；marker 损坏、绑定不一致或
 live Tree 损坏都 fail closed。

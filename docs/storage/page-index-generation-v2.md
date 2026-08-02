@@ -1,6 +1,6 @@
 # Page Index Generation v2
 
-状态：F172a 已批准；本规格取代 v1 作为新写 generation 格式，v1 只读兼容用于升级。
+状态：F172a 已完成；本规格是当前新写 generation 格式，v1 只读兼容用于自动升级。
 
 ## 结果
 

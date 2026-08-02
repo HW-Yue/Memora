@@ -1,6 +1,6 @@
 # F172a：Row Posting Generation
 
-规划状态：已批准；2026-08-03 单项 Review 通过，可进入 RED → GREEN → REFACTOR。
+规划状态：已完成；2026-08-03 Review、RED → GREEN → REFACTOR、验收与完整 CI 通过。
 
 ## 拆分理由
 
@@ -20,9 +20,9 @@ F172a 不修改在线 `PublishRows`，不索引 Catalog/Route，不增加 MSQL�
 
 - object identity 使用 Database/Table/Row ID，revision 使用 Row revision；
 - schema revision 使用 Row schema version，必须与 Table 相同；
-- live Row 的非 NULL Column value 全部进入 fields，field ID 固定为 column_id；
+- live Row 中含 lexical 信息的非 NULL Column value 全部进入 fields，field ID 固定为 column_id；
 - INTEGER、BOOLEAN、TIMESTAMP、TEXT、RELATION_ID 使用 F170 对应 value kind；
-- deleted/superseded Row 生成零 field tombstone；全 NULL live Row 合法且产生零 posting；
+- deleted/superseded Row 生成零 field tombstone；全 NULL 或只有空白 TEXT 的 live Row 合法且产生零 posting；
 - 未知 Column、类型漂移、scope/revision/state 错误稳定拒绝，不能字符串化凑数。
 
 投影不读 Store、不分 chunk、不生成摘要，不依赖 Agent。
@@ -96,6 +96,17 @@ go test ./internal/rowfulltext ./internal/pagestoremigration
 用户执行授权：2026-08-03 用户要求顺序完成后续 Feature；本 Review 只批准 F172a 上述范围。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- RED `c62f924` 先冻结五类值、NULL/tombstone、Plan body 和四树 generation 验收；
+- Plan v2 digest 覆盖当前 Row body，body/locator/schema/projection/digest 篡改均稳定拒绝；
+- v2 build、严格 reopen 和 replacement fault suite 覆盖 Fulltext phase，Fulltext Page/WAL 翻转 fail closed；
+- 真实三树 v1 fixture 可严格只读打开，Authority 启动后发布 epoch 1 v2 marker，旧目录保持不变；
+- 合法空白 TEXT 产生零 posting，避免旧 Row 因无 lexical 信息阻断升级；
+- 受影响包 race 及 `./scripts/ci.sh` 的 format、vet、unit、race、integration、e2e、cross-build 全绿。
+
+完成结论：PASS。在线 INSERT/UPDATE/DELETE posting 仍严格留给 F172b。
 
 ## 关联
 

@@ -21,7 +21,7 @@
   语义索引进入可重建 lexical postings，最终事实仍由 SQL 回表；
 - [F170：全内容倒排语义模型](./planning/f170-inverted-index-surface.md) — 已完成的无 I/O reference index；
 - [F171：持久化 Posting Store](./planning/f171-persistent-posting-store.md) — 已完成的 Page/WAL/B+ Tree 物理层。
-- [F172a：Row Posting Generation](./planning/f172a-row-posting-generation.md) — 已批准的 Row 投影与 generation v2 接线。
+- [F172a：Row Posting Generation](./planning/f172a-row-posting-generation.md) — 已完成的 Row 投影、generation v2 与 v1 COW 升级。
 
 ## 当前产品规格
 
