@@ -8,7 +8,8 @@
 - F170–F179、F181 与 F182 已完成；Query Agent 的确定性 loop/fake 和 answer corpus
   验收不依赖具体厂商 adapter；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F180 标准库 adapter 已在独立分支通过机械测试，但真实 Kimi 鉴权返回 401，完成门与合入仍待有效 smoke；
+- F180 已通过单项 Review并完成机械实现；中国站 key 与官方 `.cn` endpoint 已确认，当前在最新
+  `main` 上重新执行真实 tool-call smoke 与完成门；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -76,7 +77,7 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 | Feature | 唯一主要结果 | 公开结果 |
 | --- | --- | --- |
 | F179（已完成） | Runtime spike 与 ADR | 选择薄 loop；Eino v0.9.13 对照证据与重评触发器见 ADR-0009 |
-| F180 | OpenAI-compatible HTTP Provider | Kimi 真实 smoke、懒初始化、无厂商 SDK、密钥不落盘 |
+| F180（实现中） | OpenAI-compatible HTTP Provider | Kimi 真实 smoke、懒初始化、无厂商 SDK、密钥不落盘 |
 | F181（已完成） | 只读 benchmark Query Agent | 只用 MSQL，输出 final answer + SELECT evidence + Trace |
 | F182（已完成） | 冻结 answer corpus/manifest | source、snapshot、问题、隐藏答案、版本、许可和 strict golden 完整 |
 | F183 | 端到端 answer runner | public scorecard 与 private diagnostics 分离 |

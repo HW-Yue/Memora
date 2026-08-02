@@ -84,7 +84,8 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F180：标准库 Provider adapter 的机械测试已完成；真实 Kimi 鉴权当前返回 401，尚未通过完成门或合入；
+- F180（实现中）：标准库 Provider adapter 已完成机械测试；中国站 key 与官方 `.cn` endpoint 已确认，
+  仍待真实 tool-call smoke、完成门与合入；
 - F183–F186：answer runner、外部质量门与后续 QuerySession；F183 仍等待 F180 真实 Provider 鉴权；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。

@@ -64,7 +64,7 @@ Trace 必须早于第一个真实 Provider，避免先上线模型调用、后�
 | Feature | 唯一主要结果 | 完成证据 |
 | --- | --- | --- |
 | F179（已完成） | Eino 与薄自研 loop 的 spike/ADR | 选择 Memora-owned 薄 loop，保留重评触发器 |
-| F180 | OpenAI-compatible HTTP Provider | Kimi 真实 API smoke；懒初始化；Key 只从 SecretResolver/进程环境进入请求 |
+| F180（实现中） | OpenAI-compatible HTTP Provider | Kimi 真实 API smoke；懒初始化；Key 只从 SecretResolver/进程环境进入请求 |
 | F181（已完成） | 只读 Query Agent | 只调用 MSQL；输出 final answer、实际 SELECT evidence 与完整 Trace |
 
 F180 不引入厂商 SDK；base URL、model 和能力由配置注入。真实 Key 不进 Config、Database、
