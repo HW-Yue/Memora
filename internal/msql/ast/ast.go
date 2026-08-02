@@ -328,6 +328,11 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.Space)
 		appendExpression(statement.Show.Limit)
 		appendExpression(statement.Show.ByteLimit)
+	case statement.Show != nil && statement.Show.Object == "LEXICAL_LOCATIONS":
+		appendExpression(statement.Show.Query)
+		appendExpression(statement.Show.Cursor)
+		appendExpression(statement.Show.Limit)
+		appendExpression(statement.Show.ByteLimit)
 	case statement.Show != nil && statement.Show.Object == "RELATIONS":
 		appendExpression(statement.Show.Row)
 		appendExpression(statement.Show.Limit)

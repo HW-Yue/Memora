@@ -2,6 +2,7 @@ package fulltextindex
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -258,6 +259,85 @@ func (index *Index) Postings(term string) ([]fulltext.Posting, error) {
 		return nil, err
 	}
 	return index.readPostings(prefix, false)
+}
+
+// PostingsInDatabases reads only explicit (term, database_id) key prefixes.
+// An empty Database scope is an empty result and never means all Databases.
+func (index *Index) PostingsInDatabases(ctx context.Context, terms, databaseIDs []string) ([]fulltext.Posting, error) {
+	if index == nil || index.runtime == nil || ctx == nil {
+		return nil, fmt.Errorf("%w: scoped posting read", ErrInvalid)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(terms) == 0 || len(databaseIDs) == 0 {
+		return []fulltext.Posting{}, nil
+	}
+	prefixes := make([][]byte, 0, len(terms)*len(databaseIDs))
+	seenTerms, seenDatabases := map[string]struct{}{}, map[string]struct{}{}
+	for _, term := range terms {
+		if _, duplicate := seenTerms[term]; duplicate {
+			return nil, fmt.Errorf("%w: duplicate posting term", ErrInvalid)
+		}
+		seenTerms[term] = struct{}{}
+	}
+	for _, databaseID := range databaseIDs {
+		if _, duplicate := seenDatabases[databaseID]; duplicate {
+			return nil, fmt.Errorf("%w: duplicate posting Database", ErrInvalid)
+		}
+		seenDatabases[databaseID] = struct{}{}
+	}
+	for _, term := range terms {
+		for _, databaseID := range databaseIDs {
+			prefix, err := postingDatabasePrefix(term, databaseID)
+			if err != nil {
+				return nil, err
+			}
+			prefixes = append(prefixes, prefix)
+		}
+	}
+
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return []fulltext.Posting{}, nil
+	}
+	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+	if err != nil {
+		return nil, classifyTreeError(err)
+	}
+	result := []fulltext.Posting{}
+	for _, prefix := range prefixes {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		entries, scanErr := scanPrefix(searcher, prefix)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			decoded, decodeErr := decodePostingKey(entry.Key)
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			revision, frequency, decodeErr := decodePostingValue(entry.Value)
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			posting := decoded.posting
+			posting.Revision, posting.Frequency = revision, frequency
+			if mirrorErr := validatePostingMirror(searcher, posting, entry.Value); mirrorErr != nil {
+				return nil, mirrorErr
+			}
+			result = append(result, posting)
+		}
+	}
+	sortPostings(result)
+	return result, nil
 }
 
 func (index *Index) AllPostings() ([]fulltext.Posting, error) {

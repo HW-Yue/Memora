@@ -9,6 +9,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/lexicallocation"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/binder"
 	"github.com/HW-Yue/Memora/internal/relation"
@@ -75,6 +76,7 @@ type Engine struct {
 	wiki             WikiExporter
 	routeVectors     RouteVectorReader
 	lexical          LexicalIndexMaintenance
+	lexicalLocations LexicalLocationReader
 }
 
 type LexicalRebuildReceipt struct {
@@ -92,6 +94,10 @@ type LexicalRebuildReceipt struct {
 
 type LexicalIndexMaintenance interface {
 	RebuildLexicalIndex(context.Context) (LexicalRebuildReceipt, error)
+}
+
+type LexicalLocationReader interface {
+	SearchLexicalLocations(context.Context, lexicallocation.Request) (lexicallocation.Page, error)
 }
 
 type RouteVectorReader interface {
@@ -227,6 +233,9 @@ func NewWithPointReadsAndRouteVectors(
 	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
 		engine.lexical = maintenance
 	}
+	if locations, ok := points.(LexicalLocationReader); ok {
+		engine.lexicalLocations = locations
+	}
 	return engine
 }
 
@@ -241,6 +250,14 @@ func NewWithLexicalIndexMaintenance(
 ) *Engine {
 	engine := New(dictionary, rows)
 	engine.lexical = maintenance
+	return engine
+}
+
+func NewWithLexicalLocations(
+	dictionary Catalog, rows Rows, locations LexicalLocationReader,
+) *Engine {
+	engine := New(dictionary, rows)
+	engine.lexicalLocations = locations
 	return engine
 }
 

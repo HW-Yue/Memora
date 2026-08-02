@@ -122,6 +122,14 @@ func postingPrefix(term string) ([]byte, error) {
 	return appendComponent([]byte{keyVersion, keyKindPosting}, term, false), nil
 }
 
+func postingDatabasePrefix(term, databaseID string) ([]byte, error) {
+	result, err := postingPrefix(term)
+	if err != nil || !validIdentity(databaseID) {
+		return nil, fmt.Errorf("%w: posting Database prefix", ErrInvalid)
+	}
+	return appendComponent(result, databaseID, false), nil
+}
+
 func allPostingPrefix() []byte { return []byte{keyVersion, keyKindPosting} }
 
 func encodePostingKey(posting fulltext.Posting) ([]byte, error) {

@@ -301,6 +301,44 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Table = &name
+	case parser.matchWord("LEXICAL"):
+		if _, err := parser.expectWord("LOCATIONS"); err != nil {
+			return ast.Statement{}, err
+		}
+		show.Object = "LEXICAL_LOCATIONS"
+		for _, word := range []string{"FROM", "ALL", "TABLES", "USING"} {
+			if _, err := parser.expectWord(word); err != nil {
+				return ast.Statement{}, err
+			}
+		}
+		query, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Query = &query
+		if parser.matchWord("CURSOR") {
+			cursor, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Cursor = &cursor
+		}
+		if _, err := parser.expectWord("LIMIT"); err != nil {
+			return ast.Statement{}, err
+		}
+		limit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Limit = &limit
+		if _, err := parser.expectWord("BYTES"); err != nil {
+			return ast.Statement{}, err
+		}
+		byteLimit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.ByteLimit = &byteLimit
 	case parser.matchWord("CHANGES"):
 		show.Object = "CHANGES"
 		if parser.matchWord("IN") {

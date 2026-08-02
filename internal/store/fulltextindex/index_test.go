@@ -1,6 +1,7 @@
 package fulltextindex
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -108,15 +109,15 @@ func TestPersistentIndexReadsPostingPrefixesOnlyInsideExplicitDatabaseScope(t *t
 	if _, err := index.Bootstrap(1, []fulltext.Document{work, secret}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := index.PostingsInDatabases("shared", []string{"db_work"})
+	got, err := index.PostingsInDatabases(context.Background(), []string{"shared"}, []string{"db_work"})
 	if err != nil || len(got) != 1 || got[0].DatabaseID != "db_work" || got[0].ObjectID != "row_work" {
 		t.Fatalf("scoped postings = %#v, %v", got, err)
 	}
-	empty, err := index.PostingsInDatabases("shared", nil)
+	empty, err := index.PostingsInDatabases(context.Background(), []string{"shared"}, nil)
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("empty scope postings = %#v, %v", empty, err)
 	}
-	if _, err := index.PostingsInDatabases("shared", []string{"db_work", "db_work"}); !errors.Is(err, ErrInvalid) {
+	if _, err := index.PostingsInDatabases(context.Background(), []string{"shared"}, []string{"db_work", "db_work"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("duplicate scope error = %v", err)
 	}
 }
