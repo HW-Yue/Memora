@@ -20,7 +20,7 @@ F169 单 Row leaf
 → F176–F181 Bootstrap / Provider / Trace / 最小 Query Agent
 → F182–F186 外部答案测评、发布门与交互查询
 → F187–F200 单网页写入、整本书吸收与 EPUB 质量门
-→ F201–F205 格式扩展与真实使用观测
+→ F201–F204 格式扩展与真实使用观测
 ```
 
 ## Agent 永久依赖边界
@@ -111,16 +111,15 @@ Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才�
 不把任一厂商写进 Agent 核心。比较写入策略时 Query Agent 保持固定。
 隐藏答案不提供给写入模型，确定性 ground truth 或独立 evaluator 负责评分，不能让模型自证。
 
-## M5：按证据扩展（F201–F205）
+## M5：按证据扩展（F201–F204）
 
 - F201：DOCX 适配器；
 - F202：带文本层 PDF 适配器；
 - F203：扫描页 OCR/视觉路径证据门，只有真实不可读比例与质量收益支持时才实现或打包可选资源；
 - F204：外置 Agent Hook，只采集 Memora 调用和有界结果；
-- F205：Admin 私有诊断视图，按 run/session/model 查看写入、Route、MSQL、耗时和成本。
 
 DOCX、PDF、OCR 不在 EPUB 垂直链跑通前并行堆积。OCR 模型、浏览器运行时和本地 Embedding 权重
-默认不进入主安装包。
+默认不进入主安装包。Trace 先由评测 runner 输出开发用 JSON/HTML；当前不规划 Admin 迭代。
 
 ## 每项共同完成门
 

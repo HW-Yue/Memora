@@ -31,7 +31,7 @@ F181 只读 Query Agent + F185 质量门
 → F189 交互协议 → F190 Job → F191 SourceStore → F192 Document IR → F193 EPUB
 → F194 coverage → F195 正式 MSQL 吸收面 → F196 draft ledger
 → F197 暂停恢复 → F198 独立复核 → F199 reconciliation/receipt → F200 EPUB benchmark
-→ F201–F205 证据触发扩展
+→ F201–F204 证据触发扩展
 ```
 
 ## A：先证明小写入（F187–F188）
@@ -72,7 +72,7 @@ Database，就必须等待 F195，不能临时导入旧 Assimilation Controller�
 写入模型和查询模型分别固定。隐藏答案不提供给写入模型；不能让 author/reviewer 自评最终
 正确性。F200 不通过时，先定位 coverage、draft、review 或 query 层，不增加 OCR。
 
-## D：只按证据扩展（F201–F205）
+## D：只按证据扩展（F201–F204）
 
 | Feature | 进入条件 |
 | --- | --- |
@@ -80,10 +80,10 @@ Database，就必须等待 F195，不能临时导入旧 Assimilation Controller�
 | F202 text-layer PDF adapter | EPUB 链通过，阅读顺序和表格样本已冻结 |
 | F203 OCR/视觉路径 evidence gate | 不可读页比例和答案收益证明值得增加可选模型资源 |
 | F204 外置 Agent Hook | 只采集 Memora 调用、session/host/model 与有界结果，不采宿主完整上下文 |
-| F205 Admin 私有诊断 | Trace schema 稳定后按 run/session/model 展示质量、耗时、调用与成本 |
 
 OCR、本地模型权重和浏览器运行时默认不进入主安装包。外部评测框架与 Python 依赖也只属于
-开发工具链。
+开发工具链。Trace 首先由 runner 输出 JSON/HTML 报告；当前不规划 Admin 迭代，后续展示载体
+只有在真实分析工作流形成后才单独 Review。
 
 ## 关联
 

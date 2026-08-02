@@ -34,7 +34,7 @@ Codex、Claude Code 等外置 Agent 不作为统一静态基准，只通过 Hook
 3. 冻结 Provider port 与 run/session/turn/trace，再接 Kimi 等真实 OpenAI-compatible API；
 4. 实现只读 Query Agent、冻结 corpus、接外部评分并通过发布门；
 5. 再开放交互 QuerySession，随后验证单网页写入和整本 EPUB；
-6. 外置 Hook、Admin 分析和写入时机评测放在主垂直链证据之后。
+6. 外置 Hook 和写入时机评测放在主垂直链证据之后；Trace 先输出开发用报告，不扩展 Admin。
 
 API Key 只进入操作系统密钥存储或进程环境，不进入 Database、日志、报告或导出。评测 Agent
 不能拥有绕过 Parser、Policy、预算和事务的内部接口。
