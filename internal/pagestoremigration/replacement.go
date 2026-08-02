@@ -13,11 +13,16 @@ import (
 )
 
 type ReplacementReceipt struct {
-	PreviousGeneration string
-	Generation         string
-	Epoch              uint64
-	PlanDigest         string
-	Reused             bool
+	PreviousGeneration     string
+	Generation             string
+	Epoch                  uint64
+	PlanDigest             string
+	SourceFingerprint      string
+	PreviousSnapshotSHA256 string
+	SnapshotSHA256         string
+	Parity                 bool
+	Verified               bool
+	Reused                 bool
 }
 
 type replacementPhase string

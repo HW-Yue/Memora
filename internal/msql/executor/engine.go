@@ -74,6 +74,24 @@ type Engine struct {
 	packages         PackageManager
 	wiki             WikiExporter
 	routeVectors     RouteVectorReader
+	lexical          LexicalIndexMaintenance
+}
+
+type LexicalRebuildReceipt struct {
+	PreviousGeneration     string
+	Generation             string
+	Epoch                  uint64
+	PlanDigest             string
+	SourceFingerprint      string
+	PreviousSnapshotSHA256 string
+	SnapshotSHA256         string
+	Parity                 bool
+	Verified               bool
+	Reused                 bool
+}
+
+type LexicalIndexMaintenance interface {
+	RebuildLexicalIndex(context.Context) (LexicalRebuildReceipt, error)
 }
 
 type RouteVectorReader interface {
@@ -212,6 +230,14 @@ func NewWithPointReadsAndRouteVectors(
 func NewWithRouteVectors(dictionary Catalog, rows Rows, vectors RouteVectorReader) *Engine {
 	engine := New(dictionary, rows)
 	engine.routeVectors = vectors
+	return engine
+}
+
+func NewWithLexicalIndexMaintenance(
+	dictionary Catalog, rows Rows, maintenance LexicalIndexMaintenance,
+) *Engine {
+	engine := New(dictionary, rows)
+	engine.lexical = maintenance
 	return engine
 }
 

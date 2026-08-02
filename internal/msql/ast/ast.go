@@ -41,6 +41,7 @@ type Statement struct {
 	Configuration *ConfigurationStatement      `json:"configuration,omitempty"`
 	Package       *PackageStatement            `json:"package,omitempty"`
 	Export        *ExportStatement             `json:"export,omitempty"`
+	Rebuild       *RebuildStatement            `json:"rebuild,omitempty"`
 	Transaction   *TransactionStatement        `json:"transaction,omitempty"`
 }
 
@@ -251,6 +252,10 @@ type ExportStatement struct {
 	Format  string      `json:"format"`
 	Path    *Expression `json:"path"`
 	Profile *Expression `json:"profile"`
+}
+
+type RebuildStatement struct {
+	Object string `json:"object"`
 }
 
 type TransactionStatement struct {
