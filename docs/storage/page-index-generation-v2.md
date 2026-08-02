@@ -5,7 +5,7 @@
 ## 结果
 
 Generation v2 在 v1 的 Catalog、Current Row、Row Version 三棵树之外增加 Fulltext Tree，保证
-激活时所有当前 Row 都有可重开的 lexical 派生位置。在线发布由 F172b 接入。
+激活及在线 Row revision 发布后，所有当前 Row 都有可重开的 lexical 派生位置。
 
 ## 固定布局
 
@@ -27,8 +27,8 @@ Migration Plan v2 绑定 Catalog、所有 version locator、current locator 和�
 staging 中分别 bootstrap、flush、sync、strict reopen 与 reference 校验；随后 content digest、manifest
 digest、source reverify、atomic rename 和父目录 fsync 沿用 v1 协议。
 
-四棵树不伪装成跨 WAL 事务：初始一致性来自整个 staging 目录一次发布；live mutation 的 publication
-barrier、poison 和 reopen reconciliation 由各接入 Feature 负责。
+四棵树不伪装成跨 WAL 事务：初始一致性来自整个 staging 目录一次发布；F172b 的 live Row mutation
+按 Version → Fulltext → Current 发布，并由 barrier、poison 和 reopen reconciliation 收敛。
 
 ## v1 compatibility
 

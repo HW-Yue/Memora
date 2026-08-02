@@ -25,8 +25,8 @@ F106 generation 目录、Plan digest 和 source fingerprint，并带自身 SHA-2
 5. 对外监听前扫描一次已提交正文并幂等补齐 Catalog、Version、Current 三棵 authority Tree；
 6. 若 marker 指向合法三树 v1，启动过程用 COW replacement 发布四树 v2 后才返回；不原地修改 v1。
 
-F172a 只保证 v2 激活时 Fulltext 与当前 Row body 一致；在线 Row publication 从 F172b 接入，
-因此本规格下方既有发布协议仍只描述三棵 authority Tree。
+F172a 保证 v2 激活 seed，F172b 保证在线 Row revision 同步替换 Fulltext；Fulltext 仍是派生索引，
+不改变三棵 authority Tree 与正文的权威关系。
 
 marker 缺失时不能把已变化的 generation 猜成 authority；marker 损坏、绑定不一致或
 live Tree 损坏都 fail closed。
@@ -38,14 +38,15 @@ Authority 持有进程内 RW publication barrier。所有 authority read 持读�
 
 ```text
 Catalog: commit immutable schema bodies -> replace Catalog tree -> publish success
-Row:     commit immutable Row/history bodies -> append Version tree
-         -> advance Current tree -> publish success
+Row:     preflight deterministic projection -> commit immutable Row/history bodies
+         -> append Version tree -> replace Fulltext posting -> advance Current tree -> publish success
 ```
 
-Version 必须先于 Current，且 reader 在同一 barrier 内看不到中间状态。每棵树使用其
+Version、Fulltext 必须先于 Current，且 reader 在同一 barrier 内看不到中间状态。每棵树使用其
 WAL durable frontier 的下一个 transaction ID。任何正文 commit 后的 Tree 发布错误都
 返回 outcome-unknown、毒化当前 Authority，并拒绝后续读写；重新打开时通过步骤 5
-收敛。正文 commit 前失败不改变 authority。
+收敛。相同 Fulltext revision 是零 WAL replay；发现 revision gap 时用 COW generation replacement
+重建，不能跳号掩盖漏删 posting。正文 commit 前的投影/commit 失败不改变 authority。
 
 写入规划另经过一个可取消的 single-writer operation gate，防止 Schema 校验、正文
 staging 与 Page publication 之间被另一逻辑写穿插；reader 在规划阶段不被阻塞。同一

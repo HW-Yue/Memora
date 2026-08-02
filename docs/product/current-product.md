@@ -51,8 +51,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - 外置 Agent Hook、统一 session 指标和本地分析平台尚未实现；
 - 内置评测 Agent 尚未实现，面向用户的 `memora ask` 继续延后；
 - “何时值得写入”的质量评测后置，近期先评测查询、Route 和事实读取；
-- ADR-0008 的 reference model、持久化 posting store 和当前 Row generation seed 已完成，但尚未接入
-  在线 Row/Catalog/Route 发布和 RowID location MSQL；当前用户入口仍只有 F124b 的 Route lexical 候选；
+- ADR-0008 的 reference model、持久化 posting store、当前 Row seed 与在线 Row publication 已完成，
+  但尚未接入 Catalog/Route 发布和 RowID location MSQL；当前用户入口仍只有 F124b 的 Route lexical 候选；
 - Query Workspace 的跨会话恢复、跨 session topic 身份仍未冻结；
 - Compaction、Secondary Index、Advanced MVCC、Replication、PITR、多设备同步、
   Apple Accelerate 与 HNSW 均未达到证据门，当前不实现。

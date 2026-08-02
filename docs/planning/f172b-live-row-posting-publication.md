@@ -1,6 +1,6 @@
 # F172b：Live Row Posting Publication
 
-规划状态：已批准；2026-08-03 单项 Review 通过，可进入 RED → GREEN → REFACTOR。
+规划状态：已完成；2026-08-03 Review、RED → GREEN → REFACTOR、验收与完整 CI 通过。
 
 ## 唯一主要结果
 
@@ -80,6 +80,22 @@ go test ./internal/store/fulltextindex ./internal/pagestoremigration
 完成时执行 batch reference、publication fault/reopen、revision-gap COW、受影响包 race及完整 CI。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- RED `b73e6e8` 证明 batch、在线 posting、Fulltext checkpoint 与 revision-gap COW 均缺失；
+- INSERT/UPDATE/DELETE 后 old term 消失，posting revision 与当前 Row 一致；
+- 两 Row reshape 经真实 `nativemutation.Coordinator` 只推进一次 Fulltext Tree revision；
+- batch 重复 object、跳 revision 和关闭 WAL 均在旧 root 完整可读时稳定拒绝；
+- body/version/fulltext/current 四个 checkpoint 及真实 Fulltext WAL 故障全部 poison，reopen 与 body 收敛；
+- 相同 revision reopen 为零 WAL replay，N → N+2 走 epoch+1 COW 并保留旧 generation；
+- 预投影错误不会调用 body commit，也不会 poison Authority；
+- `./scripts/ci.sh` 的 format、vet、unit、race、integration、e2e 与双架构 cross-build 全绿。
+
+`US-F172B-1`、`US-F172B-2`、`US-F172B-3` 均通过。无新 Agent/SQL/向量/正文旁路；
+用户可见 lexical location 仍等待 F174。
+
+完成后结论：PASS。
 
 ## 关联
 
