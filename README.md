@@ -10,7 +10,7 @@ Memora 是由 AI 自主建模、通过版本化 MSQL 读写的本地个人数据
 memora --stdio        为外部 Agent 提供长驻 JSONL 会话
 memora exec <msql>    直接执行 MSQL
 memora mcp            提供唯一 memora_execute 工具
-memora admin          打开本地只读观察界面
+memora admin          在 127.0.0.1:3888 打开本地只读观察界面
 memora daemon         管理本地常驻服务
 ```
 

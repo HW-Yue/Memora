@@ -137,6 +137,7 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 		Scopes:     []string{"work"},
 		Execute:    daemon.Execute,
 		Random:     bytes.NewReader(bytes.Repeat([]byte{0x71}, 96)),
+		Listen:     ephemeralListen,
 		SessionTTL: time.Minute,
 	})
 	if err != nil {

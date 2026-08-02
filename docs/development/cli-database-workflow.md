@@ -47,8 +47,8 @@ batch 和 verify。MERGE/SPLIT 的不同 StatementInput 由 Plan 编译进同一
 `memora.mutation-receipt/v1`。
 
 `admin` 是 F115/F116 的临时只读交付面。它把启动时固定的 Database scope 注入每条
-MSQL，通过 daemon Unix socket 执行，并在 SIGINT/SIGTERM 后释放随机 loopback
-端口。默认打开内嵌 Admin Shell；`--no-open` 只打印 descriptor。HTTP session、
+MSQL，通过 daemon Unix socket 执行，并监听固定的 `127.0.0.1:3888`；
+SIGINT/SIGTERM 后释放端口。默认打开内嵌 Admin Shell；`--no-open` 只打印 descriptor。HTTP session、
 Origin、Cookie 与 CSRF 契约见 [Local Read API v1](./local-read-api-v1.md)。
 
 ## 统一执行

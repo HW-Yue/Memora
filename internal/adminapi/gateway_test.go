@@ -48,6 +48,47 @@ func (recorder *executeRecorder) count() int {
 	return len(recorder.calls)
 }
 
+func TestStartRequestsFixedLoopbackPort3888(t *testing.T) {
+	t.Parallel()
+
+	requested := ""
+	listen := func(network, address string) (net.Listener, error) {
+		requested = address
+		return net.Listen(network, "127.0.0.1:0")
+	}
+	gateway, err := Start(context.Background(), Config{
+		DataDir: "/fixture", Scopes: []string{"work"}, Execute: (&executeRecorder{}).execute,
+		Random: bytes.NewReader(bytes.Repeat([]byte{0x38}, 96)), Listen: listen,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = gateway.Close() })
+	if requested != "127.0.0.1:3888" {
+		t.Fatalf("Admin listen address = %q, want 127.0.0.1:3888", requested)
+	}
+}
+
+func TestStartDoesNotFallbackWhenFixedPortIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	listenCalls := 0
+	listen := func(network, address string) (net.Listener, error) {
+		listenCalls++
+		if network != "tcp4" || address != "127.0.0.1:3888" {
+			t.Fatalf("listen(%q, %q)", network, address)
+		}
+		return nil, errors.New("address already in use")
+	}
+	_, err := Start(context.Background(), Config{
+		DataDir: "/fixture", Scopes: []string{"work"}, Execute: (&executeRecorder{}).execute,
+		Random: bytes.NewReader(bytes.Repeat([]byte{0x88}, 96)), Listen: listen,
+	})
+	if err == nil || !strings.Contains(err.Error(), "listen for admin API") || listenCalls != 1 {
+		t.Fatalf("Start() error = %v, listen calls = %d", err, listenCalls)
+	}
+}
+
 func TestGatewayBootstrapsOnceAndReturnsDaemonEnvelopeWithFixedScope(t *testing.T) {
 	t.Parallel()
 
@@ -170,7 +211,7 @@ func TestGatewayRejectsExpiredSessionWithoutCallingDaemon(t *testing.T) {
 	gateway, err := Start(context.Background(), Config{
 		DataDir: "/fixture", Scopes: []string{"work"}, Execute: recorder.execute,
 		Random: bytes.NewReader(bytes.Repeat([]byte{0x24}, 96)), Now: clock.Now,
-		SessionTTL: time.Minute,
+		Listen: ephemeralListen, SessionTTL: time.Minute,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -254,7 +295,8 @@ func TestGatewayBoundsJSONRedactsUpstreamFailureAndReleasesPort(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	gateway, err := Start(ctx, Config{
 		DataDir: "/fixture", Scopes: []string{"work"}, Execute: recorder.execute,
-		Random: bytes.NewReader(bytes.Repeat([]byte{0x5a}, 96)), SessionTTL: time.Minute,
+		Random: bytes.NewReader(bytes.Repeat([]byte{0x5a}, 96)), Listen: ephemeralListen,
+		SessionTTL: time.Minute,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -318,13 +360,18 @@ func startGateway(t *testing.T, recorder *executeRecorder, scopes []string) *Gat
 	t.Helper()
 	gateway, err := Start(context.Background(), Config{
 		DataDir: "/fixture", Scopes: scopes, Execute: recorder.execute,
-		Random: bytes.NewReader(bytes.Repeat([]byte{0x42}, 96)), SessionTTL: time.Minute,
+		Random: bytes.NewReader(bytes.Repeat([]byte{0x42}, 96)), Listen: ephemeralListen,
+		SessionTTL: time.Minute,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = gateway.Close() })
 	return gateway
+}
+
+func ephemeralListen(network, _ string) (net.Listener, error) {
+	return net.Listen(network, "127.0.0.1:0")
 }
 
 func bootstrap(t *testing.T, descriptor Descriptor) (SessionReceipt, *http.Cookie) {

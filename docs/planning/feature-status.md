@@ -27,6 +27,7 @@
 | F165 | 删除未接入产品链路的硬编码 `internal/skillquery` Runner |
 | F166 | 清除已撤销 `MATCH` 的 Lexer、Policy、Host 与当前文档残留 |
 | F167 | 删除旧 Row Agent-index generation，并归档 `pending_reindex` 规格 |
+| F168 | Admin 默认固定监听 `127.0.0.1:3888`，占用时拒绝随机降级 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 

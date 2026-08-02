@@ -24,6 +24,7 @@ import (
 const (
 	SessionVersion  = "memora.admin-session/v1"
 	ErrorVersion    = "memora.admin-error/v1"
+	DefaultAddress  = "127.0.0.1:3888"
 	MaxRequestBytes = 256 << 10
 	maxStatements   = 32
 	defaultTTL      = 15 * time.Minute
@@ -130,7 +131,7 @@ func Start(ctx context.Context, config Config) (*Gateway, error) {
 	if listen == nil {
 		listen = net.Listen
 	}
-	listener, err := listen("tcp4", "127.0.0.1:0")
+	listener, err := listen("tcp4", DefaultAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen for admin API: %w", err)
 	}

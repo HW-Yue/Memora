@@ -448,7 +448,10 @@ func TestServeAdminClosesGatewayWhenBrowserOpenCallbackFails(t *testing.T) {
 		Execute: func(context.Context, string, string, []executor.StatementInput) (result.Envelope, error) {
 			return result.Envelope{}, nil
 		},
-		Random:     bytes.NewReader(bytes.Repeat([]byte{0x66}, 96)),
+		Random: bytes.NewReader(bytes.Repeat([]byte{0x66}, 96)),
+		Listen: func(network, _ string) (net.Listener, error) {
+			return net.Listen(network, "127.0.0.1:0")
+		},
 		SessionTTL: time.Minute,
 	}, func(descriptor adminapi.Descriptor) error {
 		address = strings.TrimPrefix(descriptor.Origin, "http://")

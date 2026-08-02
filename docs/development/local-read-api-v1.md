@@ -1,6 +1,6 @@
 # Local Read API v1
 
-状态：F115 已完成并验收；2026-08-01 冻结。
+状态：F115 已完成并验收；F168 将默认地址固定为 `127.0.0.1:3888`。
 
 ## 用户结果与边界
 
@@ -14,10 +14,11 @@ Authorization、MutationOptions、approval 或物理访问选项。
 
 ## Session 与 HTTP
 
-进程只监听随机 loopback port，并输出一个 `memora.admin-session/v1` JSON descriptor：
+进程只监听固定的 IPv4 loopback 地址 `127.0.0.1:3888`，并输出一个
+`memora.admin-session/v1` JSON descriptor：
 
 ```json
-{"version":"memora.admin-session/v1","origin":"http://127.0.0.1:49152","url":"http://127.0.0.1:49152/#token=...","expires_at":"..."}
+{"version":"memora.admin-session/v1","origin":"http://127.0.0.1:3888","url":"http://127.0.0.1:3888/#token=...","expires_at":"..."}
 ```
 
 fragment 中 256-bit bootstrap token 不发送给 HTTP server。前端用它调用一次
@@ -47,5 +48,6 @@ envelope，不另造前端结果协议。
 ## 关闭与故障
 
 SIGINT/SIGTERM、context cancel 或 session 到期会关闭 HTTP server 和 Listener；关闭
-后同一端口可重新绑定。随机源、监听、daemon 调用或响应写入失败都不得降级为无 token、
-扩大 scope 或继续后台监听。错误响应不回显 token、Cookie、MSQL 参数或 Row 内容。
+后 `3888` 可重新绑定。端口已占用时启动明确失败，不回退随机端口。随机源、监听、daemon
+调用或响应写入失败都不得降级为无 token、扩大 scope 或继续后台监听。错误响应不回显
+token、Cookie、MSQL 参数或 Row 内容。
