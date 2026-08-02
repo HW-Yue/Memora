@@ -7,7 +7,7 @@
 
 - `main` 当前到 F177，Query Bootstrap 与厂商中立 Provider port 已在既有 MSQL-only 基础上通过完整 CI 并合入；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F170–F177 已完成；下一项从最新 `main` 单独 Review F178 Agent Event/Trace/Usage 信封；
+- F170–F177 已完成；F178 已通过单项 Review，正在实现 Agent Event/Trace/Usage 信封；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -64,7 +64,7 @@ F174 已冻结内置 Agent 可依赖的全文查询。倒排结果是候选武�
 | F175c（已完成） | Agent MSQL-only port 与 fake harness | import allowlist；Agent 测试不打开 Instance |
 | F176（已完成） | 确定性 Query Bootstrap Frame | Atlas + lexical + 可选根 Route 预取；snapshot/byte budget/回退 |
 | F177（已完成） | Memora-owned Provider port | scripted fake；框架/厂商类型不进入数据库协议 |
-| F178 | Agent Event / Trace / Usage 信封 | 第一次真实模型调用前已可重放调用、token、费用和分段耗时 |
+| F178（实现中） | Agent Event / Trace / Usage 信封 | 第一次真实模型调用前已可重放调用、token、费用和分段耗时 |
 
 F175 原范围拆成三个 Feature，因为 wire 兼容、共享服务并发和 import 边界是三个独立故障域。
 F176 在没有 API Key 时先冻结首轮上下文；默认一次给模型完整有界 Catalog Atlas、lexical
