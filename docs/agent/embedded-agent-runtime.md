@@ -53,21 +53,10 @@ CI 必须检查 Agent package import allowlist，并用 fake `MSQLExecutor` 证�
 
 ## 统一请求信封
 
-内部 loop 与外部调用方使用同一种逻辑请求：
-
-```json
-{
-  "protocol": "msql/1",
-  "actor": {"kind": "embedded_agent", "session": "..."},
-  "statement": "SELECT ... LIMIT 5",
-  "params": {},
-  "mode": "execute",
-  "budget": {"rows": 5, "chars": 2400},
-  "scope": ["project_memora"]
-}
-```
-
-actor、权限、预算和审批状态可以不同，但语法解析、AST、类型检查、Policy 和事务语义不能分叉。
+内部 loop 与外部调用方统一使用 `protocol/msql.Request`：顶层包含 `version`、完整 MSQL `source`
+和逐 statement 输入；每项输入携带 parameters、mutation budgets/provenance 与显式 Authorization。
+返回值统一为 `protocol/msql.Envelope`。actor、权限、预算和审批状态可以不同，但语法解析、AST、
+类型检查、Policy 和事务语义不能分叉；旧讨论稿中的自然语言 `mode/budget/scope` 信封已被该协议取代。
 
 ## Agent Loop
 

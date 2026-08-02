@@ -1,6 +1,6 @@
 # Agent 的 MSQL 边界与依赖注入
 
-状态：架构约束；F175a/F175b 已完成中立协议包与共享 Service，F175c 继续完成 Agent port 与依赖守卫。
+状态：架构约束；F175a/F175b 已完成中立协议包与共享 Service，F175c 正在实现 Agent port 与依赖守卫。
 
 ## 决定
 
