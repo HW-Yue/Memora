@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/lexical"
 	"github.com/HW-Yue/Memora/internal/router"
 )
 
@@ -124,7 +124,11 @@ func Search(source Source, query string) (Result, error) {
 	postings := make(map[string][]posting)
 	for surfaceIndex, candidate := range surfaces {
 		for _, value := range candidate.fields {
-			for term := range tokenizeMany(value.text) {
+			terms, err := tokenizeMany(value.text)
+			if err != nil {
+				return Result{}, sourceError("surface %q contains invalid lexical text", value.name)
+			}
+			for term := range terms {
 				postings[term] = append(postings[term], posting{surface: surfaceIndex, field: value.name})
 			}
 		}
@@ -296,7 +300,10 @@ func queryTokens(query string) (map[string]struct{}, error) {
 	if !utf8.ValidString(query) || strings.TrimSpace(query) == "" || utf8.RuneCountInString(query) > maxQueryRunes {
 		return nil, queryError("query must contain 1 to %d Unicode characters", maxQueryRunes)
 	}
-	values := tokenize(query)
+	values, err := lexical.UniqueTerms(query)
+	if err != nil {
+		return nil, queryError("query contains invalid lexical text")
+	}
 	if len(values) == 0 || len(values) > maxQueryTerms {
 		return nil, queryError("query must produce 1 to %d unique terms", maxQueryTerms)
 	}
@@ -307,63 +314,18 @@ func queryTokens(query string) (map[string]struct{}, error) {
 	return result, nil
 }
 
-func tokenizeMany(values []string) map[string]struct{} {
+func tokenizeMany(values []string) (map[string]struct{}, error) {
 	result := make(map[string]struct{})
 	for _, value := range values {
-		for _, token := range tokenize(value) {
+		tokens, err := lexical.UniqueTerms(value)
+		if err != nil {
+			return nil, err
+		}
+		for _, token := range tokens {
 			result[token] = struct{}{}
 		}
 	}
-	return result
-}
-
-func tokenize(value string) []string {
-	result := make([]string, 0)
-	seen := make(map[string]struct{})
-	word := make([]rune, 0)
-	han := make([]rune, 0)
-	appendToken := func(token string) {
-		if token == "" {
-			return
-		}
-		if _, exists := seen[token]; exists {
-			return
-		}
-		seen[token] = struct{}{}
-		result = append(result, token)
-	}
-	flushWord := func() {
-		if len(word) > 0 {
-			appendToken(strings.ToLower(string(word)))
-			word = word[:0]
-		}
-	}
-	flushHan := func() {
-		if len(han) == 1 {
-			appendToken(string(han))
-		} else {
-			for index := 0; index+1 < len(han); index++ {
-				appendToken(string(han[index : index+2]))
-			}
-		}
-		han = han[:0]
-	}
-	for _, character := range value {
-		switch {
-		case unicode.Is(unicode.Han, character):
-			flushWord()
-			han = append(han, character)
-		case unicode.IsLetter(character) || unicode.IsDigit(character):
-			flushHan()
-			word = append(word, unicode.ToLower(character))
-		default:
-			flushWord()
-			flushHan()
-		}
-	}
-	flushWord()
-	flushHan()
-	return result
+	return result, nil
 }
 
 func lessMatch(left, right Match) bool {

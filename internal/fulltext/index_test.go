@@ -74,7 +74,7 @@ func TestReferenceIndexReplacementRemovesStaleTerms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Replay || receipt.Added != 1 || receipt.Removed != 1 {
+	if receipt.Replay || receipt.Added != 2 || receipt.Removed != 2 {
 		t.Fatalf("replacement receipt = %#v", receipt)
 	}
 	if got := index.Postings("old"); len(got) != 0 {
@@ -186,6 +186,73 @@ func TestReferenceIndexBuildSeedsArbitraryCurrentRevisions(t *testing.T) {
 	empty := New()
 	if _, err := empty.Replace(seed); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("empty incremental seed error = %v, want revision conflict", err)
+	}
+}
+
+func TestReferenceIndexCanonicalReplayIgnoresFieldAndValueOrder(t *testing.T) {
+	t.Parallel()
+
+	index := New()
+	first := document(KindRow, "db_work", "tbl_notes", "row_1", 1,
+		field("col_z", TextValue("zeta"), IntegerValue(7)),
+		field("col_a", TextValue("alpha")))
+	receipt, err := index.Replace(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reordered := document(KindRow, "db_work", "tbl_notes", "row_1", 1,
+		field("col_a", TextValue("alpha")),
+		field("col_z", IntegerValue(7), TextValue("zeta")))
+	replay, err := index.Replace(reordered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replay.Replay || replay.Digest != receipt.Digest {
+		t.Fatalf("canonical replay = %#v, initial = %#v", replay, receipt)
+	}
+}
+
+func TestReferenceIndexConcurrentRevisionHasOneWinner(t *testing.T) {
+	t.Parallel()
+
+	index := New()
+	if _, err := index.Replace(document(KindRow, "db_work", "tbl_notes", "row_1", 1,
+		field("col_title", TextValue("initial")))); err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	errorsByCandidate := make(chan error, 2)
+	for _, term := range []string{"left", "right"} {
+		term := term
+		go func() {
+			<-start
+			_, err := index.Replace(document(KindRow, "db_work", "tbl_notes", "row_1", 2,
+				field("col_title", TextValue(term))))
+			errorsByCandidate <- err
+		}()
+	}
+	close(start)
+
+	var successes, conflicts int
+	for range 2 {
+		err := <-errorsByCandidate
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrRevisionConflict):
+			conflicts++
+		default:
+			t.Fatalf("concurrent Replace() error = %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("successes=%d conflicts=%d", successes, conflicts)
+	}
+	left, right := index.Postings("left"), index.Postings("right")
+	if (len(left) == 1) == (len(right) == 1) {
+		t.Fatalf("postings left=%#v right=%#v, want exactly one winner", left, right)
 	}
 }
 
