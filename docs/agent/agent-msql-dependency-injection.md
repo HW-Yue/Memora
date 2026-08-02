@@ -111,6 +111,16 @@ IPC 的 `msql.execute` 与同进程 adapter 必须调用同一个 `MSQLService.E
 - 为了性能增加绕开 Parser、Policy 或事务的“内部快速路径”；
 - 让数据库内核依赖 Agent、模型 Provider、Eino 或文档解析实现。
 
+## 会话与并发契约
+
+每个数据库实例只创建一个共享的 `MSQLService`，IPC handler 与内置 Agent adapter 必须复用它，
+不能各自创建带独立锁状态的数据库服务。每个 IPC 连接和 Agent run 拥有独立逻辑 Session；
+同一 Session 内请求串行，不同 Session 可以并发并由事务、MVCC、revision 和 Store 锁解决冲突。
+
+Agent 的一次工具调用提交完整 MSQL batch；需要原子性的 `BEGIN` 到 `COMMIT` 必须处于同一次调用。
+等待模型、文档解析或用户确认时不得持有数据库事务。取消、超时或 Session 关闭必须回滚未完成事务；
+只有明确标记为可重试且提交结果已知未成功的请求才能自动重试，结果未知时禁止盲目重放写入。
+
 ## 第三方 DI 工具
 
 Fx 能提供运行时依赖图和生命周期管理，但第一版对象图不复杂，引入反射容器会隐藏组装关系并

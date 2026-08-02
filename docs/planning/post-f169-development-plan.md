@@ -55,7 +55,7 @@ F174 以前不让内置 Agent 依赖未冻结的全文查询。倒排结果是�
 
 | Feature | 唯一主要结果 | 关键边界 |
 | --- | --- | --- |
-| F175a | Agent MSQL-only port 与依赖守卫 | 禁止引擎包 import；fake executor 可独立运行全部 Agent 测试 |
+| F175a | Agent MSQL-only port 与依赖守卫 | 单实例共享 MSQL Service；禁止引擎包 import；adapter/IPC parity、并发与 race 证据 |
 | F175 | Memora-owned Provider 接口 | 框架/厂商类型不进入 MSQL、Store 或持久协议 |
 | F176 | OpenAI-compatible HTTP Provider | 首个 DeepSeek V4 Flash、懒初始化、无厂商 SDK、密钥不落盘 |
 | F177 | Runtime spike 与 ADR | Eino 对照薄自研 loop；体积、RSS、取消、checkpoint、许可证实测 |
