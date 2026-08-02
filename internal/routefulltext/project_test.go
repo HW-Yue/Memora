@@ -72,6 +72,26 @@ func TestTombstoneAdvancesRouteRevision(t *testing.T) {
 	}
 }
 
+func TestProjectChangesUsesDeletedNodeCurrentRevision(t *testing.T) {
+	nodes := routeFixture()
+	nodes[1].Revision = 3
+	nodes[2].Revision, nodes[2].Deleted = 2, true
+	documents, err := ProjectChanges([]router.Node{nodes[2], nodes[1]})
+	if err != nil || len(documents) != 2 {
+		t.Fatalf("ProjectChanges() = %#v, %v", documents, err)
+	}
+	if documents[0].ObjectID != "route_branch" || documents[0].State != fulltext.StateLive ||
+		documents[1].ObjectID != "route_leaf" || documents[1].Revision != 2 ||
+		documents[1].State != fulltext.StateDeleted || len(documents[1].Fields) != 0 {
+		t.Fatalf("change documents = %#v", documents)
+	}
+	for _, document := range documents {
+		if _, err := fulltext.Compile(document); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestProjectRejectsInvalidRouteIdentityScopeAndState(t *testing.T) {
 	tests := []func([]router.Node){
 		func(nodes []router.Node) { nodes[0].Version = "future" },

@@ -55,6 +55,10 @@ func Project(nodes []router.Node) ([]fulltext.Document, error) {
 	return documents, nil
 }
 
+func ProjectChanges([]router.Node) ([]fulltext.Document, error) {
+	return nil, fmt.Errorf("%w: change projection is not implemented", ErrInvalid)
+}
+
 func Tombstone(object fulltext.Object) (fulltext.Document, error) {
 	if object.Kind != fulltext.KindRoute || object.State != fulltext.StateLive ||
 		object.Revision == 0 || object.Revision == math.MaxUint64 {

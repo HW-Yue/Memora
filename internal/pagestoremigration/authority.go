@@ -17,6 +17,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/store/changeindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
@@ -40,6 +41,8 @@ const (
 	phaseRowVersionPublished      authorityPhase = "row-version-published"
 	phaseRowFulltextPublished     authorityPhase = "row-fulltext-published"
 	phaseRowCurrentPublished      authorityPhase = "row-current-published"
+	phaseRouteBodyCommitted       authorityPhase = "route-body-committed"
+	phaseRouteFulltextPublished   authorityPhase = "route-fulltext-published"
 )
 
 // Authority owns one activated live generation. The native File remains the
@@ -412,6 +415,12 @@ func (authority *Authority) PublishRows(
 		return authority.poisonPublication("Row body", err)
 	}
 	return nil
+}
+
+func (authority *Authority) PublishMutation(
+	context.Context, []row.Row, []router.Node, func() error,
+) error {
+	return fmt.Errorf("%w: combined Row/Route publication is not implemented", ErrInvalid)
 }
 
 func (authority *Authority) SnapshotCatalog(ctx context.Context) ([]catalog.Database, error) {

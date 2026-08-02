@@ -50,6 +50,7 @@ type PageAuthority interface {
 	AsOfRevision(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	PublishRows(context.Context, []row.Row, func() error) error
+	PublishMutation(context.Context, []row.Row, []router.Node, func() error) error
 }
 
 type committedChangeAuthority interface {
