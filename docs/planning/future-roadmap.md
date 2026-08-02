@@ -2,6 +2,9 @@
 
 状态：2026-08-02 当前方向；只描述下一阶段目标，不构成批量 Feature 实现授权。
 
+F169 之后的逐项依赖、候选编号和完成门见
+[F169 之后的开发序列](./post-f169-development-plan.md)。本文继续维护阶段目标，不重复展开 Feature。
+
 ## 已完成的基础收口
 
 - 已建立唯一的当前产品说明、Feature 状态账本和后续路线；
@@ -60,6 +63,7 @@ Compaction、Secondary Index、Buffer Pool 分片、高级 I/O、Physical Undo�
 ## 关联
 
 - [当前产品基线](../product/current-product.md)
+- [F169 之后的开发序列](./post-f169-development-plan.md)
 - [Feature 状态](./feature-status.md)
 - [评测 Agent 与 Hook](../development/evaluation-agent-observability.md)
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
