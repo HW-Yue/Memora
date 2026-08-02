@@ -145,5 +145,6 @@ memora config model ...      配置模型，密钥单独安全保存
 ## 关联
 
 - [MSQL](../query/msql.md)
+- [Agent 的 MSQL 边界与依赖注入](./agent-msql-dependency-injection.md)
 - [上下文生命周期](../query/context-lifecycle.md)
 - [AI 自主权与约束](./autonomy.md)

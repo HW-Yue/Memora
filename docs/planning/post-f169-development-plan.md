@@ -124,4 +124,5 @@ DOCX、PDF、OCR 不在 EPUB 垂直链跑通前并行堆积。OCR 模型、浏�
 - [后续路线](./future-roadmap.md)
 - [Feature 产品门](./feature-product-gate.md)
 - [TDD 协议](./feature-tdd-protocol.md)
+- [Agent 的 MSQL 边界与依赖注入](../agent/agent-msql-dependency-injection.md)
 - [内置评测 Agent 与外置 Hook](../development/evaluation-agent-observability.md)

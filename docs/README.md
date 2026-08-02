@@ -43,6 +43,7 @@
 - [Policy Enforcement v2](./development/policy-enforcement-v2.md)
 - [MCP Adapter](./agent/mcp-adapter-v1.md)
 - [可选内置 Agent Runtime](./agent/embedded-agent-runtime.md)
+- [Agent 的 MSQL 边界与依赖注入](./agent/agent-msql-dependency-injection.md)
 
 ### 存储与可靠性
 
