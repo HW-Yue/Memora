@@ -128,6 +128,63 @@ func TestBuildRejectsIdentityBindingAndArmMatrixDrift(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsPerCasePerformanceBindingDrift(t *testing.T) {
+	evidence := completeReleaseMatrix(t, 0.95)
+	evidence[0].Scorecard.Cases[0].InputTokens++
+	evidence[0].Scorecard.Cases[0].TotalTokens++
+	evidence[0].Scorecard.Hash = ""
+	if err := evidence[0].Scorecard.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	evidence[0].Evaluation.PublicScorecardSHA256 = evidence[0].Scorecard.Hash
+	evidence[0].Evaluation.Hash = ""
+	if err := evidence[0].Evaluation.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := answerrelease.Build(evidence); err == nil {
+		t.Fatal("per-case scorecard/evaluation performance drift built a release report")
+	}
+}
+
+func TestBuildAppliesQualityParityAndPerCaseMinimums(t *testing.T) {
+	t.Run("quality parity", func(t *testing.T) {
+		evidence := []answerrelease.Evidence{
+			releaseEvidence(t, answerbenchmark.ArmAtlasOnly, 10, 0.91, false),
+			releaseEvidence(t, answerbenchmark.ArmAtlasLexical, 20, 0.95, false),
+			releaseEvidence(t, answerbenchmark.ArmAtlasLexicalPrefetch, 30, 0.95, false),
+		}
+		report, err := answerrelease.Build(evidence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Status != answerrelease.StatusPassed || report.DefaultArm != answerbenchmark.ArmAtlasLexical ||
+			report.Arms[0].Eligible || !contains(report.Arms[0].Reasons, "factual_correctness_delta_above_threshold") ||
+			!contains(report.Arms[0].Reasons, "faithfulness_delta_above_threshold") {
+			t.Fatalf("quality parity report = %#v", report)
+		}
+	})
+
+	t.Run("per-case minimum", func(t *testing.T) {
+		evidence := completeReleaseMatrix(t, 0.95)
+		low := 0.40
+		evidence[0].Evaluation.Cases[0].Scores.FactualCorrectness = &low
+		mean := (low + 11*0.95) / 12
+		evidence[0].Evaluation.Metrics.FactualCorrectness.Mean = &mean
+		evidence[0].Evaluation.Hash = ""
+		if err := evidence[0].Evaluation.Seal(); err != nil {
+			t.Fatal(err)
+		}
+		report, err := answerrelease.Build(evidence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Arms[0].Eligible || !contains(report.Arms[0].Reasons, "factual_correctness_minimum_below_threshold") ||
+			contains(report.Arms[0].Reasons, "factual_correctness_mean_below_threshold") {
+			t.Fatalf("per-case minimum report = %#v", report.Arms[0])
+		}
+	})
+}
+
 func TestReleaseReportRejectsTampering(t *testing.T) {
 	evidence := completeReleaseMatrix(t, 0.95)
 	report, err := answerrelease.Build(evidence)
@@ -136,7 +193,8 @@ func TestReleaseReportRejectsTampering(t *testing.T) {
 	}
 	tampered := report
 	tampered.DefaultArm = answerbenchmark.ArmAtlasLexicalPrefetch
-	if tampered.Validate() == nil || tampered.ValidateAgainst(evidence) == nil {
+	tampered.Hash = ""
+	if tampered.Seal() == nil || tampered.Validate() == nil || tampered.ValidateAgainst(evidence) == nil {
 		t.Fatal("tampered release decision validated")
 	}
 }
