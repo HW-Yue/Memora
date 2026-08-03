@@ -31,8 +31,8 @@ Codex、Claude Code 等外置 Agent 不作为统一静态基准，只通过 Hook
 
 1. 抽出中立 MSQL 协议，建立 IPC/内置 adapter 共用的单实例执行服务和依赖守卫；
 2. 无模型组装 Atlas + lexical + 可选根 Route 的 Bootstrap Frame，先测上下文和投机成本；
-3. 冻结 Provider port 与 run/session/turn/trace，再接 Kimi 等真实 OpenAI-compatible API；
-4. 只读 Query Agent 已完成；下一步冻结 corpus、接真实 Provider runner、外部评分并通过发布门；
+3. Provider port、run/session/turn/trace 与真实 Kimi OpenAI-compatible adapter 已完成；
+4. 只读 Query Agent 与冻结 corpus 已完成；下一步实现真实 Provider runner、外部评分并通过发布门；
 5. 再开放交互 QuerySession，随后验证单网页写入和整本 EPUB；
 6. 外置 Hook 和写入时机评测放在主垂直链证据之后；Trace 先输出开发用报告，不扩展 Admin。
 

@@ -57,4 +57,4 @@ Required Notice，不为 corpus 擅自改成其他许可证。
   SHA-256 绑定，未知字段、trailing JSON、乱序、篡改、悬空事实和答案泄漏均 fail closed；
 - format、vet、unit、race、integration、e2e 与 cross-build 全绿。
 
-完成门结论：PASS。下一项是 F183 answer runner；真实模型运行仍依赖 F180 有效鉴权。
+完成门结论：PASS。F180 真实 Provider smoke 已通过，下一项是 F183 answer runner。

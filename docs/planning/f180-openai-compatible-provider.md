@@ -1,6 +1,6 @@
 # F180：OpenAI-compatible HTTP Provider
 
-规划状态：已通过单项 Review，批准按 RED → GREEN → REFACTOR 实现。
+状态：已完成；单项 Review、RED → GREEN → REFACTOR、真实 API smoke 与全部完成门均已通过。
 
 ## 唯一主要结果
 
@@ -51,3 +51,16 @@ usage，tool result 通过匹配 `tool_call_id` 回传。opt-in smoke 默认中�
 用户执行授权：2026-08-03 用户要求持续顺序完成后续 Feature。本 Review 只批准上述 F180 范围。
 
 开工前结论：PASS。
+
+## 完成结论
+
+- 标准库 adapter 已实现严格 request/response wire、body budget、单次调用、取消、禁止 redirect、
+  延迟 secret 解析和脱敏 HTTP/transport 错误；
+- Provider tool call ID 已与函数名校验分离，接受有界可打印 opaque ID，真实 Moonshot 返回的
+  `name:index` 形态可原样进入后续 tool result；
+- `MOONSHOT_API_KEY` 只由 fresh login shell 的进程环境解析；中国站
+  `https://api.moonshot.cn/v1` 使用 `moonshot-v1-8k` 成功返回 required `memora_probe` tool call，
+  `finish_reason=tool_calls`，usage 完整，未记录 key 或响应正文；
+- format、vet、unit、race、integration、e2e 与 cross-build 全绿。
+
+完成门结论：PASS。F180、F181、F182 已共同解除 F183 的前置依赖。

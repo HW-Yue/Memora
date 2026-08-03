@@ -33,6 +33,7 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - 有界投机预取，预测失败时回到确定性逐层导航；
 - 带 revision 的精确读取、Mutation Plan、关系、历史与逻辑补偿；
 - Route/Schema 变更计划、审批后原子执行和结构健康扫描；
+- 标准库 OpenAI-compatible Provider adapter；密钥按调用解析，真实 Kimi 中国站 tool-call smoke 已通过；
 - Host Input capture 与显式 worthiness decision receipt；
 - 文档/仓库资料的临时吸收、覆盖清单、独立复核和 Source Receipt。
 

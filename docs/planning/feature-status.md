@@ -45,6 +45,7 @@
 | F177 | 厂商中立非流式 Provider port；严格 message/tool/usage 验证、单次 gateway 与 scripted fake |
 | F178 | 正文脱敏 Agent Event/Trace/Usage 信封、可重放 Summary 与并发安全 recorder |
 | F179 | Eino/薄 loop 可复现对照；选择 Memora-owned 有界状态机并冻结重评触发器 |
+| F180 | 标准库 OpenAI-compatible HTTP Provider；延迟密钥解析、脱敏失败与真实 Kimi tool-call smoke |
 | F181 | 只读 benchmark Query Agent；压缩上下文、L0 MSQL batch、真实 SELECT evidence 与完整 Trace |
 | F182 | 确定性 answer corpus；合成 fixture、blind task、严格 manifest/ground truth 与逐字 golden |
 
@@ -84,9 +85,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F180（实现中）：标准库 Provider adapter 已完成机械测试；中国站 key 与官方 `.cn` endpoint 已确认，
-  仍待真实 tool-call smoke、完成门与合入；
-- F183–F186：answer runner、外部质量门与后续 QuerySession；F183 仍等待 F180 真实 Provider 鉴权；
+- F183–F186：answer runner、外部质量门与后续 QuerySession；下一项可独立 Review F183；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent

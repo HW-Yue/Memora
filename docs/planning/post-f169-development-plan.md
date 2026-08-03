@@ -5,11 +5,10 @@
 
 ## 当前出发点
 
-- F170–F179、F181 与 F182 已完成；Query Agent 的确定性 loop/fake 和 answer corpus
-  验收不依赖具体厂商 adapter；
+- F170–F182 已完成；Query Agent 的确定性 loop/fake、真实 OpenAI-compatible Provider 和 answer
+  corpus 均已具备；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
-- F180 已通过单项 Review并完成机械实现；中国站 key 与官方 `.cn` endpoint 已确认，当前在最新
-  `main` 上重新执行真实 tool-call smoke 与完成门；
+- F180 已通过真实 Kimi 中国站 required tool-call smoke，F183 runner 不再有 Provider 前置缺口；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
 
 每项继续从最新 `main` 建独立分支，不从多个未合入分支堆代码。
@@ -77,7 +76,7 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 | Feature | 唯一主要结果 | 公开结果 |
 | --- | --- | --- |
 | F179（已完成） | Runtime spike 与 ADR | 选择薄 loop；Eino v0.9.13 对照证据与重评触发器见 ADR-0009 |
-| F180（实现中） | OpenAI-compatible HTTP Provider | Kimi 真实 smoke、懒初始化、无厂商 SDK、密钥不落盘 |
+| F180（已完成） | OpenAI-compatible HTTP Provider | Kimi 真实 smoke、懒初始化、无厂商 SDK、密钥不落盘 |
 | F181（已完成） | 只读 benchmark Query Agent | 只用 MSQL，输出 final answer + SELECT evidence + Trace |
 | F182（已完成） | 冻结 answer corpus/manifest | source、snapshot、问题、隐藏答案、版本、许可和 strict golden 完整 |
 | F183 | 端到端 answer runner | public scorecard 与 private diagnostics 分离 |
@@ -89,7 +88,7 @@ F179 不预设一定采用 Eino。候选必须保持单一 `memora` 发布体验
 不引入 Retriever、Vector Store、DevOps、全套 Provider 或本地模型。F181 先是隔离 benchmark host，
 不能写库，也不立即宣称 `memora ask` 已成为产品能力。F180 的 Key 只由环境或后续 SecretResolver
 注入；当前开发优先兼容 Kimi 官方 OpenAI-compatible API，不把模型名写死进数据库协议。F181
-可用 scripted Provider 独立完成，但 F183 真实 runner 必须等待 F180 成功 smoke。
+可用 scripted Provider 独立完成；F180、F181 与 F182 现在共同满足 F183 的前置条件。
 
 Ragas/Python 只属于开发和 CI 工具链，不进入安装包。外部成绩以最终答案正确率为首要结果；
 Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才能映射为 retrieved context。

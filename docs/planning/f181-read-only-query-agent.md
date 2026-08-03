@@ -69,7 +69,7 @@ Trace 覆盖 Bootstrap、其中每次 MSQL、每次 Provider、tool decode/execu
 - scripted transcript、上下文压缩、multi-SELECT、L0 降级、wire 畸形、预算、取消、泄漏扫描、
   import allowlist、unit/vet/race、完整 integration/e2e 与独立 cross-build 全绿。
 
-F181 的确定性实现和 fake 验收只依赖 F176–F179 contract，不需要某个厂商 adapter；使用真实 Kimi
-运行仍依赖 F180 通过真实鉴权 smoke。F181 不因此成为 `memora ask` 产品入口。
+F181 的确定性实现和 fake 验收只依赖 F176–F179 contract，不需要某个厂商 adapter；F180 后续已
+通过真实 Kimi tool-call smoke。F181 不因此成为 `memora ask` 产品入口。
 
-完成门结论：PASS。下一项可独立 Review F182 answer corpus；F180 真实鉴权证据仍单独待完成。
+完成门结论：PASS。F182 answer corpus 也已完成，下一项是 F183 runner。

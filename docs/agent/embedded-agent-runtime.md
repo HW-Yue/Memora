@@ -2,8 +2,8 @@
 
 状态：F43 已决定面向用户的 v0 Runtime defer；F175c–F178 已交付评测 Agent 所需的 MSQL-only
 边界、无模型 Bootstrap、厂商中立 Provider port 与 Trace。F179 决定首个 benchmark Query Agent
-采用 Memora-owned 薄 loop；F181 已交付隔离的只读 loop、SELECT evidence 与 Trace。真实 Provider
-adapter 的成功鉴权、评测 runner 和产品入口仍需后续 Feature。
+采用 Memora-owned 薄 loop；F180/F181 已交付真实 OpenAI-compatible adapter 与隔离的只读 loop、
+SELECT evidence 和 Trace。评测 runner 与产品入口仍需后续 Feature。
 
 ## 定位
 
