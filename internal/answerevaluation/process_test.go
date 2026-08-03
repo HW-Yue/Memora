@@ -37,6 +37,11 @@ func TestProcessEvaluatorUsesPrivateFilesAndStrictOutput(t *testing.T) {
 			t.Fatalf("mode %q accepted invalid evaluator output", mode)
 		}
 	}
+	unsigned := processEvaluator(t, filepath.Join(t.TempDir(), "count"), "unsigned")
+	output, err = unsigned.Evaluate(context.Background(), input)
+	if err != nil || output.Validate() != nil || output.Hash == "" {
+		t.Fatalf("unsigned process output was not sealed by Go: %#v, %v", output, err)
+	}
 }
 
 func TestProcessEvaluatorCancelsAndDoesNotExposeStderr(t *testing.T) {
@@ -179,8 +184,10 @@ func TestProcessEvaluatorHelperProcess(t *testing.T) {
 	if mode == "wrong_input" {
 		output.InputSHA256 = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	}
-	if err := output.Seal(); err != nil {
-		t.Fatal(err)
+	if mode != "unsigned" {
+		if err := output.Seal(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	encoded, err = json.Marshal(output)
 	if err != nil {
