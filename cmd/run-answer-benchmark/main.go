@@ -38,7 +38,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	model := flags.String("model", "moonshot-v1-8k", "Provider model")
 	secretName := flags.String("secret-env", "MOONSHOT_API_KEY", "environment variable holding the Provider secret")
 	timeout := flags.Duration("timeout", 2*time.Minute, "timeout for each Provider HTTP request")
-	armID := flags.String("arm", "hybrid-default", "retrieval arm identity")
+	armID := flags.String("arm", answerbenchmark.ArmAtlasLexicalPrefetch, "retrieval arm identity")
 	promptID := flags.String("prompt-id", "query-agent-v1", "Query Agent prompt identity")
 	codeRevision := flags.String("code-revision", "", "code revision recorded in the scorecard")
 	if err := flags.Parse(arguments); err != nil {

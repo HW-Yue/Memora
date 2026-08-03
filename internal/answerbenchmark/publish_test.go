@@ -27,7 +27,7 @@ func TestPublishReportsRenamesOneCompletePrivateDirectoryAndNeverOverwrites(t *t
 	}
 	public, private, err := runner.Run(ctx, bundle.Manifest, answerbenchmark.RunConfig{
 		RunID: "run-f183-publish", ProviderID: "scripted", Model: "model-test",
-		ArmID: "hybrid-default", PromptID: "query-agent-v1", CodeRevision: "test-revision",
+		ArmID: answerbenchmark.ArmAtlasLexicalPrefetch, PromptID: "query-agent-v1", CodeRevision: "test-revision",
 	})
 	if err != nil {
 		t.Fatal(err)

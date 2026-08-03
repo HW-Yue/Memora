@@ -16,6 +16,12 @@ var (
 	ErrRunBenchmark  = errors.New("answer benchmark run failed")
 )
 
+const (
+	ArmAtlasOnly            = string(agent.BootstrapProfileAtlasOnly)
+	ArmAtlasLexical         = string(agent.BootstrapProfileAtlasLexical)
+	ArmAtlasLexicalPrefetch = string(agent.BootstrapProfileAtlasLexicalPrefetch)
+)
+
 type RunnerDependencies struct {
 	MSQL     agent.MSQLExecutor
 	Provider agent.Provider
@@ -117,12 +123,27 @@ func (runner *Runner) Run(
 }
 
 func validRunConfig(config RunConfig) bool {
+	_, validArm := bootstrapProfileForArm(config.ArmID)
 	return validReportText(config.RunID, 200) && validReportText(config.ProviderID, 200) &&
-		validReportText(config.Model, 200) && validReportText(config.ArmID, 200) &&
+		validReportText(config.Model, 200) && validArm &&
 		validReportText(config.PromptID, 200) && validReportText(config.CodeRevision, 200)
 }
 
+func bootstrapProfileForArm(armID string) (agent.BootstrapProfile, bool) {
+	switch armID {
+	case ArmAtlasOnly:
+		return agent.BootstrapProfileAtlasOnly, true
+	case ArmAtlasLexical:
+		return agent.BootstrapProfileAtlasLexical, true
+	case ArmAtlasLexicalPrefetch:
+		return agent.BootstrapProfileAtlasLexicalPrefetch, true
+	default:
+		return "", false
+	}
+}
+
 func queryRequest(config RunConfig, task answercorpus.BlindTask) agent.QueryRequest {
+	profile, _ := bootstrapProfileForArm(config.ArmID)
 	bootstrap := agent.DefaultBootstrapBudget()
 	bootstrap.FrameUTF8Bytes = task.Budget.BootstrapFrameUTF8Bytes
 	budget := agent.DefaultQueryBudget()
@@ -137,7 +158,7 @@ func queryRequest(config RunConfig, task answercorpus.BlindTask) agent.QueryRequ
 			Version: protocolmsql.AuthorizationVersion, Actor: "benchmark:query-agent",
 			AuthorizedDatabases: append([]string(nil), task.AuthorizedDatabases...), DefaultLevel: protocolmsql.LevelRead,
 		},
-		BootstrapBudget: bootstrap, Budget: budget,
+		BootstrapBudget: bootstrap, BootstrapProfile: profile, Budget: budget,
 	}
 }
 

@@ -33,7 +33,7 @@ func TestRunnerMaterializesAndRunsAllBlindTasksThroughQueryAgent(t *testing.T) {
 	}
 	public, private, err := runner.Run(ctx, bundle.Manifest, answerbenchmark.RunConfig{
 		RunID: "run-f183-fake", ProviderID: "scripted", Model: "model-test",
-		ArmID: "hybrid-default", PromptID: "query-agent-v1", CodeRevision: "test-revision",
+		ArmID: answerbenchmark.ArmAtlasLexicalPrefetch, PromptID: "query-agent-v1", CodeRevision: "test-revision",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -86,9 +86,9 @@ func TestRunnerArmIDSelectsBootstrapProfile(t *testing.T) {
 		wantLexical  bool
 		wantPrefetch bool
 	}{
-		{armID: "atlas-only-v1"},
-		{armID: "atlas-lexical-v1", wantLexical: true},
-		{armID: "atlas-lexical-prefetch-v1", wantLexical: true, wantPrefetch: true},
+		{armID: answerbenchmark.ArmAtlasOnly},
+		{armID: answerbenchmark.ArmAtlasLexical, wantLexical: true},
+		{armID: answerbenchmark.ArmAtlasLexicalPrefetch, wantLexical: true, wantPrefetch: true},
 	}
 	for _, test := range tests {
 		t.Run(test.armID, func(t *testing.T) {
@@ -180,7 +180,7 @@ func TestRunnerRecordsOneCaseFailureAndContinues(t *testing.T) {
 	}
 	public, private, err := runner.Run(ctx, bundle.Manifest, answerbenchmark.RunConfig{
 		RunID: "run-f183-continue", ProviderID: "scripted", Model: "model-test",
-		ArmID: "hybrid-default", PromptID: "query-agent-v1", CodeRevision: "test-revision",
+		ArmID: answerbenchmark.ArmAtlasLexicalPrefetch, PromptID: "query-agent-v1", CodeRevision: "test-revision",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestRunnerCancellationPublishesNoReportsOrMSQL(t *testing.T) {
 	}
 	public, private, err := runner.Run(ctx, bundle.Manifest, answerbenchmark.RunConfig{
 		RunID: "run-f183-cancel", ProviderID: "scripted", Model: "model-test",
-		ArmID: "hybrid-default", PromptID: "query-agent-v1", CodeRevision: "test-revision",
+		ArmID: answerbenchmark.ArmAtlasLexicalPrefetch, PromptID: "query-agent-v1", CodeRevision: "test-revision",
 	})
 	if !errors.Is(err, context.Canceled) || public.Version != "" || private.Version != "" || msql.calls != 0 {
 		t.Fatalf("cancel result = %#v, %#v, %v; calls=%d", public, private, err, msql.calls)
