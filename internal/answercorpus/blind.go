@@ -1,7 +1,14 @@
 package answercorpus
 
 func (manifest Manifest) BlindTasks() ([]BlindTask, error) {
-	return nil, corpusError("public blind task projection is not implemented")
+	if err := manifest.Validate(); err != nil {
+		return nil, err
+	}
+	tasks := make([]BlindTask, 0, len(manifest.Cases))
+	for _, testCase := range manifest.Cases {
+		tasks = append(tasks, blindTask(manifest, testCase))
+	}
+	return tasks, nil
 }
 
 func (bundle Bundle) BlindTask(caseID string) (BlindTask, error) {
@@ -12,15 +19,19 @@ func (bundle Bundle) BlindTask(caseID string) (BlindTask, error) {
 		if testCase.ID != caseID {
 			continue
 		}
-		return BlindTask{
-			Version: BlindTaskVersion, CorpusID: bundle.Manifest.CorpusID,
-			CorpusRevision: bundle.Manifest.Revision, CaseID: testCase.ID,
-			SnapshotID:          bundle.Manifest.Fixture.SnapshotID,
-			SnapshotSHA256:      bundle.Manifest.Fixture.SnapshotSHA256,
-			Question:            testCase.Question,
-			AuthorizedDatabases: append([]string(nil), testCase.AuthorizedDatabases...),
-			Budget:              testCase.Budget,
-		}, nil
+		return blindTask(bundle.Manifest, testCase), nil
 	}
 	return BlindTask{}, corpusError("case %q was not found", caseID)
+}
+
+func blindTask(manifest Manifest, testCase Case) BlindTask {
+	return BlindTask{
+		Version: BlindTaskVersion, CorpusID: manifest.CorpusID,
+		CorpusRevision: manifest.Revision, CaseID: testCase.ID,
+		SnapshotID:          manifest.Fixture.SnapshotID,
+		SnapshotSHA256:      manifest.Fixture.SnapshotSHA256,
+		Question:            testCase.Question,
+		AuthorizedDatabases: append([]string(nil), testCase.AuthorizedDatabases...),
+		Budget:              testCase.Budget,
+	}
 }
