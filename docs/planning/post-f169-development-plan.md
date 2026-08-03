@@ -5,8 +5,8 @@
 
 ## 当前出发点
 
-- F170–F182 已完成；Query Agent 的确定性 loop/fake、真实 OpenAI-compatible Provider 和 answer
-  corpus 均已具备；F183 开工调查发现 Route alias 缺少 MSQL round-trip，先执行 F182a；
+- F170–F182a 已完成；Query Agent 的确定性 loop/fake、真实 OpenAI-compatible Provider、answer
+  corpus 与 Route alias MSQL round-trip 均已具备；下一项是 F183；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
 - F180 已通过真实 Kimi 中国站 required tool-call smoke，F183 runner 不再有 Provider 前置缺口；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
@@ -79,7 +79,7 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 | F180（已完成） | OpenAI-compatible HTTP Provider | Kimi 真实 smoke、懒初始化、无厂商 SDK、密钥不落盘 |
 | F181（已完成） | 只读 benchmark Query Agent | 只用 MSQL，输出 final answer + SELECT evidence + Trace |
 | F182（已完成） | 冻结 answer corpus/manifest | source、snapshot、问题、隐藏答案、版本、许可和 strict golden 完整 |
-| F182a（执行中） | Route alias 的 MSQL 原子替换与读取 | parser/executor、reopen、lexical publication 与 fault rollback |
+| F182a（已完成） | Route alias 的 MSQL 原子替换与读取 | parser/executor、transaction rollback、reopen、lexical publication 与 fault recovery |
 | F183 | 端到端 answer runner | public scorecard 与 private diagnostics 分离 |
 | F184 | Ragas 等外部评分 adapter | correctness、事实正确性、p50/p95、token、调用数、费用 |
 | F185 | Query Agent release gate | 固定阈值比较 Router-only、Lexical、Vector 与预取 |

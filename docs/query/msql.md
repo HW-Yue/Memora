@@ -5,7 +5,8 @@
 版本化查询预算配置，F129/F130 已实现 Route Mutation Plan 与审批执行，F131/F132 已实现
 Schema Change Plan 与审批执行。
 F173c 已实现 `REBUILD LEXICAL INDEX` 的全量 COW generation 维护语句；F174 已实现只返回
-当前位置、必须 SQL 回表的全内容 lexical query。
+当前位置、必须 SQL 回表的全内容 lexical query。F182a 增加 Route alias 的有界、revision-guarded
+完整替换，并让 Route read 返回非 null alias 列表。
 
 ## 定位
 
@@ -106,7 +107,16 @@ LIMIT :location_limit BYTES :utf8_byte_limit;
 数据库内容，由 AI 在判断或明确 SQL filter 中使用，不进入隐藏相似度融合。
 `SHOW ROUTES` 默认只返回短 purpose；可选的 0–1000 字符 synopsis 只通过
 `DESCRIBE ROUTE` 按需读取，并用 revision-guarded
-`ALTER ROUTE :route SET SYNOPSIS :synopsis` 更新。
+`ALTER ROUTE :route SET SYNOPSIS :synopsis` 更新。Route alias 使用完整替换，避免增量命令在重试时
+产生不清楚的继承状态：
+
+```sql
+ALTER ROUTE :route SET ALIASES :aliases;
+```
+
+`:aliases` 是参数绑定的 TEXT 数组，`[]` 清空；最多 8 项、单项 1–64 个 Unicode 字符、合计最多
+512 UTF-8 bytes，去除首尾空白后不得与 name 或其他 alias 大小写不敏感地重复。成功写入一个新
+Route revision，并和 alias lexical posting、Change 原子发布。
 
 AI 已明确语义边界后，使用公开 reshape 语句，而不是把普通 UPDATE/INSERT/DELETE
 拼成伪原子操作：

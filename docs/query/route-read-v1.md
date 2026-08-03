@@ -1,6 +1,6 @@
 # MSQL Route Read v1
 
-状态：F111 已实现并冻结。
+状态：F111 已实现；F182a 增加有界 Route aliases 读取列。
 
 ## 目的
 
@@ -17,10 +17,11 @@ SHOW ROUTES UNDER :parent_id [CURSOR :cursor] LIMIT :limit;
 OPEN ROUTE :leaf_id [CURSOR :cursor] LIMIT :limit;
 ```
 
-- `DESCRIBE` 是一个有界 point read，返回 node 元数据、`database_id/table_id` scope 与
+- `DESCRIBE` 是一个有界 point read，返回 node 元数据、非 null `aliases`、`database_id/table_id` scope 与
   按需 synopsis，不返回 children；scope 字段供 stable-ID 深链路验证，不加入逐层
   `SHOW` 的紧凑 Route Frame；
-- `SHOW` 返回一层 child node，默认不返回 synopsis；
+- `SHOW` 返回一层 child node、非 null `aliases`，默认不返回 synopsis；alias 固定最多 8 项且
+  合计最多 512 UTF-8 bytes，不破坏逐层上下文上限；
 - `OPEN` 只接受 leaf，只返回零个或一个 `database_id/table_id/row_id/revision` locator；
 - 业务字段和正文只能由后续 `SELECT ... WHERE row_id = ... LIMIT ...` 回表。
 

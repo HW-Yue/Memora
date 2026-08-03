@@ -48,6 +48,7 @@
 | F180 | 标准库 OpenAI-compatible HTTP Provider；延迟密钥解析、脱敏失败与真实 Kimi tool-call smoke |
 | F181 | 只读 benchmark Query Agent；压缩上下文、L0 MSQL batch、真实 SELECT evidence 与完整 Trace |
 | F182 | 确定性 answer corpus；合成 fixture、blind task、严格 manifest/ground truth 与逐字 golden |
+| F182a | Route alias 的有界 MSQL 完整替换/读取；revision 冲突、transaction rollback、live posting 与 fault/reopen 收敛 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -83,14 +84,9 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 “延后”不是失败或漏做；这些 Feature 的交付物就是可复现门槛、实测证据和当前不实现的结论。
 
-## 当前执行
-
-- F182a：F183 开工调查发现 Route alias 无法经 MSQL 写入/读回；已拆为独立前置 Feature，
-  不允许评测物化器绕过 MSQL 或丢弃 fixture aliases。
-
 ## 新候选
 
-- F183–F186：answer runner、外部质量门与后续 QuerySession；F182a 完成后继续 F183；
+- F183–F186：answer runner、外部质量门与后续 QuerySession；下一项是 F183；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent

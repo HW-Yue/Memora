@@ -2,7 +2,8 @@
 
 状态：已实现；F70 将主路切换到 Table 级逐层导航，F76 暴露原子 reshape，
 F77 增加按需中间 Route synopsis，F111 冻结 snapshot cursor 读取协议，F169
-将 Leaf 冻结为单 Row locator；ADR-0007 允许可回退的 Route 候选预测器。
+将 Leaf 冻结为单 Row locator，F182a 增加 alias MSQL round-trip；ADR-0007 允许可回退的
+Route 候选预测器。
 
 ## 定义
 
@@ -32,6 +33,11 @@ Database 只负责将 AI 导向 Table；Table 的 Data Dictionary 说明一条 R
 - 可选、版本化、按需读取的 synopsis；它描述私有子树边界，不作为事实答案；
 - 启动预算约 8～12 个子分支；
 - snapshot、cursor 和 `truncated`。
+
+aliases 是有界语义面：最多 8 项、每项 1–64 个 Unicode 字符、规范化后合计最多 512 UTF-8
+bytes。MSQL 以 `ALTER ROUTE :route SET ALIASES :aliases` 完整替换并校验 expected revision；
+rename 继续保留旧 name，但同样受上限约束。`SHOW`/`DESCRIBE` 返回非 null `TEXT_LIST`，alias
+进入 lexical postings，但仍只是导航信号，不是事实答案。
 
 叶子把子分支替换为零个或一个活跃 locator：
 
