@@ -1,6 +1,6 @@
 # F183：端到端 Answer Runner
 
-状态：已批准；正在执行 RED → GREEN → REFACTOR。
+状态：已完成。
 
 ## 唯一主要结果
 
@@ -62,3 +62,21 @@ strict LoadManifest（无 ground-truth 文件）
 用户执行授权：2026-08-03 用户要求继续顺序完成后续 Feature；F182a 已解除唯一已知 MSQL 缺口。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- clean daemon/SDK integration 仅经 MSQL 创建并回读 3 Database、3 Table、10 Column、3 个原生
+  Table Root、15 Route 与 12 Row；receipt 共 46 个映射并绑定 manifest/snapshot hash；
+- scripted OpenAI-compatible Provider 在真实 daemon 上连续跑完 12/12，逐题均有 final answer、SELECT
+  evidence、Trace、调用数、token 与耗时；单题 Provider 失败继续、context cancel 零报告；
+- 公共 scorecard 泄漏检查、私有 diagnostics 交叉 hash、篡改拒绝、绝对新目录和 macOS
+  `RENAME_EXCL` 原子发布通过；命令测试证明密钥延迟解析且不进入 stdout/stderr/artifact；
+- [真实 Kimi 完整 suite receipt](../../benchmarks/answer-retrieval-v1/f183-kimi-real-20260803-scorecard.json)
+  保存 12 个 case 的公开原始结果，hash 为
+  `sha256:9ecf8b563075b50c31255be54dd6cb81da68fa27d9663c78f414dd85eb980609`；本次 3 个
+  response wire failure、9 个 HTTP 429，故 0/12 succeeded，质量仍明确为 `not_scored`，不能冒充
+  F184/F185 质量通过；
+- format、vet、unit、race、integration、e2e、Linux package compile 与双架构 macOS cross-build 全绿。
+
+完成门结论：PASS。F183 只证明 runner、隔离和观测契约完成；下一项 F184 才读取 evaluator-only
+ground truth 并输出外部答案质量指标。

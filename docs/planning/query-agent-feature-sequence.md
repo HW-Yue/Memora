@@ -79,7 +79,7 @@ runner 所需 F180、F181 与 F182 corpus 已齐备。F181 仍只运行在隔离
 | F182（已完成） | 冻结 answer corpus/manifest | source、snapshot、问题、隐藏答案、版本、许可和 strict golden 完整 |
 | F182a（已完成） | Route alias MSQL round-trip | fixture alias 经 MSQL 写入/读回，revision、posting 与 fault/reopen 一致 |
 | F182b（已完成） | `fact/rationale` Column semantic role | fixture Schema 经 MSQL 无损写入并由 Catalog 读回 |
-| F183（执行中） | 端到端 answer runner | public scorecard 与 private diagnostics 分离，可复现实验 arm |
+| F183（已完成） | 端到端 answer runner | public scorecard 与 private diagnostics 分离，可复现实验 arm |
 | F184 | Ragas 等外部评分 adapter | correctness、事实正确性、延迟、token、调用数和费用落盘 |
 | F185 | Query Agent release gate | 固定阈值比较 Router-only、Lexical、Vector、预取；失败不产品化 |
 | F186 | 交互式 QuerySession | 流式事件、取消、预算和有界恢复；复用 F181 loop，不复制执行器 |
