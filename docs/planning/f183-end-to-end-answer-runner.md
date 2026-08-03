@@ -29,6 +29,7 @@ strict LoadManifest（无 ground-truth 文件）
 
 - fixture stable ID 不伪装成引擎分配 ID；receipt 保存 fixture→actual 的 Database/Table/Column/
   Route/Row 映射和实际 revision；
+- Column fixture ID 只在所属 Table 内唯一，receipt 统一用 `tableFixtureID/columnFixtureID` 复合键；
 - 每张 Table 的原生 root 由引擎创建；fixture 的逻辑 root 作为其下一层 branch；不符合 path-segment
   约束的 display name 使用 fixture ID 导出的稳定小写 path name，并连同原 aliases 写入 alias 集；
 - DDL 文本只使用经过白名单验证并正确 quote 的 identifier/literal；Row/Route 值全部参数绑定；
@@ -61,4 +62,3 @@ strict LoadManifest（无 ground-truth 文件）
 用户执行授权：2026-08-03 用户要求继续顺序完成后续 Feature；F182a 已解除唯一已知 MSQL 缺口。
 
 开工前结论：PASS。
-
