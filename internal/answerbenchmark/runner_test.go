@@ -80,6 +80,89 @@ func TestRunnerMaterializesAndRunsAllBlindTasksThroughQueryAgent(t *testing.T) {
 	}
 }
 
+func TestRunnerArmIDSelectsBootstrapProfile(t *testing.T) {
+	tests := []struct {
+		armID        string
+		wantLexical  bool
+		wantPrefetch bool
+	}{
+		{armID: "atlas-only-v1"},
+		{armID: "atlas-lexical-v1", wantLexical: true},
+		{armID: "atlas-lexical-prefetch-v1", wantLexical: true, wantPrefetch: true},
+	}
+	for _, test := range tests {
+		t.Run(test.armID, func(t *testing.T) {
+			ctx := context.Background()
+			executor, closeInstance := cleanDaemonExecutor(t, ctx)
+			defer closeInstance()
+			bundle, err := answercorpus.Generate()
+			if err != nil {
+				t.Fatal(err)
+			}
+			msql := &sourceRecordingMSQL{delegate: executor}
+			provider := &armRecordingProvider{delegate: &answerProvider{}}
+			runner, err := answerbenchmark.NewRunner(answerbenchmark.RunnerDependencies{
+				MSQL: msql, Provider: provider, Clock: &benchmarkClock{},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			public, _, err := runner.Run(ctx, bundle.Manifest, answerbenchmark.RunConfig{
+				RunID: "run-arm-" + test.armID, ProviderID: "scripted", Model: "model-test",
+				ArmID: test.armID, PromptID: "query-agent-v1", CodeRevision: "test-revision",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if public.ArmID != test.armID {
+				t.Fatalf("scorecard arm = %q, want %q", public.ArmID, test.armID)
+			}
+			for _, input := range provider.bootstrapInputs() {
+				if !strings.Contains(input, `"profile":"`+test.armID+`"`) {
+					t.Fatalf("model Bootstrap Frame does not contain arm %q: %s", test.armID, input)
+				}
+			}
+			initial, prefetch := 0, 0
+			for _, source := range msql.sources() {
+				if strings.HasPrefix(source, "SHOW CATALOG ATLAS") && strings.Contains(source, "COMPACT") {
+					initial++
+					if strings.Contains(source, "SHOW LEXICAL LOCATIONS") != test.wantLexical {
+						t.Fatalf("initial Bootstrap source = %q, want lexical=%t", source, test.wantLexical)
+					}
+				}
+				if strings.Contains(source, "SHOW ROUTES FROM TABLE") {
+					prefetch++
+				}
+			}
+			if initial != len(bundle.Manifest.Cases) || (prefetch > 0) != test.wantPrefetch {
+				t.Fatalf("Bootstrap transcript initial=%d prefetch=%d cases=%d", initial, prefetch, len(bundle.Manifest.Cases))
+			}
+		})
+	}
+}
+
+func TestRunnerRejectsUnknownArmBeforeExternalCalls(t *testing.T) {
+	msql := &countingMSQL{}
+	provider := &answerProvider{}
+	runner, err := answerbenchmark.NewRunner(answerbenchmark.RunnerDependencies{
+		MSQL: msql, Provider: provider, Clock: &benchmarkClock{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := answercorpus.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = runner.Run(context.Background(), bundle.Manifest, answerbenchmark.RunConfig{
+		RunID: "run-unknown-arm", ProviderID: "scripted", Model: "model-test",
+		ArmID: "unknown-v1", PromptID: "query-agent-v1", CodeRevision: "test-revision",
+	})
+	if !errors.Is(err, answerbenchmark.ErrInvalidRunner) || msql.calls != 0 || provider.callCount() != 0 {
+		t.Fatalf("Run() error=%v calls=%d/%d", err, msql.calls, provider.callCount())
+	}
+}
+
 func TestRunnerRecordsOneCaseFailureAndContinues(t *testing.T) {
 	ctx := context.Background()
 	executor, closeInstance := cleanDaemonExecutor(t, ctx)
@@ -183,6 +266,56 @@ type countingMSQL struct{ calls int }
 func (executor *countingMSQL) ExecuteMSQL(context.Context, protocolmsql.Request) (protocolmsql.Envelope, error) {
 	executor.calls++
 	return protocolmsql.Envelope{}, errors.New("unexpected MSQL call")
+}
+
+type sourceRecordingMSQL struct {
+	mu       sync.Mutex
+	delegate agent.MSQLExecutor
+	requests []protocolmsql.Request
+}
+
+func (executor *sourceRecordingMSQL) ExecuteMSQL(
+	ctx context.Context,
+	request protocolmsql.Request,
+) (protocolmsql.Envelope, error) {
+	executor.mu.Lock()
+	executor.requests = append(executor.requests, request)
+	executor.mu.Unlock()
+	return executor.delegate.ExecuteMSQL(ctx, request)
+}
+
+func (executor *sourceRecordingMSQL) sources() []string {
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	values := make([]string, len(executor.requests))
+	for index, request := range executor.requests {
+		values[index] = request.Source
+	}
+	return values
+}
+
+type armRecordingProvider struct {
+	mu       sync.Mutex
+	delegate *answerProvider
+	inputs   []string
+}
+
+func (provider *armRecordingProvider) Complete(
+	ctx context.Context,
+	request agent.ProviderRequest,
+) (agent.ProviderResponse, error) {
+	if request.ToolChoice == agent.ProviderToolChoiceRequired && len(request.Messages) > 1 {
+		provider.mu.Lock()
+		provider.inputs = append(provider.inputs, request.Messages[1].Content)
+		provider.mu.Unlock()
+	}
+	return provider.delegate.Complete(ctx, request)
+}
+
+func (provider *armRecordingProvider) bootstrapInputs() []string {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	return append([]string(nil), provider.inputs...)
 }
 
 func (provider *answerProvider) callCount() int {
