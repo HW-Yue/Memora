@@ -43,6 +43,9 @@
 | F175c | Agent consumer-owned MSQL port、单次协议验证 gateway、scripted fake 与全树 import allowlist |
 | F176 | 无模型 Query Bootstrap Frame；Atlas 续页、lexical、root 投机预取、独立 snapshot 与 12 KB 默认总预算 |
 | F177 | 厂商中立非流式 Provider port；严格 message/tool/usage 验证、单次 gateway 与 scripted fake |
+| F178 | 正文脱敏 Agent Event/Trace/Usage 信封、可重放 Summary 与并发安全 recorder |
+| F179 | Eino/薄 loop 可复现对照；选择 Memora-owned 有界状态机并冻结重评触发器 |
+| F181 | 只读 benchmark Query Agent；压缩上下文、L0 MSQL batch、真实 SELECT evidence 与完整 Trace |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -80,9 +83,8 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F178（已完成）：Agent Event/Trace/Usage 信封与并发安全内存 recorder；
-- F179（已完成）：选择 Memora-owned 薄 loop，Eino 保留为复杂编排候选；
-- F180–F186：Provider 实现、查询 Agent 与外部质量门；下一项为 F180；
+- F180：标准库 Provider adapter 的机械测试已完成；真实 Kimi 鉴权当前返回 401，尚未通过完成门或合入；
+- F182–F186：answer corpus、runner、外部质量门与后续 QuerySession；下一项可独立 Review F182；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent

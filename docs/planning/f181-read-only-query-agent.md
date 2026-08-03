@@ -1,6 +1,6 @@
 # F181：只读 benchmark Query Agent
 
-规划状态：已通过单项 Review，批准按 RED → GREEN → REFACTOR 实现。
+规划状态：已完成；RED → GREEN → REFACTOR 与完整 CI 通过。
 
 ## 唯一主要结果
 
@@ -55,3 +55,21 @@ Trace 覆盖 Bootstrap、其中每次 MSQL、每次 Provider、tool decode/execu
 用户执行授权：2026-08-03 用户要求持续顺序完成全部已讨论 Feature。本 Review 只批准上述 F181 范围。
 
 开工前结论：PASS。
+
+## 完成结论
+
+- `QueryAgent` 已实现 `Bootstrap → navigate → SELECT → final` 有界状态机，首轮之后只保留问题、
+  上一 tool call 和当前 Envelope，不重复 Atlas 或累积全部 transcript；
+- `execute_msql` 严格解码完整 batch，Agent 注入 L0 Authorization 并移除 Approval；显式事务控制在
+  MSQL 调用前拒绝，引号、quoted identifier 与注释中的同名文本不会误判；
+- 只有引擎返回的成功 `SELECT` StatementResult 能形成防御性 evidence；最终调用固定禁止工具，
+  提前回答、空答案、`length`、越步数、超 byte 或无 evidence 均失败；
+- Bootstrap/MSQL/Provider/tool 全链进入正文脱敏 Trace；Provider/MSQL error 和取消不重试，失败点
+  仍返回可验证 Trace；整数参数与 evidence 类型不经浮点强转；
+- scripted transcript、上下文压缩、multi-SELECT、L0 降级、wire 畸形、预算、取消、泄漏扫描、
+  import allowlist、unit/vet/race、完整 integration/e2e 与独立 cross-build 全绿。
+
+F181 的确定性实现和 fake 验收只依赖 F176–F179 contract，不需要某个厂商 adapter；使用真实 Kimi
+运行仍依赖 F180 通过真实鉴权 smoke。F181 不因此成为 `memora ask` 产品入口。
+
+完成门结论：PASS。下一项可独立 Review F182 answer corpus；F180 真实鉴权证据仍单独待完成。

@@ -31,10 +31,11 @@ F170–F174 全内容 lexical location
 → F175b 统一 MSQL Service
 → F175c Agent 边界守卫
 → F176 Bootstrap Frame
-→ F177 Provider port ─┬→ F179 Runtime ADR → F180 Kimi/OpenAI provider
-→ F178 Event/Trace ───┘                         ↓
-                                              F181 Query Agent
-→ F182 corpus → F183 runner → F184 外部评分 → F185 release gate → F186 QuerySession
+→ F177 Provider port ─┬→ F179 Runtime ADR ─┬→ F180 Kimi/OpenAI provider ─┐
+→ F178 Event/Trace ───┘                    └→ F181 Query Agent → F182 corpus
+                                                            F180 + F181 + F182
+                                                                    ↓
+F183 runner → F184 外部评分 → F185 release gate → F186 QuerySession
 ```
 
 ## A：统一执行入口（F175a–F175c）
@@ -64,10 +65,11 @@ Trace 必须早于第一个真实 Provider，避免先上线模型调用、后�
 | --- | --- | --- |
 | F179（已完成） | Eino 与薄自研 loop 的 spike/ADR | 选择 Memora-owned 薄 loop，保留重评触发器 |
 | F180 | OpenAI-compatible HTTP Provider | Kimi 真实 API smoke；懒初始化；Key 只从 SecretResolver/进程环境进入请求 |
-| F181（已批准） | 只读 Query Agent | 只调用 MSQL；输出 final answer、实际 SELECT evidence 与完整 Trace |
+| F181（已完成） | 只读 Query Agent | 只调用 MSQL；输出 final answer、实际 SELECT evidence 与完整 Trace |
 
 F180 不引入厂商 SDK；base URL、model 和能力由配置注入。真实 Key 不进 Config、Database、
-日志、fixture 或报告。F181 先运行在隔离 benchmark host，不立即开放 `memora ask`。
+日志、fixture 或报告。F181 的 loop/fake 验收不依赖具体厂商 adapter，因此可独立完成；真实模型
+runner 仍须同时具备 F180、F181 与 corpus。F181 只运行在隔离 benchmark host，不开放 `memora ask`。
 
 ## D：外部标准评分与产品化（F182–F186）
 
