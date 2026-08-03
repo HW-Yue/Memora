@@ -69,6 +69,35 @@ func TestNativeCatalogMSQLSurvivesReopenAndResolvesAliases(t *testing.T) {
 	}
 }
 
+func TestNativeCatalogMSQLRoundTripsFactAndRationaleRoles(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	service := NewService(New(file), ServiceOptions{
+		IDs: &sequenceIDs{values: []string{"database", "table", "decision", "rationale"}},
+	})
+	session := executor.NewBatchSession(ctx, service, nil)
+	defer session.Close()
+	envelope := session.Execute(ctx, executor.BatchRequest{
+		RequestID: "native-catalog-semantic-roles",
+		Source: "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'; " +
+			"CREATE TABLE work.decisions PURPOSE 'Decisions' ROW SEMANTICS 'One decision' " +
+			"(decision TEXT PURPOSE 'Accepted fact' ROLE fact, rationale TEXT PURPOSE 'Reason' ROLE rationale); " +
+			"SHOW COLUMNS FROM work.decisions LIMIT 2",
+	})
+	assertSucceeded(t, envelope, 3)
+	if len(envelope.Results[2].Rows) != 2 ||
+		envelope.Results[2].Rows[0]["semantic_role"] != "fact" ||
+		envelope.Results[2].Rows[1]["semantic_role"] != "rationale" {
+		t.Fatalf("MSQL semantic roles = %#v", envelope.Results[2].Rows)
+	}
+}
+
 func assertSucceeded(t *testing.T, envelope result.Envelope, count int) {
 	t.Helper()
 	if !envelope.OK || len(envelope.Results) != count {
