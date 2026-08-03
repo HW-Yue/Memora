@@ -184,6 +184,12 @@ func Load(manifestPath, groundTruthPath string) (Bundle, error) {
 	return bundle, nil
 }
 
+// LoadManifest loads only the public benchmark surface. F183 uses this entry
+// point so its process does not need access to evaluator-only ground truth.
+func LoadManifest(path string) (Manifest, error) {
+	return Manifest{}, corpusError("public manifest loading is not implemented")
+}
+
 func EncodeManifest(manifest Manifest) ([]byte, error) {
 	if err := manifest.Validate(); err != nil {
 		return nil, err

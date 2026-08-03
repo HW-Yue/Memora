@@ -1,5 +1,9 @@
 package answercorpus
 
+func (manifest Manifest) BlindTasks() ([]BlindTask, error) {
+	return nil, corpusError("public blind task projection is not implemented")
+}
+
 func (bundle Bundle) BlindTask(caseID string) (BlindTask, error) {
 	if err := bundle.Validate(); err != nil {
 		return BlindTask{}, err
