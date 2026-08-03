@@ -1,6 +1,7 @@
 package answerevaluation
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -86,8 +87,15 @@ func (evaluator *ProcessEvaluator) Evaluate(ctx context.Context, input Input) (O
 		return Output{}, ErrProcessEvaluation
 	}
 	output, err := readStrictOutput(outputPath)
-	if err != nil || output.Validate() != nil || output.InputSHA256 != input.Hash ||
-		len(output.Cases) != len(input.Cases) {
+	if err != nil {
+		return Output{}, ErrProcessEvaluation
+	}
+	if output.Hash == "" {
+		err = output.Seal()
+	} else {
+		err = output.Validate()
+	}
+	if err != nil || output.InputSHA256 != input.Hash || len(output.Cases) != len(input.Cases) {
 		return Output{}, ErrProcessEvaluation
 	}
 	for index := range input.Cases {
@@ -117,12 +125,18 @@ func readStrictOutput(path string) (Output, error) {
 		info.Mode().Perm()&0o077 != 0 {
 		return Output{}, ErrProcessEvaluation
 	}
-	file, err := os.Open(path)
-	if err != nil {
+	encoded, err := os.ReadFile(path)
+	if err != nil || len(encoded) > maximumEvaluatorOutputBytes {
 		return Output{}, ErrProcessEvaluation
 	}
-	defer file.Close()
-	decoder := json.NewDecoder(io.LimitReader(file, maximumEvaluatorOutputBytes+1))
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		return Output{}, ErrProcessEvaluation
+	}
+	if _, exists := fields["hash"]; !exists {
+		return Output{}, ErrProcessEvaluation
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
 	var output Output
 	if err := decoder.Decode(&output); err != nil {
