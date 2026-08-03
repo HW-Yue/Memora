@@ -44,6 +44,7 @@
 - [F182b：Fact / Rationale Semantic Roles](./planning/f182b-fact-rationale-semantic-roles.md) — F183 fixture 无损物化所需的受控 Column role 扩展。
 - [F183：端到端 Answer Runner](./planning/f183-end-to-end-answer-runner.md) — clean Instance 的 MSQL-only 物化、Blind Query Agent 与公私报告分离。
 - [F184：外部答案质量评测](./planning/f184-external-answer-evaluation.md) — 已完成的 evaluator-only ground truth、真实 SQL Row context、隔离 Ragas v0.4.3 adapter 与公开质量报告。
+- [F185a：可执行 Query Bootstrap Arms](./planning/f185a-executable-query-arms.md) — 让 Atlas、Lexical 与 Prefetch 对照真实改变 MSQL transcript，而非只写报告标签。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格

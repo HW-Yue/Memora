@@ -79,4 +79,4 @@ F182 manifest + ground-truth
   darwin/arm64、linux/amd64 交叉构建全部通过。
 
 完成门结论：PASS。F184 证明评分协议、隔离和可观测报告已完成；不证明 Query Agent 质量通过。
-下一项 F185 才冻结 arms 与阈值并建立 release gate。
+下一项 F185a 先让 arms 真正改变执行链，F185b 再冻结阈值并建立 release gate。

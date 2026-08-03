@@ -35,7 +35,7 @@ F170–F174 全内容 lexical location
 → F178 Event/Trace ───┘                    └→ F181 Query Agent → F182 corpus
                                                             F180 + F181 + F182
                                                                     ↓
-F182a Route alias MSQL → F183 runner → F184 外部评分 → F185 release gate → F186 QuerySession
+F182a Route alias MSQL → F183 runner → F184 外部评分 → F185a 可执行 arms → F185b release gate → F186 QuerySession
 ```
 
 ## A：统一执行入口（F175a–F175c）
@@ -81,10 +81,12 @@ runner 所需 F180、F181 与 F182 corpus 已齐备。F181 仍只运行在隔离
 | F182b（已完成） | `fact/rationale` Column semantic role | fixture Schema 经 MSQL 无损写入并由 Catalog 读回 |
 | F183（已完成） | 端到端 answer runner | public scorecard 与 private diagnostics 分离，可复现实验 arm |
 | F184（已完成） | Ragas 等外部评分 adapter | evaluator-only reference + SQL Row context；四项质量分、延迟、token 与调用数落盘 |
-| F185 | Query Agent release gate | 固定阈值比较 Router-only、Lexical、Vector、预取；失败不产品化 |
+| F185a（执行中） | 可执行 Query Bootstrap arms | Atlas-only、Lexical、Prefetch 真正改变 MSQL transcript 与 Frame |
+| F185b | Query Agent release gate | 固定阈值比较当前三个可执行 arm；失败或样本不足不产品化 |
 | F186 | 交互式 QuerySession | 流式事件、取消、预算和有界恢复；复用 F181 loop，不复制执行器 |
 
-Ragas/Python 只属于开发和 CI 工具链。对外第一指标是最终答案正确性；Route 选择、
+Ragas/Python 只属于开发和 CI 工具链。Vector 在公开 QueryEncoder 与 corpus generation 完成前不冒充
+可执行 arm。对外第一指标是最终答案正确性；Route 选择、
 Recall@K、回退和 SQL 重试只作为内部诊断。F185 通过前不承诺 `memora ask` 产品能力。
 
 ## 共同行为门

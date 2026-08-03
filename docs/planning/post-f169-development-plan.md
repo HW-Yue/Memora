@@ -19,7 +19,7 @@ F169 单 Row leaf（已完成）
 → F170–F174 全内容倒排位置
 → F175a–F175c 统一 MSQL 执行入口与 Agent 依赖守卫
 → F176–F181 Bootstrap / Provider / Trace / 最小 Query Agent
-→ F182 corpus → F182a Route alias MSQL → F183–F186 外部答案测评、发布门与交互查询
+→ F182 corpus → F182a Route alias MSQL → F183–F186 外部答案测评、可执行 arms、发布门与交互查询
 → F187–F200 单网页写入、整本书吸收与 EPUB 质量门
 → F201–F204 格式扩展与真实使用观测
 ```
@@ -83,7 +83,8 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 | F182b（已完成） | `fact/rationale` Column semantic role | F182 fixture 经 MSQL 无损物化，未知 role 仍 fail closed |
 | F183（已完成） | 端到端 answer runner | public scorecard 与 private diagnostics 分离 |
 | F184（已完成） | Ragas 等外部评分 adapter | correctness、faithfulness、context precision/recall、p50/p95、token 与调用数 |
-| F185 | Query Agent release gate | 固定阈值比较 Router-only、Lexical、Vector 与预取 |
+| F185a（执行中） | 可执行 Query Bootstrap arms | Atlas-only、Atlas+Lexical、Atlas+Lexical+Prefetch 产生不同 MSQL/Frame |
+| F185b | Query Agent release gate | 固定身份、阈值和有效样本要求比较三个当前可执行 arm |
 | F186 | 交互式 QuerySession | 门通过后提供流式事件、取消、预算和有界恢复 |
 
 F179 不预设一定采用 Eino。候选必须保持单一 `memora` 发布体验；只引入实际使用的编排能力，
@@ -92,7 +93,9 @@ F179 不预设一定采用 Eino。候选必须保持单一 `memora` 发布体验
 注入；当前开发优先兼容 Kimi 官方 OpenAI-compatible API，不把模型名写死进数据库协议。F181
 可用 scripted Provider 独立完成；F180、F181 与 F182 现在共同满足 F183 的前置条件。
 
-Ragas/Python 只属于开发和 CI 工具链，不进入安装包。外部成绩以最终答案正确率为首要结果；
+Ragas/Python 只属于开发和 CI 工具链，不进入安装包。F185 Review 已确认旧 `arm_id` 仅为标签，
+因此先以 F185a 建立真实执行差异，再由 F185b 评分。Vector 缺公开 QueryEncoder 和 corpus generation，
+不进入本轮假对照。外部成绩以最终答案正确率为首要结果；
 Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才能映射为 retrieved context。
 
 ## M4：单网页写入与整本书垂直链（F187–F200）
