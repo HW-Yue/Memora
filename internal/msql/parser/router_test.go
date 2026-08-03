@@ -148,6 +148,18 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 	}
 }
 
+func TestParseRouteAliasReplacementPreservesArrayParameter(t *testing.T) {
+	t.Parallel()
+	document, err := Parse("ALTER ROUTE :route SET ALIASES :aliases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Statement.UpdateRoute == nil || document.Statement.UpdateRoute.Route == nil ||
+		document.Statement.UpdateRoute.Aliases == nil || document.Statement.UpdateRoute.Synopsis != nil {
+		t.Fatalf("Route alias AST = %#v", document.Statement)
+	}
+}
+
 func TestParseFulltextLexicalLocationsFreezesIndependentProtocol(t *testing.T) {
 	t.Parallel()
 	document, err := Parse("SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query CURSOR :cursor LIMIT :limit BYTES :bytes")

@@ -1439,16 +1439,24 @@ func (parser *parser) parseAlterRoute() (ast.Statement, error) {
 	if _, err := parser.expectWord("SET"); err != nil {
 		return ast.Statement{}, err
 	}
-	if _, err := parser.expectWord("SYNOPSIS"); err != nil {
-		return ast.Statement{}, err
+	statement := &ast.UpdateRouteStatement{Route: &route}
+	switch {
+	case parser.matchWord("SYNOPSIS"):
+		synopsis, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Synopsis = &synopsis
+	case parser.matchWord("ALIASES"):
+		aliases, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Aliases = &aliases
+	default:
+		return ast.Statement{}, parser.unexpected("SYNOPSIS or ALIASES")
 	}
-	synopsis, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	return ast.Statement{Kind: "UPDATE_ROUTE", UpdateRoute: &ast.UpdateRouteStatement{
-		Route: &route, Synopsis: &synopsis,
-	}}, nil
+	return ast.Statement{Kind: "UPDATE_ROUTE", UpdateRoute: statement}, nil
 }
 
 func (parser *parser) parseOpenRoute() (ast.Statement, error) {

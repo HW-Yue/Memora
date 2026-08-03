@@ -195,6 +195,7 @@ type RenameRouteStatement struct {
 type UpdateRouteStatement struct {
 	Route    *Expression `json:"route"`
 	Synopsis *Expression `json:"synopsis"`
+	Aliases  *Expression `json:"aliases,omitempty"`
 }
 
 type DeleteRouteStatement struct {
@@ -380,6 +381,7 @@ func (document Document) Parameters() []Parameter {
 	case statement.UpdateRoute != nil:
 		appendExpression(statement.UpdateRoute.Route)
 		appendExpression(statement.UpdateRoute.Synopsis)
+		appendExpression(statement.UpdateRoute.Aliases)
 	case statement.DeleteRoute != nil:
 		appendExpression(statement.DeleteRoute.Route)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
