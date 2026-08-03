@@ -14,6 +14,10 @@ import sys
 from urllib.parse import urlparse
 
 
+# Evaluation inputs are private. Never allow Ragas usage analytics from this adapter.
+os.environ["RAGAS_DO_NOT_TRACK"] = "true"
+
+
 INPUT_VERSION = "memora.external-evaluation-input/v1"
 OUTPUT_VERSION = "memora.external-evaluator-output/v1"
 ADAPTER_ID = "ragas-collections"

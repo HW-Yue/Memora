@@ -2,7 +2,8 @@
 
 该目录是开发/测评工具，不进入 Memora 二进制或安装包。依赖固定为 Ragas v0.4.3，使用
 collections API 的 `FactualCorrectness`、`Faithfulness`、`ContextPrecision` 与
-`ContextRecall`。
+`ContextRecall`。Python 3.9 额外锁定 `eval-type-backport`，用于兼容 Ragas 当前解析到的
+Instructor 类型注解。
 
 建议在独立虚拟环境安装：
 
@@ -28,4 +29,5 @@ go run ./cmd/run-answer-evaluation \
 ```
 
 Python 只返回逐题分数或稳定错误码；不返回 reference、response、SQL evidence、异常文本或 key。
-输出先由 Go 信任边界规范化并签名，再进入公开聚合报告。
+输出先由 Go 信任边界规范化并签名，再进入公开聚合报告。Adapter 会强制关闭 Ragas usage
+analytics，避免私有评测元数据离开显式配置的 judge 链路。
