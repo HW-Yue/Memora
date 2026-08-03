@@ -77,7 +77,9 @@ class FakeMetric:
 
     async def ascore(self, **kwargs):
         self.calls.append((self.name, kwargs))
-        if kwargs.get("user_input") == self.fail_question:
+        if self.fail_question is not None and self.fail_question in {
+            kwargs.get("user_input"), kwargs.get("response")
+        }:
             raise RuntimeError("synthetic judge failure")
         return SimpleNamespace(value=self.value)
 
@@ -90,7 +92,7 @@ class EvaluateTest(unittest.TestCase):
         def metrics_factory(_configuration):
             return {
                 "factual_correctness": FakeMetric(
-                    "factual_correctness", 0.9, calls, "Question two?"
+                    "factual_correctness", 0.9, calls, "Answer two."
                 ),
                 "faithfulness": FakeMetric("faithfulness", 0.8, calls),
                 "context_precision": FakeMetric("context_precision", 0.7, calls),
