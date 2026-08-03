@@ -53,6 +53,11 @@
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
+## 当前执行
+
+- F183：clean Instance 只经 MSQL 物化 F182 public manifest，再跑 Blind Query Agent，输出 public
+  scorecard 与 private diagnostics；不读 ground truth 或在本 Feature 评分。
+
 ## 例外与非当前路径
 
 | Feature | 状态 | 当前解释 |

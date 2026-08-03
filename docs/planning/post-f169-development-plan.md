@@ -81,7 +81,7 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 | F182（已完成） | 冻结 answer corpus/manifest | source、snapshot、问题、隐藏答案、版本、许可和 strict golden 完整 |
 | F182a（已完成） | Route alias 的 MSQL 原子替换与读取 | parser/executor、transaction rollback、reopen、lexical publication 与 fault recovery |
 | F182b（已完成） | `fact/rationale` Column semantic role | F182 fixture 经 MSQL 无损物化，未知 role 仍 fail closed |
-| F183 | 端到端 answer runner | public scorecard 与 private diagnostics 分离 |
+| F183（执行中） | 端到端 answer runner | public scorecard 与 private diagnostics 分离 |
 | F184 | Ragas 等外部评分 adapter | correctness、事实正确性、p50/p95、token、调用数、费用 |
 | F185 | Query Agent release gate | 固定阈值比较 Router-only、Lexical、Vector 与预取 |
 | F186 | 交互式 QuerySession | 门通过后提供流式事件、取消、预算和有界恢复 |

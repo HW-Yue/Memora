@@ -42,6 +42,7 @@
 - [F182：Answer Corpus / Manifest](./planning/f182-answer-corpus-manifest.md) — 已完成的合成 fixture、blind manifest 与 evaluator-only ground truth。
 - [F182a：Route Alias MSQL Round-trip](./planning/f182a-route-alias-msql.md) — F183 前置的有界 alias 原子替换与读取契约。
 - [F182b：Fact / Rationale Semantic Roles](./planning/f182b-fact-rationale-semantic-roles.md) — F183 fixture 无损物化所需的受控 Column role 扩展。
+- [F183：端到端 Answer Runner](./planning/f183-end-to-end-answer-runner.md) — clean Instance 的 MSQL-only 物化、Blind Query Agent 与公私报告分离。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
