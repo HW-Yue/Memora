@@ -49,6 +49,7 @@
 | F181 | 只读 benchmark Query Agent；压缩上下文、L0 MSQL batch、真实 SELECT evidence 与完整 Trace |
 | F182 | 确定性 answer corpus；合成 fixture、blind task、严格 manifest/ground truth 与逐字 golden |
 | F182a | Route alias 的有界 MSQL 完整替换/读取；revision 冲突、transaction rollback、live posting 与 fault/reopen 收敛 |
+| F182b | Catalog/MSQL 支持受控 `fact/rationale` Column role；规范化、原生 round-trip 与未知值 fail closed |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -86,7 +87,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F183–F186：answer runner、外部质量门与后续 QuerySession；下一项是 F183；
+- F183–F186：answer runner、外部质量门与后续 QuerySession；F182b 已解除 fixture Schema 缺口，下一项是 F183；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent

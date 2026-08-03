@@ -1,6 +1,6 @@
 # F182b：Fact / Rationale Column Semantic Roles
 
-状态：已批准；正在执行 RED → GREEN → REFACTOR。
+状态：已完成。
 
 ## 唯一主要结果
 
@@ -28,3 +28,12 @@ MSQL 无损物化到 F183 clean Instance 的最后一个已知 Schema 缺口。
 F182 fixture 的 `fact/rationale` 无法通过现行受控词表，故先以独立前置修复处理。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- Catalog create 覆盖大小写规范化，并无损保存 `fact/rationale`；
+- 原生 Catalog 的 MSQL `CREATE TABLE ... ROLE` 与 `SHOW COLUMNS` round-trip 通过；
+- 既有未知 role、重复 title/summary、全树 unit/race/integration/e2e 与双架构 cross-build 全绿；
+- F183 不再需要丢弃或改写 F182 fixture 的 Column semantic role。
+
+完成门结论：PASS。下一项恢复 F183 clean-daemon 物化与 answer runner。
