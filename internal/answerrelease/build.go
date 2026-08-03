@@ -96,7 +96,15 @@ func validCaseBinding(
 	for index, scorecardCase := range scorecard.Cases {
 		evaluationCase := evaluation.Cases[index]
 		if scorecardCase.CaseID != evaluationCase.CaseID ||
-			math.MaxUint64-scorecardCase.InputTokens < scorecardCase.OutputTokens {
+			math.MaxUint64-scorecardCase.InputTokens < scorecardCase.OutputTokens ||
+			scorecardCase.DurationMicros != evaluationCase.DurationMicros ||
+			scorecardCase.ProviderCalls != evaluationCase.ProviderCalls ||
+			scorecardCase.MSQLCalls != evaluationCase.MSQLCalls ||
+			scorecardCase.ToolCalls != evaluationCase.ToolCalls ||
+			scorecardCase.InputTokens != evaluationCase.InputTokens ||
+			scorecardCase.CachedTokens != evaluationCase.CachedTokens ||
+			scorecardCase.OutputTokens != evaluationCase.OutputTokens ||
+			scorecardCase.TotalTokens != evaluationCase.TotalTokens {
 			return false
 		}
 		switch scorecardCase.Status {
