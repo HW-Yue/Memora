@@ -1,0 +1,206 @@
+{
+  "version": "memora.answer-evaluation-report/v1",
+  "run_id": "f185b-kimi-real-20260804-atlas-only",
+  "corpus_id": "answer-retrieval-v1",
+  "corpus_revision": 1,
+  "snapshot_sha256": "sha256:91c44d5dbe62e012f03855c5711da69483f8c4ba28cd40954185193f6529bd08",
+  "public_scorecard_sha256": "sha256:8d11e2873eeba53f3603559cba037ea03ff857c59e0ccb5db09bccc5810a4f5e",
+  "private_diagnostics_sha256": "sha256:82ea17d679119726fd7815b405fee292fc6aa91d431b35856df433462c92a48c",
+  "ground_truth_sha256": "sha256:52365b2ba5f2b835f2976fbc0097dbab8eaabfce6f797fa99de556076e12bdb7",
+  "evaluator_input_sha256": "sha256:c5189158bb94983d877fda4c705d8cc77a9de462a380b6aa24c8df4398185636",
+  "evaluator_output_sha256": "sha256:2e53426331ee69a1fbded135caa00de10f457de4f69c7c41b7ffb522366a8f4f",
+  "adapter_id": "ragas-collections",
+  "adapter_version": "0.4.3",
+  "judge_model": "moonshot-v1-8k",
+  "counts": {
+    "cases": 12,
+    "runner_succeeded": 0,
+    "runner_failed": 12,
+    "scored": 0,
+    "evaluator_failed": 0
+  },
+  "performance": {
+    "latency_p50_micros": 2391909,
+    "latency_p95_micros": 9784786,
+    "provider_calls": 12,
+    "msql_calls": 12,
+    "tool_calls": 0,
+    "input_tokens": 0,
+    "cached_input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0
+  },
+  "metrics": {
+    "factual_correctness": {
+      "samples": 0
+    },
+    "faithfulness": {
+      "samples": 0
+    },
+    "context_precision": {
+      "samples": 0
+    },
+    "context_recall": {
+      "samples": 0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "case-001",
+      "status": "runner_failed",
+      "duration_micros": 5073152,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-002",
+      "status": "runner_failed",
+      "duration_micros": 2151049,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-003",
+      "status": "runner_failed",
+      "duration_micros": 716101,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-004",
+      "status": "runner_failed",
+      "duration_micros": 2415908,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-005",
+      "status": "runner_failed",
+      "duration_micros": 2575866,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-006",
+      "status": "runner_failed",
+      "duration_micros": 845315,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-007",
+      "status": "runner_failed",
+      "duration_micros": 2391909,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-008",
+      "status": "runner_failed",
+      "duration_micros": 2270806,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-009",
+      "status": "runner_failed",
+      "duration_micros": 2376928,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-010",
+      "status": "runner_failed",
+      "duration_micros": 9712714,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-011",
+      "status": "runner_failed",
+      "duration_micros": 9752806,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    },
+    {
+      "case_id": "case-012",
+      "status": "runner_failed",
+      "duration_micros": 9784786,
+      "provider_calls": 1,
+      "msql_calls": 1,
+      "tool_calls": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "scores": {}
+    }
+  ],
+  "hash": "sha256:3eccb4ab249febde1c31be412aabab85ab7a28cdfdc5037ec2b7371d90c7627f"
+}

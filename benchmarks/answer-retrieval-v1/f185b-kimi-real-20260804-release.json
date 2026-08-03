@@ -1,0 +1,174 @@
+{
+  "version": "memora.query-release-gate/v1",
+  "policy_version": "memora.query-release-policy/v1",
+  "policy": {
+    "version": "memora.query-release-policy/v1",
+    "minimum_cases": 12,
+    "factual_correctness_mean": 0.85,
+    "factual_correctness_minimum": 0.5,
+    "faithfulness_mean": 0.9,
+    "faithfulness_minimum": 0.8,
+    "context_precision_mean": 0.8,
+    "context_recall_mean": 0.85,
+    "maximum_quality_delta": 0.03
+  },
+  "identity": {
+    "corpus_id": "answer-retrieval-v1",
+    "corpus_revision": 1,
+    "snapshot_id": "answer-retrieval-v1-snapshot",
+    "snapshot_sha256": "sha256:91c44d5dbe62e012f03855c5711da69483f8c4ba28cd40954185193f6529bd08",
+    "provider_id": "kimi",
+    "model": "moonshot-v1-8k",
+    "prompt_id": "query-agent-v1",
+    "code_revision": "62240cc",
+    "adapter_id": "ragas-collections",
+    "adapter_version": "0.4.3",
+    "judge_model": "moonshot-v1-8k",
+    "ground_truth_sha256": "sha256:52365b2ba5f2b835f2976fbc0097dbab8eaabfce6f797fa99de556076e12bdb7"
+  },
+  "status": "incomplete",
+  "arms": [
+    {
+      "arm_id": "atlas-only-v1",
+      "run_id": "f185b-kimi-real-20260804-atlas-only",
+      "scorecard_sha256": "sha256:8d11e2873eeba53f3603559cba037ea03ff857c59e0ccb5db09bccc5810a4f5e",
+      "evaluation_sha256": "sha256:3eccb4ab249febde1c31be412aabab85ab7a28cdfdc5037ec2b7371d90c7627f",
+      "evidence_status": "incomplete",
+      "counts": {
+        "cases": 12,
+        "runner_succeeded": 0,
+        "runner_failed": 12,
+        "scored": 0,
+        "evaluator_failed": 0
+      },
+      "performance": {
+        "latency_p50_micros": 2391909,
+        "latency_p95_micros": 9784786,
+        "provider_calls": 12,
+        "msql_calls": 12,
+        "tool_calls": 0,
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0
+      },
+      "metrics": {
+        "factual_correctness": {
+          "samples": 0
+        },
+        "faithfulness": {
+          "samples": 0
+        },
+        "context_precision": {
+          "samples": 0
+        },
+        "context_recall": {
+          "samples": 0
+        }
+      },
+      "minimums": {},
+      "eligible": false,
+      "reasons": [
+        "runner_coverage_incomplete",
+        "evaluator_coverage_incomplete",
+        "metric_samples_incomplete",
+        "matrix_incomplete"
+      ]
+    },
+    {
+      "arm_id": "atlas-lexical-v1",
+      "run_id": "f185b-kimi-real-20260804-atlas-lexical",
+      "scorecard_sha256": "sha256:406b7c3571cef4d7e1dad43c4433d48a13924116c3d87980c1919aa5087b8112",
+      "evaluation_sha256": "sha256:acfec116794d1996ee17819882802472c230ce969bb0471b0cd0d3a91e8ab0d8",
+      "evidence_status": "incomplete",
+      "counts": {
+        "cases": 12,
+        "runner_succeeded": 0,
+        "runner_failed": 12,
+        "scored": 0,
+        "evaluator_failed": 0
+      },
+      "performance": {
+        "latency_p50_micros": 520231,
+        "latency_p95_micros": 10038131,
+        "provider_calls": 12,
+        "msql_calls": 12,
+        "tool_calls": 0,
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0
+      },
+      "metrics": {
+        "factual_correctness": {
+          "samples": 0
+        },
+        "faithfulness": {
+          "samples": 0
+        },
+        "context_precision": {
+          "samples": 0
+        },
+        "context_recall": {
+          "samples": 0
+        }
+      },
+      "minimums": {},
+      "eligible": false,
+      "reasons": [
+        "runner_coverage_incomplete",
+        "evaluator_coverage_incomplete",
+        "metric_samples_incomplete",
+        "matrix_incomplete"
+      ]
+    },
+    {
+      "arm_id": "atlas-lexical-prefetch-v1",
+      "run_id": "f185b-kimi-real-20260804-atlas-lexical-prefetch",
+      "scorecard_sha256": "sha256:02aa5497dd23f254c427060a50b22c883eaaadc894ed6ecbd3d753494db278d9",
+      "evaluation_sha256": "sha256:cf9e011c301397d99160d68be7a293a394c6f4b5d16d591643bc0fce8ae76881",
+      "evidence_status": "incomplete",
+      "counts": {
+        "cases": 12,
+        "runner_succeeded": 0,
+        "runner_failed": 12,
+        "scored": 0,
+        "evaluator_failed": 0
+      },
+      "performance": {
+        "latency_p50_micros": 490022,
+        "latency_p95_micros": 632958,
+        "provider_calls": 12,
+        "msql_calls": 22,
+        "tool_calls": 0,
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0
+      },
+      "metrics": {
+        "factual_correctness": {
+          "samples": 0
+        },
+        "faithfulness": {
+          "samples": 0
+        },
+        "context_precision": {
+          "samples": 0
+        },
+        "context_recall": {
+          "samples": 0
+        }
+      },
+      "minimums": {},
+      "eligible": false,
+      "reasons": [
+        "runner_coverage_incomplete",
+        "evaluator_coverage_incomplete",
+        "metric_samples_incomplete",
+        "matrix_incomplete"
+      ]
+    }
+  ],
+  "hash": "sha256:baca24ac7d3e012e9dbee5ff8536950913910a93c40d0ed335e47def7b075708"
+}
