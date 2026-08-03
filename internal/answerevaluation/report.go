@@ -131,6 +131,7 @@ func aggregateReportCases(cases []ReportCase) (ReportCounts, ReportPerformance, 
 	previous := ""
 	for _, testCase := range cases {
 		if !validText(testCase.CaseID, 200) || testCase.CaseID <= previous ||
+			math.MaxUint64-testCase.InputTokens < testCase.OutputTokens ||
 			testCase.TotalTokens != testCase.InputTokens+testCase.OutputTokens ||
 			testCase.CachedTokens > testCase.InputTokens {
 			return ReportCounts{}, ReportPerformance{}, ReportMetrics{}, false
