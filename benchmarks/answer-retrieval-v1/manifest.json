@@ -1,0 +1,659 @@
+{
+  "version": "memora.answer-corpus-manifest/v1",
+  "corpus_id": "answer-retrieval-v1",
+  "revision": 1,
+  "license": {
+    "id": "license_memora",
+    "spdx_id": "PolyForm-Noncommercial-1.0.0",
+    "path": "LICENSE",
+    "required_notice": "Copyright 2026 HW-Yue. Commercial use requires a separate paid commercial license from the copyright holder. Commercial licensing inquiries: https://github.com/HW-Yue/Memora"
+  },
+  "sources": [
+    {
+      "id": "source_memora_synthetic_v1",
+      "kind": "synthetic",
+      "title": "Memora synthetic answer benchmark v1",
+      "locator": "repo:internal/answercorpus/generator.go",
+      "license_id": "license_memora",
+      "content_sha256": "sha256:91c44d5dbe62e012f03855c5711da69483f8c4ba28cd40954185193f6529bd08"
+    }
+  ],
+  "fixture": {
+    "version": "memora.answer-fixture/v1",
+    "snapshot_id": "answer-retrieval-v1-snapshot",
+    "snapshot_sha256": "sha256:91c44d5dbe62e012f03855c5711da69483f8c4ba28cd40954185193f6529bd08",
+    "databases": [
+      {
+        "id": "db_personal",
+        "name": "personal",
+        "purpose": "Durable personal preferences",
+        "scope": "Current working and daily defaults",
+        "tables": [
+          {
+            "id": "tbl_preferences",
+            "database_id": "db_personal",
+            "name": "preferences",
+            "purpose": "Stable personal working preferences",
+            "row_semantics": "One current preference with its reason",
+            "columns": [
+              {
+                "id": "col_reason",
+                "name": "reason",
+                "type": "TEXT(4000)",
+                "purpose": "Why the preference is useful",
+                "semantic_role": "rationale"
+              },
+              {
+                "id": "col_topic",
+                "name": "topic",
+                "type": "TEXT(4000)",
+                "purpose": "Preference subject",
+                "semantic_role": "title"
+              },
+              {
+                "id": "col_value",
+                "name": "value",
+                "type": "TEXT(4000)",
+                "purpose": "Current preferred value",
+                "semantic_role": "fact"
+              }
+            ],
+            "routes": [
+              {
+                "id": "route_personal_00_root",
+                "kind": "branch",
+                "name": "All personal",
+                "aliases": [
+                  "overview",
+                  "总览"
+                ],
+                "purpose": "Root navigation for the synthetic fixture",
+                "revision": 1
+              },
+              {
+                "id": "route_personal_11_coffee",
+                "parent_id": "route_personal_00_root",
+                "kind": "leaf",
+                "name": "Coffee",
+                "aliases": [
+                  "brew",
+                  "咖啡"
+                ],
+                "purpose": "Beverage and brewing preference",
+                "revision": 1,
+                "row_id": "row_personal_coffee"
+              },
+              {
+                "id": "route_personal_12_editor",
+                "parent_id": "route_personal_00_root",
+                "kind": "leaf",
+                "name": "Editor",
+                "aliases": [
+                  "coding tool",
+                  "编辑器"
+                ],
+                "purpose": "Text and code editing preference",
+                "revision": 1,
+                "row_id": "row_personal_editor"
+              },
+              {
+                "id": "route_personal_13_language",
+                "parent_id": "route_personal_00_root",
+                "kind": "leaf",
+                "name": "Language",
+                "aliases": [
+                  "communication",
+                  "沟通语言"
+                ],
+                "purpose": "Discussion and identifier language",
+                "revision": 1,
+                "row_id": "row_personal_language"
+              },
+              {
+                "id": "route_personal_14_timezone",
+                "parent_id": "route_personal_00_root",
+                "kind": "leaf",
+                "name": "Time zone",
+                "aliases": [
+                  "schedule",
+                  "时区"
+                ],
+                "purpose": "Scheduling and local time preference",
+                "revision": 1,
+                "row_id": "row_personal_timezone"
+              }
+            ],
+            "rows": [
+              {
+                "id": "row_personal_coffee",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_reason": "It keeps the flavor clear without excessive bitterness",
+                  "col_topic": "Coffee preference",
+                  "col_value": "Light-roast pour-over"
+                }
+              },
+              {
+                "id": "row_personal_editor",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_reason": "Fast keyboard-driven editing with a small local footprint",
+                  "col_topic": "Preferred editor",
+                  "col_value": "Neovim"
+                }
+              },
+              {
+                "id": "row_personal_language",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_reason": "Discussion stays natural while technical names remain unambiguous",
+                  "col_topic": "Working language",
+                  "col_value": "Chinese for discussion, English for code identifiers"
+                }
+              },
+              {
+                "id": "row_personal_timezone",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_reason": "Daily planning follows China Standard Time",
+                  "col_topic": "Primary time zone",
+                  "col_value": "Asia/Shanghai"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "db_projects",
+        "name": "projects",
+        "purpose": "Project architecture knowledge",
+        "scope": "Accepted current technical decisions",
+        "tables": [
+          {
+            "id": "tbl_decisions",
+            "database_id": "db_projects",
+            "name": "decisions",
+            "purpose": "Accepted architecture and product decisions",
+            "row_semantics": "One current decision with rationale",
+            "columns": [
+              {
+                "id": "col_decision",
+                "name": "decision",
+                "type": "TEXT(4000)",
+                "purpose": "Accepted decision statement",
+                "semantic_role": "fact"
+              },
+              {
+                "id": "col_rationale",
+                "name": "rationale",
+                "type": "TEXT(4000)",
+                "purpose": "Reason supporting the decision",
+                "semantic_role": "rationale"
+              },
+              {
+                "id": "col_status",
+                "name": "status",
+                "type": "TEXT(4000)",
+                "purpose": "Decision lifecycle state",
+                "semantic_role": "status"
+              },
+              {
+                "id": "col_topic",
+                "name": "topic",
+                "type": "TEXT(4000)",
+                "purpose": "Decision subject",
+                "semantic_role": "title"
+              }
+            ],
+            "routes": [
+              {
+                "id": "route_projects_00_root",
+                "kind": "branch",
+                "name": "All projects",
+                "aliases": [
+                  "overview",
+                  "总览"
+                ],
+                "purpose": "Root navigation for the synthetic fixture",
+                "revision": 1
+              },
+              {
+                "id": "route_projects_11_admin",
+                "parent_id": "route_projects_00_root",
+                "kind": "leaf",
+                "name": "Admin",
+                "aliases": [
+                  "local UI",
+                  "管理页面"
+                ],
+                "purpose": "Admin serving and access decisions",
+                "revision": 1,
+                "row_id": "row_projects_admin"
+              },
+              {
+                "id": "route_projects_12_indexing",
+                "parent_id": "route_projects_00_root",
+                "kind": "leaf",
+                "name": "Indexing",
+                "aliases": [
+                  "lexical postings",
+                  "倒排索引"
+                ],
+                "purpose": "Lexical coverage and authority decisions",
+                "revision": 1,
+                "row_id": "row_projects_indexing"
+              },
+              {
+                "id": "route_projects_13_runtime",
+                "parent_id": "route_projects_00_root",
+                "kind": "leaf",
+                "name": "Runtime",
+                "aliases": [
+                  "agent loop",
+                  "运行时"
+                ],
+                "purpose": "Embedded Agent runtime decisions",
+                "revision": 1,
+                "row_id": "row_projects_runtime"
+              },
+              {
+                "id": "route_projects_14_vector",
+                "parent_id": "route_projects_00_root",
+                "kind": "leaf",
+                "name": "Vector",
+                "aliases": [
+                  "similarity",
+                  "向量检索"
+                ],
+                "purpose": "Vector matching and index decisions",
+                "revision": 1,
+                "row_id": "row_projects_vector"
+              }
+            ],
+            "rows": [
+              {
+                "id": "row_projects_admin",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_decision": "Bind Admin to 127.0.0.1:3888",
+                  "col_rationale": "One predictable loopback endpoint avoids random-port confusion",
+                  "col_status": "accepted",
+                  "col_topic": "Admin listener"
+                }
+              },
+              {
+                "id": "row_projects_indexing",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_decision": "Index all live Row content and semantic surfaces in rebuildable lexical postings",
+                  "col_rationale": "Lexical hits remain disposable locations while SQL Rows stay authoritative",
+                  "col_status": "accepted",
+                  "col_topic": "Lexical coverage"
+                }
+              },
+              {
+                "id": "row_projects_runtime",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_decision": "Use a Memora-owned thin Go loop",
+                  "col_rationale": "Avoid framework size and keep Provider, MSQL, and Trace contracts authoritative",
+                  "col_status": "accepted",
+                  "col_topic": "Agent runtime"
+                }
+              },
+              {
+                "id": "row_projects_vector",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_decision": "Start with CPU exact vector matching and defer HNSW",
+                  "col_rationale": "Measured Route-scale exact matching is already within the latency budget",
+                  "col_status": "accepted",
+                  "col_topic": "Vector retrieval"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "db_reading",
+        "name": "reading",
+        "purpose": "Reviewed reading memory",
+        "scope": "Books, authors, and compact takeaways",
+        "tables": [
+          {
+            "id": "tbl_books",
+            "database_id": "db_reading",
+            "name": "books",
+            "purpose": "Read books and compact takeaways",
+            "row_semantics": "One book with author and reviewed takeaway",
+            "columns": [
+              {
+                "id": "col_author",
+                "name": "author",
+                "type": "TEXT(4000)",
+                "purpose": "Book author",
+                "semantic_role": "fact"
+              },
+              {
+                "id": "col_takeaway",
+                "name": "takeaway",
+                "type": "TEXT(4000)",
+                "purpose": "Reviewed reading takeaway",
+                "semantic_role": "summary"
+              },
+              {
+                "id": "col_title",
+                "name": "title",
+                "type": "TEXT(4000)",
+                "purpose": "Book title",
+                "semantic_role": "title"
+              }
+            ],
+            "routes": [
+              {
+                "id": "route_reading_00_root",
+                "kind": "branch",
+                "name": "All reading",
+                "aliases": [
+                  "overview",
+                  "总览"
+                ],
+                "purpose": "Root navigation for the synthetic fixture",
+                "revision": 1
+              },
+              {
+                "id": "route_reading_11_dune",
+                "parent_id": "route_reading_00_root",
+                "kind": "leaf",
+                "name": "Dune",
+                "aliases": [
+                  "Arrakis",
+                  "沙丘"
+                ],
+                "purpose": "Dune reading record",
+                "revision": 1,
+                "row_id": "row_reading_dune"
+              },
+              {
+                "id": "route_reading_12_left_hand",
+                "parent_id": "route_reading_00_root",
+                "kind": "leaf",
+                "name": "The Left Hand of Darkness",
+                "aliases": [
+                  "Gethen",
+                  "黑暗的左手"
+                ],
+                "purpose": "Le Guin reading record",
+                "revision": 1,
+                "row_id": "row_reading_left_hand"
+              },
+              {
+                "id": "route_reading_13_snow_crash",
+                "parent_id": "route_reading_00_root",
+                "kind": "leaf",
+                "name": "Snow Crash",
+                "aliases": [
+                  "Metaverse",
+                  "雪崩"
+                ],
+                "purpose": "Stephenson reading record",
+                "revision": 1,
+                "row_id": "row_reading_snow_crash"
+              },
+              {
+                "id": "route_reading_14_three_body",
+                "parent_id": "route_reading_00_root",
+                "kind": "leaf",
+                "name": "The Three-Body Problem",
+                "aliases": [
+                  "Trisolaris",
+                  "三体"
+                ],
+                "purpose": "Liu Cixin reading record",
+                "revision": 1,
+                "row_id": "row_reading_three_body"
+              }
+            ],
+            "rows": [
+              {
+                "id": "row_reading_dune",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_author": "Frank Herbert",
+                  "col_takeaway": "Power and ecology shape institutions",
+                  "col_title": "Dune"
+                }
+              },
+              {
+                "id": "row_reading_left_hand",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_author": "Ursula K. Le Guin",
+                  "col_takeaway": "Culture changes how identity and loyalty are understood",
+                  "col_title": "The Left Hand of Darkness"
+                }
+              },
+              {
+                "id": "row_reading_snow_crash",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_author": "Neal Stephenson",
+                  "col_takeaway": "Language, software, and power can reinforce each other",
+                  "col_title": "Snow Crash"
+                }
+              },
+              {
+                "id": "row_reading_three_body",
+                "source_id": "source_memora_synthetic_v1",
+                "values": {
+                  "col_author": "Liu Cixin",
+                  "col_takeaway": "Civilizations reason under uncertainty and existential risk",
+                  "col_title": "The Three-Body Problem"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "case-001",
+      "language": "zh",
+      "category": "direct",
+      "question": "内置查询 Agent 第一版最终选择了什么运行时方案？",
+      "authorized_databases": [
+        "projects"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-002",
+      "language": "en",
+      "category": "paraphrase",
+      "question": "How should vector lookup begin before an approximate index is justified?",
+      "authorized_databases": [
+        "projects"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-003",
+      "language": "mixed",
+      "category": "direct",
+      "question": "Admin 的固定 loopback 地址和端口是什么？",
+      "authorized_databases": [
+        "projects"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-004",
+      "language": "zh",
+      "category": "paraphrase",
+      "question": "倒排检索应该覆盖哪些持久内容？",
+      "authorized_databases": [
+        "projects"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-005",
+      "language": "en",
+      "category": "direct",
+      "question": "Which time zone should scheduling use?",
+      "authorized_databases": [
+        "personal"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-006",
+      "language": "zh",
+      "category": "direct",
+      "question": "日常写代码偏好使用哪个编辑器？",
+      "authorized_databases": [
+        "personal"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-007",
+      "language": "mixed",
+      "category": "paraphrase",
+      "question": "讨论和 code identifier 分别偏好使用什么语言？",
+      "authorized_databases": [
+        "personal"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-008",
+      "language": "en",
+      "category": "direct",
+      "question": "Who wrote the desert-planet novel in the reading list?",
+      "authorized_databases": [
+        "reading"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-009",
+      "language": "zh",
+      "category": "paraphrase",
+      "question": "哪本书的笔记强调文化会改变人们理解身份与忠诚的方式？",
+      "authorized_databases": [
+        "reading"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-010",
+      "language": "zh",
+      "category": "multi_fact",
+      "question": "对比 Agent 运行时和向量检索，两项决策分别怎样控制复杂度？",
+      "authorized_databases": [
+        "projects"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-011",
+      "language": "en",
+      "category": "multi_fact",
+      "question": "Name the authors of the cyberpunk Metaverse book and the first-contact trilogy entry.",
+      "authorized_databases": [
+        "reading"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    },
+    {
+      "id": "case-012",
+      "language": "zh",
+      "category": "negative",
+      "question": "当前数据库记录了应该购买哪一款 GPU 吗？",
+      "authorized_databases": [
+        "personal",
+        "projects"
+      ],
+      "budget": {
+        "max_provider_calls": 4,
+        "max_tool_calls": 3,
+        "max_output_tokens": 2048,
+        "bootstrap_frame_utf8_bytes": 12000,
+        "tool_result_utf8_bytes": 65536
+      }
+    }
+  ],
+  "ground_truth_sha256": "sha256:52365b2ba5f2b835f2976fbc0097dbab8eaabfce6f797fa99de556076e12bdb7",
+  "hash": "sha256:df8801ac66129575a3341fa380e9e573203f9baf23d3ba199f6c4911a8e96879"
+}

@@ -1,0 +1,182 @@
+{
+  "version": "memora.answer-ground-truth/v1",
+  "corpus_id": "answer-retrieval-v1",
+  "snapshot_sha256": "sha256:91c44d5dbe62e012f03855c5711da69483f8c4ba28cd40954185193f6529bd08",
+  "cases": [
+    {
+      "case_id": "case-001",
+      "kind": "answerable",
+      "reference_answer": "第一版采用 Memora 自有的轻量 Go 循环。",
+      "facts": [
+        {
+          "database_id": "db_projects",
+          "table_id": "tbl_decisions",
+          "row_id": "row_projects_runtime",
+          "column_id": "col_decision",
+          "value": "Use a Memora-owned thin Go loop"
+        }
+      ]
+    },
+    {
+      "case_id": "case-002",
+      "kind": "answerable",
+      "reference_answer": "Vector lookup starts with exact CPU matching; HNSW is deferred.",
+      "facts": [
+        {
+          "database_id": "db_projects",
+          "table_id": "tbl_decisions",
+          "row_id": "row_projects_vector",
+          "column_id": "col_decision",
+          "value": "Start with CPU exact vector matching and defer HNSW"
+        }
+      ]
+    },
+    {
+      "case_id": "case-003",
+      "kind": "answerable",
+      "reference_answer": "Admin 固定绑定到 127.0.0.1:3888。",
+      "facts": [
+        {
+          "database_id": "db_projects",
+          "table_id": "tbl_decisions",
+          "row_id": "row_projects_admin",
+          "column_id": "col_decision",
+          "value": "Bind Admin to 127.0.0.1:3888"
+        }
+      ]
+    },
+    {
+      "case_id": "case-004",
+      "kind": "answerable",
+      "reference_answer": "倒排索引覆盖所有 live Row 正文和语义表面，并保持可重建。",
+      "facts": [
+        {
+          "database_id": "db_projects",
+          "table_id": "tbl_decisions",
+          "row_id": "row_projects_indexing",
+          "column_id": "col_decision",
+          "value": "Index all live Row content and semantic surfaces in rebuildable lexical postings"
+        }
+      ]
+    },
+    {
+      "case_id": "case-005",
+      "kind": "answerable",
+      "reference_answer": "Scheduling should use Asia/Shanghai.",
+      "facts": [
+        {
+          "database_id": "db_personal",
+          "table_id": "tbl_preferences",
+          "row_id": "row_personal_timezone",
+          "column_id": "col_value",
+          "value": "Asia/Shanghai"
+        }
+      ]
+    },
+    {
+      "case_id": "case-006",
+      "kind": "answerable",
+      "reference_answer": "偏好的编辑器是 Neovim。",
+      "facts": [
+        {
+          "database_id": "db_personal",
+          "table_id": "tbl_preferences",
+          "row_id": "row_personal_editor",
+          "column_id": "col_value",
+          "value": "Neovim"
+        }
+      ]
+    },
+    {
+      "case_id": "case-007",
+      "kind": "answerable",
+      "reference_answer": "讨论使用中文，代码标识符使用英文。",
+      "facts": [
+        {
+          "database_id": "db_personal",
+          "table_id": "tbl_preferences",
+          "row_id": "row_personal_language",
+          "column_id": "col_value",
+          "value": "Chinese for discussion, English for code identifiers"
+        }
+      ]
+    },
+    {
+      "case_id": "case-008",
+      "kind": "answerable",
+      "reference_answer": "Frank Herbert wrote it.",
+      "facts": [
+        {
+          "database_id": "db_reading",
+          "table_id": "tbl_books",
+          "row_id": "row_reading_dune",
+          "column_id": "col_author",
+          "value": "Frank Herbert"
+        }
+      ]
+    },
+    {
+      "case_id": "case-009",
+      "kind": "answerable",
+      "reference_answer": "这条笔记来自《黑暗的左手》。",
+      "facts": [
+        {
+          "database_id": "db_reading",
+          "table_id": "tbl_books",
+          "row_id": "row_reading_left_hand",
+          "column_id": "col_title",
+          "value": "The Left Hand of Darkness"
+        }
+      ]
+    },
+    {
+      "case_id": "case-010",
+      "kind": "answerable",
+      "reference_answer": "运行时采用自有轻量 Go loop；向量检索先用 CPU 精确匹配并延后 HNSW。",
+      "facts": [
+        {
+          "database_id": "db_projects",
+          "table_id": "tbl_decisions",
+          "row_id": "row_projects_runtime",
+          "column_id": "col_decision",
+          "value": "Use a Memora-owned thin Go loop"
+        },
+        {
+          "database_id": "db_projects",
+          "table_id": "tbl_decisions",
+          "row_id": "row_projects_vector",
+          "column_id": "col_decision",
+          "value": "Start with CPU exact vector matching and defer HNSW"
+        }
+      ]
+    },
+    {
+      "case_id": "case-011",
+      "kind": "answerable",
+      "reference_answer": "They are Neal Stephenson and Liu Cixin.",
+      "facts": [
+        {
+          "database_id": "db_reading",
+          "table_id": "tbl_books",
+          "row_id": "row_reading_snow_crash",
+          "column_id": "col_author",
+          "value": "Neal Stephenson"
+        },
+        {
+          "database_id": "db_reading",
+          "table_id": "tbl_books",
+          "row_id": "row_reading_three_body",
+          "column_id": "col_author",
+          "value": "Liu Cixin"
+        }
+      ]
+    },
+    {
+      "case_id": "case-012",
+      "kind": "unanswerable",
+      "reference_answer": "该快照没有记录 GPU 型号。",
+      "facts": []
+    }
+  ],
+  "hash": "sha256:52365b2ba5f2b835f2976fbc0097dbab8eaabfce6f797fa99de556076e12bdb7"
+}
