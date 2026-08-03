@@ -81,7 +81,7 @@ runner 所需 F180、F181 与 F182 corpus 已齐备。F181 仍只运行在隔离
 | F182b（已完成） | `fact/rationale` Column semantic role | fixture Schema 经 MSQL 无损写入并由 Catalog 读回 |
 | F183（已完成） | 端到端 answer runner | public scorecard 与 private diagnostics 分离，可复现实验 arm |
 | F184（已完成） | Ragas 等外部评分 adapter | evaluator-only reference + SQL Row context；四项质量分、延迟、token 与调用数落盘 |
-| F185a（执行中） | 可执行 Query Bootstrap arms | Atlas-only、Lexical、Prefetch 真正改变 MSQL transcript 与 Frame |
+| F185a（已完成） | 可执行 Query Bootstrap arms | Atlas-only、Lexical、Prefetch 真正改变 MSQL transcript 与 Frame |
 | F185b | Query Agent release gate | 固定阈值比较当前三个可执行 arm；失败或样本不足不产品化 |
 | F186 | 交互式 QuerySession | 流式事件、取消、预算和有界恢复；复用 F181 loop，不复制执行器 |
 

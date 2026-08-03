@@ -1,6 +1,6 @@
 # F185a：可执行 Query Bootstrap Arms
 
-状态：已批准；准备执行 RED → GREEN → REFACTOR。
+状态：已完成（2026-08-04）；完成门 PASS。
 
 ## 唯一主要结果
 
@@ -75,3 +75,18 @@ Vector 仍是 ADR-0007 的可选候选武器。只有公开问题经版本化 en
 仅为标签，按既有“一 Feature 一个结果”规则拆为 F185a/F185b。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- `BootstrapProfile`、`QueryRequest` 与 `BootstrapFrame.profile` 已冻结三个版本化值；未设置的内部
+  profile 兼容规范化为 `atlas-lexical-prefetch-v1`，未知值在任何 MSQL/Provider 调用前失败；
+- Bootstrap transcript 测试证明 Atlas-only 不发 lexical，Atlas+Lexical 不做 root prefetch，完整 arm
+  才按 lexical 候选预取 root；三个 Frame 同时显式记录实际 profile；
+- F183 Runner 的三个公开 arm ID 已映射到实际 Query 配置，CLI 默认值改为完整 arm。clean Instance
+  集成测试对每个 arm 跑完整 12 题，核对公开标签、模型首轮 Frame 与真实 MSQL source；
+- RED 提交为 `f967695`、`d173805`，GREEN 提交为 `45a8a6d`、`dfb90d4`；
+- `go test`、受影响包 `-race` 以及 `./scripts/ci.sh` 的 format、vet、unit、race、integration、e2e、
+  cross-build 全绿。
+
+完成门结论：PASS。F185a 只证明对照臂真实可执行；下一项 F185b 才消费 F183/F184 报告并决定
+release gate，Vector 仍等待公开 QueryEncoder 与同空间 corpus generation。

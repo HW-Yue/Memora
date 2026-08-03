@@ -1,6 +1,6 @@
 # Feature 状态
 
-状态：2026-08-03 当前权威实现账本；旧完成门和执行过程位于
+状态：2026-08-04 当前权威实现账本；旧完成门和执行过程位于
 [`archive/planning/`](../archive/planning/README.md)。
 
 ## 状态定义
@@ -51,13 +51,15 @@
 | F182a | Route alias 的有界 MSQL 完整替换/读取；revision 冲突、transaction rollback、live posting 与 fault/reopen 收敛 |
 | F182b | Catalog/MSQL 支持受控 `fact/rationale` Column role；规范化、原生 round-trip 与未知值 fail closed |
 | F183 | clean Instance MSQL-only 物化、12 题 Blind Query Agent、严格公私报告与目录级原子发布 |
+| F184 | evaluator-only ground truth、真实 SQL Row context、隔离 Ragas adapter 与公开质量报告 |
+| F185a | 三个可执行 Query Bootstrap arm；公开标签与实际 Profile、Frame、MSQL transcript 一致 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
 ## 当前执行
 
-- F183：clean Instance 只经 MSQL 物化 F182 public manifest，再跑 Blind Query Agent，输出 public
-  scorecard 与 private diagnostics；不读 ground truth 或在本 Feature 评分。
+- F185b：消费同一冻结身份下的 F183/F184 arm 矩阵，冻结有效样本和质量阈值，形成 Query Agent
+  release gate；失败或不可评分时继续保持 `memora ask` 延后。
 
 ## 例外与非当前路径
 
@@ -93,7 +95,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F185a–F186：可执行 Query arms、release gate 与后续 QuerySession；F184 已完成，当前执行 F185a；
+- F185b–F186：Query release gate 与后续 QuerySession；F185a 的三个真实执行 arms 已完成；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent
