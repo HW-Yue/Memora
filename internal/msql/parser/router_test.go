@@ -31,6 +31,11 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			parameters: 2,
 		},
 		{
+			source:     "ALTER ROUTE :route SET ALIASES :aliases",
+			kind:       "UPDATE_ROUTE",
+			parameters: 2,
+		},
+		{
 			source:     "DESCRIBE ROUTE :route",
 			kind:       "DESCRIBE_ROUTE",
 			parameters: 1,
