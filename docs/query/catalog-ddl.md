@@ -28,7 +28,7 @@ Parser 允许缺省语义项以保持语法与 AST 分层；Catalog Binder 必�
 
 Column 类型由 F14 冻结；`TEXT` 使用 1200 字符启动上限，`TEXT(n)` 持久化 Column 自己的正整数上限。完整集合和输入规则见 [逻辑类型与字段预算 v1](../data/logical-types.md)。
 
-`ROLE` 可选，v1 接受 `title/summary/identity/status`。title 与 summary 在单个 Table
+`ROLE` 可选，v1 接受 `title/summary/identity/status/fact/rationale`。title 与 summary 在单个 Table
 内各最多一个；未声明 title 时 Row detail 只能回退到 RowID/revision，不能猜列名。
 
 增加 Column 使用：

@@ -395,7 +395,7 @@ func normalizeSemanticRole(value string) string { return canonical(value) }
 
 func validSemanticRole(value string) bool {
 	switch normalizeSemanticRole(value) {
-	case "", "title", "summary", "identity", "status":
+	case "", "title", "summary", "identity", "status", "fact", "rationale":
 		return true
 	default:
 		return false
