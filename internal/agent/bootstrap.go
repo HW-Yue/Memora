@@ -47,6 +47,7 @@ type BootstrapRequest struct {
 	Query         string
 	Authorization protocolmsql.Authorization
 	Budget        BootstrapBudget
+	Profile       BootstrapProfile
 }
 
 type CatalogBootstrap struct {
@@ -89,6 +90,7 @@ type RootPrefetch struct {
 type BootstrapFrame struct {
 	Version   string           `json:"version"`
 	Usage     string           `json:"usage"`
+	Profile   BootstrapProfile `json:"profile"`
 	Catalog   CatalogBootstrap `json:"catalog"`
 	Lexical   LexicalBootstrap `json:"lexical"`
 	Roots     []RootPrefetch   `json:"root_prefetches"`

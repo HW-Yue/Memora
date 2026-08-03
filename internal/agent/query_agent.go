@@ -61,12 +61,13 @@ func DefaultQueryBudget() QueryBudget {
 }
 
 type QueryRequest struct {
-	Identity        TraceIdentity
-	Question        string
-	Model           string
-	Authorization   protocolmsql.Authorization
-	BootstrapBudget BootstrapBudget
-	Budget          QueryBudget
+	Identity         TraceIdentity
+	Question         string
+	Model            string
+	Authorization    protocolmsql.Authorization
+	BootstrapBudget  BootstrapBudget
+	BootstrapProfile BootstrapProfile
+	Budget           QueryBudget
 }
 
 type SelectEvidence struct {
@@ -141,6 +142,7 @@ func (agent *QueryAgent) Query(ctx context.Context, request QueryRequest) (Query
 	}
 	bootstrapInput := BootstrapRequest{
 		Query: request.Question, Authorization: readOnly, Budget: request.BootstrapBudget,
+		Profile: request.BootstrapProfile,
 	}
 	bootstrapStarted := queryNow(agent.clock)
 	frame, bootstrapErr := assembler.Assemble(ctx, bootstrapInput)

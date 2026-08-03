@@ -82,6 +82,85 @@ func TestBootstrapAssemblesAtlasLexicalAndRootPrefetchWithoutModel(t *testing.T)
 	}
 }
 
+func TestBootstrapProfilesProduceDistinctMSQLTranscripts(t *testing.T) {
+	t.Parallel()
+
+	budget := agent.DefaultBootstrapBudget()
+	authorization := bootstrapAuthorization()
+	query := "architecture decision"
+	table := tableIdentity{DatabaseID: "db-work", TableID: "tbl-notes", Database: "work", Table: "notes"}
+	atlasRows := []protocolmsql.Row{{
+		"kind": "table", "database_id": table.DatabaseID, "database": table.Database,
+		"table_id": table.TableID, "table": table.Table,
+	}}
+	lexicalRows := []protocolmsql.Row{{
+		"kind": "route", "database_id": table.DatabaseID, "table_id": table.TableID,
+	}}
+	tests := []struct {
+		name        string
+		profile     agent.BootstrapProfile
+		steps       []agenttest.MSQLStep
+		wantLexical int
+		wantRoots   int
+	}{
+		{
+			name: "Atlas only", profile: agent.BootstrapProfileAtlasOnly,
+			steps: []agenttest.MSQLStep{{
+				Request:  atlasOnlyInitialRequest(authorization, budget),
+				Envelope: bootstrapEnvelope(atlasResult(0, atlasRows, page("atlas", false, ""))),
+			}},
+		},
+		{
+			name: "Atlas and lexical", profile: agent.BootstrapProfileAtlasLexical,
+			steps: []agenttest.MSQLStep{{
+				Request: initialBootstrapRequest(query, authorization, budget),
+				Envelope: bootstrapEnvelope(
+					atlasResult(0, atlasRows, page("atlas", false, "")),
+					lexicalResult(1, lexicalRows, page("lexical", false, "")),
+				),
+			}},
+			wantLexical: 1,
+		},
+		{
+			name: "Atlas lexical and prefetch", profile: agent.BootstrapProfileAtlasLexicalPrefetch,
+			steps: []agenttest.MSQLStep{
+				{
+					Request: initialBootstrapRequest(query, authorization, budget),
+					Envelope: bootstrapEnvelope(
+						atlasResult(0, atlasRows, page("atlas", false, "")),
+						lexicalResult(1, lexicalRows, page("lexical", false, "")),
+					),
+				},
+				{
+					Request: rootRequest(authorization, budget, table),
+					Envelope: bootstrapEnvelope(rootResult(0, []protocolmsql.Row{{
+						"route_id": "route-root", "kind": "branch", "purpose": "Architecture",
+					}}, page("root", false, ""))),
+				},
+			},
+			wantLexical: 1, wantRoots: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fake := agenttest.NewScriptedMSQL(test.steps...)
+			frame, err := bootstrapAssembler(t, fake).Assemble(context.Background(), agent.BootstrapRequest{
+				Query: query, Authorization: authorization, Budget: budget, Profile: test.profile,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if frame.Profile != test.profile || len(frame.Lexical.Locations) != test.wantLexical ||
+				len(frame.Roots) != test.wantRoots || len(fake.Calls()) != len(test.steps) {
+				t.Fatalf("profile Frame = %#v; calls=%d", frame, len(fake.Calls()))
+			}
+			if err := fake.Verify(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestBootstrapContinuesAtlasWithOneStableSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -375,6 +454,19 @@ func initialBootstrapRequest(query string, authorization protocolmsql.Authorizat
 				Authorization: authorization,
 			},
 		},
+	}
+}
+
+func atlasOnlyInitialRequest(authorization protocolmsql.Authorization, budget agent.BootstrapBudget) protocolmsql.Request {
+	return protocolmsql.Request{
+		Version: protocolmsql.RequestVersion,
+		Source:  "SHOW CATALOG ATLAS LIMIT :atlas_limit BYTES :atlas_bytes COMPACT",
+		Statements: []protocolmsql.StatementInput{{
+			Parameters: protocolmsql.Parameters{Named: map[string]any{
+				"atlas_limit": int64(budget.AtlasEntryLimit), "atlas_bytes": int64(budget.AtlasUTF8Bytes),
+			}},
+			Authorization: authorization,
+		}},
 	}
 }
 
