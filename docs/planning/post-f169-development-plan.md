@@ -76,7 +76,7 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 | --- | --- | --- |
 | F179（已完成） | Runtime spike 与 ADR | 选择薄 loop；Eino v0.9.13 对照证据与重评触发器见 ADR-0009 |
 | F180 | OpenAI-compatible HTTP Provider | Kimi 真实 smoke、懒初始化、无厂商 SDK、密钥不落盘 |
-| F181 | 只读 benchmark Query Agent | 只用 MSQL，输出 final answer + SELECT evidence + Trace |
+| F181（已批准） | 只读 benchmark Query Agent | 只用 MSQL，输出 final answer + SELECT evidence + Trace |
 | F182 | 冻结 answer corpus/manifest | source、snapshot、问题、隐藏答案、版本与许可完整 |
 | F183 | 端到端 answer runner | public scorecard 与 private diagnostics 分离 |
 | F184 | Ragas 等外部评分 adapter | correctness、事实正确性、p50/p95、token、调用数、费用 |

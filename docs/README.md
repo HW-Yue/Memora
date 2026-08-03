@@ -37,6 +37,7 @@
 - [F178：Agent Trace Envelope](./planning/f178-agent-trace-envelope.md) — 已完成的正文脱敏 Event/Usage/Cost 与可重放 recorder。
 - [F179：Agent Runtime Spike](./planning/f179-runtime-spike.md) — Eino/薄状态机的可复现实测与完成门。
 - [ADR-0009：Memora-owned 薄 Agent Loop](./decisions/0009-memora-owned-agent-loop.md) — F180/F181 不引入通用 Agent 框架的当前决策。
+- [F181：只读 benchmark Query Agent](./planning/f181-read-only-query-agent.md) — 已批准的有界 MSQL-only loop、SELECT evidence 与完整 Trace 完成门。
 
 ## 当前产品规格
 
