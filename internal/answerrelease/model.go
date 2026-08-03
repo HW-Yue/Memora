@@ -88,15 +88,3 @@ func FixedPolicy() Policy {
 		MaximumQualityDelta: 0.03,
 	}
 }
-
-func Build([]Evidence) (Report, error) {
-	return Report{}, ErrInvalidEvidence
-}
-
-func (report Report) Validate() error {
-	return ErrInvalidReport
-}
-
-func (report Report) ValidateAgainst([]Evidence) error {
-	return ErrInvalidReport
-}

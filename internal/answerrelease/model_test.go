@@ -3,6 +3,7 @@ package answerrelease_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -43,6 +44,11 @@ func TestBuildPassesCompleteIdentityLockedMatrixAndSelectsLowestContextArm(t *te
 	reordered, err := answerrelease.Build([]answerrelease.Evidence{evidence[1], evidence[2], evidence[0]})
 	if err != nil || reordered.Hash != report.Hash {
 		t.Fatalf("reordered report = %#v, %v", reordered, err)
+	}
+	wantMean := *report.Arms[0].Metrics.FactualCorrectness.Mean
+	*evidence[1].Evaluation.Metrics.FactualCorrectness.Mean = 0
+	if *report.Arms[0].Metrics.FactualCorrectness.Mean != wantMean || report.Validate() != nil {
+		t.Fatal("release report retained aliases to source evidence")
 	}
 }
 
@@ -89,20 +95,25 @@ func TestBuildRejectsIdentityBindingAndArmMatrixDrift(t *testing.T) {
 		}},
 		{name: "unknown arm", mutate: func(values []answerrelease.Evidence) []answerrelease.Evidence {
 			values[0].Scorecard.ArmID = "unknown-v1"
+			values[0].Scorecard.Hash = ""
 			_ = values[0].Scorecard.Seal()
 			values[0].Evaluation.PublicScorecardSHA256 = values[0].Scorecard.Hash
+			values[0].Evaluation.Hash = ""
 			_ = values[0].Evaluation.Seal()
 			return values
 		}},
 		{name: "scorecard binding", mutate: func(values []answerrelease.Evidence) []answerrelease.Evidence {
 			values[0].Evaluation.PublicScorecardSHA256 = digest("wrong-scorecard")
+			values[0].Evaluation.Hash = ""
 			_ = values[0].Evaluation.Seal()
 			return values
 		}},
 		{name: "model identity", mutate: func(values []answerrelease.Evidence) []answerrelease.Evidence {
 			values[0].Scorecard.Model = "drifted-model"
+			values[0].Scorecard.Hash = ""
 			_ = values[0].Scorecard.Seal()
 			values[0].Evaluation.PublicScorecardSHA256 = values[0].Scorecard.Hash
+			values[0].Evaluation.Hash = ""
 			_ = values[0].Evaluation.Seal()
 			return values
 		}},
@@ -254,8 +265,11 @@ func TestReleaseReportDoesNotExposeAnswerContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded := strings.Join([]string{report.Identity.CorpusID, report.Hash}, " ")
-	if strings.Contains(encoded, "answer case") || strings.Contains(encoded, "question case") {
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "answer case") || strings.Contains(string(encoded), "question case") {
 		t.Fatal("release report exposed answer content")
 	}
 }
