@@ -1,6 +1,6 @@
 # 当前产品基线
 
-状态：2026-08-03 当前权威产品快照；详细实现状态见
+状态：2026-08-04 当前权威产品快照；详细实现状态见
 [Feature 状态](../planning/feature-status.md)。
 
 ## 产品形态
@@ -34,6 +34,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - 带 revision 的精确读取、Mutation Plan、关系、历史与逻辑补偿；
 - Route/Schema 变更计划、审批后原子执行和结构健康扫描；
 - 标准库 OpenAI-compatible Provider adapter；密钥按调用解析，真实 Kimi 中国站 tool-call smoke 已通过；
+- MSQL-only 只读 Query Agent、12 题冻结 corpus、clean Instance answer runner，以及把实际 SQL Row
+  映射给隔离 Ragas v0.4.3 evaluator 的外部质量报告链路；
 - Host Input capture 与显式 worthiness decision receipt；
 - 文档/仓库资料的临时吸收、覆盖清单、独立复核和 Source Receipt。
 
@@ -50,11 +52,11 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 
 - F127 已有真实宿主证据协议，但真实双宿主 AI 用户故事报告仍为 `INCOMPLETE`；
 - 外置 Agent Hook、统一 session 指标和本地分析平台尚未实现；
-- F182 已冻结确定性答案语料、blind task 与 evaluator-only ground truth；端到端 Runner、外部评分
-  和内置评测 Agent 尚未实现，面向用户的 `memora ask` 继续延后；
+- F182–F184 已完成冻结语料、端到端 Runner 和外部评分基础设施，但真实 Kimi 首轮 12 题均因
+  wire/429 上游错误而不可评分；F185 release gate 尚未通过，面向用户的 `memora ask` 继续延后；
 - “何时值得写入”的质量评测后置，近期先评测查询、Route 和事实读取；
-- 全内容倒排位置链路已经完成；下一步仍需统一 MSQL Service，并由内置评测 Agent 证明它是否减少
-  模型调用、上下文和端到端延迟；
+- 全内容倒排位置、统一 MSQL Service 和标准评测 host 已完成；下一步用可成功运行的固定 judge
+  与检索 arms 建立 release gate，证明答案质量、模型调用、上下文和端到端延迟；
 - Query Workspace 的跨会话恢复、跨 session topic 身份仍未冻结；
 - Compaction、Secondary Index、Advanced MVCC、Replication、PITR、多设备同步、
   Apple Accelerate 与 HNSW 均未达到证据门，当前不实现。
@@ -62,8 +64,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 ## 当前真实性边界
 
 代码和机械测试已经形成完整数据库原型；这不等同于真实长期 AI 使用质量已经达标。
-当前最重要的下一证据是：用标准内置评测 Agent 重放冻结任务，并用外置 Hook 观察真实宿主
-环境，验证逐层分支、最终 RowID、上下文、调用数和端到端延迟。
+当前最重要的下一证据是：在无 Provider 限流/协议错误的固定运行上得到有效外部质量分，建立
+Query Agent release gate；随后再用外置 Hook 观察真实宿主环境中的分支、上下文、调用和延迟。
 
 ## 关联
 

@@ -1,6 +1,6 @@
 # F184：外部答案质量评测 Adapter
 
-状态：已批准；正在执行 RED → GREEN → REFACTOR。
+状态：已完成；2026-08-04 通过完成门。
 
 ## 唯一主要结果
 
@@ -40,6 +40,9 @@ F182 manifest + ground-truth
 - Memora 二进制与安装包不依赖 Python、Ragas、LangChain 或厂商 SDK；`tools/ragas/` 是开发工具；
 - Ragas 固定 v0.4.3，并使用官方推荐的 `ragas.metrics.collections` 直接 `.ascore()` API；judge
   model/base URL/secret env name 均注入，不写死 DeepSeek、Kimi 或 OpenAI；
+- Python 3.9 显式锁定 `eval-type-backport` 兼容依赖；Adapter 强制关闭 Ragas usage analytics；
+- evaluator 可返回空 `hash`，由 Go 信任边界严格解码、校验 input/case/status 后规范化签名，避免
+  Python/Go 浮点 JSON 表示差异；
 - report 自身规范 SHA-256，拒绝 case 缺失/重复/重排、NaN/Inf、范围外分数、输入 hash 漂移和
   adapter 输出未知字段。
 
@@ -58,3 +61,22 @@ F182 manifest + ground-truth
 用户执行授权：2026-08-03 用户要求继续逐项完成后续 Feature；F183 已完成并产出可验证公私报告。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- `internal/answerevaluation` 已实现严格 input/output/report、四项 mean 与 coverage、nearest-rank
+  p50/p95、原始调用/token 聚合和公开字段白名单；报告不含 question/answer/reference/context/evidence；
+- 外部进程只继承显式环境，临时目录 `0700`、文件 `0600`，覆盖未知字段、错绑 hash/case、取消、
+  stderr secret 泄漏和 Go 边界签名；`run-answer-evaluation` 以新文件原子发布、拒绝覆盖；
+- scripted 12 题覆盖 10 scored、1 evaluator_failed、1 runner_failed；Python unit、`py_compile`
+  通过；真实 Ragas v0.4.3 collections 对本地 OpenAI-compatible fake judge 发出 8 次结构化请求，
+  四项指标均成功返回；
+- F183 真实 Kimi 证据生成公开报告
+  `benchmarks/answer-retrieval-v1/f184-kimi-real-20260803-evaluation.json`，hash 为
+  `sha256:63361640c633ba5d860aa95a454a73453f49869a2e9e269fc0cea5ed6e57556b`；结果为
+  12 runner_failed、0 scored，准确表示上游 wire/429 使质量证据不完整，不伪造 0 分；
+- format、vet、unit、race、integration、e2e、macOS 双架构 cross-build，以及新增命令的
+  darwin/arm64、linux/amd64 交叉构建全部通过。
+
+完成门结论：PASS。F184 证明评分协议、隔离和可观测报告已完成；不证明 Query Agent 质量通过。
+下一项 F185 才冻结 arms 与阈值并建立 release gate。

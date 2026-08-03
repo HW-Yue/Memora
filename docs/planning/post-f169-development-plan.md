@@ -1,12 +1,12 @@
 # F169 之后的开发序列
 
-状态：2026-08-03 候选总序列；只确定依赖和拆分，不构成整批实现授权。每项仍须独立 Review、
+状态：2026-08-04 候选总序列；只确定依赖和拆分，不构成整批实现授权。每项仍须独立 Review、
 用户授权、RED → GREEN → REFACTOR、验收和合入。
 
 ## 当前出发点
 
-- F170–F183 已完成；Query Agent、公开 corpus、MSQL-only clean Instance 物化与公私分离的 answer
-  runner 均已具备；下一项是 F184 外部答案评分；
+- F170–F184 已完成；Query Agent、公开 corpus、MSQL-only clean Instance 物化、公私分离的 answer
+  runner 与隔离外部评分均已具备；下一项是 F185 release gate；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
 - F180 已通过真实 Kimi 中国站 required tool-call smoke，F183 runner 不再有 Provider 前置缺口；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
@@ -82,7 +82,7 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 | F182a（已完成） | Route alias 的 MSQL 原子替换与读取 | parser/executor、transaction rollback、reopen、lexical publication 与 fault recovery |
 | F182b（已完成） | `fact/rationale` Column semantic role | F182 fixture 经 MSQL 无损物化，未知 role 仍 fail closed |
 | F183（已完成） | 端到端 answer runner | public scorecard 与 private diagnostics 分离 |
-| F184（执行中） | Ragas 等外部评分 adapter | correctness、faithfulness、context precision/recall、p50/p95、token 与调用数 |
+| F184（已完成） | Ragas 等外部评分 adapter | correctness、faithfulness、context precision/recall、p50/p95、token 与调用数 |
 | F185 | Query Agent release gate | 固定阈值比较 Router-only、Lexical、Vector 与预取 |
 | F186 | 交互式 QuerySession | 门通过后提供流式事件、取消、预算和有界恢复 |
 

@@ -93,7 +93,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F184–F186：外部答案评分、release gate 与后续 QuerySession；F183 runner 已完成，下一项是 F184；
+- F185–F186：Query Agent release gate 与后续 QuerySession；F184 外部答案评分已完成，下一项是 F185；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent

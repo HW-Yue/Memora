@@ -1,6 +1,6 @@
 # 后续路线
 
-状态：2026-08-03 当前方向；只描述下一阶段目标，不构成批量 Feature 实现授权。
+状态：2026-08-04 当前方向；只描述下一阶段目标，不构成批量 Feature 实现授权。
 
 F169 之后的逐项依赖、候选编号和完成门见
 [F169 之后的开发序列](./post-f169-development-plan.md)。本文继续维护阶段目标，不重复展开 Feature。
@@ -29,11 +29,11 @@ Codex、Claude Code 等外置 Agent 不作为统一静态基准，只通过 Hook
 
 优先顺序：
 
-1. 抽出中立 MSQL 协议，建立 IPC/内置 adapter 共用的单实例执行服务和依赖守卫；
-2. 无模型组装 Atlas + lexical + 可选根 Route 的 Bootstrap Frame，先测上下文和投机成本；
-3. Provider port、run/session/turn/trace 与真实 Kimi OpenAI-compatible adapter 已完成；
-4. 只读 Query Agent 与冻结 corpus 已完成；下一步实现真实 Provider runner、外部评分并通过发布门；
-5. 再开放交互 QuerySession，随后验证单网页写入和整本 EPUB；
+1. 中立 MSQL 协议、共享执行服务、依赖守卫和 Bootstrap Frame 已完成；
+2. Provider port、run/session/turn/trace 与真实 Kimi OpenAI-compatible adapter 已完成；
+3. 只读 Query Agent、冻结 corpus、clean Instance runner 和隔离 Ragas 外部评分已完成；
+4. 下一步以成功 Provider 运行和固定检索 arms 建立 F185 release gate，不把 0 样本报告冒充质量通过；
+5. release gate 通过后开放交互 QuerySession，随后验证单网页写入和整本 EPUB；
 6. 外置 Hook 和写入时机评测放在主垂直链证据之后；Trace 先输出开发用报告，不扩展 Admin。
 
 API Key 只进入操作系统密钥存储或进程环境，不进入 Database、日志、报告或导出。评测 Agent
