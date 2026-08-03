@@ -49,7 +49,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 
 - F127 已有真实宿主证据协议，但真实双宿主 AI 用户故事报告仍为 `INCOMPLETE`；
 - 外置 Agent Hook、统一 session 指标和本地分析平台尚未实现；
-- 内置评测 Agent 尚未实现，面向用户的 `memora ask` 继续延后；
+- F182 已冻结确定性答案语料、blind task 与 evaluator-only ground truth；端到端 Runner、外部评分
+  和内置评测 Agent 尚未实现，面向用户的 `memora ask` 继续延后；
 - “何时值得写入”的质量评测后置，近期先评测查询、Route 和事实读取；
 - 全内容倒排位置链路已经完成；下一步仍需统一 MSQL Service，并由内置评测 Agent 证明它是否减少
   模型调用、上下文和端到端延迟；

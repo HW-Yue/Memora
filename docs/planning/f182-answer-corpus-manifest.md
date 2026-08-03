@@ -1,6 +1,6 @@
 # F182：Answer Corpus / Manifest v1
 
-规划状态：已通过单项 Review，批准按 RED → GREEN → REFACTOR 实现。
+状态：已完成；单项 Review、RED → GREEN → REFACTOR 与全部完成门均已通过。
 
 ## 唯一主要结果
 
@@ -46,3 +46,15 @@ Required Notice，不为 corpus 擅自改成其他许可证。
 用户执行授权：2026-08-03 用户要求持续顺序完成全部已讨论 Feature。本 Review 只批准上述 F182 范围。
 
 开工前结论：PASS。
+
+## 完成结论
+
+- `internal/answercorpus` 已提供确定性 `Generate`、严格 `Load`/`Validate`、规范编码和
+  model-blind `BlindTask`；
+- `benchmarks/answer-retrieval-v1/` 已冻结 3 个 Database、12 个 Row、12 个中英混合问题，
+  覆盖 direct、paraphrase、multi-fact 和 unanswerable；
+- generator 与 checked-in manifest/ground truth 逐字一致，fixture、truth 与 manifest 三层
+  SHA-256 绑定，未知字段、trailing JSON、乱序、篡改、悬空事实和答案泄漏均 fail closed；
+- format、vet、unit、race、integration、e2e 与 cross-build 全绿。
+
+完成门结论：PASS。下一项是 F183 answer runner；真实模型运行仍依赖 F180 有效鉴权。

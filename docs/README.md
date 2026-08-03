@@ -38,7 +38,8 @@
 - [F179：Agent Runtime Spike](./planning/f179-runtime-spike.md) — Eino/薄状态机的可复现实测与完成门。
 - [ADR-0009：Memora-owned 薄 Agent Loop](./decisions/0009-memora-owned-agent-loop.md) — F180/F181 不引入通用 Agent 框架的当前决策。
 - [F181：只读 benchmark Query Agent](./planning/f181-read-only-query-agent.md) — 已完成的有界 MSQL-only loop、SELECT evidence 与完整 Trace。
-- [F182：Answer Corpus / Manifest](./planning/f182-answer-corpus-manifest.md) — 已批准的合成 fixture、blind manifest 与 evaluator-only ground truth 完成门。
+- [F182：Answer Corpus / Manifest](./planning/f182-answer-corpus-manifest.md) — 已完成的合成 fixture、blind manifest 与 evaluator-only ground truth。
+- [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
 

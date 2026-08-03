@@ -46,6 +46,7 @@
 | F178 | 正文脱敏 Agent Event/Trace/Usage 信封、可重放 Summary 与并发安全 recorder |
 | F179 | Eino/薄 loop 可复现对照；选择 Memora-owned 有界状态机并冻结重评触发器 |
 | F181 | 只读 benchmark Query Agent；压缩上下文、L0 MSQL batch、真实 SELECT evidence 与完整 Trace |
+| F182 | 确定性 answer corpus；合成 fixture、blind task、严格 manifest/ground truth 与逐字 golden |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -84,7 +85,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 ## 新候选
 
 - F180：标准库 Provider adapter 的机械测试已完成；真实 Kimi 鉴权当前返回 401，尚未通过完成门或合入；
-- F182–F186：answer corpus、runner、外部质量门与后续 QuerySession；下一项可独立 Review F182；
+- F183–F186：answer runner、外部质量门与后续 QuerySession；F183 仍等待 F180 真实 Provider 鉴权；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent
