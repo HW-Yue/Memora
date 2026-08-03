@@ -35,7 +35,7 @@ F170–F174 全内容 lexical location
 → F178 Event/Trace ───┘                    └→ F181 Query Agent → F182 corpus
                                                             F180 + F181 + F182
                                                                     ↓
-F183 runner → F184 外部评分 → F185 release gate → F186 QuerySession
+F182a Route alias MSQL → F183 runner → F184 外部评分 → F185 release gate → F186 QuerySession
 ```
 
 ## A：统一执行入口（F175a–F175c）
@@ -77,6 +77,7 @@ runner 所需 F180、F181 与 F182 corpus 已齐备。F181 仍只运行在隔离
 | Feature | 唯一主要结果 | 完成证据 |
 | --- | --- | --- |
 | F182（已完成） | 冻结 answer corpus/manifest | source、snapshot、问题、隐藏答案、版本、许可和 strict golden 完整 |
+| F182a（执行中） | Route alias MSQL round-trip | fixture alias 经 MSQL 写入/读回，revision、posting 与 fault rollback 一致 |
 | F183 | 端到端 answer runner | public scorecard 与 private diagnostics 分离，可复现实验 arm |
 | F184 | Ragas 等外部评分 adapter | correctness、事实正确性、延迟、token、调用数和费用落盘 |
 | F185 | Query Agent release gate | 固定阈值比较 Router-only、Lexical、Vector、预取；失败不产品化 |

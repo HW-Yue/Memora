@@ -40,6 +40,7 @@
 - [F180：OpenAI-compatible Provider](./planning/f180-openai-compatible-provider.md) — 已完成的标准库 HTTP adapter 与真实 Kimi tool-call smoke。
 - [F181：只读 benchmark Query Agent](./planning/f181-read-only-query-agent.md) — 已完成的有界 MSQL-only loop、SELECT evidence 与完整 Trace。
 - [F182：Answer Corpus / Manifest](./planning/f182-answer-corpus-manifest.md) — 已完成的合成 fixture、blind manifest 与 evaluator-only ground truth。
+- [F182a：Route Alias MSQL Round-trip](./planning/f182a-route-alias-msql.md) — F183 前置的有界 alias 原子替换与读取契约。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
