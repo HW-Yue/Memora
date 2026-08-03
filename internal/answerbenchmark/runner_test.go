@@ -3,6 +3,7 @@ package answerbenchmark_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/agent"
 	"github.com/HW-Yue/Memora/internal/answerbenchmark"
 	"github.com/HW-Yue/Memora/internal/answercorpus"
+	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
 
 func TestRunnerMaterializesAndRunsAllBlindTasksThroughQueryAgent(t *testing.T) {
@@ -70,18 +72,86 @@ func TestRunnerMaterializesAndRunsAllBlindTasksThroughQueryAgent(t *testing.T) {
 	if err != nil || !strings.Contains(string(encodedPrivate), "SELECT * FROM") {
 		t.Fatalf("private diagnostics did not retain evidence: %s, %v", encodedPrivate, err)
 	}
+	tampered := public
+	tampered.Cases = append([]answerbenchmark.PublicCase(nil), public.Cases...)
+	tampered.Cases[0].Answer = "tampered"
+	if tampered.Validate() == nil {
+		t.Fatal("tampered public scorecard validated")
+	}
+}
+
+func TestRunnerRecordsOneCaseFailureAndContinues(t *testing.T) {
+	ctx := context.Background()
+	executor, closeInstance := cleanDaemonExecutor(t, ctx)
+	defer closeInstance()
+	bundle, err := answercorpus.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &answerProvider{failSubstring: "loopback"}
+	runner, err := answerbenchmark.NewRunner(answerbenchmark.RunnerDependencies{
+		MSQL: executor, Provider: provider, Clock: &benchmarkClock{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, private, err := runner.Run(ctx, bundle.Manifest, answerbenchmark.RunConfig{
+		RunID: "run-f183-continue", ProviderID: "scripted", Model: "model-test",
+		ArmID: "hybrid-default", PromptID: "query-agent-v1", CodeRevision: "test-revision",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if public.Cases[2].Status != "failed" || public.Cases[2].ErrorCode != "query_failed" ||
+		private.Cases[2].Error == "" || public.Cases[3].Status != "succeeded" || len(public.Cases) != 12 ||
+		public.Validate() != nil || private.Validate() != nil {
+		t.Fatalf("continued reports = %#v, private failure=%q", public.Cases, private.Cases[2].Error)
+	}
+}
+
+func TestRunnerCancellationPublishesNoReportsOrMSQL(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	msql := &countingMSQL{}
+	runner, err := answerbenchmark.NewRunner(answerbenchmark.RunnerDependencies{
+		MSQL: msql, Provider: &answerProvider{}, Clock: &benchmarkClock{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := answercorpus.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, private, err := runner.Run(ctx, bundle.Manifest, answerbenchmark.RunConfig{
+		RunID: "run-f183-cancel", ProviderID: "scripted", Model: "model-test",
+		ArmID: "hybrid-default", PromptID: "query-agent-v1", CodeRevision: "test-revision",
+	})
+	if !errors.Is(err, context.Canceled) || public.Version != "" || private.Version != "" || msql.calls != 0 {
+		t.Fatalf("cancel result = %#v, %#v, %v; calls=%d", public, private, err, msql.calls)
+	}
 }
 
 type answerProvider struct {
-	mu    sync.Mutex
-	calls int
+	mu            sync.Mutex
+	calls         int
+	failSubstring string
+	failed        bool
 }
 
 func (provider *answerProvider) Complete(_ context.Context, request agent.ProviderRequest) (agent.ProviderResponse, error) {
 	provider.mu.Lock()
 	provider.calls++
 	call := provider.calls
+	shouldFail := !provider.failed && provider.failSubstring != "" &&
+		len(request.Messages) > 1 && strings.Contains(request.Messages[1].Content, provider.failSubstring)
+	if shouldFail {
+		provider.failed = true
+	}
 	provider.mu.Unlock()
+	if shouldFail {
+		return agent.ProviderResponse{}, errors.New("synthetic private Provider failure")
+	}
 	response := agent.ProviderResponse{
 		Version: agent.ProviderResponseVersion, Model: request.Model,
 		Usage: agent.ProviderUsage{InputTokens: 10, OutputTokens: 2, TotalTokens: 12},
@@ -106,6 +176,13 @@ func (provider *answerProvider) Complete(_ context.Context, request agent.Provid
 	}}}
 	response.FinishReason = agent.ProviderFinishToolCalls
 	return response, nil
+}
+
+type countingMSQL struct{ calls int }
+
+func (executor *countingMSQL) ExecuteMSQL(context.Context, protocolmsql.Request) (protocolmsql.Envelope, error) {
+	executor.calls++
+	return protocolmsql.Envelope{}, errors.New("unexpected MSQL call")
 }
 
 func (provider *answerProvider) callCount() int {
