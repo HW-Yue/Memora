@@ -3,6 +3,7 @@ package answerevaluation_test
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 
@@ -53,6 +54,27 @@ func TestRunnerAggregatesExternalScoresAndRawSystemMetrics(t *testing.T) {
 	tampered.Counts.Scored++
 	if tampered.Validate() == nil {
 		t.Fatal("tampered evaluation report validated")
+	}
+	overflow := report
+	overflow.Hash = ""
+	overflow.Cases = append([]answerevaluation.ReportCase(nil), report.Cases...)
+	for index := range overflow.Cases {
+		overflow.Cases[index].DurationMicros = 0
+		overflow.Cases[index].ProviderCalls = 0
+		overflow.Cases[index].MSQLCalls = 0
+		overflow.Cases[index].ToolCalls = 0
+		overflow.Cases[index].InputTokens = 0
+		overflow.Cases[index].CachedTokens = 0
+		overflow.Cases[index].OutputTokens = 0
+		overflow.Cases[index].TotalTokens = 0
+	}
+	overflow.Cases[0].InputTokens = math.MaxUint64
+	overflow.Cases[0].OutputTokens = 1
+	overflow.Performance = answerevaluation.ReportPerformance{
+		InputTokens: math.MaxUint64, OutputTokens: 1,
+	}
+	if overflow.Seal() == nil {
+		t.Fatal("token total uint64 overflow was accepted")
 	}
 }
 
