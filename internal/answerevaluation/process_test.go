@@ -15,6 +15,7 @@ import (
 )
 
 func TestProcessEvaluatorUsesPrivateFilesAndStrictOutput(t *testing.T) {
+	t.Setenv("MEMORA_UNRELATED_SECRET", "must-not-be-inherited")
 	input := processInput(t)
 	countFile := filepath.Join(t.TempDir(), "count")
 	evaluator := processEvaluator(t, countFile, "success")
@@ -40,10 +41,27 @@ func TestProcessEvaluatorUsesPrivateFilesAndStrictOutput(t *testing.T) {
 
 func TestProcessEvaluatorCancelsAndDoesNotExposeStderr(t *testing.T) {
 	input := processInput(t)
-	evaluator := processEvaluator(t, filepath.Join(t.TempDir(), "count"), "wait")
+	countFile := filepath.Join(t.TempDir(), "count")
+	evaluator := processEvaluator(t, countFile, "wait")
 	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := evaluator.Evaluate(ctx, input)
+		result <- err
+	}()
+	deadline := time.After(5 * time.Second)
+	for {
+		if _, err := os.Stat(countFile); err == nil {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("helper process did not start")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 	cancel()
-	if _, err := evaluator.Evaluate(ctx, input); err != context.Canceled {
+	if err := <-result; err != context.Canceled {
 		t.Fatalf("cancel error = %v", err)
 	}
 
@@ -107,6 +125,9 @@ func processInput(t *testing.T) answerevaluation.Input {
 func TestProcessEvaluatorHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_MEMORA_EVALUATOR_HELPER") != "1" {
 		return
+	}
+	if os.Getenv("MEMORA_UNRELATED_SECRET") != "" {
+		t.Fatal("evaluator inherited an unrelated parent secret")
 	}
 	if err := os.WriteFile(os.Getenv("MEMORA_HELPER_COUNT"), []byte("1"), 0o600); err != nil {
 		t.Fatal(err)
