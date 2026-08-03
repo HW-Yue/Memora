@@ -46,6 +46,31 @@ func TestProviderGatewayReplaysValidatedToolCallTranscript(t *testing.T) {
 	}
 }
 
+func TestProviderAcceptsOpaquePrintableToolCallIDs(t *testing.T) {
+	t.Parallel()
+
+	response := agent.ProviderResponse{
+		Version: agent.ProviderResponseVersion, Model: "model-test",
+		Message: agent.ProviderMessage{Role: agent.ProviderRoleAssistant, ToolCalls: []agent.ProviderToolCall{{
+			ID: "memora_probe:0", Name: "memora_probe", Arguments: json.RawMessage(`{"ok":true}`),
+		}}},
+		FinishReason: agent.ProviderFinishToolCalls,
+		Usage:        agent.ProviderUsage{InputTokens: 10, OutputTokens: 2, TotalTokens: 12},
+	}
+	if err := response.Validate(); err != nil {
+		t.Fatalf("Validate() rejected opaque tool call ID: %v", err)
+	}
+	request := providerRequest([]agent.ProviderMessage{{Role: agent.ProviderRoleUser, Content: "Run the probe"}})
+	request.Tools[0].Name = "memora_probe"
+	request.Messages = append(request.Messages,
+		response.Message,
+		agent.ProviderMessage{Role: agent.ProviderRoleTool, ToolCallID: "memora_probe:0", Content: `{"ok":true}`},
+	)
+	if err := request.Validate(); err != nil {
+		t.Fatalf("request Validate() rejected opaque tool call transcript: %v", err)
+	}
+}
+
 func TestProviderGatewayValidatesBothSidesAndDoesNotRetry(t *testing.T) {
 	t.Parallel()
 

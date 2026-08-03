@@ -198,7 +198,7 @@ func validateProviderMessage(
 			return errors.New("invalid assistant message")
 		}
 		for _, call := range message.ToolCalls {
-			if !validProviderName(call.ID) || !validProviderName(call.Name) || calls[call.ID] != "" ||
+			if !validProviderCallID(call.ID) || !validProviderName(call.Name) || calls[call.ID] != "" ||
 				!validProviderJSONObject(call.Arguments, 1<<20) || (!response && !tools[call.Name]) {
 				return errors.New("invalid tool call")
 			}
@@ -206,7 +206,7 @@ func validateProviderMessage(
 		}
 	case ProviderRoleTool:
 		if response || strings.TrimSpace(message.Content) == "" || len(message.ToolCalls) != 0 ||
-			!validProviderName(message.ToolCallID) || calls[message.ToolCallID] == "" || answered[message.ToolCallID] {
+			!validProviderCallID(message.ToolCallID) || calls[message.ToolCallID] == "" || answered[message.ToolCallID] {
 			return errors.New("invalid tool result")
 		}
 		answered[message.ToolCallID] = true
@@ -214,6 +214,18 @@ func validateProviderMessage(
 		return errors.New("unsupported role")
 	}
 	return nil
+}
+
+func validProviderCallID(value string) bool {
+	if len(value) == 0 || len(value) > 256 {
+		return false
+	}
+	for _, character := range []byte(value) {
+		if character < 0x21 || character > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 func validProviderJSONObject(value json.RawMessage, limit int) bool {

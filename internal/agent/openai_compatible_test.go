@@ -380,12 +380,16 @@ func TestKimiOpenAICompatibleProviderSmoke(t *testing.T) {
 	if os.Getenv("MEMORA_RUN_KIMI_SMOKE") != "1" {
 		t.Skip("set MEMORA_RUN_KIMI_SMOKE=1 for the opt-in live API test")
 	}
+	apiBaseURL := os.Getenv("MEMORA_KIMI_API_BASE_URL")
+	if apiBaseURL == "" {
+		apiBaseURL = "https://api.moonshot.cn/v1"
+	}
 	model := os.Getenv("MEMORA_KIMI_MODEL")
 	if model == "" {
-		model = "kimi-k2.5"
+		model = "moonshot-v1-8k"
 	}
 	provider, err := agent.NewOpenAICompatibleProvider(agent.OpenAICompatibleProviderConfig{
-		APIBaseURL: "https://api.moonshot.ai/v1", SecretName: "MOONSHOT_API_KEY",
+		APIBaseURL: apiBaseURL, SecretName: "MOONSHOT_API_KEY",
 		Timeout: 90 * time.Second, MaxRequestBytes: 1 << 20, MaxResponseBytes: 2 << 20,
 	}, agent.EnvironmentProviderSecretResolver{})
 	if err != nil {

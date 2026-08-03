@@ -27,9 +27,12 @@ Kimi 顶层 `cached_tokens` 与常见 `prompt_tokens_details.cached_tokens` 都�
 `reasoning_content` 和未知扩展字段被忽略且不会进入 ProviderResponse/Trace。tool arguments 必须是
 JSON object 字符串，最终仍由 F177 contract 校验。
 
-协议依据为 Kimi 官方 [Chat Completion API](https://platform.kimi.ai/docs/api/chat)：当前 API root
-示例为 `https://api.moonshot.ai/v1`，认证使用 Bearer，非流式响应含 model、choices、finish reason、
-usage，tool result 通过匹配 `tool_call_id` 回传。
+协议依据为 Kimi 官方 [Chat Completion API](https://platform.kimi.com/docs/api/chat)：中国站 API root
+为 `https://api.moonshot.cn/v1`，认证使用 Bearer，非流式响应含 model、choices、finish reason、
+usage，tool result 通过匹配 `tool_call_id` 回传。opt-in smoke 默认中国站，并允许通过
+`MEMORA_KIMI_API_BASE_URL` 选择与 key 所属账户一致的官方 endpoint；Provider 生产配置本来就不
+写死厂商地址。smoke 默认使用支持标准 `tool_choice=required` 的 `moonshot-v1-8k`；需要思考模式
+的 K2.x/K3 扩展不在 F180 的厂商中立 wire 中偷渡，后续通过独立能力协商 Feature 评估。
 
 ## 错误与预算
 
