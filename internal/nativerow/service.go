@@ -977,7 +977,10 @@ func (service *Service) RenameRouterNode(ctx context.Context, id, name string, e
 		}
 	}
 	oldName, oldPath := current.Name, current.Path
-	current.Aliases = appendRouteAlias(current.Aliases, oldName)
+	current.Aliases, err = router.AliasesAfterRename(current.Aliases, oldName, name)
+	if err != nil {
+		return router.Node{}, err
+	}
 	current.Name, current.Path, current.Revision = name, strings.TrimSuffix(parent.Path, "/")+"/"+name, current.Revision+1
 	nodes, err := routes.Nodes()
 	if err != nil {
@@ -1018,6 +1021,30 @@ func (service *Service) UpdateRouterSynopsis(ctx context.Context, id, synopsis s
 	}
 	current.Synopsis, current.Revision = synopsis, current.Revision+1
 	return service.commitRouteNodeChange(ctx, change.OperationUpdate, "update Route synopsis", func(transaction *nativestore.Transaction) (router.Node, error) {
+		return current, routes.StageNode(transaction, current)
+	})
+}
+
+func (service *Service) UpdateRouterAliases(ctx context.Context, id string, aliases []string, expected uint64) (router.Node, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer release()
+	routes := nativerouter.New(service.repository.file)
+	current, err := routes.Get(id)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if current.Revision != expected {
+		return router.Node{}, ErrRevisionConflict
+	}
+	aliases, err = router.NormalizeAliases(current.Name, aliases)
+	if err != nil {
+		return router.Node{}, err
+	}
+	current.Aliases, current.Revision = aliases, current.Revision+1
+	return service.commitRouteNodeChange(ctx, change.OperationUpdate, "update Route aliases", func(transaction *nativestore.Transaction) (router.Node, error) {
 		return current, routes.StageNode(transaction, current)
 	})
 }
@@ -1112,19 +1139,6 @@ func (service *Service) commitRouteNodeChanges(
 	return primary, commit()
 }
 
-func appendRouteAlias(aliases []string, alias string) []string {
-	alias = strings.TrimSpace(alias)
-	result := append([]string(nil), aliases...)
-	if alias == "" {
-		return result
-	}
-	for _, current := range result {
-		if strings.EqualFold(strings.TrimSpace(current), alias) {
-			return result
-		}
-	}
-	return append(result, alias)
-}
 func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node, error) {
 	value, err := nativerouter.New(service.repository.file).Get(id)
 	if errors.Is(err, nativestore.ErrNotFound) {

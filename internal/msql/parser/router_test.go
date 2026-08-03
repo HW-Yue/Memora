@@ -128,6 +128,8 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 		"CREATE ROUTE ROOT FOR DATABASE :database",
 		"CREATE ROUTE UNDER :parent NAME :name PURPOSE :purpose",
 		"ALTER ROUTE :route RENAME",
+		"ALTER ROUTE :route SET ALIASES",
+		"ALTER ROUTE :route SET UNKNOWN :value",
 		"DELETE ROUTE",
 		"SHOW ROUTES FROM TABLE work.notes LIMIT 10",
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :query LIMIT 8",

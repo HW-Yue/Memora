@@ -21,6 +21,10 @@ type routeSynopsisRows interface {
 	UpdateRouterSynopsis(context.Context, string, string, uint64) (router.Node, error)
 }
 
+type routeAliasRows interface {
+	UpdateRouterAliases(context.Context, string, []string, uint64) (router.Node, error)
+}
+
 func (engine *Engine) createRoute(
 	ctx context.Context,
 	statement *ast.CreateRouteStatement,
@@ -108,7 +112,8 @@ func (engine *Engine) describeRoute(
 			{Name: "route_id", Type: "ID"}, {Name: "database_id", Type: "ID"},
 			{Name: "table_id", Type: "ID"}, {Name: "parent_id", Type: "ID", Nullable: true},
 			{Name: "path", Type: "TEXT"}, {Name: "name", Type: "TEXT"},
-			{Name: "kind", Type: "TEXT"}, {Name: "purpose", Type: "TEXT"},
+			{Name: "aliases", Type: "TEXT_LIST"}, {Name: "kind", Type: "TEXT"},
+			{Name: "purpose", Type: "TEXT"},
 			{Name: "synopsis", Type: "TEXT", Nullable: true}, {Name: "revision", Type: "INTEGER"},
 		},
 		Rows: []result.Row{row},
@@ -140,6 +145,37 @@ func (engine *Engine) updateRouteSynopsis(
 		return Output{}, executeError(result.CodeUnsupported, "Route synopsis is not supported by this backend")
 	}
 	updated, err := service.UpdateRouterSynopsis(ctx, routeID, synopsis, options.ExpectedRevision)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return routerNodeMutationOutput(updated), nil
+}
+
+func (engine *Engine) updateRouteAliases(
+	ctx context.Context,
+	statement *ast.UpdateRouteStatement,
+	bound bindings,
+	options MutationOptions,
+) (Output, error) {
+	if err := validateRouterMutationOptions(options, true); err != nil {
+		return Output{}, err
+	}
+	routeID, err := routerString(statement.Route, bound, "Router node ID")
+	if err != nil {
+		return Output{}, err
+	}
+	if err := engine.authorizeRouterIDAtLevel(ctx, security.LevelStructural, routeID); err != nil {
+		return Output{}, err
+	}
+	aliases, err := routerAliases(statement.Aliases, bound)
+	if err != nil {
+		return Output{}, err
+	}
+	service, ok := engine.rows.(routeAliasRows)
+	if !ok {
+		return Output{}, executeError(result.CodeUnsupported, "Route aliases are not supported by this backend")
+	}
+	updated, err := service.UpdateRouterAliases(ctx, routeID, aliases, options.ExpectedRevision)
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
@@ -266,6 +302,7 @@ func (engine *Engine) showRoutes(
 			{Name: "parent_id", Type: "ID", Nullable: true},
 			{Name: "path", Type: "TEXT"},
 			{Name: "name", Type: "TEXT"},
+			{Name: "aliases", Type: "TEXT_LIST"},
 			{Name: "kind", Type: "TEXT"},
 			{Name: "purpose", Type: "TEXT"},
 			{Name: "revision", Type: "INTEGER"},
@@ -396,7 +433,31 @@ func routeResult(node router.Node) result.Row {
 	return result.Row{
 		"route_id": node.ID, "parent_id": node.ParentID,
 		"path": node.Path, "name": node.Name, "kind": string(node.Kind),
+		"aliases": append([]string{}, node.Aliases...),
 		"purpose": node.Purpose, "revision": node.Revision,
+	}
+}
+
+func routerAliases(expression *ast.Expression, bound bindings) ([]string, error) {
+	value, err := evaluate(expression, catalog.Table{}, nil, bound)
+	if err != nil {
+		return nil, err
+	}
+	switch aliases := value.(type) {
+	case []string:
+		return append([]string{}, aliases...), nil
+	case []any:
+		resultAliases := make([]string, len(aliases))
+		for index, alias := range aliases {
+			text, ok := alias.(string)
+			if !ok {
+				return nil, executeError(result.CodeValidation, "Route aliases must be an array of TEXT")
+			}
+			resultAliases[index] = text
+		}
+		return resultAliases, nil
+	default:
+		return nil, executeError(result.CodeValidation, "Route aliases must be an array of TEXT")
 	}
 }
 
@@ -482,6 +543,7 @@ func routerNodeMutationOutput(node router.Node) Output {
 			{Name: "parent_id", Type: "ID", Nullable: true},
 			{Name: "path", Type: "TEXT"},
 			{Name: "name", Type: "TEXT"},
+			{Name: "aliases", Type: "TEXT_LIST"},
 			{Name: "kind", Type: "TEXT"},
 			{Name: "purpose", Type: "TEXT"},
 			{Name: "revision", Type: "INTEGER"},

@@ -183,7 +183,10 @@ func (service *Service) RenameIn(
 		return Node{}, err
 	}
 	oldPath := node.Path
-	node.Aliases = appendUnique(node.Aliases, node.Name)
+	node.Aliases, err = AliasesAfterRename(node.Aliases, node.Name, newName)
+	if err != nil {
+		return Node{}, err
+	}
 	node.Name = newName
 	node.Path = newPath
 	node.Revision++
@@ -194,6 +197,32 @@ func (service *Service) RenameIn(
 		return Node{}, err
 	}
 	if err := service.repathDescendants(ctx, tx, node, oldPath); err != nil {
+		return Node{}, err
+	}
+	return node, nil
+}
+
+func (service *Service) ReplaceAliasesIn(
+	ctx context.Context,
+	tx store.Tx,
+	nodeID string,
+	aliases []string,
+	expectedRevision uint64,
+) (Node, error) {
+	node, err := getNode(ctx, tx, nodeID)
+	if err != nil {
+		return Node{}, err
+	}
+	if expectedRevision == 0 || node.Revision != expectedRevision {
+		return Node{}, routerError(result.CodeRevisionConflict, "Router node revision conflict")
+	}
+	normalized, err := NormalizeAliases(node.Name, aliases)
+	if err != nil {
+		return Node{}, err
+	}
+	node.Aliases = normalized
+	node.Revision++
+	if err := putNode(ctx, tx, node); err != nil {
 		return Node{}, err
 	}
 	return node, nil

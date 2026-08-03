@@ -64,12 +64,12 @@ func TestRouteReadProtocolPaginatesChildrenAndReturnsOneLocatorWithoutRowBodies(
 		t.Fatalf("first children page = %#v", children)
 	}
 	for _, child := range children.Rows {
-		if len(child) != 7 || child["synopsis"] != nil || child["title"] != nil {
+		if len(child) != 8 || child["aliases"] == nil || child["synopsis"] != nil || child["title"] != nil {
 			t.Fatalf("child frame leaked on-demand or Row content = %#v", child)
 		}
 	}
 	described := executeMSQL(t, ctx, engine, "DESCRIBE ROUTE 'route_alpha'", executor.Parameters{}, executor.MutationOptions{})
-	if len(described.Rows) != 1 || len(described.Rows[0]) != 10 ||
+	if len(described.Rows) != 1 || len(described.Rows[0]) != 11 ||
 		described.Rows[0]["route_id"] != "route_alpha" ||
 		described.Rows[0]["database_id"] != "db_database" ||
 		described.Rows[0]["table_id"] != "tbl_table" {
@@ -170,7 +170,8 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	if len(databases.Rows) != 1 || len(tables.Rows) != 1 || len(described.Rows) != 1 {
 		t.Fatalf("discovery frames = %#v, %#v, %#v", databases.Rows, tables.Rows, described.Rows)
 	}
-	if len(top.Rows) != 1 || top.Rows[0]["route_id"] != "route_branch" || len(top.Rows[0]) != 7 {
+	if len(top.Rows) != 1 || top.Rows[0]["route_id"] != "route_branch" ||
+		len(top.Rows[0]) != 8 || top.Rows[0]["aliases"] == nil {
 		t.Fatalf("top Route Frame = %#v", top)
 	}
 	if len(children.Rows) != 1 || children.Rows[0]["route_id"] != "route_leaf" {

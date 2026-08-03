@@ -94,6 +94,39 @@ func (transaction *Transaction) RenameRouterNode(
 	return node, stableError(err)
 }
 
+func (service *Service) UpdateRouterAliases(
+	ctx context.Context,
+	nodeID string,
+	aliases []string,
+	expectedRevision uint64,
+) (router.Node, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return router.Node{}, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	node, err := transaction.UpdateRouterAliases(ctx, nodeID, aliases, expectedRevision)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return router.Node{}, err
+	}
+	return node, nil
+}
+
+func (transaction *Transaction) UpdateRouterAliases(
+	ctx context.Context,
+	nodeID string,
+	aliases []string,
+	expectedRevision uint64,
+) (router.Node, error) {
+	node, err := transaction.service.routes.ReplaceAliasesIn(
+		ctx, transaction.tx, nodeID, aliases, expectedRevision,
+	)
+	return node, stableError(err)
+}
+
 func (service *Service) DeleteRouterNode(
 	ctx context.Context,
 	nodeID string,
