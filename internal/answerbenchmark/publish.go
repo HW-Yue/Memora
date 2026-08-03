@@ -69,11 +69,8 @@ func PublishReports(outputDirectory string, public PublicScorecard, private Priv
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("%w: recheck destination: %v", ErrInvalidOutput, err)
 	}
-	if err := os.Rename(staging, outputDirectory); err != nil {
-		if _, lookupErr := os.Lstat(outputDirectory); lookupErr == nil {
-			return ErrOutputExists
-		}
-		return fmt.Errorf("%w: publish report directory: %v", ErrInvalidOutput, err)
+	if err := renameDirectoryExclusive(staging, outputDirectory); err != nil {
+		return err
 	}
 	published = true
 	if err := syncDirectory(parent); err != nil {
