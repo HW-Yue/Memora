@@ -1,6 +1,6 @@
 # F185b：Query Agent Release Gate
 
-状态：已批准；准备执行 RED → GREEN → REFACTOR。
+状态：已完成（2026-08-04）；Feature 完成门 PASS，当前产品 release decision 为 INCOMPLETE。
 
 ## 唯一主要结果
 
@@ -66,3 +66,23 @@ HotpotQA、MIRACL 继续作为独立外部效度候选。
 用户执行授权：2026-08-03 用户要求连续逐项完成后续 Feature；F185a 已完成真实执行 arms。
 
 开工前结论：PASS。
+
+## 完成证据
+
+- `internal/answerrelease` 已实现固定 Policy v1、三 arm hash 自动配对、同身份校验、覆盖率/质量门、
+  逐题最低分、最佳质量差值和 input-token 优先的确定性选择；报告可独立验签并能对原证据重建；
+- `build-query-release-gate` 严格加载六份公开 JSON，以新文件原子发布；`failed/incomplete` 仍留下
+  报告但退出非零。错绑、身份/逐题性能漂移、未知/重复/缺 arm、symlink、unknown field、尾随 JSON、
+  篡改和覆盖均 fail closed；
+- RED 提交为 `6a89a7d`、`7736c0e`、`49ddb46`；GREEN/修复提交为 `0e58b59`、`f1bcce1`、
+  `62240cc`；受影响包 unit/race 与全量 format、vet、unit、race、integration、e2e、cross-build 全绿；
+- 三条真实 Kimi `moonshot-v1-8k` arm 已各跑 12 题并生成公开 scorecard/evaluation。Atlas-only、
+  Atlas+Lexical、Prefetch 的 MSQL calls 分别为 12、12、22，证明执行链不同；Provider 共出现 33 次
+  HTTP 429 和 3 次 wire failure，因此三臂均为 0/12 scored；
+- [真实 release report](../../benchmarks/answer-retrieval-v1/f185b-kimi-real-20260804-release.json)
+  hash 为 `sha256:baca24ac7d3e012e9dbee5ff8536950913910a93c40d0ed335e47def7b075708`，状态
+  `incomplete`、无默认 arm，三个 arm 都明确记录 coverage/metric/matrix incomplete reasons。
+
+完成门结论：PASS，指 F185b 能可靠地产生并阻断 release；不代表 Query Agent 产品质量通过。
+F186 的进入条件仍未满足，必须先取得同身份、可评分的三 arm 真实 Provider 矩阵，不能用 scripted
+分数替代。

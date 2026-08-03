@@ -52,8 +52,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 
 - F127 已有真实宿主证据协议，但真实双宿主 AI 用户故事报告仍为 `INCOMPLETE`；
 - 外置 Agent Hook、统一 session 指标和本地分析平台尚未实现；
-- F182–F185a 已完成冻结语料、端到端 Runner、外部评分基础设施和三个真实执行检索 arm，但真实
-  Kimi 首轮 12 题均因 wire/429 上游错误而不可评分；F185b release gate 尚未通过，面向用户的
+- F182–F185b 已完成冻结语料、端到端 Runner、外部评分、三个真实执行检索 arm 和 release gate，
+  但真实 Kimi 三 arm 共 36 题均因 wire/429 上游错误而不可评分；gate 状态为 INCOMPLETE，面向用户的
   `memora ask` 继续延后；
 - “何时值得写入”的质量评测后置，近期先评测查询、Route 和事实读取；
 - 全内容倒排位置、统一 MSQL Service 和标准评测 host 已完成；下一步用可成功运行的固定 judge
@@ -66,7 +66,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 
 代码和机械测试已经形成完整数据库原型；这不等同于真实长期 AI 使用质量已经达标。
 当前最重要的下一证据是：在无 Provider 限流/协议错误的固定运行上，对三个已可执行 Query arms
-得到有效外部质量分并建立 release gate；随后再用外置 Hook 观察真实宿主环境中的分支、上下文、调用和延迟。
+取得有效外部质量分，让既有 release gate 选出默认 arm；随后再用外置 Hook 观察真实宿主环境中的
+分支、上下文、调用和延迟。
 
 ## 关联
 

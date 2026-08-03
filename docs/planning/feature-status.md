@@ -53,13 +53,15 @@
 | F183 | clean Instance MSQL-only 物化、12 题 Blind Query Agent、严格公私报告与目录级原子发布 |
 | F184 | evaluator-only ground truth、真实 SQL Row context、隔离 Ragas adapter 与公开质量报告 |
 | F185a | 三个可执行 Query Bootstrap arm；公开标签与实际 Profile、Frame、MSQL transcript 一致 |
+| F185b | 三 arm 同身份 release gate、固定质量/覆盖阈值与 context/token 优先选择；真实报告为 INCOMPLETE |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
 ## 当前执行
 
-- F185b：消费同一冻结身份下的 F183/F184 arm 矩阵，冻结有效样本和质量阈值，形成 Query Agent
-  release gate；失败或不可评分时继续保持 `memora ask` 延后。
+- F185b 实现已完成，但真实 Kimi 三 arm 共 36 题均因 33 次 HTTP 429 与 3 次 wire failure 不可评分；
+  release report 为 `INCOMPLETE`、无默认 arm。F186 尚未满足开工条件，`memora ask` 继续延后；
+  当前需要的是可成功返回的同身份 Provider 矩阵，不是绕过 gate 增加产品代码。
 
 ## 例外与非当前路径
 
@@ -95,7 +97,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F185b–F186：Query release gate 与后续 QuerySession；F185a 的三个真实执行 arms 已完成；
+- F186：交互 QuerySession；F185b 机械能力已完成，但真实 release decision 为 INCOMPLETE，暂不进入；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent

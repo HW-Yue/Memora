@@ -32,9 +32,9 @@ Codex、Claude Code 等外置 Agent 不作为统一静态基准，只通过 Hook
 1. 中立 MSQL 协议、共享执行服务、依赖守卫和 Bootstrap Frame 已完成；
 2. Provider port、run/session/turn/trace 与真实 Kimi OpenAI-compatible adapter 已完成；
 3. 只读 Query Agent、冻结 corpus、clean Instance runner 和隔离 Ragas 外部评分已完成；
-4. 下一步先让固定检索 arms 真实改变执行链，再以成功 Provider 运行建立 F185b release gate，
-   不把标签变化或 0 样本报告冒充质量通过；
-5. release gate 通过后开放交互 QuerySession，随后验证单网页写入和整本 EPUB；
+4. 固定检索 arms 与 F185b release gate 已实现；当前真实 Provider 矩阵为 INCOMPLETE，须先取得
+   可评分结果，不把 0 样本报告冒充质量通过；
+5. release gate 通过后才开放交互 QuerySession，随后验证单网页写入和整本 EPUB；
 6. 外置 Hook 和写入时机评测放在主垂直链证据之后；Trace 先输出开发用报告，不扩展 Admin。
 
 API Key 只进入操作系统密钥存储或进程环境，不进入 Database、日志、报告或导出。评测 Agent

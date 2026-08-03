@@ -45,7 +45,7 @@
 - [F183：端到端 Answer Runner](./planning/f183-end-to-end-answer-runner.md) — clean Instance 的 MSQL-only 物化、Blind Query Agent 与公私报告分离。
 - [F184：外部答案质量评测](./planning/f184-external-answer-evaluation.md) — 已完成的 evaluator-only ground truth、真实 SQL Row context、隔离 Ragas v0.4.3 adapter 与公开质量报告。
 - [F185a：可执行 Query Bootstrap Arms](./planning/f185a-executable-query-arms.md) — 已完成的 Atlas、Lexical 与 Prefetch 真实执行对照，公开 arm 与 Frame/MSQL transcript 一致。
-- [F185b：Query Agent Release Gate](./planning/f185b-query-release-gate.md) — 三 arm 同身份质量矩阵、完整性门、固定阈值与 context/token 优先选择策略。
+- [F185b：Query Agent Release Gate](./planning/f185b-query-release-gate.md) — 已完成的三 arm 同身份质量门；当前真实 Kimi release report 为 INCOMPLETE，未选默认 arm。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
