@@ -180,6 +180,39 @@ func TestCatalogRejectsInvalidAndDuplicateColumnsAtomically(t *testing.T) {
 	assertCode(t, err, catalog.CodeNotFound)
 }
 
+func TestCatalogPersistsFactAndRationaleSemanticRoles(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer databaseStore.Close()
+	service := catalog.New(databaseStore, catalog.Options{
+		IDs: &idSource{values: []string{"database", "table", "decision", "rationale"}},
+	})
+	if _, err := service.CreateDatabase(ctx, catalog.DatabaseDefinition{
+		Name: "work", Purpose: "Project knowledge", Scope: "Active projects",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	table, err := service.CreateTable(ctx, "work", catalog.TableDefinition{
+		Name: "decisions", Purpose: "Decisions", RowSemantics: "One current decision",
+		Columns: []catalog.ColumnDefinition{
+			{Name: "decision", Type: "TEXT", Purpose: "Accepted fact", SemanticRole: "FACT"},
+			{Name: "rationale", Type: "TEXT", Purpose: "Supporting reason", SemanticRole: "Rationale"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(table.Columns) != 2 || table.Columns[0].SemanticRole != "fact" ||
+		table.Columns[1].SemanticRole != "rationale" {
+		t.Fatalf("semantic roles = %#v", table.Columns)
+	}
+}
+
 func TestCatalogReadsF13aTablesWithoutColumnField(t *testing.T) {
 	t.Parallel()
 
