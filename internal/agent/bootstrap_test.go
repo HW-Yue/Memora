@@ -403,6 +403,13 @@ func TestBootstrapValidatesRequestAndPropagatesCancellationWithoutRetry(t *testi
 	if !errors.Is(err, agent.ErrInvalidBootstrapRequest) || len(fake.Calls()) != 0 {
 		t.Fatalf("invalid request error = %v, calls = %d", err, len(fake.Calls()))
 	}
+	_, err = assembler.Assemble(context.Background(), agent.BootstrapRequest{
+		Query: "unknown profile", Authorization: authorization, Budget: budget,
+		Profile: agent.BootstrapProfile("unknown-v1"),
+	})
+	if !errors.Is(err, agent.ErrInvalidBootstrapRequest) || len(fake.Calls()) != 0 {
+		t.Fatalf("unknown profile error = %v, calls = %d", err, len(fake.Calls()))
+	}
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()

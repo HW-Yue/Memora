@@ -439,6 +439,15 @@ func TestQueryAgentValidatesDependenciesAndRequestBeforeExternalCalls(t *testing
 	if !errors.Is(err, agent.ErrInvalidQueryRequest) || len(msql.Calls()) != 0 || len(provider.requests) != 0 {
 		t.Fatalf("Query() error=%v calls=%d/%d", err, len(msql.Calls()), len(provider.requests))
 	}
+	request := queryRequest(
+		"run-invalid-profile", "session-invalid-profile", "question",
+		queryAuthorization(protocolmsql.LevelRead), queryBootstrapBudget(), agent.DefaultQueryBudget(),
+	)
+	request.BootstrapProfile = agent.BootstrapProfile("unknown-v1")
+	_, err = queryAgent.Query(context.Background(), request)
+	if !errors.Is(err, agent.ErrInvalidQueryRequest) || len(msql.Calls()) != 0 || len(provider.requests) != 0 {
+		t.Fatalf("unknown profile error=%v calls=%d/%d", err, len(msql.Calls()), len(provider.requests))
+	}
 }
 
 func queryOneToolFailure(

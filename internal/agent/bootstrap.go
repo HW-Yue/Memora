@@ -132,6 +132,7 @@ func (assembler *BootstrapAssembler) Assemble(
 	if err := validateBootstrapRequest(ctx, request); err != nil {
 		return BootstrapFrame{}, err
 	}
+	request.Profile, _ = ResolveBootstrapProfile(request.Profile)
 	initialRequest := makeInitialBootstrapRequest(request)
 	if err := initialRequest.Validate(); err != nil {
 		return BootstrapFrame{}, fmt.Errorf("%w: %v", ErrInvalidBootstrapRequest, err)
@@ -140,29 +141,37 @@ func (assembler *BootstrapAssembler) Assemble(
 	if err != nil {
 		return BootstrapFrame{}, err
 	}
-	if len(initial.Results) != 2 {
+	expectedResults := 1
+	if request.Profile.usesLexical() {
+		expectedResults = 2
+	}
+	if len(initial.Results) != expectedResults {
 		return BootstrapFrame{}, fmt.Errorf("%w: initial request returned %d statements", ErrInvalidBootstrapResult, len(initial.Results))
 	}
 	atlas, err := requiredPage(initial.Results[0], "Catalog Atlas")
 	if err != nil {
 		return BootstrapFrame{}, err
 	}
-	lexical, err := requiredPage(initial.Results[1], "lexical locations")
-	if err != nil {
-		return BootstrapFrame{}, err
-	}
 	frame := BootstrapFrame{
-		Version: BootstrapFrameVersion, Usage: BootstrapUsageNavigation,
+		Version: BootstrapFrameVersion, Usage: BootstrapUsageNavigation, Profile: request.Profile,
 		Catalog: CatalogBootstrap{
 			Entries: cloneProtocolRows(initial.Results[0].Rows), Snapshot: atlas.Snapshot, Pages: 1,
 			Complete: !atlas.Truncated, NextCursor: atlas.NextCursor,
 		},
-		Lexical: LexicalBootstrap{
+		Lexical:   LexicalBootstrap{Locations: []protocolmsql.Row{}},
+		Roots:     []RootPrefetch{},
+		Truncated: atlas.Truncated,
+	}
+	if request.Profile.usesLexical() {
+		lexical, lexicalErr := requiredPage(initial.Results[1], "lexical locations")
+		if lexicalErr != nil {
+			return BootstrapFrame{}, lexicalErr
+		}
+		frame.Lexical = LexicalBootstrap{
 			Locations: cloneProtocolRows(initial.Results[1].Rows), Snapshot: lexical.Snapshot,
 			Truncated: lexical.Truncated, NextCursor: lexical.NextCursor,
-		},
-		Roots:     []RootPrefetch{},
-		Truncated: atlas.Truncated || lexical.Truncated,
+		}
+		frame.Truncated = frame.Truncated || lexical.Truncated
 	}
 	if err := fitFrame(&frame, request.Budget.FrameUTF8Bytes); err != nil {
 		return BootstrapFrame{}, err
@@ -170,8 +179,10 @@ func (assembler *BootstrapAssembler) Assemble(
 	if err := assembler.continueAtlas(ctx, request, &frame); err != nil {
 		return BootstrapFrame{}, err
 	}
-	if err := assembler.prefetchRoots(ctx, request, &frame); err != nil {
-		return BootstrapFrame{}, err
+	if request.Profile.usesPrefetch() {
+		if err := assembler.prefetchRoots(ctx, request, &frame); err != nil {
+			return BootstrapFrame{}, err
+		}
 	}
 	if err := fitFrame(&frame, request.Budget.FrameUTF8Bytes); err != nil {
 		return BootstrapFrame{}, err
@@ -181,6 +192,9 @@ func (assembler *BootstrapAssembler) Assemble(
 
 func validateBootstrapRequest(ctx context.Context, request BootstrapRequest) error {
 	if ctx == nil || strings.TrimSpace(request.Query) == "" || utf8.RuneCountInString(request.Query) > 256 {
+		return ErrInvalidBootstrapRequest
+	}
+	if _, valid := ResolveBootstrapProfile(request.Profile); !valid {
 		return ErrInvalidBootstrapRequest
 	}
 	budget := request.Budget
@@ -473,26 +487,27 @@ func boundedReason(value string) string {
 
 func makeInitialBootstrapRequest(request BootstrapRequest) protocolmsql.Request {
 	budget := request.Budget
-	return protocolmsql.Request{
+	value := protocolmsql.Request{
 		Version: protocolmsql.RequestVersion,
-		Source: "SHOW CATALOG ATLAS LIMIT :atlas_limit BYTES :atlas_bytes COMPACT; " +
-			"SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query LIMIT :location_limit BYTES :lexical_bytes",
-		Statements: []protocolmsql.StatementInput{
-			{
-				Parameters: protocolmsql.Parameters{Named: map[string]any{
-					"atlas_limit": int64(budget.AtlasEntryLimit), "atlas_bytes": int64(budget.AtlasUTF8Bytes),
-				}},
-				Authorization: request.Authorization,
-			},
-			{
-				Parameters: protocolmsql.Parameters{Named: map[string]any{
-					"query": request.Query, "location_limit": int64(budget.LexicalLocationLimit),
-					"lexical_bytes": int64(budget.LexicalUTF8Bytes),
-				}},
-				Authorization: request.Authorization,
-			},
-		},
+		Source:  "SHOW CATALOG ATLAS LIMIT :atlas_limit BYTES :atlas_bytes COMPACT",
+		Statements: []protocolmsql.StatementInput{{
+			Parameters: protocolmsql.Parameters{Named: map[string]any{
+				"atlas_limit": int64(budget.AtlasEntryLimit), "atlas_bytes": int64(budget.AtlasUTF8Bytes),
+			}},
+			Authorization: request.Authorization,
+		}},
 	}
+	if request.Profile.usesLexical() {
+		value.Source += "; SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query LIMIT :location_limit BYTES :lexical_bytes"
+		value.Statements = append(value.Statements, protocolmsql.StatementInput{
+			Parameters: protocolmsql.Parameters{Named: map[string]any{
+				"query": request.Query, "location_limit": int64(budget.LexicalLocationLimit),
+				"lexical_bytes": int64(budget.LexicalUTF8Bytes),
+			}},
+			Authorization: request.Authorization,
+		})
+	}
+	return value
 }
 
 func makeAtlasContinuationRequest(cursor string, request BootstrapRequest) protocolmsql.Request {

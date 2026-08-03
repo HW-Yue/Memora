@@ -140,9 +140,10 @@ func (agent *QueryAgent) Query(ctx context.Context, request QueryRequest) (Query
 	if err != nil {
 		return result, err
 	}
+	profile, _ := ResolveBootstrapProfile(request.BootstrapProfile)
 	bootstrapInput := BootstrapRequest{
 		Query: request.Question, Authorization: readOnly, Budget: request.BootstrapBudget,
-		Profile: request.BootstrapProfile,
+		Profile: profile,
 	}
 	bootstrapStarted := queryNow(agent.clock)
 	frame, bootstrapErr := assembler.Assemble(ctx, bootstrapInput)
@@ -282,6 +283,9 @@ func validateQueryRequest(request QueryRequest) error {
 	if strings.TrimSpace(request.Question) == "" || !utf8.ValidString(request.Question) ||
 		utf8.RuneCountInString(request.Question) > 256 || invalidProviderText(request.Model, 200, true) ||
 		!validQueryBudget(request.Budget) {
+		return ErrInvalidQueryRequest
+	}
+	if _, valid := ResolveBootstrapProfile(request.BootstrapProfile); !valid {
 		return ErrInvalidQueryRequest
 	}
 	authorizationProbe := protocolmsql.Request{

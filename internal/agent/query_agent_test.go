@@ -386,6 +386,7 @@ func expectedBootstrapFrame(
 	t.Helper()
 	frame := agent.BootstrapFrame{
 		Version: agent.BootstrapFrameVersion, Usage: agent.BootstrapUsageNavigation,
+		Profile: agent.DefaultBootstrapProfile(),
 		Catalog: agent.CatalogBootstrap{
 			Entries: atlasRows, Snapshot: "atlas-1", Pages: 1, Complete: true,
 		},
