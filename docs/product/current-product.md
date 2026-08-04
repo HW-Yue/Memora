@@ -37,7 +37,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - MSQL-only 只读 Query Agent、12 题冻结 corpus、clean Instance answer runner，以及把实际 SQL Row
   映射给隔离 Ragas v0.4.3 evaluator 的外部质量报告链路；
 - Host Input capture 与显式 worthiness decision receipt；
-- 文档/仓库资料的临时吸收、覆盖清单、独立复核和 Source Receipt。
+- 文档/仓库资料的临时吸收、EPUB 结构解析、覆盖调度、独立复核、正式 MSQL 短事务和包含实际
+  Row/Relation ID、revision、commit sequence 的 Source Receipt；
 
 ## 已实现的存储底座
 
@@ -58,8 +59,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
   面向用户的正式 `memora ask` 发布承诺和默认 arm 选择仍然延后；
 - “何时值得写入”的质量评测后置；查询、Route 和事实读取的真实大批量质量复跑同样延期，
   现有 runner/gate 保留供后续恢复；
-- 全内容倒排位置、统一 MSQL Service、标准评测 host 和 release gate 已完成；下一步先把现有
-  Query loop 提升为实验性交互 QuerySession，再进入短网页写入；
+- 全内容倒排位置、统一 MSQL Service、QuerySession、短网页写入和 EPUB 吸收的 F189–F199
+  组件已完成；下一步只跑一条冻结 EPUB 干净全链路，不恢复批量模型评分；
 - Query Workspace 的跨会话恢复、跨 session topic 身份仍未冻结；
 - Compaction、Secondary Index、Advanced MVCC、Replication、PITR、多设备同步、
   Apple Accelerate 与 HNSW 均未达到证据门，当前不实现。
@@ -67,8 +68,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 ## 当前真实性边界
 
 代码和机械测试已经形成完整数据库原型；这不等同于真实长期 AI 使用质量已经达标。
-真实 Query 质量证据仍缺失，但当前产品顺序已调整为先开发实验性 QuerySession，再进入单网页和
-整本资料吸收垂直链。后续仍需在无 Provider 限流/协议错误的固定运行上补齐三 arm 外部质量分，
+真实 Query 质量证据仍缺失，但单网页与整本资料吸收所需的独立组件已具备。后续仍需在无 Provider
+限流/协议错误的固定运行上补齐三 arm 外部质量分，
 让既有 release gate 选出默认 arm；外置 Hook 再观察真实宿主环境中的分支、上下文、调用和延迟。
 
 ## 关联

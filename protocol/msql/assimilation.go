@@ -12,6 +12,7 @@ const (
 	AssimilationProposalVersion = "memora.assimilation-proposal/v1"
 	AssimilationPlanVersion     = "memora.assimilation-plan/v1"
 	AssimilationReceiptVersion  = "memora.assimilation-receipt/v1"
+	AssimilationEvidenceVersion = "memora.assimilation-evidence/v1"
 	AssimilationPlanReview      = "review_required"
 	AssimilationSubmitAction    = "SUBMIT_ASSIMILATION"
 	AssimilationCommitted       = "committed"
@@ -38,7 +39,18 @@ type AssimilationProposal struct {
 	CoverageRevision uint64                  `json:"coverage_revision"`
 	CoveredNodes     uint64                  `json:"covered_nodes"`
 	TotalNodes       uint64                  `json:"total_nodes"`
+	Evidence         *AssimilationEvidence   `json:"evidence,omitempty"`
 	Statements       []AssimilationStatement `json:"statements"`
+}
+
+type AssimilationEvidence struct {
+	Version               string   `json:"version"`
+	Author                string   `json:"author"`
+	Reviewers             []string `json:"reviewers"`
+	ReviewArtifactSHA256s []string `json:"review_artifact_sha256s"`
+	CoverageRevision      uint64   `json:"coverage_revision"`
+	CoveredNodes          uint64   `json:"covered_nodes"`
+	TotalNodes            uint64   `json:"total_nodes"`
 }
 
 type AssimilationPlan struct {
@@ -50,11 +62,12 @@ type AssimilationPlan struct {
 }
 
 type AssimilationStatementReceipt struct {
-	Index          int     `json:"index"`
-	Kind           string  `json:"kind"`
-	AffectedRows   uint64  `json:"affected_rows"`
-	Revision       *uint64 `json:"revision,omitempty"`
-	CommitSequence *uint64 `json:"commit_sequence,omitempty"`
+	Index          int      `json:"index"`
+	Kind           string   `json:"kind"`
+	AffectedRows   uint64   `json:"affected_rows"`
+	ObjectIDs      []string `json:"object_ids,omitempty"`
+	Revision       *uint64  `json:"revision,omitempty"`
+	CommitSequence *uint64  `json:"commit_sequence,omitempty"`
 }
 
 type AssimilationReceipt struct {
@@ -66,6 +79,7 @@ type AssimilationReceipt struct {
 	SourceID       string                         `json:"source_id"`
 	SourceSHA256   string                         `json:"source_sha256"`
 	DocumentSHA256 string                         `json:"document_sha256"`
+	Evidence       *AssimilationEvidence          `json:"evidence,omitempty"`
 	Status         string                         `json:"status"`
 	Replayed       bool                           `json:"replayed"`
 	Statements     []AssimilationStatementReceipt `json:"statements"`
@@ -89,6 +103,14 @@ func (receipt AssimilationReceipt) Validate() error {
 		if statement.Index != index || !validAssimilationText(statement.Kind, 80) || statement.AffectedRows == 0 {
 			return ErrInvalidEnvelope
 		}
+		if statement.ObjectIDs != nil {
+			if uint64(len(statement.ObjectIDs)) != statement.AffectedRows || !validAssimilationObjectIDs(statement.ObjectIDs) {
+				return ErrInvalidEnvelope
+			}
+		}
+	}
+	if receipt.Evidence != nil && receipt.Evidence.Validate() != nil {
+		return ErrInvalidEnvelope
 	}
 	return nil
 }
@@ -121,6 +143,13 @@ func (proposal AssimilationProposal) Validate() error {
 		proposal.CoverageRevision == 0 || proposal.TotalNodes == 0 ||
 		proposal.CoveredNodes != proposal.TotalNodes ||
 		len(proposal.Statements) == 0 || len(proposal.Statements) > MaxAssimilationStatements {
+		return ErrInvalidRequest
+	}
+	if proposal.Evidence != nil && (proposal.Evidence.Validate() != nil ||
+		proposal.Evidence.Author != proposal.Author ||
+		proposal.Evidence.CoverageRevision != proposal.CoverageRevision ||
+		proposal.Evidence.CoveredNodes != proposal.CoveredNodes ||
+		proposal.Evidence.TotalNodes != proposal.TotalNodes) {
 		return ErrInvalidRequest
 	}
 	for _, statement := range proposal.Statements {
@@ -160,6 +189,7 @@ func cloneAssimilationPlan(plan AssimilationPlan) AssimilationPlan {
 }
 
 func cloneAssimilationProposal(proposal AssimilationProposal) AssimilationProposal {
+	proposal.Evidence = cloneAssimilationEvidence(proposal.Evidence)
 	proposal.Statements = append([]AssimilationStatement(nil), proposal.Statements...)
 	for index := range proposal.Statements {
 		proposal.Statements[index].Parameters.Named = cloneAssimilationValues(proposal.Statements[index].Parameters.Named)
@@ -173,6 +203,53 @@ func cloneAssimilationProposal(proposal AssimilationProposal) AssimilationPropos
 		proposal.Statements[index].Mutation = mutation
 	}
 	return proposal
+}
+
+func (evidence AssimilationEvidence) Validate() error {
+	if evidence.Version != AssimilationEvidenceVersion ||
+		!validAssimilationText(evidence.Author, 160) || evidence.Reviewers == nil ||
+		len(evidence.Reviewers) == 0 || len(evidence.Reviewers) > MaxAssimilationStatements ||
+		len(evidence.ReviewArtifactSHA256s) != len(evidence.Reviewers) ||
+		evidence.CoverageRevision == 0 || evidence.TotalNodes == 0 ||
+		evidence.CoveredNodes != evidence.TotalNodes {
+		return ErrInvalidRequest
+	}
+	seenArtifacts := make(map[string]struct{}, len(evidence.ReviewArtifactSHA256s))
+	for index, reviewer := range evidence.Reviewers {
+		artifact := evidence.ReviewArtifactSHA256s[index]
+		if !validAssimilationText(reviewer, 160) || !validAssimilationSHA256(artifact) {
+			return ErrInvalidRequest
+		}
+		if _, duplicate := seenArtifacts[artifact]; duplicate {
+			return ErrInvalidRequest
+		}
+		seenArtifacts[artifact] = struct{}{}
+	}
+	return nil
+}
+
+func cloneAssimilationEvidence(evidence *AssimilationEvidence) *AssimilationEvidence {
+	if evidence == nil {
+		return nil
+	}
+	cloned := *evidence
+	cloned.Reviewers = append([]string(nil), evidence.Reviewers...)
+	cloned.ReviewArtifactSHA256s = append([]string(nil), evidence.ReviewArtifactSHA256s...)
+	return &cloned
+}
+
+func validAssimilationObjectIDs(values []string) bool {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if !validAssimilationText(value, 200) {
+			return false
+		}
+		if _, duplicate := seen[value]; duplicate {
+			return false
+		}
+		seen[value] = struct{}{}
+	}
+	return true
 }
 
 func assimilationPlanDigest(plan AssimilationPlan) (string, error) {

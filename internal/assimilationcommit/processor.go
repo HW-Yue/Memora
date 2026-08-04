@@ -46,13 +46,14 @@ const (
 )
 
 type record struct {
-	PlanSHA256     string                            `json:"plan_sha256"`
-	Database       string                            `json:"database"`
-	SourceID       string                            `json:"source_id"`
-	SourceSHA256   string                            `json:"source_sha256"`
-	DocumentSHA256 string                            `json:"document_sha256"`
-	Status         recordStatus                      `json:"status"`
-	Receipt        *protocolmsql.AssimilationReceipt `json:"receipt,omitempty"`
+	PlanSHA256     string                             `json:"plan_sha256"`
+	Database       string                             `json:"database"`
+	SourceID       string                             `json:"source_id"`
+	SourceSHA256   string                             `json:"source_sha256"`
+	DocumentSHA256 string                             `json:"document_sha256"`
+	Evidence       *protocolmsql.AssimilationEvidence `json:"evidence,omitempty"`
+	Status         recordStatus                       `json:"status"`
+	Receipt        *protocolmsql.AssimilationReceipt  `json:"receipt,omitempty"`
 }
 
 type Error struct {
@@ -163,6 +164,7 @@ func (processor *Processor) AssimilationReceipt(
 			PlanID: receiptID, PlanSHA256: current.PlanSHA256, Database: current.Database,
 			SourceID: current.SourceID, SourceSHA256: current.SourceSHA256,
 			DocumentSHA256: current.DocumentSHA256,
+			Evidence:       cloneAssimilationEvidence(current.Evidence),
 			Status:         protocolmsql.AssimilationInDoubt, Statements: []protocolmsql.AssimilationStatementReceipt{},
 		}, nil
 	}
@@ -216,12 +218,19 @@ func committedReceipt(
 	}
 	receipt := receiptBase(plan, protocolmsql.AssimilationCommitted)
 	for index, statement := range envelope.Results[1 : len(envelope.Results)-1] {
-		if statement.Status != protocolmsql.Status(result.StatusSucceeded) || statement.AffectedRows == 0 {
+		if statement.Status != protocolmsql.Status(result.StatusSucceeded) || statement.AffectedRows == 0 ||
+			statement.Revision == nil || *statement.Revision == 0 ||
+			statement.CommitSequence == nil || *statement.CommitSequence == 0 {
 			return protocolmsql.AssimilationReceipt{}, commitError(result.CodeInternal, "transaction statement result is invalid")
+		}
+		objectIDs, err := assimilationStatementObjectIDs(statement)
+		if err != nil {
+			return protocolmsql.AssimilationReceipt{}, err
 		}
 		receipt.Statements = append(receipt.Statements, protocolmsql.AssimilationStatementReceipt{
 			Index: index, Kind: statement.Statement, AffectedRows: statement.AffectedRows,
-			Revision: cloneUint64(statement.Revision), CommitSequence: cloneUint64(statement.CommitSequence),
+			ObjectIDs: objectIDs,
+			Revision:  cloneUint64(statement.Revision), CommitSequence: cloneUint64(statement.CommitSequence),
 		})
 	}
 	if receipt.Validate() != nil {
@@ -236,8 +245,45 @@ func receiptBase(plan protocolmsql.AssimilationPlan, status string) protocolmsql
 		PlanID: plan.PlanID, PlanSHA256: plan.SHA256, Database: plan.Proposal.Database,
 		SourceID: plan.Proposal.SourceID, SourceSHA256: plan.Proposal.SourceSHA256,
 		DocumentSHA256: plan.Proposal.DocumentSHA256, Status: status,
+		Evidence:   cloneAssimilationEvidence(plan.Proposal.Evidence),
 		Statements: []protocolmsql.AssimilationStatementReceipt{},
 	}
+}
+
+func assimilationStatementObjectIDs(statement protocolmsql.StatementResult) ([]string, error) {
+	key := "row_id"
+	if statement.Statement == "RELATE" || statement.Statement == "UNRELATE" {
+		key = "relation_id"
+	}
+	if uint64(len(statement.Rows)) != statement.AffectedRows {
+		return nil, commitError(result.CodeInternal, "transaction statement object inventory is incomplete")
+	}
+	objectIDs := make([]string, len(statement.Rows))
+	seen := make(map[string]struct{}, len(statement.Rows))
+	for index, row := range statement.Rows {
+		objectID, ok := row[key].(string)
+		if !ok || strings.TrimSpace(objectID) == "" || len(objectID) > 200 {
+			return nil, commitError(result.CodeInternal, "transaction statement object inventory is invalid")
+		}
+		if _, duplicate := seen[objectID]; duplicate {
+			return nil, commitError(result.CodeInternal, "transaction statement object inventory contains duplicates")
+		}
+		seen[objectID] = struct{}{}
+		objectIDs[index] = objectID
+	}
+	return objectIDs, nil
+}
+
+func cloneAssimilationEvidence(
+	evidence *protocolmsql.AssimilationEvidence,
+) *protocolmsql.AssimilationEvidence {
+	if evidence == nil {
+		return nil
+	}
+	cloned := *evidence
+	cloned.Reviewers = append([]string(nil), evidence.Reviewers...)
+	cloned.ReviewArtifactSHA256s = append([]string(nil), evidence.ReviewArtifactSHA256s...)
+	return &cloned
 }
 
 func inDoubtReceipt(plan protocolmsql.AssimilationPlan) protocolmsql.AssimilationReceipt {
@@ -273,7 +319,8 @@ func (processor *Processor) lookup(
 			Version: protocolmsql.AssimilationReceiptVersion, ReceiptID: id, PlanID: id,
 			PlanSHA256: digest, Database: current.Database, SourceID: current.SourceID,
 			SourceSHA256: current.SourceSHA256, DocumentSHA256: current.DocumentSHA256,
-			Status: protocolmsql.AssimilationInDoubt, Statements: []protocolmsql.AssimilationStatementReceipt{},
+			Evidence: cloneAssimilationEvidence(current.Evidence),
+			Status:   protocolmsql.AssimilationInDoubt, Statements: []protocolmsql.AssimilationStatementReceipt{},
 		}, true, nil
 	}
 	return *current.Receipt, true, nil
@@ -284,6 +331,7 @@ func (processor *Processor) reserve(ctx context.Context, plan protocolmsql.Assim
 		PlanSHA256: plan.SHA256, Database: plan.Proposal.Database,
 		SourceID: plan.Proposal.SourceID, SourceSHA256: plan.Proposal.SourceSHA256,
 		DocumentSHA256: plan.Proposal.DocumentSHA256, Status: recordProcessing,
+		Evidence: cloneAssimilationEvidence(plan.Proposal.Evidence),
 	}
 	encoded, _ := json.Marshal(current)
 	tx, err := processor.store.Begin(ctx, store.ReadWrite)
@@ -341,6 +389,7 @@ func (processor *Processor) complete(
 		PlanSHA256: plan.SHA256, Database: plan.Proposal.Database,
 		SourceID: plan.Proposal.SourceID, SourceSHA256: plan.Proposal.SourceSHA256,
 		DocumentSHA256: plan.Proposal.DocumentSHA256,
+		Evidence:       cloneAssimilationEvidence(plan.Proposal.Evidence),
 		Status:         recordCompleted, Receipt: &receipt,
 	}
 	recordBytes, _ := json.Marshal(current)

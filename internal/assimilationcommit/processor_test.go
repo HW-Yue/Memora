@@ -99,7 +99,8 @@ func TestProcessorMarksTransportUncertaintyInDoubtWithoutBlindReplay(t *testing.
 	}))
 	plan := sealedCommitPlan(t, "uncertain semantic body")
 	first, err := processor.SubmitAssimilation(ctx, plan)
-	if err != nil || first.Status != protocolmsql.AssimilationInDoubt || first.Replayed {
+	if err != nil || first.Status != protocolmsql.AssimilationInDoubt || first.Replayed ||
+		first.Evidence == nil || first.Evidence.ReviewArtifactSHA256s[0] != commitSHA("d") {
 		t.Fatalf("first = %#v, %v", first, err)
 	}
 	second, err := processor.SubmitAssimilation(ctx, plan)

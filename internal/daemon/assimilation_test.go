@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -48,6 +49,11 @@ func TestFormalAssimilationMSQLSurfaceCommitsThroughSharedServiceWithoutLegacyCo
 		Database: "work", Author: "agent:author", SourceID: "book-1",
 		SourceLocator: "library/book.epub", SourceSHA256: daemonDigest("a"),
 		DocumentSHA256: daemonDigest("b"), CoverageRevision: 7, CoveredNodes: 12, TotalNodes: 12,
+		Evidence: &protocolmsql.AssimilationEvidence{
+			Version: protocolmsql.AssimilationEvidenceVersion, Author: "agent:author",
+			Reviewers: []string{"agent:reviewer"}, ReviewArtifactSHA256s: []string{daemonDigest("c")},
+			CoverageRevision: 7, CoveredNodes: 12, TotalNodes: 12,
+		},
 		Statements: []protocolmsql.AssimilationStatement{{
 			MSQL:       "INSERT INTO work.notes (title) VALUES (:title)",
 			Parameters: protocolmsql.Parameters{Named: map[string]any{"title": "A complete semantic module"}},
@@ -100,6 +106,12 @@ func TestFormalAssimilationMSQLSurfaceCommitsThroughSharedServiceWithoutLegacyCo
 	if err != nil || len(stored) != 1 || stored[0].Values["title"] != "A complete semantic module" {
 		t.Fatalf("stored rows = %#v, %v", stored, err)
 	}
+	submitReceipt, ok := submitted.Results[0].Rows[0]["assimilation_receipt"].(protocolmsql.AssimilationReceipt)
+	if !ok || submitReceipt.Evidence == nil || len(submitReceipt.Statements) != 1 ||
+		len(submitReceipt.Statements[0].ObjectIDs) != 1 || submitReceipt.Statements[0].ObjectIDs[0] != stored[0].ID ||
+		submitReceipt.Statements[0].Revision == nil || submitReceipt.Statements[0].CommitSequence == nil {
+		t.Fatalf("submit source receipt = %#v", submitted.Results[0].Rows[0]["assimilation_receipt"])
+	}
 	shown, err := session.ExecuteMSQL(ctx, protocolmsql.Request{
 		Version: protocolmsql.RequestVersion,
 		Source:  "SHOW ASSIMILATION RECEIPT :receipt IN DATABASE work",
@@ -110,6 +122,10 @@ func TestFormalAssimilationMSQLSurfaceCommitsThroughSharedServiceWithoutLegacyCo
 	})
 	if err != nil || !shown.OK || shown.Results[0].Rows[0]["status"] != protocolmsql.AssimilationCommitted {
 		t.Fatalf("shown receipt = %#v, %v", shown, err)
+	}
+	showReceipt, ok := shown.Results[0].Rows[0]["assimilation_receipt"].(protocolmsql.AssimilationReceipt)
+	if !ok || !reflect.DeepEqual(submitReceipt, showReceipt) {
+		t.Fatalf("receipt reconciliation = %#v / %#v", submitReceipt, showReceipt)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/agent"
@@ -131,6 +132,41 @@ func TestAssimilationReconcilerRejectsIncompleteCoverageOrReviewBeforeMSQL(t *te
 	}
 }
 
+func TestAssimilationReconcilerCoalescesConcurrentSubmission(t *testing.T) {
+	input, plan, receipt := reconciliationFixture(t)
+	msql := &concurrentReconciliationMSQL{plan: plan, receipt: receipt}
+	reconciler := newAssimilationReconciler(t, msql)
+	prepared, err := reconciler.Prepare(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval := agent.AssimilationPlanApproval{
+		Version: agent.AssimilationPlanApprovalVersion, PlanSHA256: prepared.SHA256,
+		ApprovedBy: "user:yy", Confirmed: true,
+	}
+	const callers = 16
+	var wait sync.WaitGroup
+	errorsFound := make(chan error, callers)
+	for range callers {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			resolved, submitErr := reconciler.SubmitApproved(context.Background(), prepared, approval)
+			if submitErr != nil || resolved.Status != protocolmsql.AssimilationCommitted {
+				errorsFound <- errors.Join(submitErr, errors.New("receipt was not committed"))
+			}
+		}()
+	}
+	wait.Wait()
+	close(errorsFound)
+	for submitErr := range errorsFound {
+		t.Fatalf("concurrent SubmitApproved() = %v", submitErr)
+	}
+	if submits := msql.SubmitCalls(); submits != 1 {
+		t.Fatalf("submit calls = %d", submits)
+	}
+}
+
 func reconciliationFixture(
 	t *testing.T,
 ) (agent.AssimilationReconciliationRequest, protocolmsql.AssimilationPlan, protocolmsql.AssimilationReceipt) {
@@ -232,4 +268,36 @@ func cloneTestAssimilationEvidence(value *protocolmsql.AssimilationEvidence) *pr
 	cloned.Reviewers = append([]string(nil), value.Reviewers...)
 	cloned.ReviewArtifactSHA256s = append([]string(nil), value.ReviewArtifactSHA256s...)
 	return &cloned
+}
+
+type concurrentReconciliationMSQL struct {
+	mu      sync.Mutex
+	plan    protocolmsql.AssimilationPlan
+	receipt protocolmsql.AssimilationReceipt
+	submits int
+}
+
+func (executor *concurrentReconciliationMSQL) ExecuteMSQL(
+	_ context.Context,
+	request protocolmsql.Request,
+) (protocolmsql.Envelope, error) {
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	switch {
+	case strings.HasPrefix(request.Source, "REVIEW ASSIMILATION"):
+		return reconciliationEnvelope("review", "REVIEW ASSIMILATION", "assimilation_plan", executor.plan), nil
+	case strings.HasPrefix(request.Source, "SUBMIT ASSIMILATION"):
+		executor.submits++
+		return reconciliationEnvelope("submit", "SUBMIT ASSIMILATION", "assimilation_receipt", executor.receipt), nil
+	case strings.HasPrefix(request.Source, "SHOW ASSIMILATION"):
+		return reconciliationEnvelope("show", "SHOW ASSIMILATION RECEIPT", "assimilation_receipt", executor.receipt), nil
+	default:
+		return protocolmsql.Envelope{}, errors.New("unexpected MSQL request")
+	}
+}
+
+func (executor *concurrentReconciliationMSQL) SubmitCalls() int {
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	return executor.submits
 }

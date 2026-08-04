@@ -107,6 +107,10 @@ F198 对每个非空 claim batch 发起与 author 历史隔离的新 reviewer �
 真实 anchor 和数字 inventory，reviewer 再判断冲突与非机械原文复制；challenge-bound artifact
 只保存摘要和 checksum。合法拒绝同样持久化，同 input 重启或并发重放不会再次调用模型。
 
+F199 将完整 coverage、claim batch 与 accepted artifact 组装成 reviewed assimilation proposal。
+用户批准 plan digest 后，Runtime 仅通过正式 MSQL 提交，再用 SHOW 对账真实 Row/Relation ID、
+revision 和 commit sequence；不确定或重复提交只读收据，不会由 Agent 重放写请求。
+
 ## 一个 Runtime，多种能力配置
 
 不再要求 Query Agent 和 Mutation Agent 是两个不同宿主进程。一个 loop 根据请求获得能力配置：
@@ -154,7 +158,7 @@ memora config model ...      配置模型，密钥单独安全保存
 - 模型输出采用工具调用还是严格 JSON；
 - `ask` 最终返回人类回答、Context Pack，还是由调用方选择；
 - 同一 loop 是否处理资料吸收，还是使用独立任务类型。
-- F199 的 Source Receipt 对账编排，以及其后的完整链路产品入口。
+- F200 的冻结 EPUB 单链路验收，以及其后的完整链路产品入口。
 
 ## 关联
 

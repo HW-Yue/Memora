@@ -1,6 +1,6 @@
 # F199：短事务 Reconciliation 与 Source Receipt
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -56,6 +56,23 @@ RED 先锁定：coverage/review 完整门、Prepare/Submit/SHOW 三类精确 MSQ
 object ID 收据、提交响应与 SHOW 对拍、transport uncertainty 后只读恢复、同进程重试不再写、
 receipt reopen/replay/corruption、无正文持久字节、并发单 dispatch、Agent import guard、race、vet
 与全量 CI。
+
+## 完成证据
+
+- `AssimilationReconciler` 在任何 MSQL 前拒绝不完整 coverage、非连续 batch、漏项/拒绝/多余
+  review、claim digest 不符、跨 Job/Database/source 或 author 不一致；
+- Prepare、SubmitApproved 和 Reconcile 分别只生成冻结的 REVIEW、SUBMIT、SHOW MSQL，三者均通过
+  `MSQLExecutor`、Parser、Policy 与正式事务核心；approval 精确绑定 plan SHA-256；
+- reviewed evidence 随 plan 进入正式收据，包含 author、有序 reviewer/artifact digest 和 coverage
+  计数；旧 F195 无 evidence 收据保持 wire 可读，F199 则 fail closed；
+- F195 Processor 从真实 mutation 结果提取 `row_id/relation_id`，并持久化实际 object ID、revision、
+  commit sequence；真实 daemon INSERT 的收据 object ID 与回读 RowID 相同；
+- submit transport error 后立即只读 SHOW，能够解析已提交收据；同进程再次提交自动退化为 SHOW，
+  16 个并发调用只有一个 SUBMIT dispatch；
+- processing/in_doubt record 也保留 reviewed evidence；reopen/replay、corruption 和持久字节无 MSQL/
+  参数/正文证据继续通过；目标测试、race、vet、import guard 与全量 CI 全绿。
+
+完成门结论：PASS。下一项为 F200 冻结 EPUB 的单条干净全链路验收，不运行批量模型评分。
 
 ## 关联
 

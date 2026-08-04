@@ -1,6 +1,6 @@
 # 资料吸收 Agent Feature 序列
 
-状态：2026-08-05 当前序列；F198 已完成，下一项 F199。
+状态：2026-08-05 当前序列；F199 已完成，下一项 F200。
 
 ## 两条垂直链
 
@@ -69,7 +69,7 @@ Database，就必须等待 F195，不能临时导入旧 Assimilation Controller�
 | F196（已完成） | DeepSeek/Kimi 可替换的 draft/claim ledger | 每个 claim 绑定 source anchor、模型、prompt、输入 digest 与候选 MSQL |
 | F197（已完成） | 问题驱动的暂停与恢复 | 只暂停受影响分支；用户回答形成版本化 command；不丢 coverage |
 | F198（已完成） | 独立 review gate | reviewer 与 author 隔离；数字、anchor、冲突、未保存原文四项验证 |
-| F199 | 短事务 reconciliation 与 Source Receipt | in-doubt 不盲重放；实际 RowID/revision/commit sequence 可追溯 |
+| F199（已完成） | 短事务 reconciliation 与 Source Receipt | in-doubt 不盲重放；实际 RowID/revision/commit sequence 可追溯 |
 | F200 | 整本 EPUB 单链路验收 | 干净 snapshot 跑通吸收与固定查询，核对结果/成本/耗时结构；不做批量评分 |
 
 写入模型和查询模型分别固定。当前只要求一个冻结样本完整跑通；若后续恢复质量评测，隐藏答案

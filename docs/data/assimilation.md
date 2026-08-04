@@ -1,7 +1,8 @@
 # 资料吸收
 
-状态：产品方向已确认；F189–F198 已实现 Agent-owned 长任务、临时源、Document IR、EPUB、
-coverage、正式 MSQL 提交面、可恢复 claim ledger、局部问题暂停与独立复核。F35/F36 旧宿主协议仅保留兼容。
+状态：产品方向已确认；F189–F199 已实现 Agent-owned 长任务、临时源、Document IR、EPUB、
+coverage、正式 MSQL 提交面、可恢复 claim ledger、局部问题暂停、独立复核和提交对账。
+F35/F36 旧宿主协议仅保留兼容。
 
 ## 原则
 
@@ -41,6 +42,10 @@ Memora 不保存完整 PDF、Markdown、图片、音频或大文档。外部资�
 - 吸收时间和 Agent；
 - 影响的记录清单；
 - 覆盖和低置信度报告。
+
+F199 的正式收据已绑定 reviewed evidence，并按 statement 保存执行返回的实际 Row/Relation ID、
+revision 与 commit sequence。提交响应丢失时通过 `SHOW ASSIMILATION RECEIPT` 恢复；`in_doubt`
+不会触发自动写重放。
 
 不保存原文。Memora 也不能隐式删除用户磁盘上的源文件。
 
