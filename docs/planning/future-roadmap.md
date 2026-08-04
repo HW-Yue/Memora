@@ -4,6 +4,7 @@
 
 F169 之后的逐项依赖、候选编号和完成门见
 [F169 之后的开发序列](./post-f169-development-plan.md)。本文继续维护阶段目标，不重复展开 Feature。
+F204 之后的执行顺序见[后续开发计划](./post-f204-development-plan.md)，其中候选 F205–F211 均需独立 Review。
 
 ## 已完成的基础收口
 

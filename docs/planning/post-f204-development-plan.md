@@ -1,0 +1,62 @@
+# F204 之后的开发计划
+
+状态：2026-08-05 讨论稿；仅记录顺序和依赖，不构成批量实现授权。
+
+用户已决定暂缓大批量真实模型评测。因此后续先补产品链路的确定性缺口，再恢复低并发、可续跑的
+质量证据；不因为评测暂缓就伪造 Recall/MRR 或默认 arm。
+
+## P0：先解除长文档写入阻塞
+
+### 候选 F205：native 多 statement 原子事务
+
+当前 F200 只证明单 statement autocommit。长文档多 claim 需要 daemon/native backend 真正支持
+`BEGIN → 多条 MSQL → COMMIT/ROLLBACK`，并在 IPC、reopen、crash/fault injection、并发和
+reference model 下证明 all-or-nothing。没有这项之前，不开放多 claim 长文档的正式写入。
+
+## P1：恢复评测，但不扩大调用压力
+
+### 候选 F206：可续跑的低并发质量复跑
+
+沿用 F183–F185b 的冻结 corpus、隐藏答案、三 arm 和报告格式；增加 rate-limit/backoff、单 worker
+或小并发、token 上限和断点续跑。先用一次成功链路验证 Provider，再决定是否恢复小批量，仍不把
+INCOMPLETE 报告变成发布质量。
+
+## P2：把 Hook 变成自己的分析工具
+
+### 候选 F207：本地指标聚合与报告
+
+消费 F204 的脱敏事件，输出 session/turn/host/model/Skill 分桶的调用次数、上下文量、分段耗时、
+回退和失败原因。跨 session topic 身份、写入时机和 worthiness 仍需独立协议；Admin 不是默认承载，
+先生成开发用 JSON/HTML 报告。
+
+## P3：扩展 Agent 能力（按需）
+
+### 候选 F208：隔离的内置评测/资料 Agent driver
+
+Agent 只能经 MSQL port 调用 Memora，文档解析、coverage、review 和提交复用现有组件；Provider、
+OCR、浏览器均按需注入，不把运行时或权重塞进主安装包。先作为评测工具，不承诺 `memora ask` 产品化。
+
+### 候选 F209：OCR/视觉可选运行时
+
+只有 F203 返回 `eligible` 且收益超过延迟/成本门槛，才单独 Review OCR provider、权重和安装方式；
+否则保持文本层 PDF 的明确失败和人工处理路径。
+
+## P4：长期候选
+
+- 候选 F210：写入时机、ignore/write 和多 claim 质量证据；依赖 F205 与 F207；
+- 候选 F211：Database 级 Route Branch 自治 fan-out，初始 n、超量拆分和合并由 Agent 判断并留 revision/理由；
+- Compaction、Accelerate、HNSW、Replication、PITR、多设备同步等继续遵守既有证据门，不按数据库功能清单提前实现。
+
+## 当前明确不做
+
+- 不重新启动高并发真实模型评测；
+- 不把 OCR、本地 embedding 权重或浏览器运行时并入主安装包；
+- 不将 Hook 事件写回 Memora Database，也不采集宿主完整上下文；
+- 不在 native 多 statement 事务补齐前开放无原子性的多 claim 旁路写入。
+
+## 关联
+
+- [后续路线](./future-roadmap.md)
+- [资料吸收 Agent Feature 序列](./assimilation-agent-feature-sequence.md)
+- [评测 Agent 与外置 Hook](../development/evaluation-agent-observability.md)
+- [F200 EPUB 单链路](./f200-epub-single-chain-acceptance.md)
