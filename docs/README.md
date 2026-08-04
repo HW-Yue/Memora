@@ -56,6 +56,7 @@
 - [F192：格式无关 Document IR v1](./planning/f192-document-ir-v1.md) — 层级、阅读顺序、稳定 anchor、表格/脚注关系与规范摘要。
 - [F193：EPUB 确定性适配器](./planning/f193-epub-adapter.md) — container/OPF/spine/nav、结构 XHTML、脚注与资源清单。
 - [F194：ReadExtent 与 coverage 调度](./planning/f194-read-extent-coverage.md) — 完整语义节点窗口、摘要确认、无原文 checkpoint 与断点续读。
+- [F195：正式 MSQL 吸收提交面](./planning/f195-msql-assimilation-surface.md) — 提案结构审阅、hash-bound 提交、同核事务与无正文收据。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
