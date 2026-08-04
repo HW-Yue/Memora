@@ -59,7 +59,7 @@ func TestEPUBAdapterPreservesSpineTOCTableFootnoteAndResources(t *testing.T) {
 	if len(document.References) != 1 || document.References[0].Kind != agent.DocumentReferenceFootnote {
 		t.Fatalf("references = %#v", document.References)
 	}
-	if !documentReadingContainsText(document, "Second heading", "Second paragraph 1", "Metric", "42",
+	if !documentReadingContainsText(document, "Second heading", "Before middle after 1 tail", "Metric", "42",
 		"Footnote detail", "First heading", "First item", "Second item") {
 		t.Fatalf("reading order/text = %#v", document.ReadingOrder)
 	}
@@ -125,6 +125,14 @@ func TestEPUBAdapterRejectsMalformedAndBudgetedCorpus(t *testing.T) {
 			replaceEPUBEntry(t, entries, "OPS/package.opf", `href="ch1.xhtml"`, `href="../ch1.xhtml"`)
 			return entries
 		}, want: agent.ErrEPUBInvalid},
+		{name: "navigation traversal", mutate: func(entries []epubTestEntry) []epubTestEntry {
+			replaceEPUBEntry(t, entries, "OPS/nav.xhtml", `href="ch1.xhtml"`, `href="../ch1.xhtml"`)
+			return entries
+		}, want: agent.ErrEPUBInvalid},
+		{name: "unsupported package version", mutate: func(entries []epubTestEntry) []epubTestEntry {
+			replaceEPUBEntry(t, entries, "OPS/package.opf", `version="3.0"`, `version="9.0"`)
+			return entries
+		}, want: agent.ErrEPUBUnsupported},
 		{name: "duplicate manifest id", mutate: func(entries []epubTestEntry) []epubTestEntry {
 			replaceEPUBEntry(t, entries, "OPS/package.opf", `id="c2"`, `id="c1"`)
 			return entries
@@ -195,10 +203,59 @@ func TestEPUBAdapterHonorsCancellationAndSourceCorruption(t *testing.T) {
 	}
 }
 
+func TestEPUBAdapterClosesSourceAndPropagatesCloseFailure(t *testing.T) {
+	t.Parallel()
+
+	payload := buildTestEPUB(t, validEPUB3Entries())
+	closeFailure := errors.New("close source failed")
+	random := &trackingEPUBRandomAccess{Reader: bytes.NewReader(payload), closeErr: closeFailure}
+	source := &trackingEPUBSource{
+		reference: agent.SourceReference{
+			Version: agent.SourceReferenceVersion, JobID: "job-close", SourceID: "source-close",
+			SHA256: sourceDigest(payload), Bytes: uint64(len(payload)),
+			MediaType: "application/epub+zip", FileName: "book.epub",
+		},
+		reader: random,
+	}
+	adapter, err := agent.NewEPUBAdapter(source, agent.DefaultEPUBAdapterConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := adapter.Parse(context.Background(), "job-close", "source-close"); !errors.Is(err, closeFailure) {
+		t.Fatalf("Parse close error = %v", err)
+	}
+	if !random.closed {
+		t.Fatal("EPUB source was not closed")
+	}
+}
+
 type epubTestEntry struct {
 	name   string
 	body   string
 	method uint16
+}
+
+type trackingEPUBSource struct {
+	reference agent.SourceReference
+	reader    agent.SourceRandomAccess
+}
+
+func (source *trackingEPUBSource) OpenRandomAccess(
+	jobID string,
+	sourceID string,
+) (agent.SourceReference, agent.SourceRandomAccess, error) {
+	return source.reference, source.reader, nil
+}
+
+type trackingEPUBRandomAccess struct {
+	*bytes.Reader
+	closed   bool
+	closeErr error
+}
+
+func (reader *trackingEPUBRandomAccess) Close() error {
+	reader.closed = true
+	return reader.closeErr
 }
 
 func validEPUB3Entries() []epubTestEntry {
@@ -228,7 +285,7 @@ func validEPUB3Entries() []epubTestEntry {
 </body></html>`, method: zip.Deflate},
 		{name: "OPS/ch2.xhtml", body: `<?xml version="1.0"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
-<h1 id="second">Second heading</h1><p>Second paragraph <a epub:type="noteref" href="#fn1">1</a></p>
+<h1 id="second">Second heading</h1><p>Before <em>middle</em> after <a epub:type="noteref" href="#fn1">1</a> tail</p>
 <table><tr><td>Metric</td><td>42</td></tr></table>
 <aside epub:type="footnote" id="fn1"><p>Footnote detail</p></aside>
 </body></html>`, method: zip.Deflate},

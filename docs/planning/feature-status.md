@@ -61,6 +61,7 @@
 | F190 | 可持久恢复的 AssimilationJob；hash-chain journal、幂等 Command、Intake/checkpoint 恢复与 torn-tail 处理 |
 | F191 | 内容寻址临时 SourceStore；流式摘要、四类配额、跨 Job 复用、reopen 校验与引用回收 |
 | F192 | 格式无关 Document IR v1；稳定 ID/anchor、结构层级、reading order、表格/脚注关系与规范摘要 |
+| F193 | EPUB 确定性适配器；container/OPF/spine/nav/NCX、结构 XHTML、脚注/表格与资源摘要 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -69,7 +70,7 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
 - F185b 实现已完成，但真实 Kimi 三 arm 共 36 题均因 33 次 HTTP 429 与 3 次 wire failure 不可评分；
   release report 保持 `INCOMPLETE`、无默认 arm；
 - 2026-08-05 用户决定延期大批量真实质量复跑。该门继续阻止“质量已通过”和“默认 arm 已选定”
-  的发布声明，但不再阻止后续实验性 Feature 开发；F192 已完成，下一项为 F193 EPUB adapter。
+  的发布声明，但不再阻止后续实验性 Feature 开发；F193 已完成，下一项为 F194 coverage 调度。
 
 ## 例外与非当前路径
 

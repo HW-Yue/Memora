@@ -206,6 +206,26 @@ func (store *SourceStore) Open(
 	return reference, file, nil
 }
 
+func (store *SourceStore) OpenRandomAccess(
+	jobID string,
+	sourceID string,
+) (SourceReference, SourceRandomAccess, error) {
+	if store == nil || !validSourceIntakeID(jobID, 128) || !validSourceIntakeID(sourceID, 128) {
+		return SourceReference{}, nil, ErrSourceStoreInvalid
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	reference, err := store.resolveLocked(jobID, sourceID)
+	if err != nil {
+		return SourceReference{}, nil, err
+	}
+	file, err := os.Open(store.objectPath(reference.SHA256))
+	if err != nil {
+		return SourceReference{}, nil, fmt.Errorf("open random-access Source object: %w", err)
+	}
+	return reference, file, nil
+}
+
 func (store *SourceStore) Stats() (SourceStoreStats, error) {
 	if store == nil {
 		return SourceStoreStats{}, ErrSourceStoreInvalid

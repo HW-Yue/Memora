@@ -80,6 +80,13 @@ type SourceReadCloser interface {
 	io.Closer
 }
 
+type SourceRandomAccess interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Closer
+}
+
 func validSourceStoreConfig(config SourceStoreConfig) bool {
 	const maxConfiguredBytes = uint64(1 << 50)
 	return config.MaxObjectBytes > 0 && config.MaxObjectBytes <= maxConfiguredBytes &&

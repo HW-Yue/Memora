@@ -1,6 +1,6 @@
 # F193：EPUB 确定性适配器
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -45,4 +45,16 @@ SourceStore.OpenRandomAccess(job, source)
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204。
 
-开工前结论：PASS。
+## 完成证据
+
+- EPUB3 fixture 的 ZIP 顺序为 ch1/nav/ch2、spine 为 ch2/ch1，输出稳定为“第二章→第一章”；
+- container、OPF 2/3、manifest、spine、EPUB3 nav 和 EPUB2 recursive NCX 均经 bounded strict XML；
+- inline 前/中/后文本保持原顺序，chapter/heading/paragraph/list/table/row/cell/image/footnote 映射
+  通过 F192 Seal，noteref 精确指向 footnote Node；
+- 所有 manifest resource 记录 logical locator、解压 bytes/SHA-256；Node anchor 不越过对应 XHTML；
+- 重复解析逐字一致；mimetype、container、traversal、duplicate、missing idref、坏 XHTML、未知 OPF
+  version、entry budget 和非法 nav href 均有负例；
+- context 取消、SourceStore corruption 和 Source close failure 均透传，Reader 必定关闭；
+- 目标测试与 `-race` 全绿，解析只使用标准库 ZIP/XML，不执行脚本、网络、CSS 或模型调用。
+
+完成门结论：PASS。下一项为 F194 ReadExtent 与 coverage 调度。
