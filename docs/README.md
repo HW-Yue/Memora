@@ -63,6 +63,7 @@
 - [F199：短事务对账与 Source Receipt](./planning/f199-assimilation-reconciliation.md) — accepted review 输入门、MSQL-only 提交、实际对象 ID 收据与 in-doubt 只读恢复。
 - [F200：EPUB 单条干净全链路验收](./planning/f200-epub-single-chain-acceptance.md) — 冻结小 EPUB 跑通吸收、正式收据与固定查询，不执行批量质量评分。
 - [F201：DOCX 确定性适配器](./planning/f201-docx-adapter.md) — 标准库解析 OOXML 包、正文结构、表格、脚注和内部关系为 Document IR。
+- [F202：文本层 PDF 确定性适配器](./planning/f202-text-pdf-adapter.md) — 解析经典 xref/Page tree、受支持字体映射与文本显示操作为逐页 Document IR。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
