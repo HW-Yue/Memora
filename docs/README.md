@@ -51,6 +51,7 @@
 - [F187：Agent Write Profile 与审批信封](./planning/f187-agent-write-profile.md) — L1 scope、guard、hash-bound 一次性用户审批与 MSQL-only 执行边界。
 - [F188：单网页/短文本写入垂直链](./planning/f188-short-text-write.md) — 一次模型 draft、用户审批、单 Row commit 与真实 RowID SELECT 回读。
 - [F189：Source Intake 交互与即时事件](./planning/f189-source-intake-events.md) — inventory、范围确认、问题/等待/回答摘要与同步事件 batch。
+- [F190：可持久恢复的 AssimilationJob](./planning/f190-durable-assimilation-job.md) — 幂等 Command、append-only Event/checkpoint、torn-tail 恢复与 checksum fail-closed。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
