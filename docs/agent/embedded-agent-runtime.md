@@ -139,7 +139,7 @@ memora config model ...      配置模型，密钥单独安全保存
 - 模型输出采用工具调用还是严格 JSON；
 - `ask` 最终返回人类回答、Context Pack，还是由调用方选择；
 - 同一 loop 是否处理资料吸收，还是使用独立任务类型。
-- 现有资料吸收私有 IPC 迁移到 MSQL 的语法、授权、预算和兼容边界。
+- F195 之后的 claim ledger、独立语义复核与 Source Receipt 对账编排。
 
 ## 关联
 

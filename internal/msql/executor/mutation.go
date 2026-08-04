@@ -43,6 +43,16 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		}
 		return engine.executeWikiExport(ctx, statement.Export, bound)
 	}
+	if statement.Assimilation != nil {
+		if engine == nil || engine.catalog == nil {
+			return Output{}, executeError(result.CodeInternal, "assimilation MSQL engine is not configured")
+		}
+		bound, err := bindParameters(statement, parameters)
+		if err != nil {
+			return Output{}, err
+		}
+		return engine.executeAssimilation(ctx, statement.Assimilation, bound)
+	}
 	if engine == nil || engine.catalog == nil || engine.rows == nil {
 		return Output{}, executeError(result.CodeInternal, "mutation engine is not configured")
 	}

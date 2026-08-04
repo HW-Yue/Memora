@@ -80,7 +80,8 @@ func (engine *Engine) authorizeDatabaseReferenceAtLevel(ctx context.Context, lev
 func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 	switch {
 	case statement.Insert != nil, statement.Update != nil, statement.Delete != nil,
-		statement.Restore != nil, statement.Relate != nil, statement.Unrelate != nil:
+		statement.Restore != nil, statement.Relate != nil, statement.Unrelate != nil,
+		statement.Assimilation != nil && statement.Assimilation.Action == "SUBMIT":
 		return security.LevelWrite
 	case statement.Create != nil, statement.Alter != nil, statement.Reshape != nil,
 		statement.CreateRoute != nil, statement.RenameRoute != nil,
@@ -160,6 +161,8 @@ func statementDatabaseNames(statement ast.Statement) []string {
 		appendQualifiedTable(*statement.CreateRoute.Table)
 	case statement.Package != nil && statement.Package.Action == "PACK":
 		appendDatabase(statement.Package.Database)
+	case statement.Assimilation != nil:
+		appendDatabase(statement.Assimilation.Database)
 	}
 	return databases
 }

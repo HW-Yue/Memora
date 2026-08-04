@@ -57,7 +57,7 @@ F188 是写入 Prompt、Schema 选择、重复事实检测和回读验证的最�
 | F192（已完成） | 与格式无关的 Document IR v1 | 层级、阅读顺序、anchor、表格/脚注引用稳定，无机械 chunk 语义 |
 | F193（已完成） | EPUB 确定性适配器 | spine、目录、章节、脚注、资源清单和 malformed corpus |
 | F194（已完成） | `ReadExtent` 与 coverage 调度 | 全部必读范围覆盖；窗口 hash；断点续读；不持久化原文 |
-| F195 | 正式 MSQL 吸收提交 surface | review/submit/receipt 经 Parser、Policy、事务；取代 Agent 所需私有 IPC |
+| F195（已完成） | 正式 MSQL 吸收提交 surface | review/submit/receipt 经 Parser、Policy、事务；取代 Agent 所需私有 IPC |
 
 F189–F194 的操作状态归 Agent 所有，因此可以在 F195 前实现；一旦状态或动作要进入用户
 Database，就必须等待 F195，不能临时导入旧 Assimilation Controller。

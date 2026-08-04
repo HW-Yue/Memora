@@ -5,7 +5,8 @@
 
 本文记录当前外部宿主提交协议，不授权未来内置 Agent 调用 `assimilation.submit` 或
 `assimilation.receipt` 私有 IPC。内置 Agent 必须通过正式 MSQL 触发所有 Memora 复核门、语义提交和
-Source Receipt 操作；现有 Controller 语义可以复用，Go 包和旁路 RPC 不能成为 Agent 依赖。
+Source Receipt 操作。F195 已实现新 MSQL 提交面且明确不导入本 Controller；本文的旧协议只保留
+外部兼容和历史语义参考，Go 包和旁路 RPC 不能成为 Agent 依赖。
 
 ## 提交对象
 
@@ -78,3 +79,4 @@ Receipt 不保存 Mutation Plan、字段正文、原始窗口或复核推理。�
 - [Skill 写入流程 v1](./skill-write-v1.md)
 - [Skill 语义冲突交互 v1](./skill-conflict-v1.md)
 - [资料吸收](../data/assimilation.md)
+- [F195 正式 MSQL 吸收提交面](../planning/f195-msql-assimilation-surface.md)

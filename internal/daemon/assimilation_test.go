@@ -14,7 +14,104 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
+	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
+
+func TestFormalAssimilationMSQLSurfaceCommitsThroughSharedServiceWithoutLegacyCoverage(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "formal-assimilation.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer databaseStore.Close()
+	dictionary := catalog.New(databaseStore, catalog.Options{})
+	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{Name: "work", Purpose: "Work", Scope: "Knowledge"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{
+		Name: "notes", Purpose: "Notes", RowSemantics: "One semantic module",
+		Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT(200)", Purpose: "Title"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows := row.New(databaseStore, dictionary, row.Options{})
+	handler := newDatabaseHandler(ctx, dictionary, rows, databaseStore)
+	defer handler.Close()
+	session, err := handler.msql.OpenSession("agent:formal-assimilation")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proposal := protocolmsql.AssimilationProposal{
+		Version: protocolmsql.AssimilationProposalVersion, ProposalID: "formal-plan-1",
+		Database: "work", Author: "agent:author", SourceID: "book-1",
+		SourceLocator: "library/book.epub", SourceSHA256: daemonDigest("a"),
+		DocumentSHA256: daemonDigest("b"), CoverageRevision: 7, CoveredNodes: 12, TotalNodes: 12,
+		Statements: []protocolmsql.AssimilationStatement{{
+			MSQL:       "INSERT INTO work.notes (title) VALUES (:title)",
+			Parameters: protocolmsql.Parameters{Named: map[string]any{"title": "A complete semantic module"}},
+			Mutation: protocolmsql.MutationOptions{
+				ExpectedSchemaVersion: 1, MaxAffectedRows: 1, Actor: "agent:author",
+				Source: "book-1", Reason: "assimilate covered semantic module",
+				SourceKind: protocolmsql.SourceDocumentAnchor, SourceLocator: "library/book.epub",
+				SourceContentHash: daemonDigest("a"),
+			},
+		}},
+	}
+	readAuthorization := protocolmsql.Authorization{
+		Version: protocolmsql.AuthorizationVersion, Actor: "agent:author",
+		AuthorizedDatabases: []string{"work"}, DefaultLevel: protocolmsql.LevelRead,
+	}
+	reviewed, err := session.ExecuteMSQL(ctx, protocolmsql.Request{
+		Version: protocolmsql.RequestVersion,
+		Source:  "REVIEW ASSIMILATION FOR DATABASE work USING :proposal",
+		Statements: []protocolmsql.StatementInput{{
+			Parameters:    protocolmsql.Parameters{Named: map[string]any{"proposal": proposal}},
+			Authorization: readAuthorization,
+		}},
+	})
+	if err != nil || !reviewed.OK || len(reviewed.Results) != 1 || len(reviewed.Results[0].Rows) != 1 {
+		t.Fatalf("review envelope = %#v, %v", reviewed, err)
+	}
+	plan, ok := reviewed.Results[0].Rows[0]["assimilation_plan"].(protocolmsql.AssimilationPlan)
+	if !ok || plan.Validate() != nil {
+		t.Fatalf("review plan = %#v", reviewed.Results[0].Rows[0]["assimilation_plan"])
+	}
+	writeAuthorization := readAuthorization
+	writeAuthorization.DefaultLevel = protocolmsql.LevelWrite
+	writeAuthorization.Approval = &protocolmsql.Approval{
+		Version: protocolmsql.ApprovalVersion, Action: protocolmsql.AssimilationSubmitAction,
+		SubjectSHA256: strings.TrimPrefix(plan.SHA256, "sha256:"), Confirmed: true,
+	}
+	submitted, err := session.ExecuteMSQL(ctx, protocolmsql.Request{
+		Version: protocolmsql.RequestVersion,
+		Source:  "SUBMIT ASSIMILATION PLAN :plan FOR DATABASE work",
+		Statements: []protocolmsql.StatementInput{{
+			Parameters:    protocolmsql.Parameters{Named: map[string]any{"plan": plan}},
+			Authorization: writeAuthorization,
+		}},
+	})
+	if err != nil || !submitted.OK || submitted.Results[0].AffectedRows != 1 ||
+		submitted.Results[0].Rows[0]["status"] != protocolmsql.AssimilationCommitted {
+		t.Fatalf("submit envelope = %#v, %v", submitted, err)
+	}
+	stored, _, err := rows.ListPage(ctx, "work", "notes", 10)
+	if err != nil || len(stored) != 1 || stored[0].Values["title"] != "A complete semantic module" {
+		t.Fatalf("stored rows = %#v, %v", stored, err)
+	}
+	shown, err := session.ExecuteMSQL(ctx, protocolmsql.Request{
+		Version: protocolmsql.RequestVersion,
+		Source:  "SHOW ASSIMILATION RECEIPT :receipt IN DATABASE work",
+		Statements: []protocolmsql.StatementInput{{
+			Parameters:    protocolmsql.Parameters{Named: map[string]any{"receipt": plan.PlanID}},
+			Authorization: readAuthorization,
+		}},
+	})
+	if err != nil || !shown.OK || shown.Results[0].Rows[0]["status"] != protocolmsql.AssimilationCommitted {
+		t.Fatalf("shown receipt = %#v, %v", shown, err)
+	}
+}
 
 func TestAssimilationHandlerPersistsTemporaryCoverageAcrossSessions(t *testing.T) {
 	t.Parallel()

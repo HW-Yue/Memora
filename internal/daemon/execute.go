@@ -5,15 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/assimilation"
+	"github.com/HW-Yue/Memora/internal/assimilationcommit"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/feedback"
@@ -29,6 +32,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/snapshot"
 	"github.com/HW-Yue/Memora/internal/store"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
+	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
 
 type executePayload struct {
@@ -37,17 +41,18 @@ type executePayload struct {
 }
 
 type databaseHandler struct {
-	context    context.Context
-	dictionary executor.Catalog
-	rows       executor.Rows
-	store      store.Store
-	export     func(context.Context) ([]byte, error)
-	security   *security.Service
-	traces     *routetrace.Service
-	hostInputs *hostinput.Service
-	msql       *msqlservice.Service
-	closeOnce  sync.Once
-	closeErr   error
+	context             context.Context
+	dictionary          executor.Catalog
+	rows                executor.Rows
+	store               store.Store
+	export              func(context.Context) ([]byte, error)
+	security            *security.Service
+	traces              *routetrace.Service
+	hostInputs          *hostinput.Service
+	msql                *msqlservice.Service
+	closeOnce           sync.Once
+	closeErr            error
+	assimilationSession atomic.Uint64
 }
 
 func newDatabaseHandler(
@@ -75,9 +80,11 @@ func newDatabaseHandlerWithSecurity(
 		},
 		security: securityService, hostInputs: hostinput.New(database, hostinput.Options{}),
 	}
+	committer := assimilationcommit.New(database, assimilationcommit.ExecutorFunc(handler.executeAssimilationMSQL))
 	handler.msql = msqlservice.New(ctx, msqlservice.Config{
 		Catalog: dictionary, Rows: rows,
 		Packages: dbpackage.New(database), Wiki: wikiexport.New(database),
+		Assimilation: committer,
 	})
 	return handler
 }
@@ -96,10 +103,28 @@ func newNativeDatabaseHandler(
 	handler := &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, store: auxiliary,
 		export: export, security: securityService, traces: traces,
 		hostInputs: hostinput.New(auxiliary, hostinput.Options{})}
+	committer := assimilationcommit.New(auxiliary, assimilationcommit.ExecutorFunc(handler.executeAssimilationMSQL))
 	handler.msql = msqlservice.New(ctx, msqlservice.Config{
 		Catalog: dictionary, Rows: rows, Points: points, RouteVectors: routeVectors,
+		Assimilation: committer,
 	})
 	return handler
+}
+
+func (handler *databaseHandler) executeAssimilationMSQL(
+	ctx context.Context,
+	request protocolmsql.Request,
+) (protocolmsql.Envelope, error) {
+	if handler == nil || handler.msql == nil {
+		return protocolmsql.Envelope{}, errors.New("MSQL service is unavailable")
+	}
+	sessionID := fmt.Sprintf("internal:assimilation:%d", handler.assimilationSession.Add(1))
+	session, err := handler.msql.OpenSession(sessionID)
+	if err != nil {
+		return protocolmsql.Envelope{}, err
+	}
+	defer func() { _ = handler.msql.CloseSession(sessionID) }()
+	return session.ExecuteMSQL(ctx, request)
 }
 
 type routeTraceRecordPayload struct {

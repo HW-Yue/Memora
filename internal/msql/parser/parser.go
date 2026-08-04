@@ -127,6 +127,10 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseInstallPackage()
 	case parser.matchWord("REBUILD"):
 		statement, err = parser.parseRebuildLexicalIndex()
+	case parser.matchWord("REVIEW"):
+		statement, err = parser.parseReviewAssimilation()
+	case parser.matchWord("SUBMIT"):
+		statement, err = parser.parseSubmitAssimilation()
 	case parser.matchWord("BEGIN"):
 		statement = transactionStatement("BEGIN")
 	case parser.matchWord("START"):
@@ -148,6 +152,52 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 	}
 	statement.Span = lexer.Span{Start: start, End: parser.previous().Span.End}
 	return statement, nil
+}
+
+func (parser *parser) parseReviewAssimilation() (ast.Statement, error) {
+	for _, word := range []string{"ASSIMILATION", "FOR", "DATABASE"} {
+		if _, err := parser.expectWord(word); err != nil {
+			return ast.Statement{}, err
+		}
+	}
+	database, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("USING"); err != nil {
+		return ast.Statement{}, err
+	}
+	value, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "REVIEW_ASSIMILATION", Assimilation: &ast.AssimilationStatement{
+		Action: "REVIEW", Database: database, Value: &value,
+	}}, nil
+}
+
+func (parser *parser) parseSubmitAssimilation() (ast.Statement, error) {
+	for _, word := range []string{"ASSIMILATION", "PLAN"} {
+		if _, err := parser.expectWord(word); err != nil {
+			return ast.Statement{}, err
+		}
+	}
+	value, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	for _, word := range []string{"FOR", "DATABASE"} {
+		if _, err := parser.expectWord(word); err != nil {
+			return ast.Statement{}, err
+		}
+	}
+	database, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "SUBMIT_ASSIMILATION", Assimilation: &ast.AssimilationStatement{
+		Action: "SUBMIT", Database: database, Value: &value,
+	}}, nil
 }
 
 func (parser *parser) parseRebuildLexicalIndex() (ast.Statement, error) {
@@ -301,6 +351,26 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Table = &name
+	case parser.matchWord("ASSIMILATION"):
+		if _, err := parser.expectWord("RECEIPT"); err != nil {
+			return ast.Statement{}, err
+		}
+		value, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		for _, word := range []string{"IN", "DATABASE"} {
+			if _, err := parser.expectWord(word); err != nil {
+				return ast.Statement{}, err
+			}
+		}
+		database, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		return ast.Statement{Kind: "SHOW_ASSIMILATION_RECEIPT", Assimilation: &ast.AssimilationStatement{
+			Action: "RECEIPT", Database: database, Value: &value,
+		}}, nil
 	case parser.matchWord("LEXICAL"):
 		if _, err := parser.expectWord("LOCATIONS"); err != nil {
 			return ast.Statement{}, err
@@ -643,7 +713,7 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		}
 		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, CATALOG ATLAS, TABLES, COLUMNS, CHANGES, CHANGE, ROUTE CANDIDATES/TRACE, HISTORY, RELATIONS, or ROUTES")
+		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, CATALOG ATLAS, TABLES, COLUMNS, ASSIMILATION RECEIPT, CHANGES, CHANGE, ROUTE CANDIDATES/TRACE, HISTORY, RELATIONS, or ROUTES")
 	}
 	if show.Object == "DATABASES" || show.Object == "TABLES" || show.Object == "COLUMNS" || show.Object == "CATALOG_ATLAS" {
 		if parser.matchWord("CURSOR") {

@@ -1,6 +1,7 @@
 # 资料吸收
 
-状态：产品方向已确认；F35 已实现机械清单、覆盖与恢复协议，F36 实现独立复核、语义提交与 Source Receipt。
+状态：产品方向已确认；F189–F194 已实现 Agent-owned 长任务、临时源、Document IR、EPUB 与
+coverage，F195 已实现正式 MSQL 提交面。F35/F36 旧宿主协议仅保留兼容。
 
 ## 原则
 
@@ -8,8 +9,8 @@ Memora 不保存完整 PDF、Markdown、图片、音频或大文档。外部资�
 
 ```text
 外部资料
-  → 建立临时资料清单
-  → 有界分段阅读并记录覆盖
+  → Agent-owned SourceStore 与 Document IR
+  → 按完整语义节点有界阅读并记录 coverage
   → 匹配 Schema 与现有记录
   → revise/merge/split/insert 候选
   → 交叉检查引用、数字、冲突和遗漏
@@ -21,10 +22,10 @@ Memora 不保存完整 PDF、Markdown、图片、音频或大文档。外部资�
 临时读取窗口不是持久化 chunk，也不进入倒排索引。
 
 目录、章节、表格、附件和页码先形成临时 inventory。每个窗口记录已读范围；关键引用未解析、覆盖不完整或复核失败时，任务必须报告“未完成”，不能静默写成长期事实。
-具体的结构单元、半开范围、窗口指纹、checkpoint 和完成门禁见
-[资料清单与覆盖 v1](../agent/assimilation-coverage-v1.md)。
-隔离复核、语义模块/关系提交、关键事实锚点和紧凑来源收据见
-[资料独立复核与提交 v1](../agent/assimilation-review-v1.md)。
+当前长任务序列见[资料吸收 Agent Feature 序列](../planning/assimilation-agent-feature-sequence.md)；
+正式提交语法见 [F195](../planning/f195-msql-assimilation-surface.md)。旧宿主的结构单元与提交协议
+仍可分别从[资料清单与覆盖 v1](../agent/assimilation-coverage-v1.md)和
+[资料独立复核与提交 v1](../agent/assimilation-review-v1.md)追溯，但不是内置 Agent 调用面。
 
 ## Source Receipt
 

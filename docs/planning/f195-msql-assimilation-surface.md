@@ -1,6 +1,6 @@
 # F195：正式 MSQL 吸收提交面
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -54,6 +54,25 @@ go test ./internal/msql/parser -run TestAssimilationMSQL
 完成证据必须包含 Parser/AST 参数清单、L0/L1 scope、精确 approval、同库/语句 allowlist、嵌套
 真实 MSQL 事务、receipt 无正文、幂等/冲突/in-doubt、Service protocol round-trip、Agent import
 allowlist、`-race` 与全量 CI。
+
+## 完成证据
+
+- 三条语句拥有独立 AST，参数被完整计入 inventory；缺失 Database/USING/PLAN/IN 结构均由
+  Parser 拒绝；
+- protocol proposal 要求 coverage 完整、document/source digest、同一 author、Schema 与 affected
+  guard；Seal 深拷贝嵌套参数并生成确定性 plan SHA-256；
+- REVIEW 只接受目标 Database 内的 INSERT/UPDATE/DELETE/RESTORE/RELATE/UNRELATE L1 语句，
+  多语句、事务、SELECT、结构操作、跨库和 revision guard 缺失均在写前失败；
+- SUBMIT 重新执行完整 review，要求同库 L1 scope 与精确 `SUBMIT_ASSIMILATION` approval；显式
+  外层事务内提交被拒绝并回滚；
+- commit processor 在独立 protocol MSQL Session 执行 BEGIN/statement/COMMIT；同 plan 并发只派发
+  一次，已知回滚可 guarded retry，transport 不确定持久为 in_doubt 且不盲重放；
+- receipt 仅含摘要、kind、affected/revision/commit sequence；持久字节测试确认没有 MSQL、参数或
+  语义正文，并验证 reopen、ID 冲突、跨库读取和 corruption fail closed；
+- 真实 daemon/shared Service 链在没有旧 coverage task 的情况下完成 REVIEW→SUBMIT→Row INSERT→
+  SHOW RECEIPT；目标 package、race、vet 与 Agent import guard 全绿。
+
+完成门结论：PASS。下一项为 F196 可替换 Provider 的 draft/claim ledger。
 
 ## 关联
 

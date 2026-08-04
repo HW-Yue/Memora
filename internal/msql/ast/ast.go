@@ -42,6 +42,7 @@ type Statement struct {
 	Package       *PackageStatement            `json:"package,omitempty"`
 	Export        *ExportStatement             `json:"export,omitempty"`
 	Rebuild       *RebuildStatement            `json:"rebuild,omitempty"`
+	Assimilation  *AssimilationStatement       `json:"assimilation,omitempty"`
 	Transaction   *TransactionStatement        `json:"transaction,omitempty"`
 }
 
@@ -259,6 +260,12 @@ type RebuildStatement struct {
 	Object string `json:"object"`
 }
 
+type AssimilationStatement struct {
+	Action   string      `json:"action"`
+	Database Name        `json:"database"`
+	Value    *Expression `json:"value"`
+}
+
 type TransactionStatement struct {
 	Action string `json:"action"`
 }
@@ -413,6 +420,8 @@ func (document Document) Parameters() []Parameter {
 	case statement.Export != nil:
 		appendExpression(statement.Export.Path)
 		appendExpression(statement.Export.Profile)
+	case statement.Assimilation != nil:
+		appendExpression(statement.Assimilation.Value)
 	}
 	return parameters
 }

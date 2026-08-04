@@ -19,6 +19,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
+	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
 
 const maxQueryScan = 1000
@@ -77,6 +78,7 @@ type Engine struct {
 	routeVectors     RouteVectorReader
 	lexical          LexicalIndexMaintenance
 	lexicalLocations LexicalLocationReader
+	assimilation     AssimilationCommitter
 }
 
 type LexicalRebuildReceipt struct {
@@ -112,6 +114,11 @@ type PackageManager interface {
 
 type WikiExporter interface {
 	Export(context.Context, string, wikiexport.Profile, []string) (wikiexport.Manifest, error)
+}
+
+type AssimilationCommitter interface {
+	SubmitAssimilation(context.Context, protocolmsql.AssimilationPlan) (protocolmsql.AssimilationReceipt, error)
+	AssimilationReceipt(context.Context, string, string) (protocolmsql.AssimilationReceipt, error)
 }
 
 type Parameters struct {
@@ -268,6 +275,27 @@ func NewWithPackages(dictionary Catalog, rows Rows, packages PackageManager) *En
 func NewWithManagement(dictionary Catalog, rows Rows, packages PackageManager, wiki WikiExporter) *Engine {
 	engine := New(dictionary, rows)
 	engine.packages, engine.wiki = packages, wiki
+	return engine
+}
+
+func NewWithCapabilities(
+	dictionary Catalog,
+	rows Rows,
+	points PointReads,
+	vectors RouteVectorReader,
+	packages PackageManager,
+	wiki WikiExporter,
+	assimilation AssimilationCommitter,
+) *Engine {
+	engine := New(dictionary, rows)
+	engine.points, engine.routeVectors = points, vectors
+	engine.packages, engine.wiki, engine.assimilation = packages, wiki, assimilation
+	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
+		engine.lexical = maintenance
+	}
+	if locations, ok := points.(LexicalLocationReader); ok {
+		engine.lexicalLocations = locations
+	}
 	return engine
 }
 

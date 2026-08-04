@@ -7,6 +7,7 @@ Schema Change Plan 与审批执行。
 F173c 已实现 `REBUILD LEXICAL INDEX` 的全量 COW generation 维护语句；F174 已实现只返回
 当前位置、必须 SQL 回表的全内容 lexical query。F182a 增加 Route alias 的有界、revision-guarded
 完整替换，并让 Route read 返回非 null alias 列表。
+F195 已增加资料吸收 proposal 的结构审阅、hash-bound 提交与最小收据读取语句。
 
 ## 定位
 
@@ -23,9 +24,9 @@ Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop
 Catalog、Row、Router、Assimilation Controller、Store 或索引包。Agent 需要而 Grammar 尚未表达的
 数据库能力，必须先作为独立 MSQL Feature 实现，不能为 Agent 增加私有 RPC 或 Go 后门。
 
-现有 `assimilation.record`、`assimilation.submit` 和 `assimilation.receipt` IPC 是早期宿主协议，
-尚未满足这一未来内置 Agent 边界。新 Agent 禁止依赖它们；长资料 Runtime 开工前必须把需要保留的
-覆盖、复核、提交和收据操作迁移为 MSQL surface，或把纯任务状态移出 Memora 成为 Agent-owned 状态。
+F195 之后，新 Agent 使用正式 assimilation MSQL surface；Job、SourceStore、Document IR 与 coverage
+是 Agent-owned 状态。早期 `assimilation.record/submit/receipt` IPC 仅保留外部兼容，新 Agent 禁止
+依赖，也不得把它们包装成新的内部工具。
 
 宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。直接使用内部 Go API 或本地用户运行的普通 SQL 可走可信本地操作员路径，但 `PACK DATABASE`、`EXPORT WIKI` 和 `INSTALL PACKAGE` 没有无 scope/approval 降级。完整边界见 [Policy Enforcement v2](../development/policy-enforcement-v2.md)。
 
@@ -58,6 +59,7 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 关系：RELATE、SHOW RELATIONS、UNRELATE；
 - 管理：PACK、INSTALL、OPEN、EXPORT、DOCTOR、REBUILD LEXICAL INDEX；
 - 配置：SHOW CONFIGURATION/HISTORY、ALTER CONFIGURATION、RESTORE CONFIGURATION；
+- 吸收：REVIEW/SUBMIT ASSIMILATION、SHOW ASSIMILATION RECEIPT；
 
 Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。F44 已冻结的写法：
 
@@ -100,6 +102,21 @@ LIMIT :location_limit BYTES :utf8_byte_limit;
 命中计数，不返回正文或答案。Executor 在物理 posting read 前解析授权 database_id；Row 命中必须
 再用 `SELECT ... AS OF REVISION ... WHERE row_id = ...` 回表。完整契约见
 [Lexical Locations v1](./lexical-locations-v1.md)。
+
+F195 冻结资料吸收提交面：
+
+```sql
+REVIEW ASSIMILATION FOR DATABASE work USING :proposal;
+SUBMIT ASSIMILATION PLAN :plan FOR DATABASE work;
+SHOW ASSIMILATION RECEIPT :receipt IN DATABASE work;
+```
+
+REVIEW 逐条解析 proposal 中的 MSQL，只接受同库 L1 数据 mutation，并检查完整 coverage、参数、
+Schema/revision/affected-row guard 和 document source provenance；结果是规范 hash-bound plan。
+SUBMIT 要求同库 L1 scope 和 `SUBMIT_ASSIMILATION` 精确 approval，在独立 Session 中执行
+`BEGIN → statements → COMMIT`。Receipt 不保存 MSQL、参数或正文。结构审阅不等于事实正确性；
+F196–F199 继续增加 claim ledger、独立语义复核与回读对账。完整契约见
+[F195 规格](../planning/f195-msql-assimilation-surface.md)。
 
 语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
 所选 Table 的短 Route 节点，直到 Leaf 得到唯一 RowID。一个 Leaf 最多一个活跃 Row，

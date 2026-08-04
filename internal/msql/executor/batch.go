@@ -112,6 +112,27 @@ func NewBatchSessionWithManagement(
 	}
 }
 
+func NewBatchSessionWithCapabilities(
+	ctx context.Context,
+	dictionary Catalog,
+	rows Rows,
+	points PointReads,
+	vectors RouteVectorReader,
+	packages PackageManager,
+	wiki WikiExporter,
+	assimilation AssimilationCommitter,
+) *BatchSession {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	sessionContext, cancel := context.WithCancel(ctx)
+	return &BatchSession{
+		context: sessionContext, cancel: cancel,
+		autocommit: NewWithCapabilities(dictionary, rows, points, vectors, packages, wiki, assimilation),
+		rows:       rows, points: points,
+	}
+}
+
 func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) result.Envelope {
 	session.mu.Lock()
 	defer session.mu.Unlock()
@@ -238,6 +259,20 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 			}
 			transactionStart = -1
 		default:
+			if session.active != nil && statement.Assimilation != nil {
+				executeErr := executeError(result.CodeInvalidTransaction, "assimilation statements require autocommit mode")
+				if statement.Assimilation.Action == "SUBMIT" {
+					rollbackErr := session.active.Rollback()
+					session.active = nil
+					markRolledBack(results, transactionStart, "transaction was rolled back before assimilation submit")
+					if rollbackErr != nil {
+						executeErr = normalizeError(rollbackErr)
+					}
+					session.aborted = true
+				}
+				results = append(results, statementFailure(index, statement.Kind, source, executeErr))
+				continue
+			}
 			engine := session.autocommit
 			if session.active != nil {
 				engine = New(session.active, session.active)
@@ -397,6 +432,7 @@ func mutationStatement(statement ast.Statement) bool {
 		statement.Restore != nil || statement.Reshape != nil || statement.Relate != nil || statement.Unrelate != nil ||
 		statement.CreateRoute != nil || statement.RenameRoute != nil || statement.UpdateRoute != nil || statement.DeleteRoute != nil ||
 		statement.ApplyRoute != nil || statement.ApplySchema != nil ||
+		statement.Assimilation != nil && statement.Assimilation.Action == "SUBMIT" ||
 		statement.Configuration != nil ||
 		(statement.Package != nil && statement.Package.Action == "INSTALL")
 }
@@ -432,5 +468,6 @@ func mutationKind(kind string) bool {
 		kind == "RELATE" || kind == "UNRELATE" || kind == "CREATE_ROUTE" ||
 		kind == "RENAME_ROUTE" || kind == "UPDATE_ROUTE" || kind == "DELETE_ROUTE" ||
 		kind == "APPLY_ROUTE_MUTATION" || kind == "APPLY_SCHEMA_CHANGE" ||
+		kind == "SUBMIT_ASSIMILATION" ||
 		kind == "ALTER_CONFIGURATION" || kind == "RESTORE_CONFIGURATION" || kind == "INSTALL_PACKAGE"
 }
