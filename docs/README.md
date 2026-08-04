@@ -38,6 +38,7 @@
 - [F179：Agent Runtime Spike](./planning/f179-runtime-spike.md) — Eino/薄状态机的可复现实测与完成门。
 - [ADR-0009：Memora-owned 薄 Agent Loop](./decisions/0009-memora-owned-agent-loop.md) — F180/F181 不引入通用 Agent 框架的当前决策。
 - [F180：OpenAI-compatible Provider](./planning/f180-openai-compatible-provider.md) — 已完成的标准库 HTTP adapter 与真实 Kimi tool-call smoke。
+- [F180a：DeepSeek V4 Provider 方言](./planning/f180a-deepseek-v4-dialect.md) — 显式非思考 wire、`max_tokens` 与 Tool Call 兼容边界；
 - [F181：只读 benchmark Query Agent](./planning/f181-read-only-query-agent.md) — 已完成的有界 MSQL-only loop、SELECT evidence 与完整 Trace。
 - [F182：Answer Corpus / Manifest](./planning/f182-answer-corpus-manifest.md) — 已完成的合成 fixture、blind manifest 与 evaluator-only ground truth。
 - [F182a：Route Alias MSQL Round-trip](./planning/f182a-route-alias-msql.md) — F183 前置的有界 alias 原子替换与读取契约。

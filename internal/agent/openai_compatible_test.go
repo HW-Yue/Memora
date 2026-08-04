@@ -88,6 +88,32 @@ func TestOpenAICompatibleProviderMapsToolCallAndDropsReasoning(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderMapsDeepSeekV4NonThinkingDialect(t *testing.T) {
+	t.Parallel()
+
+	var gotBody []byte
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		gotBody, _ = io.ReadAll(request.Body)
+		return validAnswerHTTPResponse(), nil
+	})
+	config := openAICompatibleConfigWithTransport("https://api.deepseek.test/v1", transport)
+	config.Dialect = agent.OpenAICompatibleDialectDeepSeekV4NonThinking
+	provider, err := agent.NewOpenAICompatibleProvider(
+		config, &scriptedSecretResolver{values: []string{"secret"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := providerRequest([]agent.ProviderMessage{{Role: agent.ProviderRoleUser, Content: "Find the database"}})
+	if _, err := provider.Complete(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"model":"model-test","messages":[{"role":"user","content":"Find the database"}],"tools":[{"type":"function","function":{"name":"execute_msql","description":"Execute one MSQL request","parameters":{"type":"object","additionalProperties":false}}}],"tool_choice":"auto","max_tokens":1024,"stream":false,"thinking":{"type":"disabled"}}`
+	if string(gotBody) != want {
+		t.Fatalf("DeepSeek request body = %s\nwant = %s", gotBody, want)
+	}
+}
+
 func TestOpenAICompatibleProviderMapsMultiturnToolResultAndCachedUsage(t *testing.T) {
 	t.Parallel()
 
@@ -185,6 +211,9 @@ func TestOpenAICompatibleProviderRejectsInvalidConfiguration(t *testing.T) {
 		{"negative timeout", func(value *agent.OpenAICompatibleProviderConfig) { value.Timeout = -time.Second }},
 		{"tiny request budget", func(value *agent.OpenAICompatibleProviderConfig) { value.MaxRequestBytes = 1 }},
 		{"tiny response budget", func(value *agent.OpenAICompatibleProviderConfig) { value.MaxResponseBytes = 1 }},
+		{"unknown dialect", func(value *agent.OpenAICompatibleProviderConfig) {
+			value.Dialect = agent.OpenAICompatibleDialect("unknown")
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
