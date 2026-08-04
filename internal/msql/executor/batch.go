@@ -204,6 +204,7 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 					index, statement.Kind, source, result.CodeInternal,
 					"transaction engine is not configured",
 				))
+				session.aborted = true
 				continue
 			}
 			transactional, ok := session.rows.(interface {
@@ -214,11 +215,13 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 					index, statement.Kind, source, result.CodeUnsupported,
 					"explicit transactions are not supported by this backend",
 				))
+				session.aborted = true
 				continue
 			}
 			transaction, beginErr := transactional.BeginTransaction(session.context)
 			if beginErr != nil {
 				results = append(results, statementFailure(index, statement.Kind, source, beginErr))
+				session.aborted = true
 				continue
 			}
 			session.active = transaction

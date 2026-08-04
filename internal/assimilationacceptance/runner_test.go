@@ -4,8 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -107,7 +105,7 @@ func TestRunnerCompletesFrozenEPUBChainOnCleanInstance(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Run() error = %v", err)
 	}
 	if result.Validate() != nil || result.Status != StatusSucceeded || result.Extents != 1 ||
 		result.Claims != 1 || result.Reviews != 1 || result.Answer != "Memora 的项目代号是 Aurora。" ||
@@ -137,6 +135,77 @@ func TestRunnerCompletesFrozenEPUBChainOnCleanInstance(t *testing.T) {
 	if err != nil || stats.References != 0 || stats.Objects != 0 || stats.PhysicalBytes != 0 {
 		t.Fatalf("SourceStore stats = %#v, %v", stats, err)
 	}
+}
+
+func TestRunnerReleasesSourceWhenEPUBParsingFails(t *testing.T) {
+	ctx := context.Background()
+	sourceStore, err := agent.OpenSourceStore(filepath.Join(t.TempDir(), "sources"), agent.SourceStoreConfig{
+		MaxObjectBytes: 1 << 20, MaxJobBytes: 1 << 20,
+		MaxPhysicalBytes: 2 << 20, MaxSourcesPerJob: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unused := acceptanceUnusedDependencies{}
+	runner, err := NewRunner(Dependencies{
+		Sources: sourceStore, EPUB: acceptanceFailingEPUB{}, Drafter: unused, Ledger: unused,
+		Reviewer: unused, Reconciler: unused, Query: unused, Approvals: unused,
+		Clock: &acceptanceClock{now: time.Date(2026, 8, 5, 8, 0, 0, 0, time.UTC)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = runner.Run(ctx, Request{
+		RunID: "f200-cleanup", JobID: "job-cleanup", SourceID: "source-cleanup",
+		FileName: "broken.epub", Payload: []byte("not an epub"), SubmissionID: "submission-cleanup",
+		ExtentLimits: agent.ReadExtentLimits{MaxNodes: 1, MaxUTF8Bytes: 1024},
+		Query: agent.QueryRequest{
+			Question: "unused", Authorization: protocolmsql.Authorization{AuthorizedDatabases: []string{"work"}},
+		},
+	})
+	if !errors.Is(err, ErrRunChain) {
+		t.Fatalf("Run() error = %v", err)
+	}
+	stats, err := sourceStore.Stats()
+	if err != nil || stats.References != 0 || stats.Objects != 0 || stats.PhysicalBytes != 0 {
+		t.Fatalf("SourceStore stats after failure = %#v, %v", stats, err)
+	}
+}
+
+type acceptanceFailingEPUB struct{}
+
+func (acceptanceFailingEPUB) Parse(context.Context, string, string) (agent.DocumentIR, agent.EPUBParseReceipt, error) {
+	return agent.DocumentIR{}, agent.EPUBParseReceipt{}, errors.New("fixture parse failure")
+}
+
+type acceptanceUnusedDependencies struct{}
+
+func (acceptanceUnusedDependencies) Draft(context.Context, agent.AssimilationDraftRequest) (agent.DraftClaimReceipt, error) {
+	return agent.DraftClaimReceipt{}, errors.New("unused")
+}
+
+func (acceptanceUnusedDependencies) ReadExtent(string, uint64) (agent.DraftClaimBatch, error) {
+	return agent.DraftClaimBatch{}, errors.New("unused")
+}
+
+func (acceptanceUnusedDependencies) Review(context.Context, agent.AssimilationReviewRequest) (agent.AssimilationReviewArtifact, error) {
+	return agent.AssimilationReviewArtifact{}, errors.New("unused")
+}
+
+func (acceptanceUnusedDependencies) Prepare(context.Context, agent.AssimilationReconciliationRequest) (protocolmsql.AssimilationPlan, error) {
+	return protocolmsql.AssimilationPlan{}, errors.New("unused")
+}
+
+func (acceptanceUnusedDependencies) SubmitApproved(context.Context, protocolmsql.AssimilationPlan, agent.AssimilationPlanApproval) (protocolmsql.AssimilationReceipt, error) {
+	return protocolmsql.AssimilationReceipt{}, errors.New("unused")
+}
+
+func (acceptanceUnusedDependencies) Query(context.Context, agent.QueryRequest) (agent.QueryResult, error) {
+	return agent.QueryResult{}, errors.New("unused")
+}
+
+func (acceptanceUnusedDependencies) ApproveAssimilationPlan(context.Context, protocolmsql.AssimilationPlan) (agent.AssimilationPlanApproval, error) {
+	return agent.AssimilationPlanApproval{}, errors.New("unused")
 }
 
 func acceptanceWriteProfile() agent.WriteProfile {
@@ -386,9 +455,4 @@ func frozenAcceptanceEPUB(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return buffer.Bytes()
-}
-
-func acceptanceSHA256(payload []byte) string {
-	digest := sha256.Sum256(payload)
-	return "sha256:" + hex.EncodeToString(digest[:])
 }

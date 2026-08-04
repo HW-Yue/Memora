@@ -21,8 +21,9 @@ SHOW ASSIMILATION RECEIPT :receipt IN DATABASE work;
   返回 hash-bound、`review_required` 的规范 plan；
 - `SUBMIT` 是 L1、仅 autocommit 的提交：重新验证完整 plan，并要求 action 为
   `SUBMIT_ASSIMILATION`、subject 为 plan SHA-256 的显式 approval；
-- submitter 在独立 MSQL Session 内执行 `BEGIN → statements → COMMIT`，因此内部语句仍经过同一
-  Parser、Policy、Binder、事务和执行器；不能调用 Row/Catalog/Store 私有 API；
+- 单 statement plan 在独立 MSQL Session 中依赖该 mutation 自身的原子 autocommit；多 statement
+  plan 执行 `BEGIN → statements → COMMIT`。两者内部语句都经过同一 Parser、Policy、Binder 和
+  执行器，不能调用 Row/Catalog/Store 私有 API；
 - `SHOW ... RECEIPT` 是 L0，只能从语句显式指定且已授权的 Database 读取；
 - proposal/plan/receipt 使用 `protocol/msql` 中立类型，Agent 生产代码不得 import 内核包；
 - receipt 只保存 statement kind、affected rows、revision/commit sequence 和摘要，不保存参数、
@@ -65,15 +66,18 @@ allowlist、`-race` 与全量 CI。
   多语句、事务、SELECT、结构操作、跨库和 revision guard 缺失均在写前失败；
 - SUBMIT 重新执行完整 review，要求同库 L1 scope 与精确 `SUBMIT_ASSIMILATION` approval；显式
   外层事务内提交被拒绝并回滚；
-- commit processor 在独立 protocol MSQL Session 执行 BEGIN/statement/COMMIT；同 plan 并发只派发
-  一次，已知回滚可 guarded retry，transport 不确定持久为 in_doubt 且不盲重放；
+- commit processor 在独立 protocol MSQL Session 执行单 statement autocommit 或多 statement
+  BEGIN/statements/COMMIT；同 plan 并发只派发一次，已知回滚可 guarded retry，transport 不确定
+  持久为 in_doubt 且不盲重放；
 - receipt 仅含摘要、kind、affected/revision/commit sequence；持久字节测试确认没有 MSQL、参数或
   语义正文，并验证 reopen、ID 冲突、跨库读取和 corruption fail closed；
 - 真实 daemon/shared Service 链在没有旧 coverage task 的情况下完成 REVIEW→SUBMIT→Row INSERT→
   SHOW RECEIPT；目标 package、race、vet 与 Agent import guard 全绿。
 
-完成门结论：PASS。后继 [F196](./f196-draft-claim-ledger.md) 至
-[F199](./f199-assimilation-reconciliation.md) 均已完成。
+完成门结论：协议与单 statement 当前 native 链 PASS。F200 发现 multi-statement 显式事务仅在旧
+Store 后端有机械证据，当前 native daemon 尚不支持；该限制必须在真实多 claim 吸收前独立补齐。
+后继 [F196](./f196-draft-claim-ledger.md) 至 [F200](./f200-epub-single-chain-acceptance.md) 均已完成其
+各自冻结范围。
 
 ## 关联
 

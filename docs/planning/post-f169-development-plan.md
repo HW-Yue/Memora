@@ -22,7 +22,7 @@ F169 单 Row leaf（已完成）
 → F175a–F175c 统一 MSQL 执行入口与 Agent 依赖守卫
 → F176–F181 Bootstrap / Provider / Trace / 最小 Query Agent
 → F182 corpus → F182a Route alias MSQL → F183–F186 外部答案测评、可执行 arms、发布门与交互查询
-→ F187–F200 单网页写入、整本书吸收与 EPUB 质量门
+→ F187–F200 单网页写入、整本书吸收组件与 EPUB 单链验收
 → F201–F204 格式扩展与真实使用观测
 ```
 
@@ -117,12 +117,16 @@ Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才�
 | F197（已完成） | 问题即时输出、用户回答、暂停和恢复受影响分支 |
 | F198（已完成） | author/reviewer 隔离的独立 review gate |
 | F199（已完成） | 短事务 reconciliation、in-doubt 恢复和 Source Receipt |
-| F200 | 从干净 snapshot 跑通一本冻结 EPUB 的完整吸收/查询链，并核对结果结构；批量质量评分延期 |
+| F200（已完成） | 从干净 snapshot 跑通一份冻结 EPUB 的单 claim 吸收/查询链，并核对结果结构；批量质量评分延期 |
 
 写入实验固定实际 Provider/model/mode 和价格快照；Kimi、DeepSeek 可经相同 Provider port 比较，
 不把任一厂商写进 Agent 核心。比较写入策略时 Query Agent 保持固定。
 后续恢复质量比较时，隐藏答案不得提供给写入模型，且必须由确定性 ground truth 或独立 evaluator
 评分，不能让模型自证。当前 F200 只做单链路验收，不据此发布 Recall/准确率结论。
+
+F200 暴露并冻结了一个后续前置缺口：单 statement plan 可依赖 native mutation 自身的原子
+autocommit；多 statement assimilation 仍需要当前 native backend 尚未提供的显式原子事务。真实
+多 claim 吸收前必须独立 Review 和实现，不能在 Agent 侧拆成无原子性的旁路写入。
 
 ## M5：按证据扩展（F201–F204）
 

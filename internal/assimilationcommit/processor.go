@@ -182,15 +182,21 @@ func (processor *Processor) AssimilationReceipt(
 }
 
 func assimilationRequest(plan protocolmsql.AssimilationPlan) protocolmsql.Request {
-	statements := make([]protocolmsql.StatementInput, 0, len(plan.Proposal.Statements)+2)
-	sources := make([]string, 0, len(plan.Proposal.Statements)+2)
+	extraBoundaries := 2
+	if len(plan.Proposal.Statements) == 1 {
+		extraBoundaries = 0
+	}
+	statements := make([]protocolmsql.StatementInput, 0, len(plan.Proposal.Statements)+extraBoundaries)
+	sources := make([]string, 0, len(plan.Proposal.Statements)+extraBoundaries)
 	authorization := protocolmsql.Authorization{
 		Version: protocolmsql.AuthorizationVersion, Actor: plan.Proposal.Author,
 		AuthorizedDatabases: []string{plan.Proposal.Database}, DefaultLevel: protocolmsql.LevelWrite,
 		DatabaseLevels: map[string]protocolmsql.RiskLevel{plan.Proposal.Database: protocolmsql.LevelWrite},
 	}
-	sources = append(sources, "BEGIN")
-	statements = append(statements, protocolmsql.StatementInput{Authorization: authorization})
+	if extraBoundaries != 0 {
+		sources = append(sources, "BEGIN")
+		statements = append(statements, protocolmsql.StatementInput{Authorization: authorization})
+	}
 	for _, statement := range plan.Proposal.Statements {
 		sources = append(sources, statement.MSQL)
 		statements = append(statements, protocolmsql.StatementInput{
@@ -198,8 +204,10 @@ func assimilationRequest(plan protocolmsql.AssimilationPlan) protocolmsql.Reques
 			Authorization: authorization,
 		})
 	}
-	sources = append(sources, "COMMIT")
-	statements = append(statements, protocolmsql.StatementInput{Authorization: authorization})
+	if extraBoundaries != 0 {
+		sources = append(sources, "COMMIT")
+		statements = append(statements, protocolmsql.StatementInput{Authorization: authorization})
+	}
 	return protocolmsql.Request{
 		Version: protocolmsql.RequestVersion, Source: strings.Join(sources, ";"), Statements: statements,
 	}
@@ -209,15 +217,22 @@ func committedReceipt(
 	plan protocolmsql.AssimilationPlan,
 	envelope protocolmsql.Envelope,
 ) (protocolmsql.AssimilationReceipt, error) {
-	want := len(plan.Proposal.Statements) + 2
-	if len(envelope.Results) != want || envelope.Results[0].Statement != "BEGIN" ||
-		envelope.Results[0].Status != protocolmsql.Status(result.StatusSucceeded) ||
-		envelope.Results[len(envelope.Results)-1].Statement != "COMMIT" ||
-		envelope.Results[len(envelope.Results)-1].Status != protocolmsql.Status(result.StatusSucceeded) {
+	statementResults := envelope.Results
+	if len(plan.Proposal.Statements) == 1 {
+		if len(statementResults) != 1 {
+			return protocolmsql.AssimilationReceipt{}, commitError(result.CodeInternal, "atomic statement result count is invalid")
+		}
+	} else if len(statementResults) != len(plan.Proposal.Statements)+2 ||
+		statementResults[0].Statement != "BEGIN" ||
+		statementResults[0].Status != protocolmsql.Status(result.StatusSucceeded) ||
+		statementResults[len(statementResults)-1].Statement != "COMMIT" ||
+		statementResults[len(statementResults)-1].Status != protocolmsql.Status(result.StatusSucceeded) {
 		return protocolmsql.AssimilationReceipt{}, commitError(result.CodeInternal, "transaction result count is invalid")
+	} else {
+		statementResults = statementResults[1 : len(statementResults)-1]
 	}
 	receipt := receiptBase(plan, protocolmsql.AssimilationCommitted)
-	for index, statement := range envelope.Results[1 : len(envelope.Results)-1] {
+	for index, statement := range statementResults {
 		if statement.Status != protocolmsql.Status(result.StatusSucceeded) || statement.AffectedRows == 0 ||
 			statement.Revision == nil || *statement.Revision == 0 ||
 			statement.CommitSequence == nil || *statement.CommitSequence == 0 {

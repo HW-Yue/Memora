@@ -72,7 +72,7 @@ receipt reopen/replay/corruption、无正文持久字节、并发单 dispatch、
 - processing/in_doubt record 也保留 reviewed evidence；reopen/replay、corruption 和持久字节无 MSQL/
   参数/正文证据继续通过；目标测试、race、vet、import guard 与全量 CI 全绿。
 
-完成门结论：PASS。下一项为 F200 冻结 EPUB 的单条干净全链路验收，不运行批量模型评分。
+完成门结论：PASS。F200 冻结 EPUB 的单条干净全链路验收也已通过；批量模型评分继续延期。
 
 ## 关联
 

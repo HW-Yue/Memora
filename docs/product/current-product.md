@@ -39,6 +39,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - Host Input capture 与显式 worthiness decision receipt；
 - 文档/仓库资料的临时吸收、EPUB 结构解析、覆盖调度、独立复核、正式 MSQL 短事务和包含实际
   Row/Relation ID、revision、commit sequence 的 Source Receipt；
+- 冻结 EPUB 已在 clean daemon 跑通单 claim 写入、收据对账、真实 SELECT 回表与固定答案；该证据
+  只证明链路可执行，不是批量答案质量分；
 
 ## 已实现的存储底座
 
@@ -59,8 +61,10 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
   面向用户的正式 `memora ask` 发布承诺和默认 arm 选择仍然延后；
 - “何时值得写入”的质量评测后置；查询、Route 和事实读取的真实大批量质量复跑同样延期，
   现有 runner/gate 保留供后续恢复；
-- 全内容倒排位置、统一 MSQL Service、QuerySession、短网页写入和 EPUB 吸收的 F189–F199
-  组件已完成；下一步只跑一条冻结 EPUB 干净全链路，不恢复批量模型评分；
+- 全内容倒排位置、统一 MSQL Service、QuerySession、短网页写入和 EPUB 吸收的 F189–F200
+  组件及单链验收已完成；批量模型评分继续延期；
+- 当前 native daemon 的正式 assimilation 只验收了单 statement 原子 autocommit；多 statement plan
+  的原子执行尚未接入 native backend，真实多 claim 长资料投入使用前必须补齐；
 - Query Workspace 的跨会话恢复、跨 session topic 身份仍未冻结；
 - Compaction、Secondary Index、Advanced MVCC、Replication、PITR、多设备同步、
   Apple Accelerate 与 HNSW 均未达到证据门，当前不实现。

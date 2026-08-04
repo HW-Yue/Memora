@@ -1,6 +1,6 @@
 # F200：冻结 EPUB 单条干净全链路验收
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成；2026-08-05。
 
 ## 唯一主要结果
 
@@ -45,6 +45,18 @@ Provider raw response 或 reviewer 推理。
 RED 先锁定：真实 clean daemon、冻结 EPUB digest、完整阶段顺序、一个 accepted claim、hash-bound
 approval、正式 SUBMIT+SHOW、收据 RowID 与 SELECT evidence RowID 一致、固定最终答案、调用/usage/
 耗时结构、source cleanup、报告无正文，以及失败 cleanup、race、vet、import boundary 和全量 CI。
+
+## 完成证据
+
+- 固定 EPUB 在全新 daemon 中形成 2 个可读语义节点、1 个 extent、1 个 claim 和 1 份独立 accepted
+  review；正式 SUBMIT/SHOW 返回 committed Source Receipt；
+- 实际写入 RowID 与 Query Agent 的真实 SELECT evidence RowID 一致，固定问题返回预期答案；
+- 报告只保存 digest、计数、usage、阶段耗时和收据摘要，序列化测试确认不包含 EPUB 正文、MSQL、
+  prompt 或 tool arguments；成功与解析失败路径都会回收 SourceStore 引用和对象；
+- 单 statement plan 依赖底层 mutation 自身的原子 autocommit；多 statement plan 仍要求显式事务。
+  当前 native daemon 尚不支持后者，必须在真实多 claim 吸收前单独补齐，不能用本次单链通过冒充；
+- package、race、vet、Agent import boundary 与全量 CI 均通过。没有调用真实模型，也没有执行并发、
+  Recall/MRR/Ragas 或答案质量发布门。
 
 ## 关联
 

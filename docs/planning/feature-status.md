@@ -68,6 +68,7 @@
 | F197 | AssimilationJob branch-local issue/answer；即时事件、独立 revision、未受影响分支继续与无正文恢复 |
 | F198 | author/reviewer 隔离的独立语义复核；新鲜 challenge 请求、数字/anchor/冲突/非原文检查与无正文 artifact 恢复 |
 | F199 | accepted review 到正式 MSQL 短事务的对账；review evidence、实际 object ID/revision/commit sequence 收据与 in-doubt 只读恢复 |
+| F200 | clean daemon 的冻结 EPUB 单链；解析、coverage、draft、独立复核、单 statement 原子提交、Source Receipt 与固定 Query Agent 回答闭环 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -76,7 +77,9 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
 - F185b 实现已完成，但真实 Kimi 三 arm 共 36 题均因 33 次 HTTP 429 与 3 次 wire failure 不可评分；
   release report 保持 `INCOMPLETE`、无默认 arm；
 - 2026-08-05 用户决定延期大批量真实质量复跑。该门继续阻止“质量已通过”和“默认 arm 已选定”
-  的发布声明，但不再阻止后续实验性 Feature 开发；F199 已完成，下一项为 F200 单条 EPUB 全链路验收。
+  的发布声明，但不再阻止后续实验性 Feature 开发；F200 单条 EPUB 全链路已通过，下一格式项为 F201；
+- F200 同时确认当前 native daemon 只能完成单 statement assimilation autocommit。多 statement plan 的
+  原子 native 执行是进入真实多 claim 长文档前的独立缺口，不属于本次单链质量结论。
 
 ## 例外与非当前路径
 
@@ -113,7 +116,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 ## 新候选
 
 - F187–F199：单网页写入、交互式整本 EPUB 吸收、独立复核与提交对账；
-- F200：当前只验收一条干净 snapshot 的整本 EPUB 完整链路和结果结构，不做批量模型质量评分；
+- F200（已完成）：只验收一条干净 snapshot 的 EPUB 完整链路和结果结构，不做批量模型质量评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent
   判断并留下 revision/理由，引擎不提供统一语义常量；
