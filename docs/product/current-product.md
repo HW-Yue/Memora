@@ -1,6 +1,6 @@
 # 当前产品基线
 
-状态：2026-08-04 当前权威产品快照；详细实现状态见
+状态：2026-08-05 当前权威产品快照；详细实现状态见
 [Feature 状态](../planning/feature-status.md)。
 
 ## 产品形态
@@ -53,11 +53,13 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - F127 已有真实宿主证据协议，但真实双宿主 AI 用户故事报告仍为 `INCOMPLETE`；
 - 外置 Agent Hook、统一 session 指标和本地分析平台尚未实现；
 - F182–F185b 已完成冻结语料、端到端 Runner、外部评分、三个真实执行检索 arm 和 release gate，
-  但真实 Kimi 三 arm 共 36 题均因 wire/429 上游错误而不可评分；gate 状态为 INCOMPLETE，面向用户的
-  `memora ask` 继续延后；
-- “何时值得写入”的质量评测后置，近期先评测查询、Route 和事实读取；
-- 全内容倒排位置、统一 MSQL Service 和标准评测 host 已完成；下一步用可成功运行的固定 judge
-  与检索 arms 建立 release gate，证明答案质量、模型调用、上下文和端到端延迟；
+  但真实 Kimi 三 arm 共 36 题均因 wire/429 上游错误而不可评分；gate 状态保持 INCOMPLETE；
+- 用户已决定延期大批量真实质量复跑，允许继续开发实验性 QuerySession；这不等于答案质量通过，
+  面向用户的正式 `memora ask` 发布承诺和默认 arm 选择仍然延后；
+- “何时值得写入”的质量评测后置；查询、Route 和事实读取的真实大批量质量复跑同样延期，
+  现有 runner/gate 保留供后续恢复；
+- 全内容倒排位置、统一 MSQL Service、标准评测 host 和 release gate 已完成；下一步先把现有
+  Query loop 提升为实验性交互 QuerySession，再进入短网页写入；
 - Query Workspace 的跨会话恢复、跨 session topic 身份仍未冻结；
 - Compaction、Secondary Index、Advanced MVCC、Replication、PITR、多设备同步、
   Apple Accelerate 与 HNSW 均未达到证据门，当前不实现。
@@ -65,9 +67,9 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 ## 当前真实性边界
 
 代码和机械测试已经形成完整数据库原型；这不等同于真实长期 AI 使用质量已经达标。
-当前最重要的下一证据是：在无 Provider 限流/协议错误的固定运行上，对三个已可执行 Query arms
-取得有效外部质量分，让既有 release gate 选出默认 arm；随后再用外置 Hook 观察真实宿主环境中的
-分支、上下文、调用和延迟。
+真实 Query 质量证据仍缺失，但当前产品顺序已调整为先开发实验性 QuerySession，再进入单网页和
+整本资料吸收垂直链。后续仍需在无 Provider 限流/协议错误的固定运行上补齐三 arm 外部质量分，
+让既有 release gate 选出默认 arm；外置 Hook 再观察真实宿主环境中的分支、上下文、调用和延迟。
 
 ## 关联
 

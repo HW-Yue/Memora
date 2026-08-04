@@ -1,6 +1,6 @@
 # 后续路线
 
-状态：2026-08-04 当前方向；只描述下一阶段目标，不构成批量 Feature 实现授权。
+状态：2026-08-05 当前方向；只描述下一阶段目标，不构成批量 Feature 实现授权。
 
 F169 之后的逐项依赖、候选编号和完成门见
 [F169 之后的开发序列](./post-f169-development-plan.md)。本文继续维护阶段目标，不重复展开 Feature。
@@ -32,9 +32,10 @@ Codex、Claude Code 等外置 Agent 不作为统一静态基准，只通过 Hook
 1. 中立 MSQL 协议、共享执行服务、依赖守卫和 Bootstrap Frame 已完成；
 2. Provider port、run/session/turn/trace 与真实 Kimi OpenAI-compatible adapter 已完成；
 3. 只读 Query Agent、冻结 corpus、clean Instance runner 和隔离 Ragas 外部评分已完成；
-4. 固定检索 arms 与 F185b release gate 已实现；当前真实 Provider 矩阵为 INCOMPLETE，须先取得
-   可评分结果，不把 0 样本报告冒充质量通过；
-5. release gate 通过后才开放交互 QuerySession，随后验证单网页写入和整本 EPUB；
+4. 固定检索 arms 与 F185b release gate 已实现；当前真实 Provider 矩阵为 INCOMPLETE，真实大批量
+   质量复跑已由用户决定延期，0 样本报告继续保留且不得冒充质量通过；
+5. 下一项独立 Review 实验性交互 QuerySession，随后验证单网页写入和整本 EPUB；质量门通过前
+   不宣称 `memora ask` 已达到发布质量，也不选默认 arm；
 6. 外置 Hook 和写入时机评测放在主垂直链证据之后；Trace 先输出开发用报告，不扩展 Admin。
 
 API Key 只进入操作系统密钥存储或进程环境，不进入 Database、日志、报告或导出。评测 Agent

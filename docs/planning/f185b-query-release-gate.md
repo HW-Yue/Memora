@@ -1,12 +1,13 @@
 # F185b：Query Agent Release Gate
 
-状态：已完成（2026-08-04）；Feature 完成门 PASS，当前产品 release decision 为 INCOMPLETE。
+状态：已完成（2026-08-04）；Feature 完成门 PASS，当前产品 release decision 为 INCOMPLETE；
+2026-08-05 用户决定延期真实三臂质量复跑。
 
 ## 唯一主要结果
 
 消费三个 F185a arm 各自绑定的 F183 public scorecard 与 F184 public evaluation，生成严格、可复算、
-可审计的 Query release report；只有完整同身份矩阵中至少一个 arm 达到固定质量门时，才允许 F186
-把 QuerySession 作为产品候选继续开发。
+可审计的 Query release report；完整同身份矩阵中至少一个 arm 达到固定质量门，才允许对外宣称
+Query Agent 质量通过并由报告选定默认 arm。
 
 F185b 不运行 Query Agent、不调用 judge、不读取 private diagnostics/ground truth 正文，也不实现
 `memora ask`。
@@ -84,5 +85,12 @@ HotpotQA、MIRACL 继续作为独立外部效度候选。
   `incomplete`、无默认 arm，三个 arm 都明确记录 coverage/metric/matrix incomplete reasons。
 
 完成门结论：PASS，指 F185b 能可靠地产生并阻断 release；不代表 Query Agent 产品质量通过。
-F186 的进入条件仍未满足，必须先取得同身份、可评分的三 arm 真实 Provider 矩阵，不能用 scripted
-分数替代。
+
+## 2026-08-05 产品策略调整
+
+用户确认当前先接受真实 Provider required tool-call smoke、确定性完整 Query loop 和三 arm 实际
+MSQL/Frame 差异作为“链路可继续开发”的证据，真实大批量三臂质量复跑延期。当前 INCOMPLETE
+报告继续保留，不能改写为 PASS，也不能据此声称答案质量达标或选出默认 arm。
+
+因此本门继续作为**质量发布门**，不再作为后续实验性 Feature 的**开发启动门**。F186 可以按独立
+Review/TDD 开发，但在真实矩阵通过前只能标为实验性能力；scripted 分数仍不得替代真实证据。

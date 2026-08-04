@@ -26,13 +26,16 @@
 ## 依赖图
 
 ```text
-F181 只读 Query Agent + F185 质量门
+F181 只读 Query Agent → F186 实验性 QuerySession
 → F187 写能力/审批 → F188 单网页写入垂直链
 → F189 交互协议 → F190 Job → F191 SourceStore → F192 Document IR → F193 EPUB
 → F194 coverage → F195 正式 MSQL 吸收面 → F196 draft ledger
 → F197 暂停恢复 → F198 独立复核 → F199 reconciliation/receipt → F200 EPUB benchmark
 → F201–F204 证据触发扩展
 ```
+
+F185 真实大批量质量复跑已延期；它仍限制对外质量声明和默认 arm 选择，但不再阻止上述实验性
+开发序列。F200 的整本书隐藏答案 benchmark 仍必须使用固定 Query Agent，不能用延期决定冒充质量证据。
 
 ## A：先证明小写入（F187–F188）
 
