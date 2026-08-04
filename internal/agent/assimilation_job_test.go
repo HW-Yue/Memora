@@ -79,15 +79,42 @@ func TestAssimilationJobReopensHistoryAndCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) || got.LastSourceSequence != 5 || got.Checkpoint == nil ||
-		got.Checkpoint.Ordinal != 1 {
+		got.Checkpoint.Ordinal != 1 || got.Intake.Progress.Completed != 1 ||
+		got.Intake.Selection == nil || got.Intake.Question != nil {
 		t.Fatalf("reopened snapshot = %#v, want %#v", got, want)
+	}
+	restoredIntake, err := agent.RestoreSourceIntake(got.Intake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredProgress, err := restoredIntake.Progress(agent.SourceProgress{
+		Completed: 2, Total: 20, UnitID: "chapter-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendRestored := assimilationCommand(
+		"task-durable-book", "command-restored-progress", agent.AssimilationJobCommandAppendSourceEvents, 4,
+	)
+	appendRestored.SourceEvents = restoredProgress
+	if _, err := reopened.Apply(appendRestored); err != nil {
+		t.Fatalf("append from restored Source Intake: %v", err)
+	}
+	got.Intake.Inventory.Units[1].Label = "tampered recovered snapshot"
+	isolated, err := reopened.Read("task-durable-book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if isolated.Intake.Inventory.Units[1].Label != "Chapter one" ||
+		isolated.Intake.Progress.Completed != 2 {
+		t.Fatalf("persisted Intake snapshot was mutable or not resumed: %#v", isolated.Intake)
 	}
 	history, err := reopened.Events("task-durable-book", 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 4 {
-		t.Fatalf("history len = %d, want 4", len(history))
+	if len(history) != 5 {
+		t.Fatalf("history len = %d, want 5", len(history))
 	}
 	for index, event := range history {
 		if event.Revision != uint64(index+1) || event.Validate() != nil {
@@ -123,7 +150,10 @@ func TestAssimilationJobCommandsAreIdempotentRevisionGuardedAndTerminal(t *testi
 		t.Fatalf("replayed event changed: %#v != %#v", replayed.Event, first.Event)
 	}
 	conflict := start
-	conflict.ExpectedRevision = 9
+	conflict.SourceEvents = append([]agent.SourceIntakeEvent(nil), start.SourceEvents...)
+	changedInventory := *conflict.SourceEvents[0].Inventory
+	changedInventory.Source.Title = "A different valid title"
+	conflict.SourceEvents[0].Inventory = &changedInventory
 	if _, err := store.Apply(conflict); !errors.Is(err, agent.ErrAssimilationJobCommandConflict) {
 		t.Fatalf("same command ID with different content error = %v", err)
 	}
@@ -278,6 +308,40 @@ func TestAssimilationJobRecoversTornTailAndRejectsCompleteCorruption(t *testing.
 	}
 	if _, err := broken.Read("task-recovery"); !errors.Is(err, agent.ErrAssimilationJobCorrupt) {
 		t.Fatalf("Read corrupted journal error = %v", err)
+	}
+}
+
+func TestAssimilationJobRollsBackTornFirstRecord(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	store, err := agent.OpenAssimilationJobStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, begin := begunIntake(t, "task-first-record")
+	start := assimilationCommand("task-first-record", "command-start", agent.AssimilationJobCommandStart, 0)
+	start.SourceEvents = begin
+	if _, err := store.Apply(start); err != nil {
+		t.Fatal(err)
+	}
+	path := onlyJournalPath(t, root)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data[:len(data)/2], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := agent.OpenAssimilationJobStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.Read("task-first-record"); !errors.Is(err, agent.ErrAssimilationJobNotFound) {
+		t.Fatalf("Read torn first record error = %v", err)
+	}
+	if _, err := reopened.Apply(start); err != nil {
+		t.Fatalf("restart after torn first record: %v", err)
 	}
 }
 

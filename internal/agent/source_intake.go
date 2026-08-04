@@ -381,6 +381,53 @@ func (session *SourceIntake) Snapshot() SourceIntakeSnapshot {
 	}
 }
 
+func (snapshot SourceIntakeSnapshot) Validate() error {
+	if snapshot.Version != SourceIntakeStateVersion || !validSourceIntakeID(snapshot.TaskID, 128) ||
+		snapshot.Sequence < 3 || !validSourceInventory(snapshot.Inventory) {
+		return ErrInvalidSourceIntake
+	}
+	if snapshot.Selection != nil && !validSourceSelection(*snapshot.Selection, snapshot.Inventory) {
+		return ErrInvalidSourceIntake
+	}
+	if snapshot.Progress != (SourceProgress{}) {
+		if !validSourceProgress(snapshot.Progress, snapshot.Inventory, SourceProgress{}) {
+			return ErrInvalidSourceIntake
+		}
+	}
+	switch snapshot.State {
+	case SourceIntakeWaitingUser:
+		if snapshot.Question == nil || !validSourceQuestion(*snapshot.Question) {
+			return ErrInvalidSourceIntake
+		}
+		if (snapshot.Question.Kind == SourceQuestionScope) != (snapshot.Selection == nil) {
+			return ErrInvalidSourceIntake
+		}
+	case SourceIntakeAccepted:
+		if snapshot.Selection == nil || snapshot.Question != nil {
+			return ErrInvalidSourceIntake
+		}
+	case SourceIntakeCancelled:
+		if snapshot.Question != nil {
+			return ErrInvalidSourceIntake
+		}
+	default:
+		return ErrInvalidSourceIntake
+	}
+	return nil
+}
+
+func RestoreSourceIntake(snapshot SourceIntakeSnapshot) (*SourceIntake, error) {
+	if snapshot.Validate() != nil {
+		return nil, ErrInvalidSourceIntake
+	}
+	return &SourceIntake{
+		taskID: snapshot.TaskID, state: snapshot.State, sequence: snapshot.Sequence,
+		inventory: cloneSourceInventory(snapshot.Inventory),
+		selection: cloneSourceSelectionPointer(snapshot.Selection),
+		question:  cloneSourceQuestionPointer(snapshot.Question), progress: snapshot.Progress,
+	}, nil
+}
+
 type sourceIntakeEventPayload struct {
 	kind         SourceIntakeEventKind
 	inventory    *SourceInventory
@@ -673,4 +720,11 @@ func cloneSourceCancellationPointer(value *SourceCancellation) *SourceCancellati
 	}
 	cloned := *value
 	return &cloned
+}
+
+func cloneSourceIntakeSnapshot(snapshot SourceIntakeSnapshot) SourceIntakeSnapshot {
+	snapshot.Inventory = cloneSourceInventory(snapshot.Inventory)
+	snapshot.Selection = cloneSourceSelectionPointer(snapshot.Selection)
+	snapshot.Question = cloneSourceQuestionPointer(snapshot.Question)
+	return snapshot
 }

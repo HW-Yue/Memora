@@ -1,6 +1,6 @@
 # F190：可持久恢复的 AssimilationJob
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -30,6 +30,7 @@ cancel(expected_revision=N, reason_code)
 - Command 使用稳定 `command_id`；同 ID、同规范摘要为 replay，同 ID、不同摘要为冲突；
 - `expected_revision` 在首次执行时实现 one-winner；幂等 replay 不因 revision 已推进而失败；
 - Source event batch 必须逐项通过 F189 `Validate`，task、sequence 和允许的 batch 形状连续；
+- 每次 revision 同时重建可验证的 F189 Intake Snapshot；reopen 后可恢复 Intake 并从下一 sequence 继续；
 - checkpoint 只含 ordinal、当前 Source sequence、stage、cursor 和 state SHA-256，不含正文；
 - journal record 固定 previous-record hash、command hash 和 record hash；每次 append 后 `fsync`；
 - 最后一个没有换行的 torn record 可安全截断；完整换行但 JSON/hash/chain 损坏时 fail closed；
@@ -48,4 +49,15 @@ cancel(expected_revision=N, reason_code)
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204；真实模型限速不影响本确定性 Feature。
 
-开工前结论：PASS。
+## 完成证据
+
+- start、Source event append、checkpoint 和 job-level cancel 均写入 hash-chain journal 并 `fsync`；
+- reopen 后恢复 inventory、selection、question、progress、sequence 和 checkpoint，恢复的 F189 Session
+  能继续生成并持久化下一批进度事件；
+- 同 Command replay 不增加 revision，同 ID 异内容冲突，16 路同 revision 更新只有一个成功；
+- 非首条 torn tail 截断到最后完整 record；首条 torn record 回滚为未创建，随后可安全重试 start；
+- 完整 JSON record 的 revision/checksum/previous hash 被修改后 fail closed；
+- 测试证明用户回答正文和伪造源正文不进入 journal，目标测试与 `-race` 全绿；
+- Store 只使用标准库，路径由 JobID SHA-256 派生，目录/文件权限分别为 `0700`/`0600`。
+
+完成门结论：PASS。下一项为 F191 内容寻址临时 SourceStore。
