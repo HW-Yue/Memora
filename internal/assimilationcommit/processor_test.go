@@ -41,7 +41,9 @@ func TestProcessorExecutesOneMSQLTransactionPersistsRedactedReceiptAndReplays(t 
 	plan := sealedCommitPlan(t, "Private semantic body")
 	receipt, err := processor.SubmitAssimilation(ctx, plan)
 	if err != nil || receipt.Status != protocolmsql.AssimilationCommitted || receipt.Replayed ||
-		len(receipt.Statements) != 1 || receipt.Statements[0].Kind != "INSERT" {
+		len(receipt.Statements) != 1 || receipt.Statements[0].Kind != "INSERT" ||
+		len(receipt.Statements[0].ObjectIDs) != 1 || receipt.Statements[0].ObjectIDs[0] != "row-actual-1" ||
+		receipt.Evidence == nil || receipt.Evidence.ReviewArtifactSHA256s[0] != commitSHA("d") {
 		t.Fatalf("receipt = %#v, %v", receipt, err)
 	}
 
@@ -199,6 +201,11 @@ func sealedCommitPlan(t *testing.T, title string) protocolmsql.AssimilationPlan 
 		Database: "work", Author: "agent:author", SourceID: "source-1",
 		SourceLocator: "book.epub", SourceSHA256: commitSHA("a"), DocumentSHA256: commitSHA("b"),
 		CoverageRevision: 3, CoveredNodes: 4, TotalNodes: 4,
+		Evidence: &protocolmsql.AssimilationEvidence{
+			Version: protocolmsql.AssimilationEvidenceVersion, Author: "agent:author",
+			Reviewers: []string{"agent:reviewer"}, ReviewArtifactSHA256s: []string{commitSHA("d")},
+			CoverageRevision: 3, CoveredNodes: 4, TotalNodes: 4,
+		},
 		Statements: []protocolmsql.AssimilationStatement{{
 			MSQL:       "INSERT INTO work.notes (title) VALUES (:title)",
 			Parameters: protocolmsql.Parameters{Named: map[string]any{"title": title}},
@@ -219,7 +226,7 @@ func sealedCommitPlan(t *testing.T, title string) protocolmsql.AssimilationPlan 
 
 func committedEnvelope(request protocolmsql.Request) protocolmsql.Envelope {
 	revision, sequence := uint64(1), uint64(9)
-	return protocolmsql.Envelope{
+	envelope := protocolmsql.Envelope{
 		Version: protocolmsql.EnvelopeVersion, RequestID: "nested-1", OK: true,
 		Results: []protocolmsql.StatementResult{
 			commitStatement(0, "BEGIN", 0, nil, nil),
@@ -227,6 +234,8 @@ func committedEnvelope(request protocolmsql.Request) protocolmsql.Envelope {
 			commitStatement(2, "COMMIT", 0, nil, nil),
 		}, Warnings: []protocolmsql.Notice{},
 	}
+	envelope.Results[1].Rows = []protocolmsql.Row{{"row_id": "row-actual-1"}}
+	return envelope
 }
 
 func failedEnvelope(request protocolmsql.Request) protocolmsql.Envelope {

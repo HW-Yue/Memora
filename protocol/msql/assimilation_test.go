@@ -23,10 +23,14 @@ func TestAssimilationPlanSealIsDeterministicValidatedAndDeepCopied(t *testing.T)
 		t.Fatalf("sealed plans = %#v / %#v", first, second)
 	}
 	proposal.Statements[0].Parameters.Named["title"] = "caller mutation"
+	proposal.Evidence.Reviewers[0] = "caller mutation"
+	proposal.Evidence.ReviewArtifactSHA256s[0] = testAssimilationSHA("f")
 	nested := proposal.Statements[0].Parameters.Named["metadata"].(map[string]any)
 	nested["tags"].([]any)[0] = "caller mutation"
 	if first.Proposal.Statements[0].Parameters.Named["title"] == "caller mutation" ||
-		first.Proposal.Statements[0].Parameters.Named["metadata"].(map[string]any)["tags"].([]any)[0] == "caller mutation" {
+		first.Proposal.Statements[0].Parameters.Named["metadata"].(map[string]any)["tags"].([]any)[0] == "caller mutation" ||
+		first.Proposal.Evidence.Reviewers[0] == "caller mutation" ||
+		first.Proposal.Evidence.ReviewArtifactSHA256s[0] == testAssimilationSHA("f") {
 		t.Fatalf("sealed plan aliased caller proposal: %#v", first)
 	}
 	tampered := first
@@ -64,8 +68,9 @@ func TestAssimilationReceiptRejectsContentlessCommittedOrMalformedResults(t *tes
 		Version: protocolmsql.AssimilationReceiptVersion, ReceiptID: "proposal-1", PlanID: "proposal-1",
 		PlanSHA256: testAssimilationSHA("a"), Database: "work", SourceID: "source-1",
 		SourceSHA256: testAssimilationSHA("b"), DocumentSHA256: testAssimilationSHA("c"),
-		Status: protocolmsql.AssimilationCommitted, Statements: []protocolmsql.AssimilationStatementReceipt{{
-			Index: 0, Kind: "INSERT", AffectedRows: 1,
+		Evidence: reviewedAssimilationEvidence(), Status: protocolmsql.AssimilationCommitted,
+		Statements: []protocolmsql.AssimilationStatementReceipt{{
+			Index: 0, Kind: "INSERT", AffectedRows: 1, ObjectIDs: []string{"row-1"},
 		}},
 	}
 	if err := receipt.Validate(); err != nil {
@@ -75,6 +80,12 @@ func TestAssimilationReceiptRejectsContentlessCommittedOrMalformedResults(t *tes
 	if err := receipt.Validate(); !errors.Is(err, protocolmsql.ErrInvalidEnvelope) {
 		t.Fatalf("nil statements error = %v", err)
 	}
+	receipt.Statements = []protocolmsql.AssimilationStatementReceipt{{
+		Index: 0, Kind: "INSERT", AffectedRows: 2, ObjectIDs: []string{"row-1"},
+	}}
+	if err := receipt.Validate(); !errors.Is(err, protocolmsql.ErrInvalidEnvelope) {
+		t.Fatalf("object inventory error = %v", err)
+	}
 }
 
 func validAssimilationProposal() protocolmsql.AssimilationProposal {
@@ -83,6 +94,7 @@ func validAssimilationProposal() protocolmsql.AssimilationProposal {
 		Database: "work", Author: "agent:author", SourceID: "source-1",
 		SourceLocator: "book.epub", SourceSHA256: testAssimilationSHA("b"),
 		DocumentSHA256: testAssimilationSHA("c"), CoverageRevision: 4, CoveredNodes: 8, TotalNodes: 8,
+		Evidence: reviewedAssimilationEvidence(),
 		Statements: []protocolmsql.AssimilationStatement{{
 			MSQL: "INSERT INTO work.notes (title) VALUES (:title)",
 			Parameters: protocolmsql.Parameters{Named: map[string]any{
@@ -95,6 +107,15 @@ func validAssimilationProposal() protocolmsql.AssimilationProposal {
 				SourceContentHash: testAssimilationSHA("b"),
 			},
 		}},
+	}
+}
+
+func reviewedAssimilationEvidence() *protocolmsql.AssimilationEvidence {
+	return &protocolmsql.AssimilationEvidence{
+		Version: protocolmsql.AssimilationEvidenceVersion, Author: "agent:author",
+		Reviewers:             []string{"agent:reviewer"},
+		ReviewArtifactSHA256s: []string{testAssimilationSHA("d")},
+		CoverageRevision:      4, CoveredNodes: 8, TotalNodes: 8,
 	}
 }
 
