@@ -3,7 +3,8 @@
 状态：F43 已决定面向用户的 v0 Runtime defer；F175c–F178 已交付评测 Agent 所需的 MSQL-only
 边界、无模型 Bootstrap、厂商中立 Provider port 与 Trace。F179 决定首个 benchmark Query Agent
 采用 Memora-owned 薄 loop；F180/F181 已交付真实 OpenAI-compatible adapter 与隔离的只读 loop、
-SELECT evidence 和 Trace。F196 已交付不执行写入的长文档 draft/claim ledger。评测 runner
+SELECT evidence 和 Trace。F196–F198 已交付不执行写入的长文档 draft/claim ledger、局部问题恢复
+与独立复核门。评测 runner
 与产品入口仍需后续 Feature。
 
 ## 定位
@@ -102,6 +103,10 @@ F197 将长任务中的问题等待改为 branch-local：目标 extent/claim 等
 其他分支可继续保存 checkpoint。用户选择按 branch revision 提交，所以不会被无关分支的
 Job revision 推进误判为过期；journal 只保存 option 与回答 digest，不保存自由文本回答。
 
+F198 对每个非空 claim batch 发起与 author 历史隔离的新 reviewer 请求。Runtime 先确定性核对
+真实 anchor 和数字 inventory，reviewer 再判断冲突与非机械原文复制；challenge-bound artifact
+只保存摘要和 checksum。合法拒绝同样持久化，同 input 重启或并发重放不会再次调用模型。
+
 ## 一个 Runtime，多种能力配置
 
 不再要求 Query Agent 和 Mutation Agent 是两个不同宿主进程。一个 loop 根据请求获得能力配置：
@@ -149,7 +154,7 @@ memora config model ...      配置模型，密钥单独安全保存
 - 模型输出采用工具调用还是严格 JSON；
 - `ask` 最终返回人类回答、Context Pack，还是由调用方选择；
 - 同一 loop 是否处理资料吸收，还是使用独立任务类型。
-- F195 之后的 claim ledger、独立语义复核与 Source Receipt 对账编排。
+- F199 的 Source Receipt 对账编排，以及其后的完整链路产品入口。
 
 ## 关联
 

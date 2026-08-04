@@ -9,8 +9,9 @@ Source Receipt 操作。F195 已实现新 MSQL 提交面且明确不导入本 Co
 外部兼容和历史语义参考，Go 包和旁路 RPC 不能成为 Agent 依赖。
 
 F196 已将 author 的每个草稿 claim 绑定到真实 Document IR anchor、extent/provider/model/prompt
-digest 与候选 `AssimilationStatement`，但状态只是 `review_required`。它不等于本文的
-独立复核证明；新内置链的 reviewer 隔离与验证仍由 F198 实现。
+digest 与候选 `AssimilationStatement`；F198 已实现新内置链的独立 reviewer 请求、challenge、
+数字/anchor/冲突/非原文复核和无正文 artifact。本文后续提交/收据段落仍是旧外部协议参考；
+F199 才负责把新 artifact 接入短事务对账与 Source Receipt。
 
 ## 提交对象
 

@@ -115,13 +115,14 @@ Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才�
 | F195（已完成） | 以正式 MSQL 替代 Agent 所需的 `assimilation.*` 私有 IPC |
 | F196（已完成） | 可替换 Provider 的 draft/claim ledger 和有来源约束的 MSQL 候选 |
 | F197（已完成） | 问题即时输出、用户回答、暂停和恢复受影响分支 |
-| F198 | author/reviewer 隔离的独立 review gate |
+| F198（已完成） | author/reviewer 隔离的独立 review gate |
 | F199 | 短事务 reconciliation、in-doubt 恢复和 Source Receipt |
-| F200 | 从干净 snapshot 吸收整本 EPUB，再由固定 Query Agent 评分隐藏问题 |
+| F200 | 从干净 snapshot 跑通一本冻结 EPUB 的完整吸收/查询链，并核对结果结构；批量质量评分延期 |
 
 写入实验固定实际 Provider/model/mode 和价格快照；Kimi、DeepSeek 可经相同 Provider port 比较，
 不把任一厂商写进 Agent 核心。比较写入策略时 Query Agent 保持固定。
-隐藏答案不提供给写入模型，确定性 ground truth 或独立 evaluator 负责评分，不能让模型自证。
+后续恢复质量比较时，隐藏答案不得提供给写入模型，且必须由确定性 ground truth 或独立 evaluator
+评分，不能让模型自证。当前 F200 只做单链路验收，不据此发布 Recall/准确率结论。
 
 ## M5：按证据扩展（F201–F204）
 

@@ -1,6 +1,6 @@
 # F198：Author / Reviewer 隔离的独立语义复核门
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -47,6 +47,23 @@ checksum 或严格 JSON 损坏 fail closed。拒绝 artifact 也持久化，防�
 RED 先锁定：新鲜两消息 required tool call、actor 隔离、challenge echo、数字 inventory 完整、
 anchor 精确相等、peer digest 绑定、accepted/rejected 分流、非法/漏项输出不产生 artifact、
 reopen/replay 无调用、input 冲突、corruption 与持久字节无正文，以及 race/import guard/全量 CI。
+
+## 完成证据
+
+- `AssimilationReviewer` 为每个非空 extent batch 创建固定 system+user 的全新 required-tool
+  请求；reviewer 与唯一 author 相同会在 Provider 调用前拒绝；
+- 生产 challenge 使用 `crypto/rand` 生成 256 bit 值，模型必须精确回传；artifact 只保存其
+  SHA-256，不保存 challenge、prompt、extent、候选 MSQL、参数或 raw response；
+- Runtime 先核对 claim anchor 与真实 `ReadExtent`，再递归生成数字 path/value inventory；
+  reviewer 输出必须按原顺序完整回传 claim、node 和 evidence ID；
+- 全部四项检查和 decision/finding 共同决定 accepted/rejected；合法拒绝也原子持久化，
+  避免用重复调用挑选更宽松结果；
+- Artifact Store 使用 `0700/0600`、严格 JSON、checksum、fsync 与原子发布；reopen 后同 input
+  不再调用 Provider，同 Job+extent 换 input 冲突，损坏 fail closed；
+- 16 个并发调用只产生一次 Provider/challenge 调用，其余返回同一 checksum 的 replay；目标测试、
+  race、vet、Agent import guard 与全量 unit/integration/E2E/cross-build CI 全绿。
+
+完成门结论：PASS。下一项为 F199 短事务 reconciliation、in-doubt 恢复与 Source Receipt。
 
 ## 关联
 

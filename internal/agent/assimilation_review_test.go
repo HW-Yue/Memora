@@ -224,6 +224,61 @@ func TestAssimilationReviewStoreRejectsInputConflictAndCorruption(t *testing.T) 
 	}
 }
 
+func TestAssimilationReviewerCoalescesConcurrentReview(t *testing.T) {
+	batch, extent := reviewDraftBatch(t)
+	store, err := agent.OpenAssimilationReviewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	challenge := strings.Repeat("2", 64)
+	provider := &shortTextProvider{response: assimilationReviewResponse(
+		t, "review-model", reviewToolArguments(batch, challenge, true),
+	)}
+	challenges := &reviewChallengeSource{values: []string{challenge}}
+	reviewer := newAssimilationReviewer(t, provider, store, challenges, "review-model")
+
+	const callers = 16
+	artifacts := make(chan agent.AssimilationReviewArtifact, callers)
+	errorsFound := make(chan error, callers)
+	var wait sync.WaitGroup
+	for range callers {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			artifact, reviewErr := reviewer.Review(context.Background(), agent.AssimilationReviewRequest{
+				Batch: batch, Extent: extent, PeerClaims: []agent.DraftClaim{},
+			})
+			if reviewErr != nil {
+				errorsFound <- reviewErr
+				return
+			}
+			artifacts <- artifact
+		}()
+	}
+	wait.Wait()
+	close(artifacts)
+	close(errorsFound)
+	for reviewErr := range errorsFound {
+		t.Fatalf("concurrent Review() error = %v", reviewErr)
+	}
+	wantSHA256 := ""
+	replayed := 0
+	for artifact := range artifacts {
+		if wantSHA256 == "" {
+			wantSHA256 = artifact.SHA256
+		}
+		if artifact.SHA256 != wantSHA256 || artifact.Validate() != nil {
+			t.Fatalf("concurrent artifact = %#v", artifact)
+		}
+		if artifact.Replayed {
+			replayed++
+		}
+	}
+	if provider.Calls() != 1 || challenges.Calls() != 1 || replayed != callers-1 {
+		t.Fatalf("calls = Provider %d Challenge %d Replayed %d", provider.Calls(), challenges.Calls(), replayed)
+	}
+}
+
 func reviewDraftBatch(t *testing.T) (agent.DraftClaimBatch, agent.ReadExtent) {
 	t.Helper()
 	document, extent := assimilationDraftExtent(t)
