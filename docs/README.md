@@ -48,6 +48,7 @@
 - [F185a：可执行 Query Bootstrap Arms](./planning/f185a-executable-query-arms.md) — 已完成的 Atlas、Lexical 与 Prefetch 真实执行对照，公开 arm 与 Frame/MSQL transcript 一致。
 - [F185b：Query Agent Release Gate](./planning/f185b-query-release-gate.md) — 已完成的三 arm 同身份质量门；当前真实 Kimi release report 为 INCOMPLETE，未选默认 arm。
 - [F186：实验性交互式 QuerySession](./planning/f186-query-session.md) — 顺序 turn、实时脱敏事件、取消、会话总预算与有界恢复。
+- [F187：Agent Write Profile 与审批信封](./planning/f187-agent-write-profile.md) — L1 scope、guard、hash-bound 一次性用户审批与 MSQL-only 执行边界。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
