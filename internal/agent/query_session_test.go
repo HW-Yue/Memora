@@ -93,8 +93,91 @@ func TestQuerySessionStreamsLiveTraceAndReturnsImmutableResult(t *testing.T) {
 		again.Evidence[0].Result.Rows[0]["decision"] != "Use the thin loop" {
 		t.Fatalf("second Wait() = %#v, %v", again, err)
 	}
+	var waitGroup sync.WaitGroup
+	for range 8 {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			copy, waitErr := turn.Wait()
+			if waitErr != nil || copy.Answer != "Use the thin loop." {
+				t.Errorf("concurrent Wait() = %#v, %v", copy, waitErr)
+			}
+		}()
+	}
+	waitGroup.Wait()
 	if usage := session.Usage(); usage.TurnsStarted != 1 || usage.TurnsCompleted != 1 ||
 		usage.ProviderCalls != 2 || usage.ToolCalls != 1 {
+		t.Fatalf("usage = %#v", usage)
+	}
+	if err := msql.Verify(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestQuerySessionRecoversAfterProviderFailure(t *testing.T) {
+	t.Parallel()
+
+	firstQuestion := "This call will fail"
+	secondQuestion := "Read the fact after recovery"
+	authorization := queryAuthorization(protocolmsql.LevelRead)
+	readOnly := queryReadOnlyAuthorization(authorization)
+	bootstrapBudget := queryBootstrapBudget()
+	queryBudget := agent.DefaultQueryBudget()
+	selectSource := "SELECT fact FROM `work`.`notes` WHERE row_id = :row LIMIT 1"
+	toolCall := agent.ProviderToolCall{
+		ID: "call-failure-recovery", Name: agent.QueryExecuteMSQLToolName,
+		Arguments: queryArguments(t, selectSource, map[string]any{"row": "row-3"}),
+	}
+	provider := &recordingQueryProvider{
+		responses: []agent.ProviderResponse{
+			{},
+			queryProviderResponse(agent.ProviderFinishToolCalls, agent.ProviderMessage{
+				Role: agent.ProviderRoleAssistant, ToolCalls: []agent.ProviderToolCall{toolCall},
+			}),
+			queryProviderResponse(agent.ProviderFinishStop, agent.ProviderMessage{
+				Role: agent.ProviderRoleAssistant, Content: "Recovery succeeded.",
+			}),
+		},
+		errors: []error{errors.New("temporary Provider failure")},
+	}
+	msql := agenttest.NewScriptedMSQL(
+		queryBootstrapStep(firstQuestion, readOnly, bootstrapBudget),
+		queryBootstrapStep(secondQuestion, readOnly, bootstrapBudget),
+		agenttest.MSQLStep{
+			Request: queryMSQLRequest(selectSource, readOnly, protocolmsql.Parameters{
+				Named: map[string]any{"row": "row-3"},
+			}),
+			Envelope: queryEnvelope("failure-recovery", protocolmsql.StatementResult{
+				Index: 0, Statement: "SELECT", Source: selectSource, Status: "succeeded",
+				Columns: []protocolmsql.Column{{Name: "fact", Type: "TEXT"}},
+				Rows:    []protocolmsql.Row{{"fact": "recovered"}}, Warnings: []protocolmsql.Notice{},
+			}),
+		},
+	)
+	session := newQuerySession(t, newQueryAgent(t, msql, provider), authorization, bootstrapBudget,
+		queryBudget, agent.QuerySessionBudget{MaxTurns: 2, MaxProviderCalls: 3, MaxToolCalls: 1})
+	failed, err := session.Start(context.Background(), firstQuestion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedEvents := collectSessionEvents(failed.Events())
+	if _, err := failed.Wait(); err == nil || errors.Is(err, context.Canceled) {
+		t.Fatalf("failed Wait() error = %v", err)
+	}
+	assertSessionEvents(t, failedEvents, agent.QuerySessionEventTurnFailed)
+
+	recovered, err := session.Start(context.Background(), secondQuestion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveredEvents := collectSessionEvents(recovered.Events())
+	result, err := recovered.Wait()
+	if err != nil || result.Answer != "Recovery succeeded." {
+		t.Fatalf("recovered Wait() = %#v, %v", result, err)
+	}
+	assertSessionEvents(t, recoveredEvents, agent.QuerySessionEventTurnCompleted)
+	if usage := session.Usage(); usage.TurnsFailed != 1 || usage.TurnsCompleted != 1 ||
+		usage.ProviderCalls != 3 || usage.ToolCalls != 1 {
 		t.Fatalf("usage = %#v", usage)
 	}
 	if err := msql.Verify(); err != nil {

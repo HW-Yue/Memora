@@ -5,10 +5,10 @@
 
 ## 当前出发点
 
-- F170–F185b 已完成；Query Agent、公开 corpus、MSQL-only clean Instance 物化、公私分离的 answer
+- F170–F186 已完成；Query Agent、公开 corpus、MSQL-only clean Instance 物化、公私分离的 answer
   runner、隔离外部评分、三个真实执行 arms 和 release gate 均已具备；当前真实 gate 为 INCOMPLETE；
 - 2026-08-05 用户决定延期真实大批量质量复跑。INCOMPLETE 继续阻止质量发布声明，但不再阻止
-  实验性开发；下一项为 F186 独立 Review；
+  实验性开发；F186 进程内 QuerySession 已完成，下一项为 F187 独立 Review；
 - 内置 Agent、资料吸收、外部标准测评和 MSQL-only 边界文档已合入 `main`；
 - F180 已通过真实 Kimi 中国站 required tool-call smoke，F183 runner 不再有 Provider 前置缺口；
 - `.cc-connect/` 是用户未跟踪内容，不属于任何后续 Feature。
@@ -87,7 +87,7 @@ locations 和少量投机根 Route，减少先选库再逐表询问造成的模�
 | F184（已完成） | Ragas 等外部评分 adapter | correctness、faithfulness、context precision/recall、p50/p95、token 与调用数 |
 | F185a（已完成） | 可执行 Query Bootstrap arms | Atlas-only、Atlas+Lexical、Atlas+Lexical+Prefetch 产生不同 MSQL/Frame |
 | F185b（已完成；release INCOMPLETE） | Query Agent release gate | 固定身份、阈值和有效样本要求比较三个当前可执行 arm |
-| F186（下一项；待独立 Review） | 实验性交互式 QuerySession | 提供流式事件、取消、预算和有界恢复；质量门通过前不作发布承诺 |
+| F186（已完成） | 实验性交互式 QuerySession | 实时脱敏事件、取消、会话总预算和失败后有界恢复；尚未开放 `memora ask` |
 
 F179 不预设一定采用 Eino。候选必须保持单一 `memora` 发布体验；只引入实际使用的编排能力，
 不引入 Retriever、Vector Store、DevOps、全套 Provider 或本地模型。F181 先是隔离 benchmark host，

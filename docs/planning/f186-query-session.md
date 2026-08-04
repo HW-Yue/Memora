@@ -1,6 +1,6 @@
 # F186：实验性交互式 QuerySession
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -51,4 +51,13 @@ QuerySession.Start(question)
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204；真实模型限速时一次成功链路证据即可。
 
-开工前结论：PASS。
+## 完成证据
+
+- RED：事件、Session budget、Turn 和构造入口均不存在，新契约测试编译失败；
+- GREEN：Trace 在阻塞 Provider 返回前已流出；正常 turn 返回真实 SELECT evidence，事件不含问题、
+  MSQL、Row 或答案正文；
+- active turn 并发启动 fail closed；Provider 取消和失败都可在实际剩余预算内恢复，预算耗尽不再
+  调用 Provider/MSQL；
+- `Wait` 的重复和并发读取返回深拷贝；Agent race、import allowlist 与完整 `scripts/ci.sh` 全绿。
+
+完成结论：PASS。该能力仍是进程内实验核心，不等于 `memora ask` 产品入口或质量门通过。

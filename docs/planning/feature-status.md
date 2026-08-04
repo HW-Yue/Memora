@@ -54,6 +54,7 @@
 | F184 | evaluator-only ground truth、真实 SQL Row context、隔离 Ragas adapter 与公开质量报告 |
 | F185a | 三个可执行 Query Bootstrap arm；公开标签与实际 Profile、Frame、MSQL transcript 一致 |
 | F185b | 三 arm 同身份 release gate、固定质量/覆盖阈值与 context/token 优先选择；真实报告为 INCOMPLETE |
+| F186 | 进程内实验 QuerySession；实时脱敏 Trace、取消、会话总预算、失败/取消后有界恢复，复用 F181 loop |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -62,7 +63,7 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
 - F185b 实现已完成，但真实 Kimi 三 arm 共 36 题均因 33 次 HTTP 429 与 3 次 wire failure 不可评分；
   release report 保持 `INCOMPLETE`、无默认 arm；
 - 2026-08-05 用户决定延期大批量真实质量复跑。该门继续阻止“质量已通过”和“默认 arm 已选定”
-  的发布声明，但不再阻止后续实验性 Feature 开发；下一项回到 F186 独立 Review。
+  的发布声明，但不再阻止后续实验性 Feature 开发；F186 已完成，下一项为 F187 写能力/审批。
 
 ## 例外与非当前路径
 
@@ -98,8 +99,6 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 ## 新候选
 
-- F186：交互 QuerySession；可进入独立 Review，真实 release decision 仍为 INCOMPLETE，首版只能是
-  实验性能力，不能宣称检索质量已通过；
 - F187–F200：单网页写入、交互式整本 EPUB 吸收与隐藏答案评分；
 - F201–F204：DOCX/PDF/OCR 证据扩展和外置 Hook；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent

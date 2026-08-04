@@ -85,7 +85,7 @@ runner 所需 F180、F181 与 F182 corpus 已齐备。F181 仍只运行在隔离
 | F184（已完成） | Ragas 等外部评分 adapter | evaluator-only reference + SQL Row context；四项质量分、延迟、token 与调用数落盘 |
 | F185a（已完成） | 可执行 Query Bootstrap arms | Atlas-only、Lexical、Prefetch 真正改变 MSQL transcript 与 Frame |
 | F185b（已完成；release INCOMPLETE） | Query Agent release gate | 固定阈值比较当前三个可执行 arm；当前真实复跑延期，不作质量声明 |
-| F186（下一项；待独立 Review） | 实验性交互式 QuerySession | 流式事件、取消、预算和有界恢复；复用 F181 loop，不复制执行器 |
+| F186（已完成） | 实验性交互式 QuerySession | 实时脱敏 Trace、取消、会话总预算和有界恢复；复用 F181 loop，不复制执行器 |
 
 Ragas/Python 只属于开发和 CI 工具链。Vector 在公开 QueryEncoder 与 corpus generation 完成前不冒充
 可执行 arm。对外第一指标是最终答案正确性；Route 选择、Recall@K、回退和 SQL 重试只作为内部

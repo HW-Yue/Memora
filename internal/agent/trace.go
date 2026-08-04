@@ -117,13 +117,18 @@ type TraceRecorder struct {
 	identity TraceIdentity
 	events   []TraceEvent
 	summary  TraceSummary
+	observe  func(TraceEvent)
 }
 
 func NewTraceRecorder(identity TraceIdentity) (*TraceRecorder, error) {
+	return newTraceRecorder(identity, nil)
+}
+
+func newTraceRecorder(identity TraceIdentity, observe func(TraceEvent)) (*TraceRecorder, error) {
 	if !validTraceIdentity(identity) {
 		return nil, ErrInvalidTraceIdentity
 	}
-	return &TraceRecorder{identity: identity, summary: newTraceSummary()}, nil
+	return &TraceRecorder{identity: identity, summary: newTraceSummary(), observe: observe}, nil
 }
 
 // DigestTracePayload turns an opaque payload into the only body evidence the
@@ -152,7 +157,11 @@ func (recorder *TraceRecorder) Append(draft TraceDraft) (TraceEvent, error) {
 	}
 	recorder.events = append(recorder.events, cloneTraceEvent(event))
 	recorder.summary = nextSummary
-	return cloneTraceEvent(event), nil
+	sealed := cloneTraceEvent(event)
+	if recorder.observe != nil {
+		recorder.observe(cloneTraceEvent(sealed))
+	}
+	return sealed, nil
 }
 
 func (recorder *TraceRecorder) Snapshot() TraceEnvelope {

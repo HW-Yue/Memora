@@ -121,13 +121,21 @@ func NewQueryAgent(dependencies QueryAgentDependencies) (*QueryAgent, error) {
 }
 
 func (agent *QueryAgent) Query(ctx context.Context, request QueryRequest) (QueryResult, error) {
+	return agent.query(ctx, request, nil)
+}
+
+func (agent *QueryAgent) query(
+	ctx context.Context,
+	request QueryRequest,
+	observe func(TraceEvent),
+) (QueryResult, error) {
 	if agent == nil || ctx == nil {
 		return QueryResult{}, ErrInvalidQueryRequest
 	}
 	if err := validateQueryRequest(request); err != nil {
 		return QueryResult{}, err
 	}
-	recorder, err := NewTraceRecorder(request.Identity)
+	recorder, err := newTraceRecorder(request.Identity, observe)
 	if err != nil {
 		return QueryResult{}, fmt.Errorf("%w: %v", ErrInvalidQueryRequest, err)
 	}
