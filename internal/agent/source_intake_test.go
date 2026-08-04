@@ -77,8 +77,7 @@ func TestSourceIntakeStreamsScopeIssueAnswerAndMonotonicProgress(t *testing.T) {
 	if strings.Contains(string(answerJSON), "continue") {
 		t.Fatalf("answer event leaked raw answer: %s", answerJSON)
 	}
-	if _, err := session.Progress(agent.SourceProgress{Completed: 0, Total: 20, UnitID: "chapter-1"});
-		!errors.Is(err, agent.ErrSourceIntakeState) {
+	if _, err := session.Progress(agent.SourceProgress{Completed: 0, Total: 20, UnitID: "chapter-1"}); !errors.Is(err, agent.ErrSourceIntakeState) {
 		t.Fatalf("regressed Progress() error = %v", err)
 	}
 	finalProgress, err := session.Progress(agent.SourceProgress{Completed: 20, Total: 20, UnitID: "chapter-2"})
@@ -132,8 +131,7 @@ func TestSourceIntakeValidatesSelectionQuestionAndTerminalState(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertIntakeEvents(t, cancelled, 5, agent.SourceIntakeEventCancelled)
-	if _, err := session.Progress(agent.SourceProgress{Completed: 1, Total: 1});
-		!errors.Is(err, agent.ErrSourceIntakeState) {
+	if _, err := session.Progress(agent.SourceProgress{Completed: 1, Total: 1}); !errors.Is(err, agent.ErrSourceIntakeState) {
 		t.Fatalf("Progress after cancel error = %v", err)
 	}
 }
@@ -191,6 +189,53 @@ func TestSourceIntakeConcurrentConfirmHasOneWinnerAndSnapshotIsIsolated(t *testi
 	again := session.Snapshot()
 	if again.Inventory.Units[1].Label != "Chapter one" || again.Selection.TargetDatabases[0] != "work" {
 		t.Fatalf("Snapshot() exposed mutable state = %#v", again)
+	}
+}
+
+func TestSourceIntakeRejectsMalformedInventoryAndMixedEventPayloads(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(*agent.SourceInventory)
+	}{
+		{name: "version", mutate: func(value *agent.SourceInventory) { value.Version = "v0" }},
+		{name: "digest", mutate: func(value *agent.SourceInventory) { value.Source.ContentSHA256 = "secret" }},
+		{name: "root kind", mutate: func(value *agent.SourceInventory) { value.Units[0].Kind = "chapter" }},
+		{name: "missing parent", mutate: func(value *agent.SourceInventory) { value.Units[1].ParentID = "missing" }},
+		{name: "cycle", mutate: func(value *agent.SourceInventory) { value.Units[0].ParentID = "chapter-1" }},
+		{name: "no required readable extent", mutate: func(value *agent.SourceInventory) {
+			value.Units[1].Extent = 0
+			value.Units[2].Optional = true
+		}},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			session, err := agent.NewSourceIntake("task-invalid-" + strings.ReplaceAll(test.name, " ", "-"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			inventory := validSourceInventory()
+			test.mutate(&inventory)
+			if _, err := session.Begin(inventory); !errors.Is(err, agent.ErrInvalidSourceIntake) {
+				t.Fatalf("Begin() error = %v", err)
+			}
+		})
+	}
+
+	session, err := agent.NewSourceIntake("task-event-validation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := session.Begin(validSourceInventory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixed := events[0]
+	mixed.Question = events[1].Question
+	if err := mixed.Validate(); !errors.Is(err, agent.ErrInvalidSourceIntake) {
+		t.Fatalf("mixed payload Validate() error = %v", err)
 	}
 }
 

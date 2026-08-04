@@ -1,6 +1,6 @@
 # F189：Source Intake 交互与即时事件
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -51,4 +51,13 @@ Begin(inventory)
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204。
 
-开工前结论：PASS。
+## 完成证据
+
+- `SourceIntake` 冻结 `new → waiting_user → accepted/cancelled` 状态和严格递增事件 sequence；
+- Begin、范围确认、单调进度、即时 issue/question/waiting、回答摘要、恢复和取消均有独立测试；
+- inventory 拒绝错版本、非法摘要、缺失 parent、cycle、非 source root 和没有必读 extent 的输入；
+- 回答事件只含 UTF-8 byte count 与 SHA-256；Snapshot 和所有事件 payload 均深拷贝；
+- 16 路并发 Confirm 只有一个成功，目标测试 `-race` 和完整 CI 全绿；
+- `internal/agent` 生产代码仍只依赖标准库与既有 MSQL 边界，没有 Parser、Provider 或持久层旁路。
+
+完成门结论：PASS。下一项为 F190 可持久恢复的 AssimilationJob。
