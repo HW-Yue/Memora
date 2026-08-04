@@ -161,6 +161,10 @@ type pdfFixtureOptions struct {
 
 func buildTestPDF(t *testing.T, options pdfFixtureOptions) []byte {
 	t.Helper()
+	firstContent := []byte("BT /F1 12 Tf 72 720 Td (First page) Tj 0 -20 Td [(Metric) -200 (42)] TJ ET")
+	if options.noText {
+		firstContent = []byte("q 1 0 0 1 0 0 cm Q")
+	}
 	secondContent := "BT /F1 12 Tf 72 720 Td (Second page) Tj ET"
 	if options.unknownTextOperator {
 		secondContent = "BT /F1 12 Tf 72 720 Td (Second page) ZZ ET"
@@ -183,7 +187,7 @@ func buildTestPDF(t *testing.T, options pdfFixtureOptions) []byte {
 		2:  []byte("<< /Type /Pages /Kids [4 0 R 3 0 R] /Count 2 >>"),
 		3:  []byte("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>"),
 		4:  []byte("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R /F2 10 0 R >> >> /Contents [6 0 R 9 0 R] >>"),
-		5:  pdfStreamObject(nil, []byte("BT /F1 12 Tf 72 720 Td (First page) Tj 0 -20 Td [(Metric) -200 (42)] TJ ET")),
+		5:  pdfStreamObject(nil, firstContent),
 		6:  pdfStreamObject([]byte(filter), secondBytes),
 		7:  []byte("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"),
 		8:  []byte("<< /Title (Structured PDF) >>"),
@@ -191,6 +195,9 @@ func buildTestPDF(t *testing.T, options pdfFixtureOptions) []byte {
 		10: []byte(type0),
 		11: []byte("<< /Type /Font /Subtype /CIDFontType2 /BaseFont /FixtureCID /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> >>"),
 		12: pdfStreamObject(nil, []byte("/CIDInit /ProcSet findresource begin 12 dict begin begincmap 2 beginbfchar <0001> <4F60> <0002> <597D> endbfchar endcmap end end")),
+	}
+	if options.noText {
+		objects[4] = []byte("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R /F2 10 0 R >> >> /Contents 6 0 R >>")
 	}
 	if options.encrypted {
 		objects[13] = []byte("<< /Filter /Standard >>")
