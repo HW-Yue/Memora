@@ -41,6 +41,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
   Row/Relation ID、revision、commit sequence 的 Source Receipt；
 - 冻结 EPUB 已在 clean daemon 跑通单 claim 写入、收据对账、真实 SELECT 回表与固定答案；该证据
   只证明链路可执行，不是批量答案质量分；
+- EPUB 与 DOCX 均有不依赖模型的确定性结构适配器；DOCX 保留 heading、列表、表格、脚注和内部
+  图片资源关系，不执行 Office、宏、外部 URL 或网络请求；
 
 ## 已实现的存储底座
 

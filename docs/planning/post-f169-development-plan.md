@@ -130,7 +130,7 @@ autocommit；多 statement assimilation 仍需要当前 native backend 尚未提
 
 ## M5：按证据扩展（F201–F204）
 
-- F201：DOCX 适配器；
+- F201（已完成）：DOCX package relationship/content type 与结构化 Document IR 适配器；
 - F202：带文本层 PDF 适配器；
 - F203：扫描页 OCR/视觉路径证据门，只有真实不可读比例与质量收益支持时才实现或打包可选资源；
 - F204：外置 Agent Hook，只采集 Memora 调用和有界结果；

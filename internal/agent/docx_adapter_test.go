@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -99,6 +100,14 @@ func TestDOCXAdapterRejectsMalformedUnsupportedAndBudgetedPackages(t *testing.T)
 			config.MaxEntries = 3
 			return config
 		}, want: agent.ErrDOCXBudget},
+		{name: "XML token budget", mutate: func(entries []docxTestEntry) []docxTestEntry { return entries }, config: func() agent.DOCXAdapterConfig {
+			config := agent.DefaultDOCXAdapterConfig()
+			config.MaxXMLTokens = 3
+			return config
+		}, want: agent.ErrDOCXBudget},
+		{name: "duplicate part", mutate: func(entries []docxTestEntry) []docxTestEntry {
+			return append(entries, entries[len(entries)-1])
+		}, want: agent.ErrDOCXInvalid},
 	}
 	for _, test := range tests {
 		test := test
@@ -124,10 +133,32 @@ func TestDOCXAdapterRejectsMalformedUnsupportedAndBudgetedPackages(t *testing.T)
 	}
 }
 
+func TestDOCXAdapterPropagatesSourceCorruption(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	store, err := agent.OpenSourceStore(root, testSourceStoreConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := buildTestDOCX(t, validDOCXEntries())
+	putDOCXSource(t, store, "job-corrupt-docx", "source-corrupt-docx", payload)
+	if err := os.WriteFile(onlySourceObjectPath(t, root), []byte("corrupt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := agent.NewDOCXAdapter(store, agent.DefaultDOCXAdapterConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := adapter.Parse(context.Background(), "job-corrupt-docx", "source-corrupt-docx"); !errors.Is(err, agent.ErrSourceStoreCorrupt) {
+		t.Fatalf("corrupt source error = %v", err)
+	}
+}
+
 func TestDOCXAdapterHonorsCancellationAndCloseFailure(t *testing.T) {
 	t.Parallel()
 	payload := buildTestDOCX(t, validDOCXEntries())
-	random := &trackingEPUBRandomAccess{Reader: bytes.NewReader(payload), closeErr: errors.New("close DOCX source")}
+	closeFailure := errors.New("close DOCX source")
+	random := &trackingEPUBRandomAccess{Reader: bytes.NewReader(payload), closeErr: closeFailure}
 	source := &trackingEPUBSource{reference: agent.SourceReference{
 		Version: agent.SourceReferenceVersion, JobID: "job-close-docx", SourceID: "source-close-docx",
 		SHA256: sourceDigest(payload), Bytes: uint64(len(payload)),
@@ -137,13 +168,30 @@ func TestDOCXAdapterHonorsCancellationAndCloseFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := adapter.Parse(context.Background(), "job-close-docx", "source-close-docx"); err == nil || !random.closed {
+	if _, _, err := adapter.Parse(context.Background(), "job-close-docx", "source-close-docx"); !errors.Is(err, closeFailure) || !random.closed {
 		t.Fatalf("close error=%v closed=%v", err, random.closed)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, _, err := adapter.Parse(ctx, "job-close-docx", "source-close-docx"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled Parse error = %v", err)
+	}
+}
+
+func TestDOCXAdapterRejectsEncryptedPackage(t *testing.T) {
+	t.Parallel()
+	store, err := agent.OpenSourceStore(t.TempDir(), testSourceStoreConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := markDOCXEncrypted(buildTestDOCX(t, validDOCXEntries()))
+	putDOCXSource(t, store, "job-encrypted-docx", "source-encrypted-docx", payload)
+	adapter, err := agent.NewDOCXAdapter(store, agent.DefaultDOCXAdapterConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := adapter.Parse(context.Background(), "job-encrypted-docx", "source-encrypted-docx"); !errors.Is(err, agent.ErrDOCXUnsupported) {
+		t.Fatalf("encrypted package error = %v", err)
 	}
 }
 
@@ -172,7 +220,7 @@ func validDOCXEntries() []docxTestEntry {
 		{name: "docProps/core.xml", body: `<?xml version="1.0"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Structured DOCX</dc:title><dc:language>en</dc:language></cp:coreProperties>`},
 		{name: "word/styles.xml", body: `<?xml version="1.0"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style></w:styles>`},
 		{name: "word/footnotes.xml", body: `<?xml version="1.0"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:footnote w:id="-1" w:type="separator"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:id="2"><w:p><w:r><w:t>Footnote detail</w:t></w:r></w:p></w:footnote></w:footnotes>`},
-		{name: "word/_rels/document.xml.rels", body: `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image.png"/><Relationship Id="rIdFootnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>`},
+		{name: "word/_rels/document.xml.rels", body: `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image.png"/><Relationship Id="rIdFootnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
 		{name: "word/document.xml", body: `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><w:body>
 <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Overview</w:t></w:r></w:p>
 <w:p><w:r><w:t>Before </w:t></w:r><w:r><w:footnoteReference w:id="2"/></w:r><w:r><w:t> after</w:t></w:r></w:p>
@@ -241,4 +289,17 @@ func hasDOCXResource(document agent.DocumentIR, locator, mediaType string) bool 
 		}
 	}
 	return false
+}
+
+func markDOCXEncrypted(payload []byte) []byte {
+	result := append([]byte(nil), payload...)
+	for index := 0; index+10 <= len(result); index++ {
+		switch string(result[index : index+4]) {
+		case "PK\x03\x04":
+			result[index+6] |= 0x1
+		case "PK\x01\x02":
+			result[index+8] |= 0x1
+		}
+	}
+	return result
 }

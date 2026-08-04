@@ -1,6 +1,6 @@
 # F201：DOCX 确定性适配器
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成；2026-08-05。
 
 ## 唯一主要结果
 
@@ -43,6 +43,19 @@ entry/XML budget、context cancellation、Source corruption 和 close failure。
 也不改变 F200 暴露的 native multi-statement assimilation 事务缺口。
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204。
+
+## 完成证据
+
+- 固定 OOXML fixture 的 package root relationship 决定 `word/document.xml`，不依赖 ZIP entry 顺序；
+  content type 与全部 8 个 package part 形成排序稳定的 Resource 清单；
+- heading style、普通段落、连续编号列表、两列表格、脚注定义/引用和内部 image relationship 映射
+  为有效 Document IR；所有 Node anchor 命中对应 XML part 的稳定 byte span；
+- 同一 Source 重复解析逐字一致；root traversal、duplicate/encrypted part、悬空 image/footnote、空 cell、
+  `altChunk`、坏 XML、entry/token budget、取消、Source corruption 和 close failure 均 fail closed；
+- 生产代码只使用标准库 ZIP/XML，不运行宏、OLE、外部关系、网络或模型；目标测试、race、vet、
+  Agent import boundary 与完整 CI 全绿。
+
+完成门结论：PASS。下一项为 F202 文本层 PDF 确定性适配器。
 
 ## 关联
 
