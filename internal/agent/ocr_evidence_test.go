@@ -60,6 +60,7 @@ func TestOCREvidenceGateDefersInsufficientEvidenceAndRejectsInvalidInput(t *test
 		})
 	}
 	config.MaxSamples = 1
+	config.MinSamples = 1
 	if _, err := agent.EvaluateOCREvidence(corpus, []agent.OCREvidenceSample{{Page: 1}, {Page: 2}}, config); !errors.Is(err, agent.ErrOCREvidenceBudget) {
 		t.Fatalf("budget error = %v", err)
 	}

@@ -133,7 +133,7 @@ autocommit；多 statement assimilation 仍需要当前 native backend 尚未提
 - F201（已完成）：DOCX package relationship/content type 与结构化 Document IR 适配器；
 - F202（已完成）：带文本层 PDF 适配器；
 - F203（已完成）：扫描页 OCR/视觉路径证据门；只有真实不可读比例与质量收益满足门槛时才返回 eligible，不实现或打包 OCR 运行时；
-- F204：外置 Agent Hook，只采集 Memora 调用和有界结果；
+- F204（已完成）：外置 Agent Hook，只采集 Memora 调用和有界结果；
 
 DOCX、PDF、OCR 不在 EPUB 垂直链跑通前并行堆积。OCR 模型、浏览器运行时和本地 Embedding 权重
 默认不进入主安装包。Trace 先由评测 runner 输出开发用 JSON/HTML；当前不规划 Admin 迭代。
