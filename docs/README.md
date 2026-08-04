@@ -65,6 +65,7 @@
 - [F201：DOCX 确定性适配器](./planning/f201-docx-adapter.md) — 标准库解析 OOXML 包、正文结构、表格、脚注和内部关系为 Document IR。
 - [F202：文本层 PDF 确定性适配器](./planning/f202-text-pdf-adapter.md) — 解析经典 xref/Page tree、受支持字体映射与文本显示操作为逐页 Document IR。
 - [F203：OCR/视觉路径证据门](./planning/f203-ocr-evidence-gate.md) — 只校验外部逐页成对证据，不把 OCR 引擎或权重带入主程序。
+- [F204：外置 Agent Hook](./planning/f204-external-agent-hook.md) — 只采集脱敏 Memora Trace，按显式 session/host/model 有界观测。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
