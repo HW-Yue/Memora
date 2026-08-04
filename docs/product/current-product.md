@@ -43,6 +43,7 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
   只证明链路可执行，不是批量答案质量分；
 - EPUB、DOCX 与带文本层 PDF 均有不依赖模型的确定性结构适配器；DOCX 保留 heading、列表、表格、脚注和内部
   图片资源关系，PDF 保留 Page tree 顺序、文本行和原始 object-span anchor；适配器不执行 Office、宏、外部 URL、OCR 或网络请求；
+- OCR/视觉路径已有独立证据门，只接收逐页成对摘要并输出 `eligible/deferred`，不会把 OCR 权重或外部运行时打进主程序；
 
 ## 已实现的存储底座
 
