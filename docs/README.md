@@ -61,6 +61,7 @@
 - [F197：分支问题暂停与恢复](./planning/f197-branch-pause-resume.md) — 问题即时事件、branch-local revision 与不阻塞其他阅读分支的持久恢复。
 - [F198：独立语义复核门](./planning/f198-independent-review-gate.md) — 新鲜 reviewer 请求、challenge 绑定和数字/anchor/冲突/非原文复制四项证据。
 - [F199：短事务对账与 Source Receipt](./planning/f199-assimilation-reconciliation.md) — accepted review 输入门、MSQL-only 提交、实际对象 ID 收据与 in-doubt 只读恢复。
+- [F200：EPUB 单条干净全链路验收](./planning/f200-epub-single-chain-acceptance.md) — 冻结小 EPUB 跑通吸收、正式收据与固定查询，不执行批量质量评分。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
