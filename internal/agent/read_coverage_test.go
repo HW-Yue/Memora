@@ -36,6 +36,11 @@ func TestReadCoverageDeterministicallyCoversEveryRequiredNode(t *testing.T) {
 			!validTestSHA256(extent.SHA256) || len(extent.Nodes) > 2 {
 			t.Fatalf("extent = %#v", extent)
 		}
+		replayed.Nodes[0].Text = "caller mutation"
+		rebuilt, err := coverage.Next(agent.ReadExtentLimits{MaxNodes: 1, MaxUTF8Bytes: 1})
+		if err != nil || rebuilt.Nodes[0].Text == "caller mutation" || rebuilt.SHA256 != extent.SHA256 {
+			t.Fatalf("caller mutation leaked into pending extent: %#v, %v", rebuilt, err)
+		}
 		for _, node := range extent.Nodes {
 			seen = append(seen, node.NodeID)
 			if len(node.Context) == 0 || node.Context[0].Kind != agent.DocumentNodeDocument {
@@ -124,6 +129,8 @@ func TestReadCoverageRejectsBudgetViolationsWithoutSplittingNodes(t *testing.T) 
 	document := sealedReadCoverageDocument(t)
 	for _, limits := range []agent.ReadExtentLimits{
 		{}, {MaxNodes: -1, MaxUTF8Bytes: 10}, {MaxNodes: 1, MaxUTF8Bytes: -1},
+		{MaxNodes: agent.MaxReadExtentNodes + 1, MaxUTF8Bytes: 10},
+		{MaxNodes: 1, MaxUTF8Bytes: agent.MaxReadExtentUTF8Bytes + 1},
 	} {
 		coverage, err := agent.NewReadCoverage(document)
 		if err != nil {

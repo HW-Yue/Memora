@@ -111,7 +111,7 @@ Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才�
 | F191（已完成） | 内容寻址临时 SourceStore，完成/取消后按策略清理 |
 | F192（已完成） | 与格式无关的 Document IR v1 和稳定 source anchor |
 | F193（已完成） | EPUB 确定性适配器，保留 spine、目录、章节、脚注和资源清单 |
-| F194 | `ReadExtent` 与 coverage 调度，证明所有必读范围被处理 |
+| F194（已完成） | `ReadExtent` 与 coverage 调度，证明所有必读范围被处理 |
 | F195 | 以正式 MSQL 替代 Agent 所需的 `assimilation.*` 私有 IPC |
 | F196 | 可替换 Provider 的 draft/claim ledger 和有来源约束的 MSQL 候选 |
 | F197 | 问题即时输出、用户回答、暂停和恢复受影响分支 |

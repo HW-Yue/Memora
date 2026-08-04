@@ -1,6 +1,6 @@
 # F194：ReadExtent 与 coverage 调度
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -41,6 +41,22 @@ go test ./internal/agent -run TestReadCoverage
 - F196 模型 draft/claim ledger 与 prompt；
 - F197 用户问题分支；
 - 模型 token 估算、正文压缩或 OCR。
+
+## 完成证据
+
+- `ReadingOrder` 被映射为连续半开位置，成功确认前重复 `Next` 重建同一 digest；全部确认后
+  `Complete=true`，顺序、数量与原 IR 精确相等；
+- 每个窗口最多 128 个节点、正文与结构 label 合计最多 1 MiB；单个语义节点超限稳定失败，
+  没有字符/token 切片路径；
+- sequence + SHA-256 双校验阻止乱序和错误窗口推进；同一确认可幂等重试，并发 32 次只有一次
+  状态提交；
+- checkpoint 使用 strict JSON 和规范 checksum，绑定 Document IR digest；恢复时重新计算 pending
+  与 last-ack extent 摘要，拒绝截断、未知字段、游标越界、状态关系损坏和不同 IR；
+- checkpoint fixture 不含正文、label 及 `text/content/body/chunk` 字段，返回 extent 也不与内部
+  状态共享 slice；
+- 目标测试、package `-race` 与 `go vet` 全绿。
+
+完成门结论：PASS。下一项为 F195 正式 MSQL 吸收提交 surface。
 
 ## 关联
 
