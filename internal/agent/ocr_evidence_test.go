@@ -23,7 +23,7 @@ func TestOCREvidenceGateReturnsDeterministicEligibleReport(t *testing.T) {
 	config.MinRecallGainBasisPoints = 5_000
 	config.MaxAverageLatencyIncreaseMillis = 100
 	first, err := agent.EvaluateOCREvidence(corpus, samples, config)
-	if err != nil || first.Decision != agent.OCREvidenceEligible || first.RecallGainBasisPoints != 2_500 || first.AverageLatencyIncreaseMillis != 80 || first.Validate() != nil {
+	if err != nil || first.Decision != agent.OCREvidenceEligible || first.RecallGainBasisPoints != 7_500 || first.AverageLatencyIncreaseMillis != 80 || first.Validate() != nil {
 		t.Fatalf("first=%#v err=%v validate=%v", first, err, first.Validate())
 	}
 	second, err := agent.EvaluateOCREvidence(corpus, samples, config)
@@ -58,5 +58,9 @@ func TestOCREvidenceGateDefersInsufficientEvidenceAndRejectsInvalidInput(t *test
 				t.Fatalf("error=%v want=%v", err, test.want)
 			}
 		})
+	}
+	config.MaxSamples = 1
+	if _, err := agent.EvaluateOCREvidence(corpus, []agent.OCREvidenceSample{{Page: 1}, {Page: 2}}, config); !errors.Is(err, agent.ErrOCREvidenceBudget) {
+		t.Fatalf("budget error = %v", err)
 	}
 }

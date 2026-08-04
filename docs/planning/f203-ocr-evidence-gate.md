@@ -1,6 +1,6 @@
 # F203：OCR/视觉路径证据门
 
-状态：规格冻结，待实现。
+状态：已完成；2026-08-05 规格冻结并通过完成门。
 
 ## 唯一主要结果
 
@@ -20,7 +20,13 @@
 
 先让 RED 测试在缺少 gate 时失败，再验证 determinism、重复页/错 corpus/越界输入、门槛通过和
 证据不足延后。该 Feature 不调用真实模型，也不进行批量评测；真实 OCR 运行时和权重仍作为后续
-可选组件单独 Review。
+ 可选组件单独 Review。
+
+## 完成证据
+
+- `internal/agent/ocr_evidence.go` 仅接收逐页摘要，不依赖 OCR SDK、模型权重或网络；
+- 通过门槛、证据不足延后、重复页、零页号和非法 corpus 测试；报告含稳定 digest，重复计算结果一致；
+- `go test ./internal/agent -run TestOCREvidenceGate -count=1`、race 与 vet 通过；本次没有真实模型调用或批量质量评测。
 
 ## 关联
 
