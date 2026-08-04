@@ -58,6 +58,7 @@
 - [F194：ReadExtent 与 coverage 调度](./planning/f194-read-extent-coverage.md) — 完整语义节点窗口、摘要确认、无原文 checkpoint 与断点续读。
 - [F195：正式 MSQL 吸收提交面](./planning/f195-msql-assimilation-surface.md) — 提案结构审阅、hash-bound 提交、同核事务与无正文收据。
 - [F196：Draft / Claim Ledger](./planning/f196-draft-claim-ledger.md) — 可替换 Provider 的单窗口草拟、来源锚点绑定与可恢复候选 MSQL 账本。
+- [F197：分支问题暂停与恢复](./planning/f197-branch-pause-resume.md) — 问题即时事件、branch-local revision 与不阻塞其他阅读分支的持久恢复。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
