@@ -15,7 +15,7 @@ import (
 	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
 
-func TestProcessorExecutesOneMSQLTransactionPersistsRedactedReceiptAndReplays(t *testing.T) {
+func TestProcessorExecutesOneAtomicMSQLStatementPersistsRedactedReceiptAndReplays(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	database, err := nativekvstore.Open(t.TempDir() + "/assimilation.db")
@@ -26,7 +26,7 @@ func TestProcessorExecutesOneMSQLTransactionPersistsRedactedReceiptAndReplays(t 
 	var calls atomic.Int64
 	executor := ExecutorFunc(func(_ context.Context, request protocolmsql.Request) (protocolmsql.Envelope, error) {
 		calls.Add(1)
-		if request.Source != "BEGIN;INSERT INTO work.notes (title) VALUES (:title);COMMIT" || len(request.Statements) != 3 {
+		if request.Source != "INSERT INTO work.notes (title) VALUES (:title)" || len(request.Statements) != 1 {
 			t.Fatalf("request = %#v", request)
 		}
 		for _, input := range request.Statements {
@@ -81,6 +81,36 @@ func TestProcessorExecutesOneMSQLTransactionPersistsRedactedReceiptAndReplays(t 
 	}
 	if _, err := reopened.AssimilationReceipt(ctx, "private", plan.PlanID); commitCode(err) != result.CodePermissionDenied {
 		t.Fatalf("cross-database receipt error = %v", err)
+	}
+}
+
+func TestProcessorKeepsMultipleStatementsInsideExplicitTransaction(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	database, err := nativekvstore.Open(t.TempDir() + "/assimilation.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	plan := sealedCommitPlan(t, "first semantic module")
+	proposal := plan.Proposal
+	proposal.ProposalID = "plan-multiple"
+	second := proposal.Statements[0]
+	second.Parameters.Named = map[string]any{"title": "second semantic module"}
+	proposal.Statements = append(proposal.Statements, second)
+	plan, err = protocolmsql.SealAssimilationPlan(proposal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor := New(database, ExecutorFunc(func(_ context.Context, request protocolmsql.Request) (protocolmsql.Envelope, error) {
+		if request.Source != "BEGIN;INSERT INTO work.notes (title) VALUES (:title);INSERT INTO work.notes (title) VALUES (:title);COMMIT" || len(request.Statements) != 4 {
+			t.Fatalf("request = %#v", request)
+		}
+		return committedEnvelope(request), nil
+	}))
+	receipt, err := processor.SubmitAssimilation(ctx, plan)
+	if err != nil || receipt.Status != protocolmsql.AssimilationCommitted || len(receipt.Statements) != 2 {
+		t.Fatalf("receipt = %#v, %v", receipt, err)
 	}
 }
 
@@ -226,32 +256,48 @@ func sealedCommitPlan(t *testing.T, title string) protocolmsql.AssimilationPlan 
 }
 
 func committedEnvelope(request protocolmsql.Request) protocolmsql.Envelope {
-	revision, sequence := uint64(1), uint64(9)
+	results := make([]protocolmsql.StatementResult, len(request.Statements))
+	for index := range request.Statements {
+		kind := "INSERT"
+		affected := uint64(1)
+		revision, sequence := uint64(1), uint64(9)
+		var revisionPointer, sequencePointer *uint64 = &revision, &sequence
+		if len(request.Statements) > 1 && (index == 0 || index == len(request.Statements)-1) {
+			kind, affected, revisionPointer, sequencePointer = map[bool]string{true: "BEGIN", false: "COMMIT"}[index == 0], 0, nil, nil
+		}
+		results[index] = commitStatement(index, kind, affected, revisionPointer, sequencePointer)
+		if affected > 0 {
+			results[index].Rows = []protocolmsql.Row{{"row_id": "row-actual-" + string(rune('1'+index))}}
+		}
+	}
 	envelope := protocolmsql.Envelope{
 		Version: protocolmsql.EnvelopeVersion, RequestID: "nested-1", OK: true,
-		Results: []protocolmsql.StatementResult{
-			commitStatement(0, "BEGIN", 0, nil, nil),
-			commitStatement(1, "INSERT", 1, &revision, &sequence),
-			commitStatement(2, "COMMIT", 0, nil, nil),
-		}, Warnings: []protocolmsql.Notice{},
+		Results: results, Warnings: []protocolmsql.Notice{},
 	}
-	envelope.Results[1].Rows = []protocolmsql.Row{{"row_id": "row-actual-1"}}
 	return envelope
 }
 
 func failedEnvelope(request protocolmsql.Request) protocolmsql.Envelope {
-	index := 1
+	index := 0
+	if len(request.Statements) > 1 {
+		index = 1
+	}
+	results := make([]protocolmsql.StatementResult, 0, len(request.Statements))
+	if len(request.Statements) > 1 {
+		results = append(results, commitStatement(0, "BEGIN", 0, nil, nil))
+	}
+	results = append(results,
+		protocolmsql.StatementResult{
+			Index: index, Statement: "INSERT", Source: request.Source, Status: "failed",
+			Columns: []protocolmsql.Column{}, Rows: []protocolmsql.Row{}, Warnings: []protocolmsql.Notice{},
+			Error: &protocolmsql.ResultError{Code: "revision_conflict", Message: "guard changed", StatementIndex: &index},
+		})
+	if len(request.Statements) > 1 {
+		results = append(results, commitStatement(len(request.Statements)-1, "COMMIT", 0, nil, nil))
+	}
 	return protocolmsql.Envelope{
 		Version: protocolmsql.EnvelopeVersion, RequestID: "nested-failed", OK: false,
-		Results: []protocolmsql.StatementResult{
-			commitStatement(0, "BEGIN", 0, nil, nil),
-			{
-				Index: 1, Statement: "INSERT", Source: request.Source, Status: "failed",
-				Columns: []protocolmsql.Column{}, Rows: []protocolmsql.Row{}, Warnings: []protocolmsql.Notice{},
-				Error: &protocolmsql.ResultError{Code: "revision_conflict", Message: "guard changed", StatementIndex: &index},
-			},
-			commitStatement(2, "COMMIT", 0, nil, nil),
-		}, Warnings: []protocolmsql.Notice{},
+		Results: results, Warnings: []protocolmsql.Notice{},
 	}
 }
 

@@ -43,6 +43,36 @@ func TestBatchAutocommitFailureDoesNotStopIndependentStatements(t *testing.T) {
 	}
 }
 
+func TestBatchUnsupportedBeginSkipsStatementsUntilTransactionBoundary(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	_, rows, closeSession := batchFixture(t, ctx)
+	defer closeSession()
+	session := executor.NewBatchSession(ctx, nil, nonTransactionalRows{Rows: rows})
+	defer session.Close()
+	envelope := session.Execute(ctx, executor.BatchRequest{
+		RequestID: "unsupported-transaction",
+		Source:    "BEGIN; INSERT INTO work.notes (title) VALUES ('must not commit'); COMMIT",
+		Statements: []executor.StatementInput{
+			{},
+			{Mutation: executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1}},
+			{},
+		},
+	})
+
+	assertStatuses(t, envelope, result.StatusFailed, result.StatusSkipped, result.StatusSkipped)
+	if envelope.Results[0].Error == nil || envelope.Results[0].Error.Code != result.CodeUnsupported {
+		t.Fatalf("BEGIN result = %#v", envelope.Results[0])
+	}
+	persisted, err := rows.List(ctx, "work", "notes", 10)
+	if err != nil || len(persisted) != 0 {
+		t.Fatalf("rows after rejected BEGIN = %#v, %v", persisted, err)
+	}
+}
+
+type nonTransactionalRows struct{ executor.Rows }
+
 func TestBatchWriteFailureRollsBackTransactionAndContinuesAfterBoundary(t *testing.T) {
 	t.Parallel()
 
