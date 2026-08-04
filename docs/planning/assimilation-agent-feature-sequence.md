@@ -41,7 +41,7 @@ F185 真实大批量质量复跑已延期；它仍限制对外质量声明和默
 
 | Feature | 唯一主要结果 | 完成证据 |
 | --- | --- | --- |
-| F187 | Policy 强制的 Agent write profile 与审批信封 | prompt 失控也不能越权；revision/schema/affected-row guard |
+| F187（已完成） | Policy 强制的 Agent write profile 与审批信封 | L1 scope、hash-bound 一次性审批、revision/schema/affected-row guard |
 | F188 | 当前单网页/短文本直接写入与回读 | 不建长任务；MSQL draft→approve→commit→SELECT verify；失败无半提交 |
 
 F188 是写入 Prompt、Schema 选择、重复事实检测和回读验证的最小真实实验。它不过门时，

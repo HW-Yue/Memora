@@ -104,7 +104,7 @@ Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才�
 
 | Feature | 唯一主要结果 |
 | --- | --- |
-| F187 | 受 Policy 强制的 write profile 与用户审批 |
+| F187（已完成） | 受 Policy 强制的 L1 write profile 与 hash-bound 一次性用户审批 |
 | F188 | 当前单网页/短文本直接写入与 SELECT 回读验证，不创建长任务 |
 | F189 | Source intake 交互与即时事件协议 |
 | F190 | 可持久恢复的 AssimilationJob 状态、Command、Event 和 checkpoint |

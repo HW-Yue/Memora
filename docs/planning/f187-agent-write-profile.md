@@ -1,6 +1,6 @@
 # F187：Agent Write Profile 与审批信封
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -53,4 +53,13 @@ Agent WriteDraft（source + parameters + mutation guards，无 Authorization）
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204；真实模型限速时一次成功链路证据即可。
 
-开工前结论：PASS。
+## 完成证据
+
+- RED：Profile、Proposal、Approval 与 Gateway 均不存在，单元/Service 集成测试编译失败；
+- GREEN：Prepare 零 MSQL 调用并锁定 L1 scope、actor 和 guards；proposal/原 draft 深拷贝隔离；
+- 缺失、错误、未确认、篡改和已消费审批全部在 MSQL 前失败；16 个并发执行者只有一个进入 MSQL，
+  定向 race 全绿；
+- 真实 MSQL Service 中获批 INSERT 成功落库，隐藏 `CREATE TABLE` 被引擎 L1 Policy 拒绝；
+- Agent import allowlist、全量 race/integration/e2e/cross-build 与 `scripts/ci.sh` 全绿。
+
+完成结论：PASS。

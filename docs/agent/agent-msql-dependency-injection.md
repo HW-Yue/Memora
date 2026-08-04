@@ -145,6 +145,11 @@ F175c 已提供 `internal/agent.Runtime` 的显式构造注入、`internal/agent
 并在 CI 中解析 Agent 全树 import AST。生产代码只能导入标准库与 `protocol/msql`；测试只能额外
 导入 Agent 自有包，因此无法通过测试便利性绕开边界打开 Instance。
 
+F187 在该端口之上增加 `WriteGateway`：模型只能提交无 Authorization 的 draft；Gateway 固定 L1
+scope、actor 与 mutation guards，生成 proposal digest，并在收到 hash-bound 一次性用户审批后
+提交一个完整 MSQL batch。Gateway 不解析 SQL；藏在 source 中的 L2/L3 动作仍由共享 Parser/Policy
+按固定 L1 Authorization 拒绝。等待审批期间不调用 MSQL，也不持有事务。
+
 ## 关联
 
 - [MSQL](../query/msql.md)
