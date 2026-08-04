@@ -1,6 +1,6 @@
 # F188：单网页/短文本写入垂直链
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -53,4 +53,16 @@ ShortTextSource（title/content/locator + 查询意图）
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204；真实模型限速时一次成功链路证据即可。
 
-开工前结论：PASS。
+## 完成证据
+
+- RED：ShortText Agent、strict Tool contract、Plan 与 Receipt 均不存在，单元/Service 测试编译失败；
+- GREEN：一次 Bootstrap + 一次 required Tool Call 生成单 Row proposal；等待审批期间只有只读
+  Bootstrap，没有写调用；
+- 正文超限、直接回答、错误 Tool、未知字段、越 scope 和缺 Schema guard 全部 fail closed；Draft
+  Trace 不含正文、MSQL 或 Row；
+- 获批后单 INSERT 返回真实 RowID/revision/commit sequence，再以固定 SELECT 回读并逐项对拍；
+- commit 失败不发 SELECT；回读失败返回带 commit evidence 的 `committed_unverified`；
+- 真实 MSQL Service 验证 Row、Route Leaf membership 与 SELECT 回读一致；race、import allowlist 和
+  完整 `scripts/ci.sh` 全绿。
+
+完成结论：PASS（scripted Provider；真实大批量模型质量仍按用户决定延期）。

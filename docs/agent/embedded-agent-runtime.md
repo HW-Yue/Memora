@@ -87,6 +87,11 @@ Runtime 校验每层节点数、最大深度、Leaf 单 Row 不变量和跨 Leaf
 提供已知 alias，MSQL 负责正式传递，Policy 强制权限与预算。Runtime 不生成
 `query_terms` 交给评分器，也不执行 MATCH/Vector/cosine 降级。
 
+F187/F188 已增加进程内实验写入链：短文本先经一次有界 Provider Tool Call 形成单 Row MSQL
+proposal，用户按 proposal hash 审批后才提交，并用 INSERT 返回的真实 RowID 做独立 SELECT 回读。
+该链不下载网页、不保存 chunk、不创建长任务；commit 后回读失败必须报告
+`committed_unverified`，不能伪装成已回滚。
+
 ## 一个 Runtime，多种能力配置
 
 不再要求 Query Agent 和 Mutation Agent 是两个不同宿主进程。一个 loop 根据请求获得能力配置：

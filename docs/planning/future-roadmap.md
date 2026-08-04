@@ -34,8 +34,8 @@ Codex、Claude Code 等外置 Agent 不作为统一静态基准，只通过 Hook
 3. 只读 Query Agent、冻结 corpus、clean Instance runner 和隔离 Ragas 外部评分已完成；
 4. 固定检索 arms 与 F185b release gate 已实现；当前真实 Provider 矩阵为 INCOMPLETE，真实大批量
    质量复跑已由用户决定延期，0 样本报告继续保留且不得冒充质量通过；
-5. 实验性交互 QuerySession 与受控 L1 Write Gateway 已完成；下一项验证单网页写入，随后进入整本
-   EPUB；质量门通过前不宣称 `memora ask` 已达到发布质量，也不选默认 arm；
+5. 实验性交互 QuerySession、受控 L1 Write Gateway 与单网页写入链已完成；下一项进入可恢复、
+   可交互的整本 EPUB 任务；质量门通过前不宣称 `memora ask` 已达到发布质量，也不选默认 arm；
 6. 外置 Hook 和写入时机评测放在主垂直链证据之后；Trace 先输出开发用报告，不扩展 Admin。
 
 API Key 只进入操作系统密钥存储或进程环境，不进入 Database、日志、报告或导出。评测 Agent
