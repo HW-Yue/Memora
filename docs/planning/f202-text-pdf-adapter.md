@@ -1,6 +1,6 @@
 # F202：文本层 PDF 确定性适配器
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成；2026-08-05 规格已冻结并通过完成门。
 
 ## 唯一主要结果
 
@@ -39,6 +39,12 @@ file/page/object/stream/text budget、context cancellation、Source corruption �
 目标 package、race、vet、Agent import boundary 和完整 CI 全绿；不执行真实模型或答案质量评测。
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204。
+
+## 完成证据
+
+- RED：`internal/agent/pdf_adapter_test.go` 先在缺少适配器时编译失败；GREEN 后覆盖稳定页序、Tj/TJ、Flate、WinAnsi、ToUnicode、anchor/digest 重复解析和负例；
+- 负例包含加密、Prev、xref stream、坏引用/Page cycle、LZW、缺失 ToUnicode、未知文本操作、扫描页、页数预算、取消、SourceStore corruption 与 close failure；
+- `go test ./internal/agent -count=1`、`go test ./internal/agent -race -count=1`、`go vet ./internal/agent` 通过；没有真实模型调用或批量质量评测。
 
 ## 关联
 

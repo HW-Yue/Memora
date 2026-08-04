@@ -55,7 +55,7 @@ entry/XML budget、context cancellation、Source corruption 和 close failure。
 - 生产代码只使用标准库 ZIP/XML，不运行宏、OLE、外部关系、网络或模型；目标测试、race、vet、
   Agent import boundary 与完整 CI 全绿。
 
-完成门结论：PASS。下一项为 F202 文本层 PDF 确定性适配器。
+完成门结论：PASS。F202 文本层 PDF 确定性适配器已完成，下一项为 F203 OCR/视觉路径证据门。
 
 ## 关联
 

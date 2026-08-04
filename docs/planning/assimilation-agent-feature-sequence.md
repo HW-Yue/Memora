@@ -1,6 +1,6 @@
 # 资料吸收 Agent Feature 序列
 
-状态：2026-08-05 当前序列；F201 已完成，下一项 F202。
+状态：2026-08-05 当前序列；F202 已完成，下一项 F203。
 
 ## 两条垂直链
 
@@ -84,7 +84,7 @@ F200 已证明单 statement 原子 autocommit 链路。当前 native daemon 的�
 | Feature | 进入条件 |
 | --- | --- |
 | F201 DOCX adapter（已完成） | OOXML relationship/content type 驱动的结构、表格、脚注、内部图片资源与稳定 anchor |
-| F202 text-layer PDF adapter | EPUB 链通过，阅读顺序和表格样本已冻结 |
+| F202 text-layer PDF adapter（已完成） | classic xref/Page tree、文本操作、字体 Unicode 映射和 fail-closed 负例通过 |
 | F203 OCR/视觉路径 evidence gate | 不可读页比例和答案收益证明值得增加可选模型资源 |
 | F204 外置 Agent Hook | 只采集 Memora 调用、session/host/model 与有界结果，不采宿主完整上下文 |
 
