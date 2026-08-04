@@ -109,7 +109,7 @@ Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才�
 | F189（已完成） | Source intake 交互与即时事件协议 |
 | F190（已完成） | 可持久恢复的 AssimilationJob 状态、Command、Event 和 checkpoint |
 | F191（已完成） | 内容寻址临时 SourceStore，完成/取消后按策略清理 |
-| F192 | 与格式无关的 Document IR v1 和稳定 source anchor |
+| F192（已完成） | 与格式无关的 Document IR v1 和稳定 source anchor |
 | F193 | EPUB 确定性适配器，保留 spine、目录、章节、脚注和资源清单 |
 | F194 | `ReadExtent` 与 coverage 调度，证明所有必读范围被处理 |
 | F195 | 以正式 MSQL 替代 Agent 所需的 `assimilation.*` 私有 IPC |

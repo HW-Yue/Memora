@@ -1,6 +1,6 @@
 # F192：格式无关 Document IR v1
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -22,7 +22,8 @@ DocumentIR
 └── References[]（footnote/citation/caption/internal link）
 ```
 
-- Node ID 固定由 `(document_id, parent_id, kind, sibling_ordinal)` SHA-256 派生；
+- Document ID 固定由 Source SHA-256 派生；Node ID 固定由
+  `(document_id, parent_id, kind, sibling_ordinal)` SHA-256 派生；
 - Resource ID 固定由 `(source_sha256, logical_locator)` SHA-256 派生；
 - 每个 Node 必须有 anchor；范围不能越过对应 Resource bytes；
 - root 唯一且为 `document`；parent 必须先于 child，sibling ordinal 从 1 连续；
@@ -43,4 +44,14 @@ DocumentIR
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204。
 
-开工前结论：PASS。
+## 完成证据
+
+- Document/Resource/Node ID 均有版本化稳定摘要函数，同输入重复 Seal 得到逐字相同 IR SHA-256；
+- fixture 保留 chapter、heading、paragraph、table/row/two cells、footnote 与引用边，strict JSON round-trip 无损；
+- parent-before-child、连续 ordinal、container/leaf、table 专属层级和 reading-order 全叶覆盖由 Validate 强制；
+- 每个 Node anchor 必须命中已知 Resource 且范围不越界，footnote/caption target 类型受控；
+- 单节点 1 MiB、总正文 64 MiB、Node/Resource/Reference 数量与 JSON 大小均有硬上限；
+- SHA-256 篡改和 JSON 未知字段 fail closed，Seal/Clone/Decode 均不暴露可变 slice；
+- 编码字段不包含 chunk、embedding 或 vector，生产实现只使用标准库且不接触 Database/MSQL。
+
+完成门结论：PASS。下一项为 F193 EPUB 确定性适配器。

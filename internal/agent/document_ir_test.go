@@ -71,6 +71,13 @@ func TestDocumentIRStableIDsDigestAndDeepCopies(t *testing.T) {
 	if resourceID != first.Resources[0].ID {
 		t.Fatalf("resource ID = %q, want %q", resourceID, first.Resources[0].ID)
 	}
+	documentID, err := agent.StableDocumentID(first.Source.SHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if documentID != first.DocumentID {
+		t.Fatalf("document ID = %q, want %q", documentID, first.DocumentID)
+	}
 	nodeID, err := agent.StableDocumentNodeID(
 		first.DocumentID, first.Nodes[1].ID, agent.DocumentNodeParagraph, 2,
 	)
@@ -192,7 +199,10 @@ func validDocumentIR(t *testing.T) agent.DocumentIR {
 		ID: resourceID, Locator: "OPS/content.xhtml", MediaType: "application/xhtml+xml",
 		Bytes: 1000, SHA256: "sha256:" + strings.Repeat("b", 64),
 	}
-	documentID := "document:sha256:" + strings.Repeat("c", 64)
+	documentID, err := agent.StableDocumentID(source.SHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
 	nodes := make([]agent.DocumentNode, 10)
 	nodes[0] = documentNode(t, documentID, "", agent.DocumentNodeDocument, 1, resourceID, 0, 1000, "Book", "")
 	nodes[1] = documentNode(t, documentID, nodes[0].ID, agent.DocumentNodeChapter, 1, resourceID, 0, 900, "Chapter one", "")
