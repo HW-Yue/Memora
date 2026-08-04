@@ -1,6 +1,6 @@
 # F204：外置 Agent Hook
 
-状态：规格冻结，待实现。
+状态：已完成；2026-08-05 规格冻结并通过完成门。
 
 ## 唯一主要结果
 
@@ -20,6 +20,12 @@
 
 先让 RED 测试在没有 Hook port 时失败，再验证 Query Agent 接入、脱敏、session 元数据、有界丢弃、
 并发/race、取消和关闭行为。Hook 默认不启用；不执行真实模型或外部网络上报。
+
+## 完成证据
+
+- `QueryAgent.QueryWithHook` 是显式 opt-in 入口，Hook 只接收已脱敏的 `TraceEvent`；
+- `ExternalAgentHook` 对事件数设上限，超出只累计 dropped，快照并发安全且按稳定键排序；缺失宿主 session 使用 `unknown`；
+- 覆盖摘要脱敏、Query Agent 集成、未知 session、并发追加和 race；本次没有真实模型调用或网络上报。
 
 ## 关联
 

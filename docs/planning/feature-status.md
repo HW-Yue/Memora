@@ -72,6 +72,7 @@
 | F201 | 标准库 DOCX adapter；package relationship/content type、正文/heading/list/table/footnote/image 与稳定 Document IR anchor |
 | F202 | 标准库文本层 PDF adapter；classic xref/Page tree、Flate、WinAnsi/ToUnicode、逐页文本 IR、稳定 object-span anchor 与 fail-closed 预算 |
 | F203 | OCR/视觉路径证据门；逐页成对 baseline/OCR 摘要、Recall gain/延迟计算、稳定 digest，证据不足自动 deferred |
+| F204 | 显式 opt-in 外置 Agent Hook；只采集脱敏 TraceEvent 与 host/session/model 元数据，有界并发安全快照 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -81,7 +82,7 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
   release report 保持 `INCOMPLETE`、无默认 arm；
 - 2026-08-05 用户决定延期大批量真实质量复跑。该门继续阻止“质量已通过”和“默认 arm 已选定”
   的发布声明，但不再阻止后续实验性 Feature 开发；F200 单条 EPUB 全链路、F201 DOCX adapter 和 F202
-  文本层 PDF adapter 和 F203 OCR/视觉证据门已通过，下一项为 F204 外置 Hook；
+  文本层 PDF adapter、F203 OCR/视觉证据门和 F204 外置 Hook 已通过；真实批量质量仍按用户决定延期；
 - F200 同时确认当前 native daemon 只能完成单 statement assimilation autocommit。多 statement plan 的
   原子 native 执行是进入真实多 claim 长文档前的独立缺口，不属于本次单链质量结论。
 
@@ -121,7 +122,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 - F187–F199：单网页写入、交互式整本 EPUB 吸收、独立复核与提交对账；
 - F200（已完成）：只验收一条干净 snapshot 的 EPUB 完整链路和结果结构，不做批量模型质量评分；
-- F201–F203（已完成）–F204：DOCX、文本层 PDF 与 OCR/视觉证据门已完成；外置 Hook 后续独立推进；当前不规划 Admin 迭代。
+- F201–F204（已完成）：DOCX、文本层 PDF、OCR/视觉证据门与外置 Hook 已完成；当前不规划 Admin 迭代。
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent
   判断并留下 revision/理由，引擎不提供统一语义常量；
 

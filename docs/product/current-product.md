@@ -57,7 +57,7 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 ## 当前还不是完整产品的部分
 
 - F127 已有真实宿主证据协议，但真实双宿主 AI 用户故事报告仍为 `INCOMPLETE`；
-- 外置 Agent Hook、统一 session 指标和本地分析平台尚未实现；
+- 外置 Agent Hook 已提供显式 opt-in 的脱敏 Trace 快照；统一 session 指标聚合和本地分析平台尚未实现；
 - F182–F185b 已完成冻结语料、端到端 Runner、外部评分、三个真实执行检索 arm 和 release gate，
   但真实 Kimi 三 arm 共 36 题均因 wire/429 上游错误而不可评分；gate 状态保持 INCOMPLETE；
 - 用户已决定延期大批量真实质量复跑，允许继续开发实验性 QuerySession；这不等于答案质量通过，

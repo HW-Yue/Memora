@@ -124,6 +124,20 @@ func (agent *QueryAgent) Query(ctx context.Context, request QueryRequest) (Query
 	return agent.query(ctx, request, nil)
 }
 
+// QueryWithHook is the opt-in observability path for an external host. The
+// hook receives only the already-redacted TraceEvent stream; it never sees the
+// provider messages, host context, or MSQL row bodies.
+func (agent *QueryAgent) QueryWithHook(
+	ctx context.Context,
+	request QueryRequest,
+	hook *ExternalAgentHook,
+) (QueryResult, error) {
+	if hook == nil {
+		return QueryResult{}, ErrInvalidExternalAgentHook
+	}
+	return agent.query(ctx, request, hook.Observe)
+}
+
 func (agent *QueryAgent) query(
 	ctx context.Context,
 	request QueryRequest,

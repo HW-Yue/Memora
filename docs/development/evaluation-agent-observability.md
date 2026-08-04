@@ -1,6 +1,6 @@
 # 内置评测 Agent 与外置 Hook 观测
 
-状态：2026-08-02 方向性结论；实现仍需独立 Feature/ADR Review。
+状态：2026-08-05 方向性结论；F204 已提供显式 opt-in 的脱敏 Hook，统一 session 指标聚合仍待后续 Feature。
 
 ## 目的
 
