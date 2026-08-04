@@ -67,7 +67,7 @@ Database，就必须等待 F195，不能临时导入旧 Assimilation Controller�
 | Feature | 唯一主要结果 | 完成证据 |
 | --- | --- | --- |
 | F196（已完成） | DeepSeek/Kimi 可替换的 draft/claim ledger | 每个 claim 绑定 source anchor、模型、prompt、输入 digest 与候选 MSQL |
-| F197 | 问题驱动的暂停与恢复 | 只暂停受影响分支；用户回答形成版本化 command；不丢 coverage |
+| F197（已完成） | 问题驱动的暂停与恢复 | 只暂停受影响分支；用户回答形成版本化 command；不丢 coverage |
 | F198 | 独立 review gate | reviewer 与 author 隔离；数字、anchor、冲突、未保存原文四项验证 |
 | F199 | 短事务 reconciliation 与 Source Receipt | in-doubt 不盲重放；实际 RowID/revision/commit sequence 可追溯 |
 | F200 | 整本 EPUB 冻结 benchmark | 干净 snapshot 吸收后由固定 Query Agent 回答隐藏问题并输出成本/耗时 |

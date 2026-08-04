@@ -19,6 +19,7 @@ var (
 	ErrAssimilationJobCommandConflict = errors.New("Assimilation Job command ID has different content")
 	ErrAssimilationJobTerminal        = errors.New("Assimilation Job is terminal")
 	ErrAssimilationJobCorrupt         = errors.New("Assimilation Job journal is corrupt")
+	ErrAssimilationBranchRevision     = errors.New("Assimilation Job branch revision conflict")
 )
 
 type AssimilationJobState string
@@ -35,6 +36,8 @@ const (
 	AssimilationJobCommandStart              AssimilationJobCommandKind = "start"
 	AssimilationJobCommandAppendSourceEvents AssimilationJobCommandKind = "append_source_events"
 	AssimilationJobCommandSaveCheckpoint     AssimilationJobCommandKind = "save_checkpoint"
+	AssimilationJobCommandRaiseBranchIssue   AssimilationJobCommandKind = "raise_branch_issue"
+	AssimilationJobCommandAnswerBranchIssue  AssimilationJobCommandKind = "answer_branch_issue"
 	AssimilationJobCommandCancel             AssimilationJobCommandKind = "cancel"
 )
 
@@ -48,14 +51,17 @@ type AssimilationCheckpoint struct {
 }
 
 type AssimilationJobCommand struct {
-	Version          string                     `json:"version"`
-	JobID            string                     `json:"job_id"`
-	CommandID        string                     `json:"command_id"`
-	Kind             AssimilationJobCommandKind `json:"kind"`
-	ExpectedRevision uint64                     `json:"expected_revision"`
-	SourceEvents     []SourceIntakeEvent        `json:"source_events,omitempty"`
-	Checkpoint       *AssimilationCheckpoint    `json:"checkpoint,omitempty"`
-	ReasonCode       string                     `json:"reason_code,omitempty"`
+	Version                string                     `json:"version"`
+	JobID                  string                     `json:"job_id"`
+	CommandID              string                     `json:"command_id"`
+	Kind                   AssimilationJobCommandKind `json:"kind"`
+	ExpectedRevision       uint64                     `json:"expected_revision"`
+	ExpectedBranchRevision uint64                     `json:"expected_branch_revision,omitempty"`
+	SourceEvents           []SourceIntakeEvent        `json:"source_events,omitempty"`
+	Checkpoint             *AssimilationCheckpoint    `json:"checkpoint,omitempty"`
+	BranchIssue            *AssimilationBranchIssue   `json:"branch_issue,omitempty"`
+	BranchAnswer           *AssimilationBranchAnswer  `json:"branch_answer,omitempty"`
+	ReasonCode             string                     `json:"reason_code,omitempty"`
 }
 
 type AssimilationJobEventKind string
@@ -64,20 +70,25 @@ const (
 	AssimilationJobEventStarted              AssimilationJobEventKind = "started"
 	AssimilationJobEventSourceEventsAppended AssimilationJobEventKind = "source_events_appended"
 	AssimilationJobEventCheckpointSaved      AssimilationJobEventKind = "checkpoint_saved"
+	AssimilationJobEventBranchIssueRaised    AssimilationJobEventKind = "branch_issue_raised"
+	AssimilationJobEventBranchIssueAnswered  AssimilationJobEventKind = "branch_issue_answered"
 	AssimilationJobEventCancelled            AssimilationJobEventKind = "cancelled"
 )
 
 type AssimilationJobEvent struct {
-	Version       string                   `json:"version"`
-	JobID         string                   `json:"job_id"`
-	Revision      uint64                   `json:"revision"`
-	CommandID     string                   `json:"command_id"`
-	CommandSHA256 string                   `json:"command_sha256"`
-	Kind          AssimilationJobEventKind `json:"kind"`
-	State         AssimilationJobState     `json:"state"`
-	SourceEvents  []SourceIntakeEvent      `json:"source_events,omitempty"`
-	Checkpoint    *AssimilationCheckpoint  `json:"checkpoint,omitempty"`
-	ReasonCode    string                   `json:"reason_code,omitempty"`
+	Version        string                    `json:"version"`
+	JobID          string                    `json:"job_id"`
+	Revision       uint64                    `json:"revision"`
+	CommandID      string                    `json:"command_id"`
+	CommandSHA256  string                    `json:"command_sha256"`
+	Kind           AssimilationJobEventKind  `json:"kind"`
+	State          AssimilationJobState      `json:"state"`
+	SourceEvents   []SourceIntakeEvent       `json:"source_events,omitempty"`
+	Checkpoint     *AssimilationCheckpoint   `json:"checkpoint,omitempty"`
+	BranchRevision uint64                    `json:"branch_revision,omitempty"`
+	BranchIssue    *AssimilationBranchIssue  `json:"branch_issue,omitempty"`
+	BranchAnswer   *AssimilationBranchAnswer `json:"branch_answer,omitempty"`
+	ReasonCode     string                    `json:"reason_code,omitempty"`
 }
 
 func (event AssimilationJobEvent) Validate() error {
@@ -90,23 +101,39 @@ func (event AssimilationJobEvent) Validate() error {
 	case AssimilationJobEventStarted:
 		if event.Revision != 1 || event.State != AssimilationJobWaitingUser ||
 			!validInitialSourceBatch(event.JobID, event.SourceEvents) || event.Checkpoint != nil ||
-			event.ReasonCode != "" {
+			event.ReasonCode != "" || !eventHasNoBranchPayload(event) {
 			return ErrAssimilationJobInvalid
 		}
 	case AssimilationJobEventSourceEventsAppended:
 		if !validStandaloneSourceBatch(event.JobID, event.SourceEvents) || event.Checkpoint != nil ||
-			event.ReasonCode != "" || event.State != jobStateFromSource(event.SourceEvents[len(event.SourceEvents)-1].State) {
+			event.ReasonCode != "" || !eventHasNoBranchPayload(event) ||
+			event.State != jobStateFromSource(event.SourceEvents[len(event.SourceEvents)-1].State) {
 			return ErrAssimilationJobInvalid
 		}
 	case AssimilationJobEventCheckpointSaved:
 		if len(event.SourceEvents) != 0 || event.Checkpoint == nil ||
 			!validAssimilationCheckpoint(*event.Checkpoint) || event.ReasonCode != "" ||
-			event.State == AssimilationJobCancelled {
+			event.State == AssimilationJobCancelled || !eventHasNoBranchPayload(event) {
+			return ErrAssimilationJobInvalid
+		}
+	case AssimilationJobEventBranchIssueRaised:
+		if len(event.SourceEvents) != 0 || event.Checkpoint != nil || event.ReasonCode != "" ||
+			event.State != AssimilationJobActive || event.BranchRevision == 0 ||
+			event.BranchIssue == nil || event.BranchAnswer != nil ||
+			validAssimilationBranchIssue(*event.BranchIssue) != nil {
+			return ErrAssimilationJobInvalid
+		}
+	case AssimilationJobEventBranchIssueAnswered:
+		if len(event.SourceEvents) != 0 || event.Checkpoint != nil || event.ReasonCode != "" ||
+			event.State != AssimilationJobActive || event.BranchRevision < 2 ||
+			event.BranchIssue != nil || event.BranchAnswer == nil ||
+			validAssimilationBranchAnswer(*event.BranchAnswer) != nil {
 			return ErrAssimilationJobInvalid
 		}
 	case AssimilationJobEventCancelled:
 		if len(event.SourceEvents) != 0 || event.Checkpoint != nil ||
-			!validSourceIntakeID(event.ReasonCode, 80) || event.State != AssimilationJobCancelled {
+			!validSourceIntakeID(event.ReasonCode, 80) || event.State != AssimilationJobCancelled ||
+			!eventHasNoBranchPayload(event) {
 			return ErrAssimilationJobInvalid
 		}
 	default:
@@ -116,13 +143,14 @@ func (event AssimilationJobEvent) Validate() error {
 }
 
 type AssimilationJobSnapshot struct {
-	Version            string                  `json:"version"`
-	JobID              string                  `json:"job_id"`
-	Revision           uint64                  `json:"revision"`
-	State              AssimilationJobState    `json:"state"`
-	LastSourceSequence uint64                  `json:"last_source_sequence"`
-	Intake             SourceIntakeSnapshot    `json:"intake"`
-	Checkpoint         *AssimilationCheckpoint `json:"checkpoint,omitempty"`
+	Version            string                       `json:"version"`
+	JobID              string                       `json:"job_id"`
+	Revision           uint64                       `json:"revision"`
+	State              AssimilationJobState         `json:"state"`
+	LastSourceSequence uint64                       `json:"last_source_sequence"`
+	Intake             SourceIntakeSnapshot         `json:"intake"`
+	Checkpoint         *AssimilationCheckpoint      `json:"checkpoint,omitempty"`
+	Branches           []AssimilationBranchSnapshot `json:"branches,omitempty"`
 }
 
 type AssimilationJobReceipt struct {
@@ -139,16 +167,26 @@ func validAssimilationJobCommand(command AssimilationJobCommand) bool {
 	switch command.Kind {
 	case AssimilationJobCommandStart:
 		return command.ExpectedRevision == 0 && validInitialSourceBatch(command.JobID, command.SourceEvents) &&
-			command.Checkpoint == nil && command.ReasonCode == ""
+			command.Checkpoint == nil && command.ReasonCode == "" && commandHasNoBranchPayload(command)
 	case AssimilationJobCommandAppendSourceEvents:
 		return validStandaloneSourceBatch(command.JobID, command.SourceEvents) &&
-			command.Checkpoint == nil && command.ReasonCode == ""
+			command.Checkpoint == nil && command.ReasonCode == "" && commandHasNoBranchPayload(command)
 	case AssimilationJobCommandSaveCheckpoint:
 		return len(command.SourceEvents) == 0 && command.Checkpoint != nil &&
-			validAssimilationCheckpoint(*command.Checkpoint) && command.ReasonCode == ""
+			validAssimilationCheckpoint(*command.Checkpoint) && command.ReasonCode == "" &&
+			commandHasNoBranchPayload(command)
+	case AssimilationJobCommandRaiseBranchIssue:
+		return command.ExpectedRevision == 0 && len(command.SourceEvents) == 0 && command.Checkpoint == nil &&
+			command.ReasonCode == "" && command.BranchIssue != nil && command.BranchAnswer == nil &&
+			validAssimilationBranchIssue(*command.BranchIssue) == nil
+	case AssimilationJobCommandAnswerBranchIssue:
+		return command.ExpectedRevision == 0 && len(command.SourceEvents) == 0 && command.Checkpoint == nil &&
+			command.ReasonCode == "" && command.ExpectedBranchRevision > 0 &&
+			command.BranchIssue == nil && command.BranchAnswer != nil &&
+			validAssimilationBranchAnswer(*command.BranchAnswer) == nil
 	case AssimilationJobCommandCancel:
 		return len(command.SourceEvents) == 0 && command.Checkpoint == nil &&
-			validSourceIntakeID(command.ReasonCode, 80)
+			validSourceIntakeID(command.ReasonCode, 80) && commandHasNoBranchPayload(command)
 	default:
 		return false
 	}
@@ -248,7 +286,7 @@ func deriveAssimilationJobEvent(
 	command AssimilationJobCommand,
 	commandSHA256 string,
 ) (AssimilationJobEvent, AssimilationJobSnapshot, error) {
-	if snapshot.Revision != command.ExpectedRevision {
+	if !assimilationBranchCommand(command.Kind) && snapshot.Revision != command.ExpectedRevision {
 		return AssimilationJobEvent{}, AssimilationJobSnapshot{}, ErrAssimilationJobRevision
 	}
 	if snapshot.State == AssimilationJobCancelled {
@@ -310,6 +348,12 @@ func deriveAssimilationJobEvent(
 		event.State = snapshot.State
 		event.Checkpoint = cloneAssimilationCheckpointPointer(command.Checkpoint)
 		next.Checkpoint = cloneAssimilationCheckpointPointer(command.Checkpoint)
+	case AssimilationJobCommandRaiseBranchIssue, AssimilationJobCommandAnswerBranchIssue:
+		var branchErr error
+		event, next, branchErr = deriveAssimilationBranchEvent(snapshot, command, commandSHA256)
+		if branchErr != nil {
+			return AssimilationJobEvent{}, AssimilationJobSnapshot{}, branchErr
+		}
 	case AssimilationJobCommandCancel:
 		event.Kind = AssimilationJobEventCancelled
 		event.State = AssimilationJobCancelled
@@ -328,18 +372,23 @@ func deriveAssimilationJobEvent(
 func cloneAssimilationJobCommand(command AssimilationJobCommand) AssimilationJobCommand {
 	command.SourceEvents = cloneSourceIntakeEvents(command.SourceEvents)
 	command.Checkpoint = cloneAssimilationCheckpointPointer(command.Checkpoint)
+	command.BranchIssue = cloneAssimilationBranchIssuePointer(command.BranchIssue)
+	command.BranchAnswer = cloneAssimilationBranchAnswerPointer(command.BranchAnswer)
 	return command
 }
 
 func cloneAssimilationJobEvent(event AssimilationJobEvent) AssimilationJobEvent {
 	event.SourceEvents = cloneSourceIntakeEvents(event.SourceEvents)
 	event.Checkpoint = cloneAssimilationCheckpointPointer(event.Checkpoint)
+	event.BranchIssue = cloneAssimilationBranchIssuePointer(event.BranchIssue)
+	event.BranchAnswer = cloneAssimilationBranchAnswerPointer(event.BranchAnswer)
 	return event
 }
 
 func cloneAssimilationJobSnapshot(snapshot AssimilationJobSnapshot) AssimilationJobSnapshot {
 	snapshot.Intake = cloneSourceIntakeSnapshot(snapshot.Intake)
 	snapshot.Checkpoint = cloneAssimilationCheckpointPointer(snapshot.Checkpoint)
+	snapshot.Branches = cloneAssimilationBranches(snapshot.Branches)
 	return snapshot
 }
 

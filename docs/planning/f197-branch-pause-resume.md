@@ -1,6 +1,6 @@
 # F197：问题驱动的分支暂停与恢复
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -56,6 +56,23 @@ intake 逐字节不变；非法 option/issue/revision 拒绝；并发回答单�
 reopen/corruption、race 和全量 CI 全绿。
 
 F197 不调用 Provider、不修改 F196 claim 内容、不做 F198 语义复核，也不提交 F195 plan。
+
+## 完成证据
+
+- `AssimilationJobCommand/Event/Snapshot` 已增加 branch issue/answer 和规范排序的分支快照；
+  旧 journal 的可选字段不变，现有 F190 恢复测试继续全绿；
+- 局部 issue 返回 `branch_issue_raised` 即时事件，Job 保持 active；目标 branch
+  `waiting_user`，未知/未受影响 branch 继续 ready；
+- 测试在 branch A 等待时成功保存了下一个全局 checkpoint，随后又处理了 branch B；
+  A 的旧用户回答仍以 branch revision 1 成功提交；
+- 不同 branch 的并发回答可各自成功；同 branch 同 revision 的两个回答仅一个胜出，
+  另一个返回 branch revision conflict；
+- 回答必须匹配 active issue 和预定 option；command replay 幂等、同 ID 换内容冲突；
+- reopen 精确恢复 waiting/ready issue 与 resolution，Intake、Source sequence 和最新 checkpoint
+  不被 branch transition 覆盖；journal 不包用户自由文本回答；
+- 目标测试、race、vet、Agent import guard 与全量 unit/integration/E2E/cross-build CI 全绿。
+
+完成门结论：PASS。下一项为 F198 author/reviewer 隔离的独立语义复核门。
 
 ## 关联
 

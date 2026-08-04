@@ -60,4 +60,5 @@ cancel(expected_revision=N, reason_code)
 - 测试证明用户回答正文和伪造源正文不进入 journal，目标测试与 `-race` 全绿；
 - Store 只使用标准库，路径由 JobID SHA-256 派生，目录/文件权限分别为 `0700`/`0600`。
 
-完成门结论：PASS。下一项为 F191 内容寻址临时 SourceStore。
+完成门结论：PASS。F197 在不破坏旧 journal 摘要的前提下，以可选字段增加了
+branch-local issue/answer/revision；完整契约见 [F197](./f197-branch-pause-resume.md)。

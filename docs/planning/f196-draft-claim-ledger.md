@@ -72,7 +72,8 @@ RED 先锁定：
   不留部分 record；
 - 目标测试、Agent import guard、race、vet 与全量 unit/integration/E2E/cross-build CI 全绿。
 
-完成门结论：PASS。本项没有发起真实模型批量评测；下一项为 F197 问题驱动的分支暂停与恢复。
+完成门结论：PASS。本项没有发起真实模型批量评测；后继 [F197](./f197-branch-pause-resume.md)
+也已完成。
 
 ## 关联
 

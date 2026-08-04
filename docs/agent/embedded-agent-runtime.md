@@ -98,6 +98,10 @@ claim。模型只引用 node ID，Runtime 从 Document IR 注入真实 anchor、
 checksum ledger 只保存 `review_required` 语义候选与摘要证据，不保存原始 extent/prompt/response，
 也不执行 F195 `SUBMIT ASSIMILATION`。
 
+F197 将长任务中的问题等待改为 branch-local：目标 extent/claim 等待用户时 Job 仍 active，
+其他分支可继续保存 checkpoint。用户选择按 branch revision 提交，所以不会被无关分支的
+Job revision 推进误判为过期；journal 只保存 option 与回答 digest，不保存自由文本回答。
+
 ## 一个 Runtime，多种能力配置
 
 不再要求 Query Agent 和 Mutation Agent 是两个不同宿主进程。一个 loop 根据请求获得能力配置：

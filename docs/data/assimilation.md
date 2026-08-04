@@ -1,7 +1,7 @@
 # 资料吸收
 
-状态：产品方向已确认；F189–F196 已实现 Agent-owned 长任务、临时源、Document IR、EPUB、
-coverage、正式 MSQL 提交面与可恢复 claim ledger。F35/F36 旧宿主协议仅保留兼容。
+状态：产品方向已确认；F189–F197 已实现 Agent-owned 长任务、临时源、Document IR、EPUB、
+coverage、正式 MSQL 提交面、可恢复 claim ledger 与局部问题暂停。F35/F36 旧宿主协议仅保留兼容。
 
 ## 原则
 
@@ -14,6 +14,8 @@ Memora 不保存完整 PDF、Markdown、图片、音频或大文档。外部资�
   → 匹配 Schema 与现有记录
   → 单窗口一次模型调用生成有锚点 claim 与 revise/merge/split/insert 候选
   → Agent-owned hash-chain ledger 持久化 review_required 草稿
+  → 局部歧义立即输出问题，仅暂停受影响的 extent/claim branch
+  → 其他分支继续；用户选择以 branch-local revision 恢复
   → 交叉检查引用、数字、冲突和遗漏
   → 独立复核
   → 短事务提交记录、关系和 Source Receipt

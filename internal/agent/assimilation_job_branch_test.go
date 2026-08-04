@@ -30,6 +30,19 @@ func TestAssimilationJobPausesOnlyAffectedBranchesAndResumesAfterUnrelatedProgre
 		t.Fatalf("raise branch-z receipt = %#v", receipt)
 	}
 	assertBranchJobProgressUnchanged(t, checkpointSnapshot, receipt.Snapshot)
+	progress := assimilationCommand(
+		"task-branch-local", "command-unaffected-progress", agent.AssimilationJobCommandSaveCheckpoint,
+		receipt.Snapshot.Revision,
+	)
+	progress.Checkpoint = &agent.AssimilationCheckpoint{
+		Version: agent.AssimilationCheckpointVersion, Ordinal: 2, SourceSequence: 4,
+		Stage: "drafting", Cursor: "extent:4", StateSHA256: "sha256:" + strings.Repeat("e", 64),
+	}
+	progressed, err := store.Apply(progress)
+	if err != nil || progressed.Snapshot.Checkpoint == nil ||
+		progressed.Snapshot.Checkpoint.Ordinal != 2 || progressed.Snapshot.BranchRunnable("branch-z") {
+		t.Fatalf("unaffected progress = %#v, %v", progressed, err)
+	}
 
 	// Raising another branch advances the Job journal but must not invalidate a
 	// later answer for branch-z at branch revision 1.
@@ -61,11 +74,20 @@ func TestAssimilationJobPausesOnlyAffectedBranchesAndResumesAfterUnrelatedProgre
 		answered.Snapshot.State != agent.AssimilationJobActive {
 		t.Fatalf("answered branch-z snapshot = %#v", answered.Snapshot)
 	}
-	assertBranchJobProgressUnchanged(t, checkpointSnapshot, answered.Snapshot)
+	assertBranchJobProgressUnchanged(t, progressed.Snapshot, answered.Snapshot)
 
 	replayed, err := store.Apply(answerZ)
 	if err != nil || !replayed.Replayed || !reflect.DeepEqual(replayed.Event, answered.Event) {
 		t.Fatalf("answer replay = %#v, %v", replayed, err)
+	}
+	changedAnswer := answerZ
+	changedAnswer.BranchAnswer = &agent.AssimilationBranchAnswer{
+		Version: agent.AssimilationBranchAnswerVersion, BranchID: "branch-z", IssueID: "issue-z",
+		SelectedOption: "merge", AnswerUTF8Bytes: 1,
+		AnswerSHA256: "sha256:" + strings.Repeat("f", 64),
+	}
+	if _, err := store.Apply(changedAnswer); !errors.Is(err, agent.ErrAssimilationJobCommandConflict) {
+		t.Fatalf("changed replay error = %v", err)
 	}
 	reopened, err := agent.OpenAssimilationJobStore(root)
 	if err != nil {

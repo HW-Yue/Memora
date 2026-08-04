@@ -114,7 +114,7 @@ Route、RowID、SQL 重试和回退只供内部定位。实际 `SELECT` Row 才�
 | F194（已完成） | `ReadExtent` 与 coverage 调度，证明所有必读范围被处理 |
 | F195（已完成） | 以正式 MSQL 替代 Agent 所需的 `assimilation.*` 私有 IPC |
 | F196（已完成） | 可替换 Provider 的 draft/claim ledger 和有来源约束的 MSQL 候选 |
-| F197 | 问题即时输出、用户回答、暂停和恢复受影响分支 |
+| F197（已完成） | 问题即时输出、用户回答、暂停和恢复受影响分支 |
 | F198 | author/reviewer 隔离的独立 review gate |
 | F199 | 短事务 reconciliation、in-doubt 恢复和 Source Receipt |
 | F200 | 从干净 snapshot 吸收整本 EPUB，再由固定 Query Agent 评分隐藏问题 |
