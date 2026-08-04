@@ -1,6 +1,6 @@
 # F180a：DeepSeek V4 非思考 Provider 方言
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -48,4 +48,14 @@ Tool Call 后续请求必须回传 `reasoning_content`，而非思考模式无�
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204；模型限速时每条模型链一次成功 smoke 即可。
 
-开工前结论：PASS。
+## 完成证据
+
+- RED：新增 DeepSeek 精确 wire golden 后，因方言类型与编码入口尚不存在而编译失败；
+- GREEN：`deepseek-v4-non-thinking` 精确发送 `max_tokens` 与
+  `thinking={"type":"disabled"}`，标准/Kimi golden 保持不变；
+- 未知方言在构造期 fail closed；定向 Agent 测试、Agent race、CI 规则与 `scripts/ci.sh`
+  全部通过；
+- 当前执行环境未提供 `DEEPSEEK_API_KEY`，opt-in 真实 smoke 尚待补一次成功证据；按用户授权，
+  该外部服务证据不阻塞后续 Feature。
+
+完成结论：PASS（真实 DeepSeek smoke 待补证据）。

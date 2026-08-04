@@ -11,8 +11,14 @@ type openAICompatibleRequest struct {
 	Messages            []openAICompatibleMessage `json:"messages"`
 	Tools               []openAICompatibleTool    `json:"tools,omitempty"`
 	ToolChoice          ProviderToolChoice        `json:"tool_choice"`
-	MaxCompletionTokens uint64                    `json:"max_completion_tokens"`
+	MaxCompletionTokens *uint64                   `json:"max_completion_tokens,omitempty"`
+	MaxTokens           *uint64                   `json:"max_tokens,omitempty"`
 	Stream              bool                      `json:"stream"`
+	Thinking            *openAICompatibleThinking `json:"thinking,omitempty"`
+}
+
+type openAICompatibleThinking struct {
+	Type string `json:"type"`
 }
 
 type openAICompatibleMessage struct {
@@ -74,12 +80,25 @@ type openAICompatiblePromptTokenDetails struct {
 	CachedTokens *uint64 `json:"cached_tokens"`
 }
 
-func encodeOpenAICompatibleRequest(request ProviderRequest) ([]byte, error) {
+func encodeOpenAICompatibleRequest(
+	request ProviderRequest,
+	dialect OpenAICompatibleDialect,
+) ([]byte, error) {
+	maxOutputTokens := request.MaxOutputTokens
 	wire := openAICompatibleRequest{
 		Model: request.Model, ToolChoice: request.ToolChoice,
-		MaxCompletionTokens: request.MaxOutputTokens, Stream: false,
+		Stream:   false,
 		Messages: make([]openAICompatibleMessage, len(request.Messages)),
 		Tools:    make([]openAICompatibleTool, len(request.Tools)),
+	}
+	switch dialect {
+	case OpenAICompatibleDialectStandard:
+		wire.MaxCompletionTokens = &maxOutputTokens
+	case OpenAICompatibleDialectDeepSeekV4NonThinking:
+		wire.MaxTokens = &maxOutputTokens
+		wire.Thinking = &openAICompatibleThinking{Type: "disabled"}
+	default:
+		return nil, ErrProviderWireResponse
 	}
 	for index, message := range request.Messages {
 		wireMessage := openAICompatibleMessage{Role: message.Role, ToolCallID: message.ToolCallID}

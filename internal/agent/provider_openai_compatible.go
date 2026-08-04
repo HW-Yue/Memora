@@ -58,11 +58,19 @@ func (EnvironmentProviderSecretResolver) ResolveProviderSecret(ctx context.Conte
 type OpenAICompatibleProviderConfig struct {
 	APIBaseURL       string
 	SecretName       string
+	Dialect          OpenAICompatibleDialect
 	Timeout          time.Duration
 	MaxRequestBytes  int64
 	MaxResponseBytes int64
 	Transport        http.RoundTripper
 }
+
+type OpenAICompatibleDialect string
+
+const (
+	OpenAICompatibleDialectStandard              OpenAICompatibleDialect = ""
+	OpenAICompatibleDialectDeepSeekV4NonThinking OpenAICompatibleDialect = "deepseek-v4-non-thinking"
+)
 
 type OpenAICompatibleProvider struct {
 	endpoint         string
@@ -71,6 +79,7 @@ type OpenAICompatibleProvider struct {
 	client           *http.Client
 	maxRequestBytes  int64
 	maxResponseBytes int64
+	dialect          OpenAICompatibleDialect
 }
 
 type ProviderHTTPStatusError struct {
@@ -91,6 +100,7 @@ func NewOpenAICompatibleProvider(
 ) (*OpenAICompatibleProvider, error) {
 	endpoint, err := openAICompatibleEndpoint(config.APIBaseURL)
 	if err != nil || secrets == nil || !validProviderSecretName(config.SecretName) ||
+		!validOpenAICompatibleDialect(config.Dialect) ||
 		config.Timeout <= 0 || config.Timeout > 10*time.Minute ||
 		config.MaxRequestBytes < minProviderBodyBytes || config.MaxRequestBytes > maxProviderBodyBytes ||
 		config.MaxResponseBytes < minProviderBodyBytes || config.MaxResponseBytes > maxProviderBodyBytes {
@@ -110,6 +120,7 @@ func NewOpenAICompatibleProvider(
 			},
 		},
 		maxRequestBytes: config.MaxRequestBytes, maxResponseBytes: config.MaxResponseBytes,
+		dialect: config.Dialect,
 	}, nil
 }
 
@@ -123,7 +134,7 @@ func (provider *OpenAICompatibleProvider) Complete(
 	if err := request.Validate(); err != nil {
 		return ProviderResponse{}, err
 	}
-	body, err := encodeOpenAICompatibleRequest(request)
+	body, err := encodeOpenAICompatibleRequest(request, provider.dialect)
 	if err != nil {
 		return ProviderResponse{}, ErrProviderWireResponse
 	}
@@ -179,6 +190,10 @@ func (provider *OpenAICompatibleProvider) Complete(
 		return ProviderResponse{}, ErrProviderWireResponse
 	}
 	return response, nil
+}
+
+func validOpenAICompatibleDialect(dialect OpenAICompatibleDialect) bool {
+	return dialect == OpenAICompatibleDialectStandard || dialect == OpenAICompatibleDialectDeepSeekV4NonThinking
 }
 
 func openAICompatibleEndpoint(baseURL string) (string, error) {

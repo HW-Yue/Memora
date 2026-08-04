@@ -459,6 +459,61 @@ func TestKimiOpenAICompatibleProviderSmoke(t *testing.T) {
 		response.Usage.CachedInputTokens, response.Usage.OutputTokens)
 }
 
+func TestDeepSeekV4OpenAICompatibleProviderSmoke(t *testing.T) {
+	if os.Getenv("MEMORA_RUN_DEEPSEEK_SMOKE") != "1" {
+		t.Skip("set MEMORA_RUN_DEEPSEEK_SMOKE=1 for the opt-in live API test")
+	}
+	apiBaseURL := os.Getenv("MEMORA_DEEPSEEK_API_BASE_URL")
+	if apiBaseURL == "" {
+		apiBaseURL = "https://api.deepseek.com"
+	}
+	model := os.Getenv("MEMORA_DEEPSEEK_MODEL")
+	if model == "" {
+		model = "deepseek-v4-flash"
+	}
+	provider, err := agent.NewOpenAICompatibleProvider(agent.OpenAICompatibleProviderConfig{
+		APIBaseURL: apiBaseURL, SecretName: "DEEPSEEK_API_KEY",
+		Dialect: agent.OpenAICompatibleDialectDeepSeekV4NonThinking,
+		Timeout: 90 * time.Second, MaxRequestBytes: 1 << 20, MaxResponseBytes: 2 << 20,
+	}, agent.EnvironmentProviderSecretResolver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateway, err := agent.NewProviderGateway(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := agent.ProviderRequest{
+		Version: agent.ProviderRequestVersion, Model: model,
+		Messages: []agent.ProviderMessage{{
+			Role:    agent.ProviderRoleUser,
+			Content: `Call memora_probe exactly once with {"ok":true}. Do not answer directly.`,
+		}},
+		Tools: []agent.ProviderTool{{
+			Name: "memora_probe", Description: "Return the requested smoke-test boolean",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false}`),
+		}},
+		ToolChoice: agent.ProviderToolChoiceRequired, MaxOutputTokens: 128,
+	}
+	response, err := gateway.Complete(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.FinishReason != agent.ProviderFinishToolCalls || len(response.Message.ToolCalls) != 1 ||
+		response.Message.ToolCalls[0].Name != "memora_probe" {
+		t.Fatalf("unexpected model=%q finish=%q tool_count=%d", response.Model, response.FinishReason, len(response.Message.ToolCalls))
+	}
+	var arguments struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(response.Message.ToolCalls[0].Arguments, &arguments); err != nil || !arguments.OK {
+		t.Fatalf("tool arguments did not satisfy the smoke contract: error=%v", err)
+	}
+	t.Logf("DeepSeek V4 smoke passed: model=%s finish=%s input_tokens=%d cached_input_tokens=%d output_tokens=%d",
+		response.Model, response.FinishReason, response.Usage.InputTokens,
+		response.Usage.CachedInputTokens, response.Usage.OutputTokens)
+}
+
 type scriptedSecretResolver struct {
 	mu     sync.Mutex
 	values []string
