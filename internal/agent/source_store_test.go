@@ -331,6 +331,22 @@ func TestSourceStoreReopenCleansResidueAndCorruptionFailsClosed(t *testing.T) {
 	if _, _, err := store.Open("job-corrupt", "source"); !errors.Is(err, agent.ErrSourceStoreCorrupt) {
 		t.Fatalf("Open symlink object error = %v", err)
 	}
+	if err := os.Remove(objectPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(objectPath, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	referencePath := onlySourceReferencePath(t, root)
+	if err := os.Remove(referencePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, referencePath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Resolve("job-corrupt", "source"); !errors.Is(err, agent.ErrSourceStoreCorrupt) {
+		t.Fatalf("Resolve symlink reference error = %v", err)
+	}
 	if _, err := store.ReleaseJob("job-corrupt"); err != nil {
 		t.Fatal(err)
 	}
@@ -420,6 +436,27 @@ func onlySourceObjectPath(t *testing.T, root string) string {
 	}
 	if len(paths) != 1 {
 		t.Fatalf("object paths = %v", paths)
+	}
+	return paths[0]
+}
+
+func onlySourceReferencePath(t *testing.T, root string) string {
+	t.Helper()
+	var paths []string
+	err := filepath.WalkDir(filepath.Join(root, "refs"), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			paths = append(paths, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("reference paths = %v", paths)
 	}
 	return paths[0]
 }

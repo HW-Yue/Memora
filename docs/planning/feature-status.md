@@ -59,6 +59,7 @@
 | F188 | 单网页/短文本内置 Agent；一次有界 draft、用户审批、单 Row Route 写入、真实 RowID/revision/commit SELECT 回读 |
 | F189 | Agent-owned Source Intake；范围确认、即时问题/等待/回答摘要、单调进度、取消与并发安全事件协议 |
 | F190 | 可持久恢复的 AssimilationJob；hash-chain journal、幂等 Command、Intake/checkpoint 恢复与 torn-tail 处理 |
+| F191 | 内容寻址临时 SourceStore；流式摘要、四类配额、跨 Job 复用、reopen 校验与引用回收 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -67,7 +68,7 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
 - F185b 实现已完成，但真实 Kimi 三 arm 共 36 题均因 33 次 HTTP 429 与 3 次 wire failure 不可评分；
   release report 保持 `INCOMPLETE`、无默认 arm；
 - 2026-08-05 用户决定延期大批量真实质量复跑。该门继续阻止“质量已通过”和“默认 arm 已选定”
-  的发布声明，但不再阻止后续实验性 Feature 开发；F190 已完成，下一项为 F191 临时 SourceStore。
+  的发布声明，但不再阻止后续实验性 Feature 开发；F191 已完成，下一项为 F192 Document IR。
 
 ## 例外与非当前路径
 

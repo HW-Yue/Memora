@@ -1,6 +1,6 @@
 # F191：内容寻址临时 SourceStore
 
-状态：已批准，2026-08-05 开工。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -45,4 +45,15 @@ ReleaseJob(job_id) → remove refs → collect unreferenced objects
 
 用户执行授权：2026-08-05 用户要求持续执行至 F204。
 
-开工前结论：PASS。
+## 完成证据
+
+- `Put` 使用 32 KiB buffer 流式写 staging，同时执行 context、object size 与 SHA-256 校验；
+- Object/ref 使用摘要派生路径、`0600` 文件和 `0700` 目录，写入分别经 hard-link/atomic rename 与 fsync；
+- reopen 后逐个验证 strict ref JSON、regular file、size 和完整 digest，并清理 staging 与 orphan；
+- 相同 ref 幂等 replay，16 路并发只有一次 commit；相同内容跨 Job 只有一个物理 Object；
+- object/job/physical/source-count 四类 quota、digest mismatch 和 Reader fault 均不产生可见 ref；
+- Object 篡改、Object/ref symlink 均 fail closed；Release 只移除链接本身，根目录外 sentinel 保持不变；
+- 共享对象在首个 Job release 后保留，最后一个引用释放后才删除，重复 Release 返回空收据；
+- 目标测试与 `-race` 全绿，生产实现只使用标准库且没有接触 MSQL/Database 内部包。
+
+完成门结论：PASS。下一项为 F192 格式无关 Document IR v1。

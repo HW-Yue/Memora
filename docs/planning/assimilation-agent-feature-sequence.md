@@ -53,7 +53,7 @@ F188 是写入 Prompt、Schema 选择、重复事实检测和回读验证的最�
 | --- | --- | --- |
 | F189（已完成） | Source intake 交互与事件协议 | 上传后先确认范围；问题、进度、等待用户和错误即时流式输出 |
 | F190（已完成） | 可持久恢复的 AssimilationJob 状态机 | command/event/checkpoint 幂等、崩溃恢复、取消与并发测试 |
-| F191 | 内容寻址临时 SourceStore | 不进 Database；权限、配额、hash、清理和 reopen |
+| F191（已完成） | 内容寻址临时 SourceStore | 不进 Database；权限、配额、hash、清理和 reopen |
 | F192 | 与格式无关的 Document IR v1 | 层级、阅读顺序、anchor、表格/脚注引用稳定，无机械 chunk 语义 |
 | F193 | EPUB 确定性适配器 | spine、目录、章节、脚注、资源清单和 malformed corpus |
 | F194 | `ReadExtent` 与 coverage 调度 | 全部必读范围覆盖；窗口 hash；断点续读；不持久化原文 |
