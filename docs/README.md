@@ -54,6 +54,7 @@
 - [F190：可持久恢复的 AssimilationJob](./planning/f190-durable-assimilation-job.md) — 幂等 Command、append-only Event/checkpoint、torn-tail 恢复与 checksum fail-closed。
 - [F191：内容寻址临时 SourceStore](./planning/f191-content-addressed-source-store.md) — 流式摘要、配额、跨 Job 复用、reopen 校验与引用清理。
 - [F192：格式无关 Document IR v1](./planning/f192-document-ir-v1.md) — 层级、阅读顺序、稳定 anchor、表格/脚注关系与规范摘要。
+- [F193：EPUB 确定性适配器](./planning/f193-epub-adapter.md) — container/OPF/spine/nav、结构 XHTML、脚注与资源清单。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
 ## 当前产品规格
