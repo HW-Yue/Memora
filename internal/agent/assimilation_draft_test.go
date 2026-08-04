@@ -58,7 +58,7 @@ func TestAssimilationDrafterRecordsAnchoredClaimsWithOneProviderCall(t *testing.
 	}
 	for index, claim := range batch.Claims {
 		wantNode := extent.Nodes[index]
-		if claim.JobID != "job-draft" || claim.Database != "work" ||
+		if claim.Status != agent.DraftClaimReviewRequired || claim.JobID != "job-draft" || claim.Database != "work" ||
 			claim.DocumentSHA256 != document.SHA256 || claim.ExtentSHA256 != extent.SHA256 ||
 			claim.ProviderID != "openai-compatible" || claim.Model != "deepseek-v4-flash" ||
 			claim.PromptVersion != agent.AssimilationDraftPromptVersion ||
@@ -81,6 +81,13 @@ func TestAssimilationDrafterRecordsAnchoredClaimsWithOneProviderCall(t *testing.
 	}
 
 	encoded := onlyDraftLedgerFile(t, root)
+	info, err := os.Stat(onlyDraftLedgerPath(t, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("ledger mode = %v", info.Mode().Perm())
+	}
 	for _, forbidden := range []string{
 		"A paragraph with a footnote.", agent.AssimilationDraftSystemPrompt,
 		"call-assimilation-draft", `"bootstrap"`,
@@ -88,6 +95,46 @@ func TestAssimilationDrafterRecordsAnchoredClaimsWithOneProviderCall(t *testing.
 		if bytes.Contains(encoded, []byte(forbidden)) {
 			t.Fatalf("ledger persisted raw input %q: %s", forbidden, encoded)
 		}
+	}
+}
+
+func TestAssimilationDrafterRejectsExtentConflictBeforeExternalCalls(t *testing.T) {
+	document, extent := assimilationDraftExtent(t)
+	ledger, err := agent.OpenDraftClaimLedger(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	drafter := newAssimilationDrafter(t,
+		&shortTextMSQL{responses: []protocolmsql.Envelope{shortTextBootstrapEnvelope()}},
+		&shortTextProvider{response: assimilationDraftToolResponse(validAssimilationDraftArguments(t, extent))},
+		ledger,
+	)
+	if _, err := drafter.Draft(context.Background(), assimilationDraftRequest(document, extent)); err != nil {
+		t.Fatal(err)
+	}
+
+	changedDraft := validDocumentIR(t)
+	changedDraft.Nodes[3].Text = "A materially changed paragraph with another fact."
+	changed, err := agent.SealDocumentIR(changedDraft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coverage, err := agent.NewReadCoverage(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedExtent, err := coverage.Next(agent.ReadExtentLimits{MaxNodes: 2, MaxUTF8Bytes: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noMSQL := &shortTextMSQL{}
+	noProvider := &shortTextProvider{}
+	restarted := newAssimilationDrafter(t, noMSQL, noProvider, ledger)
+	if _, err := restarted.Draft(context.Background(), assimilationDraftRequest(changed, changedExtent)); !errors.Is(err, agent.ErrDraftClaimConflict) {
+		t.Fatalf("conflicting Draft() error = %v", err)
+	}
+	if noMSQL.Calls() != 0 || noProvider.Calls() != 0 {
+		t.Fatalf("conflict calls = MSQL %d Provider %d", noMSQL.Calls(), noProvider.Calls())
 	}
 }
 
@@ -149,7 +196,7 @@ func TestAssimilationDrafterRejectsInvalidOutputWithoutLedgerRecord(t *testing.T
 		name     string
 		response agent.ProviderResponse
 	}{
-		{name: "direct answer", response: queryProviderResponse(agent.ProviderFinishStop, agent.ProviderMessage{
+		{name: "direct answer", response: assimilationDraftProviderResponse(agent.ProviderFinishStop, agent.ProviderMessage{
 			Role: agent.ProviderRoleAssistant, Content: "write it directly",
 		})},
 		{name: "unknown node", response: assimilationDraftToolResponse(mustJSON(t, map[string]any{
@@ -310,11 +357,20 @@ func draftClaimArgument(claimID, nodeID string) map[string]any {
 }
 
 func assimilationDraftToolResponse(arguments json.RawMessage) agent.ProviderResponse {
-	return queryProviderResponse(agent.ProviderFinishToolCalls, agent.ProviderMessage{
+	return assimilationDraftProviderResponse(agent.ProviderFinishToolCalls, agent.ProviderMessage{
 		Role: agent.ProviderRoleAssistant, ToolCalls: []agent.ProviderToolCall{{
 			ID: "call-assimilation-draft", Name: agent.AssimilationDraftToolName, Arguments: arguments,
 		}},
 	})
+}
+
+func assimilationDraftProviderResponse(
+	finish agent.ProviderFinishReason,
+	message agent.ProviderMessage,
+) agent.ProviderResponse {
+	response := queryProviderResponse(finish, message)
+	response.Model = "deepseek-v4-flash"
+	return response
 }
 
 func onlyDraftLedgerPath(t *testing.T, root string) string {

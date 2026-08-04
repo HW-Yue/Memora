@@ -8,6 +8,10 @@
 Source Receipt 操作。F195 已实现新 MSQL 提交面且明确不导入本 Controller；本文的旧协议只保留
 外部兼容和历史语义参考，Go 包和旁路 RPC 不能成为 Agent 依赖。
 
+F196 已将 author 的每个草稿 claim 绑定到真实 Document IR anchor、extent/provider/model/prompt
+digest 与候选 `AssimilationStatement`，但状态只是 `review_required`。它不等于本文的
+独立复核证明；新内置链的 reviewer 隔离与验证仍由 F198 实现。
+
 ## 提交对象
 
 宿主在 F35 返回 `coverage_complete` 后，通过

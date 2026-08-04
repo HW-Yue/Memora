@@ -114,9 +114,9 @@ SHOW ASSIMILATION RECEIPT :receipt IN DATABASE work;
 REVIEW 逐条解析 proposal 中的 MSQL，只接受同库 L1 数据 mutation，并检查完整 coverage、参数、
 Schema/revision/affected-row guard 和 document source provenance；结果是规范 hash-bound plan。
 SUBMIT 要求同库 L1 scope 和 `SUBMIT_ASSIMILATION` 精确 approval，在独立 Session 中执行
-`BEGIN → statements → COMMIT`。Receipt 不保存 MSQL、参数或正文。结构审阅不等于事实正确性；
-F196–F199 继续增加 claim ledger、独立语义复核与回读对账。完整契约见
-[F195 规格](../planning/f195-msql-assimilation-surface.md)。
+`BEGIN → statements → COMMIT`。Receipt 不保存 MSQL、参数或正文。结构审阅不等于事实正确性；F196 已增加有锚点的
+claim ledger 与候选语句，F197–F199 继续增加问题交互、独立语义复核与回读对账。完整契约见
+[F195 规格](../planning/f195-msql-assimilation-surface.md)和 [F196 规格](../planning/f196-draft-claim-ledger.md)。
 
 语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
 所选 Table 的短 Route 节点，直到 Leaf 得到唯一 RowID。一个 Leaf 最多一个活跃 Row，

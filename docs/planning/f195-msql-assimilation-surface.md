@@ -33,7 +33,7 @@ SHOW ASSIMILATION RECEIPT :receipt IN DATABASE work;
 ## 与后续 Feature 的边界
 
 - F195 的 `REVIEW` 只证明 MSQL 结构、权限、guard 与来源字段可提交，不代表 AI 事实正确；
-- F196 才产生带 source anchor/model/prompt/input digest 的 claim ledger 与候选语句；
+- F196 已产生带 source anchor/model/prompt/input digest 的 claim ledger 与候选语句；
 - F197 才把未决问题接回用户交互分支；
 - F198 才要求独立 author/reviewer 语义复核 artifact；
 - F199 才用回读对账生成完整 Source Receipt 和可恢复的 in-doubt 决议。
@@ -72,7 +72,7 @@ allowlist、`-race` 与全量 CI。
 - 真实 daemon/shared Service 链在没有旧 coverage task 的情况下完成 REVIEW→SUBMIT→Row INSERT→
   SHOW RECEIPT；目标 package、race、vet 与 Agent import guard 全绿。
 
-完成门结论：PASS。下一项为 F196 可替换 Provider 的 draft/claim ledger。
+完成门结论：PASS。后继 [F196](./f196-draft-claim-ledger.md) 也已完成。
 
 ## 关联
 

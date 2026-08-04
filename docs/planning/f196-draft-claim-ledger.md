@@ -1,6 +1,6 @@
 # F196：可替换 Provider 的 Draft / Claim Ledger
 
-状态：实现中；2026-08-05 规格已冻结。
+状态：已完成，2026-08-05。
 
 ## 唯一主要结果
 
@@ -55,6 +55,24 @@ RED 先锁定：
 
 完成门为上述证据全绿，且以 `review_required` 前状态导出有序 claim，不执行 F195
 `SUBMIT ASSIMILATION`。
+
+## 完成证据
+
+- `AssimilationDrafter` 经注入 MSQL Bootstrap 获取紧凑导航 frame，对每个 extent 使用一次
+  required `propose_assimilation_claims` tool call，支持一次返回多个或零个 claim；
+- Kimi/DeepSeek 只是相同 Provider port 上的 `provider_id`/`model` 配置；核心无厂商 SDK
+  或新网络依赖；
+- Runtime 严格解码 tool JSON，校验 claim/guard/参数上限，并仅允许当前 extent
+  node ID；稳定 anchor、actor 与 source provenance 全由可信 Runtime 注入；
+- 每个 `review_required` claim 绑定 Job/Database/document/extent/provider/model/prompt、
+  source node+anchor、候选 `AssimilationStatement` 与自身 SHA-256；
+- `0600` checksum-chain journal 按 extent 原子追加并 fsync；reopen 与并发重试不重复
+  MSQL/Provider 调用，digest 冲突拒绝，torn tail 可恢复，中部篡改 fail closed；
+- 持久化字节不包含原始 extent、完整 prompt 或 raw Provider response；模型错误与非法输出
+  不留部分 record；
+- 目标测试、Agent import guard、race、vet 与全量 unit/integration/E2E/cross-build CI 全绿。
+
+完成门结论：PASS。本项没有发起真实模型批量评测；下一项为 F197 问题驱动的分支暂停与恢复。
 
 ## 关联
 

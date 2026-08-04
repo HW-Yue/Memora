@@ -64,6 +64,7 @@
 | F193 | EPUB 确定性适配器；container/OPF/spine/nav/NCX、结构 XHTML、脚注/表格与资源摘要 |
 | F194 | ReadExtent coverage 调度；完整语义节点窗口、digest 确认、无原文 checkpoint 与确定性恢复 |
 | F195 | 正式 assimilation MSQL；结构审阅、同库 L1/精确 approval、同核事务与无正文 receipt |
+| F196 | 可替换 Provider 的单 extent 多 claim 草拟；可恢复 hash-chain ledger、可信 anchor/provenance 注入与候选 MSQL |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -72,7 +73,7 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
 - F185b 实现已完成，但真实 Kimi 三 arm 共 36 题均因 33 次 HTTP 429 与 3 次 wire failure 不可评分；
   release report 保持 `INCOMPLETE`、无默认 arm；
 - 2026-08-05 用户决定延期大批量真实质量复跑。该门继续阻止“质量已通过”和“默认 arm 已选定”
-  的发布声明，但不再阻止后续实验性 Feature 开发；F195 已完成，下一项为 F196 draft/claim ledger。
+  的发布声明，但不再阻止后续实验性 Feature 开发；F196 已完成，下一项为 F197 问题驱动暂停/恢复。
 
 ## 例外与非当前路径
 

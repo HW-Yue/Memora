@@ -3,7 +3,8 @@
 状态：F43 已决定面向用户的 v0 Runtime defer；F175c–F178 已交付评测 Agent 所需的 MSQL-only
 边界、无模型 Bootstrap、厂商中立 Provider port 与 Trace。F179 决定首个 benchmark Query Agent
 采用 Memora-owned 薄 loop；F180/F181 已交付真实 OpenAI-compatible adapter 与隔离的只读 loop、
-SELECT evidence 和 Trace。评测 runner 与产品入口仍需后续 Feature。
+SELECT evidence 和 Trace。F196 已交付不执行写入的长文档 draft/claim ledger。评测 runner
+与产品入口仍需后续 Feature。
 
 ## 定位
 
@@ -91,6 +92,11 @@ F187/F188 已增加进程内实验写入链：短文本先经一次有界 Provid
 proposal，用户按 proposal hash 审批后才提交，并用 INSERT 返回的真实 RowID 做独立 SELECT 回读。
 该链不下载网页、不保存 chunk、不创建长任务；commit 后回读失败必须报告
 `committed_unverified`，不能伪装成已回滚。
+
+F196 的长资料 Drafter 对每个完整 `ReadExtent` 仅发一次 required tool call，可一次生成多个
+claim。模型只引用 node ID，Runtime 从 Document IR 注入真实 anchor、actor 和 provenance；
+checksum ledger 只保存 `review_required` 语义候选与摘要证据，不保存原始 extent/prompt/response，
+也不执行 F195 `SUBMIT ASSIMILATION`。
 
 ## 一个 Runtime，多种能力配置
 
