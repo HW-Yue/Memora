@@ -66,6 +66,7 @@
 - [F202：文本层 PDF 确定性适配器](./planning/f202-text-pdf-adapter.md) — 解析经典 xref/Page tree、受支持字体映射与文本显示操作为逐页 Document IR。
 - [F203：OCR/视觉路径证据门](./planning/f203-ocr-evidence-gate.md) — 只校验外部逐页成对证据，不把 OCR 引擎或权重带入主程序。
 - [F204：外置 Agent Hook](./planning/f204-external-agent-hook.md) — 只采集脱敏 Memora Trace，按显式 session/host/model 有界观测。
+- [F205：native 多 statement 原子事务](./planning/f205-native-multistatement-transaction.md) — 已完成；production daemon 中为多条 L1 数据语句提供真正的 all-or-nothing 提交。
 - [F204 之后的开发计划](./planning/post-f204-development-plan.md) — 多 statement 原子事务、低并发复评、本地指标和按证据扩展的顺序。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 

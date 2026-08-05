@@ -94,6 +94,15 @@ F16b 的 request 将 SQL 与每条 statement 的结构化输入分离：
 
 daemon 暴露 `msql.execute`，外层 IPC `request_id` 直接成为 Result Envelope 的 `request_id`。每个 IPC connection 按 `session_id` 延迟创建且独占一个 Batch Session；断连 hook 和 daemon shutdown 都会关闭 session 并回滚 active transaction。JSON number 使用保真 decoder，不能先转为 `float64` 再进入 INTEGER 校验。
 
+## F205 native boundary
+
+production native daemon 通过 executor 注入的 backend-neutral transaction factory 接入同一 Session
+边界。native transaction 在 `BEGIN` 后持有写闸门、在内存中累计已验证的 L1 mutation plan，直到
+`COMMIT` 才交给 Coordinator，以一个 native store transaction 和一个 Page publication 写入 Row、
+History、Relation、Route Membership 与 committed-change envelope。native 显式事务不开放 Catalog/Route
+结构变更、配置、RESHAPE 或 ASSIMILATION 控制语句；这些语句继续使用各自的 capability/提交路径。
+F205 的正式范围与故障证据见 [F205 规格](../planning/f205-native-multistatement-transaction.md)。
+
 ## 关联
 
 - [MSQL 标准语言](./msql.md)

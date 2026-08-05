@@ -7,11 +7,12 @@
 
 ## P0：先解除长文档写入阻塞
 
-### 候选 F205：native 多 statement 原子事务
+### F205：native 多 statement 原子事务（已完成）
 
 当前 F200 只证明单 statement autocommit。长文档多 claim 需要 daemon/native backend 真正支持
 `BEGIN → 多条 MSQL → COMMIT/ROLLBACK`，并在 IPC、reopen、crash/fault injection、并发和
 reference model 下证明 all-or-nothing。没有这项之前，不开放多 claim 长文档的正式写入。
+冻结规格见 [F205](./f205-native-multistatement-transaction.md)。
 
 ## P1：恢复评测，但不扩大调用压力
 

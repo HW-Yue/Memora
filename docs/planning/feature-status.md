@@ -73,6 +73,7 @@
 | F202 | 标准库文本层 PDF adapter；classic xref/Page tree、Flate、WinAnsi/ToUnicode、逐页文本 IR、稳定 object-span anchor 与 fail-closed 预算 |
 | F203 | OCR/视觉路径证据门；逐页成对 baseline/OCR 摘要、Recall gain/延迟计算、稳定 digest，证据不足自动 deferred |
 | F204 | 显式 opt-in 外置 Agent Hook；只采集脱敏 TraceEvent 与 host/session/model 元数据，有界并发安全快照 |
+| F205 | 已完成：native daemon 多 statement L1 原子事务；统一事务工厂、native store 批量提交、IPC/重开/并发/故障证据 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -83,8 +84,8 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
 - 2026-08-05 用户决定延期大批量真实质量复跑。该门继续阻止“质量已通过”和“默认 arm 已选定”
   的发布声明，但不再阻止后续实验性 Feature 开发；F200 单条 EPUB 全链路、F201 DOCX adapter 和 F202
   文本层 PDF adapter、F203 OCR/视觉证据门和 F204 外置 Hook 已通过；真实批量质量仍按用户决定延期；
-- F200 同时确认当前 native daemon 只能完成单 statement assimilation autocommit。多 statement plan 的
-  原子 native 执行是进入真实多 claim 长文档前的独立缺口，不属于本次单链质量结论。
+- F200 同时确认当前 native daemon 只能完成单 statement assimilation autocommit。F205 已补齐多
+  statement plan 的原子 native 执行；正式多 claim 仍需沿用 F195 review/approval，不能旁路写入。
 
 ## 例外与非当前路径
 

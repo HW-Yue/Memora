@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/ipc"
+	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativeconfig"
 	"github.com/HW-Yue/Memora/internal/nativemigration"
@@ -227,6 +228,9 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		ctx, dictionary, rowsWithTraces, pageServices, routeVectors, auxiliaryStore,
 		security.New(securityStore, security.Options{}), traces,
 		func(context.Context) ([]byte, error) { return nativesnapshot.NewNative(nativeFile).Export() },
+		func(callContext context.Context) (executor.ExplicitTransaction, error) {
+			return rowsWithTraces.BeginExplicitTransaction(callContext)
+		},
 	)
 	server := ipc.NewServer(handler)
 	if ready != nil {

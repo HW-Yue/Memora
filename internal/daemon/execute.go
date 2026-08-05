@@ -99,14 +99,19 @@ func newNativeDatabaseHandler(
 	securityService *security.Service,
 	traces *routetrace.Service,
 	export func(context.Context) ([]byte, error),
+	transactions ...executor.TransactionFactory,
 ) *databaseHandler {
 	handler := &databaseHandler{context: ctx, dictionary: dictionary, rows: rows, store: auxiliary,
 		export: export, security: securityService, traces: traces,
 		hostInputs: hostinput.New(auxiliary, hostinput.Options{})}
 	committer := assimilationcommit.New(auxiliary, assimilationcommit.ExecutorFunc(handler.executeAssimilationMSQL))
+	var transactionFactory executor.TransactionFactory
+	if len(transactions) > 0 {
+		transactionFactory = transactions[0]
+	}
 	handler.msql = msqlservice.New(ctx, msqlservice.Config{
 		Catalog: dictionary, Rows: rows, Points: points, RouteVectors: routeVectors,
-		Assimilation: committer,
+		Assimilation: committer, Transactions: transactionFactory,
 	})
 	return handler
 }

@@ -75,7 +75,8 @@ allowlist、`-race` 与全量 CI。
   SHOW RECEIPT；目标 package、race、vet 与 Agent import guard 全绿。
 
 完成门结论：协议与单 statement 当前 native 链 PASS。F200 发现 multi-statement 显式事务仅在旧
-Store 后端有机械证据，当前 native daemon 尚不支持；该限制必须在真实多 claim 吸收前独立补齐。
+Store 后端有机械证据；F205 已将该边界接入 native daemon，并以 IPC、Page fault/reopen、并发与
+reference-model 证据补齐 all-or-nothing。真实多 claim 仍必须先经过本 Feature 的 Review/approval。
 后继 [F196](./f196-draft-claim-ledger.md) 至 [F200](./f200-epub-single-chain-acceptance.md) 均已完成其
 各自冻结范围。
 
