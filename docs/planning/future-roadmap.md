@@ -36,7 +36,7 @@ Codex、Claude Code 等外置 Agent 不作为统一静态基准，只通过 Hook
 4. 固定检索 arms 与 F185b release gate 已实现；当前真实 Provider 矩阵为 INCOMPLETE，真实大批量
    质量复跑已由用户决定延期，0 样本报告继续保留且不得冒充质量通过；
 5. 实验性交互 QuerySession、受控 L1 Write Gateway、单网页写入链和冻结 EPUB 单 claim 全链验收
-   已完成；真实多 claim 前仍需补当前 native backend 的多 statement 原子提交；
+   已完成；F205 已补齐当前 native backend 的多 statement 原子提交，真实多 claim 仍受 F195 review/approval 约束；
 6. DOCX、文本层 PDF、OCR 证据门和外置 Hook（F201–F204）已独立完成；统一分析平台仍后置；质量门通过前不宣称
    `memora ask` 已达到发布质量，也不选默认 arm；Trace 先输出开发用报告，不扩展 Admin。
 

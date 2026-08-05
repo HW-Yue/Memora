@@ -1,6 +1,6 @@
 # 资料吸收 Agent Feature 序列
 
-状态：2026-08-05 当前序列；F204 已完成，本轮 F201–F204 收口。
+状态：2026-08-05 当前序列；F205 已完成，native 多 claim 原子写入边界已打通。
 
 ## 两条垂直链
 
@@ -31,7 +31,7 @@ F181 只读 Query Agent → F186 实验性 QuerySession
 → F189 交互协议 → F190 Job → F191 SourceStore → F192 Document IR → F193 EPUB
 → F194 coverage → F195 正式 MSQL 吸收面 → F196 draft ledger
 → F197 暂停恢复 → F198 独立复核 → F199 reconciliation/receipt → F200 EPUB benchmark
-→ F201–F204 证据触发扩展
+→ F201–F204 证据触发扩展 → F205 native 多 statement 原子提交
 ```
 
 F185 真实大批量质量复跑已延期；它仍限制对外质量声明和默认 arm 选择，但不再阻止上述实验性
@@ -76,8 +76,8 @@ Database，就必须等待 F195，不能临时导入旧 Assimilation Controller�
 不能提供给写入模型，也不能让 author/reviewer 自评最终正确性。F200 已通过其机械单链门；这不
 解除批量质量门，也不构成增加 OCR 的证据。
 
-F200 已证明单 statement 原子 autocommit 链路。当前 native daemon 的多 statement assimilation 显式
-事务尚未打通；真实多 claim 长文档不得把多个独立 autocommit 伪装为一个原子 plan，需先单独补门。
+F200 已证明单 statement 原子 autocommit 链路。F205 已补齐 native daemon 的多 statement assimilation
+显式事务；真实多 claim 仍必须经过 F195 Review/approval 和既定资料复核链。
 
 ## D：只按证据扩展（F201–F204）
 

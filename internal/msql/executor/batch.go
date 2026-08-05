@@ -26,18 +26,31 @@ type BatchRequest struct {
 	Statements []StatementInput `json:"statements,omitempty"`
 }
 
+// ExplicitTransaction is the backend-neutral MSQL transaction boundary. A
+// transaction owns both Catalog binding and Row execution so the executor
+// cannot bypass the backend selected by the composition root.
+type ExplicitTransaction interface {
+	Catalog
+	Rows
+	Commit() error
+	Rollback() error
+}
+
+type TransactionFactory func(context.Context) (ExplicitTransaction, error)
+
 // BatchSession serializes requests for one connection and owns any explicit
 // Row transaction that spans request boundaries.
 type BatchSession struct {
-	mu         sync.Mutex
-	context    context.Context
-	cancel     context.CancelFunc
-	autocommit *Engine
-	rows       Rows
-	points     PointReads
-	active     *row.Transaction
-	aborted    bool
-	closed     bool
+	mu           sync.Mutex
+	context      context.Context
+	cancel       context.CancelFunc
+	autocommit   *Engine
+	rows         Rows
+	points       PointReads
+	transactions TransactionFactory
+	active       ExplicitTransaction
+	aborted      bool
+	closed       bool
 }
 
 func NewBatchSession(ctx context.Context, dictionary Catalog, rows Rows) *BatchSession {
@@ -67,6 +80,7 @@ func NewBatchSessionWithPointReadsAndRouteVectors(
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
 		autocommit: NewWithPointReadsAndRouteVectors(dictionary, rows, points, vectors), rows: rows, points: points,
+		transactions: inferredTransactionFactory(rows),
 	}
 }
 
@@ -92,6 +106,7 @@ func NewBatchSessionWithLexicalIndexMaintenance(
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
 		autocommit: NewWithLexicalIndexMaintenance(dictionary, rows, maintenance), rows: rows,
+		transactions: inferredTransactionFactory(rows),
 	}
 }
 
@@ -109,6 +124,7 @@ func NewBatchSessionWithManagement(
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
 		autocommit: NewWithManagement(dictionary, rows, packages, wiki), rows: rows,
+		transactions: inferredTransactionFactory(rows),
 	}
 }
 
@@ -122,6 +138,26 @@ func NewBatchSessionWithCapabilities(
 	wiki WikiExporter,
 	assimilation AssimilationCommitter,
 ) *BatchSession {
+	return NewBatchSessionWithCapabilitiesAndTransactions(
+		ctx, dictionary, rows, points, vectors, packages, wiki, assimilation,
+		inferredTransactionFactory(rows),
+	)
+}
+
+func NewBatchSessionWithCapabilitiesAndTransactions(
+	ctx context.Context,
+	dictionary Catalog,
+	rows Rows,
+	points PointReads,
+	vectors RouteVectorReader,
+	packages PackageManager,
+	wiki WikiExporter,
+	assimilation AssimilationCommitter,
+	transactions TransactionFactory,
+) *BatchSession {
+	if transactions == nil {
+		transactions = inferredTransactionFactory(rows)
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -129,7 +165,19 @@ func NewBatchSessionWithCapabilities(
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
 		autocommit: NewWithCapabilities(dictionary, rows, points, vectors, packages, wiki, assimilation),
-		rows:       rows, points: points,
+		rows:       rows, points: points, transactions: transactions,
+	}
+}
+
+func inferredTransactionFactory(rows Rows) TransactionFactory {
+	transactional, ok := rows.(interface {
+		BeginTransaction(context.Context) (*row.Transaction, error)
+	})
+	if !ok {
+		return nil
+	}
+	return func(ctx context.Context) (ExplicitTransaction, error) {
+		return transactional.BeginTransaction(ctx)
 	}
 }
 
@@ -207,10 +255,7 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 				session.aborted = true
 				continue
 			}
-			transactional, ok := session.rows.(interface {
-				BeginTransaction(context.Context) (*row.Transaction, error)
-			})
-			if !ok {
+			if session.transactions == nil {
 				results = append(results, failedStatement(
 					index, statement.Kind, source, result.CodeUnsupported,
 					"explicit transactions are not supported by this backend",
@@ -218,7 +263,7 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 				session.aborted = true
 				continue
 			}
-			transaction, beginErr := transactional.BeginTransaction(session.context)
+			transaction, beginErr := session.transactions(session.context)
 			if beginErr != nil {
 				results = append(results, statementFailure(index, statement.Kind, source, beginErr))
 				session.aborted = true

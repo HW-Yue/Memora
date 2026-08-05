@@ -68,11 +68,11 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 		return fmt.Errorf("native mutation coordinator is incomplete")
 	}
 	changes := plan.Changes
-	if len(changes) == 0 {
+	if len(changes) == 0 && plan.Row.ID != "" {
 		changes = []RowChange{{Row: plan.Row, Operation: plan.Operation, Metadata: plan.Metadata, RecordedAt: plan.RecordedAt}}
 	}
 	for _, change := range changes {
-		if change.Operation != history.OperationUpdate && change.Operation != history.OperationDelete && change.Operation != history.OperationCompensate &&
+		if change.Operation != history.OperationInsert && change.Operation != history.OperationUpdate && change.Operation != history.OperationDelete && change.Operation != history.OperationCompensate &&
 			change.Operation != history.OperationSplit && change.Operation != history.OperationMerge {
 			return fmt.Errorf("native mutation has an unsupported row operation")
 		}

@@ -31,6 +31,7 @@ type Config struct {
 	Packages     executor.PackageManager
 	Wiki         executor.WikiExporter
 	Assimilation executor.AssimilationCommitter
+	Transactions executor.TransactionFactory
 }
 
 // Service owns the session registry for one Memora instance.
@@ -143,9 +144,9 @@ func newSession(ctx context.Context, id string, config Config) *Session {
 	sessionContext, cancel := context.WithCancel(ctx)
 	gate := make(chan struct{}, 1)
 	gate <- struct{}{}
-	batch := executor.NewBatchSessionWithCapabilities(
+	batch := executor.NewBatchSessionWithCapabilitiesAndTransactions(
 		sessionContext, config.Catalog, config.Rows, config.Points, config.RouteVectors,
-		config.Packages, config.Wiki, config.Assimilation,
+		config.Packages, config.Wiki, config.Assimilation, config.Transactions,
 	)
 	return &Session{
 		id: id, context: sessionContext, cancel: cancel, gate: gate,
