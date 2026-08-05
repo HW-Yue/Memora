@@ -15,7 +15,7 @@ import (
 func TestRunBuildsReportAndRefusesOverwrite(t *testing.T) {
 	root := t.TempDir()
 	suite := retrievalscore.Suite{Version: retrievalscore.SuiteVersion, SuiteID: "suite", DatasetID: "fixture", Split: "dev",
-		Queries: []retrievalscore.Query{{QueryID: "q1", Group: "all"}}, Qrels: []retrievalscore.Qrel{{QueryID: "q1", DocumentID: "d1", Relevance: 1}}}
+		Queries: []retrievalscore.Query{{QueryID: "q1", Group: "all", Text: "one"}}, Qrels: []retrievalscore.Qrel{{QueryID: "q1", DocumentID: "d1", Relevance: 1}}}
 	if err := suite.Seal(); err != nil {
 		t.Fatal(err)
 	}
