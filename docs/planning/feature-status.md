@@ -87,6 +87,8 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
   文本层 PDF adapter、F203 OCR/视觉证据门和 F204 外置 Hook 已通过；真实批量质量仍按用户决定延期；
 - F200 同时确认当前 native daemon 只能完成单 statement assimilation autocommit。F205 已补齐多
   statement plan 的原子 native 执行；正式多 claim 仍需沿用 F195 review/approval，不能旁路写入。
+- F207 已补齐 F204 Hook 的本地 session/turn 指标聚合与 JSON/HTML 报告命令；报告只用于平台自身
+  可观测性，不替代 Recall/MRR 或外部答案质量评测。
 
 ## 例外与非当前路径
 
