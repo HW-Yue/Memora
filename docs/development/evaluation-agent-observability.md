@@ -1,6 +1,7 @@
 # 内置评测 Agent 与外置 Hook 观测
 
-状态：2026-08-05 方向性结论；F204 已提供显式 opt-in 的脱敏 Hook，统一 session 指标聚合仍待后续 Feature。
+状态：2026-08-05；F204 Hook 与 F207 本地 session/turn 指标报告已完成。统一 Admin 分析平台、跨
+session topic 归因和答案质量评分仍是后续独立 Feature。
 
 ## 目的
 
@@ -37,7 +38,8 @@ Hook 只观测发往 Memora 的调用及其结构化结果，用来分析真实�
 - 记录 MSQL/Route 操作类型、候选与选择的稳定 ID、回退、调用数、上下文量和分段耗时；
 - 不记录 API Key、hidden reasoning、完整宿主上下文或默认保存的用户正文；
 - session ID 缺失时标为 unknown，不能把 IPC 连接 ID 猜成长期宿主 session；
-- 外置 Agent 的结果按 session、宿主、模型和上下文条件分桶，不能直接替代冻结 benchmark。
+- 外置 Agent 的结果按 session、宿主、模型和上下文条件分桶，不能直接替代冻结 benchmark；F207
+  通过 `internal/agentmetrics` 和 `build-agent-metrics-report` 生成确定性 JSON/HTML 本地报告。
 
 跨 session 的同 topic 归因需要另行冻结身份和标注协议；当前不从模型文本自动生成权威
 `topic_id`。
@@ -54,6 +56,9 @@ Hook 只观测发往 Memora 的调用及其结构化结果，用来分析真实�
 “何时值得写入、Agent 是否应该主动调用 Memora”暂不进入近期静态门。它更依赖 Canonical
 Skill prompt、宿主上下文和模型判断，留到后期通过宿主输入证据、write/ignore ground truth
 与真实使用抽样共同评估；当前 Hook 不宣称能计算该项召回率。
+
+F207 的报告只统计事件、调用、上下文字节/token、耗时、状态、失败、回退和成本，不计算 Recall、
+MRR 或最终答案正确率；大批量真实模型评测按当前计划继续延期。
 
 ## 与内置 Runtime 的关系
 

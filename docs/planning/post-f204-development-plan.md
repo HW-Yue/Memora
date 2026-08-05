@@ -24,11 +24,13 @@ INCOMPLETE 报告变成发布质量。
 
 ## P2：把 Hook 变成自己的分析工具
 
-### 候选 F207：本地指标聚合与报告
+### F207：本地指标聚合与报告（已完成）
 
-消费 F204 的脱敏事件，输出 session/turn/host/model/Skill 分桶的调用次数、上下文量、分段耗时、
-回退和失败原因。跨 session topic 身份、写入时机和 worthiness 仍需独立协议；Admin 不是默认承载，
-先生成开发用 JSON/HTML 报告。
+消费 F204 的脱敏事件，按 session/turn/host/model/Skill 分桶输出调用次数、上下文量、分段耗时、
+回退和失败原因；`build-agent-metrics-report` 可读取多个 Hook JSON，并原子输出开发用 JSON/HTML
+报告。跨 session topic 身份、写入时机和 worthiness 仍需独立协议；Admin 不是默认承载。
+
+完成规格见 [F207](./f207-local-metrics-report.md)。
 
 ## P3：扩展 Agent 能力（按需）
 
