@@ -73,6 +73,7 @@
 - [F212：外置评测数据准备](./planning/f212-external-evaluation-data.md) — 冻结公开语料清单、ExFAT 外置盘布局、断点续传与离线校验；
 - [F213：外部检索评分与对照报告](./planning/f213-retrieval-evaluation-score.md) — evaluator-only Recall@K、HitRate@K、MRR、分桶和成本降幅；
 - [F214：外部语料到 Retrieval Suite 适配器](./planning/f214-external-suite-adapters.md) — MIRACL zh 与 MTRAG BEIR query/qrel 的确定性归一化；
+- [F215：低并发 Provider 退避与评测断点](./planning/f215-low-concurrency-resume.md) — 单 worker、有限重试、hash-bound checkpoint 与失败题续跑；
 
 ## 当前产品规格
 
@@ -124,6 +125,7 @@
 - [Admin Shell](./development/embedded-admin-shell-v1.md)
 - [Route Trace](./query/route-trace-read-v1.md)
 - [评测 Agent 与外置 Hook](./development/evaluation-agent-observability.md)
+- [下一次 DeepSeek 评测启动问题](./development/evaluation-next-run.md) — 只从环境变量读取 key 的 F215 smoke 命令；
 - [旧代码清理边界](./development/legacy-code-boundary.md)
 - [签名发布制品](./development/macos-signed-release-artifacts-v2.md)
 - [干净机器验收](./development/clean-machine-acceptance-v1.md)
