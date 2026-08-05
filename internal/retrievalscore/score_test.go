@@ -9,7 +9,7 @@ import (
 
 func TestEvaluateComputesMacroQualityAndBaselineCostReduction(t *testing.T) {
 	suite := retrievalscore.Suite{Version: retrievalscore.SuiteVersion, SuiteID: "suite", DatasetID: "fixture", Split: "dev",
-		Queries: []retrievalscore.Query{{QueryID: "q1", Group: "alpha"}, {QueryID: "q2", Group: "alpha"}, {QueryID: "q3", Group: "beta"}},
+		Queries: []retrievalscore.Query{{QueryID: "q1", Group: "alpha", Text: "one"}, {QueryID: "q2", Group: "alpha", Text: "two"}, {QueryID: "q3", Group: "beta", Text: "three"}},
 		Qrels: []retrievalscore.Qrel{{QueryID: "q1", DocumentID: "d1", Relevance: 1}, {QueryID: "q1", DocumentID: "d2", Relevance: 2},
 			{QueryID: "q2", DocumentID: "d3", Relevance: 1}, {QueryID: "q3", DocumentID: "d4", Relevance: 1}}}
 	sealSuite(t, &suite)
@@ -45,7 +45,7 @@ func TestEvaluateComputesMacroQualityAndBaselineCostReduction(t *testing.T) {
 
 func TestEvaluateRejectsTamperedOrIncompleteRuns(t *testing.T) {
 	suite := retrievalscore.Suite{Version: retrievalscore.SuiteVersion, SuiteID: "suite", DatasetID: "fixture", Split: "dev",
-		Queries: []retrievalscore.Query{{QueryID: "q1", Group: "all"}}, Qrels: []retrievalscore.Qrel{{QueryID: "q1", DocumentID: "d1", Relevance: 1}}}
+		Queries: []retrievalscore.Query{{QueryID: "q1", Group: "all", Text: "one"}}, Qrels: []retrievalscore.Qrel{{QueryID: "q1", DocumentID: "d1", Relevance: 1}}}
 	sealSuite(t, &suite)
 	bad := retrievalscore.Run{Version: retrievalscore.RunVersion, RunID: "bad", Arm: "lexical", SuiteHash: suite.Hash,
 		Results: []retrievalscore.Result{{QueryID: "q1", Status: "completed", CandidateDocumentIDs: []string{"d1", "d1"}}}}

@@ -52,7 +52,7 @@ func validateSuiteContent(suite Suite) error {
 	queries := make(map[string]struct{}, len(suite.Queries))
 	positive := make(map[string]bool, len(suite.Queries))
 	for _, query := range suite.Queries {
-		if !validText(query.QueryID) || !validText(query.Group) {
+		if !validText(query.QueryID) || !validText(query.Group) || !validQueryText(query.Text) {
 			return errors.New("retrieval suite query is invalid")
 		}
 		if _, duplicate := queries[query.QueryID]; duplicate {
@@ -227,6 +227,18 @@ func validText(value string) bool {
 	}
 	for _, character := range value {
 		if character < 0x20 || character == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func validQueryText(value string) bool {
+	if value == "" || strings.TrimSpace(value) != value || len(value) > 1<<20 {
+		return false
+	}
+	for _, character := range value {
+		if character < 0x20 && character != '\t' || character == 0x7f {
 			return false
 		}
 	}

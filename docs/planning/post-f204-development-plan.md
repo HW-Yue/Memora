@@ -27,7 +27,7 @@ INCOMPLETE 报告变成发布质量。
 在恢复真实模型复跑之前，先按冻结清单准备 MTRAG、CRUD-RAG、RGB、MIRACL zh 和 EnterpriseRAG-Bench。
 所有原始语料、HF parquet、Git checkout、缓存和后续索引放用户指定的外置目录；仓库只保存清单、代码、
 版本和摘要。见 [F212](./f212-external-evaluation-data.md)。F213 先冻结跨数据集 retrieval 评分契约，后续
-adapter 与低并发复评 Feature 消费这些数据。
+F214 将 MIRACL/MTRAG 转为 suite，后续低并发复评 Feature 消费这些数据。
 
 ## P2：把 Hook 变成自己的分析工具
 
