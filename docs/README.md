@@ -67,6 +67,7 @@
 - [F203：OCR/视觉路径证据门](./planning/f203-ocr-evidence-gate.md) — 只校验外部逐页成对证据，不把 OCR 引擎或权重带入主程序。
 - [F204：外置 Agent Hook](./planning/f204-external-agent-hook.md) — 只采集脱敏 Memora Trace，按显式 session/host/model 有界观测。
 - [F205：native 多 statement 原子事务](./planning/f205-native-multistatement-transaction.md) — 已完成；production daemon 中为多条 L1 数据语句提供真正的 all-or-nothing 提交。
+- [F207：本地 Hook 指标与报告](./planning/f207-local-metrics-report.md) — 已完成；将脱敏 Hook 快照聚合为 session/turn JSON/HTML 报告，不计算 Recall/MRR。
 - [F204 之后的开发计划](./planning/post-f204-development-plan.md) — 多 statement 原子事务、低并发复评、本地指标和按证据扩展的顺序。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 
