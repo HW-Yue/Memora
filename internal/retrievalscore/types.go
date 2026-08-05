@@ -19,6 +19,7 @@ type Suite struct {
 type Query struct {
 	QueryID string `json:"query_id"`
 	Group   string `json:"group"`
+	Text    string `json:"text"`
 }
 
 type Qrel struct {

@@ -44,6 +44,17 @@ func EncodeReport(report Report) ([]byte, error) {
 	return append(encoded, '\n'), nil
 }
 
+func EncodeSuite(suite Suite) ([]byte, error) {
+	if err := suite.Validate(); err != nil {
+		return nil, err
+	}
+	encoded, err := json.MarshalIndent(suite, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(encoded, '\n'), nil
+}
+
 func loadStrict(path string, target any) error {
 	file, err := os.Open(path)
 	if err != nil {
