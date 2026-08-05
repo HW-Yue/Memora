@@ -70,6 +70,7 @@
 - [F207：本地 Hook 指标与报告](./planning/f207-local-metrics-report.md) — 已完成；将脱敏 Hook 快照聚合为 session/turn JSON/HTML 报告，不计算 Recall/MRR。
 - [F204 之后的开发计划](./planning/post-f204-development-plan.md) — 多 statement 原子事务、低并发复评、本地指标和按证据扩展的顺序。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
+- [F212：外置评测数据准备](./planning/f212-external-evaluation-data.md) — 冻结公开语料清单、ExFAT 外置盘布局、断点续传与离线校验；
 
 ## 当前产品规格
 

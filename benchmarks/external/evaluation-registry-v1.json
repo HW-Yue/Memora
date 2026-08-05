@@ -1,0 +1,174 @@
+{
+  "version": "memora.external-evaluation-registry/v1",
+  "datasets": [
+    {
+      "id": "mtrag-human-v1",
+      "title": "MTRAG Human multi-turn RAG benchmark",
+      "role": "842 human-created multi-turn retrieval and generation tasks with four corpora",
+      "license": {
+        "spdx": "Apache-2.0",
+        "url": "https://github.com/IBM/mt-rag-benchmark/blob/cc5b1d481b391181b89f7ced860308482e785463/LICENSE"
+      },
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/IBM/mt-rag-benchmark.git",
+        "revision": "cc5b1d481b391181b89f7ced860308482e785463"
+      }
+    },
+    {
+      "id": "crud-rag-v1",
+      "title": "CRUD-RAG Chinese retrieval benchmark",
+      "role": "Chinese QA tasks, noise cases and more than 80000 news retrieval documents",
+      "license": {
+        "spdx": "Apache-2.0",
+        "url": "https://opensource.org/license/apache-2-0/",
+        "note": "Upstream README declares Apache-2.0; verify redistribution terms before publication."
+      },
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/IAAR-Shanghai/CRUD_RAG.git",
+        "revision": "1aace383994e1f68efa12cf2a8e2dadfb4102ceb"
+      }
+    },
+    {
+      "id": "rgb-v1",
+      "title": "RGB retrieval-augmented generation robustness benchmark",
+      "role": "Chinese and English noise, rejection, information integration and counterfactual robustness",
+      "license": {
+        "spdx": "CC-BY-NC-SA-4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "note": "Non-commercial evaluation only."
+      },
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/chen700564/RGB.git",
+        "revision": "65ec39e40e7dc9abb50e9bf1b4f32be3f6f16615"
+      }
+    },
+    {
+      "id": "miracl-zh-v1",
+      "title": "MIRACL Chinese retrieval corpus and judgments",
+      "role": "Chinese passage corpus with train/dev topics and relevance judgments",
+      "license": {
+        "spdx": "Apache-2.0",
+        "url": "https://huggingface.co/datasets/miracl/miracl/blob/5be20db9509754dadad47689368639fcec739c00/README.md"
+      },
+      "source": {
+        "kind": "http",
+        "artifacts": [
+          {
+            "path": "corpus/docs-0.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-0.jsonl.gz?download=true",
+            "bytes": 97061486,
+            "sha256": "b036ba6a927a4598b314de55a1de200d2a619b28b4327f49e97ec4233d324827"
+          },
+          {
+            "path": "corpus/docs-1.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-1.jsonl.gz?download=true",
+            "bytes": 85538355,
+            "sha256": "d6db9e242bdebeac76f586c0ec9a6301a9ec4a52c64c71949945ba5983467506"
+          },
+          {
+            "path": "corpus/docs-2.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-2.jsonl.gz?download=true",
+            "bytes": 80287705,
+            "sha256": "29f1b1e3bec59770367be71d1698a7afaf7efb8006d168d40a2815025c8d1b43"
+          },
+          {
+            "path": "corpus/docs-3.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-3.jsonl.gz?download=true",
+            "bytes": 76098139,
+            "sha256": "9cfc76c7f9ec9edc12d351913ba0f33a96d496a7449b46a6488f77668acf178d"
+          },
+          {
+            "path": "corpus/docs-4.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-4.jsonl.gz?download=true",
+            "bytes": 60594024,
+            "sha256": "d47cef57928c3452d95cc8499dea37ce6e589808a9315ab2cf9809a23fe349b5"
+          },
+          {
+            "path": "corpus/docs-5.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-5.jsonl.gz?download=true",
+            "bytes": 50492481,
+            "sha256": "17e1d4bf36d3992ccf5c519522ed1dcf896cb72772907e973bfcf1b2dd993e28"
+          },
+          {
+            "path": "corpus/docs-6.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-6.jsonl.gz?download=true",
+            "bytes": 76002940,
+            "sha256": "4b3cdc7aeefc01ca4c2f55ba16ac80d773393068b78d4f971fc3c25c6fb9a859"
+          },
+          {
+            "path": "corpus/docs-7.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-7.jsonl.gz?download=true",
+            "bytes": 71709349,
+            "sha256": "e7541af8c2fb7a96cff271e06047f0b4f00372b205735fabeed6217f9a7bb334"
+          },
+          {
+            "path": "corpus/docs-8.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-8.jsonl.gz?download=true",
+            "bytes": 72069621,
+            "sha256": "f456671170b8286ede8f81feb9d365750af5027465399f63445a441fc96c41a7"
+          },
+          {
+            "path": "corpus/docs-9.jsonl.gz",
+            "url": "https://huggingface.co/datasets/miracl/miracl-corpus/resolve/d921ec7e349ce0d28daf30b2da9da5ee698bef0d/miracl-corpus-v1.0-zh/docs-9.jsonl.gz?download=true",
+            "bytes": 63401726,
+            "sha256": "6c8193e14aafd93fb1ee57eac4f1171a44a0c975ebdefd6e9df1903c1b2fd7ca"
+          },
+          {
+            "path": "topics/topics.miracl-v1.0-zh-dev.tsv",
+            "url": "https://huggingface.co/datasets/miracl/miracl/resolve/5be20db9509754dadad47689368639fcec739c00/miracl-v1.0-zh/topics/topics.miracl-v1.0-zh-dev.tsv?download=true",
+            "bytes": 16903,
+            "sha256": "5b284a9aabf08bb2d1c88ed7ea276025c9d23846457c5350dc8d391b5e0d0a13"
+          },
+          {
+            "path": "topics/topics.miracl-v1.0-zh-train.tsv",
+            "url": "https://huggingface.co/datasets/miracl/miracl/resolve/5be20db9509754dadad47689368639fcec739c00/miracl-v1.0-zh/topics/topics.miracl-v1.0-zh-train.tsv?download=true",
+            "bytes": 57079,
+            "sha256": "29b48dce378550889a87f27f81cba2ed5cae345052dd63d576e6ec7d7e933aeb"
+          },
+          {
+            "path": "qrels/qrels.miracl-v1.0-zh-dev.tsv",
+            "url": "https://huggingface.co/datasets/miracl/miracl/resolve/5be20db9509754dadad47689368639fcec739c00/miracl-v1.0-zh/qrels/qrels.miracl-v1.0-zh-dev.tsv?download=true",
+            "bytes": 94140,
+            "sha256": "5546474d3dc8139014e6571e9f4041848bb0a314ca6d2d4bac708174d71c59eb"
+          },
+          {
+            "path": "qrels/qrels.miracl-v1.0-zh-train.tsv",
+            "url": "https://huggingface.co/datasets/miracl/miracl/resolve/5be20db9509754dadad47689368639fcec739c00/miracl-v1.0-zh/qrels/qrels.miracl-v1.0-zh-train.tsv?download=true",
+            "bytes": 314756,
+            "sha256": "0ad7a35722803798058be9e4a8690b74b255591539f51827d49a1849a8585ee9"
+          }
+        ]
+      }
+    },
+    {
+      "id": "enterprise-rag-bench-v1",
+      "title": "EnterpriseRAG-Bench company-internal document benchmark",
+      "role": "500000-document enterprise corpus and 500 retrieval questions",
+      "license": {
+        "spdx": "MIT",
+        "url": "https://huggingface.co/datasets/onyx-dot-app/EnterpriseRAG-Bench/blob/69916e31c68aa5963c00248fd7f0bc12d04fd235/README.md",
+        "note": "Keep the upstream benchmark canary and attribution."
+      },
+      "source": {
+        "kind": "http",
+        "artifacts": [
+          {
+            "path": "data/documents/test.parquet",
+            "url": "https://huggingface.co/datasets/onyx-dot-app/EnterpriseRAG-Bench/resolve/69916e31c68aa5963c00248fd7f0bc12d04fd235/data/documents/test.parquet?download=true",
+            "bytes": 1409893131,
+            "sha256": "6b0747bf160af9427b12101537d53056ac592ada9831c1a98ae01fa50a8d2a9f"
+          },
+          {
+            "path": "data/questions/test.parquet",
+            "url": "https://huggingface.co/datasets/onyx-dot-app/EnterpriseRAG-Bench/resolve/69916e31c68aa5963c00248fd7f0bc12d04fd235/data/questions/test.parquet?download=true",
+            "bytes": 408737,
+            "sha256": "e25066f4eff3843dd0f3df0d1348113471e072e75007ffe390a0aa83f2a80af2"
+          }
+        ]
+      }
+    }
+  ]
+}
