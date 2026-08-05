@@ -71,6 +71,7 @@
 - [F204 之后的开发计划](./planning/post-f204-development-plan.md) — 多 statement 原子事务、低并发复评、本地指标和按证据扩展的顺序。
 - [公开评测语料候选](./development/public-evaluation-corpus-candidates.md) — CRUD-RAG、RGB、HotpotQA 与 MIRACL 的后续适配边界；
 - [F212：外置评测数据准备](./planning/f212-external-evaluation-data.md) — 冻结公开语料清单、ExFAT 外置盘布局、断点续传与离线校验；
+- [F213：外部检索评分与对照报告](./planning/f213-retrieval-evaluation-score.md) — evaluator-only Recall@K、HitRate@K、MRR、分桶和成本降幅；
 
 ## 当前产品规格
 
