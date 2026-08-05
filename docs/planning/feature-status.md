@@ -76,8 +76,9 @@
 | F205 | 已完成：native daemon 多 statement L1 原子事务；统一事务工厂、native store 批量提交、IPC/重开/并发/故障证据 |
 | F207 | 已完成：F204 Hook 快照的 session/turn 指标聚合、重复/冲突校验、确定性 JSON/HTML 报告与独立命令；不计算 Recall/MRR |
 | F212 | 已完成：冻结 5 套公开评测语料清单与外置盘准备器；支持 Git commit、HTTP Range 续传、SHA-256、离线 verify-only；本机 3.1 GB 全量复核通过 |
-| F213 | 开发中：标准 retrieval suite/run 与 evaluator-only Recall@K、HitRate@K、MRR、分桶和 Token/工具调用对照；尚未完成真实外部 suite 适配 |
-| F214 | 开发中：MIRACL zh 与 MTRAG 四 domain 的 query/qrel 适配器；已生成外置 normalized suite，Enterprise/CRUD/RGB adapter 仍独立规划 |
+| F213 | 已完成：标准 retrieval suite/run 与 evaluator-only Recall@K、HitRate@K、MRR、分桶和 Token/工具调用对照 |
+| F214 | 已完成：MIRACL zh 与 MTRAG 四 domain 的 query/qrel 确定性适配器；normalized suite 已在外置盘生成 |
+| F215 | 已完成（证据不完整）：低并发 Provider 退避与答案评测 checkpoint；真实 DeepSeek receipt 待下一次环境 key |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 

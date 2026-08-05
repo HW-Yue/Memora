@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/agent"
@@ -29,12 +30,13 @@ type RunnerDependencies struct {
 }
 
 type RunConfig struct {
-	RunID        string
-	ProviderID   string
-	Model        string
-	ArmID        string
-	PromptID     string
-	CodeRevision string
+	RunID          string
+	ProviderID     string
+	Model          string
+	ArmID          string
+	PromptID       string
+	CodeRevision   string
+	CheckpointPath string
 }
 
 type Runner struct {
@@ -77,6 +79,27 @@ func (runner *Runner) Run(
 	if err != nil {
 		return PublicScorecard{}, PrivateDiagnostics{}, fmt.Errorf("%w: blind tasks are invalid", ErrRunBenchmark)
 	}
+	checkpointCases := make(map[string]CheckpointCase)
+	if config.CheckpointPath != "" {
+		checkpoint, checkpointErr := LoadCheckpoint(config.CheckpointPath)
+		if checkpointErr == nil {
+			if checkpoint.Identity != CheckpointIdentity(manifest, config) {
+				return PublicScorecard{}, PrivateDiagnostics{}, fmt.Errorf("%w: checkpoint identity mismatch", ErrRunBenchmark)
+			}
+			taskIDs := make(map[string]struct{}, len(tasks))
+			for _, task := range tasks {
+				taskIDs[task.CaseID] = struct{}{}
+			}
+			for _, value := range checkpoint.Cases {
+				if _, exists := taskIDs[value.Public.CaseID]; !exists {
+					return PublicScorecard{}, PrivateDiagnostics{}, fmt.Errorf("%w: checkpoint contains an unknown case", ErrRunBenchmark)
+				}
+				checkpointCases[value.Public.CaseID] = value
+			}
+		} else if !errors.Is(checkpointErr, os.ErrNotExist) {
+			return PublicScorecard{}, PrivateDiagnostics{}, fmt.Errorf("%w: load checkpoint: %v", ErrRunBenchmark, checkpointErr)
+		}
+	}
 	queryAgent, err := agent.NewQueryAgent(agent.QueryAgentDependencies{
 		MSQL: runner.msql, Provider: runner.provider, Clock: runner.clock,
 	})
@@ -94,9 +117,30 @@ func (runner *Runner) Run(
 		Version: PrivateDiagnosticsVersion, RunID: config.RunID, Materialization: receipt,
 		Cases: make([]PrivateCase, 0, len(tasks)),
 	}
+	persistCheckpoint := func() error {
+		if config.CheckpointPath == "" {
+			return nil
+		}
+		ordered := make([]CheckpointCase, 0, len(checkpointCases))
+		for _, task := range tasks {
+			if value, exists := checkpointCases[task.CaseID]; exists {
+				ordered = append(ordered, value)
+			}
+		}
+		checkpoint := Checkpoint{Version: CheckpointVersion, Identity: CheckpointIdentity(manifest, config), Cases: ordered}
+		if err := checkpoint.Seal(); err != nil {
+			return err
+		}
+		return SaveCheckpoint(config.CheckpointPath, checkpoint)
+	}
 	for _, task := range tasks {
 		if err := ctx.Err(); err != nil {
 			return PublicScorecard{}, PrivateDiagnostics{}, fmt.Errorf("%w: %w", ErrRunBenchmark, err)
+		}
+		if checkpoint, exists := checkpointCases[task.CaseID]; exists && checkpoint.Public.Status == "succeeded" {
+			public.Cases = append(public.Cases, checkpoint.Public)
+			private.Cases = append(private.Cases, checkpoint.Private)
+			continue
 		}
 		started := runner.clock.Now().UTC()
 		result, queryErr := queryAgent.Query(ctx, queryRequest(config, task))
@@ -111,6 +155,10 @@ func (runner *Runner) Run(
 		private.Cases = append(private.Cases, PrivateCase{
 			Task: task, Error: privateError(queryErr), Evidence: nonNilEvidence(result.Evidence), Trace: result.Trace,
 		})
+		checkpointCases[task.CaseID] = CheckpointCase{Public: public.Cases[len(public.Cases)-1], Private: private.Cases[len(private.Cases)-1]}
+		if err := persistCheckpoint(); err != nil {
+			return PublicScorecard{}, PrivateDiagnostics{}, fmt.Errorf("%w: save checkpoint: %v", ErrRunBenchmark, err)
+		}
 	}
 	if err := public.Seal(); err != nil {
 		return PublicScorecard{}, PrivateDiagnostics{}, fmt.Errorf("%w: public scorecard: %v", ErrRunBenchmark, err)

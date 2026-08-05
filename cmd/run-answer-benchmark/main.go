@@ -36,17 +36,25 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	providerID := flags.String("provider", "kimi", "Provider identity recorded in the scorecard")
 	apiBaseURL := flags.String("api-base-url", "https://api.moonshot.cn/v1", "OpenAI-compatible API base URL")
 	model := flags.String("model", "moonshot-v1-8k", "Provider model")
+	dialect := flags.String("dialect", string(agent.OpenAICompatibleDialectStandard), "OpenAI-compatible wire dialect")
 	secretName := flags.String("secret-env", "MOONSHOT_API_KEY", "environment variable holding the Provider secret")
 	timeout := flags.Duration("timeout", 2*time.Minute, "timeout for each Provider HTTP request")
 	armID := flags.String("arm", answerbenchmark.ArmAtlasLexicalPrefetch, "retrieval arm identity")
 	promptID := flags.String("prompt-id", "query-agent-v1", "Query Agent prompt identity")
 	codeRevision := flags.String("code-revision", "", "code revision recorded in the scorecard")
+	checkpointPath := flags.String("checkpoint", "", "optional absolute checkpoint JSON path for resumable low-concurrency runs")
+	maxAttempts := flags.Int("max-attempts", 4, "maximum Provider attempts per question")
+	backoff := flags.Duration("backoff", 250*time.Millisecond, "initial retry backoff")
+	maxBackoff := flags.Duration("max-backoff", 8*time.Second, "maximum retry backoff")
 	if err := flags.Parse(arguments); err != nil {
 		return 2
 	}
 	if flags.NArg() != 0 || !absoluteNormalized(*manifestPath) || !absoluteNormalized(*outputDirectory) ||
 		*runID == "" || *providerID == "" || *model == "" || *secretName == "" || *timeout <= 0 ||
-		*armID == "" || *promptID == "" || *codeRevision == "" {
+		*armID == "" || *promptID == "" || *codeRevision == "" || *dialect != string(agent.OpenAICompatibleDialectStandard) && *dialect != string(agent.OpenAICompatibleDialectDeepSeekV4NonThinking) ||
+		*maxAttempts < 1 || *maxAttempts > 8 ||
+		*backoff < 0 || *maxBackoff < *backoff || *maxBackoff > 10*time.Minute ||
+		*checkpointPath != "" && !absoluteNormalized(*checkpointPath) {
 		fmt.Fprintln(stderr, "run-answer-benchmark: manifest/output-dir must be absolute normalized paths and run/provider/model/secret-env/arm/prompt-id/code-revision must be set")
 		return 2
 	}
@@ -61,16 +69,21 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	if err != nil {
 		return fail(stderr, err)
 	}
-	provider, err := agent.NewOpenAICompatibleProvider(agent.OpenAICompatibleProviderConfig{
-		APIBaseURL: *apiBaseURL, SecretName: *secretName, Timeout: *timeout,
+	openAIProvider, err := agent.NewOpenAICompatibleProvider(agent.OpenAICompatibleProviderConfig{
+		APIBaseURL: *apiBaseURL, SecretName: *secretName, Dialect: agent.OpenAICompatibleDialect(*dialect), Timeout: *timeout,
 		MaxRequestBytes: 2 << 20, MaxResponseBytes: 8 << 20,
 	}, agent.EnvironmentProviderSecretResolver{})
 	if err != nil {
 		return fail(stderr, err)
 	}
+	var provider agent.Provider
+	provider, err = agent.NewRetryingProvider(openAIProvider, agent.RetryPolicy{MaxAttempts: *maxAttempts, InitialDelay: *backoff, MaxDelay: *maxBackoff})
+	if err != nil {
+		return fail(stderr, err)
+	}
 	public, private, err := runCleanInstance(ctx, manifest, provider, answerbenchmark.RunConfig{
 		RunID: *runID, ProviderID: *providerID, Model: *model, ArmID: *armID,
-		PromptID: *promptID, CodeRevision: *codeRevision,
+		PromptID: *promptID, CodeRevision: *codeRevision, CheckpointPath: *checkpointPath,
 	})
 	if err != nil {
 		return fail(stderr, err)

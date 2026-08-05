@@ -29,6 +29,15 @@ INCOMPLETE 报告变成发布质量。
 版本和摘要。见 [F212](./f212-external-evaluation-data.md)。F213 先冻结跨数据集 retrieval 评分契约，后续
 F214 将 MIRACL/MTRAG 转为 suite，后续低并发复评 Feature 消费这些数据。
 
+### F215：低并发 Provider 退避与评测断点（已完成，真实 receipt 待 key）
+
+在恢复真实模型复跑前补齐 429/5xx 退避、单 worker 和 hash-bound checkpoint；它只降低失败重试成本，
+不把失败题过滤出分母，也不改变真实质量门。
+
+代码、恢复测试和门禁已完成；下一次只需在同一个 shell 中提供 `DEEPSEEK_API_KEY`，按
+[下一次 DeepSeek 评测启动问题](../development/evaluation-next-run.md) 执行一次低并发 smoke，保存
+真实 provider receipt 后再决定是否扩大样本。
+
 ## P2：把 Hook 变成自己的分析工具
 
 ### F207：本地指标聚合与报告（已完成）
