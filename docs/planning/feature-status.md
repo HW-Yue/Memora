@@ -75,6 +75,7 @@
 | F204 | 显式 opt-in 外置 Agent Hook；只采集脱敏 TraceEvent 与 host/session/model 元数据，有界并发安全快照 |
 | F205 | 已完成：native daemon 多 statement L1 原子事务；统一事务工厂、native store 批量提交、IPC/重开/并发/故障证据 |
 | F207 | 已完成：F204 Hook 快照的 session/turn 指标聚合、重复/冲突校验、确定性 JSON/HTML 报告与独立命令；不计算 Recall/MRR |
+| F212 | 已完成：冻结 5 套公开评测语料清单与外置盘准备器；支持 Git commit、HTTP Range 续传、SHA-256、离线 verify-only；本机 3.1 GB 全量复核通过 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 

@@ -1,6 +1,6 @@
 # F204 之后的开发计划
 
-状态：2026-08-05 讨论稿；仅记录顺序和依赖，不构成批量实现授权。
+状态：2026-08-06；F212 已完成；其余顺序和依赖不构成批量实现授权。
 
 用户已决定暂缓大批量真实模型评测。因此后续先补产品链路的确定性缺口，再恢复低并发、可续跑的
 质量证据；不因为评测暂缓就伪造 Recall/MRR 或默认 arm。
@@ -21,6 +21,12 @@ reference model 下证明 all-or-nothing。没有这项之前，不开放多 cla
 沿用 F183–F185b 的冻结 corpus、隐藏答案、三 arm 和报告格式；增加 rate-limit/backoff、单 worker
 或小并发、token 上限和断点续跑。先用一次成功链路验证 Provider，再决定是否恢复小批量，仍不把
 INCOMPLETE 报告变成发布质量。
+
+### F212：外置评测数据准备（已完成）
+
+在恢复真实模型复跑之前，先按冻结清单准备 MTRAG、CRUD-RAG、RGB、MIRACL zh 和 EnterpriseRAG-Bench。
+所有原始语料、HF parquet、Git checkout、缓存和后续索引放用户指定的外置目录；仓库只保存清单、代码、
+版本和摘要。见 [F212](./f212-external-evaluation-data.md)。后续 adapter 与低并发复评 Feature 消费这些数据。
 
 ## P2：把 Hook 变成自己的分析工具
 
