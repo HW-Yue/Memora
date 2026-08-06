@@ -38,6 +38,21 @@ F214 将 MIRACL/MTRAG 转为 suite，后续低并发复评 Feature 消费这些�
 [下一次 DeepSeek 评测启动问题](../development/evaluation-next-run.md) 执行一次低并发 smoke，保存
 真实 provider receipt 后再决定是否扩大样本。
 
+### 正式外部检索测评仍缺的桥接层
+
+F212–F214 只交付数据、suite 和 scorer，不等于已经能生成真实 Memora run。以下仍是候选，必须
+独立 Review 后实现：
+
+- F216 候选：冻结可承担成本的公开 corpus slice，让内置资料 Agent 经 MSQL 语义吸收，并保存
+  `external document ID → Source Receipt/Row locator` 的 evaluator-only 映射；禁止机械 chunk 入库；
+- F217 候选：内置 Query Agent 只读取 suite query 与公开 MSQL，把真实 SQL evidence 反解为 external
+  document ID，逐题输出可续跑的 `memora.retrieval-run/v1`；ground truth 不进入 Agent；
+- F218 候选：为 Token/工具调用降幅冻结同题、同 corpus、同 Provider 预算的基线 runner；没有真实
+  baseline run 时，F213 的降幅字段只能保持空，不能从 fixture 外推。
+
+EnterpriseRAG、CRUD-RAG、RGB 的任务适配，以及外部答案正确性框架的公开数据绑定，继续独立规划；
+它们已下载不代表已经可评分。
+
 ## P2：把 Hook 变成自己的分析工具
 
 ### F207：本地指标聚合与报告（已完成）

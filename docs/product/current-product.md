@@ -1,6 +1,6 @@
 # 当前产品基线
 
-状态：2026-08-05 当前权威产品快照；详细实现状态见
+状态：2026-08-06 当前权威产品快照；详细实现状态见
 [Feature 状态](../planning/feature-status.md)。
 
 ## 产品形态
@@ -57,17 +57,21 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 ## 当前还不是完整产品的部分
 
 - F127 已有真实宿主证据协议，但真实双宿主 AI 用户故事报告仍为 `INCOMPLETE`；
-- 外置 Agent Hook 已提供显式 opt-in 的脱敏 Trace 快照；统一 session 指标聚合和本地分析平台尚未实现；
+- 外置 Agent Hook 已提供显式 opt-in 的脱敏 Trace 快照，F207 已提供 session/turn 聚合与本地
+  JSON/HTML 报告；流式分片聚合和统一分析平台尚未实现；
 - F182–F185b 已完成冻结语料、端到端 Runner、外部评分、三个真实执行检索 arm 和 release gate，
   但真实 Kimi 三 arm 共 36 题均因 wire/429 上游错误而不可评分；gate 状态保持 INCOMPLETE；
 - 用户已决定延期大批量真实质量复跑，允许继续开发实验性 QuerySession；这不等于答案质量通过，
   面向用户的正式 `memora ask` 发布承诺和默认 arm 选择仍然延后；
+- F212–F214 已完成外置公开语料准备、MIRACL/MTRAG query/qrel 归一化和独立评分器，但还没有
+  “公开语料经 Agent 语义吸收并保留外部 document locator → Query Agent 生成真实 retrieval run”
+  的批量桥接层；因此现阶段不能从这些大数据集直接产出 Memora Recall@5/MRR；
 - “何时值得写入”的质量评测后置；查询、Route 和事实读取的真实大批量质量复跑同样延期，
   现有 runner/gate 保留供后续恢复；
 - 全内容倒排位置、统一 MSQL Service、QuerySession、短网页写入和 EPUB 吸收的 F189–F200
   组件及单链验收已完成；批量模型评分继续延期；
-- 当前 native daemon 的正式 assimilation 只验收了单 statement 原子 autocommit；多 statement plan
-  的原子执行尚未接入 native backend，真实多 claim 长资料投入使用前必须补齐；
+- F205 已补齐 native daemon 多 statement 原子执行；真实多 claim 长资料仍必须经过 F195 的
+  review/approval 和 Source Receipt，不能旁路批量写入；
 - Query Workspace 的跨会话恢复、跨 session topic 身份仍未冻结；
 - Compaction、Secondary Index、Advanced MVCC、Replication、PITR、多设备同步、
   Apple Accelerate 与 HNSW 均未达到证据门，当前不实现。
@@ -75,9 +79,10 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 ## 当前真实性边界
 
 代码和机械测试已经形成完整数据库原型；这不等同于真实长期 AI 使用质量已经达标。
-真实 Query 质量证据仍缺失，但单网页与整本资料吸收所需的独立组件已具备。后续仍需在无 Provider
-限流/协议错误的固定运行上补齐三 arm 外部质量分，
-让既有 release gate 选出默认 arm；外置 Hook 再观察真实宿主环境中的分支、上下文、调用和延迟。
+真实 Query 质量证据仍缺失，但单网页与整本资料吸收所需的独立组件已具备。F215 已补齐单 worker、
+有限退避和 hash-bound checkpoint；下一步先保留一次真实 DeepSeek smoke receipt，再实现公开语料
+物化与 retrieval-run 桥接层，之后才能补齐三 arm 外部质量分并让 release gate 选出默认 arm。
+外置 Hook 再观察真实宿主环境中的分支、上下文、调用和延迟。
 
 ## 关联
 
