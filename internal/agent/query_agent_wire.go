@@ -100,6 +100,13 @@ func decodeQueryToolArguments(
 	if err := requireJSONEOF(decoder); err != nil {
 		return protocolmsql.Request{}, fmt.Errorf("%w: arguments JSON has trailing content", ErrInvalidQueryToolCall)
 	}
+	// Some OpenAI-compatible providers encode a single parameterless tool
+	// statement as an explicit empty array. Missing statements remains nil and
+	// invalid; a multi-statement source still fails Request.Validate because the
+	// normalized parameter list contains only one entry.
+	if arguments.Statements != nil && len(arguments.Statements) == 0 {
+		arguments.Statements = []queryToolStatement{{}}
+	}
 	if strings.TrimSpace(arguments.Source) == "" || !utf8.ValidString(arguments.Source) || len(arguments.Source) > 1<<20 ||
 		len(arguments.Statements) == 0 || uint64(len(arguments.Statements)) > budget.MaxToolStatements {
 		return protocolmsql.Request{}, ErrInvalidQueryToolCall

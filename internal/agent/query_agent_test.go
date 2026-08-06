@@ -124,6 +124,47 @@ func TestQueryAgentRunsBootstrapSelectFinalWithEvidenceAndTrace(t *testing.T) {
 	}
 }
 
+func TestQueryAgentNormalizesExplicitEmptyStatementsForOneParameterlessRead(t *testing.T) {
+	t.Parallel()
+
+	question := "Read one note"
+	authorization := queryAuthorization(protocolmsql.LevelRead)
+	readOnly := queryReadOnlyAuthorization(authorization)
+	bootstrapBudget := queryBootstrapBudget()
+	queryBudget := agent.DefaultQueryBudget()
+	source := "SELECT body FROM work.notes LIMIT 1"
+	call := agent.ProviderToolCall{
+		ID: "call-empty-statements", Name: agent.QueryExecuteMSQLToolName,
+		Arguments: json.RawMessage(`{"source":"SELECT body FROM work.notes LIMIT 1","statements":[]}`),
+	}
+	selectResult := protocolmsql.StatementResult{
+		Index: 0, Statement: "SELECT", Source: source, Status: "succeeded",
+		Columns: []protocolmsql.Column{{Name: "body", Type: "TEXT"}},
+		Rows:    []protocolmsql.Row{{"body": "fact"}}, Warnings: []protocolmsql.Notice{},
+	}
+	provider := &recordingQueryProvider{responses: []agent.ProviderResponse{
+		queryProviderResponse(agent.ProviderFinishToolCalls, agent.ProviderMessage{
+			Role: agent.ProviderRoleAssistant, ToolCalls: []agent.ProviderToolCall{call},
+		}),
+		queryProviderResponse(agent.ProviderFinishStop, agent.ProviderMessage{
+			Role: agent.ProviderRoleAssistant, Content: "fact",
+		}),
+	}}
+	msql := agenttest.NewScriptedMSQL(
+		queryBootstrapStep(question, readOnly, bootstrapBudget),
+		agenttest.MSQLStep{
+			Request:  queryMSQLRequest(source, readOnly, protocolmsql.Parameters{}),
+			Envelope: queryEnvelope("select-empty-statements", selectResult),
+		},
+	)
+	result, err := newQueryAgent(t, msql, provider).Query(context.Background(), queryRequest(
+		"run-empty-statements", "session-empty-statements", question, authorization, bootstrapBudget, queryBudget,
+	))
+	if err != nil || result.Answer != "fact" || len(result.Evidence) != 1 {
+		t.Fatalf("Query() = %#v, %v", result, err)
+	}
+}
+
 func TestQueryAgentCompactsBootstrapAndKeepsOnlyCurrentToolFrame(t *testing.T) {
 	t.Parallel()
 

@@ -46,6 +46,8 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	maxAttempts := flags.Int("max-attempts", 4, "maximum Provider attempts per question")
 	backoff := flags.Duration("backoff", 250*time.Millisecond, "initial retry backoff")
 	maxBackoff := flags.Duration("max-backoff", 8*time.Second, "maximum retry backoff")
+	maxProviderCalls := flags.Uint64("max-provider-calls", 0, "optional per-question Query Agent Provider-call override; zero keeps manifest")
+	maxToolCalls := flags.Uint64("max-tool-calls", 0, "optional per-question Query Agent tool-call override; zero keeps manifest")
 	if err := flags.Parse(arguments); err != nil {
 		return 2
 	}
@@ -54,6 +56,9 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		*armID == "" || *promptID == "" || *codeRevision == "" || *dialect != string(agent.OpenAICompatibleDialectStandard) && *dialect != string(agent.OpenAICompatibleDialectDeepSeekV4NonThinking) ||
 		*maxAttempts < 1 || *maxAttempts > 8 ||
 		*backoff < 0 || *maxBackoff < *backoff || *maxBackoff > 10*time.Minute ||
+		(*maxProviderCalls == 0) != (*maxToolCalls == 0) ||
+		*maxProviderCalls > 16 || *maxToolCalls > 16 ||
+		(*maxProviderCalls != 0 && *maxToolCalls >= *maxProviderCalls) ||
 		*checkpointPath != "" && !absoluteNormalized(*checkpointPath) {
 		fmt.Fprintln(stderr, "run-answer-benchmark: manifest/output-dir must be absolute normalized paths and run/provider/model/secret-env/arm/prompt-id/code-revision must be set")
 		return 2
@@ -84,6 +89,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	public, private, err := runCleanInstance(ctx, manifest, provider, answerbenchmark.RunConfig{
 		RunID: *runID, ProviderID: *providerID, Model: *model, ArmID: *armID,
 		PromptID: *promptID, CodeRevision: *codeRevision, CheckpointPath: *checkpointPath,
+		MaxProviderCalls: *maxProviderCalls, MaxToolCalls: *maxToolCalls,
 	})
 	if err != nil {
 		return fail(stderr, err)

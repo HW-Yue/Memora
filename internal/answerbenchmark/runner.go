@@ -30,13 +30,15 @@ type RunnerDependencies struct {
 }
 
 type RunConfig struct {
-	RunID          string
-	ProviderID     string
-	Model          string
-	ArmID          string
-	PromptID       string
-	CodeRevision   string
-	CheckpointPath string
+	RunID            string
+	ProviderID       string
+	Model            string
+	ArmID            string
+	PromptID         string
+	CodeRevision     string
+	CheckpointPath   string
+	MaxProviderCalls uint64
+	MaxToolCalls     uint64
 }
 
 type Runner struct {
@@ -174,7 +176,16 @@ func validRunConfig(config RunConfig) bool {
 	_, validArm := bootstrapProfileForArm(config.ArmID)
 	return validReportText(config.RunID, 200) && validReportText(config.ProviderID, 200) &&
 		validReportText(config.Model, 200) && validArm &&
-		validReportText(config.PromptID, 200) && validReportText(config.CodeRevision, 200)
+		validReportText(config.PromptID, 200) && validReportText(config.CodeRevision, 200) &&
+		validBudgetOverride(config.MaxProviderCalls, config.MaxToolCalls)
+}
+
+func validBudgetOverride(maxProviderCalls, maxToolCalls uint64) bool {
+	if maxProviderCalls == 0 && maxToolCalls == 0 {
+		return true
+	}
+	return maxProviderCalls >= 2 && maxProviderCalls <= 16 && maxToolCalls >= 1 &&
+		maxToolCalls < maxProviderCalls
 }
 
 func bootstrapProfileForArm(armID string) (agent.BootstrapProfile, bool) {
@@ -199,6 +210,10 @@ func queryRequest(config RunConfig, task answercorpus.BlindTask) agent.QueryRequ
 	budget.MaxToolCalls = task.Budget.MaxToolCalls
 	budget.MaxOutputTokens = task.Budget.MaxOutputTokens
 	budget.ToolResultUTF8Bytes = task.Budget.ToolResultUTF8Bytes
+	if config.MaxProviderCalls != 0 {
+		budget.MaxProviderCalls = config.MaxProviderCalls
+		budget.MaxToolCalls = config.MaxToolCalls
+	}
 	return agent.QueryRequest{
 		Identity: agent.TraceIdentity{RunID: config.RunID, SessionID: config.RunID + ":" + task.CaseID},
 		Question: task.Question, Model: config.Model,

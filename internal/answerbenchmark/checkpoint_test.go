@@ -46,7 +46,8 @@ func TestCheckpointIdentityBindsRunConfiguration(t *testing.T) {
 	manifest := answercorpus.Manifest{CorpusID: "corpus", Revision: 1, Fixture: answercorpus.Fixture{SnapshotID: "snapshot", SnapshotSHA256: strings.Repeat("a", 64)}}
 	first := CheckpointIdentity(manifest, RunConfig{RunID: "run", ProviderID: "deepseek", Model: "deepseek-v4-flash", ArmID: ArmAtlasLexicalPrefetch, PromptID: "prompt", CodeRevision: "revision"})
 	second := CheckpointIdentity(manifest, RunConfig{RunID: "run", ProviderID: "deepseek", Model: "deepseek-v4-flash", ArmID: ArmAtlasLexical, PromptID: "prompt", CodeRevision: "revision"})
-	if first == second || len(first) != 64 {
-		t.Fatalf("identities = %q/%q", first, second)
+	third := CheckpointIdentity(manifest, RunConfig{RunID: "run", ProviderID: "deepseek", Model: "deepseek-v4-flash", ArmID: ArmAtlasLexicalPrefetch, PromptID: "prompt", CodeRevision: "revision", MaxProviderCalls: 6, MaxToolCalls: 5})
+	if first == second || first == third || len(first) != 64 {
+		t.Fatalf("identities = %q/%q/%q", first, second, third)
 	}
 }

@@ -32,18 +32,21 @@ type CheckpointCase struct {
 
 func CheckpointIdentity(manifest answercorpus.Manifest, config RunConfig) string {
 	value := struct {
-		CorpusID       string `json:"corpus_id"`
-		CorpusRevision uint64 `json:"corpus_revision"`
-		SnapshotID     string `json:"snapshot_id"`
-		SnapshotSHA256 string `json:"snapshot_sha256"`
-		RunID          string `json:"run_id"`
-		ProviderID     string `json:"provider_id"`
-		Model          string `json:"model"`
-		ArmID          string `json:"arm_id"`
-		PromptID       string `json:"prompt_id"`
-		CodeRevision   string `json:"code_revision"`
+		CorpusID         string `json:"corpus_id"`
+		CorpusRevision   uint64 `json:"corpus_revision"`
+		SnapshotID       string `json:"snapshot_id"`
+		SnapshotSHA256   string `json:"snapshot_sha256"`
+		RunID            string `json:"run_id"`
+		ProviderID       string `json:"provider_id"`
+		Model            string `json:"model"`
+		ArmID            string `json:"arm_id"`
+		PromptID         string `json:"prompt_id"`
+		CodeRevision     string `json:"code_revision"`
+		MaxProviderCalls uint64 `json:"max_provider_calls,omitempty"`
+		MaxToolCalls     uint64 `json:"max_tool_calls,omitempty"`
 	}{manifest.CorpusID, manifest.Revision, manifest.Fixture.SnapshotID, manifest.Fixture.SnapshotSHA256,
-		config.RunID, config.ProviderID, config.Model, config.ArmID, config.PromptID, config.CodeRevision}
+		config.RunID, config.ProviderID, config.Model, config.ArmID, config.PromptID, config.CodeRevision,
+		config.MaxProviderCalls, config.MaxToolCalls}
 	encoded, _ := json.Marshal(value)
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:])
