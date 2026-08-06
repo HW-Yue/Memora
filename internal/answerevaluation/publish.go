@@ -58,19 +58,10 @@ func PublishReport(outputPath string, report Report) error {
 		return fmt.Errorf("%w: close staging file", ErrInvalidReportOutput)
 	}
 	closed = true
-	if err := os.Link(stagingPath, outputPath); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return ErrReportOutputExists
-		}
-		return fmt.Errorf("%w: publish report", ErrInvalidReportOutput)
+	if err := publishFileExclusive(stagingPath, outputPath); err != nil {
+		return err
 	}
-	directory, err := os.Open(parent)
-	if err != nil {
-		return fmt.Errorf("%w: open output parent", ErrInvalidReportOutput)
-	}
-	syncErr := directory.Sync()
-	closeErr := directory.Close()
-	if syncErr != nil || closeErr != nil {
+	if err := syncDirectory(parent); err != nil {
 		return fmt.Errorf("%w: sync output parent", ErrInvalidReportOutput)
 	}
 	return nil

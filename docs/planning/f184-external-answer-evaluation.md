@@ -75,6 +75,10 @@ F182 manifest + ground-truth
   `benchmarks/answer-retrieval-v1/f184-kimi-real-20260803-evaluation.json`，hash 为
   `sha256:63361640c633ba5d860aa95a454a73453f49869a2e9e269fc0cea5ed6e57556b`；结果为
   12 runner_failed、0 scored，准确表示上游 wire/429 使质量证据不完整，不伪造 0 分；
+- 2026-08-06 DeepSeek V4 Flash smoke 的当前提交回执已成功发布到外置 ExFAT 盘：9 个题目完成
+  Runner、3 个题目 runner_failed；Ragas judge 实际得到 1 个 scored、8 个 evaluator_failed，
+  因此只证明评分桥接和发布链路可执行，仍不能宣称答案质量通过。该次 evaluation report 的
+  `quality_status` 保持不通过/不可用边界。
 - format、vet、unit、race、integration、e2e、macOS 双架构 cross-build，以及新增命令的
   darwin/arm64、linux/amd64 交叉构建全部通过。
 

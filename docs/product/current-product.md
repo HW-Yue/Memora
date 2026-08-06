@@ -63,6 +63,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
   但真实 Kimi 三 arm 共 36 题均因 wire/429 上游错误而不可评分；gate 状态保持 INCOMPLETE；
 - F215 已用 DeepSeek V4 Flash 跑通多条真实 OPEN ROUTE → SELECT → Answer 链路；当前 smoke 续跑后为
   9/12 成功，不能作为答案质量通过或默认 arm 选择依据；
+- F184 的 Ragas 外部评分器已对该回执完成一次真实发布，但 9 个成功 Runner 仅 1 题得到 judge
+  分数、8 题为 `evaluator_failed`，所以当前仍没有可用于简历的 Recall/MRR 或答案质量结论；
 - 用户已决定延期大批量真实质量复跑，允许继续开发实验性 QuerySession；这不等于答案质量通过，
   面向用户的正式 `memora ask` 发布承诺和默认 arm 选择仍然延后；
 - F212–F214 已完成外置公开语料准备、MIRACL/MTRAG query/qrel 归一化和独立评分器，但还没有
@@ -82,8 +84,9 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 
 代码和机械测试已经形成完整数据库原型；这不等同于真实长期 AI 使用质量已经达标。
 真实 Query 质量证据仍缺失，但单网页与整本资料吸收所需的独立组件已具备。F215 已补齐单 worker、
-有限退避和 hash-bound checkpoint；下一步先保留一次真实 DeepSeek smoke receipt，再实现公开语料
-物化与 retrieval-run 桥接层，之后才能补齐三 arm 外部质量分并让 release gate 选出默认 arm。
+有限退避和 hash-bound checkpoint，DeepSeek smoke receipt 已保存；下一步先修复多轮查询与 judge
+适配的失败重试，再实现公开语料物化与 retrieval-run 桥接层，之后才能补齐三 arm 外部质量分并让
+release gate 选出默认 arm。
 外置 Hook 再观察真实宿主环境中的分支、上下文、调用和延迟。
 
 ## 关联
