@@ -61,8 +61,8 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
   JSON/HTML 报告；流式分片聚合和统一分析平台尚未实现；
 - F182–F185b 已完成冻结语料、端到端 Runner、外部评分、三个真实执行检索 arm 和 release gate，
   但真实 Kimi 三 arm 共 36 题均因 wire/429 上游错误而不可评分；gate 状态保持 INCOMPLETE；
-- F215 已用 DeepSeek V4 Flash 跑通多条真实 OPEN ROUTE → SELECT → Answer 链路；当前 smoke 为
-  6/12 成功，不能作为答案质量通过或默认 arm 选择依据；
+- F215 已用 DeepSeek V4 Flash 跑通多条真实 OPEN ROUTE → SELECT → Answer 链路；当前 smoke 续跑后为
+  8/12 成功，不能作为答案质量通过或默认 arm 选择依据；
 - 用户已决定延期大批量真实质量复跑，允许继续开发实验性 QuerySession；这不等于答案质量通过，
   面向用户的正式 `memora ask` 发布承诺和默认 arm 选择仍然延后；
 - F212–F214 已完成外置公开语料准备、MIRACL/MTRAG query/qrel 归一化和独立评分器，但还没有
