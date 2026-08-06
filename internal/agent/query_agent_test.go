@@ -72,7 +72,7 @@ func TestQueryAgentRunsBootstrapSelectFinalWithEvidenceAndTrace(t *testing.T) {
 			Response: firstResponse,
 		},
 		agenttest.ProviderStep{
-			Request:  queryProviderRequest(t, question, agent.BootstrapFrame{}, &toolCall, string(toolResultJSON), agent.ProviderToolChoiceNone, queryBudget),
+			Request:  queryProviderRequest(t, question, frame, &toolCall, string(toolResultJSON), agent.ProviderToolChoiceNone, queryBudget),
 			Response: finalResponse,
 		},
 	)
@@ -165,7 +165,7 @@ func TestQueryAgentNormalizesExplicitEmptyStatementsForOneParameterlessRead(t *t
 	}
 }
 
-func TestQueryAgentCompactsBootstrapAndKeepsOnlyCurrentToolFrame(t *testing.T) {
+func TestQueryAgentKeepsBoundedBootstrapAndCurrentToolFrame(t *testing.T) {
 	t.Parallel()
 
 	question := "Find the current architecture decision"
@@ -236,10 +236,11 @@ func TestQueryAgentCompactsBootstrapAndKeepsOnlyCurrentToolFrame(t *testing.T) {
 	first := string(mustJSON(t, provider.requests[0]))
 	second := string(mustJSON(t, provider.requests[1]))
 	third := string(mustJSON(t, provider.requests[2]))
-	if !strings.Contains(first, "ATLAS_MARKER") || strings.Contains(second, "ATLAS_MARKER") ||
-		!strings.Contains(second, "ROUTE_MARKER") || strings.Contains(third, "ATLAS_MARKER") ||
-		strings.Contains(third, "ROUTE_MARKER") || !strings.Contains(third, "FACT_MARKER") {
-		t.Fatalf("context was not compacted\nfirst=%s\nsecond=%s\nthird=%s", first, second, third)
+	if !strings.Contains(first, "ATLAS_MARKER") || strings.Contains(first, "ROUTE_MARKER") ||
+		!strings.Contains(second, "ATLAS_MARKER") || !strings.Contains(second, "ROUTE_MARKER") ||
+		!strings.Contains(third, "ATLAS_MARKER") || strings.Contains(third, "ROUTE_MARKER") ||
+		!strings.Contains(third, "FACT_MARKER") {
+		t.Fatalf("bounded Route Frame was not retained\nfirst=%s\nsecond=%s\nthird=%s", first, second, third)
 	}
 	if provider.requests[0].ToolChoice != agent.ProviderToolChoiceRequired ||
 		provider.requests[1].ToolChoice != agent.ProviderToolChoiceRequired ||
@@ -465,9 +466,10 @@ func queryProviderRequest(
 		messages = append(messages, agent.ProviderMessage{Role: agent.ProviderRoleUser, Content: string(content)})
 	} else {
 		content := mustJSON(t, struct {
-			Version  string `json:"version"`
-			Question string `json:"question"`
-		}{Version: agent.QueryCurrentContextVersion, Question: question})
+			Version   string               `json:"version"`
+			Question  string               `json:"question"`
+			Bootstrap agent.BootstrapFrame `json:"bootstrap"`
+		}{Version: agent.QueryCurrentContextVersion, Question: question, Bootstrap: frame})
 		messages = append(messages,
 			agent.ProviderMessage{Role: agent.ProviderRoleUser, Content: string(content)},
 			agent.ProviderMessage{Role: agent.ProviderRoleAssistant, ToolCalls: []agent.ProviderToolCall{*call}},

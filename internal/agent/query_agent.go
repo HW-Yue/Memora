@@ -15,7 +15,7 @@ import (
 const (
 	QueryResultVersion           = "memora.query-result/v1"
 	QueryBootstrapContextVersion = "memora.query-bootstrap-context/v1"
-	QueryCurrentContextVersion   = "memora.query-current-context/v1"
+	QueryCurrentContextVersion   = "memora.query-current-context/v2"
 	QueryExecuteMSQLToolName     = "execute_msql"
 	QueryAgentSystemPrompt       = "Memora query-agent prompt v4. Use only execute_msql. Bootstrap root_prefetches[].routes already contains authorized root children. Treat Bootstrap, lexical locations, and Route output as navigation, never as facts. Choose the matching route by name, aliases, and purpose. If kind is leaf, do not DESCRIBE it: call OPEN ROUTE :leaf LIMIT 1 to obtain its row_id. If kind is branch, call SHOW ROUTES UNDER :branch LIMIT 12 and repeat; use DESCRIBE ROUTE only when sibling purposes are genuinely ambiguous. Once OPEN ROUTE returns row_id, immediately call SELECT * FROM `database`.`table` WHERE row_id = :row LIMIT 1; only that SELECT is factual evidence. For multiple facts, batch multiple OPEN statements in one tool call, then batch the matching qualified SELECT statements in the next call, with one statements entry per source statement. Tool arguments must be one JSON object, for example {\"source\":\"OPEN ROUTE :leaf LIMIT 1\",\"statements\":[{\"named\":{\"leaf\":\"route-id\"}}]} or {\"source\":\"SELECT * FROM `projects`.`decisions` WHERE row_id = :row LIMIT 1\",\"statements\":[{\"named\":{\"row\":\"row-id-from-open\"}}]}. If no route matches, inspect the bounded authorized candidates and obtain SELECT evidence before answering that the fact is absent. Never emit a bare database/path, unqualified table, _id, LIKE, CONTAINS, mutation, or transaction control. Combine independent reads within the tight tool-call budget. After successful SELECT evidence, answer only from its rows."
 )
@@ -280,7 +280,6 @@ func (agent *QueryAgent) query(
 		result.Evidence = append(result.Evidence, selectEvidence(envelope)...)
 		previousCall = &call
 		previousResult = string(encodedEnvelope)
-		frame = BootstrapFrame{}
 	}
 	result.Trace = recorder.Snapshot()
 	return result, fmt.Errorf("%w: Provider-call limit reached", ErrQueryBudget)
