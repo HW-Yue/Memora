@@ -2,6 +2,12 @@
 
 状态：F150 已更新；发布触发、可信签名、权限与制品集合已冻结。
 
+当前已发布：[`v0.1.0`](https://github.com/HW-Yue/Memora/releases/tag/v0.1.0)，目标 commit
+为 `bc15346c1cac40d8715ef52a09d7b9a75e889e35`。该版本的本地 publication 已通过签名、
+checksum、arm64 smoke 和 clean-machine acceptance；本次 GitHub macOS runner 在解析
+Actions 依赖时返回 `Service Unavailable`，未进入项目测试步骤，因此使用同一份本地已验收
+publication 完成上传。后续版本仍按下述自动化门禁发布。
+
 ## 唯一发布触发
 
 Release workflow 只监听 tag push，不监听 `pull_request`、branch push 或手工
