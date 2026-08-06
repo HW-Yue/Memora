@@ -24,8 +24,9 @@ type queryBootstrapContext struct {
 }
 
 type queryCurrentContext struct {
-	Version  string `json:"version"`
-	Question string `json:"question"`
+	Version   string         `json:"version"`
+	Question  string         `json:"question"`
+	Bootstrap BootstrapFrame `json:"bootstrap"`
 }
 
 type queryToolArguments struct {
@@ -55,7 +56,9 @@ func makeQueryProviderRequest(
 		}
 		messages = append(messages, ProviderMessage{Role: ProviderRoleUser, Content: string(content)})
 	} else {
-		content, err := json.Marshal(queryCurrentContext{Version: QueryCurrentContextVersion, Question: request.Question})
+		content, err := json.Marshal(queryCurrentContext{
+			Version: QueryCurrentContextVersion, Question: request.Question, Bootstrap: frame,
+		})
 		if err != nil {
 			return ProviderRequest{}, fmt.Errorf("%w: current context could not be encoded", ErrInvalidQueryRequest)
 		}
