@@ -8,6 +8,9 @@ Codex/Claude Code 适配层。
 宿主稳定规则只维护在 [`skills/memora/SKILL.md`](../../skills/memora/SKILL.md)；面向独立
 Agent 安装的同步发布仓库是 [HW-Yue/memora-skill](https://github.com/HW-Yue/memora-skill)，
 其中的 Skill bundle 与 Memora Release 绑定。
+产品定位、端到端架构、读取/写入流程和 Admin 操作说明按需维护在
+[`skills/memora/references/product-manual.md`](../../skills/memora/references/product-manual.md)，
+不包含任何动态 Database 状态。
 相邻 `contract.json` 是机器可读 lint 清单；F123 新增的 `host-contract.json` 只冻结
 真实模型同题 Task、预算和脱敏收据。两者都不是第二份行为说明，也不保存任何动态
 Database、Schema、Router 或候选。
