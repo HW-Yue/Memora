@@ -23,7 +23,9 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 - 本地只读 Admin，浏览 Catalog、Route、Row、History、Change 和 Route Trace；
 - Database Package 的签名、安装、升级、撤销、fork 与三方 merge；
 - Instance 备份、恢复、搬迁、格式升级、诊断和 macOS LaunchAgent；
-- macOS arm64/amd64 签名制品及受门禁约束的 GitHub Release 流程。
+- macOS arm64/amd64 签名制品及受门禁约束的 GitHub Release 流程；当前可下载的
+  [v0.1.0 Release](https://github.com/HW-Yue/Memora/releases/tag/v0.1.0) 已包含两个 macOS
+  架构和独立 [Memora Skill 仓库](https://github.com/HW-Yue/memora-skill) 的 bundle。
 
 ## 已实现的语义链路
 
