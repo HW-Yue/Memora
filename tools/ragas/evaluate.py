@@ -23,6 +23,8 @@ OUTPUT_VERSION = "memora.external-evaluator-output/v1"
 ADAPTER_ID = "ragas-collections"
 ADAPTER_VERSION = "0.4.3"
 MAXIMUM_DOCUMENT_BYTES = 64 << 20
+MAX_METRIC_ATTEMPTS = 3
+METRIC_RETRY_BASE_SECONDS = 0.25
 DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 ENVIRONMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -224,33 +226,39 @@ async def evaluate_document(document, metrics_factory=build_metrics):
 
 async def score_case(case, metrics):
     values = {}
-    values["factual_correctness"] = metric_value(
-        await metrics["factual_correctness"].ascore(
-            response=case["response"], reference=case["reference"]
-        )
+    values["factual_correctness"] = await score_metric(
+        metrics["factual_correctness"],
+        response=case["response"], reference=case["reference"],
     )
-    values["faithfulness"] = metric_value(
-        await metrics["faithfulness"].ascore(
-            user_input=case["user_input"],
-            response=case["response"],
-            retrieved_contexts=case["retrieved_contexts"],
-        )
+    values["faithfulness"] = await score_metric(
+        metrics["faithfulness"],
+        user_input=case["user_input"],
+        response=case["response"],
+        retrieved_contexts=case["retrieved_contexts"],
     )
-    values["context_precision"] = metric_value(
-        await metrics["context_precision"].ascore(
-            user_input=case["user_input"],
-            reference=case["reference"],
-            retrieved_contexts=case["retrieved_contexts"],
-        )
+    values["context_precision"] = await score_metric(
+        metrics["context_precision"],
+        user_input=case["user_input"],
+        reference=case["reference"],
+        retrieved_contexts=case["retrieved_contexts"],
     )
-    values["context_recall"] = metric_value(
-        await metrics["context_recall"].ascore(
-            user_input=case["user_input"],
-            reference=case["reference"],
-            retrieved_contexts=case["retrieved_contexts"],
-        )
+    values["context_recall"] = await score_metric(
+        metrics["context_recall"],
+        user_input=case["user_input"],
+        reference=case["reference"],
+        retrieved_contexts=case["retrieved_contexts"],
     )
     return values
+
+
+async def score_metric(metric, **kwargs):
+    for attempt in range(MAX_METRIC_ATTEMPTS):
+        try:
+            return metric_value(await metric.ascore(**kwargs))
+        except Exception:
+            if attempt + 1 == MAX_METRIC_ATTEMPTS:
+                raise
+            await asyncio.sleep(METRIC_RETRY_BASE_SECONDS * (2**attempt))
 
 
 def metric_value(result):

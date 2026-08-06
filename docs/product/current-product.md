@@ -63,8 +63,9 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
   但真实 Kimi 三 arm 共 36 题均因 wire/429 上游错误而不可评分；gate 状态保持 INCOMPLETE；
 - F215 已用 DeepSeek V4 Flash 跑通多条真实 OPEN ROUTE → SELECT → Answer 链路；当前 smoke 续跑后为
   9/12 成功，不能作为答案质量通过或默认 arm 选择依据；
-- F184 的 Ragas 外部评分器已对该回执完成一次真实发布，但 9 个成功 Runner 仅 1 题得到 judge
-  分数、8 题为 `evaluator_failed`，所以当前仍没有可用于简历的 Recall/MRR 或答案质量结论；
+- F184 的 Ragas 外部评分器已对该回执完成真实发布；启用单指标有限重试后，9 个成功 Runner 中
+  3 题得到 judge 分数、6 题为 `evaluator_failed`，所以当前仍没有可用于简历的 Recall/MRR 或
+  答案质量结论；
 - 用户已决定延期大批量真实质量复跑，允许继续开发实验性 QuerySession；这不等于答案质量通过，
   面向用户的正式 `memora ask` 发布承诺和默认 arm 选择仍然延后；
 - F212–F214 已完成外置公开语料准备、MIRACL/MTRAG query/qrel 归一化和独立评分器，但还没有
