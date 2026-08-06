@@ -84,7 +84,25 @@ class FakeMetric:
         return SimpleNamespace(value=self.value)
 
 
+class FlakyMetric:
+    def __init__(self):
+        self.calls = 0
+
+    async def ascore(self, **_kwargs):
+        self.calls += 1
+        if self.calls < 3:
+            raise RuntimeError("synthetic incomplete output")
+        return SimpleNamespace(value=0.75)
+
+
 class EvaluateTest(unittest.TestCase):
+    def test_retries_one_metric_without_restarting_the_case(self):
+        adapter = load_adapter()
+        metric = FlakyMetric()
+        value = asyncio.run(adapter.score_metric(metric, user_input="Question"))
+        self.assertEqual(value, 0.75)
+        self.assertEqual(metric.calls, 3)
+
     def test_scores_success_and_isolates_runner_and_metric_failures(self):
         adapter = load_adapter()
         calls = []
@@ -131,7 +149,7 @@ class EvaluateTest(unittest.TestCase):
         self.assertEqual(output["cases"][2], {
             "case_id": "case-003", "status": "runner_failed", "scores": {}
         })
-        self.assertEqual(len(calls), 5)
+        self.assertEqual(len(calls), 7)
         self.assertEqual(calls[0][1], {
             "response": "Answer one.", "reference": "Reference one."
         })
