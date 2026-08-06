@@ -7,13 +7,17 @@
 不要把密钥粘贴到聊天、仓库、Memora Database、外置盘或报告里。启动命令会延迟从进程环境读取
 `DEEPSEEK_API_KEY`，只把 provider/model 名称写入公开 scorecard。
 
-## 首轮命令
+最近一次真实回执已写入外置盘 `runs/deepseek-f215-smoke-20260806-r9-resume-3/`，12 题中 8 题完成了
+OPEN ROUTE → SELECT → Answer 链路；剩余 4 题仍未通过质量门。再次运行必须使用新的 run/checkpoint
+路径，避免复用旧代码版本的 checkpoint identity。
+
+## 下一轮命令
 
 ```text
 go run ./cmd/run-answer-benchmark \
   --manifest "$PWD/benchmarks/answer-retrieval-v1/manifest.json" \
-  --output-dir /Volumes/yhw/MemoraEvaluation/runs/deepseek-f215-smoke-20260806 \
-  --checkpoint /Volumes/yhw/MemoraEvaluation/checkpoints/deepseek-f215-smoke-20260806.json \
+  --output-dir /Volumes/yhw/MemoraEvaluation/runs/deepseek-f215-smoke-20260806-r10 \
+  --checkpoint /Volumes/yhw/MemoraEvaluation/checkpoints/deepseek-f215-smoke-20260806-r10.json \
   --provider deepseek \
   --api-base-url https://api.deepseek.com/v1 \
   --model deepseek-v4-flash \
@@ -21,8 +25,8 @@ go run ./cmd/run-answer-benchmark \
   --secret-env DEEPSEEK_API_KEY \
   --max-attempts 4 --backoff 250ms --max-backoff 8s \
   --max-provider-calls 6 --max-tool-calls 5 \
-  --run-id deepseek-f215-smoke-20260806 \
-  --arm atlas_lexical_prefetch \
+  --run-id deepseek-f215-smoke-20260806-r10 \
+  --arm atlas-lexical-prefetch-v1 \
   --prompt-id query-agent-v4 \
   --code-revision "$(git rev-parse HEAD)"
 ```

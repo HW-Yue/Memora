@@ -78,7 +78,7 @@
 | F212 | 已完成：冻结 5 套公开评测语料清单与外置盘准备器；支持 Git commit、HTTP Range 续传、SHA-256、离线 verify-only；本机 3.1 GB 全量复核通过 |
 | F213 | 已完成：标准 retrieval suite/run 与 evaluator-only Recall@K、HitRate@K、MRR、分桶和 Token/工具调用对照 |
 | F214 | 已完成：MIRACL zh 与 MTRAG 四 domain 的 query/qrel 确定性适配器；normalized suite 已在外置盘生成 |
-| F215 | 已完成（证据不完整）：低并发退避、ExFAT 报告发布、Route Frame 续上下文与 checkpoint；DeepSeek smoke 为 6/12 成功，质量仍未通过 |
+| F215 | 已完成（证据不完整）：低并发退避、ExFAT 报告发布、Route Frame 续上下文与 checkpoint；DeepSeek smoke 续跑后为 8/12 成功，质量仍未通过 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -94,7 +94,7 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
 - F207 已补齐 F204 Hook 的本地 session/turn 指标聚合与 JSON/HTML 报告命令；报告只用于平台自身
   可观测性，不替代 Recall/MRR 或外部答案质量评测。
 - F215 已补齐有限退避、可恢复 checkpoint、DeepSeek V4 MSQL 导航提示、空 statements 兼容、
-  有界 Route Frame 续上下文和 ExFAT 外置盘报告发布；2026-08-06 smoke 为 6/12 成功，继续阻止
+  有界 Route Frame 续上下文和 ExFAT 外置盘报告发布；2026-08-06 smoke 续跑后为 8/12 成功，继续阻止
   质量通过和默认 arm 选择。
 
 ## 例外与非当前路径

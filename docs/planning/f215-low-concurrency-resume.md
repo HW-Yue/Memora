@@ -56,9 +56,10 @@ go run ./cmd/run-answer-benchmark \
 RED：本地 Provider 依次返回 429、503、成功，期待只在同一题串行退避三次；checkpoint 写入两题后模拟
 进程终止，恢复只调用未成功题；篡改 identity/hash、重复/未知题、截断文件必须拒绝。上述 targeted
 测试、全量 `go test`、定向 race、vet 和 diff check 均已通过。2026-08-06 DeepSeek V4 Flash smoke 使用
-`query-agent-v4`、`atlas-lexical-prefetch-v1` 和 6 Provider/5 Tool 预算，12 题中 1 题成功、11 题
-失败；随后保留有界 Route Frame 重跑为 6/12 成功，成功题完整经过 OPEN ROUTE → SELECT → 最终回答，
-最新 receipt 位于外置盘 `runs/deepseek-f215-smoke-20260806-r9/`。该 receipt 只证明真实
+`query-agent-v4`、`atlas-lexical-prefetch-v1` 和 6 Provider/5 Tool 预算，初次 12 题中 6 题成功；
+使用同一 hash-bound checkpoint 续跑失败题后，最终为 8/12 成功，8 个成功题的 SQL evidence 与
+evaluator-only fixture fact 对应。最新 receipt 位于外置盘
+`runs/deepseek-f215-smoke-20260806-r9-resume-3/`。该 receipt 只证明真实
 Provider/SQL/Trace/发布链路可执行，无论有无 key 都不宣称 AI 质量通过。
 
 ## 关联

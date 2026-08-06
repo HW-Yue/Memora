@@ -34,8 +34,8 @@ F214 将 MIRACL/MTRAG 转为 suite，后续低并发复评 Feature 消费这些�
 在恢复真实模型复跑前补齐 429/5xx 退避、单 worker 和 hash-bound checkpoint；它只降低失败重试成本，
 不把失败题过滤出分母，也不改变真实质量门。
 
-代码、恢复测试和门禁已完成；真实 DeepSeek smoke 已保存 receipt，保留有界 Route Frame 后 12 题有
-6 题成功。下一步
+代码、恢复测试和门禁已完成；真实 DeepSeek smoke 已保存 receipt，保留有界 Route Frame 并续跑失败题后
+12 题有 8 题成功。下一步
 不是扩大样本，而是先修正 Query Agent 的多轮导航/SQL 选择行为，再重新取得可评分的成功矩阵。
 
 ### 正式外部检索测评仍缺的桥接层
