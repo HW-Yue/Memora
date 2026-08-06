@@ -20,9 +20,10 @@ go run ./cmd/run-answer-benchmark \
   --dialect deepseek-v4-non-thinking \
   --secret-env DEEPSEEK_API_KEY \
   --max-attempts 4 --backoff 250ms --max-backoff 8s \
+  --max-provider-calls 6 --max-tool-calls 5 \
   --run-id deepseek-f215-smoke-20260806 \
   --arm atlas_lexical_prefetch \
-  --prompt-id query-agent-v1 \
+  --prompt-id query-agent-v4 \
   --code-revision "$(git rev-parse HEAD)"
 ```
 
