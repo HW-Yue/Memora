@@ -347,11 +347,15 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	for _, required := range []string{
 		"window.G6", "compact-box", "drag-canvas", "zoom-canvas", "collapse-expand",
 		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "打开完整文档", "Markdown",
-		"聚焦到中心", "aria-label", "fitView",
+		"聚焦到中心", "aria-label", "fitView", "canvas-inline-preview", "getElementPosition",
+		"getClientByCanvas", "aftertransform", "收起内容",
 	} {
 		if !strings.Contains(routeText, required) {
 			t.Errorf("Semantic canvas is missing %q", required)
 		}
+	}
+	if strings.Contains(routeText, "route-canvas-inspector") {
+		t.Error("Semantic canvas still renders a floating inspector instead of an inline canvas preview")
 	}
 
 	rows, err := fs.ReadFile(embeddedFiles, "dist/assets/rows.js")
