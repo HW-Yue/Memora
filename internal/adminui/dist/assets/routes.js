@@ -342,9 +342,9 @@ async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
   return data;
 }
 
-const DOCUMENT_NODE_WIDTH = 760;
-const DOCUMENT_NODE_MIN_HEIGHT = 560;
-const DOCUMENT_NODE_LINE_HEIGHT = 18;
+const DOCUMENT_NODE_WIDTH = 900;
+const DOCUMENT_NODE_MIN_HEIGHT = 620;
+const SYSTEM_COLUMNS = ["row_id", "revision", "commit_sequence", "row_state", "schema_version"];
 
 function displayValue(value) {
   if (value === null) return "null";
@@ -371,45 +371,118 @@ async function loadRowPreview(executeMSQL, locator) {
   return { row, columns: result.columns, detail: result.row_detail };
 }
 
-function documentNodeLines(text) {
-  return String(text).split("\n").reduce((count, line) =>
-    count + Math.max(1, Math.ceil(Array.from(line).length / 56)), 0);
+function markdownFragment(value) {
+  if (typeof value !== "string" || typeof window.markdownit !== "function" ||
+      !window.DOMPurify || typeof window.DOMPurify.sanitize !== "function") {
+    return null;
+  }
+  const markdownit = window.markdownit({ html: false, linkify: false, typographer: false });
+  const clean = window.DOMPurify.sanitize(markdownit.render(value), { USE_PROFILES: { html: true } });
+  const parsed = new DOMParser().parseFromString(clean, "text/html");
+  const fragment = document.createDocumentFragment();
+  for (const child of parsed.body.childNodes) fragment.append(child.cloneNode(true));
+  return fragment;
 }
 
-function documentNodeHeight(text) {
-  const estimatedLines = documentNodeLines(text);
-  return Math.max(DOCUMENT_NODE_MIN_HEIGHT,
-    112 + estimatedLines * DOCUMENT_NODE_LINE_HEIGHT);
+function appendMarkdown(parent, value) {
+  const rendered = element("div", "markdown-body semantic-document-reading");
+  const fragment = markdownFragment(value);
+  if (fragment) rendered.append(fragment);
+  else rendered.append(element("pre", "semantic-document-plain", displayValue(value)));
+  parent.append(rendered);
 }
 
-function rowDocumentText(locator, preview) {
-  const lines = [
-    "ROW CONTENT",
-    `row_id: ${locator.row_id}`,
-    `revision: ${locator.revision}`,
-    "",
-  ];
+function documentTitle(locator, preview) {
+  const titleColumn = preview.detail.display.title_column;
+  if (preview.row && titleColumn && preview.row[titleColumn] !== null) {
+    return displayValue(preview.row[titleColumn]);
+  }
+  return `${locator.row_id} · revision ${locator.revision}`;
+}
+
+function documentNodeElement(locator, preview, state) {
+  const article = element("article", `semantic-document-node semantic-document-${state}`);
+  const header = element("header", "semantic-document-header");
+  header.append(element("p", "semantic-document-kicker", "MEMORA ROW"));
+
+  if (state !== "ready") {
+    const lines = String(preview).split("\n");
+    header.append(element("h2", "", lines.shift() || "Row 内容"));
+    const body = element("div", "semantic-document-status");
+    body.append(element("p", "", lines.join("\n")));
+    article.append(header, body);
+    return article;
+  }
+
   if (!preview.row) {
-    lines.push("当前 Row 不可见", "locator 仍存在，但当前 revision 没有 live value。");
-    return lines.join("\n");
+    header.append(element("h2", "", "当前 Row 不可见"));
+    const body = element("div", "semantic-document-status");
+    body.append(element("p", "", "locator 仍存在，但当前 revision 没有 live value。"));
+    article.append(header, body);
+    return article;
   }
-  lines.push(preview.detail.row_semantics || "当前语义记录", "");
+
+  header.append(element("h2", "", documentTitle(locator, preview)),
+    element("p", "semantic-document-semantics", preview.detail.row_semantics || "当前语义记录"));
+
+  const metadata = element("dl", "semantic-document-metadata");
   for (const column of preview.columns) {
-    lines.push(`${column.name}  ·  ${column.type}`, displayValue(preview.row[column.name]), "");
+    if (!SYSTEM_COLUMNS.includes(column.name)) continue;
+    const item = element("div", "semantic-document-meta-item");
+    item.append(element("dt", "", column.name),
+      element("dd", "", displayValue(preview.row[column.name])));
+    metadata.append(item);
   }
-  return lines.join("\n");
+  header.append(metadata);
+  article.append(header);
+
+  const titleColumn = preview.detail.display.title_column || "";
+  const summaryColumn = preview.detail.display.summary_column || "";
+  const body = element("section", "semantic-document-body");
+  if (summaryColumn) appendMarkdown(body, preview.row[summaryColumn]);
+  else body.append(element("p", "semantic-document-empty", "这张表没有配置 summary 字段。"));
+  article.append(body);
+
+  const properties = element("footer", "semantic-document-properties");
+  properties.append(element("h3", "", "记录字段"));
+  const list = element("dl", "semantic-document-property-list");
+  for (const column of preview.columns) {
+    if (SYSTEM_COLUMNS.includes(column.name) || column.name === titleColumn ||
+        column.name === summaryColumn) continue;
+    const item = element("div", "semantic-document-property");
+    const term = element("dt", "", column.name);
+    term.append(element("span", "", column.type));
+    item.append(term, element("dd", "", displayValue(preview.row[column.name])));
+    list.append(item);
+  }
+  if (list.childElementCount) properties.append(list);
+  else properties.append(element("p", "semantic-document-empty", "没有其他业务字段。"));
+  article.append(properties);
+  return article;
+}
+
+function measuredDocumentHeight(article) {
+  const probe = article.cloneNode(true);
+  probe.classList.add("semantic-document-measure");
+  document.body.append(probe);
+  const height = Math.ceil(probe.getBoundingClientRect().height);
+  probe.remove();
+  return Math.max(DOCUMENT_NODE_MIN_HEIGHT, height);
+}
+
+function documentNodeHTML(data) {
+  return data.kind === "document" ? data.documentHTML : "";
 }
 
 function documentNode(locator, preview, state = "ready") {
-  const documentText = state === "ready" ? rowDocumentText(locator, preview) : preview;
+  const article = documentNodeElement(locator, preview, state);
   return {
     id: `row_document_${locator.row_id}`,
     kind: "document",
-    name: "ROW CONTENT",
-    documentText,
+    name: "MEMORA ROW",
+    documentHTML: article.outerHTML,
     documentWidth: DOCUMENT_NODE_WIDTH,
-    documentHeight: documentNodeHeight(documentText),
-    documentLines: documentNodeLines(documentText),
+    documentHeight: measuredDocumentHeight(article),
     documentState: state,
     children: [],
   };
@@ -568,31 +641,27 @@ function createSemanticGraph(container, tree, onNodeClick) {
     padding: [40, 420, 40, 80],
     data: graphData(tree),
     node: {
-      type: "rect",
+      type: (data) => data.kind === "document" ? "html" : "rect",
       style: {
         size: graphNodeSize,
+        dx: (data) => data.kind === "document" ?
+          -(data.documentWidth || DOCUMENT_NODE_WIDTH) / 2 : 0,
+        dy: (data) => data.kind === "document" ?
+          -(data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT) / 2 : 0,
+        innerHTML: documentNodeHTML,
         radius: (data) => data.kind === "document" ? 22 : 16,
         fill: (data) => data.kind === "document" ? "#fffef3" :
           data.kind === "leaf" ? "#f5edcf" : data.kind === "more" ? "#eef3ef" : "#e4efe7",
         stroke: (data) => data.kind === "document" ? "#6f947e" :
           data.kind === "leaf" ? "#b6a56d" : "#7c9e8b",
         lineWidth: (data) => data.kind === "document" ? 2.5 : 1.5,
-        labelText: (data) => data.kind === "document" ? data.documentText : data.name,
+        labelText: (data) => data.kind === "document" ? "" : data.name,
         labelPlacement: "center",
-        labelTextAlign: (data) => data.kind === "document" ? "left" : "center",
-        labelTextBaseline: (data) => data.kind === "document" ? "top" : "middle",
-        labelTransform: (data) => data.kind === "document" ? [["translate",
-          -(data.documentWidth || DOCUMENT_NODE_WIDTH) / 2 + 34,
-          -(data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT) / 2 + 32]] : [],
-        labelFill: (data) => data.kind === "document" ? "#263a2f" : "#2d4539",
-        labelFontSize: (data) => data.kind === "document" ? 12 : 14,
-        labelFontWeight: (data) => data.kind === "document" ? 500 : 700,
-        labelWordWrap: (data) => data.kind === "document",
-        labelWordWrapWidth: (data) => data.kind === "document" ?
-          (data.documentWidth || DOCUMENT_NODE_WIDTH) - 52 : 180,
-        labelMaxLines: (data) => data.kind === "document" ?
-          Math.max(40, (data.documentLines || 1) + 8) : 2,
-        labelLineHeight: (data) => data.kind === "document" ? DOCUMENT_NODE_LINE_HEIGHT : 21,
+        labelTextAlign: "center",
+        labelTextBaseline: "middle",
+        labelFill: "#2d4539",
+        labelFontSize: 14,
+        labelFontWeight: 700,
       },
     },
     edge: {
@@ -637,7 +706,7 @@ function statusDocumentNode(node, text, state = "status") {
 }
 
 function statusDocumentText(title, detail) {
-  return `ROW CONTENT\n\n${title}\n${detail}`;
+  return `${title}\n${detail}`;
 }
 
 function focusDocumentBranch(graph, routeID, documentID) {

@@ -101,6 +101,37 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .semantic-canvas-stage { position: relative; min-height: 650px; overflow: hidden; border: 1px solid #cbd6ce; border-radius: 18px; background: radial-gradient(circle at 20% 20%, rgb(231 242 233 / 80%), transparent 36%), #f8faf6; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%), 0 18px 48px rgb(44 72 55 / 8%); }
 .semantic-canvas { width: 100%; height: 700px; min-height: 520px; }
 .canvas-state { position: absolute; left: 18px; right: 18px; bottom: 18px; z-index: 1; margin: 0; opacity: .96; }
+.semantic-document-node { box-sizing: border-box; width: 900px; min-height: 620px; overflow: hidden; border: 2px solid #789786; border-radius: 20px; color: #27352d; background: #fffefa; box-shadow: 0 28px 72px rgb(42 60 47 / 16%); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; pointer-events: none; }
+.semantic-document-measure { position: fixed; top: 0; left: -12000px; z-index: -1; visibility: hidden; }
+.semantic-document-header { width: min(760px, calc(100% - 112px)); margin: 0 auto; padding: 52px 0 30px; }
+.semantic-document-kicker { margin: 0 0 20px; color: #547260; font-size: 11px; font-weight: 800; letter-spacing: .2em; }
+.semantic-document-header h2 { margin: 0; color: #202c25; font-family: Georgia, "Songti SC", serif; font-size: 42px; font-weight: 500; line-height: 1.18; overflow-wrap: anywhere; }
+.semantic-document-semantics { margin: 16px 0 0; color: #637168; font-size: 14px; font-weight: 560; line-height: 1.7; }
+.semantic-document-metadata { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 0; }
+.semantic-document-meta-item { display: flex; min-width: 0; overflow: hidden; border: 1px solid #d1dbd3; border-radius: 999px; background: #f4f7f2; font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 10px; }
+.semantic-document-meta-item dt { flex: 0 0 auto; padding: 6px 7px 6px 10px; color: #748078; font-weight: 700; }
+.semantic-document-meta-item dd { min-width: 0; margin: 0; padding: 6px 10px 6px 0; color: #345442; font-weight: 650; overflow-wrap: anywhere; }
+.semantic-document-body { border-top: 1px solid #dce3dc; border-bottom: 1px solid #dce3dc; padding: 42px 56px 46px; background: #fffdf7; }
+.semantic-document-reading { width: min(720px, 100%); margin: 0 auto; color: #25342c; font-size: 16px; line-height: 1.85; }
+.semantic-document-reading h1 { font-size: 34px; }
+.semantic-document-reading h2 { margin-top: 0; font-size: 27px; }
+.semantic-document-reading h3 { font-size: 21px; }
+.semantic-document-reading strong { color: #17241d; font-weight: 780; }
+.semantic-document-reading blockquote { margin-left: 0; border-left-width: 4px; padding: 8px 0 8px 18px; background: linear-gradient(90deg, #f0f5ef, transparent 76%); }
+.semantic-document-reading table { display: table; margin: 22px 0; font-size: 13px; }
+.semantic-document-reading th { color: #2e503e; background: #edf3ed; }
+.semantic-document-reading th, .semantic-document-reading td { padding: 10px 12px; vertical-align: top; }
+.semantic-document-reading pre { border: 1px solid #d7e0d8; padding: 16px 18px; }
+.semantic-document-properties { width: min(760px, calc(100% - 112px)); margin: 0 auto; padding: 34px 0 44px; }
+.semantic-document-properties h3 { margin: 0 0 16px; color: #496354; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.semantic-document-property-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.semantic-document-property { min-width: 0; border: 1px solid #d7ded7; border-radius: 10px; padding: 12px 14px; background: #f8faf6; }
+.semantic-document-property dt { display: flex; justify-content: space-between; gap: 12px; color: #293a31; font-size: 12px; font-weight: 750; }
+.semantic-document-property dt span { color: #7b877f; font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 9px; font-weight: 600; }
+.semantic-document-property dd { margin: 8px 0 0; color: #637168; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.semantic-document-status { display: grid; min-height: 430px; place-items: start; border-top: 1px solid #dce3dc; padding: 38px 70px; color: #637168; font-size: 15px; line-height: 1.75; white-space: pre-wrap; }
+.semantic-document-plain { overflow-x: auto; margin: 0; white-space: pre-wrap; }
+.semantic-document-empty { margin: 0; color: #748078; font-size: 13px; }
 .markdown-body { color: #27352d; font-size: 14px; line-height: 1.85; overflow-wrap: anywhere; }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body > :last-child { margin-bottom: 0; }

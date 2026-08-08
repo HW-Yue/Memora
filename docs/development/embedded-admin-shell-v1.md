@@ -38,6 +38,12 @@ Branch 才读取下一层。点击 Leaf 先打开唯一 locator，并按 RowID �
 深链路只保留为独立的 History/Revision 观察入口，不参与 Route Tree 的读取交互。画布工具栏
 的“聚焦到中心”只调整当前已加载节点的视口，不重新请求或改变语义树状态。
 
+当前 document 节点使用 G6 `html` 节点承载一个固定阅读宽度约 900px 的 WPS 风格文档面：
+标题、Row 语义说明和系统元数据位于页眉，`summary` 作为主要 Markdown 正文，其余业务字段
+位于同一节点底部的“记录字段”区。Markdown 由本地 `markdown-it` 解析、`DOMPurify` 清理后再
+挂入 HTML，支持标题、加粗、引用、列表、代码块和表格；外部 Row 内容不会直接拼接成未经清理
+的 HTML。节点高度按渲染后的 DOM 测量后交给布局，避免 Canvas 把长文压成一段不可读的纯文本。
+
 ## Browser session
 
 启动 URL 仍把 bootstrap token 放在 fragment。模块脚本首先同步调用

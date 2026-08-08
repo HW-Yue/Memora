@@ -280,7 +280,7 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 		}
 	}
 	for _, forbidden := range []string{
-		"innerHTML", "INSERT ", "UPDATE ", "DELETE ", "CREATE ",
+		"INSERT ", "UPDATE ", "DELETE ", "CREATE ",
 		"localStorage", "sessionStorage", "OPEN ROUTE :route CURSOR",
 	} {
 		if strings.Contains(javascript, forbidden) {
@@ -346,9 +346,12 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	routeText := string(routes)
 	for _, required := range []string{
 		"window.G6", "compact-box", "drag-canvas", "zoom-canvas", "collapse-expand",
-		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "ROW CONTENT", "documentNode",
-		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"", "documentText",
+		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "MEMORA ROW", "documentNode",
+		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"",
 		"DOCUMENT_NODE_WIDTH", "documentWidth", "translateElementTo", "focusElement",
+		"type: (data) => data.kind === \"document\" ? \"html\" : \"rect\"",
+		"innerHTML: documentNodeHTML", "markdownit({ html: false", "DOMPurify.sanitize",
+		"semantic-document-node", "semantic-document-reading", "semantic-document-properties",
 		"for (const column of preview.columns)",
 	} {
 		if !strings.Contains(routeText, required) {
@@ -357,7 +360,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"route-canvas-inspector", "canvas-inline-preview", "canvas-inline-close",
-		"打开完整文档", "preview.columns.slice",
+		"打开完整文档", "preview.columns.slice", "documentText", "labelWordWrap",
 	} {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
@@ -387,6 +390,8 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		".route-rows .content { width: 100%; max-width: none;",
 		".route-rows .route-outlet { max-width: none; padding: 0; border: 0; background: transparent;",
 		"grid-template-columns: minmax(0, 920px) minmax(240px, 290px)",
+		".semantic-document-node", "width: 900px", ".semantic-document-reading",
+		".semantic-document-metadata", ".semantic-document-properties",
 	} {
 		if !strings.Contains(styleText, required) {
 			t.Errorf("Wide Row document layout is missing %q", required)
