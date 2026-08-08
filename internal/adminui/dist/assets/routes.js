@@ -342,7 +342,9 @@ async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
   return data;
 }
 
-const PREVIEW_BYTES = 128 * 1024;
+const DOCUMENT_NODE_WIDTH = 760;
+const DOCUMENT_NODE_MIN_HEIGHT = 560;
+const DOCUMENT_NODE_LINE_HEIGHT = 18;
 
 function displayValue(value) {
   if (value === null) return "null";
@@ -351,43 +353,6 @@ function displayValue(value) {
   const encoded = JSON.stringify(value, null, 2);
   if (encoded === undefined) throw new RouteViewError("corrupt", "Row value cannot be displayed");
   return encoded;
-}
-
-function boundedPreview(value) {
-  const text = displayValue(value);
-  if (new TextEncoder().encode(text).length <= PREVIEW_BYTES) return text;
-  const shortened = Array.from(text).slice(0, Math.floor(PREVIEW_BYTES / 2)).join("");
-  return `${shortened}\n\n… 预览已截断，请打开完整文档查看。`;
-}
-
-function markdownFragment(value) {
-  const source = boundedPreview(value);
-  if (typeof window.markdownit !== "function" || !window.DOMPurify ||
-      typeof window.DOMPurify.sanitize !== "function") {
-    throw new RouteViewError("corrupt", "Markdown renderer is unavailable");
-  }
-  const markdown = window.markdownit({ html: false, linkify: false, typographer: false });
-  const clean = window.DOMPurify.sanitize(markdown.render(source), { USE_PROFILES: { html: true } });
-  const parsed = new DOMParser().parseFromString(clean, "text/html");
-  const fragment = document.createDocumentFragment();
-  for (const child of parsed.body.childNodes) fragment.append(child.cloneNode(true));
-  return fragment;
-}
-
-function previewField(column, row) {
-  const section = element("section", "route-preview-field");
-  const heading = element("div", "route-preview-field-heading");
-  heading.append(element("strong", "", column.name), element("span", "schema-badge", column.type));
-  section.append(heading);
-  const value = row[column.name];
-  if (typeof value === "string") {
-    const rendered = element("div", "markdown-body");
-    rendered.append(markdownFragment(value));
-    section.append(rendered);
-  } else {
-    section.append(element("pre", "row-field-value", boundedPreview(value)));
-  }
-  return section;
 }
 
 async function loadRowPreview(executeMSQL, locator) {
@@ -404,6 +369,80 @@ async function loadRowPreview(executeMSQL, locator) {
     throw new RouteViewError("corrupt", "Row preview identity is invalid");
   }
   return { row, columns: result.columns, detail: result.row_detail };
+}
+
+function documentNodeLines(text) {
+  return String(text).split("\n").reduce((count, line) =>
+    count + Math.max(1, Math.ceil(Array.from(line).length / 56)), 0);
+}
+
+function documentNodeHeight(text) {
+  const estimatedLines = documentNodeLines(text);
+  return Math.max(DOCUMENT_NODE_MIN_HEIGHT,
+    112 + estimatedLines * DOCUMENT_NODE_LINE_HEIGHT);
+}
+
+function rowDocumentText(locator, preview) {
+  const lines = [
+    "ROW CONTENT",
+    `row_id: ${locator.row_id}`,
+    `revision: ${locator.revision}`,
+    "",
+  ];
+  if (!preview.row) {
+    lines.push("当前 Row 不可见", "locator 仍存在，但当前 revision 没有 live value。");
+    return lines.join("\n");
+  }
+  lines.push(preview.detail.row_semantics || "当前语义记录", "");
+  for (const column of preview.columns) {
+    lines.push(`${column.name}  ·  ${column.type}`, displayValue(preview.row[column.name]), "");
+  }
+  return lines.join("\n");
+}
+
+function documentNode(locator, preview, state = "ready") {
+  const documentText = state === "ready" ? rowDocumentText(locator, preview) : preview;
+  return {
+    id: `row_document_${locator.row_id}`,
+    kind: "document",
+    name: "ROW CONTENT",
+    documentText,
+    documentWidth: DOCUMENT_NODE_WIDTH,
+    documentHeight: documentNodeHeight(documentText),
+    documentLines: documentNodeLines(documentText),
+    documentState: state,
+    children: [],
+  };
+}
+
+function findDocumentNode(node) {
+  return (node.children || []).find((child) => child.kind === "document") || null;
+}
+
+function graphNodeSize(data) {
+  if (data?.kind === "document") {
+    return [data.documentWidth || DOCUMENT_NODE_WIDTH, data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT];
+  }
+  return [220, 72];
+}
+
+function layoutNodeData(node) {
+  return node?.data?.data || node?.data || node || {};
+}
+
+function isDocumentLayoutNode(node) {
+  const data = layoutNodeData(node);
+  return data.kind === "document" || String(data.id || node?.id || "").startsWith("row_document_");
+}
+
+function graphNodeWidth(node) {
+  const data = layoutNodeData(node);
+  return isDocumentLayoutNode(node) ? data.documentWidth || DOCUMENT_NODE_WIDTH : 220;
+}
+
+function graphNodeHeight(node) {
+  const data = layoutNodeData(node);
+  return isDocumentLayoutNode(node) ? data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT : 72;
 }
 
 function treeNode(row) {
@@ -464,95 +503,36 @@ function graphData(tree) {
   return window.G6.treeToGraphData(tree);
 }
 
-function inspectorState(kind, title, detail) {
-  return stateNode(kind, title, detail);
+function setCanvasState(stage, kind, title, detail) {
+  const current = stage.querySelector(".canvas-state");
+  if (current) current.remove();
+  const state = stateNode(kind, title, detail);
+  state.classList.add("canvas-state");
+  stage.append(state);
 }
 
-function inlineCanvasPoint(graph, nodeID) {
-  const position = graph?.getElementPosition?.(nodeID);
-  const canvas = graph?.getCanvas?.();
-  const client = position && canvas?.getClientByCanvas?.(position);
-  if (!client) return null;
-  const x = Array.isArray(client) ? client[0] : client.x;
-  const y = Array.isArray(client) ? client[1] : client.y;
-  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+function clearCanvasState(stage) {
+  const current = stage.querySelector(".canvas-state");
+  if (current) current.remove();
 }
 
-function positionInlineCanvasPreview(stage, graph, nodeID) {
-  const preview = stage.querySelector(".canvas-inline-preview");
-  const point = inlineCanvasPoint(graph, nodeID);
-  if (!preview || preview.hidden || !point) return;
-  const stageRect = stage.getBoundingClientRect();
-  const width = preview.offsetWidth || 470;
-  const height = preview.offsetHeight || 360;
-  const localX = point.x - stageRect.left;
-  const maxLeft = stage.clientWidth - width - 18;
-  const rightPosition = localX + 132;
-  const leftPosition = localX - width - 132;
-  const left = rightPosition <= maxLeft ? rightPosition : leftPosition >= 18 ? leftPosition :
-    Math.max(18, Math.min(localX - width / 2, maxLeft));
-  const top = Math.max(18, Math.min(
-    point.y - stageRect.top - Math.min(150, height / 3),
-    stage.clientHeight - height - 18
-  ));
-  preview.style.left = `${left}px`;
-  preview.style.top = `${top}px`;
+async function placeDocumentAfterLeaf(graph, leaf, document) {
+  if (!document || typeof graph.getElementPosition !== "function" ||
+      typeof graph.translateElementTo !== "function") return;
+  const position = graph.getElementPosition(leaf.id);
+  const x = Array.isArray(position) ? position[0] : position?.x;
+  const y = Array.isArray(position) ? position[1] : position?.y;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const documentWidth = document.documentWidth || DOCUMENT_NODE_WIDTH;
+  await graph.translateElementTo(document.id, [x + 110 + 72 + documentWidth / 2, y], false);
 }
 
-function setCanvasPreview(stage, graph, nodeID, content) {
-  const preview = stage.querySelector(".canvas-inline-preview");
-  if (!preview) return;
-  const close = element("button", "canvas-inline-close", "收起内容");
-  close.type = "button";
-  close.setAttribute("aria-label", "收起画布中的 Row 内容");
-  close.addEventListener("click", () => {
-    preview.hidden = true;
-    preview.replaceChildren();
-    preview.dataset.anchor = "";
-  });
-  preview.hidden = false;
-  preview.classList.remove("is-centered");
-  preview.dataset.anchor = nodeID || "";
-  preview.replaceChildren(content, close);
-  positionInlineCanvasPreview(stage, graph, nodeID);
-}
-
-function setCanvasEmptyState(stage, content) {
-  const preview = stage.querySelector(".canvas-inline-preview");
-  if (!preview) return;
-  preview.hidden = false;
-  preview.dataset.anchor = "";
-  preview.classList.add("is-centered");
-  preview.replaceChildren(content);
-}
-
-function nodeInspector(node) {
-  const content = element("div", "route-inspector-content");
-  content.append(element("p", "inspector-kicker", node.kind === "more" ? "CONTINUE" : "SEMANTIC NODE"));
-  content.append(element("h3", "", node.name), element("p", "", node.purpose));
-  if (node.aliases?.length) content.append(element("small", "", `别名：${node.aliases.join("、")}`));
-  if (node.path) content.append(element("code", "", `${node.path} · revision ${node.revision}`));
-  return content;
-}
-
-function rowInspector(locator, preview, databaseID, tableID) {
-  const content = element("div", "route-inspector-content");
-  content.append(element("p", "inspector-kicker", "ROW CONTENT"));
-  content.append(element("h3", "", preview.row ? (preview.detail.display?.title_column ?
-    displayValue(preview.row[preview.detail.display.title_column]) : locator.row_id) : locator.row_id));
-  content.append(element("p", "", preview.detail.row_semantics || "当前语义记录"));
-  if (!preview.row) {
-    content.append(inspectorState("empty", "当前 Row 不可见", "locator 仍存在，但当前 revision 没有 live value。"));
-    return content;
-  }
-  const fields = element("div", "route-preview-fields");
-  for (const column of preview.columns.slice(5)) fields.append(previewField(column, preview.row));
-  content.append(fields);
-  const link = element("a", "route-document-link", "打开完整文档");
-  link.href = `/rows/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}/${encodeURIComponent(locator.row_id)}`;
-  link.dataset.route = "";
-  content.append(link);
-  return content;
+async function replaceDocumentNode(graph, tree, node, document) {
+  node.children = document ? [document] : [];
+  graph.setData(graphData(tree));
+  await graph.render();
+  await placeDocumentAfterLeaf(graph, node, document);
+  return document;
 }
 
 async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableID, cursor = "") {
@@ -590,19 +570,29 @@ function createSemanticGraph(container, tree, onNodeClick) {
     node: {
       type: "rect",
       style: {
-        size: [220, 72],
-        radius: 16,
-        fill: (data) => data.kind === "leaf" ? "#f5edcf" : data.kind === "more" ? "#eef3ef" : "#e4efe7",
-        stroke: (data) => data.kind === "leaf" ? "#b6a56d" : "#7c9e8b",
-        lineWidth: 1.5,
-        labelText: (data) => data.name,
+        size: graphNodeSize,
+        radius: (data) => data.kind === "document" ? 22 : 16,
+        fill: (data) => data.kind === "document" ? "#fffef3" :
+          data.kind === "leaf" ? "#f5edcf" : data.kind === "more" ? "#eef3ef" : "#e4efe7",
+        stroke: (data) => data.kind === "document" ? "#6f947e" :
+          data.kind === "leaf" ? "#b6a56d" : "#7c9e8b",
+        lineWidth: (data) => data.kind === "document" ? 2.5 : 1.5,
+        labelText: (data) => data.kind === "document" ? data.documentText : data.name,
         labelPlacement: "center",
-        labelFill: "#2d4539",
-        labelFontSize: 14,
-        labelFontWeight: 700,
-        labelWordWrapWidth: 180,
-        labelMaxLines: 2,
-        labelLineHeight: 21,
+        labelTextAlign: (data) => data.kind === "document" ? "left" : "center",
+        labelTextBaseline: (data) => data.kind === "document" ? "top" : "middle",
+        labelTransform: (data) => data.kind === "document" ? [["translate",
+          -(data.documentWidth || DOCUMENT_NODE_WIDTH) / 2 + 34,
+          -(data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT) / 2 + 32]] : [],
+        labelFill: (data) => data.kind === "document" ? "#263a2f" : "#2d4539",
+        labelFontSize: (data) => data.kind === "document" ? 12 : 14,
+        labelFontWeight: (data) => data.kind === "document" ? 500 : 700,
+        labelWordWrap: (data) => data.kind === "document",
+        labelWordWrapWidth: (data) => data.kind === "document" ?
+          (data.documentWidth || DOCUMENT_NODE_WIDTH) - 52 : 180,
+        labelMaxLines: (data) => data.kind === "document" ?
+          Math.max(40, (data.documentLines || 1) + 8) : 2,
+        labelLineHeight: (data) => data.kind === "document" ? DOCUMENT_NODE_LINE_HEIGHT : 21,
       },
     },
     edge: {
@@ -612,8 +602,8 @@ function createSemanticGraph(container, tree, onNodeClick) {
     layout: {
       type: "compact-box",
       direction: "LR",
-      getWidth: () => 220,
-      getHeight: () => 72,
+      getWidth: graphNodeWidth,
+      getHeight: graphNodeHeight,
       getHGap: () => 72,
       getVGap: () => 22,
     },
@@ -640,6 +630,58 @@ function focusSemanticGraph(graph) {
     return;
   }
   if (typeof graph.fitCenter === "function") graph.fitCenter({ animation: { duration: 300 } });
+}
+
+function statusDocumentNode(node, text, state = "status") {
+  return documentNode({ row_id: node.id, revision: node.revision }, text, state);
+}
+
+function statusDocumentText(title, detail) {
+  return `ROW CONTENT\n\n${title}\n${detail}`;
+}
+
+function focusDocumentBranch(graph, routeID, documentID) {
+  const zoom = Math.min(1, Math.max(graph.getZoom?.() || 0, 0.8));
+  Promise.resolve(graph.zoomTo?.(zoom, { duration: 220 }))
+    .then(() => graph.focusElement?.([routeID, documentID], { duration: 260 }))
+    .catch(() => {});
+}
+
+async function toggleLeafDocument(graph, tree, node, executeMSQL, databaseID, tableID) {
+  node.documentRequest = (node.documentRequest || 0) + 1;
+  const request = node.documentRequest;
+  const current = findDocumentNode(node);
+  if (current) {
+    await replaceDocumentNode(graph, tree, node, null);
+    focusSemanticGraph(graph);
+    return;
+  }
+
+  const pending = statusDocumentNode(node, statusDocumentText("正在读取 Row 内容", "先打开唯一 locator，再按 RowID 回表…"));
+  await replaceDocumentNode(graph, tree, node, pending);
+  focusDocumentBranch(graph, node.id, pending.id);
+  try {
+    const locators = await loadLocators(executeMSQL, databaseID, tableID, node.route_id);
+    if (request !== node.documentRequest) return;
+    if (locators.rows.length === 0) {
+      const empty = statusDocumentNode(node, statusDocumentText("这个 Leaf 还没有 Row", "当前语义节点尚未关联活跃 Row。"), "empty");
+      await replaceDocumentNode(graph, tree, node, empty);
+      focusDocumentBranch(graph, node.id, empty.id);
+      return;
+    }
+    const locator = locators.rows[0];
+    const preview = await loadRowPreview(executeMSQL, locator);
+    if (request !== node.documentRequest) return;
+    const content = documentNode(locator, preview);
+    await replaceDocumentNode(graph, tree, node, content);
+    focusDocumentBranch(graph, node.id, content.id);
+  } catch (error) {
+    if (request !== node.documentRequest) return;
+    const [kind, title, detail] = errorState(error);
+    const failure = statusDocumentNode(node, statusDocumentText(title, detail), kind);
+    await replaceDocumentNode(graph, tree, node, failure);
+    focusDocumentBranch(graph, node.id, failure.id);
+  }
 }
 
 function landingView() {
@@ -682,68 +724,44 @@ export async function renderRoutes(root, options) {
     const stage = element("div", "semantic-canvas-stage");
     const canvas = element("div", "semantic-canvas");
     canvas.setAttribute("aria-label", "语义索引树无限画布");
-    const inlinePreview = element("div", "canvas-inline-preview");
-    inlinePreview.setAttribute("aria-label", "画布中的语义节点内容");
-    inlinePreview.hidden = true;
-    stage.append(canvas, inlinePreview);
+    stage.append(canvas);
     view.append(toolbar, stage);
     root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
     root.replaceChildren(view);
     if (data.rows.length === 0) {
-      setCanvasEmptyState(stage, inspectorState("empty", "这个 Table 还没有 Route", "语义索引建立后，第一层节点会显示在这里。"));
+      setCanvasState(stage, "empty", "这个 Table 还没有 Route", "语义索引建立后，第一层节点会显示在这里。");
       return;
     }
     const graph = createSemanticGraph(canvas, tree, async (currentGraph, nodeID) => {
       const node = findTreeNode(tree, nodeID);
       if (!node) return;
+      clearCanvasState(stage);
       currentGraph.setElementState(nodeID, "selected");
       if (node.kind === "more") {
         const parent = findTreeNode(tree, node.moreParent);
         if (!parent) return;
-        setCanvasPreview(stage, graph, node.id, inspectorState("loading", "正在加载这一层", "读取下一页语义节点…"));
         try {
           await (parent.id === tree.id ? appendRootPage(graph, tree, options.executeMSQL, databaseID, tableID, node.moreCursor) :
             appendChildren(graph, tree, parent, options.executeMSQL, databaseID, tableID, node.moreCursor));
-          setCanvasPreview(stage, graph, parent.id, nodeInspector(parent));
         } catch (error) {
           const [kind, title, detail] = errorState(error);
-          setCanvasPreview(stage, graph, node.id, inspectorState(kind, title, detail));
+          setCanvasState(stage, kind, title, detail);
         }
         return;
       }
       if (node.kind === "branch") {
         if (!node.childrenLoaded) {
-          setCanvasPreview(stage, graph, node.id, inspectorState("loading", "正在展开语义分支", "按需读取下一层 Route…"));
           try {
             await appendChildren(graph, tree, node, options.executeMSQL, databaseID, tableID);
-            setCanvasPreview(stage, graph, node.id, nodeInspector(node));
           } catch (error) {
             const [kind, title, detail] = errorState(error);
-            setCanvasPreview(stage, graph, node.id, inspectorState(kind, title, detail));
+            setCanvasState(stage, kind, title, detail);
           }
-        } else {
-          setCanvasPreview(stage, graph, node.id, nodeInspector(node));
         }
         return;
       }
       if (node.kind !== "leaf") return;
-      setCanvasPreview(stage, graph, node.id, inspectorState("loading", "正在展开 Row 内容", "先打开唯一 locator，再按 RowID 回表…"));
-      try {
-        const locators = await loadLocators(options.executeMSQL, databaseID, tableID, node.route_id);
-        if (locators.rows.length === 0) {
-          setCanvasPreview(stage, graph, node.id, inspectorState("empty", "这个 Leaf 还没有 Row", "当前语义节点尚未关联活跃 Row。"));
-          return;
-        }
-        const preview = await loadRowPreview(options.executeMSQL, locators.rows[0]);
-        setCanvasPreview(stage, graph, node.id, rowInspector(locators.rows[0], preview, databaseID, tableID));
-      } catch (error) {
-        const [kind, title, detail] = errorState(error);
-        setCanvasPreview(stage, graph, node.id, inspectorState(kind, title, detail));
-      }
-    });
-    graph.on("aftertransform", () => {
-      const preview = stage.querySelector(".canvas-inline-preview");
-      if (preview?.dataset.anchor) positionInlineCanvasPreview(stage, graph, preview.dataset.anchor);
+      await toggleLeafDocument(currentGraph, tree, node, options.executeMSQL, databaseID, tableID);
     });
     focusButton.addEventListener("click", () => focusSemanticGraph(graph));
     await graph.render();
@@ -752,9 +770,8 @@ export async function renderRoutes(root, options) {
       const selected = findTreeNode(tree, routeID);
       if (selected) {
         await graph.focusElement?.(routeID, { duration: 250 });
-        setCanvasPreview(stage, graph, selected.id, nodeInspector(selected));
       } else {
-        setCanvasPreview(stage, graph, tree.id, inspectorState("empty", "节点尚未展开", "这个深链路节点位于未加载的语义分支，请从根节点逐层展开。"));
+        setCanvasState(stage, "empty", "节点尚未展开", "这个深链路节点位于未加载的语义分支，请从根节点逐层展开。");
       }
     }
   } catch (error) {

@@ -346,16 +346,22 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	routeText := string(routes)
 	for _, required := range []string{
 		"window.G6", "compact-box", "drag-canvas", "zoom-canvas", "collapse-expand",
-		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "打开完整文档", "Markdown",
-		"聚焦到中心", "aria-label", "fitView", "canvas-inline-preview", "getElementPosition",
-		"getClientByCanvas", "aftertransform", "收起内容",
+		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "ROW CONTENT", "documentNode",
+		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"", "documentText",
+		"DOCUMENT_NODE_WIDTH", "documentWidth", "translateElementTo", "focusElement",
+		"for (const column of preview.columns)",
 	} {
 		if !strings.Contains(routeText, required) {
 			t.Errorf("Semantic canvas is missing %q", required)
 		}
 	}
-	if strings.Contains(routeText, "route-canvas-inspector") {
-		t.Error("Semantic canvas still renders a floating inspector instead of an inline canvas preview")
+	for _, forbidden := range []string{
+		"route-canvas-inspector", "canvas-inline-preview", "canvas-inline-close",
+		"打开完整文档", "preview.columns.slice",
+	} {
+		if strings.Contains(routeText, forbidden) {
+			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
+		}
 	}
 
 	rows, err := fs.ReadFile(embeddedFiles, "dist/assets/rows.js")
@@ -384,6 +390,11 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	} {
 		if !strings.Contains(styleText, required) {
 			t.Errorf("Wide Row document layout is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{".canvas-inline-preview", ".canvas-inline-close", ".route-canvas-inspector"} {
+		if strings.Contains(styleText, forbidden) {
+			t.Errorf("Semantic canvas stylesheet still contains floating preview %q", forbidden)
 		}
 	}
 
