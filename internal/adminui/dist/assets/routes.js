@@ -464,13 +464,66 @@ function graphData(tree) {
   return window.G6.treeToGraphData(tree);
 }
 
-function setInspector(root, content) {
-  const inspector = root.querySelector(".route-canvas-inspector");
-  if (inspector) inspector.replaceChildren(content);
-}
-
 function inspectorState(kind, title, detail) {
   return stateNode(kind, title, detail);
+}
+
+function inlineCanvasPoint(graph, nodeID) {
+  const position = graph?.getElementPosition?.(nodeID);
+  const canvas = graph?.getCanvas?.();
+  const client = position && canvas?.getClientByCanvas?.(position);
+  if (!client) return null;
+  const x = Array.isArray(client) ? client[0] : client.x;
+  const y = Array.isArray(client) ? client[1] : client.y;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+function positionInlineCanvasPreview(stage, graph, nodeID) {
+  const preview = stage.querySelector(".canvas-inline-preview");
+  const point = inlineCanvasPoint(graph, nodeID);
+  if (!preview || preview.hidden || !point) return;
+  const stageRect = stage.getBoundingClientRect();
+  const width = preview.offsetWidth || 470;
+  const height = preview.offsetHeight || 360;
+  const localX = point.x - stageRect.left;
+  const maxLeft = stage.clientWidth - width - 18;
+  const rightPosition = localX + 132;
+  const leftPosition = localX - width - 132;
+  const left = rightPosition <= maxLeft ? rightPosition : leftPosition >= 18 ? leftPosition :
+    Math.max(18, Math.min(localX - width / 2, maxLeft));
+  const top = Math.max(18, Math.min(
+    point.y - stageRect.top - Math.min(150, height / 3),
+    stage.clientHeight - height - 18
+  ));
+  preview.style.left = `${left}px`;
+  preview.style.top = `${top}px`;
+}
+
+function setCanvasPreview(stage, graph, nodeID, content) {
+  const preview = stage.querySelector(".canvas-inline-preview");
+  if (!preview) return;
+  const close = element("button", "canvas-inline-close", "收起内容");
+  close.type = "button";
+  close.setAttribute("aria-label", "收起画布中的 Row 内容");
+  close.addEventListener("click", () => {
+    preview.hidden = true;
+    preview.replaceChildren();
+    preview.dataset.anchor = "";
+  });
+  preview.hidden = false;
+  preview.classList.remove("is-centered");
+  preview.dataset.anchor = nodeID || "";
+  preview.replaceChildren(content, close);
+  positionInlineCanvasPreview(stage, graph, nodeID);
+}
+
+function setCanvasEmptyState(stage, content) {
+  const preview = stage.querySelector(".canvas-inline-preview");
+  if (!preview) return;
+  preview.hidden = false;
+  preview.dataset.anchor = "";
+  preview.classList.add("is-centered");
+  preview.replaceChildren(content);
 }
 
 function nodeInspector(node) {
@@ -484,7 +537,7 @@ function nodeInspector(node) {
 
 function rowInspector(locator, preview, databaseID, tableID) {
   const content = element("div", "route-inspector-content");
-  content.append(element("p", "inspector-kicker", "ROW PREVIEW"));
+  content.append(element("p", "inspector-kicker", "ROW CONTENT"));
   content.append(element("h3", "", preview.row ? (preview.detail.display?.title_column ?
     displayValue(preview.row[preview.detail.display.title_column]) : locator.row_id) : locator.row_id));
   content.append(element("p", "", preview.detail.row_semantics || "当前语义记录"));
@@ -617,10 +670,10 @@ export async function renderRoutes(root, options) {
     const tree = treeRoot(data.object, data.rows, data.page);
     const view = element("div", "semantic-canvas-page");
     view.append(breadcrumbs([{ label: data.object.name, href: `/catalog/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}` }]),
-      heading(`${data.object.name} 语义索引`, "在这张 Table 的语义路由树中定位 Row。点击 Branch 展开，点击 Leaf 在画布右侧预览 Row。",
+      heading(`${data.object.name} 语义索引`, "在这张 Table 的语义路由树中定位 Row。点击 Branch 展开，点击 Leaf 在画布中展开 Row 内容。",
         [data.object.table_id, `schema v${data.object.schema_version}`]));
     const toolbar = element("div", "semantic-canvas-toolbar");
-    toolbar.append(element("span", "canvas-hint", "拖动画布 · 滚轮缩放 · 点击 Branch 展开/收起 · 点击 Leaf 预览"));
+    toolbar.append(element("span", "canvas-hint", "拖动画布 · 滚轮缩放 · 点击 Branch 展开/收起 · 点击 Leaf 展开内容"));
     const focusButton = element("button", "canvas-focus-button", "聚焦到中心");
     focusButton.type = "button";
     focusButton.setAttribute("aria-label", "聚焦到语义索引中心");
@@ -629,15 +682,15 @@ export async function renderRoutes(root, options) {
     const stage = element("div", "semantic-canvas-stage");
     const canvas = element("div", "semantic-canvas");
     canvas.setAttribute("aria-label", "语义索引树无限画布");
-    const inspector = element("aside", "route-canvas-inspector");
-    inspector.setAttribute("aria-label", "语义节点和 Row 预览");
-    inspector.append(inspectorState("empty", "选择一个节点", "Branch 展开语义层级，Leaf 会在这里显示 Row 预览。"));
-    stage.append(canvas, inspector);
+    const inlinePreview = element("div", "canvas-inline-preview");
+    inlinePreview.setAttribute("aria-label", "画布中的语义节点内容");
+    inlinePreview.hidden = true;
+    stage.append(canvas, inlinePreview);
     view.append(toolbar, stage);
     root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
     root.replaceChildren(view);
     if (data.rows.length === 0) {
-      setInspector(root, inspectorState("empty", "这个 Table 还没有 Route", "语义索引建立后，第一层节点会显示在这里。"));
+      setCanvasEmptyState(stage, inspectorState("empty", "这个 Table 还没有 Route", "语义索引建立后，第一层节点会显示在这里。"));
       return;
     }
     const graph = createSemanticGraph(canvas, tree, async (currentGraph, nodeID) => {
@@ -647,46 +700,50 @@ export async function renderRoutes(root, options) {
       if (node.kind === "more") {
         const parent = findTreeNode(tree, node.moreParent);
         if (!parent) return;
-        setInspector(root, inspectorState("loading", "正在加载这一层", "读取下一页语义节点…"));
+        setCanvasPreview(stage, graph, node.id, inspectorState("loading", "正在加载这一层", "读取下一页语义节点…"));
         try {
           await (parent.id === tree.id ? appendRootPage(graph, tree, options.executeMSQL, databaseID, tableID, node.moreCursor) :
             appendChildren(graph, tree, parent, options.executeMSQL, databaseID, tableID, node.moreCursor));
-          setInspector(root, nodeInspector(parent));
+          setCanvasPreview(stage, graph, parent.id, nodeInspector(parent));
         } catch (error) {
           const [kind, title, detail] = errorState(error);
-          setInspector(root, inspectorState(kind, title, detail));
+          setCanvasPreview(stage, graph, node.id, inspectorState(kind, title, detail));
         }
         return;
       }
       if (node.kind === "branch") {
         if (!node.childrenLoaded) {
-          setInspector(root, inspectorState("loading", "正在展开语义分支", "按需读取下一层 Route…"));
+          setCanvasPreview(stage, graph, node.id, inspectorState("loading", "正在展开语义分支", "按需读取下一层 Route…"));
           try {
             await appendChildren(graph, tree, node, options.executeMSQL, databaseID, tableID);
-            setInspector(root, nodeInspector(node));
+            setCanvasPreview(stage, graph, node.id, nodeInspector(node));
           } catch (error) {
             const [kind, title, detail] = errorState(error);
-            setInspector(root, inspectorState(kind, title, detail));
+            setCanvasPreview(stage, graph, node.id, inspectorState(kind, title, detail));
           }
         } else {
-          setInspector(root, nodeInspector(node));
+          setCanvasPreview(stage, graph, node.id, nodeInspector(node));
         }
         return;
       }
       if (node.kind !== "leaf") return;
-      setInspector(root, inspectorState("loading", "正在读取 Row 预览", "先打开唯一 locator，再按 RowID 回表…"));
+      setCanvasPreview(stage, graph, node.id, inspectorState("loading", "正在展开 Row 内容", "先打开唯一 locator，再按 RowID 回表…"));
       try {
         const locators = await loadLocators(options.executeMSQL, databaseID, tableID, node.route_id);
         if (locators.rows.length === 0) {
-          setInspector(root, inspectorState("empty", "这个 Leaf 还没有 Row", "当前语义节点尚未关联活跃 Row。"));
+          setCanvasPreview(stage, graph, node.id, inspectorState("empty", "这个 Leaf 还没有 Row", "当前语义节点尚未关联活跃 Row。"));
           return;
         }
         const preview = await loadRowPreview(options.executeMSQL, locators.rows[0]);
-        setInspector(root, rowInspector(locators.rows[0], preview, databaseID, tableID));
+        setCanvasPreview(stage, graph, node.id, rowInspector(locators.rows[0], preview, databaseID, tableID));
       } catch (error) {
         const [kind, title, detail] = errorState(error);
-        setInspector(root, inspectorState(kind, title, detail));
+        setCanvasPreview(stage, graph, node.id, inspectorState(kind, title, detail));
       }
+    });
+    graph.on("aftertransform", () => {
+      const preview = stage.querySelector(".canvas-inline-preview");
+      if (preview?.dataset.anchor) positionInlineCanvasPreview(stage, graph, preview.dataset.anchor);
     });
     focusButton.addEventListener("click", () => focusSemanticGraph(graph));
     await graph.render();
@@ -695,9 +752,9 @@ export async function renderRoutes(root, options) {
       const selected = findTreeNode(tree, routeID);
       if (selected) {
         await graph.focusElement?.(routeID, { duration: 250 });
-        setInspector(root, nodeInspector(selected));
+        setCanvasPreview(stage, graph, selected.id, nodeInspector(selected));
       } else {
-        setInspector(root, inspectorState("empty", "节点尚未展开", "这个深链路节点位于未加载的语义分支，请从根节点逐层展开。"));
+        setCanvasPreview(stage, graph, tree.id, inspectorState("empty", "节点尚未展开", "这个深链路节点位于未加载的语义分支，请从根节点逐层展开。"));
       }
     }
   } catch (error) {
