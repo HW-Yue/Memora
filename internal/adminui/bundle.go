@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const BundleVersion = "memora.admin-bundle/v2"
+const BundleVersion = "memora.admin-bundle/v3"
 
 //go:embed dist
 var embeddedFiles embed.FS
@@ -40,27 +40,39 @@ type assetSpec struct {
 var frozenAssets = []assetSpec{
 	{
 		file: "dist/index.html", path: "/", contentType: "text/html; charset=utf-8",
-		hash: "5d81a2f1d4b598c645eca1bbd9dd5e4ae271fd1046e5f4c8744db4fc07688f97", size: 2374,
+		hash: "4fd00a5b894b82338d20669df71559c6ceb4970a2476d02d22a50190a0945653", size: 2580,
 	},
 	{
 		file: "dist/assets/app.css", path: "/assets/app.css", contentType: "text/css; charset=utf-8",
-		hash: "2d1e9808fd2cef9a079bd80168b8087c00908e4dbabfd039747e3bd59e30baff", size: 18657,
+		hash: "a007037314290cce71162a94516aa1c1b21633be531ed66c54509edee47d37e2", size: 24712,
 	},
 	{
 		file: "dist/assets/app.js", path: "/assets/app.js", contentType: "text/javascript; charset=utf-8",
-		hash: "9aefaf4ba1444c446395e5b21132577f40f51f24642dd4e75610531482d71b35", size: 7644,
+		hash: "6712c1698e4e1b2c10afd6bdf10dec30ce9e209fe5e56025dff8ad6d92a9b420", size: 7702,
+	},
+	{
+		file: "dist/assets/vendor/g6-5.1.1.min.js", path: "/assets/vendor/g6-5.1.1.min.js", contentType: "text/javascript; charset=utf-8",
+		hash: "3e091a94fd08994a383ff34bfba256bb8e382e4be4042197a206d2ecc0957331", size: 1383347,
+	},
+	{
+		file: "dist/assets/vendor/markdown-it-15.0.0.min.js", path: "/assets/vendor/markdown-it-15.0.0.min.js", contentType: "text/javascript; charset=utf-8",
+		hash: "8d0f6aca8f4de3321b6d07e03286176c59ec19b7b84abb6eb31f0fa795e83abc", size: 114128,
+	},
+	{
+		file: "dist/assets/vendor/dompurify-3.4.7.min.js", path: "/assets/vendor/dompurify-3.4.7.min.js", contentType: "text/javascript; charset=utf-8",
+		hash: "f84e522876a6cfadecb89c173356409acec39f580c69018559c9a50e96299b0c", size: 26816,
 	},
 	{
 		file: "dist/assets/catalog.js", path: "/assets/catalog.js", contentType: "text/javascript; charset=utf-8",
-		hash: "7b1e7a110674784802e10ae95d7f88bd3ac70d24bf92f1c50c3dd10f81a31f69", size: 16078,
+		hash: "9fb6501492bce24588b0eec76c8ab72b69465314949f166dbba11856166c5d71", size: 17096,
 	},
 	{
 		file: "dist/assets/routes.js", path: "/assets/routes.js", contentType: "text/javascript; charset=utf-8",
-		hash: "35686314bb56c4670ff71f4094688d477fc61c52f2578f516ef9cd1750e8e975", size: 17858,
+		hash: "cb7ca8266942bca7b1a4f0e92d51639400c5879feb5f90540e9c97d191ebb3a2", size: 28407,
 	},
 	{
 		file: "dist/assets/rows.js", path: "/assets/rows.js", contentType: "text/javascript; charset=utf-8",
-		hash: "504f466320291ac86f319f17ec94c2a6338514b54b66df93ec8bd60d3259beae", size: 16945,
+		hash: "21ef5144869a04d08b3cc206eee60ac0ee988064ba69633c23d7fb0079cb1f02", size: 19428,
 	},
 	{
 		file: "dist/assets/changes.js", path: "/assets/changes.js", contentType: "text/javascript; charset=utf-8",
