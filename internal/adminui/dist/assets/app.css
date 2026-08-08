@@ -95,6 +95,9 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .semantic-canvas-page { display: grid; gap: 18px; min-width: 0; color: #26302b; }
 .semantic-canvas-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
 .canvas-hint { color: #68756e; font-size: 12px; }
+.canvas-focus-button { flex: 0 0 auto; border: 1px solid #789786; border-radius: 8px; padding: 8px 11px; color: #285641; background: #e7f0e8; font: inherit; font-size: 11px; font-weight: 750; cursor: pointer; }
+.canvas-focus-button:hover { border-color: #4f7b63; background: #dbeadd; }
+.canvas-focus-button:focus-visible { outline: 2px solid #4f7b63; outline-offset: 2px; }
 .semantic-canvas-stage { position: relative; min-height: 650px; overflow: hidden; border: 1px solid #cbd6ce; border-radius: 18px; background: radial-gradient(circle at 20% 20%, rgb(231 242 233 / 80%), transparent 36%), #f8faf6; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%), 0 18px 48px rgb(44 72 55 / 8%); }
 .semantic-canvas { width: 100%; height: 700px; min-height: 520px; }
 .route-canvas-inspector { position: absolute; z-index: 2; top: 18px; right: 18px; width: min(360px, calc(100% - 36px)); max-height: calc(100% - 36px); overflow: auto; border: 1px solid rgb(201 214 204 / 90%); border-radius: 14px; padding: 17px; background: rgb(255 255 252 / 91%); box-shadow: 0 16px 36px rgb(31 57 41 / 13%); backdrop-filter: blur(14px); }

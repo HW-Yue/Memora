@@ -581,6 +581,14 @@ function createSemanticGraph(container, tree, onNodeClick) {
   return graph;
 }
 
+function focusSemanticGraph(graph) {
+  if (typeof graph.fitView === "function") {
+    graph.fitView({ animation: { duration: 300 } });
+    return;
+  }
+  if (typeof graph.fitCenter === "function") graph.fitCenter({ animation: { duration: 300 } });
+}
+
 function landingView() {
   const view = element("div", "catalog-view route-view");
   view.append(breadcrumbs([]), heading("Route Tree", "每棵语义索引属于一个 Table。", ["read only"]));
@@ -613,6 +621,11 @@ export async function renderRoutes(root, options) {
         [data.object.table_id, `schema v${data.object.schema_version}`]));
     const toolbar = element("div", "semantic-canvas-toolbar");
     toolbar.append(element("span", "canvas-hint", "拖动画布 · 滚轮缩放 · 点击 Branch 展开/收起 · 点击 Leaf 预览"));
+    const focusButton = element("button", "canvas-focus-button", "聚焦到中心");
+    focusButton.type = "button";
+    focusButton.setAttribute("aria-label", "聚焦到语义索引中心");
+    focusButton.title = "将当前已加载的语义索引重新适配到画布中心";
+    toolbar.append(focusButton);
     const stage = element("div", "semantic-canvas-stage");
     const canvas = element("div", "semantic-canvas");
     canvas.setAttribute("aria-label", "语义索引树无限画布");
@@ -675,6 +688,7 @@ export async function renderRoutes(root, options) {
         setInspector(root, inspectorState(kind, title, detail));
       }
     });
+    focusButton.addEventListener("click", () => focusSemanticGraph(graph));
     await graph.render();
     if (parts.length === 3) {
       const routeID = stableID(parts[2], "route_", "Route");
