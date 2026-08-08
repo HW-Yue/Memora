@@ -168,7 +168,29 @@ function heading(title, purpose, id, version, extra) {
 }
 
 function objectCard(row, href, kind) {
-  const card = element("a", "object-card");
+	if (kind === "table") {
+		const card = element("article", "object-card table-card");
+		const link = element("a", "object-card-link");
+		link.href = href;
+		link.dataset.route = "";
+		link.setAttribute("aria-label", `查看 ${row.name} 表信息`);
+		link.append(element("strong", "", row.name));
+		link.append(element("p", "", row.row_semantics || row.purpose),
+			element("code", "", row.table_id));
+		const actions = element("div", "table-card-actions");
+		const schema = element("a", "table-action", "查看表结构");
+		schema.href = href;
+		schema.dataset.route = "";
+		schema.setAttribute("aria-label", `查看 ${row.name} 表结构`);
+		const routes = element("a", "table-action table-action-primary", "进入语义索引");
+		routes.href = `/routes/${encodeURIComponent(row.database_id)}/${encodeURIComponent(row.table_id)}`;
+		routes.dataset.route = "";
+		routes.setAttribute("aria-label", `进入 ${row.name} 语义索引`);
+		actions.append(schema, routes);
+		card.append(link, actions);
+		return card;
+	}
+	const card = element("a", "object-card");
   card.href = href;
   card.dataset.route = "";
   card.append(element("strong", "", row.name));
@@ -190,7 +212,7 @@ function columnRow(row) {
 }
 
 function routeEntry(databaseID, tableID) {
-  const link = element("a", "route-entry", "浏览 Route Tree");
+	const link = element("a", "route-entry", "进入语义索引");
   link.href = `/routes/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}`;
   link.dataset.route = "";
   return link;

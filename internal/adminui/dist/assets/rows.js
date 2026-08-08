@@ -220,6 +220,40 @@ function displayValue(value) {
   return encoded;
 }
 
+function markdownFragment(value) {
+  if (typeof value !== "string" || typeof window.markdownit !== "function" ||
+      !window.DOMPurify || typeof window.DOMPurify.sanitize !== "function") {
+    return null;
+  }
+  const markdownit = window.markdownit({ html: false, linkify: false, typographer: false });
+  const clean = window.DOMPurify.sanitize(markdownit.render(value), { USE_PROFILES: { html: true } });
+  const parsed = new DOMParser().parseFromString(clean, "text/html");
+  const fragment = document.createDocumentFragment();
+  for (const child of parsed.body.childNodes) fragment.append(child.cloneNode(true));
+  return fragment;
+}
+
+function markdownValue(value) {
+  const wrapper = element("div", "markdown-value");
+  const rendered = element("div", "markdown-body");
+  const fragment = markdownFragment(value);
+  if (fragment) rendered.append(fragment);
+  else rendered.append(element("pre", "row-field-value", displayValue(value)));
+  const source = element("pre", "row-field-value markdown-source");
+  source.textContent = displayValue(value);
+  source.hidden = true;
+  const toggle = element("button", "markdown-toggle", "查看 Markdown 原文");
+  toggle.type = "button";
+  toggle.addEventListener("click", () => {
+    const showingSource = !source.hidden;
+    source.hidden = showingSource;
+    rendered.hidden = !showingSource;
+    toggle.textContent = showingSource ? "查看 Markdown 原文" : "查看渲染结果";
+  });
+  wrapper.append(rendered, source, toggle);
+  return wrapper;
+}
+
 function heading(current, rowID) {
   const detail = current.detail;
   const titleColumn = detail.display.title_column;
@@ -252,8 +286,9 @@ function fieldSection(column, value) {
   badges.append(element("span", "schema-badge", column.type));
   if (column.semantic_role) badges.append(element("span", "schema-badge", column.semantic_role));
   header.append(identity, badges);
-  section.append(header, element("p", "row-field-purpose", column.purpose),
-    element("pre", "row-field-value", displayValue(value)));
+  section.append(header, element("p", "row-field-purpose", column.purpose));
+  if (typeof value === "string") section.append(markdownValue(value));
+  else section.append(element("pre", "row-field-value", displayValue(value)));
   return section;
 }
 
@@ -301,6 +336,19 @@ function historySection(history, loadMore, finalState, databaseID, tableID) {
       finalState, databaseID, tableID);
   }
   return section;
+}
+
+function metadataPanel(current, rowID) {
+  const panel = element("div", "row-side-metadata");
+  panel.append(element("p", "inspector-kicker", "ROW METADATA"), element("h3", "", "当前记录"));
+  panel.append(element("span", "object-id", rowID),
+    element("span", "schema-badge", `schema v${current.detail.schema_version}`));
+  if (current.row) {
+    panel.append(element("span", "schema-badge", `revision ${current.row.revision}`),
+      element("span", "schema-badge", current.row.row_state));
+  }
+  panel.append(element("p", "row-side-semantics", current.detail.row_semantics));
+  return panel;
 }
 
 function addHistoryContinuation(section, list, rows, page, loadMore, finalState, databaseID, tableID) {
@@ -368,17 +416,23 @@ export async function renderRow(root, options) {
     const data = await loadRow(options.executeMSQL, databaseID, tableID, rowID);
     if (!options.isCurrent()) return;
     const view = element("div", "catalog-view row-view");
-    view.append(heading(data.current, rowID));
-    if (data.current.row) view.append(documentSection(data.current));
-    else view.append(stateNode("empty", "当前 Row 不可见", "Row detail contract 有效，但当前 revision 没有 live value。"));
+    const layout = element("div", "row-document-layout");
+    const paper = element("article", "row-document-paper");
+    paper.append(heading(data.current, rowID));
+    if (data.current.row) paper.append(documentSection(data.current));
+    else paper.append(stateNode("empty", "当前 Row 不可见", "Row detail contract 有效，但当前 revision 没有 live value。"));
+    const side = element("aside", "row-side-panel");
+    side.append(metadataPanel(data.current, rowID));
     if (data.history.rows.length) {
       const finalState = data.current.row ? "ready" : "empty";
-      view.append(historySection(data.history,
+      side.append(historySection(data.history,
         (cursor) => loadHistory(options.executeMSQL, databaseID, tableID, rowID, cursor),
         finalState, databaseID, tableID));
     } else {
-      view.append(stateNode("empty", "还没有 History", "这个 RowID 没有可见 revision metadata。"));
+      side.append(stateNode("empty", "还没有 History", "这个 RowID 没有可见 revision metadata。"));
     }
+    layout.append(paper, side);
+    view.append(layout);
     root.dataset.pageState = data.history.page.truncated ? "truncated" : data.current.row ? "ready" : "empty";
     root.replaceChildren(view);
   } catch (error) {

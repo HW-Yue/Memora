@@ -1,6 +1,6 @@
 # Embedded Admin Shell v1
 
-状态：F116 已完成并验收；2026-08-01 冻结。
+状态：F116 已完成并验收；Admin 语义画布 Feature 在此基础上演进。
 
 ## 用户结果
 
@@ -10,7 +10,8 @@ Catalog，并用系统浏览器打开离线 Admin 壳。`--scope DATABASE` 是�
 `go:embed` 编译进同一个 `memora` binary，不需要 Node.js、CDN、外部字体或网络。
 
 F116 只交付导航容器、session 状态和统一 MSQL client。Catalog、Route、Row、Change、
-Diff 与 Trace 页面从 F117 起逐项实现；壳不得猜测或读取业务 Row。
+Diff 与 Trace 页面逐项实现；壳不得猜测或读取业务 Row。当前 Route 页面使用本地 G6
+无限画布，Leaf 预览仍然通过 `OPEN ROUTE` 和 RowID `SELECT` 回表。
 
 ## Bundle 与路由
 
@@ -28,6 +29,10 @@ index/JS/CSS 全部存在且逐字节匹配；缺失、增加或 tamper 都拒�
 validator 与 frozen bundle 必须在同一 Feature 中同步升级。Route Tree 接受并校验
 F182a 定义的非 null `aliases` 字段（最多 8 项、单项 1–64 个 Unicode 字符、合计最多
 512 UTF-8 bytes）。这类协议扩展不要求迁移或删除已有数据库。
+
+Route Canvas 默认从左到右显示 Table 语义树。进入页面只读取根和第一层节点；点击
+Branch 才读取下一层。点击 Leaf 先打开唯一 locator，并在画布右侧显示 Row Markdown
+预览；完整字段和 History 仍在正常文档宽度的 Row 页面中查看。
 
 ## Browser session
 

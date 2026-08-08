@@ -1,9 +1,9 @@
-import { renderCatalog } from "./catalog.js?v=2";
-import { renderChanges } from "./changes.js?v=2";
-import { renderDiff } from "./diffs.js?v=2";
-import { renderRoutes } from "./routes.js?v=2";
-import { renderRow } from "./rows.js?v=2";
-import { renderTraces } from "./traces.js?v=2";
+import { renderCatalog } from "./catalog.js?v=3";
+import { renderChanges } from "./changes.js?v=3";
+import { renderDiff } from "./diffs.js?v=3";
+import { renderRoutes } from "./routes.js?v=3";
+import { renderRow } from "./rows.js?v=3";
+import { renderTraces } from "./traces.js?v=3";
 
 let csrfToken = "";
 let sessionReady = false;
@@ -97,6 +97,7 @@ function updateNavigation(section) {
 async function renderCurrentRoute() {
   if (!sessionReady) return;
   const path = window.location.pathname;
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   routeLabel.textContent = path;
   if (path === "/catalog" || path.startsWith("/catalog/")) {
     document.body.classList.add("route-catalog");

@@ -123,6 +123,7 @@
 - [Go SDK](./development/go-sdk-v1.md)
 - [macOS LaunchAgent](./development/macos-launch-agent-v1.md)
 - [Admin Shell](./development/embedded-admin-shell-v1.md)
+- [Admin 第三方前端资源](./development/admin-third-party-notices.md)
 - [Route Trace](./query/route-trace-read-v1.md)
 - [评测 Agent 与外置 Hook](./development/evaluation-agent-observability.md)
 - [下一次 DeepSeek 评测启动问题](./development/evaluation-next-run.md) — 只从环境变量读取 key 的 F215 smoke 命令；

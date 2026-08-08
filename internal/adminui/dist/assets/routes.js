@@ -342,6 +342,245 @@ async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
   return data;
 }
 
+const PREVIEW_BYTES = 128 * 1024;
+
+function displayValue(value) {
+  if (value === null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  const encoded = JSON.stringify(value, null, 2);
+  if (encoded === undefined) throw new RouteViewError("corrupt", "Row value cannot be displayed");
+  return encoded;
+}
+
+function boundedPreview(value) {
+  const text = displayValue(value);
+  if (new TextEncoder().encode(text).length <= PREVIEW_BYTES) return text;
+  const shortened = Array.from(text).slice(0, Math.floor(PREVIEW_BYTES / 2)).join("");
+  return `${shortened}\n\n… 预览已截断，请打开完整文档查看。`;
+}
+
+function markdownFragment(value) {
+  const source = boundedPreview(value);
+  if (typeof window.markdownit !== "function" || !window.DOMPurify ||
+      typeof window.DOMPurify.sanitize !== "function") {
+    throw new RouteViewError("corrupt", "Markdown renderer is unavailable");
+  }
+  const markdown = window.markdownit({ html: false, linkify: false, typographer: false });
+  const clean = window.DOMPurify.sanitize(markdown.render(source), { USE_PROFILES: { html: true } });
+  const parsed = new DOMParser().parseFromString(clean, "text/html");
+  const fragment = document.createDocumentFragment();
+  for (const child of parsed.body.childNodes) fragment.append(child.cloneNode(true));
+  return fragment;
+}
+
+function previewField(column, row) {
+  const section = element("section", "route-preview-field");
+  const heading = element("div", "route-preview-field-heading");
+  heading.append(element("strong", "", column.name), element("span", "schema-badge", column.type));
+  section.append(heading);
+  const value = row[column.name];
+  if (typeof value === "string") {
+    const rendered = element("div", "markdown-body");
+    rendered.append(markdownFragment(value));
+    section.append(rendered);
+  } else {
+    section.append(element("pre", "row-field-value", boundedPreview(value)));
+  }
+  return section;
+}
+
+async function loadRowPreview(executeMSQL, locator) {
+  const subject = `${quoteIdentifier(locator.database_id, "db_")}.${quoteIdentifier(locator.table_id, "tbl_")}`;
+  const source = `SELECT * FROM ${subject} WHERE row_id = :row LIMIT 1`;
+  const results = resultsFrom(await executeMSQL(source, [statementInput({ row: locator.row_id })]), 1);
+  const result = results[0];
+  if (!Array.isArray(result.columns) || !result.row_detail || result.rows.length > 1) {
+    throw new RouteViewError("corrupt", "Row preview result is invalid");
+  }
+  const row = result.rows[0];
+  if (!row) return { row: null, columns: result.columns, detail: result.row_detail };
+  if (row.row_id !== locator.row_id || !positiveRevision(row.revision) || row.row_state !== "live") {
+    throw new RouteViewError("corrupt", "Row preview identity is invalid");
+  }
+  return { row, columns: result.columns, detail: result.row_detail };
+}
+
+function treeNode(row) {
+  return {
+    id: row.route_id,
+    route_id: row.route_id,
+    parent_id: row.parent_id,
+    path: row.path,
+    name: row.name,
+    aliases: row.aliases,
+    kind: row.kind,
+    purpose: row.purpose,
+    revision: row.revision,
+    children: [],
+    childrenLoaded: false,
+    page: null
+  };
+}
+
+function treeRoot(table, rows, page) {
+  const root = {
+    id: "table-root",
+    name: table.name,
+    kind: "root",
+    purpose: table.row_semantics,
+    children: rows.map(treeNode),
+    childrenLoaded: true,
+    page
+  };
+  if (page.truncated) root.children.push(moreNode(root, page.next_cursor));
+  return root;
+}
+
+function moreNode(parent, cursor) {
+  const suffix = String(cursor).replace(/[^A-Za-z0-9_-]/g, "").slice(-24) || "next";
+  return {
+    id: `route_more_${parent.id}_${suffix}`,
+    name: "继续加载这一层",
+    kind: "more",
+    purpose: "这一层还有更多语义节点",
+    parent_id: parent.id,
+    moreParent: parent.id,
+    moreCursor: cursor,
+    children: []
+  };
+}
+
+function findTreeNode(node, id) {
+  if (node.id === id) return node;
+  for (const child of node.children || []) {
+    const found = findTreeNode(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function graphData(tree) {
+  return window.G6.treeToGraphData(tree);
+}
+
+function setInspector(root, content) {
+  const inspector = root.querySelector(".route-canvas-inspector");
+  if (inspector) inspector.replaceChildren(content);
+}
+
+function inspectorState(kind, title, detail) {
+  return stateNode(kind, title, detail);
+}
+
+function nodeInspector(node) {
+  const content = element("div", "route-inspector-content");
+  content.append(element("p", "inspector-kicker", node.kind === "more" ? "CONTINUE" : "SEMANTIC NODE"));
+  content.append(element("h3", "", node.name), element("p", "", node.purpose));
+  if (node.aliases?.length) content.append(element("small", "", `别名：${node.aliases.join("、")}`));
+  if (node.path) content.append(element("code", "", `${node.path} · revision ${node.revision}`));
+  return content;
+}
+
+function rowInspector(locator, preview, databaseID, tableID) {
+  const content = element("div", "route-inspector-content");
+  content.append(element("p", "inspector-kicker", "ROW PREVIEW"));
+  content.append(element("h3", "", preview.row ? (preview.detail.display?.title_column ?
+    displayValue(preview.row[preview.detail.display.title_column]) : locator.row_id) : locator.row_id));
+  content.append(element("p", "", preview.detail.row_semantics || "当前语义记录"));
+  if (!preview.row) {
+    content.append(inspectorState("empty", "当前 Row 不可见", "locator 仍存在，但当前 revision 没有 live value。"));
+    return content;
+  }
+  const fields = element("div", "route-preview-fields");
+  for (const column of preview.columns.slice(5)) fields.append(previewField(column, preview.row));
+  content.append(fields);
+  const link = element("a", "route-document-link", "打开完整文档");
+  link.href = `/rows/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}/${encodeURIComponent(locator.row_id)}`;
+  link.dataset.route = "";
+  content.append(link);
+  return content;
+}
+
+async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableID, cursor = "") {
+  const next = await loadChildren(executeMSQL, databaseID, tableID, node.route_id, cursor);
+  const existing = cursor ? node.children.filter((child) => child.kind !== "more") : [];
+  node.children = existing.concat(next.rows.map(treeNode));
+  if (next.page.truncated) node.children.push(moreNode(node, next.page.next_cursor));
+  node.childrenLoaded = true;
+  node.page = next.page;
+  const selected = node.id;
+  graph.setData(graphData(tree));
+  await graph.render();
+  if (graph.expandElement) await graph.expandElement(selected, { animation: false });
+}
+
+async function appendRootPage(graph, tree, executeMSQL, databaseID, tableID, cursor) {
+  const next = await loadTableRoot(executeMSQL, databaseID, tableID, cursor);
+  const existing = tree.children.filter((child) => child.kind !== "more");
+  tree.children = existing.concat(next.rows.map(treeNode));
+  if (next.page.truncated) tree.children.push(moreNode(tree, next.page.next_cursor));
+  tree.page = next.page;
+  graph.setData(graphData(tree));
+  await graph.render();
+}
+
+function createSemanticGraph(container, tree, onNodeClick) {
+  if (!window.G6 || typeof window.G6.Graph !== "function") {
+    throw new RouteViewError("corrupt", "语义索引画布组件不可用");
+  }
+  const graph = new window.G6.Graph({
+    container,
+    autoFit: "view",
+    padding: [40, 420, 40, 80],
+    data: graphData(tree),
+    node: {
+      type: "rect",
+      style: {
+        size: [220, 72],
+        radius: 16,
+        fill: (data) => data.kind === "leaf" ? "#f5edcf" : data.kind === "more" ? "#eef3ef" : "#e4efe7",
+        stroke: (data) => data.kind === "leaf" ? "#b6a56d" : "#7c9e8b",
+        lineWidth: 1.5,
+        labelText: (data) => data.name,
+        labelPlacement: "center",
+        labelFill: "#2d4539",
+        labelFontSize: 14,
+        labelFontWeight: 700,
+        labelWordWrapWidth: 180,
+        labelMaxLines: 2,
+        labelLineHeight: 21,
+      },
+    },
+    edge: {
+      type: "cubic-horizontal",
+      style: { stroke: "#9bb1a1", lineWidth: 1.4 },
+    },
+    layout: {
+      type: "compact-box",
+      direction: "LR",
+      getWidth: () => 220,
+      getHeight: () => 72,
+      getHGap: () => 72,
+      getVGap: () => 22,
+    },
+    behaviors: [
+      "drag-canvas", "zoom-canvas", "click-select",
+      {
+        type: "collapse-expand",
+        key: "collapse-expand",
+        trigger: "click",
+        enable: (event) => event.targetType === "node" &&
+          findTreeNode(tree, event.target.id)?.kind === "branch",
+        animation: true,
+        align: true,
+      },
+    ],
+  });
+  graph.on("node:click", (event) => onNodeClick(graph, event.target.id));
+  return graph;
+}
+
 function landingView() {
   const view = element("div", "catalog-view route-view");
   view.append(breadcrumbs([]), heading("Route Tree", "每棵语义索引属于一个 Table。", ["read only"]));
@@ -355,7 +594,7 @@ function landingView() {
 }
 
 export async function renderRoutes(root, options) {
-  showState(root, "loading", "正在读取 Route Tree", "只加载当前 node 和一层相邻对象…");
+  showState(root, "loading", "正在读取语义索引", "加载根节点；展开分支时按需读取下一层…");
   try {
     const parts = pathParts(options.path);
     if (parts.length === 0) {
@@ -365,55 +604,88 @@ export async function renderRoutes(root, options) {
     }
     const databaseID = stableID(parts[0], "db_", "Database");
     const tableID = stableID(parts[1], "tbl_", "Table");
-    const tableURL = `/routes/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}`;
-    const view = element("div", "catalog-view route-view");
-    if (parts.length === 2) {
-      const data = await loadTableRoot(options.executeMSQL, databaseID, tableID);
-      if (!options.isCurrent()) return;
-      view.append(breadcrumbs([{ label: data.object.name }]),
-        heading(`${data.object.name} Route Tree`, data.object.row_semantics,
-          [data.object.table_id, `schema v${data.object.schema_version}`]));
-      if (data.rows.length === 0) {
-        view.append(stateNode("empty", "这个 Table 还没有 Route", "语义索引建立后，第一层节点会显示在这里。"));
-      } else {
-        const parentID = data.rows[0].parent_id;
-        view.append(pagedSection("Root routes", data.rows, data.page,
-          (row) => routeCard(row, databaseID, tableID),
-          async (cursor) => {
-            const next = await loadTableRoot(options.executeMSQL, databaseID, tableID, cursor);
-            if (next.rows.some((row) => row.parent_id !== parentID)) {
-              throw new RouteViewError("corrupt", "Route root continuation changed parent");
-            }
-            return next;
-          }));
-      }
-      root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
-      root.replaceChildren(view);
-      return;
-    }
-    const routeID = stableID(parts[2], "route_", "Route");
-    const node = await describeRoute(options.executeMSQL, databaseID, tableID, routeID);
+    const data = await loadTableRoot(options.executeMSQL, databaseID, tableID);
     if (!options.isCurrent()) return;
-    const data = node.kind === "leaf" ?
-      await loadLocators(options.executeMSQL, databaseID, tableID, routeID) :
-      await loadChildren(options.executeMSQL, databaseID, tableID, routeID);
-    if (!options.isCurrent()) return;
-    view.append(breadcrumbs([{ label: tableID, href: tableURL }, { label: node.name }]),
-      heading(node.name, node.purpose, [node.kind, node.route_id, `revision ${node.revision}`]));
-    if (node.synopsis) view.append(element("p", "route-synopsis", node.synopsis));
-    if (data.rows.length === 0) {
-      const title = node.kind === "leaf" ? "这个 leaf 还没有 locator" : "这个节点还没有 child Route";
-      view.append(stateNode("empty", title, "当前语义索引层没有可见对象。"));
-    } else if (node.kind === "leaf") {
-      view.append(pagedSection("Row locators", data.rows, data.page, locatorCard,
-        () => loadLocators(options.executeMSQL, databaseID, tableID, routeID)));
-    } else {
-      view.append(pagedSection("Child routes", data.rows, data.page,
-        (row) => routeCard(row, databaseID, tableID),
-        (cursor) => loadChildren(options.executeMSQL, databaseID, tableID, routeID, cursor)));
-    }
+    const tree = treeRoot(data.object, data.rows, data.page);
+    const view = element("div", "semantic-canvas-page");
+    view.append(breadcrumbs([{ label: data.object.name, href: `/catalog/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}` }]),
+      heading(`${data.object.name} 语义索引`, "在这张 Table 的语义路由树中定位 Row。点击 Branch 展开，点击 Leaf 在画布右侧预览 Row。",
+        [data.object.table_id, `schema v${data.object.schema_version}`]));
+    const toolbar = element("div", "semantic-canvas-toolbar");
+    toolbar.append(element("span", "canvas-hint", "拖动画布 · 滚轮缩放 · 点击 Branch 展开/收起 · 点击 Leaf 预览"));
+    const stage = element("div", "semantic-canvas-stage");
+    const canvas = element("div", "semantic-canvas");
+    canvas.setAttribute("aria-label", "语义索引树无限画布");
+    const inspector = element("aside", "route-canvas-inspector");
+    inspector.setAttribute("aria-label", "语义节点和 Row 预览");
+    inspector.append(inspectorState("empty", "选择一个节点", "Branch 展开语义层级，Leaf 会在这里显示 Row 预览。"));
+    stage.append(canvas, inspector);
+    view.append(toolbar, stage);
     root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
     root.replaceChildren(view);
+    if (data.rows.length === 0) {
+      setInspector(root, inspectorState("empty", "这个 Table 还没有 Route", "语义索引建立后，第一层节点会显示在这里。"));
+      return;
+    }
+    const graph = createSemanticGraph(canvas, tree, async (currentGraph, nodeID) => {
+      const node = findTreeNode(tree, nodeID);
+      if (!node) return;
+      currentGraph.setElementState(nodeID, "selected");
+      if (node.kind === "more") {
+        const parent = findTreeNode(tree, node.moreParent);
+        if (!parent) return;
+        setInspector(root, inspectorState("loading", "正在加载这一层", "读取下一页语义节点…"));
+        try {
+          await (parent.id === tree.id ? appendRootPage(graph, tree, options.executeMSQL, databaseID, tableID, node.moreCursor) :
+            appendChildren(graph, tree, parent, options.executeMSQL, databaseID, tableID, node.moreCursor));
+          setInspector(root, nodeInspector(parent));
+        } catch (error) {
+          const [kind, title, detail] = errorState(error);
+          setInspector(root, inspectorState(kind, title, detail));
+        }
+        return;
+      }
+      if (node.kind === "branch") {
+        if (!node.childrenLoaded) {
+          setInspector(root, inspectorState("loading", "正在展开语义分支", "按需读取下一层 Route…"));
+          try {
+            await appendChildren(graph, tree, node, options.executeMSQL, databaseID, tableID);
+            setInspector(root, nodeInspector(node));
+          } catch (error) {
+            const [kind, title, detail] = errorState(error);
+            setInspector(root, inspectorState(kind, title, detail));
+          }
+        } else {
+          setInspector(root, nodeInspector(node));
+        }
+        return;
+      }
+      if (node.kind !== "leaf") return;
+      setInspector(root, inspectorState("loading", "正在读取 Row 预览", "先打开唯一 locator，再按 RowID 回表…"));
+      try {
+        const locators = await loadLocators(options.executeMSQL, databaseID, tableID, node.route_id);
+        if (locators.rows.length === 0) {
+          setInspector(root, inspectorState("empty", "这个 Leaf 还没有 Row", "当前语义节点尚未关联活跃 Row。"));
+          return;
+        }
+        const preview = await loadRowPreview(options.executeMSQL, locators.rows[0]);
+        setInspector(root, rowInspector(locators.rows[0], preview, databaseID, tableID));
+      } catch (error) {
+        const [kind, title, detail] = errorState(error);
+        setInspector(root, inspectorState(kind, title, detail));
+      }
+    });
+    await graph.render();
+    if (parts.length === 3) {
+      const routeID = stableID(parts[2], "route_", "Route");
+      const selected = findTreeNode(tree, routeID);
+      if (selected) {
+        await graph.focusElement?.(routeID, { duration: 250 });
+        setInspector(root, nodeInspector(selected));
+      } else {
+        setInspector(root, inspectorState("empty", "节点尚未展开", "这个深链路节点位于未加载的语义分支，请从根节点逐层展开。"));
+      }
+    }
   } catch (error) {
     if (!options.isCurrent()) return;
     const [kind, title, detail] = errorState(error);

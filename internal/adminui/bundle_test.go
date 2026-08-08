@@ -17,7 +17,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := bundle.Manifest()
-	if manifest.Version != BundleVersion || len(manifest.Assets) != 9 {
+	if manifest.Version != BundleVersion || len(manifest.Assets) != 12 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	for _, asset := range manifest.Assets {
@@ -35,7 +35,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 			t.Fatalf("index contains forbidden %q", forbidden)
 		}
 	}
-	if !strings.Contains(text, `src="/assets/app.js?v=2"`) || !strings.Contains(text, `href="/assets/app.css?v=2"`) {
+	if !strings.Contains(text, `src="/assets/app.js?v=3"`) || !strings.Contains(text, `href="/assets/app.css?v=3"`) {
 		t.Fatalf("index does not use embedded assets: %s", text)
 	}
 	script, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
@@ -69,7 +69,7 @@ func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./traces.js?v=2"`) ||
+	if !strings.Contains(string(app), `from "./traces.js?v=3"`) ||
 		!strings.Contains(string(app), `path === "/traces"`) ||
 		!strings.Contains(string(app), `path.startsWith("/traces/")`) {
 		t.Fatal("Admin shell does not route the Route Trace module")
@@ -108,7 +108,7 @@ func TestRowRevisionDiffModuleUsesTwoBoundedParameterizedAsOfPointReads(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./diffs.js?v=2"`) ||
+	if !strings.Contains(string(app), `from "./diffs.js?v=3"`) ||
 		!strings.Contains(string(app), `path.startsWith("/diffs/")`) {
 		t.Fatal("Admin shell does not route the Row revision diff module")
 	}
@@ -163,7 +163,7 @@ func TestChangeTimelineModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./changes.js?v=2"`) ||
+	if !strings.Contains(string(app), `from "./changes.js?v=3"`) ||
 		!strings.Contains(string(app), `path === "/changes"`) ||
 		!strings.Contains(string(app), `path.startsWith("/changes/")`) {
 		t.Fatal("Admin shell does not route the Change timeline module")
@@ -201,7 +201,7 @@ func TestRowDocumentModuleUsesDictionaryMetadataAndBoundedParameterizedMSQL(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./rows.js?v=2"`) ||
+	if !strings.Contains(string(app), `from "./rows.js?v=3"`) ||
 		!strings.Contains(string(app), `path.startsWith("/rows/")`) {
 		t.Fatal("Admin shell does not route the Row document module")
 	}
@@ -252,7 +252,7 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./routes.js?v=2"`) ||
+	if !strings.Contains(string(app), `from "./routes.js?v=3"`) ||
 		!strings.Contains(string(app), `path.startsWith("/routes/")`) {
 		t.Fatal("Admin shell does not route the Route Tree module")
 	}
@@ -280,7 +280,7 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 		}
 	}
 	for _, forbidden := range []string{
-		"innerHTML", "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "CREATE ",
+		"innerHTML", "INSERT ", "UPDATE ", "DELETE ", "CREATE ",
 		"localStorage", "sessionStorage", "OPEN ROUTE :route CURSOR",
 	} {
 		if strings.Contains(javascript, forbidden) {
@@ -308,6 +308,89 @@ func TestRouteTreeModuleValidatesVersionedAliasesContract(t *testing.T) {
 	}
 }
 
+func TestAdminSemanticCanvasBundleContract(t *testing.T) {
+	t.Parallel()
+
+	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexText := string(index)
+	for _, required := range []string{
+		`/assets/vendor/g6-5.1.1.min.js?v=1`,
+		`/assets/vendor/markdown-it-15.0.0.min.js?v=1`,
+		`/assets/vendor/dompurify-3.4.7.min.js?v=1`,
+	} {
+		if !strings.Contains(indexText, required) {
+			t.Errorf("Admin shell is missing local vendor %q", required)
+		}
+	}
+
+	catalog, err := fs.ReadFile(embeddedFiles, "dist/assets/catalog.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogText := string(catalog)
+	for _, required := range []string{
+		"查看表结构", "进入语义索引", "aria-label", "dataset.route",
+	} {
+		if !strings.Contains(catalogText, required) {
+			t.Errorf("Catalog is missing semantic canvas navigation %q", required)
+		}
+	}
+
+	routes, err := fs.ReadFile(embeddedFiles, "dist/assets/routes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	routeText := string(routes)
+	for _, required := range []string{
+		"window.G6", "compact-box", "drag-canvas", "zoom-canvas", "collapse-expand",
+		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "打开完整文档", "Markdown",
+	} {
+		if !strings.Contains(routeText, required) {
+			t.Errorf("Semantic canvas is missing %q", required)
+		}
+	}
+
+	rows, err := fs.ReadFile(embeddedFiles, "dist/assets/rows.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowText := string(rows)
+	for _, required := range []string{
+		"markdownit", "html: false", "DOMPurify.sanitize", "DOMParser", "查看 Markdown 原文",
+		"row-document-paper", "row-side-panel",
+	} {
+		if !strings.Contains(rowText, required) {
+			t.Errorf("Row document view is missing %q", required)
+		}
+	}
+
+	styles, err := fs.ReadFile(embeddedFiles, "dist/assets/app.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	styleText := string(styles)
+	for _, required := range []string{
+		".route-rows .content { width: 100%; max-width: none;",
+		".route-rows .route-outlet { max-width: none; padding: 0; border: 0; background: transparent;",
+		"grid-template-columns: minmax(0, 920px) minmax(240px, 290px)",
+	} {
+		if !strings.Contains(styleText, required) {
+			t.Errorf("Wide Row document layout is missing %q", required)
+		}
+	}
+
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(app), "window.scrollTo({ top: 0") {
+		t.Error("Admin client-side navigation does not reset the document viewport")
+	}
+}
+
 func TestCatalogModuleUsesBoundedStableIDMSQLAndDefinesEveryPageState(t *testing.T) {
 	t.Parallel()
 
@@ -322,7 +405,7 @@ func TestCatalogModuleUsesBoundedStableIDMSQLAndDefinesEveryPageState(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./catalog.js?v=2"`) ||
+	if !strings.Contains(string(app), `from "./catalog.js?v=3"`) ||
 		!strings.Contains(string(app), "popstate") {
 		t.Fatal("Admin shell does not route Catalog or browser history")
 	}
