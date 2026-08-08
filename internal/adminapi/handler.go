@@ -163,10 +163,12 @@ func (gateway *Gateway) handleMSQL(response http.ResponseWriter, request *http.R
 		if len(input.Statements) != 0 {
 			statements[index].Parameters = input.Statements[index].Parameters
 		}
-		statements[index].Authorization = security.Authorization{
-			Version:             security.AuthorizationVersion,
-			Actor:               "user:admin",
-			AuthorizedDatabases: append([]string(nil), gateway.scopes...),
+		if len(gateway.scopes) != 0 {
+			statements[index].Authorization = security.Authorization{
+				Version:             security.AuthorizationVersion,
+				Actor:               "user:admin",
+				AuthorizedDatabases: append([]string(nil), gateway.scopes...),
+			}
 		}
 	}
 	envelope, err := gateway.execute(request.Context(), gateway.dataDir, input.Source, statements)

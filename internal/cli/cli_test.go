@@ -82,12 +82,6 @@ func TestRun(t *testing.T) {
 			wantStderr: "memora: unknown option for version: \"--yaml\"\n",
 		},
 		{
-			name:       "admin requires scope",
-			args:       []string{"admin", "--no-open"},
-			wantCode:   2,
-			wantStderr: "memora: admin requires at least one --scope\n",
-		},
-		{
 			name:       "exec requires source",
 			args:       []string{"exec"},
 			wantCode:   2,
@@ -355,6 +349,43 @@ func TestRunDecideFinalizesAndReloadsWorthinessDecision(t *testing.T) {
 	}
 	if !decided || !loaded {
 		t.Fatalf("decided=%t loaded=%t", decided, loaded)
+	}
+}
+
+func TestRunAdminDefaultsToAllDatabases(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "instance")
+	called := false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		ExecuteMSQL: func(
+			context.Context, string, string, []executor.StatementInput,
+		) (result.Envelope, error) {
+			return result.Envelope{}, errors.New("not called by startup")
+		},
+		ServeAdmin: func(
+			_ context.Context, config adminapi.Config, ready func(adminapi.Descriptor) error,
+		) error {
+			called = true
+			if config.DataDir != dataDir || len(config.Scopes) != 0 || config.Execute == nil {
+				t.Fatalf("admin config = %#v", config)
+			}
+			return ready(adminapi.Descriptor{
+				Version:   adminapi.SessionVersion,
+				Origin:    "http://127.0.0.1:49152",
+				URL:       "http://127.0.0.1:49152/#token=fixture",
+				ExpiresAt: time.Date(2026, 8, 1, 0, 15, 0, 0, time.UTC),
+			})
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunWithDependencies([]string{
+		"admin", "--no-open", "--data-dir", dataDir,
+	}, &stdout, &stderr, BuildInfo{}, dependencies)
+	if code != ExitOK || !called || stderr.Len() != 0 {
+		t.Fatalf("admin code=%d called=%t stdout=%q stderr=%q", code, called, &stdout, &stderr)
 	}
 }
 

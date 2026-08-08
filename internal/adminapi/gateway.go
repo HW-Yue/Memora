@@ -106,13 +106,15 @@ func Start(ctx context.Context, config Config) (*Gateway, error) {
 	if ttl < time.Second || ttl > maxTTL {
 		return nil, errors.New("admin API session TTL is outside 1 second to 1 hour")
 	}
-	authorization := security.Authorization{
-		Version:             security.AuthorizationVersion,
-		Actor:               "user:admin",
-		AuthorizedDatabases: append([]string(nil), config.Scopes...),
-	}
-	if err := authorization.Validate(); err != nil {
-		return nil, fmt.Errorf("admin API scope: %w", err)
+	if len(config.Scopes) != 0 {
+		authorization := security.Authorization{
+			Version:             security.AuthorizationVersion,
+			Actor:               "user:admin",
+			AuthorizedDatabases: append([]string(nil), config.Scopes...),
+		}
+		if err := authorization.Validate(); err != nil {
+			return nil, fmt.Errorf("admin API scope: %w", err)
+		}
 	}
 
 	random := config.Random

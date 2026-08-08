@@ -132,6 +132,37 @@ func TestGatewayRealDaemonJourneyMatchesScopedMSQLContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record Route Trace = %v", err)
 	}
+	allGateway, err := Start(context.Background(), Config{
+		DataDir: dataDir, Execute: daemon.Execute,
+		Random: bytes.NewReader(bytes.Repeat([]byte{0x70}, 96)),
+		Listen: ephemeralListen, SessionTTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = allGateway.Close() })
+	allReceipt, allCookie := bootstrap(t, allGateway.Descriptor())
+	allResponse := callMSQL(t, allGateway.Descriptor(), allCookie, allReceipt.CSRFToken,
+		`{"source":"SHOW DATABASES LIMIT 16 COMPACT"}`)
+	defer allResponse.Body.Close()
+	if allResponse.StatusCode != http.StatusOK {
+		t.Fatalf("all-Database gateway status = %d, body = %s",
+			allResponse.StatusCode, readBody(t, allResponse))
+	}
+	var allDatabases result.Envelope
+	if err := json.NewDecoder(allResponse.Body).Decode(&allDatabases); err != nil {
+		t.Fatal(err)
+	}
+	if !allDatabases.OK || len(allDatabases.Results) != 1 || len(allDatabases.Results[0].Rows) != 2 {
+		t.Fatalf("all-Database envelope = %#v", allDatabases)
+	}
+	visible := map[any]bool{}
+	for _, row := range allDatabases.Results[0].Rows {
+		visible[row["name"]] = true
+	}
+	if !visible["work"] || !visible["secret"] {
+		t.Fatalf("all-Database names = %#v", visible)
+	}
 	gateway, err := Start(context.Background(), Config{
 		DataDir:    dataDir,
 		Scopes:     []string{"work"},

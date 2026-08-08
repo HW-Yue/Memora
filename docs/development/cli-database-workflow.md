@@ -11,7 +11,7 @@
 memora exec  [--data-dir PATH] [--input JSON] "MSQL"
 memora query [--data-dir PATH] [--input JSON] "MSQL"
 memora mutate [--data-dir PATH] --plan 'MUTATION_PLAN_JSON'
-memora admin --scope DATABASE [--scope DATABASE...] [--no-open] [--data-dir PATH]
+memora admin [--scope DATABASE...] [--no-open] [--data-dir PATH]
 memora doctor [--data-dir PATH]
 ```
 
@@ -46,8 +46,9 @@ batch 和 verify。MERGE/SPLIT 的不同 StatementInput 由 Plan 编译进同一
 事务，不改变 `exec --input` 的单 statement 边界。输出为
 `memora.mutation-receipt/v1`。
 
-`admin` 是 F115/F116 的临时只读交付面。它把启动时固定的 Database scope 注入每条
-MSQL，通过 daemon Unix socket 执行，并监听固定的 `127.0.0.1:3888`；
+`admin` 是 F115/F116 的临时只读交付面。默认不限制 Database，首页通过 `SHOW DATABASES`
+展示当前 Instance 的完整 Catalog；显式 `--scope` 时才把固定白名单注入每条 MSQL。
+两种模式都通过 daemon Unix socket 执行，并监听固定的 `127.0.0.1:3888`；
 SIGINT/SIGTERM 后释放端口。默认打开内嵌 Admin Shell；`--no-open` 只打印 descriptor。HTTP session、
 Origin、Cookie 与 CSRF 契约见 [Local Read API v1](./local-read-api-v1.md)。
 

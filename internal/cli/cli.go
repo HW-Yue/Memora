@@ -1108,16 +1108,15 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 			return usageError(stderr, fmt.Sprintf("unknown admin option: %q", args[index]))
 		}
 	}
-	if len(scopes) == 0 {
-		return usageError(stderr, "admin requires at least one --scope")
-	}
-	authorization := security.Authorization{
-		Version:             security.AuthorizationVersion,
-		Actor:               "user:admin",
-		AuthorizedDatabases: scopes,
-	}
-	if err := authorization.Validate(); err != nil {
-		return usageError(stderr, "admin scope is invalid")
+	if len(scopes) != 0 {
+		authorization := security.Authorization{
+			Version:             security.AuthorizationVersion,
+			Actor:               "user:admin",
+			AuthorizedDatabases: scopes,
+		}
+		if err := authorization.Validate(); err != nil {
+			return usageError(stderr, "admin scope is invalid")
+		}
 	}
 	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
 	if code != ExitOK {

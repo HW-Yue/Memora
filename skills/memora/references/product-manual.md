@@ -112,17 +112,18 @@ Admin 是同一个 `memora` 可执行文件内嵌的、只绑定本机 loopback 
 ```sh
 memora daemon status --data-dir /absolute/instance
 memora daemon start --data-dir /absolute/instance
-memora admin --scope work --data-dir /absolute/instance
+memora admin --data-dir /absolute/instance
 ```
 
 Admin 默认打开系统浏览器，固定监听 `127.0.0.1:3888`。不希望自动打开浏览器时使用：
 
 ```sh
-memora admin --scope work --data-dir /absolute/instance --no-open
+memora admin --data-dir /absolute/instance --no-open
 ```
 
-`--scope` 是启动时固定的 Database 白名单，每条 MSQL 都被绑定到该 scope。页面可观察
-Catalog、Table/Schema、语义 Route、Row、History、Relation、Change 和 Route Trace；
+默认模式展示当前 Instance 的全部 Database；`--scope DATABASE` 是可选的启动时固定
+白名单，仅用于限制可见 Database。页面可观察 Catalog、Table/Schema、语义 Route、Row、
+History、Relation、Change 和 Route Trace；
 它不能执行 INSERT/UPDATE/DELETE、Schema 变更、Route 维护、repair 或读取物理文件。
 所有正式修改仍通过 Skill 的 MSQL Mutation Plan 完成。
 
@@ -133,7 +134,8 @@ Admin Gateway 只在 `memora admin` 进程运行期间占用额外资源；停�
 
 若页面提示无法建立本地会话，先关闭当前 Admin，再确认同一 `--data-dir` 的 daemon 已启动，
 重新运行 `memora admin`。若提示暂时无法读取 Route Tree，先运行 `memora doctor` 检查
-Instance，再用同一 Database scope 重试；不要通过修改文件或重建索引来绕过页面错误。
+Instance；若使用了可选 scope，再确认该 Database 名称或 ID 正确。不要通过修改文件或
+重建索引来绕过页面错误。
 
 ## 安装、运行与故障处理
 
