@@ -4,7 +4,8 @@
 
 ## 用户结果
 
-`memora admin --scope work` 启动 F115 Gateway 并用系统浏览器打开离线 Admin 壳；
+`memora admin` 启动 F115 Gateway，以全库只读模式展示当前 Instance 的 Database
+Catalog，并用系统浏览器打开离线 Admin 壳。`--scope DATABASE` 是可选过滤器，
 `--no-open` 仍可只打印 session descriptor。HTML、CSS、JavaScript 全部通过
 `go:embed` 编译进同一个 `memora` binary，不需要 Node.js、CDN、外部字体或网络。
 

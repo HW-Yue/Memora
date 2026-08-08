@@ -1,16 +1,19 @@
 # Local Read API v1
 
-状态：F115 已完成并验收；F168 将默认地址固定为 `127.0.0.1:3888`。
+状态：F115 已完成并验收；F168 将默认地址固定为 `127.0.0.1:3888`；2026-08-09
+将无 scope 启动冻结为当前 Instance 全库只读模式。
 
 ## 用户结果与边界
 
-`memora admin --scope work --no-open` 启动一个临时 `127.0.0.1` Gateway，让本地
+`memora admin --no-open` 启动一个临时 `127.0.0.1` Gateway，让本地
 Admin 通过与 `memora query` 相同的 MSQL/result envelope 读取数据。Gateway 只连接
 daemon Unix socket，不打开 Store，不提供 HTML、登录、公网监听或模型 Provider。
 
-启动必须至少给一个 `--scope`，最多 32 个。Gateway 为所有 statement 注入固定的
-`memora.authorization/v2`（actor 为 `user:admin`）；HTTP 请求只能提供参数，不能提供
-Authorization、MutationOptions、approval 或物理访问选项。
+不提供 `--scope` 时，本机 Admin 以全库只读模式展示当前 Instance 的完整 Catalog；
+新增 Database 也可在同一 session 的后续查询中出现。显式提供一个或多个 `--scope`
+时，Gateway 为所有 statement 注入固定的 `memora.authorization/v2`（actor 为
+`user:admin`），继续作为最多 32 个 Database 的可选过滤器。两种模式都只能读取；HTTP
+请求只能提供参数，不能提供 Authorization、MutationOptions、approval 或物理访问选项。
 
 ## Session 与 HTTP
 
@@ -49,5 +52,5 @@ envelope，不另造前端结果协议。
 
 SIGINT/SIGTERM、context cancel 或 session 到期会关闭 HTTP server 和 Listener；关闭
 后 `3888` 可重新绑定。端口已占用时启动明确失败，不回退随机端口。随机源、监听、daemon
-调用或响应写入失败都不得降级为无 token、扩大 scope 或继续后台监听。错误响应不回显
-token、Cookie、MSQL 参数或 Row 内容。
+调用或响应写入失败都不得降级为无 token、把显式 scope 扩大为全库，或继续后台监听。
+错误响应不回显 token、Cookie、MSQL 参数或 Row 内容。

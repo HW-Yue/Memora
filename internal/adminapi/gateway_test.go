@@ -149,6 +149,32 @@ func TestGatewayBootstrapsOnceAndReturnsDaemonEnvelopeWithFixedScope(t *testing.
 	}
 }
 
+func TestGatewayWithoutScopeUsesUnscopedReadAuthorization(t *testing.T) {
+	t.Parallel()
+
+	statement := result.NewStatement(0, "SHOW", "SHOW DATABASES COMPACT")
+	statement.Rows = []result.Row{{"name": "work"}, {"name": "personal"}}
+	recorder := &executeRecorder{envelope: result.NewEnvelope("request-all", statement)}
+	gateway := startGateway(t, recorder, nil)
+	receipt, cookie := bootstrap(t, gateway.Descriptor())
+
+	response := callMSQL(t, gateway.Descriptor(), cookie, receipt.CSRFToken,
+		`{"source":"SHOW DATABASES COMPACT"}`)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("MSQL status = %d, body = %s", response.StatusCode, readBody(t, response))
+	}
+	if recorder.count() != 1 {
+		t.Fatalf("daemon calls = %d", recorder.count())
+	}
+	authorization := recorder.calls[0].statements[0].Authorization
+	if authorization.Version != "" || authorization.Actor != "" ||
+		len(authorization.AuthorizedDatabases) != 0 || authorization.DefaultLevel != "" ||
+		len(authorization.DatabaseLevels) != 0 || authorization.Approval != nil {
+		t.Fatalf("unscoped Admin Authorization = %#v", authorization)
+	}
+}
+
 func TestGatewayServesEmbeddedShellAndKeepsUnknownAPISeparate(t *testing.T) {
 	t.Parallel()
 
