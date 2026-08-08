@@ -79,6 +79,30 @@ function positiveRevision(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+function validateAliases(value, name) {
+  if (!Array.isArray(value) || value.length > 8) {
+    throw new RouteViewError("corrupt", "Route aliases are invalid");
+  }
+  const aliases = new Set();
+  let totalBytes = 0;
+  for (const alias of value) {
+    if (typeof alias !== "string" || alias.length === 0 || alias !== alias.trim() ||
+        Array.from(alias).length > 64) {
+      throw new RouteViewError("corrupt", "Route aliases are invalid");
+    }
+    const key = alias.toLowerCase();
+    if (key === name.toLowerCase() || aliases.has(key)) {
+      throw new RouteViewError("corrupt", "Route aliases are duplicated");
+    }
+    aliases.add(key);
+    totalBytes += new TextEncoder().encode(alias).length;
+  }
+  if (totalBytes > 512) {
+    throw new RouteViewError("corrupt", "Route aliases exceed their byte budget");
+  }
+  return value;
+}
+
 function tablePoint(result, databaseID, tableID) {
   if (result.rows.length !== 1) throw new RouteViewError("corrupt", "Table point result is invalid");
   const row = result.rows[0];
@@ -93,7 +117,7 @@ function tablePoint(result, databaseID, tableID) {
 }
 
 function validateRouteRow(row, point, databaseID = "", tableID = "", parentID = "") {
-  const childKeys = ["route_id", "parent_id", "path", "name", "kind", "purpose", "revision"];
+  const childKeys = ["route_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"];
   const pointKeys = [...childKeys, "database_id", "table_id", "synopsis"];
   if (!row || !exactKeys(row, point ? pointKeys : childKeys)) {
     throw new RouteViewError("corrupt", "Route node fields are invalid");
@@ -106,6 +130,7 @@ function validateRouteRow(row, point, databaseID = "", tableID = "", parentID = 
       !["root", "branch", "leaf"].includes(row.kind) || !positiveRevision(row.revision)) {
     throw new RouteViewError("corrupt", "Route node values are invalid");
   }
+  validateAliases(row.aliases, row.name);
   if (point) {
     if (row.database_id !== databaseID || row.table_id !== tableID || typeof row.synopsis !== "string") {
       throw new RouteViewError("corrupt", "Route point scope is invalid");
