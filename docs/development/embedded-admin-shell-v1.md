@@ -44,6 +44,12 @@ Branch 才读取下一层。点击 Leaf 先打开唯一 locator，并按 RowID �
 挂入 HTML，支持标题、加粗、引用、列表、代码块和表格；外部 Row 内容不会直接拼接成未经清理
 的 HTML。节点高度按渲染后的 DOM 测量后交给布局，避免 Canvas 把长文压成一段不可读的纯文本。
 
+画布导航遵循触控板优先的交互契约：普通滚轮/两指滑动由 `scroll-canvas` 平移视口，带有
+`ctrlKey` 或 `metaKey` 的捏合事件才由 `zoom-canvas` 缩放；鼠标拖动仍可作为备用路径。
+document HTML 节点默认禁止文字选择，普通拖动直接平移画布；按住
+`Option/Alt` 才临时开启文字选择。所有这些事件只在画布容器内拦截，不影响页面其他区域的
+滚动和浏览器默认行为。
+
 ## Browser session
 
 启动 URL 仍把 bootstrap token 放在 fragment。模块脚本首先同步调用

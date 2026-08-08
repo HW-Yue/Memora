@@ -44,7 +44,7 @@ var frozenAssets = []assetSpec{
 	},
 	{
 		file: "dist/assets/app.css", path: "/assets/app.css", contentType: "text/css; charset=utf-8",
-		hash: "86013f700dac1838ff8ec3b687a4e3b5c7007884484ae952b09b39af1dd2e9b7", size: 27329,
+		hash: "643c62fcff8ce3f6c76a40c6d46960c560f6b6090dc8333fbabd09c30c6da80a", size: 27729,
 	},
 	{
 		file: "dist/assets/app.js", path: "/assets/app.js", contentType: "text/javascript; charset=utf-8",
@@ -68,7 +68,7 @@ var frozenAssets = []assetSpec{
 	},
 	{
 		file: "dist/assets/routes.js", path: "/assets/routes.js", contentType: "text/javascript; charset=utf-8",
-		hash: "ef0cfab9fee0e59a5a2aa89123d9ad63ee175f841aa1d700eeba8f30dd7698e9", size: 33963,
+		hash: "a44786be6ab676fe0038dd853dc3884cd894677d6121854a9f95af785d1a07e2", size: 38546,
 	},
 	{
 		file: "dist/assets/rows.js", path: "/assets/rows.js", contentType: "text/javascript; charset=utf-8",

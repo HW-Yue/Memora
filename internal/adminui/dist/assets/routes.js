@@ -631,6 +631,110 @@ async function appendRootPage(graph, tree, executeMSQL, databaseID, tableID, cur
   await graph.render();
 }
 
+function installCanvasGestureBridge(graph, container) {
+  let pan = null;
+  let selecting = null;
+  const caretAtPoint = (x, y) => {
+    const position = document.caretPositionFromPoint?.(x, y);
+    if (position) return { node: position.offsetNode, offset: position.offset };
+    const range = document.caretRangeFromPoint?.(x, y);
+    return range ? { node: range.startContainer, offset: range.startOffset } : null;
+  };
+  const cleanupSelection = () => {
+    if (selecting) {
+      selecting.element.classList.remove(
+        "semantic-document-selecting", "semantic-document-selected");
+    }
+    selecting = null;
+  };
+  const onPointerDown = (event) => {
+    const target = event.target instanceof Element ?
+      event.target.closest(".semantic-document-node") : null;
+    if (!target || event.button !== 0) return;
+    if (event.altKey) {
+      cleanupSelection();
+      const caret = caretAtPoint(event.clientX, event.clientY);
+      if (!caret || !target.contains(caret.node)) return;
+      selecting = {
+        element: target,
+        pointerID: event.pointerId,
+        anchorNode: caret.node,
+        anchorOffset: caret.offset,
+      };
+      target.classList.add("semantic-document-selecting");
+      container.setPointerCapture?.(event.pointerId);
+      window.getSelection()?.setBaseAndExtent(
+        caret.node, caret.offset, caret.node, caret.offset);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    cleanupSelection();
+    window.getSelection()?.removeAllRanges();
+    pan = { pointerID: event.pointerId, x: event.clientX, y: event.clientY };
+    container.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onPointerMove = (event) => {
+    if (selecting && selecting.pointerID === event.pointerId) {
+      const caret = caretAtPoint(event.clientX, event.clientY);
+      if (caret && selecting.element.contains(caret.node)) {
+        window.getSelection()?.setBaseAndExtent(
+          selecting.anchorNode, selecting.anchorOffset, caret.node, caret.offset);
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (!pan || pan.pointerID !== event.pointerId) return;
+    const dx = event.clientX - pan.x;
+    const dy = event.clientY - pan.y;
+    pan.x = event.clientX;
+    pan.y = event.clientY;
+    if (dx || dy) graph.translateBy?.([dx, dy], false);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onPointerUp = (event) => {
+    if (pan && pan.pointerID === event.pointerId) {
+      container.releasePointerCapture?.(event.pointerId);
+      pan = null;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (selecting && selecting.pointerID === event.pointerId) {
+      container.releasePointerCapture?.(event.pointerId);
+      selecting.pointerID = null;
+      selecting.element.classList.remove("semantic-document-selecting");
+      selecting.element.classList.add("semantic-document-selected");
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+  const onWheel = (event) => {
+    const target = event.target instanceof Element ?
+      event.target.closest(".semantic-document-node") : null;
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.ctrlKey || event.metaKey) {
+      const origin = container.getBoundingClientRect();
+      const delta = Number(event.deltaY) || Number(event.deltaX) || 0;
+      const ratio = Math.pow(1.001, -delta);
+      graph.zoomBy?.(ratio, false, [event.clientX - origin.left, event.clientY - origin.top]);
+      return;
+    }
+    graph.translateBy?.([-(Number(event.deltaX) || 0), -(Number(event.deltaY) || 0)], false);
+  };
+  container.addEventListener("pointerdown", onPointerDown, true);
+  container.addEventListener("pointermove", onPointerMove, true);
+  container.addEventListener("pointerup", onPointerUp, true);
+  container.addEventListener("pointercancel", onPointerUp, true);
+  container.addEventListener("lostpointercapture", onPointerUp, true);
+  container.addEventListener("wheel", onWheel, { capture: true, passive: false });
+}
+
 function createSemanticGraph(container, tree, onNodeClick) {
   if (!window.G6 || typeof window.G6.Graph !== "function") {
     throw new RouteViewError("corrupt", "语义索引画布组件不可用");
@@ -638,6 +742,7 @@ function createSemanticGraph(container, tree, onNodeClick) {
   const graph = new window.G6.Graph({
     container,
     autoFit: "view",
+    zoomRange: [0.25, 2],
     padding: [40, 420, 40, 80],
     data: graphData(tree),
     node: {
@@ -677,7 +782,20 @@ function createSemanticGraph(container, tree, onNodeClick) {
       getVGap: () => 22,
     },
     behaviors: [
-      "drag-canvas", "zoom-canvas", "click-select",
+      "drag-canvas",
+      {
+        type: "scroll-canvas",
+        key: "trackpad-pan",
+        enable: (event) => !event.ctrlKey && !event.metaKey && !event.altKey,
+        sensitivity: 1,
+      },
+      {
+        type: "zoom-canvas",
+        key: "trackpad-zoom",
+        enable: (event) => event.ctrlKey || event.metaKey,
+        sensitivity: 0.2,
+      },
+      "click-select",
       {
         type: "collapse-expand",
         key: "collapse-expand",
@@ -689,6 +807,7 @@ function createSemanticGraph(container, tree, onNodeClick) {
       },
     ],
   });
+  installCanvasGestureBridge(graph, container);
   graph.on("node:click", (event) => onNodeClick(graph, event.target.id));
   return graph;
 }
@@ -784,7 +903,8 @@ export async function renderRoutes(root, options) {
       heading(`${data.object.name} 语义索引`, "在这张 Table 的语义路由树中定位 Row。点击 Branch 展开，点击 Leaf 在画布中展开 Row 内容。",
         [data.object.table_id, `schema v${data.object.schema_version}`]));
     const toolbar = element("div", "semantic-canvas-toolbar");
-    toolbar.append(element("span", "canvas-hint", "拖动画布 · 滚轮缩放 · 点击 Branch 展开/收起 · 点击 Leaf 展开内容"));
+    toolbar.append(element("span", "canvas-hint",
+      "两指平移 · 捏合缩放 · 点击 Branch 展开/收起 · 点击 Leaf 展开内容 · Option 拖动选择文字"));
     const focusButton = element("button", "canvas-focus-button", "聚焦到中心");
     focusButton.type = "button";
     focusButton.setAttribute("aria-label", "聚焦到语义索引中心");

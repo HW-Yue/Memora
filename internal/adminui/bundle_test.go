@@ -345,13 +345,18 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	}
 	routeText := string(routes)
 	for _, required := range []string{
-		"window.G6", "compact-box", "drag-canvas", "zoom-canvas", "collapse-expand",
+		"window.G6", "compact-box", "drag-canvas", "scroll-canvas", "collapse-expand",
 		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "MEMORA ROW", "documentNode",
 		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"",
 		"DOCUMENT_NODE_WIDTH", "documentWidth", "translateElementTo", "focusElement",
 		"type: (data) => data.kind === \"document\" ? \"html\" : \"rect\"",
 		"innerHTML: documentNodeHTML", "markdownit({ html: false", "DOMPurify.sanitize",
 		"semantic-document-node", "semantic-document-reading", "semantic-document-properties",
+		"trackpad-pan", "trackpad-zoom", "event.ctrlKey", "event.metaKey",
+		"zoomRange: [0.25, 2]", "sensitivity: 0.2",
+		"两指平移", "捏合缩放", "Option 拖动选择文字",
+		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
+		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
 		"for (const column of preview.columns)",
 	} {
 		if !strings.Contains(routeText, required) {
@@ -361,6 +366,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	for _, forbidden := range []string{
 		"route-canvas-inspector", "canvas-inline-preview", "canvas-inline-close",
 		"打开完整文档", "preview.columns.slice", "documentText", "labelWordWrap",
+		"\"drag-canvas\", \"zoom-canvas\"",
 	} {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
@@ -392,6 +398,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"grid-template-columns: minmax(0, 920px) minmax(240px, 290px)",
 		".semantic-document-node", "width: 900px", ".semantic-document-reading",
 		".semantic-document-metadata", ".semantic-document-properties",
+		"user-select: none", "touch-action: none", "overscroll-behavior: contain",
 	} {
 		if !strings.Contains(styleText, required) {
 			t.Errorf("Wide Row document layout is missing %q", required)

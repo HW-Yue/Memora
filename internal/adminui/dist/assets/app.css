@@ -99,9 +99,12 @@ h1 { margin: 14px 0 18px; max-width: 690px; font-family: Georgia, "Songti SC", s
 .canvas-focus-button:hover { border-color: #4f7b63; background: #dbeadd; }
 .canvas-focus-button:focus-visible { outline: 2px solid #4f7b63; outline-offset: 2px; }
 .semantic-canvas-stage { position: relative; min-height: 650px; overflow: hidden; border: 1px solid #cbd6ce; border-radius: 18px; background: radial-gradient(circle at 20% 20%, rgb(231 242 233 / 80%), transparent 36%), #f8faf6; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%), 0 18px 48px rgb(44 72 55 / 8%); }
-.semantic-canvas { width: 100%; height: 700px; min-height: 520px; }
+.semantic-canvas { width: 100%; height: 700px; min-height: 520px; touch-action: none; overscroll-behavior: contain; }
 .canvas-state { position: absolute; left: 18px; right: 18px; bottom: 18px; z-index: 1; margin: 0; opacity: .96; }
-.semantic-document-node { box-sizing: border-box; width: 900px; min-height: 620px; overflow: hidden; border: 2px solid #789786; border-radius: 20px; color: #27352d; background: #fffefa; box-shadow: 0 28px 72px rgb(42 60 47 / 16%); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; pointer-events: none; }
+.semantic-document-node { box-sizing: border-box; width: 900px; min-height: 620px; overflow: hidden; border: 2px solid #789786; border-radius: 20px; color: #27352d; background: #fffefa; box-shadow: 0 28px 72px rgb(42 60 47 / 16%); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; cursor: grab; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.semantic-document-node:active { cursor: grabbing; }
+.semantic-document-node.semantic-document-selecting { cursor: text; user-select: text; -webkit-user-select: text; }
+.semantic-document-node.semantic-document-selected { user-select: text; -webkit-user-select: text; }
 .semantic-document-measure { position: fixed; top: 0; left: -12000px; z-index: -1; visibility: hidden; }
 .semantic-document-header { width: min(760px, calc(100% - 112px)); margin: 0 auto; padding: 52px 0 30px; }
 .semantic-document-kicker { margin: 0 0 20px; color: #547260; font-size: 11px; font-weight: 800; letter-spacing: .2em; }
