@@ -36,12 +36,34 @@ one host-independent natural-language Task, Database scope, and budget. Codex
 and Claude Code execute that same Task; Kimi is recorded only as a host-managed
 Provider profile, never as a separate Memora protocol or Skill.
 
+## Product manual and Admin
+
+When the user asks what Memora is, how the architecture works, how a read/write
+flows through the engine, or how to use/troubleshoot the local Admin, read
+[`references/product-manual.md`](references/product-manual.md). It is the
+stable product and operations guide; it must not be used as a substitute for
+live MSQL discovery. Admin is a local, read-only observer on `127.0.0.1:3888`;
+all facts and all mutations still come from the scoped daemon through MSQL.
+
 ## Install once
 
-If `memora version --json` is unavailable or older than the version bundled with
-this Skill, explain that installation downloads or compiles a local executable,
-show the binary and Instance destinations, and ask the user for explicit
-authorization. After approval, resolve this Skill's own directory and run:
+Before the first Memora operation in a session, resolve this Skill's directory
+and run its read-only detector:
+
+```sh
+/bin/sh "<skill-directory>/scripts/check.sh"
+```
+
+If it reports `ready`, use the detected executable. If it reports `missing`,
+do not download or install anything yet. Tell the user that Memora v0.1.0 is
+available from `https://github.com/HW-Yue/Memora/releases/tag/v0.1.0`, show the
+default binary destination `~/.local/bin/memora` and the user-level Instance
+destination, then ask whether they want to download it manually or explicitly
+authorize this Skill's verified installer. If it reports `unhealthy`, show the
+bounded diagnostic and ask before replacing anything.
+
+Only after explicit installation authorization, resolve this Skill's own
+directory and run:
 
 ```sh
 /bin/sh "<skill-directory>/scripts/install.sh" --yes
