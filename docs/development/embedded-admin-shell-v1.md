@@ -24,6 +24,11 @@ index/JS/CSS 全部存在且逐字节匹配；缺失、增加或 tamper 都拒�
 按正确 MIME 返回，未知 asset 与 API 路径为 404。只支持 GET/HEAD，不把 POST
 深链路误路由到 HTML。
 
+各页面对 MSQL 结果执行版本化的严格字段校验；当后端读取契约增加必填字段时，前端
+validator 与 frozen bundle 必须在同一 Feature 中同步升级。Route Tree 接受并校验
+F182a 定义的非 null `aliases` 字段（最多 8 项、单项 1–64 个 Unicode 字符、合计最多
+512 UTF-8 bytes）。这类协议扩展不要求迁移或删除已有数据库。
+
 ## Browser session
 
 启动 URL 仍把 bootstrap token 放在 fragment。模块脚本首先同步调用

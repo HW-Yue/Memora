@@ -289,6 +289,25 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	}
 }
 
+func TestRouteTreeModuleValidatesVersionedAliasesContract(t *testing.T) {
+	t.Parallel()
+
+	routes, err := fs.ReadFile(embeddedFiles, "dist/assets/routes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(routes)
+	for _, required := range []string{
+		`"route_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"`,
+		"function validateAliases", "Array.from(alias).length", "new TextEncoder().encode(alias).length",
+		"Route aliases are invalid", "Route aliases are duplicated", "Route aliases exceed their byte budget",
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Route Tree aliases contract is missing %q", required)
+		}
+	}
+}
+
 func TestCatalogModuleUsesBoundedStableIDMSQLAndDefinesEveryPageState(t *testing.T) {
 	t.Parallel()
 
