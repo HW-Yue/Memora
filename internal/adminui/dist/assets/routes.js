@@ -346,6 +346,8 @@ async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
 
 const DOCUMENT_NODE_WIDTH = 900;
 const DOCUMENT_NODE_MIN_HEIGHT = 620;
+const DOCUMENT_COLUMN_GAP = 72;
+const DOCUMENT_VERTICAL_GAP = 72;
 const SYSTEM_COLUMNS = ["row_id", "revision", "commit_sequence", "row_state", "schema_version"];
 
 function displayValue(value) {
@@ -653,22 +655,66 @@ function clearCanvasState(stage) {
   if (current) current.remove();
 }
 
-async function placeDocumentAfterLeaf(graph, leaf, document) {
-  if (!document || typeof graph.getElementPosition !== "function" ||
-      typeof graph.translateElementTo !== "function") return;
-  const position = graph.getElementPosition(leaf.id);
+function graphPosition(graph, id) {
+  const position = graph.getElementPosition(id);
   const x = Array.isArray(position) ? position[0] : position?.x;
   const y = Array.isArray(position) ? position[1] : position?.y;
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const documentWidth = document.documentWidth || DOCUMENT_NODE_WIDTH;
-  await graph.translateElementTo(document.id, [x + 110 + 72 + documentWidth / 2, y], false);
+  return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
+}
+
+async function alignDocumentColumn(graph, tree) {
+  if (typeof graph.getElementPosition !== "function" ||
+      typeof graph.translateElementTo !== "function") return;
+  const routes = [];
+  const documents = [];
+  const collect = (node) => {
+    if (node.kind === "document") documents.push(node);
+    else routes.push(node);
+    for (const child of node.children || []) collect(child);
+  };
+  collect(tree);
+  if (!documents.length) return;
+
+  let routeRight = Number.NEGATIVE_INFINITY;
+  for (const route of routes) {
+    const position = graphPosition(graph, route.id);
+    if (position) routeRight = Math.max(routeRight, position[0] + graphNodeWidth(route) / 2);
+  }
+  if (!Number.isFinite(routeRight)) return;
+
+  const placements = documents.map((document) => {
+    const position = graphPosition(graph, document.id);
+    return position ? {
+      document,
+      originalY: position[1],
+      y: position[1],
+      height: document.documentHeight || DOCUMENT_NODE_MIN_HEIGHT,
+    } : null;
+  }).filter(Boolean).sort((left, right) => left.originalY - right.originalY);
+  if (!placements.length) return;
+
+  for (let index = 1; index < placements.length; index += 1) {
+    const previous = placements[index - 1];
+    const current = placements[index];
+    const minimumY = previous.y + previous.height / 2 +
+      DOCUMENT_VERTICAL_GAP + current.height / 2;
+    current.y = Math.max(current.y, minimumY);
+  }
+  const originalMean = placements.reduce((sum, item) => sum + item.originalY, 0) / placements.length;
+  const adjustedMean = placements.reduce((sum, item) => sum + item.y, 0) / placements.length;
+  const verticalShift = originalMean - adjustedMean;
+  const columnLeft = routeRight + DOCUMENT_COLUMN_GAP;
+  await Promise.all(placements.map((item) => graph.translateElementTo(item.document.id, [
+    columnLeft + (item.document.documentWidth || DOCUMENT_NODE_WIDTH) / 2,
+    item.y + verticalShift,
+  ], false)));
 }
 
 async function replaceDocumentNode(graph, tree, node, document) {
   node.children = document ? [document] : [];
   graph.setData(graphData(tree));
   await graph.render();
-  await placeDocumentAfterLeaf(graph, node, document);
+  await alignDocumentColumn(graph, tree);
   return document;
 }
 
@@ -686,6 +732,7 @@ async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableI
   graph.setData(graphData(tree));
   await graph.render();
   if (graph.expandElement) await graph.expandElement(selected, { animation: false });
+  await alignDocumentColumn(graph, tree);
   await graph.localMotion?.animateNodes(addedIDs);
   added.forEach((child) => { delete child.motionOpacity; });
 }
@@ -701,6 +748,7 @@ async function appendRootPage(graph, tree, executeMSQL, databaseID, tableID, cur
   tree.page = next.page;
   graph.setData(graphData(tree));
   await graph.render();
+  await alignDocumentColumn(graph, tree);
   await graph.localMotion?.animateNodes(addedIDs);
   added.forEach((child) => { delete child.motionOpacity; });
 }

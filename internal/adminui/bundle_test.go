@@ -362,6 +362,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
 		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
 		"semantic-canvas-fullscreen", "semantic-canvas-controls", "返回表",
+		"alignDocumentColumn", "DOCUMENT_COLUMN_GAP", "DOCUMENT_VERTICAL_GAP",
 		"for (const column of preview.columns)",
 	} {
 		if !strings.Contains(routeText, required) {
@@ -371,7 +372,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	for _, forbidden := range []string{
 		"route-canvas-inspector", "canvas-inline-preview", "canvas-inline-close",
 		"打开完整文档", "preview.columns.slice", "documentText", "labelWordWrap",
-		"\"drag-canvas\", \"zoom-canvas\"",
+		"\"drag-canvas\", \"zoom-canvas\"", "placeDocumentAfterLeaf",
 	} {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
