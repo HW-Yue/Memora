@@ -742,7 +742,7 @@ function createSemanticGraph(container, tree, onNodeClick) {
   const graph = new window.G6.Graph({
     container,
     autoFit: "view",
-    animation: { duration: 180 },
+    animation: false,
     zoomRange: [0.25, 2],
     padding: [40, 420, 40, 80],
     data: graphData(tree),
@@ -806,7 +806,7 @@ function createSemanticGraph(container, tree, onNodeClick) {
             findTreeNode(tree, event.target.id) : null;
           return node?.kind === "branch" && node.childrenLoaded === true;
         },
-        animation: true,
+        animation: false,
         align: true,
       },
     ],
@@ -834,7 +834,7 @@ function statusDocumentText(title, detail) {
 
 function focusDocumentBranch(graph, routeID, documentID) {
   const zoom = Math.min(1, Math.max(graph.getZoom?.() || 0, 0.8));
-  Promise.resolve(graph.zoomTo?.(zoom, { duration: 100 }))
+  Promise.resolve(graph.zoomTo?.(zoom, false))
     .then(() => graph.focusElement?.([routeID, documentID], { duration: 160 }))
     .catch(() => {});
 }
