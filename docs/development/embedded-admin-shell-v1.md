@@ -37,6 +37,8 @@ Branch 才读取下一层。点击 Leaf 先打开唯一 locator，并按 RowID �
 不需要再打开其他页面才能读完 Row。再次点击 Leaf 会移除这个 document 节点。已有 Row
 深链路只保留为独立的 History/Revision 观察入口，不参与 Route Tree 的读取交互。画布工具栏
 的“聚焦到中心”只调整当前已加载节点的视口，不重新请求或改变语义树状态。
+增量加载不会触发 `autoFit`；当前缩放和视口位置保持不变，只有首次进入或用户主动聚焦时
+才重新适配画布。
 
 当前 document 节点使用 G6 `html` 节点承载一个固定阅读宽度约 900px 的 WPS 风格文档面：
 标题、Row 语义说明和系统元数据位于页眉，`summary` 作为主要 Markdown 正文，其余业务字段
@@ -55,6 +57,11 @@ document HTML 节点默认禁止文字选择，普通拖动直接平移画布；
 时先完成 locator 与 Row 回表，再把最终 document（或最终错误/空状态）一次接入树中，不用
 临时 document 节点触发第二次布局。数据更新与布局不做元素动画，避免整棵树追逐旧位置；最终
 document 只执行一次短视口聚焦，禁止两轮视口动画互相覆盖；元素布局本身不得再做过渡动画。
+
+F216 在上述边界内增加局部微动画：新 Branch 节点使用不超过 160ms 的透明度渐入，最终
+Row 文档由 HTML 内层使用不超过 200ms 的合成属性动画接入；动画可被后一次更新取消，且
+`prefers-reduced-motion` 会完全跳过。详细契约见
+[Admin Semantic Local Motion v1](./admin-semantic-local-motion-v1.md)。
 
 ## Browser session
 

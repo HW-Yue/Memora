@@ -1,5 +1,7 @@
 const CHILD_LIMIT = 12;
 const LOCATOR_LIMIT = 1;
+const BRANCH_ENTER_MS = 140;
+const DOCUMENT_ENTER_MS = 180;
 
 class RouteViewError extends Error {
   constructor(code, message) {
@@ -402,6 +404,13 @@ function documentTitle(locator, preview) {
 
 function documentNodeElement(locator, preview, state) {
   const article = element("article", `semantic-document-node semantic-document-${state}`);
+  const finish = () => {
+    const motion = element("div", "semantic-document-motion semantic-document-enter");
+    motion.style.animationDuration = `${DOCUMENT_ENTER_MS}ms`;
+    while (article.firstChild) motion.append(article.firstChild);
+    article.append(motion);
+    return article;
+  };
   const header = element("header", "semantic-document-header");
   header.append(element("p", "semantic-document-kicker", "MEMORA ROW"));
 
@@ -411,7 +420,7 @@ function documentNodeElement(locator, preview, state) {
     const body = element("div", "semantic-document-status");
     body.append(element("p", "", lines.join("\n")));
     article.append(header, body);
-    return article;
+    return finish();
   }
 
   if (!preview.row) {
@@ -419,7 +428,7 @@ function documentNodeElement(locator, preview, state) {
     const body = element("div", "semantic-document-status");
     body.append(element("p", "", "locator 仍存在，但当前 revision 没有 live value。"));
     article.append(header, body);
-    return article;
+    return finish();
   }
 
   header.append(element("h2", "", documentTitle(locator, preview)),
@@ -458,7 +467,7 @@ function documentNodeElement(locator, preview, state) {
   if (list.childElementCount) properties.append(list);
   else properties.append(element("p", "semantic-document-empty", "没有其他业务字段。"));
   article.append(properties);
-  return article;
+  return finish();
 }
 
 function measuredDocumentHeight(article) {
@@ -573,7 +582,62 @@ function findTreeNode(node, id) {
 }
 
 function graphData(tree) {
-  return window.G6.treeToGraphData(tree);
+  return window.G6.treeToGraphData(tree, {
+    getNodeData: (node, depth) => {
+      node.depth = depth;
+      const data = node.children ?
+        { ...node, children: node.children.map((child) => child.id) } : node;
+      if (node.motionOpacity !== undefined) {
+        data.style = { ...(node.style || {}), opacity: node.motionOpacity };
+      }
+      return data;
+    },
+  });
+}
+
+function reducedMotionPreferred() {
+  return typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function localMotionController(graph) {
+  let generation = 0;
+  let frame = 0;
+  const cancel = () => {
+    generation += 1;
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+  };
+  const animateNodes = async (ids, duration = BRANCH_ENTER_MS) => {
+    const nodeIDs = [...new Set(ids)].filter(Boolean);
+    cancel();
+    if (!nodeIDs.length) return;
+    if (reducedMotionPreferred()) {
+      graph.updateNodeData(nodeIDs.map((id) => ({ id, style: { opacity: 1 } })));
+      await Promise.resolve(graph.draw());
+      return;
+    }
+    const token = generation;
+    await new Promise((resolve) => {
+      const started = performance.now();
+      const step = (now) => {
+        if (token !== generation) return resolve();
+        const progress = Math.min(1, (now - started) / duration);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        graph.updateNodeData(nodeIDs.map((id) => ({ id, style: { opacity: eased } })));
+        Promise.resolve(graph.draw()).then(() => {
+          if (progress >= 1 || token !== generation) {
+            frame = 0;
+            resolve();
+          } else {
+            frame = requestAnimationFrame(step);
+          }
+        });
+      };
+      frame = requestAnimationFrame(step);
+    });
+  };
+  return { cancel, animateNodes };
 }
 
 function setCanvasState(stage, kind, title, detail) {
@@ -611,7 +675,10 @@ async function replaceDocumentNode(graph, tree, node, document) {
 async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableID, cursor = "") {
   const next = await loadChildren(executeMSQL, databaseID, tableID, node.route_id, cursor);
   const existing = cursor ? node.children.filter((child) => child.kind !== "more") : [];
-  node.children = existing.concat(next.rows.map(treeNode));
+  const added = next.rows.map(treeNode);
+  const addedIDs = added.map((child) => child.id);
+  if (!reducedMotionPreferred()) added.forEach((child) => { child.motionOpacity = 0; });
+  node.children = existing.concat(added);
   if (next.page.truncated) node.children.push(moreNode(node, next.page.next_cursor));
   node.childrenLoaded = true;
   node.page = next.page;
@@ -619,16 +686,23 @@ async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableI
   graph.setData(graphData(tree));
   await graph.render();
   if (graph.expandElement) await graph.expandElement(selected, { animation: false });
+  await graph.localMotion?.animateNodes(addedIDs);
+  added.forEach((child) => { delete child.motionOpacity; });
 }
 
 async function appendRootPage(graph, tree, executeMSQL, databaseID, tableID, cursor) {
   const next = await loadTableRoot(executeMSQL, databaseID, tableID, cursor);
   const existing = tree.children.filter((child) => child.kind !== "more");
-  tree.children = existing.concat(next.rows.map(treeNode));
+  const added = next.rows.map(treeNode);
+  const addedIDs = added.map((child) => child.id);
+  if (!reducedMotionPreferred()) added.forEach((child) => { child.motionOpacity = 0; });
+  tree.children = existing.concat(added);
   if (next.page.truncated) tree.children.push(moreNode(tree, next.page.next_cursor));
   tree.page = next.page;
   graph.setData(graphData(tree));
   await graph.render();
+  await graph.localMotion?.animateNodes(addedIDs);
+  added.forEach((child) => { delete child.motionOpacity; });
 }
 
 function installCanvasGestureBridge(graph, container) {
@@ -741,7 +815,7 @@ function createSemanticGraph(container, tree, onNodeClick) {
   }
   const graph = new window.G6.Graph({
     container,
-    autoFit: "view",
+    autoFit: false,
     animation: false,
     zoomRange: [0.25, 2],
     padding: [40, 420, 40, 80],
@@ -811,6 +885,8 @@ function createSemanticGraph(container, tree, onNodeClick) {
       },
     ],
   });
+  graph.localMotion = localMotionController(graph);
+  container.__semanticGraph = graph;
   installCanvasGestureBridge(graph, container);
   graph.on("node:click", (event) => onNodeClick(graph, event.target.id));
   return graph;
@@ -886,6 +962,9 @@ function landingView() {
 }
 
 export async function renderRoutes(root, options) {
+  const previousCanvas = root.querySelector(".semantic-canvas");
+  previousCanvas?.__semanticGraph?.localMotion?.cancel();
+  previousCanvas?.__semanticGraph?.destroy?.();
   showState(root, "loading", "正在读取语义索引", "加载根节点；展开分支时按需读取下一层…");
   try {
     const parts = pathParts(options.path);
@@ -955,6 +1034,7 @@ export async function renderRoutes(root, options) {
     });
     focusButton.addEventListener("click", () => focusSemanticGraph(graph));
     await graph.render();
+    focusSemanticGraph(graph);
     if (parts.length === 3) {
       const routeID = stableID(parts[2], "route_", "Route");
       const selected = findTreeNode(tree, routeID);
