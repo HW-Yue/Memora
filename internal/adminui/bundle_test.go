@@ -363,6 +363,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
 		"semantic-canvas-fullscreen", "semantic-canvas-controls", "返回表",
 		"alignDocumentColumn", "DOCUMENT_COLUMN_GAP", "DOCUMENT_VERTICAL_GAP",
+		"CANVAS_FOCUS_MAX_ZOOM", "zoomTo", "focusRouteNode",
 		"for (const column of preview.columns)",
 	} {
 		if !strings.Contains(routeText, required) {

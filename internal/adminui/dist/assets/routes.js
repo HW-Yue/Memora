@@ -348,6 +348,7 @@ const DOCUMENT_NODE_WIDTH = 900;
 const DOCUMENT_NODE_MIN_HEIGHT = 620;
 const DOCUMENT_COLUMN_GAP = 72;
 const DOCUMENT_VERTICAL_GAP = 72;
+const CANVAS_FOCUS_MAX_ZOOM = 1.25;
 const SYSTEM_COLUMNS = ["row_id", "revision", "commit_sequence", "row_state", "schema_version"];
 
 function displayValue(value) {
@@ -940,12 +941,24 @@ function createSemanticGraph(container, tree, onNodeClick) {
   return graph;
 }
 
-function focusSemanticGraph(graph) {
+async function capFocusZoom(graph) {
+  const zoom = graph.getZoom?.();
+  if (Number.isFinite(zoom) && zoom > CANVAS_FOCUS_MAX_ZOOM &&
+      typeof graph.zoomTo === "function") {
+    await graph.zoomTo(CANVAS_FOCUS_MAX_ZOOM, false);
+  }
+}
+
+async function focusSemanticGraph(graph) {
   if (typeof graph.fitView === "function") {
-    graph.fitView({ animation: { duration: 180 } });
+    await graph.fitView({ animation: { duration: 180 } });
+    await capFocusZoom(graph);
     return;
   }
-  if (typeof graph.fitCenter === "function") graph.fitCenter({ animation: { duration: 180 } });
+  if (typeof graph.fitCenter === "function") {
+    await graph.fitCenter({ animation: { duration: 180 } });
+    await capFocusZoom(graph);
+  }
 }
 
 function statusDocumentNode(node, text, state = "status") {
@@ -963,13 +976,17 @@ function focusDocumentBranch(graph, routeID, documentID) {
     .catch(() => {});
 }
 
+function focusRouteNode(graph, routeID) {
+  Promise.resolve(graph.focusElement?.(routeID, { duration: 160 })).catch(() => {});
+}
+
 async function toggleLeafDocument(graph, tree, node, executeMSQL, databaseID, tableID) {
   node.documentRequest = (node.documentRequest || 0) + 1;
   const request = node.documentRequest;
   const current = findDocumentNode(node);
   if (current) {
     await replaceDocumentNode(graph, tree, node, null);
-    focusSemanticGraph(graph);
+    focusRouteNode(graph, node.id);
     return;
   }
 
@@ -1081,9 +1098,9 @@ export async function renderRoutes(root, options) {
       if (node.kind !== "leaf") return;
       await toggleLeafDocument(currentGraph, tree, node, options.executeMSQL, databaseID, tableID);
     });
-    focusButton.addEventListener("click", () => focusSemanticGraph(graph));
+    focusButton.addEventListener("click", () => { void focusSemanticGraph(graph); });
     await graph.render();
-    focusSemanticGraph(graph);
+    await focusSemanticGraph(graph);
     if (parts.length === 3) {
       const routeID = stableID(parts[2], "route_", "Route");
       const selected = findTreeNode(tree, routeID);
