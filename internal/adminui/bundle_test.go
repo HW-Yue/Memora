@@ -354,6 +354,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"semantic-document-node", "semantic-document-reading", "semantic-document-properties",
 		"trackpad-pan", "trackpad-zoom", "event.ctrlKey", "event.metaKey",
 		"zoomRange: [0.25, 2]", "sensitivity: 0.2",
+		"animation: { duration: 180 }", "node.childrenLoaded === true",
 		"两指平移", "捏合缩放", "Option 拖动选择文字",
 		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
 		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
@@ -371,6 +372,9 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
 		}
+	}
+	if strings.Contains(routeText, "const pending = statusDocumentNode") {
+		t.Error("Leaf click still renders a temporary document before final Row content")
 	}
 
 	rows, err := fs.ReadFile(embeddedFiles, "dist/assets/rows.js")

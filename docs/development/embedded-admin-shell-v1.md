@@ -50,6 +50,12 @@ document HTML 节点默认禁止文字选择，普通拖动直接平移画布；
 `Option/Alt` 才临时开启文字选择。所有这些事件只在画布容器内拦截，不影响页面其他区域的
 滚动和浏览器默认行为。
 
+节点点击必须形成单一、短促的视觉事务。首次点击尚未加载的 Branch 时，内置
+`collapse-expand` 不得提前执行；子节点读取完成后只做一次整树更新并保持展开。点击 Leaf
+时先完成 locator 与 Row 回表，再把最终 document（或最终错误/空状态）一次接入树中，不用
+临时 document 节点触发第二次布局。G6 全局布局动画预算为 180ms，最终 document 只执行一轮
+短缩放与聚焦，禁止两轮视口动画互相覆盖。
+
 ## Browser session
 
 启动 URL 仍把 bootstrap token 放在 fragment。模块脚本首先同步调用

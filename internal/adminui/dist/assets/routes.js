@@ -742,6 +742,7 @@ function createSemanticGraph(container, tree, onNodeClick) {
   const graph = new window.G6.Graph({
     container,
     autoFit: "view",
+    animation: { duration: 180 },
     zoomRange: [0.25, 2],
     padding: [40, 420, 40, 80],
     data: graphData(tree),
@@ -800,8 +801,11 @@ function createSemanticGraph(container, tree, onNodeClick) {
         type: "collapse-expand",
         key: "collapse-expand",
         trigger: "click",
-        enable: (event) => event.targetType === "node" &&
-          findTreeNode(tree, event.target.id)?.kind === "branch",
+        enable: (event) => {
+          const node = event.targetType === "node" ?
+            findTreeNode(tree, event.target.id) : null;
+          return node?.kind === "branch" && node.childrenLoaded === true;
+        },
         animation: true,
         align: true,
       },
@@ -814,10 +818,10 @@ function createSemanticGraph(container, tree, onNodeClick) {
 
 function focusSemanticGraph(graph) {
   if (typeof graph.fitView === "function") {
-    graph.fitView({ animation: { duration: 300 } });
+    graph.fitView({ animation: { duration: 180 } });
     return;
   }
-  if (typeof graph.fitCenter === "function") graph.fitCenter({ animation: { duration: 300 } });
+  if (typeof graph.fitCenter === "function") graph.fitCenter({ animation: { duration: 180 } });
 }
 
 function statusDocumentNode(node, text, state = "status") {
@@ -830,8 +834,8 @@ function statusDocumentText(title, detail) {
 
 function focusDocumentBranch(graph, routeID, documentID) {
   const zoom = Math.min(1, Math.max(graph.getZoom?.() || 0, 0.8));
-  Promise.resolve(graph.zoomTo?.(zoom, { duration: 220 }))
-    .then(() => graph.focusElement?.([routeID, documentID], { duration: 260 }))
+  Promise.resolve(graph.zoomTo?.(zoom, { duration: 100 }))
+    .then(() => graph.focusElement?.([routeID, documentID], { duration: 160 }))
     .catch(() => {});
 }
 
@@ -845,9 +849,6 @@ async function toggleLeafDocument(graph, tree, node, executeMSQL, databaseID, ta
     return;
   }
 
-  const pending = statusDocumentNode(node, statusDocumentText("正在读取 Row 内容", "先打开唯一 locator，再按 RowID 回表…"));
-  await replaceDocumentNode(graph, tree, node, pending);
-  focusDocumentBranch(graph, node.id, pending.id);
   try {
     const locators = await loadLocators(executeMSQL, databaseID, tableID, node.route_id);
     if (request !== node.documentRequest) return;
