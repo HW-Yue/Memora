@@ -978,23 +978,24 @@ export async function renderRoutes(root, options) {
     const data = await loadTableRoot(options.executeMSQL, databaseID, tableID);
     if (!options.isCurrent()) return;
     const tree = treeRoot(data.object, data.rows, data.page);
-    const view = element("div", "semantic-canvas-page");
-    view.append(breadcrumbs([{ label: data.object.name, href: `/catalog/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}` }]),
-      heading(`${data.object.name} 语义索引`, "在这张 Table 的语义路由树中定位 Row。点击 Branch 展开，点击 Leaf 在画布中展开 Row 内容。",
-        [data.object.table_id, `schema v${data.object.schema_version}`]));
-    const toolbar = element("div", "semantic-canvas-toolbar");
-    toolbar.append(element("span", "canvas-hint",
-      "两指平移 · 捏合缩放 · 点击 Branch 展开/收起 · 点击 Leaf 展开内容 · Option 拖动选择文字"));
+    const view = element("div", "semantic-canvas-page semantic-canvas-fullscreen");
+    const controls = element("div", "semantic-canvas-controls");
+    const back = element("a", "canvas-control canvas-back", "返回表");
+    back.href = `/catalog/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}`;
+    back.dataset.route = "";
+    back.setAttribute("aria-label", `返回 ${data.object.name} 表`);
+    back.title = `返回 ${data.object.name} 表`;
+    controls.append(back);
     const focusButton = element("button", "canvas-focus-button", "聚焦到中心");
     focusButton.type = "button";
     focusButton.setAttribute("aria-label", "聚焦到语义索引中心");
     focusButton.title = "将当前已加载的语义索引重新适配到画布中心";
-    toolbar.append(focusButton);
+    controls.append(focusButton);
     const stage = element("div", "semantic-canvas-stage");
     const canvas = element("div", "semantic-canvas");
     canvas.setAttribute("aria-label", "语义索引树无限画布");
-    stage.append(canvas);
-    view.append(toolbar, stage);
+    stage.append(controls, canvas);
+    view.append(stage);
     root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
     root.replaceChildren(view);
     if (data.rows.length === 0) {

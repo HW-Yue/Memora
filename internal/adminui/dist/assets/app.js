@@ -97,6 +97,7 @@ function updateNavigation(section) {
 async function renderCurrentRoute() {
   if (!sessionReady) return;
   const path = window.location.pathname;
+  document.body.classList.toggle("route-semantic-detail", path.startsWith("/routes/"));
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   routeLabel.textContent = path;
   if (path === "/catalog" || path.startsWith("/catalog/")) {

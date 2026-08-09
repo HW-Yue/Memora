@@ -359,9 +359,9 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"requestAnimationFrame", "prefers-reduced-motion", "semantic-document-enter",
 		"BRANCH_ENTER_MS", "DOCUMENT_ENTER_MS", "cancelAnimationFrame", "motionOpacity", "getNodeData",
 		"graph.localMotion", "graph.draw()", "__semanticGraph", "localMotion?.cancel",
-		"两指平移", "捏合缩放", "Option 拖动选择文字",
 		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
 		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
+		"semantic-canvas-fullscreen", "semantic-canvas-controls", "返回表",
 		"for (const column of preview.columns)",
 	} {
 		if !strings.Contains(routeText, required) {
@@ -408,6 +408,9 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		".semantic-document-metadata", ".semantic-document-properties",
 		"user-select: none", "touch-action: none", "overscroll-behavior: contain",
 		"@keyframes semantic-document-enter", "prefers-reduced-motion: reduce",
+		".route-semantic-detail .topbar", ".route-semantic-detail .sidebar",
+		".route-semantic-detail .semantic-canvas-stage", ".semantic-canvas-controls",
+		"route-semantic-detail",
 	} {
 		if !strings.Contains(styleText, required) {
 			t.Errorf("Wide Row document layout is missing %q", required)
