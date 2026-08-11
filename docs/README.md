@@ -96,6 +96,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
   改为架构对照证据；F212–F215 与候选 F216–F218 转 Deferred；
 - [F219：确定性答案评分](./planning/f219-deterministic-answer-scoring.md) — 候选；不依赖模型的检索命中主判定与
   judge 指标部分缺失表示，是 ADR-0010 之后任何评测运行的前置项。
+- [F220：Query Working Set](./planning/f220-query-working-set.md) — 候选；带完整 Route 链路的有界语义工作集，
+  用一点上下文换导航时间；同时是多轮记忆缺陷的修复。
 
 ## 当前产品规格
 

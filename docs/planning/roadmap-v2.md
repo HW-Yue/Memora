@@ -69,21 +69,30 @@ AI 建 Route，但数据增长后没有重组机制。今天 15 个 Leaf 可以�
 
 ### 阶段 A：让 Agent 真的能导航（当前唯一在办阶段）
 
+**顺序是硬依赖**：A2 最小、必须最先；A1 依赖 A2（循环只能走一跳时，没有第二跳可加速，
+工作集命中率数字没有意义）。
+
 | 项 | 内容 | 依据 |
 | --- | --- | --- |
-| A1 | 循环累积多轮上下文，替换单步 `previousCall/previousResult`；对累积部分设明确字节预算与淘汰规则 | 风险 1 |
-| A2 | 证据判定引入行数与充分性条件，零行 SELECT 不再终止导航；`ToolChoiceNone` 改由模型显式声明完成或预算耗尽触发 | 风险 2 |
+| A2 | 证据判定引入行数与充分性条件，零行 SELECT 不再终止导航；`ToolChoiceNone` 改由模型显式声明完成或预算耗尽触发。改动小，先做 | 风险 2 |
+| A1 | [F220](./f220-query-working-set.md) Query Working Set Stage 1：Row + 完整 Route 链路的有界工作集，替换单步 `previousCall/previousResult`；保守失效、LRU + 独立预算、紧凑渲染、命中率指标 | 风险 1 |
 | A3 | [F219](./f219-deterministic-answer-scoring.md) 确定性主评分与部分指标表示 | ADR-0010 |
-| A4 | 按 [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md) 跑两组小规模对照：三 arm 同模型对照；强/弱模型建索引的能力梯度对照 | ADR-0010 |
+| A4 | 按 [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md) 跑三组小规模对照：三 arm 同模型对照；强/弱模型建索引的能力梯度对照；工作集冷启动 vs 预热 | ADR-0010、F220 |
 
-**出口判据**：A4 两组对照给出可复现结论，且 A1/A2 修复前后的同题对照显示导航深度实际变化。
+A1 采用 [F220](./f220-query-working-set.md) 的语义工作集，而不是朴素地累积原始 transcript。
+两者都能修复多轮记忆缺陷，但工作集额外提供去重、横向导航和负向记忆，且不是会被丢弃的
+中间产物——它就是 F220 的 Stage 1。朴素累积则会在实现工作集时整个作废。
+
+**出口判据**：A4 三组对照给出可复现结论，且 A1/A2 修复前后的同题对照显示导航深度实际变化。
 在此之前不开新能力。
 
 ### 阶段 B：把 AI-native 主张补实
 
 依赖阶段 A 出口。
 
-- B1 Query Workspace：跨轮上下文、跨会话 topic 身份、有界恢复（差距 2）；
+- B1 [F220](./f220-query-working-set.md) Stage 2 与跨会话：负向记忆、相关性淘汰、
+  （若指标支持）精确失效，以及跨 Session topic 身份与有界恢复（差距 2）。
+  精确失效前必须先修[已知风险](../development/known-risks.md)第 6 条；
 - B2 写入反馈回路：检索失败与人工修正回流到建模决策，形成可观测信号（差距 3）；
 - B3 原文可恢复性决策：执行[语义重建的不对称性](../data/semantic-rebuild-asymmetry.md)
   的候选 A 或 B，选定后才谈 worthiness 调参（差距 3）；

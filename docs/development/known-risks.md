@@ -72,6 +72,10 @@ F191 明确「上传全程流式处理，不把整本书读进内存」，用 32
 其余读路径走的是 `lockRead` 的 RWMutex。若是有意为之（change log 需序列化读），
 应加注释说明；否则是可摘除的耦合。
 
+⚠️ [F220](../planning/f220-query-working-set.md) 的精确失效方案依赖
+`ListCommittedChanges`，**必须先修这条**，否则工作集每 turn 校验都会与写入竞争。
+F220 Stage 1 因此采用保守全丢，绕开该依赖。
+
 ### 7. MSQL Session 无数量上限与空闲回收
 
 `internal/msql/service/service.go:66` 的 `OpenSession` 对同一 id 复用，对新 id 无条件创建，
