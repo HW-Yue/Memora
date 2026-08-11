@@ -5,11 +5,13 @@
 
 ## 从这里开始
 
-**读这三份就能理解系统的当前状态，不需要读 F 编号。**
+**读这四份就能理解系统现状并派发工作，不需要读 F 编号。**
 
 1. [当前系统能力](./product/system-capabilities.md) — 系统现在是什么、各能力域的成熟度和实测性能；
 2. [已知风险](./development/known-risks.md) — 已确认存在但未被 Feature 文档记录的问题，按严重度排序；
-3. [路线 v2](./planning/roadmap-v2.md) — AI-native 的五个差距与 A/B/C/D 分阶段计划。
+3. [路线 v2](./planning/roadmap-v2.md) — AI-native 的五个差距与 A/B/C/D 分阶段计划；
+4. [执行计划](./planning/execution-plan.md) — **当前唯一的工作队列**，编号工单，
+   每项带前置、改动范围、RED 和完成判据。派发实现从这里取。
 
 配套的最高层原则与规则：
 
@@ -20,7 +22,7 @@
 ## Feature 账本（按编号回溯用，不是导航入口）
 
 F 编号按时间顺序记录开发过程，累计两百多项。它用于单项开发的 TDD 与授权，
-以及回溯某项能力的历史证据；**理解系统请走上面三份文档**。
+以及回溯某项能力的历史证据；**理解系统与派发工作请走上面四份文档**。
 
 - [Feature 状态](./planning/feature-status.md) — 权威的完成、撤销、证据不完整和延期账本；
 - [当前产品基线](./product/current-product.md) — 早于本次重组的产品快照，仍然有效；
@@ -98,6 +100,10 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
   judge 指标部分缺失表示，是 ADR-0010 之后任何评测运行的前置项。
 - [F220：Query Working Set](./planning/f220-query-working-set.md) — 候选；带完整 Route 链路的有界语义工作集，
   用一点上下文换导航时间；同时是多轮记忆缺陷的修复。
+- [F221：Evidence 充分性与导航终止](./planning/f221-evidence-sufficiency.md) — 候选；零行 SELECT 不再终止导航，
+  无证据时拒绝作答；执行计划第 1 项。
+- [F222：Release Gate Policy v2](./planning/f222-release-gate-policy-v2.md) — 候选；确定性主判定 +
+  report/gate 双模式，解除 F185b 与 ADR-0010 的死锁。
 
 ## 当前产品规格
 

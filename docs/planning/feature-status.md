@@ -6,7 +6,8 @@
 > **这份账本按时间顺序记录，不是理解系统的入口。** 要知道系统现在能做什么，读
 > [当前系统能力](../product/system-capabilities.md)；要知道哪里有问题，读
 > [已知风险](../development/known-risks.md)；要知道接下来做什么，读
-> [路线 v2](./roadmap-v2.md)。本文档用于按 F 编号回溯某项能力的历史证据。
+> [路线 v2](./roadmap-v2.md)；要派发实现工单，读[执行计划](./execution-plan.md)。
+> 本文档用于按 F 编号回溯某项能力的历史证据。
 
 ## 状态定义
 
@@ -152,7 +153,11 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 - F219 候选：确定性主评分与部分指标评分表示；ADR-0010 之后任何评测运行的前置项。
 - F220 候选：Query Working Set——带完整 Route 链路的有界语义工作集；同时是多轮记忆缺陷
-  （[已知风险](../development/known-risks.md)第 1 条）的修复，为[路线 v2](./roadmap-v2.md) 阶段 A 的 A1。
+  （[已知风险](../development/known-risks.md)第 1 条）的修复。
+- F221 候选：Evidence 充分性与导航终止条件；零行 SELECT 不再终止导航，无证据时拒绝作答。
+- F222 候选：Release Gate Policy v2；确定性主判定与 report/gate 双模式，解除 F185b 死锁。
+
+派发顺序与完成判据以[执行计划](./execution-plan.md)为准。
 
 具体拆分以[后续开发序列](./post-f169-development-plan.md)为准。写入时机与 worthiness
 质量评测仍安排在查询、写入和 Hook 观测稳定之后；worthiness 决策不可逆性的相关事实见
