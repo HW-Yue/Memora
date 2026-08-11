@@ -5,16 +5,34 @@
 
 ## 从这里开始
 
-- [当前产品基线](./product/current-product.md) — 产品现在是什么、已经能做什么、还缺什么；
-- [Feature 状态](./planning/feature-status.md) — Feature 的权威完成、撤销、证据不完整和延期账本；
-- [后续路线](./planning/future-roadmap.md) — 真实 AI 证据、内置评测 Agent、外置 Hook 和后期候选；
-- [F169 之后的开发序列](./planning/post-f169-development-plan.md) — 倒排索引、最小内置 Agent、
-  外部答案测评、可替换 Provider 写入和长资料吸收的逐项顺序；
-- [查询 Agent Feature 序列](./planning/query-agent-feature-sequence.md)与
-  [资料吸收 Agent Feature 序列](./planning/assimilation-agent-feature-sequence.md) — 两条独立垂直链；
+**读这三份就能理解系统的当前状态，不需要读 F 编号。**
+
+1. [当前系统能力](./product/system-capabilities.md) — 系统现在是什么、各能力域的成熟度和实测性能；
+2. [已知风险](./development/known-risks.md) — 已确认存在但未被 Feature 文档记录的问题，按严重度排序；
+3. [路线 v2](./planning/roadmap-v2.md) — AI-native 的五个差距与 A/B/C/D 分阶段计划。
+
+配套的最高层原则与规则：
+
 - [AI-native 产品宪章](./product/ai-native-product-charter.md) — 最高层产品原则和永久边界；
 - [Feature 产品门](./planning/feature-product-gate.md)与
   [TDD 协议](./planning/feature-tdd-protocol.md) — 新开发的拆分、授权和验收规则。
+
+## Feature 账本（按编号回溯用，不是导航入口）
+
+F 编号按时间顺序记录开发过程，累计两百多项。它用于单项开发的 TDD 与授权，
+以及回溯某项能力的历史证据；**理解系统请走上面三份文档**。
+
+- [Feature 状态](./planning/feature-status.md) — 权威的完成、撤销、证据不完整和延期账本；
+- [当前产品基线](./product/current-product.md) — 早于本次重组的产品快照，仍然有效；
+- [F169 之后的开发序列](./planning/post-f169-development-plan.md)与
+  [F204 之后的开发计划](./planning/post-f204-development-plan.md) — 历史顺序，
+  已被[路线 v2](./planning/roadmap-v2.md)取代；
+- [查询 Agent Feature 序列](./planning/query-agent-feature-sequence.md)与
+  [资料吸收 Agent Feature 序列](./planning/assimilation-agent-feature-sequence.md) — 两条独立垂直链；
+- [后续路线](./planning/future-roadmap.md) — 早期路线，已被路线 v2 取代。
+
+### 单项 Feature 规格
+
 - [F169：Route Leaf 单 Row 不变量](./planning/f169-single-row-route-leaf.md) — 修复 Leaf
   候选桶缺陷，冻结一个 Leaf 最多一个活跃 Row。
 - [ADR-0008：全内容倒排索引](./decisions/0008-full-content-inverted-index.md) — 当前 Row 与
@@ -83,6 +101,7 @@
 
 ### 数据与产品
 
+- [当前系统能力](./product/system-capabilities.md) — 按能力域的成熟度与实测性能；
 - [AI-native 产品边界](./product/ai-native-boundary.md)
 - [AI-native 产品契约](./product/ai-native-contract.md)
 - [语义记录模型](./data/semantic-records.md)
@@ -133,6 +152,7 @@
 - [Route Trace](./query/route-trace-read-v1.md)
 - [评测 Agent 与外置 Hook](./development/evaluation-agent-observability.md)
 - [下一次 DeepSeek 评测启动问题](./development/evaluation-next-run.md) — 只从环境变量读取 key 的 F215 smoke 命令；
+- [已知风险](./development/known-risks.md) — 已确认但未被 Feature 文档记录的问题；
 - [旧代码清理边界](./development/legacy-code-boundary.md)
 - [签名发布制品](./development/macos-signed-release-artifacts-v2.md)
 - [干净机器验收](./development/clean-machine-acceptance-v1.md)

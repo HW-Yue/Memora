@@ -3,6 +3,11 @@
 状态：2026-08-05 当前权威实现账本；旧完成门和执行过程位于
 [`archive/planning/`](../archive/planning/README.md)。
 
+> **这份账本按时间顺序记录，不是理解系统的入口。** 要知道系统现在能做什么，读
+> [当前系统能力](../product/system-capabilities.md)；要知道哪里有问题，读
+> [已知风险](../development/known-risks.md)；要知道接下来做什么，读
+> [路线 v2](./roadmap-v2.md)。本文档用于按 F 编号回溯某项能力的历史证据。
+
 ## 状态定义
 
 - **已实现**：代码、规格、测试和完成门均已交付；
