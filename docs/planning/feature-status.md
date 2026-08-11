@@ -151,6 +151,8 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
   判断并留下 revision/理由，引擎不提供统一语义常量；
 
 - F219 候选：确定性主评分与部分指标评分表示；ADR-0010 之后任何评测运行的前置项。
+- F220 候选：Query Working Set——带完整 Route 链路的有界语义工作集；同时是多轮记忆缺陷
+  （[已知风险](../development/known-risks.md)第 1 条）的修复，为[路线 v2](./roadmap-v2.md) 阶段 A 的 A1。
 
 具体拆分以[后续开发序列](./post-f169-development-plan.md)为准。写入时机与 worthiness
 质量评测仍安排在查询、写入和 Hook 观测稳定之后；worthiness 决策不可逆性的相关事实见
