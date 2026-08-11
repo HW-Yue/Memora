@@ -74,6 +74,10 @@
 - [F213：外部检索评分与对照报告](./planning/f213-retrieval-evaluation-score.md) — evaluator-only Recall@K、HitRate@K、MRR、分桶和成本降幅；
 - [F214：外部语料到 Retrieval Suite 适配器](./planning/f214-external-suite-adapters.md) — MIRACL zh 与 MTRAG BEIR query/qrel 的确定性归一化；
 - [F215：低并发 Provider 退避与评测断点](./planning/f215-low-concurrency-resume.md) — 单 worker、有限重试、hash-bound checkpoint 与失败题续跑；
+- [ADR-0010：小规模高质量评测优先](./decisions/0010-small-scale-high-quality-evaluation.md) — 评测目标从绝对质量分
+  改为架构对照证据；F212–F215 与候选 F216–F218 转 Deferred；
+- [F219：确定性答案评分](./planning/f219-deterministic-answer-scoring.md) — 候选；不依赖模型的检索命中主判定与
+  judge 指标部分缺失表示，是 ADR-0010 之后任何评测运行的前置项。
 
 ## 当前产品规格
 
@@ -84,6 +88,8 @@
 - [语义记录模型](./data/semantic-records.md)
 - [自描述 Data Dictionary](./data/self-describing-data-dictionary.md)
 - [资料吸收](./data/assimilation.md)
+- [语义重建的不对称性](./data/semantic-rebuild-asymmetry.md) — 讨论稿；可重建的层最不依赖模型能力，
+  最依赖模型能力的内容分解层因原文回收而不可重建，处置方案待决策；
 - [Database Package](./product/database-package-v1.md)
 - [质量模型](./product/quality-model.md)
 

@@ -72,7 +72,9 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
   面向用户的正式 `memora ask` 发布承诺和默认 arm 选择仍然延后；
 - F212–F214 已完成外置公开语料准备、MIRACL/MTRAG query/qrel 归一化和独立评分器，但还没有
   “公开语料经 Agent 语义吸收并保留外部 document locator → Query Agent 生成真实 retrieval run”
-  的批量桥接层；因此现阶段不能从这些大数据集直接产出 Memora Recall@5/MRR；
+  的批量桥接层；2026-08-11 按 [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md)
+  这套设施与该桥接层一并转为 Deferred，冻结保留、不再继续投入；现阶段不从这些大数据集产出
+  Memora Recall@5/MRR；
 - “何时值得写入”的质量评测后置；查询、Route 和事实读取的真实大批量质量复跑同样延期，
   现有 runner/gate 保留供后续恢复；
 - 全内容倒排位置、统一 MSQL Service、QuerySession、短网页写入和 EPUB 吸收的 F189–F200
@@ -86,10 +88,14 @@ Catalog、字面位置和 Route-only Vector 只能预测导航候选，不能成
 ## 当前真实性边界
 
 代码和机械测试已经形成完整数据库原型；这不等同于真实长期 AI 使用质量已经达标。
-真实 Query 质量证据仍缺失，但单网页与整本资料吸收所需的独立组件已具备。F215 已补齐单 worker、
-有限退避和 hash-bound checkpoint，DeepSeek smoke receipt 已保存；下一步先修复多轮查询与 judge
-适配的失败重试，再实现公开语料物化与 retrieval-run 桥接层，之后才能补齐三 arm 外部质量分并让
-release gate 选出默认 arm。
+真实 Query 质量证据仍缺失，但单网页与整本资料吸收所需的独立组件已具备。
+
+2026-08-11 起评测路线按 [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md)改为
+小规模、高质量、可复现的对照实验：目标不是取得绝对质量分（它随模型换代失效），而是取得
+同模型、同语料、只变架构的对照证据。下一步是候选
+[F219](../planning/f219-deterministic-answer-scoring.md)，把主指标改成不依赖模型的确定性检索命中
+判定并允许 judge 指标部分缺失；之后才执行三 arm 对照与强/弱模型建索引的能力梯度对照。
+F185b release gate 维持有效，“质量已通过”和“默认 arm 已选定”仍然不成立。
 外置 Hook 再观察真实宿主环境中的分支、上下文、调用和延迟。
 
 ## 关联

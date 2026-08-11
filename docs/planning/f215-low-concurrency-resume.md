@@ -1,6 +1,9 @@
 # F215：低并发 Provider 退避与评测断点
 
 状态：代码已完成；2026-08-06 冻结。真实 DeepSeek smoke receipt 已补齐，但质量证据仍不完整。
+2026-08-11 按 [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md)转为 **Deferred**：
+低并发退避与断点续跑设施冻结保留，当前不再用于扩大样本；评测改走小规模确定性对照，
+前置项为 [F219](./f219-deterministic-answer-scoring.md)。
 
 ## 单一结果
 

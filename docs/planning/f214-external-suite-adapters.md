@@ -1,6 +1,8 @@
 # F214：外部语料到 Retrieval Suite 的确定性适配器
 
-状态：已完成；2026-08-06 冻结并验收。
+状态：已完成；2026-08-06 冻结并验收。2026-08-11 按
+[ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md)转为 **Deferred**：
+设施冻结保留、不删除、不再继续投入，恢复条件见该 ADR。
 
 ## 单一结果
 
