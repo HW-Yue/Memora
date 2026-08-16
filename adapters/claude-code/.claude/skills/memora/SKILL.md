@@ -170,6 +170,12 @@ navigation outcomes, not query failures.
 memora query --input '{"parameters":{"named":{"lexical_query":"crash recovery","lexical_limit":8,"lexical_bytes":4096}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
 ```
 
+`SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query` is the full-content inverted index: it returns every object matching the query in one bounded page, with `kind` one of `database | table | column | route | row`. Use it when a keyword must locate both the semantic index (route) and a concrete Row, instead of the route-only `SHOW ROUTE CANDIDATES`. A Row hit returns `database_id/table_id/object_id/revision`; follow it with `SELECT ... WHERE row_id = :row` to read the Row, whose own `route_paths` already carries its semantic path, so membership need not be reverse-resolved.
+
+```sh
+memora query --input '{"parameters":{"named":{"query":"crash recovery","location_limit":10,"utf8_byte_limit":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query LIMIT :location_limit BYTES :utf8_byte_limit"
+```
+
 Treat every Discovery candidate and prefetched Route as `navigation_only`.
 They are neither answers nor evidence, and scores with different kinds are not
 comparable. Explicitly choose one or more Tables from the compact Atlas; a
