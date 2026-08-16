@@ -348,6 +348,25 @@ func TestRouteTreeModuleValidatesVersionedAliasesContract(t *testing.T) {
 	}
 }
 
+func TestRouteTreeWarnsOnOverflowInsteadOfPaginating(t *testing.T) {
+	t.Parallel()
+
+	routes, err := fs.ReadFile(embeddedFiles, "dist/assets/routes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(routes)
+	if !strings.Contains(javascript, "canvas-overflow-notice") ||
+		!strings.Contains(javascript, "超过单页上限") {
+		t.Fatal("Route Tree overflow notice is missing")
+	}
+	for _, forbidden := range []string{"继续加载这一层", "route_more_", "appendRootPage"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Route Tree still paginates with %q", forbidden)
+		}
+	}
+}
+
 func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	t.Parallel()
 
