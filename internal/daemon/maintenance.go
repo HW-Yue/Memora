@@ -81,6 +81,9 @@ type daemonHealthSource struct {
 		ListRouterNodes(context.Context) ([]router.Node, error)
 		ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
 	}
+	fanout interface {
+		CurrentBranchFanout(context.Context) (int, error)
+	}
 }
 
 func handlerHealthSource(handler *databaseHandler) (*daemonHealthSource, bool) {
@@ -91,8 +94,20 @@ func handlerHealthSource(handler *databaseHandler) (*daemonHealthSource, bool) {
 		ListRouterNodes(context.Context) ([]router.Node, error)
 		ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
 	})
-	return &daemonHealthSource{catalog: dictionary, rows: handler.rows, routes: routes},
+	fanout, _ := handler.rows.(interface {
+		CurrentBranchFanout(context.Context) (int, error)
+	})
+	return &daemonHealthSource{catalog: dictionary, rows: handler.rows, routes: routes, fanout: fanout},
 		ok && handler.rows != nil && routesOK
+}
+
+// CurrentBranchFanout is present only when the backend carries database
+// configuration; Semantic Health falls back to the startup default otherwise.
+func (source *daemonHealthSource) CurrentBranchFanout(ctx context.Context) (int, error) {
+	if source.fanout == nil {
+		return router.DefaultBranchFanout, nil
+	}
+	return source.fanout.CurrentBranchFanout(ctx)
 }
 
 func (source *daemonHealthSource) ShowDatabases(ctx context.Context) ([]catalog.Database, error) {

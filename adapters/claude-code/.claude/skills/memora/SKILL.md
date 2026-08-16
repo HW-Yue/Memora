@@ -499,6 +499,37 @@ approved any broad or destructive change.
 memora maintain --report
 ```
 
+### Route branch fan-out
+
+One root or branch may carry at most `branch_fanout` live children. The startup
+default is 12 and each Database owns its own value:
+
+```sh
+memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CONFIGURATION ROUTE_POLICY"
+```
+
+Exceeding it is not a warning and is never paginated away: the write fails with
+`constraint_violation` and `details.reason = route_branch_fanout_exceeded`,
+carrying `parent_route_id`, `live_children`, `branch_fanout`, and two executable
+remedies. Choose between them yourself; do not retry the same write.
+
+1. `restructure_subtree` — the crowded parent has no clear grouping left, and the
+   new node belongs inside an existing child, or the children should be regrouped.
+   Use the Route mutation proposal flow below.
+2. `raise_branch_fanout` — the domain genuinely has more sibling groups than the
+   current limit, and merging them would lose a real distinction. Raise this
+   Database's limit with an expected revision, actor, and reason:
+
+```sql
+ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :fanout
+```
+
+Prefer restructuring when the crowded children share an obvious parent concept;
+prefer raising the limit when they are genuinely parallel and already
+distinguishable by name and purpose alone. Lowering the limit never invalidates
+an existing tree — it only refuses further growth — so a Database that already
+sits above its limit stays readable and maintainable.
+
 For a local Router split, merge, or move, inspect the exact current nodes and leaf
 locators first. Express the semantic names, purposes, source revisions, and complete
 child Route or RowID grouping in `memora.route-mutation-proposal/v1`; do not ask the

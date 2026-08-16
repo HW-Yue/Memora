@@ -103,6 +103,56 @@ func (service *Service) RestoreQueryBudgets(
 	return service.config.RestoreCommitted(target, expected, actor, reason, sequence)
 }
 
+func (service *Service) CurrentRoutePolicy(context.Context) (nativeconfig.PolicyRevision, error) {
+	if service == nil || service.config == nil {
+		return nativeconfig.PolicyRevision{}, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
+	}
+	return service.config.CurrentPolicy()
+}
+
+func (service *Service) RoutePolicyHistory(context.Context) ([]nativeconfig.PolicyRevision, error) {
+	if service == nil || service.config == nil {
+		return nil, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
+	}
+	return service.config.PolicyHistory()
+}
+
+func (service *Service) UpdateRoutePolicy(
+	ctx context.Context, policy nativeconfig.RoutePolicy, expected uint64, actor, reason string,
+) (nativeconfig.PolicyRevision, error) {
+	if service == nil || service.config == nil {
+		return nativeconfig.PolicyRevision{}, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
+	}
+	release, err := service.Service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return nativeconfig.PolicyRevision{}, err
+	}
+	defer release()
+	sequence, err := service.Service.NextChangeSequence(ctx)
+	if err != nil {
+		return nativeconfig.PolicyRevision{}, err
+	}
+	return service.config.UpdatePolicyCommitted(policy, expected, actor, reason, sequence)
+}
+
+func (service *Service) RestoreRoutePolicy(
+	ctx context.Context, target, expected uint64, actor, reason string,
+) (nativeconfig.PolicyRevision, error) {
+	if service == nil || service.config == nil {
+		return nativeconfig.PolicyRevision{}, &ServiceError{Code: result.CodeUnsupported, Message: "database configuration is not supported by this backend"}
+	}
+	release, err := service.Service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return nativeconfig.PolicyRevision{}, err
+	}
+	defer release()
+	sequence, err := service.Service.NextChangeSequence(ctx)
+	if err != nil {
+		return nativeconfig.PolicyRevision{}, err
+	}
+	return service.config.RestorePolicyCommitted(target, expected, actor, reason, sequence)
+}
+
 func (service *Service) Split(
 	ctx context.Context,
 	databaseName, tableName string,

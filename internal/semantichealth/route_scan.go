@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	maximumRouteChildren = 12
-	maximumLocatorScan   = 10_000
-	locatorPageSize      = 1000
+	maximumLocatorScan = 10_000
+	locatorPageSize    = 1000
 )
 
 type healthTableState struct {
@@ -33,6 +32,10 @@ func scanRoutes(
 	nodes, err := source.ListRouterNodes(ctx)
 	if err != nil {
 		return nil, false, healthError(result.CodeInternal, "list Router nodes: %v", err)
+	}
+	fanout, err := branchFanout(ctx, source)
+	if err != nil {
+		return nil, false, err
 	}
 	nodes = cloneAndSortNodes(nodes)
 	byID, children, tableNodes := map[string]router.Node{}, map[string][]router.Node{}, map[string][]router.Node{}
@@ -75,7 +78,7 @@ func scanRoutes(
 				"review_route_structure", []string{node.ID}, "", 1))
 		}
 		if (node.Kind == router.KindRoot || node.Kind == router.KindBranch) &&
-			len(children[node.ID]) >= maximumRouteChildren {
+			len(children[node.ID]) >= fanout {
 			ids := make([]string, 0, len(children[node.ID]))
 			for _, child := range children[node.ID] {
 				ids = append(ids, child.ID)

@@ -69,11 +69,26 @@ Route Frame nodes 12。F169 后 `open_locators` 是兼容字段：历史 revisio
 完整 revision 链进入 logical snapshot，因此复制、迁移和 Database package 不会
 悄悄退回宿主默认值。
 
-`route_children` 当前是一次 Route 读取的查询预算，不直接等同于 Branch 的结构 fan-out。
-Branch 的 Database 级自治目标、例外记录和维护协议按
-[Route Branch Fan-out 策略](../query/route-branch-fanout-policy.md)单独设计。目标值由建模
-Agent 决定，不提供全局产品默认值，也不能因为某次目标恰好等于读取预算就复用成一个
-含义含混的开关。
+## 第二个配置键：`route_policy`
+
+`route_children` 是一次 Route 读取的查询预算，不等同于 Branch 的结构 fan-out。
+结构上限是独立配置键 `route_policy`，拥有独立 revision 链、actor 和 reason：
+
+```sql
+SHOW CONFIGURATION ROUTE_POLICY;
+SHOW CONFIGURATION ROUTE_POLICY HISTORY LIMIT :limit;
+ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :fanout;
+RESTORE CONFIGURATION ROUTE_POLICY TO REVISION :revision;
+```
+
+`branch_fanout` 的启动默认值是 12，取值范围 `2..100`。它同样归为「允许显式运行时
+修改」：Agent 在 Route branch 越界失败后自行判断重构子树还是提高本库上限，两条出路
+都写在失败信封里。降低上限不回溯，既有超限子树保持可读可维护。规则见
+[F223](../planning/f223-route-branch-fanout-limit.md)与
+[Route Branch Fan-out 策略](../query/route-branch-fanout-policy.md)。
+
+裸 `SHOW CONFIGURATION` 仍返回 `query_budgets`；两个键不接受对方的字段，也不能因为
+某次目标恰好等于读取预算就复用成一个含义含混的开关。
 
 ## 配置记录
 

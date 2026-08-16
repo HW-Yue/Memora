@@ -563,7 +563,9 @@ func TestBundleServesDeepLinksAssetsAndSecurityHeaders(t *testing.T) {
 		response := httptest.NewRecorder()
 		bundle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK || response.Header().Get("ETag") == "" ||
-			response.Header().Get("Cache-Control") != "no-cache, must-revalidate" {
+			response.Header().Get("Cache-Control") != "no-store, no-cache, must-revalidate, proxy-revalidate" ||
+			response.Header().Get("Pragma") != "no-cache" ||
+			response.Header().Get("Expires") != "0" {
 			t.Fatalf("GET %s status=%d headers=%#v", path, response.Code, response.Header())
 		}
 		conditional := httptest.NewRequest(http.MethodGet, path, nil)

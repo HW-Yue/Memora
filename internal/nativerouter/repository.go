@@ -67,35 +67,47 @@ func (repository *Repository) prepareRoot(id, databaseID, tableID, purpose, syno
 	return value, nil
 }
 
+// CheckBranchFanout refuses a write that would push one live parent past the
+// Database's structural fan-out limit. Callers resolve the limit from the
+// Database's route_policy configuration.
+func (repository *Repository) CheckBranchFanout(parentID string, adding, limit int) error {
+	return router.CheckBranchFanout(parentID, len(repository.Children(parentID)), adding, limit)
+}
+
 func (repository *Repository) CreateChild(id, parentID, name string, kind router.Kind, purpose string) (router.Node, error) {
 	return repository.CreateChildWithSynopsis(id, parentID, name, kind, purpose, "")
 }
 
 func (repository *Repository) CreateChildWithSynopsis(id, parentID, name string, kind router.Kind, purpose, synopsis string) (router.Node, error) {
-	value, err := repository.prepareChild(id, parentID, name, kind, purpose, synopsis)
+	value, err := repository.prepareChild(id, parentID, name, kind, purpose, synopsis, router.DefaultBranchFanout)
 	if err != nil {
 		return router.Node{}, err
 	}
 	return value, repository.putNode(value)
 }
 
+// StageChild refuses to grow a parent past fanout, the Database's structural
+// Route branch fan-out limit.
 func (repository *Repository) StageChild(
 	transaction *nativestore.Transaction,
 	id, parentID, name string,
 	kind router.Kind,
 	purpose, synopsis string,
+	fanout int,
 ) (router.Node, error) {
 	if transaction == nil {
 		return router.Node{}, fmt.Errorf("%w: transaction is required", ErrInvalid)
 	}
-	value, err := repository.prepareChild(id, parentID, name, kind, purpose, synopsis)
+	value, err := repository.prepareChild(id, parentID, name, kind, purpose, synopsis, fanout)
 	if err != nil {
 		return router.Node{}, err
 	}
 	return value, repository.stageInitialNode(transaction, value)
 }
 
-func (repository *Repository) prepareChild(id, parentID, name string, kind router.Kind, purpose, synopsis string) (router.Node, error) {
+func (repository *Repository) prepareChild(
+	id, parentID, name string, kind router.Kind, purpose, synopsis string, fanout int,
+) (router.Node, error) {
 	parent, err := repository.Get(parentID)
 	if err != nil {
 		return router.Node{}, err
@@ -104,6 +116,9 @@ func (repository *Repository) prepareChild(id, parentID, name string, kind route
 		return router.Node{}, fmt.Errorf("%w: invalid child definition", ErrInvalid)
 	}
 	if err := validateSynopsis(synopsis); err != nil {
+		return router.Node{}, err
+	}
+	if err := repository.CheckBranchFanout(parentID, 1, fanout); err != nil {
 		return router.Node{}, err
 	}
 	for _, sibling := range repository.Children(parentID) {

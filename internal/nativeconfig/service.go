@@ -78,6 +78,9 @@ func New(file *nativestore.File) (*Service, error) {
 	} else if err != nil {
 		return nil, err
 	}
+	if err := service.materializeRoutePolicy(); err != nil {
+		return nil, err
+	}
 	return service, nil
 }
 
@@ -115,6 +118,9 @@ func (service *Service) history() ([]Revision, error) {
 	}
 	values := make([]Revision, 0, len(ids))
 	for _, id := range ids {
+		if !strings.HasPrefix(id, QueryBudgetsKey+"_r") {
+			continue
+		}
 		payload, err := service.file.Get(nativestore.ObjectKindConfiguration, id)
 		if err != nil {
 			return nil, err

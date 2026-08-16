@@ -3,6 +3,12 @@
 状态：2026-08-05 当前权威实现账本；旧完成门和执行过程位于
 [`archive/planning/`](../archive/planning/README.md)。
 
+> **这份账本按时间顺序记录，不是理解系统的入口。** 要知道系统现在能做什么，读
+> [当前系统能力](../product/system-capabilities.md)；要知道哪里有问题，读
+> [已知风险](../development/known-risks.md)；要知道接下来做什么，读
+> [路线 v2](./roadmap-v2.md)；要派发实现工单，读[执行计划](./execution-plan.md)。
+> 本文档用于按 F 编号回溯某项能力的历史证据。
+
 ## 状态定义
 
 - **已实现**：代码、规格、测试和完成门均已交付；
@@ -75,10 +81,10 @@
 | F204 | 显式 opt-in 外置 Agent Hook；只采集脱敏 TraceEvent 与 host/session/model 元数据，有界并发安全快照 |
 | F205 | 已完成：native daemon 多 statement L1 原子事务；统一事务工厂、native store 批量提交、IPC/重开/并发/故障证据 |
 | F207 | 已完成：F204 Hook 快照的 session/turn 指标聚合、重复/冲突校验、确定性 JSON/HTML 报告与独立命令；不计算 Recall/MRR |
-| F212 | 已完成：冻结 5 套公开评测语料清单与外置盘准备器；支持 Git commit、HTTP Range 续传、SHA-256、离线 verify-only；本机 3.1 GB 全量复核通过 |
-| F213 | 已完成：标准 retrieval suite/run 与 evaluator-only Recall@K、HitRate@K、MRR、分桶和 Token/工具调用对照 |
-| F214 | 已完成：MIRACL zh 与 MTRAG 四 domain 的 query/qrel 确定性适配器；normalized suite 已在外置盘生成 |
-| F215 | 已完成（证据不完整）：低并发退避、ExFAT 报告发布、Route Frame 续上下文与 checkpoint；DeepSeek smoke 续跑后为 9/12 成功，质量仍未通过 |
+| F212 | 已完成（2026-08-11 转 Deferred）：冻结 5 套公开评测语料清单与外置盘准备器；支持 Git commit、HTTP Range 续传、SHA-256、离线 verify-only；本机 3.1 GB 全量复核通过 |
+| F213 | 已完成（2026-08-11 转 Deferred）：标准 retrieval suite/run 与 evaluator-only Recall@K、HitRate@K、MRR、分桶和 Token/工具调用对照 |
+| F214 | 已完成（2026-08-11 转 Deferred）：MIRACL zh 与 MTRAG 四 domain 的 query/qrel 确定性适配器；normalized suite 已在外置盘生成 |
+| F215 | 已完成（证据不完整，2026-08-11 转 Deferred）：低并发退避、ExFAT 报告发布、Route Frame 续上下文与 checkpoint；DeepSeek smoke 续跑后为 9/12 成功，质量仍未通过 |
 
 F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均已实现。
 
@@ -96,6 +102,12 @@ F97 被拆为 F97a、F97b1–b2、F97c1–c4、F97d1–d3，所有拆分项均�
 - F215 已补齐有限退避、可恢复 checkpoint、DeepSeek V4 MSQL 导航提示、空 statements 兼容、
   有界 Route Frame 续上下文和 ExFAT 外置盘报告发布；2026-08-06 smoke 续跑后为 9/12 成功，继续阻止
   质量通过和默认 arm 选择。
+- 2026-08-11 用户决定评测继续做，但不再扩大样本量，改为小规模、高质量、可复现的对照实验；
+  主指标改为不依赖模型的确定性检索命中判定，LLM judge 降级为次要参考。决策与理由见
+  [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md)。前置项为候选
+  [F219](./f219-deterministic-answer-scoring.md)：现行 `validScores` 要求四个 judge 指标全有或全无，
+  单指标失败即丢弃整题，这是 9 题中 6 题 `evaluator_failed` 的直接原因，小样本下不可接受。
+  F185b release gate 维持有效，继续阻止“质量已通过”和“默认 arm 已选定”的对外声明。
 
 ## 例外与非当前路径
 
@@ -126,6 +138,8 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 | F161 Multi-device Sync | 没有双设备离线写与冲突语义 |
 | F162 Apple Accelerate | 4,368×384 CPU exact p95 最高 2.434 ms |
 | F163 HNSW | 17,472×384 CPU exact p95 最高 9.957 ms、33.171 MB |
+| F212–F215 外部大语料评测设施 | 设施已交付并验收，但三次真实运行（Kimi 12 题、三 arm 36 题、DeepSeek 9/12）均未产出可用质量结论；改走小规模确定性对照，设施冻结保留。见 [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md) |
+| 候选 F216–F218 公开语料桥接层 | 依赖 F212–F215，随之 Deferred；恢复条件同 ADR-0010 |
 
 “延后”不是失败或漏做；这些 Feature 的交付物就是可复现门槛、实测证据和当前不实现的结论。
 
@@ -137,8 +151,21 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - Database 级 Route Branch 自治 fan-out：初始目标、超目标例外和后续调整均由 Agent
   判断并留下 revision/理由，引擎不提供统一语义常量；
 
+- F219 候选：确定性主评分与部分指标评分表示；ADR-0010 之后任何评测运行的前置项。
+- F220 候选：Query Working Set——带完整 Route 链路的有界语义工作集；同时是多轮记忆缺陷
+  （[已知风险](../development/known-risks.md)第 1 条）的修复。
+- F221 候选：Evidence 充分性与导航终止条件；零行 SELECT 不再终止导航，无证据时拒绝作答。
+- F222 候选：Release Gate Policy v2；确定性主判定与 report/gate 双模式，解除 F185b 死锁。
+- F223 已实现：Route Branch Fan-out 硬上限；`route_policy.branch_fanout` 启动默认 12，
+  `CREATE ROUTE`、Route Mutation Plan 与 Semantic Health 统一读取本库值，越界一律失败并在
+  信封里给出重构子树与提高上限两条可执行出路。取代下面「Database 级 Route Branch 自治
+  fan-out」候选中「引擎不提供统一语义常量」的表述。
+
+派发顺序与完成判据以[执行计划](./execution-plan.md)为准。
+
 具体拆分以[后续开发序列](./post-f169-development-plan.md)为准。写入时机与 worthiness
-质量评测仍安排在查询、写入和 Hook 观测稳定之后。
+质量评测仍安排在查询、写入和 Hook 观测稳定之后；worthiness 决策不可逆性的相关事实见
+[语义重建的不对称性](../data/semantic-rebuild-asymmetry.md)（讨论稿）。
 
 代码清理的保留/删除理由见[旧代码清理边界](../development/legacy-code-boundary.md)。
 
