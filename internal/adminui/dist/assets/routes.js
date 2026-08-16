@@ -119,8 +119,8 @@ function tablePoint(result, databaseID, tableID) {
 }
 
 function validateRouteRow(row, point, databaseID = "", tableID = "", parentID = "") {
-  const childKeys = ["route_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"];
-  const pointKeys = [...childKeys, "database_id", "table_id", "synopsis"];
+  const childKeys = ["route_id", "database_id", "table_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"];
+  const pointKeys = [...childKeys, "synopsis"];
   if (!row || !exactKeys(row, point ? pointKeys : childKeys)) {
     throw new RouteViewError("corrupt", "Route node fields are invalid");
   }
