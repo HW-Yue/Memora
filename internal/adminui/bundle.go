@@ -197,7 +197,10 @@ func serveAsset(response http.ResponseWriter, request *http.Request, asset bundl
 	response.Header().Set("Content-Type", asset.ContentType)
 	response.Header().Set("ETag", `"sha256:`+asset.SHA256+`"`)
 	if revalidate {
-		response.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		// 强制禁用缓存，确保开发时每次都能获取最新内容
+		response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+		response.Header().Set("Pragma", "no-cache")
+		response.Header().Set("Expires", "0")
 	} else {
 		response.Header().Set("Cache-Control", "no-store")
 	}
