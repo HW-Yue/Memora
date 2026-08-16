@@ -309,12 +309,13 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	}
 	javascript := string(routes)
 	for _, required := range []string{
-		"DESCRIBE TABLE", "SHOW ROUTES FROM TABLE", "AT ROOT LIMIT 12",
+		"DESCRIBE TABLE", "SHOW ROUTES FROM TABLE", "AT ROOT LIMIT :limit",
 		"DESCRIBE ROUTE :route", "SHOW ROUTES UNDER :route", "OPEN ROUTE :route LIMIT 1",
-		"CURSOR :cursor LIMIT 12", "Route leaf must contain at most one locator", "parameters", "named",
-		// 一层的显示数量由 route_policy.branch_fanout 决定，不是由请求页大小决定。
-		// 缺少这两项就会退回「只显示首页 12 个、且不提示还有更多」的静默截断。
-		"MAX_CHILD_PAGES", "page.truncated && fetched < MAX_CHILD_PAGES",
+		"CURSOR :cursor LIMIT :limit", "Route leaf must contain at most one locator", "parameters", "named",
+		// Admin 是展示层：后端有多少节点就画多少，一层能有几个是 Agent 的判断
+		// （route_policy.branch_fanout），不是前端的限制。页大小向服务端要
+		// （query_budgets.route_children），并一直翻到 truncated 为 false。
+		"SHOW CONFIGURATION QUERY_BUDGETS", "route_children", "drainPages", "while (page.truncated)",
 		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
 		"database_id", "table_id", "row_id", "revision",
 	} {

@@ -1,9 +1,40 @@
-const CHILD_LIMIT = 12;
-// CHILD_LIMIT 只是单次请求的页大小，不是一层能显示多少个节点。
-// 结构上限是 Database 级的 route_policy.branch_fanout（F223），可以被调高，
-// 因此这里必须顺着 cursor 取完所有页，否则会静默隐藏超出首页的兄弟节点。
-const MAX_CHILD_PAGES = 40;
+// Admin 是展示层，对一层能显示多少个节点不设任何上限：后端有多少就画多少。
+// 节点数量该不该增长是 Agent 的判断（route_policy.branch_fanout，F223），不是这里的事。
+//
+// 唯一的数字是单次请求的页大小，它由服务端的 query_budgets.route_children 决定
+// （SHOW ROUTES LIMIT 超过该预算会被拒绝），所以向服务端查询而不是写死。
+// 取到首页后一直顺着 cursor 取，直到 truncated 为 false。
+let routeChildrenBudget = 0;
 const LOCATOR_LIMIT = 1;
+
+async function childPageSize(executeMSQL) {
+  if (routeChildrenBudget > 0) return routeChildrenBudget;
+  const result = resultsFrom(await executeMSQL("SHOW CONFIGURATION QUERY_BUDGETS"), 1)[0];
+  const budget = result.rows.length === 1 ? result.rows[0].route_children : 0;
+  if (!Number.isSafeInteger(budget) || budget < 1) {
+    throw new RouteViewError("corrupt", "Route child page budget is invalid");
+  }
+  routeChildrenBudget = budget;
+  return budget;
+}
+
+// 顺着 cursor 取完所有页。没有页数上限——只在 cursor 不前进时中止，
+// 那是服务端契约被破坏，不是展示策略。
+async function drainPages(first, limit, fetchPage, rowsOf) {
+  let rows = rowsOf(first);
+  let page = validatePage(first, limit);
+  while (page.truncated) {
+    const cursor = page.next_cursor;
+    const result = await fetchPage(cursor);
+    const next = validatePage(result, limit);
+    rows = rows.concat(rowsOf(result));
+    if (next.next_cursor === cursor) {
+      throw new RouteViewError("corrupt", "Route Tree cursor did not advance");
+    }
+    page = next;
+  }
+  return { rows, page };
+}
 const BRANCH_ENTER_MS = 140;
 const DOCUMENT_ENTER_MS = 180;
 
@@ -297,20 +328,22 @@ function addContinuation(section, list, rows, page, render, loadMore) {
 
 async function loadTableRoot(executeMSQL, databaseID, tableID) {
   const subject = `${quoteIdentifier(databaseID, "db_")}.${quoteIdentifier(tableID, "tbl_")}`;
-  const source = `DESCRIBE TABLE ${subject} COMPACT; SHOW ROUTES FROM TABLE ${subject} AT ROOT LIMIT 12`;
-  const results = resultsFrom(await executeMSQL(source), 2);
-  const object = tablePoint(results[0], databaseID, tableID);
-  let rows = routeRows(results[1], databaseID, tableID);
-  let page = validatePage(results[1], CHILD_LIMIT);
-  for (let fetched = 1; page.truncated && fetched < MAX_CHILD_PAGES; fetched += 1) {
-    const next = `SHOW ROUTES FROM TABLE ${subject} AT ROOT CURSOR :cursor LIMIT 12`;
-    const result = resultsFrom(
-      await executeMSQL(next, [statementInput({ cursor: page.next_cursor })]), 1
-    )[0];
-    rows = rows.concat(routeRows(result, databaseID, tableID));
-    page = validatePage(result, CHILD_LIMIT);
-  }
-  return { object, rows, page };
+  const limit = await childPageSize(executeMSQL);
+  const source =
+    `DESCRIBE TABLE ${subject} COMPACT; SHOW ROUTES FROM TABLE ${subject} AT ROOT LIMIT :limit`;
+  const results = resultsFrom(await executeMSQL(source, [
+    statementInput({}), statementInput({ limit })
+  ]), 2);
+  const drained = await drainPages(
+    results[1],
+    limit,
+    async (cursor) => resultsFrom(await executeMSQL(
+      `SHOW ROUTES FROM TABLE ${subject} AT ROOT CURSOR :cursor LIMIT :limit`,
+      [statementInput({ cursor, limit })]
+    ), 1)[0],
+    (result) => routeRows(result, databaseID, tableID)
+  );
+  return { object: tablePoint(results[0], databaseID, tableID), rows: drained.rows, page: drained.page };
 }
 
 async function describeRoute(executeMSQL, databaseID, tableID, routeID) {
@@ -321,20 +354,19 @@ async function describeRoute(executeMSQL, databaseID, tableID, routeID) {
 }
 
 async function loadChildren(executeMSQL, databaseID, tableID, routeID) {
-  const first = resultsFrom(
-    await executeMSQL("SHOW ROUTES UNDER :route LIMIT 12", [statementInput({ route: routeID })]), 1
-  )[0];
-  let rows = routeRows(first, databaseID, tableID, routeID);
-  let page = validatePage(first, CHILD_LIMIT);
-  for (let fetched = 1; page.truncated && fetched < MAX_CHILD_PAGES; fetched += 1) {
-    const result = resultsFrom(
-      await executeMSQL("SHOW ROUTES UNDER :route CURSOR :cursor LIMIT 12",
-        [statementInput({ route: routeID, cursor: page.next_cursor })]), 1
-    )[0];
-    rows = rows.concat(routeRows(result, databaseID, tableID, routeID));
-    page = validatePage(result, CHILD_LIMIT);
-  }
-  return { rows, page };
+  const limit = await childPageSize(executeMSQL);
+  const first = resultsFrom(await executeMSQL(
+    "SHOW ROUTES UNDER :route LIMIT :limit", [statementInput({ route: routeID, limit })]
+  ), 1)[0];
+  return drainPages(
+    first,
+    limit,
+    async (cursor) => resultsFrom(await executeMSQL(
+      "SHOW ROUTES UNDER :route CURSOR :cursor LIMIT :limit",
+      [statementInput({ route: routeID, cursor, limit })]
+    ), 1)[0],
+    (result) => routeRows(result, databaseID, tableID, routeID)
+  );
 }
 
 async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
