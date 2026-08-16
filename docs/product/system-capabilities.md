@@ -48,6 +48,9 @@
 
 - AI 自描述建库／建表／字段建模，自描述 Data Dictionary；
 - Table 级多层语义 Route，一个 Leaf 最多一个活跃 Row，一个 Row 可属多个 Leaf；
+- Route branch fan-out 硬上限：`route_policy.branch_fanout` 启动默认 12、本库可改，
+  三条写入路径统一执行，越界失败并给出重构或提高上限两条可执行出路
+  （[F223](../planning/f223-route-branch-fanout-limit.md)）；
 - 有界 Catalog Atlas 与逐层导航；Route alias；
 - 全内容倒排索引：确定性 tokenizer、持久 posting store、在线原子替换、
   全量 COW rebuild 与 parity receipt、权限先行的有界 cursor 查询；

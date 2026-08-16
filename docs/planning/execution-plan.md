@@ -132,7 +132,9 @@ Query Workspace 的跨会话持久化与恢复。需先出独立规格。
 
 ### 14. Route 自治维护
 
-初始 fan-out、超量拆分、合并由 AI 判断并留 revision/理由。需先出独立规格。
+~~初始 fan-out~~ 已由 [F223](./f223-route-branch-fanout-limit.md) 交付：`branch_fanout`
+是 Database 级配置，越界硬失败并给出两条出路。**剩余部分**：超量时由 AI 自动提出拆分
+与合并提案（而不是等待下一次写入失败），以及超限子树的批量重构。需先出独立规格。
 
 ## 阶段 D：不在当前路线
 

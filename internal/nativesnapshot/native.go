@@ -106,6 +106,17 @@ func (service *NativeService) nativeDocument() (snapshot.LogicalDocument, error)
 		}
 		value.Unknown[nativeconfig.SnapshotKey] = raw
 	}
+	policy, err := nativeconfig.Existing(service.file).PolicyHistory()
+	if err != nil {
+		return snapshot.LogicalDocument{}, err
+	}
+	if len(policy) > 0 {
+		raw, marshalErr := json.Marshal(policy)
+		if marshalErr != nil {
+			return snapshot.LogicalDocument{}, marshalErr
+		}
+		value.Unknown[nativeconfig.PolicySnapshotKey] = raw
+	}
 	for _, item := range rows {
 		raw, _ := json.Marshal(item)
 		value.Rows = append(value.Rows, raw)
@@ -245,6 +256,15 @@ func (service *NativeService) Import(encoded []byte) error {
 			return err
 		}
 	}
+	if raw, ok := migrated.Unknown[nativeconfig.PolicySnapshotKey]; ok {
+		var policy []nativeconfig.PolicyRevision
+		if json.Unmarshal(raw, &policy) != nil {
+			return nativeError(result.CodeValidation, "logical snapshot Route policy configuration is invalid")
+		}
+		if err := nativeconfig.Existing(service.file).StagePolicyHistory(transaction, policy); err != nil {
+			return err
+		}
+	}
 	canonical, err := snapshot.EncodeLogical(migrated)
 	if err != nil {
 		return err
@@ -252,6 +272,9 @@ func (service *NativeService) Import(encoded []byte) error {
 	projectedUnknown := map[string]json.RawMessage{}
 	if raw, ok := migrated.Unknown[nativeconfig.SnapshotKey]; ok {
 		projectedUnknown[nativeconfig.SnapshotKey] = raw
+	}
+	if raw, ok := migrated.Unknown[nativeconfig.PolicySnapshotKey]; ok {
+		projectedUnknown[nativeconfig.PolicySnapshotKey] = raw
 	}
 	projected, err := buildProjectedDocument(catalogValue.Databases, current, historyRows, relationVersions, projectedUnknown)
 	if err != nil {

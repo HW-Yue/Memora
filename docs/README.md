@@ -104,6 +104,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
   无证据时拒绝作答；执行计划第 1 项。
 - [F222：Release Gate Policy v2](./planning/f222-release-gate-policy-v2.md) — 候选；确定性主判定 +
   report/gate 双模式，解除 F185b 与 ADR-0010 的死锁。
+- [F223：Route Branch Fan-out 硬上限](./planning/f223-route-branch-fanout-limit.md) — 已实现；
+  一个节点最多 12 个 live child（本库可改），越界一律失败并给出重构或提高上限两条出路。
 
 ## 当前产品规格
 
@@ -125,8 +127,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [Canonical Skill](./agent/canonical-skill-v1.md)
 - [MSQL](./query/msql.md)
 - [语义 Router](./query/semantic-routing.md)
-- [Route Branch Fan-out 策略](./query/route-branch-fanout-policy.md) — Database 自治目标、
-  Agent 语义重构与可审计例外的候选规则；
+- [Route Branch Fan-out 策略](./query/route-branch-fanout-policy.md) — Database 自治目标与
+  Agent 语义重构规则；「无默认值、可带理由超限」两条已被 F223 取代；
 - [检索质量链路](./query/retrieval-quality.md)
 - [投机 Route 预取](./query/speculative-route-prefetch.md)
 - [CPU 精确 Route Match](./query/cpu-exact-route-match-v1.md)

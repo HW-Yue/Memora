@@ -59,6 +59,7 @@ type Name struct {
 
 type ShowStatement struct {
 	Object    string      `json:"object"`
+	Key       string      `json:"key,omitempty"`
 	Database  *Name       `json:"database,omitempty"`
 	Table     *Name       `json:"table,omitempty"`
 	Row       *Expression `json:"row,omitempty"`
@@ -238,6 +239,7 @@ type ConfigurationStatement struct {
 	SelectScan      *Expression `json:"select_scan,omitempty"`
 	SelectRows      *Expression `json:"select_rows,omitempty"`
 	RouteFrameNodes *Expression `json:"route_frame_nodes,omitempty"`
+	BranchFanout    *Expression `json:"branch_fanout,omitempty"`
 	TargetRevision  *Expression `json:"target_revision,omitempty"`
 }
 
@@ -413,6 +415,7 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Configuration.SelectScan)
 		appendExpression(statement.Configuration.SelectRows)
 		appendExpression(statement.Configuration.RouteFrameNodes)
+		appendExpression(statement.Configuration.BranchFanout)
 		appendExpression(statement.Configuration.TargetRevision)
 	case statement.Package != nil:
 		appendExpression(statement.Package.Author)

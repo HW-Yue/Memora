@@ -156,6 +156,10 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
   （[已知风险](../development/known-risks.md)第 1 条）的修复。
 - F221 候选：Evidence 充分性与导航终止条件；零行 SELECT 不再终止导航，无证据时拒绝作答。
 - F222 候选：Release Gate Policy v2；确定性主判定与 report/gate 双模式，解除 F185b 死锁。
+- F223 已实现：Route Branch Fan-out 硬上限；`route_policy.branch_fanout` 启动默认 12，
+  `CREATE ROUTE`、Route Mutation Plan 与 Semantic Health 统一读取本库值，越界一律失败并在
+  信封里给出重构子树与提高上限两条可执行出路。取代下面「Database 级 Route Branch 自治
+  fan-out」候选中「引擎不提供统一语义常量」的表述。
 
 派发顺序与完成判据以[执行计划](./execution-plan.md)为准。
 

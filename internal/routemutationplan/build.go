@@ -19,7 +19,6 @@ const (
 	maximumNodes        = 10_000
 	maximumSources      = 12
 	maximumTargets      = 12
-	maximumChildren     = 12
 	maximumLeafLocators = 1
 	maximumLocatorScan  = 2_000
 	maximumLocatorPages = 100
@@ -34,6 +33,7 @@ type builder struct {
 	nodes     []router.Node
 	byID      map[string]router.Node
 	children  map[string][]router.Node
+	fanout    int
 	remaining int
 	plan      Plan
 }
@@ -52,9 +52,14 @@ func Build(ctx context.Context, source Source, scope Scope, proposal Proposal) (
 	if len(nodes) > maximumNodes {
 		return Plan{}, planError(result.CodeConstraint, "Router node scan exceeds %d", maximumNodes)
 	}
+	fanout, err := branchFanout(ctx, source)
+	if err != nil {
+		return Plan{}, err
+	}
 	b := &builder{
 		ctx: ctx, source: source, scope: scope, proposal: normalizeProposal(proposal),
-		byID: map[string]router.Node{}, children: map[string][]router.Node{}, remaining: maximumLocatorScan,
+		byID: map[string]router.Node{}, children: map[string][]router.Node{},
+		fanout: fanout, remaining: maximumLocatorScan,
 		plan: Plan{
 			Version: PlanVersion, ProposalID: strings.TrimSpace(proposal.ID), Operation: proposal.Operation,
 			Status: StatusReviewRequired, Scope: scope, Actor: strings.TrimSpace(proposal.Actor),
@@ -177,8 +182,10 @@ func (b *builder) buildSplit() error {
 	if parent.Kind == router.KindLeaf {
 		return planError(result.CodeConstraint, "SPLIT source parent cannot be a leaf")
 	}
-	if len(b.children[parent.ID])-1+len(b.proposal.Targets) > maximumChildren {
-		return planError(result.CodeConstraint, "SPLIT would exceed parent child capacity")
+	if err := router.CheckBranchFanout(
+		parent.ID, len(b.children[parent.ID])-1, len(b.proposal.Targets), b.fanout,
+	); err != nil {
+		return err
 	}
 	if err := b.validateTargets(b.proposal.Targets, b.children[parent.ID], map[string]bool{source.ID: true}); err != nil {
 		return err
@@ -197,8 +204,10 @@ func (b *builder) buildSplit() error {
 			return err
 		}
 		for index, target := range b.proposal.Targets {
-			if len(target.ChildRouteIDs) > maximumChildren {
-				return planError(result.CodeConstraint, "split target %q exceeds child capacity", target.Key)
+			if err := router.CheckBranchFanout(
+				creates[index].RouteID, 0, len(target.ChildRouteIDs), b.fanout,
+			); err != nil {
+				return err
 			}
 			for _, childID := range target.ChildRouteIDs {
 				child, _ := b.node(childID)
@@ -250,8 +259,10 @@ func (b *builder) buildMerge() error {
 	if parent.Kind == router.KindLeaf {
 		return planError(result.CodeConstraint, "MERGE source parent cannot be a leaf")
 	}
-	if len(b.children[parent.ID])-len(sources)+1 > maximumChildren {
-		return planError(result.CodeConstraint, "MERGE would exceed parent child capacity")
+	if err := router.CheckBranchFanout(
+		parent.ID, len(b.children[parent.ID])-len(sources), 1, b.fanout,
+	); err != nil {
+		return err
 	}
 	if err := b.validateTargets(b.proposal.Targets, b.children[parent.ID], excluded); err != nil {
 		return err
@@ -276,8 +287,8 @@ func (b *builder) buildMerge() error {
 				b.plan.Moves = append(b.plan.Moves, NodeMove{RouteID: child.ID, FromParentID: source.ID, ToParentID: targetID})
 			}
 		}
-		if count > maximumChildren {
-			return planError(result.CodeConstraint, "MERGE target exceeds child capacity")
+		if err := router.CheckBranchFanout(targetID, 0, count, b.fanout); err != nil {
+			return err
 		}
 	} else if kind == router.KindLeaf {
 		merged := map[string]MembershipMove{}
@@ -334,8 +345,8 @@ func (b *builder) buildMove() error {
 	if b.descendant(source.ID, target.ID) {
 		return planError(result.CodeConstraint, "MOVE cannot place a Route inside its own subtree")
 	}
-	if len(b.children[target.ID])+1 > maximumChildren {
-		return planError(result.CodeConstraint, "MOVE target exceeds child capacity")
+	if err := router.CheckBranchFanout(target.ID, len(b.children[target.ID]), 1, b.fanout); err != nil {
+		return err
 	}
 	if siblingConflict(source.Name, b.children[target.ID], nil) {
 		return planError(result.CodeConstraint, "MOVE target has a sibling name or alias conflict")

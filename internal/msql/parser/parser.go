@@ -314,6 +314,12 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		show.Object = "INSTANCE"
 	case parser.matchWord("CONFIGURATION"):
 		show.Object = "CONFIGURATION"
+		show.Key = "QUERY_BUDGETS"
+		if parser.matchWord("ROUTE_POLICY") {
+			show.Key = "ROUTE_POLICY"
+		} else {
+			_ = parser.matchWord("QUERY_BUDGETS")
+		}
 		if parser.matchWord("HISTORY") {
 			show.Direction = "HISTORY"
 			if _, err := parser.expectWord("LIMIT"); err != nil {
@@ -1010,13 +1016,16 @@ func (parser *parser) parseAlter() (ast.Statement, error) {
 }
 
 func (parser *parser) parseAlterConfiguration() (ast.Statement, error) {
-	if _, err := parser.expectWord("QUERY_BUDGETS"); err != nil {
+	key := "QUERY_BUDGETS"
+	if parser.matchWord("ROUTE_POLICY") {
+		key = "ROUTE_POLICY"
+	} else if _, err := parser.expectWord("QUERY_BUDGETS"); err != nil {
 		return ast.Statement{}, err
 	}
 	if _, err := parser.expectWord("SET"); err != nil {
 		return ast.Statement{}, err
 	}
-	value := &ast.ConfigurationStatement{Action: "ALTER", Key: "QUERY_BUDGETS"}
+	value := &ast.ConfigurationStatement{Action: "ALTER", Key: key}
 	fields := []struct {
 		name string
 		set  func(*ast.Expression)
@@ -1026,6 +1035,14 @@ func (parser *parser) parseAlterConfiguration() (ast.Statement, error) {
 		{"SELECT_SCAN", func(expression *ast.Expression) { value.SelectScan = expression }},
 		{"SELECT_ROWS", func(expression *ast.Expression) { value.SelectRows = expression }},
 		{"ROUTE_FRAME_NODES", func(expression *ast.Expression) { value.RouteFrameNodes = expression }},
+	}
+	if key == "ROUTE_POLICY" {
+		fields = []struct {
+			name string
+			set  func(*ast.Expression)
+		}{
+			{"BRANCH_FANOUT", func(expression *ast.Expression) { value.BranchFanout = expression }},
+		}
 	}
 	for index, field := range fields {
 		if index > 0 {
@@ -1252,7 +1269,10 @@ func (parser *parser) parseRestore() (ast.Statement, error) {
 }
 
 func (parser *parser) parseRestoreConfiguration() (ast.Statement, error) {
-	if _, err := parser.expectWord("QUERY_BUDGETS"); err != nil {
+	key := "QUERY_BUDGETS"
+	if parser.matchWord("ROUTE_POLICY") {
+		key = "ROUTE_POLICY"
+	} else if _, err := parser.expectWord("QUERY_BUDGETS"); err != nil {
 		return ast.Statement{}, err
 	}
 	if _, err := parser.expectWord("TO"); err != nil {
@@ -1268,7 +1288,7 @@ func (parser *parser) parseRestoreConfiguration() (ast.Statement, error) {
 	return ast.Statement{
 		Kind: "RESTORE_CONFIGURATION",
 		Configuration: &ast.ConfigurationStatement{
-			Action: "RESTORE", Key: "QUERY_BUDGETS", TargetRevision: &revision,
+			Action: "RESTORE", Key: key, TargetRevision: &revision,
 		},
 	}, nil
 }

@@ -103,6 +103,25 @@ type Source interface {
 	ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
 }
 
+// FanoutSource lets a backend report the Database's structural Route branch
+// fan-out limit, so route_capacity is reported against this Database's own
+// limit instead of a hard-coded number.
+type FanoutSource interface {
+	CurrentBranchFanout(context.Context) (int, error)
+}
+
+func branchFanout(ctx context.Context, source Source) (int, error) {
+	limits, ok := source.(FanoutSource)
+	if !ok {
+		return router.DefaultBranchFanout, nil
+	}
+	fanout, err := limits.CurrentBranchFanout(ctx)
+	if err != nil {
+		return 0, healthError(result.CodeInternal, "read Route branch fan-out: %v", err)
+	}
+	return fanout, nil
+}
+
 type Error struct {
 	Code    result.Code
 	Message string

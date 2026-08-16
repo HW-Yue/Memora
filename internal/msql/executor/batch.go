@@ -416,7 +416,21 @@ func successfulStatement(index int, kind, source string, output Output) result.S
 
 func statementFailure(index int, kind, source string, err error) result.StatementResult {
 	code, message := errorResult(err)
-	return failedStatement(index, kind, source, code, message)
+	statement := failedStatement(index, kind, source, code, message)
+	if details := errorDetails(err); details != nil && statement.Error != nil {
+		statement.Error.Details = details
+	}
+	return statement
+}
+
+// errorDetails carries an error's structured envelope to the caller. A failure
+// that offers the Agent a choice must arrive as data, not only as prose.
+func errorDetails(err error) map[string]any {
+	var detailed interface{ ErrorDetails() map[string]any }
+	if !errors.As(err, &detailed) {
+		return nil
+	}
+	return detailed.ErrorDetails()
 }
 
 func failedStatement(index int, kind, source string, code result.Code, message string) result.StatementResult {

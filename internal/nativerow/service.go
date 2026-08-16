@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativechange"
+	"github.com/HW-Yue/Memora/internal/nativeconfig"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -944,13 +945,40 @@ func (service *Service) CreateRouterNode(ctx context.Context, parentID string, d
 	if err != nil || strings.TrimSpace(id) == "" {
 		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
 	}
+	fanout, err := service.BranchFanout()
+	if err != nil {
+		return router.Node{}, err
+	}
 	routes := nativerouter.New(service.repository.file)
 	return service.commitRouteNodeChange(ctx, change.OperationInsert, "create Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
 		return routes.StageChild(
 			transaction, "route_"+id, parentID, definition.Name,
-			definition.Kind, definition.Purpose, definition.Synopsis,
+			definition.Kind, definition.Purpose, definition.Synopsis, fanout,
 		)
 	})
+}
+
+// BranchFanout returns this Database's structural Route branch fan-out limit.
+// Databases created before the route_policy key exists fall back to the startup
+// default rather than becoming unwritable.
+func (service *Service) BranchFanout() (int, error) {
+	if service == nil || service.repository == nil || service.repository.file == nil {
+		return router.DefaultBranchFanout, nil
+	}
+	current, err := nativeconfig.Existing(service.repository.file).CurrentPolicy()
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return router.DefaultBranchFanout, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return current.Policy.BranchFanout, nil
+}
+
+// CurrentBranchFanout satisfies the optional fan-out source consumed by
+// Route mutation planning and Semantic Health.
+func (service *Service) CurrentBranchFanout(context.Context) (int, error) {
+	return service.BranchFanout()
 }
 func (service *Service) RenameRouterNode(ctx context.Context, id, name string, expected uint64) (router.Node, error) {
 	release, err := service.BeginAuthorityWrite(ctx)
