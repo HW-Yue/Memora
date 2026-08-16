@@ -348,7 +348,7 @@ func TestRouteTreeModuleValidatesVersionedAliasesContract(t *testing.T) {
 	}
 }
 
-func TestRouteTreeWarnsOnOverflowInsteadOfPaginating(t *testing.T) {
+func TestRouteTreeNeverPaginatesBranchOverflow(t *testing.T) {
 	t.Parallel()
 
 	routes, err := fs.ReadFile(embeddedFiles, "dist/assets/routes.js")
@@ -356,11 +356,7 @@ func TestRouteTreeWarnsOnOverflowInsteadOfPaginating(t *testing.T) {
 		t.Fatal(err)
 	}
 	javascript := string(routes)
-	if !strings.Contains(javascript, "canvas-overflow-notice") ||
-		!strings.Contains(javascript, "超过单页上限") {
-		t.Fatal("Route Tree overflow notice is missing")
-	}
-	for _, forbidden := range []string{"继续加载这一层", "route_more_", "appendRootPage"} {
+	for _, forbidden := range []string{"继续加载这一层", "route_more_", "appendRootPage", "moreNode"} {
 		if strings.Contains(javascript, forbidden) {
 			t.Errorf("Route Tree still paginates with %q", forbidden)
 		}

@@ -635,14 +635,6 @@ function clearCanvasState(stage) {
   if (current) current.remove();
 }
 
-function refreshOverflowNotice(notice, page) {
-  const truncated = Boolean(page && page.truncated);
-  notice.hidden = !truncated;
-  if (truncated) {
-    notice.textContent = `这一层的语义节点超过单页上限（${CHILD_LIMIT} 个）。请合并节点、写入下级或分库分表，而不是继续加载。`;
-  }
-}
-
 function graphPosition(graph, id) {
   const position = graph.getElementPosition(id);
   const x = Array.isArray(position) ? position[0] : position?.x;
@@ -1026,9 +1018,6 @@ export async function renderRoutes(root, options) {
     focusButton.setAttribute("aria-label", "聚焦到语义索引中心");
     focusButton.title = "将当前已加载的语义索引重新适配到画布中心";
     controls.append(focusButton);
-    const overflowNotice = element("p", "canvas-overflow-notice");
-    overflowNotice.hidden = true;
-    controls.append(overflowNotice);
     const stage = element("div", "semantic-canvas-stage");
     const canvas = element("div", "semantic-canvas");
     canvas.setAttribute("aria-label", "语义索引树无限画布");
@@ -1036,7 +1025,6 @@ export async function renderRoutes(root, options) {
     view.append(stage);
     root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
     root.replaceChildren(view);
-    refreshOverflowNotice(overflowNotice, data.page);
     if (data.rows.length === 0) {
       setCanvasState(stage, "empty", "这个 Table 还没有 Route", "语义索引建立后，第一层节点会显示在这里。");
       return;
@@ -1050,7 +1038,6 @@ export async function renderRoutes(root, options) {
         if (!node.childrenLoaded) {
           try {
             await appendChildren(graph, tree, node, options.executeMSQL, databaseID, tableID);
-            refreshOverflowNotice(overflowNotice, node.page);
           } catch (error) {
             const [kind, title, detail] = errorState(error);
             setCanvasState(stage, kind, title, detail);

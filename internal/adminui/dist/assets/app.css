@@ -105,7 +105,6 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
 .semantic-canvas-controls .canvas-focus-button { border-radius: 999px; box-shadow: 0 8px 24px rgb(44 72 55 / 12%); pointer-events: auto; backdrop-filter: blur(10px); }
 .canvas-focus-button:hover { border-color: #4f7b63; background: #dbeadd; }
 .canvas-focus-button:focus-visible { outline: 2px solid #4f7b63; outline-offset: 2px; }
-.canvas-overflow-notice { margin: 0; max-width: 480px; border: 1px solid #d9b45b; border-radius: 999px; padding: 7px 12px; color: #7a5a1e; background: rgb(255 248 224 / 94%); box-shadow: 0 8px 24px rgb(120 90 20 / 14%); font-size: 11px; font-weight: 700; pointer-events: auto; backdrop-filter: blur(10px); }
 .semantic-canvas-stage { position: relative; min-height: 650px; overflow: hidden; border: 1px solid #cbd6ce; border-radius: 18px; background: radial-gradient(circle at 20% 20%, rgb(231 242 233 / 80%), transparent 36%), #f8faf6; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%), 0 18px 48px rgb(44 72 55 / 8%); }
 .route-semantic-detail .semantic-canvas-stage { width: 100%; height: 100%; min-height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
 .semantic-canvas { width: 100%; height: 700px; min-height: 520px; touch-action: none; overscroll-behavior: contain; }
