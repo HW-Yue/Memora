@@ -55,8 +55,9 @@ and run its read-only detector:
 ```
 
 If it reports `ready`, use the detected executable. If it reports `missing`,
-do not download or install anything yet. Tell the user that Memora v0.1.0 is
-available from `https://github.com/HW-Yue/Memora/releases/tag/v0.1.0`, show the
+do not download or install anything yet. Tell the user that the latest Memora
+release is available from `https://github.com/HW-Yue/Memora/releases/latest`
+(the verified installer resolves the newest stable tag automatically), show the
 default binary destination `~/.local/bin/memora` and the user-level Instance
 destination, then ask whether they want to download it manually or explicitly
 authorize this Skill's verified installer. If it reports `unhealthy`, show the
@@ -69,14 +70,16 @@ directory and run:
 /bin/sh "<skill-directory>/scripts/install.sh" --yes
 ```
 
-The bootstrap supports only macOS arm64/amd64. It prefers a version-pinned HTTPS
-Release, verifies the exact SHA-256 entry and staged binary version, and replaces
-an old binary only after verification. A checksum, archive, or version mismatch
-is a hard failure and must never fall back. Only an unavailable Release may fall
-back to a fixed Go module tag or an explicit local source directory. Do not ask
-for sudo, change the install script, bypass `--yes`, or claim success until its
-idempotent init, daemon start, and doctor checks finish. If offline without a
-local source tree and Go toolchain, report the recoverable blocker.
+The bootstrap supports only macOS arm64/amd64. It resolves the newest stable
+GitHub Release by default, verifies the exact SHA-256 entry and staged binary
+version, and replaces an old binary only after verification. Pass
+`--version MAJOR.MINOR.PATCH` to pin a specific release instead. A checksum,
+archive, or version mismatch is a hard failure and must never fall back. Only
+an unavailable Release may fall back to a fixed Go module tag or an explicit
+local source directory. Do not ask for sudo, change the install script, bypass
+`--yes`, or claim success until its idempotent init, daemon start, and doctor
+checks finish. If offline without a local source tree and Go toolchain, report
+the recoverable blocker.
 
 ## Upgrade or recover an Instance
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-version="0.1.0"
+version=""
 install_dir="${HOME}/.local/bin"
 data_dir=""
 source_dir=""
@@ -29,6 +29,18 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "$authorized" = true ] || fail "installation requires explicit user authorization; rerun with --yes after approval"
+if [ -z "$version" ]; then
+  latest_body=""
+  if command -v curl >/dev/null 2>&1; then
+    latest_body=$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+      "https://api.github.com/repos/HW-Yue/Memora/releases/latest" 2>/dev/null || true)
+  fi
+  version=$(printf '%s' "$latest_body" |
+    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' |
+    head -1)
+  [ -n "$version" ] || fail "cannot resolve the latest Memora release from GitHub; reconnect or pass --version to pin one"
+  version=${version#v}
+fi
 [ "$target_os" = darwin ] || fail "v0 bootstrap supports only macOS"
 case "$target_arch" in
   arm64|aarch64) target_arch=arm64 ;;
