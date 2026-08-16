@@ -240,6 +240,23 @@ change the answer. Cite `database.table`, Row ID, revision, and available source
 anchor for every factual summary. Distinguish “no matching Row,” “truncated,”
 “stale during SELECT,” and “permission denied.”
 
+## Decide where knowledge lives
+
+Before persisting a new piece of knowledge, decide where it belongs. Decide
+from large to small scope and only create when reuse is impossible:
+
+1. Reuse an existing Database whose purpose/scope clearly covers the user's
+   topic and whose anti_scope does not exclude it.
+2. Create a new Database only for a genuinely new domain — the user's first
+   mention of a personal topic with no matching Database warrants a new
+   Database, written before anything else, with an explicit purpose and scope.
+3. Inside the chosen Database, reuse an existing Table whose purpose and
+   row_semantics fit the knowledge; add a Row there.
+4. Create a new Table only when no existing Table fits and the content is a
+   distinct, recurring kind the user will keep adding to.
+5. Never create on a hunch or from a name alone: match by the object's declared
+   purpose/scope and semantic description, not by guessing equivalence.
+
 ## Write
 
 Within the user's authorized scope, use:
