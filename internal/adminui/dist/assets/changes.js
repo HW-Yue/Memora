@@ -144,11 +144,13 @@ function validateDatabaseRows(rows) {
       "database_id", "name", "aliases", "purpose", "scope", "schema_version",
       "tables", "created_at", "updated_at"
     ];
+    if (row.anti_scope !== undefined) fields.push("anti_scope");
     if (!exactKeys(row, fields)) throw new ChangeViewError("corrupt", "Database summary is invalid");
     stableID(row.database_id, "db_", "Database");
     safeText(row.name, "Database name", false, 256);
     safeText(row.purpose, "Database purpose");
     safeText(row.scope, "Database scope");
+    if (row.anti_scope !== undefined) safeText(row.anti_scope, "Database anti-scope");
     if (!positiveInteger(row.schema_version) || !Array.isArray(row.aliases) ||
         !Array.isArray(row.tables) || row.tables.length !== 0 ||
         !validTimestamp(row.created_at) || !validTimestamp(row.updated_at) ||
@@ -282,14 +284,8 @@ function breadcrumbs(database) {
 function heading(title, purpose, database) {
   const wrapper = element("header", "catalog-heading change-heading");
   const text = element("div");
-  text.append(element("h2", "", title), element("p", "", purpose));
-  if (database) {
-    const meta = element("div", "catalog-meta");
-    meta.append(element("span", "object-id", database.database_id),
-      element("span", "schema-badge", `schema v${database.schema_version}`),
-      element("span", "schema-badge", database.scope));
-    text.append(meta);
-  }
+  text.append(element("h2", "", title));
+  if (purpose) text.append(element("p", "", purpose));
   wrapper.append(text);
   return wrapper;
 }
@@ -298,8 +294,7 @@ function databaseCard(row) {
   const card = element("a", "object-card");
   card.href = `/changes/${encodeURIComponent(row.database_id)}`;
   card.dataset.route = "";
-  card.append(element("strong", "", row.name), element("p", "", row.purpose),
-    element("code", "", row.database_id));
+  card.append(element("strong", "", row.name), element("p", "", row.purpose));
   return card;
 }
 
@@ -313,17 +308,11 @@ function entryCard(row) {
   const card = element("article", "change-entry");
   const header = element("div", "change-entry-heading");
   const identity = element("div");
-  identity.append(element("strong", "", row.object_kind), element("code", "", row.object_id));
+  identity.append(element("strong", "", row.object_kind));
   header.append(identity, operationBadge(row.operation));
   const revisions = row.before_revision > 0 ?
     `revision ${row.before_revision} → ${row.after_revision}` : `revision ${row.after_revision}`;
-  const scope = [row.table_id, revisions, row.schema_version > 0 ? `schema v${row.schema_version}` : ""]
-    .filter(Boolean).join(" · ");
-  card.append(header, element("p", "", scope));
-  if (row.history_locator) card.append(element("small", "", `history ${row.history_locator}`));
-  if (row.related_object_ids.length) {
-    card.append(element("small", "", `related ${row.related_object_ids.join(" · ")}`));
-  }
+  card.append(header, element("p", "", revisions));
   if (row.object_kind === "row" && row.before_revision > 0) {
     const link = element("a", "revision-link", "比较 before / after");
     link.href = `/diffs/${encodeURIComponent(row.database_id)}/${encodeURIComponent(row.table_id)}/` +
@@ -424,8 +413,7 @@ function changeCard(summary, databaseID, executeMSQL) {
       }
       const container = element("section", "change-entries");
       const sectionHeading = element("div", "section-heading");
-      sectionHeading.append(element("h4", "", "Changed objects"),
-        element("span", "", `snapshot ${entries.page.snapshot.slice(0, 18)}…`));
+      sectionHeading.append(element("h4", "", "Changed objects"));
       const list = element("div", "change-entry-list");
       for (const row of entries.rows) list.append(entryCard(row));
       container.append(sectionHeading, list);
@@ -484,8 +472,7 @@ function addTimelineContinuation(section, list, rows, page, databaseID, executeM
 function databaseSection(rows, page, executeMSQL) {
   const section = element("section", "catalog-section");
   const header = element("div", "section-heading");
-  header.append(element("h3", "", "Databases"),
-    element("span", "", `snapshot ${page.snapshot.slice(0, 18)}…`));
+  header.append(element("h3", "", "Databases"));
   const list = element("div", "object-grid");
   for (const row of rows) list.append(databaseCard(row));
   section.append(header, list);
@@ -580,8 +567,7 @@ export async function renderChanges(root, options) {
     }
     const section = element("section", "catalog-section change-timeline");
     const header = element("div", "section-heading");
-    header.append(element("h3", "", "Transactions · oldest first"),
-      element("span", "", `snapshot ${data.timeline.page.snapshot.slice(0, 18)}…`));
+    header.append(element("h3", "", "Transactions"));
     const list = element("div", "change-list");
     for (const row of data.timeline.rows) list.append(changeCard(row, databaseID, options.executeMSQL));
     section.append(header, list);
