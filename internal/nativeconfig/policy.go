@@ -20,7 +20,7 @@ const (
 	PolicySnapshotKey      = "memora.configuration.route_policy"
 	DefaultBranchFanout    = router.DefaultBranchFanout
 	minimumBranchFanout    = 2
-	maximumBranchFanout    = 100
+	maximumBranchFanout    = router.MaxConfigurableBranchFanout
 	routePolicyBootReason  = "materialize database Route policy defaults"
 	routePolicyBootstrapBy = "engine:bootstrap"
 )
@@ -136,6 +136,9 @@ func (service *Service) UpdatePolicyCommitted(
 	if current.Revision != expected {
 		return PolicyRevision{}, configError(result.CodeRevisionConflict, "configuration revision conflicts with latest")
 	}
+	if err := validateFanoutStep(current.Policy.BranchFanout, policy.BranchFanout); err != nil {
+		return PolicyRevision{}, err
+	}
 	next := PolicyRevision{
 		Version: Version, Key: RoutePolicyKey, Revision: current.Revision + 1,
 		Policy: policy, Actor: strings.TrimSpace(actor), Reason: strings.TrimSpace(reason),
@@ -172,6 +175,13 @@ func (service *Service) RestorePolicyCommitted(
 	}
 	if target > uint64(len(history)) {
 		return PolicyRevision{}, configError(result.CodeNotFound, "configuration target revision was not found")
+	}
+	// Restoring an older revision must not become a way around the step limit:
+	// moving back up to a fan-out reached earlier is still a raise from here.
+	if err := validateFanoutStep(
+		current.Policy.BranchFanout, history[target-1].Policy.BranchFanout,
+	); err != nil {
+		return PolicyRevision{}, err
 	}
 	next := PolicyRevision{
 		Version: Version, Key: RoutePolicyKey, Revision: current.Revision + 1,
@@ -259,6 +269,24 @@ func validateRoutePolicy(value RoutePolicy) error {
 	if value.BranchFanout < minimumBranchFanout || value.BranchFanout > maximumBranchFanout {
 		return configError(result.CodeConstraint, fmt.Sprintf(
 			"branch_fanout must be between %d and %d", minimumBranchFanout, maximumBranchFanout,
+		))
+	}
+	return nil
+}
+
+// validateFanoutStep bounds how far one mutation may raise branch_fanout.
+// Widening the semantic tree must stay a repeated, justified decision, so an
+// Agent cannot answer one crowded parent by jumping to the ceiling. Lowering
+// is unrestricted.
+func validateFanoutStep(current, next int) error {
+	if next <= current {
+		return nil
+	}
+	allowed := router.NextBranchFanout(current, maximumBranchFanout)
+	if next > allowed {
+		return configError(result.CodeConstraint, fmt.Sprintf(
+			"branch_fanout may rise by at most %d per change: this database allows %d and may move to %d next, not %d",
+			router.MaxBranchFanoutIncrease, current, allowed, next,
 		))
 	}
 	return nil

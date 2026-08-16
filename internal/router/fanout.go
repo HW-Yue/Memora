@@ -10,6 +10,30 @@ import (
 // a startup default the owning Agent may revise, not a semantic constant.
 const DefaultBranchFanout = 12
 
+// MaxBranchFanoutIncrease bounds how far one mutation may raise a Database's
+// structural fan-out. Widening the semantic tree is a judgement the owning
+// Agent has to make repeatedly rather than once: each raise costs a separate
+// decision, a separate reason and a separate revision, so a crowded parent
+// cannot be resolved by jumping straight to the ceiling. Lowering the limit is
+// not bounded; only growth is deliberated.
+const MaxBranchFanoutIncrease = 4
+
+// MaxConfigurableBranchFanout is the ceiling a Database's fan-out may reach.
+// It is a sanity bound on the configuration value, not a default and not a
+// target: reaching it takes many separate, individually justified raises.
+const MaxConfigurableBranchFanout = 100
+
+// NextBranchFanout reports the highest fan-out one mutation may move to from
+// current, clamped to ceiling. Callers surface it so the Agent is told the
+// value it may actually ask for instead of discovering the bound by failing.
+func NextBranchFanout(current, ceiling int) int {
+	next := current + MaxBranchFanoutIncrease
+	if next > ceiling {
+		return ceiling
+	}
+	return next
+}
+
 // RaiseBranchFanoutStatement is the MSQL an Agent runs when it decides the
 // Database itself should carry a wider semantic fan-out.
 const RaiseBranchFanoutStatement = "ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :fanout"
@@ -26,13 +50,24 @@ type BranchOverflowError struct {
 	ParentRouteID string
 	LiveChildren  int
 	BranchFanout  int
+	// NextBranchFanout is the highest limit one raise may move to from here.
+	// Zero means the caller did not resolve a ceiling; the message then omits
+	// the concrete value rather than inventing one.
+	NextBranchFanout int
 }
 
 func (err *BranchOverflowError) Error() string {
+	raise := RaiseBranchFanoutStatement
+	if err.NextBranchFanout > err.BranchFanout {
+		raise = fmt.Sprintf(
+			"%s (at most %d next; a raise may add %d at a time)",
+			RaiseBranchFanoutStatement, err.NextBranchFanout, MaxBranchFanoutIncrease,
+		)
+	}
 	return fmt.Sprintf(
 		"Route branch fan-out limit reached: %s already carries %d live children and this database allows %d; "+
 			"either restructure the subtree or raise the limit with %s",
-		err.ParentRouteID, err.LiveChildren, err.BranchFanout, RaiseBranchFanoutStatement,
+		err.ParentRouteID, err.LiveChildren, err.BranchFanout, raise,
 	)
 }
 
@@ -68,5 +103,8 @@ func CheckBranchFanout(parentID string, live, adding, limit int) error {
 	if limit < 1 || adding < 1 || live+adding <= limit {
 		return nil
 	}
-	return &BranchOverflowError{ParentRouteID: parentID, LiveChildren: live, BranchFanout: limit}
+	return &BranchOverflowError{
+		ParentRouteID: parentID, LiveChildren: live, BranchFanout: limit,
+		NextBranchFanout: NextBranchFanout(limit, MaxConfigurableBranchFanout),
+	}
 }

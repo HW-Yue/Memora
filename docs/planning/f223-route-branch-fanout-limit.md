@@ -21,8 +21,14 @@
    不是带理由的例外。
 3. 失败返回结构化信封，明确给出两条互斥出路，由 Agent 自己判断走哪条：
    - **重构子树**：合并、下沉或拆分节点，让新节点归入已有分组；
-   - **提高本库上限**：`ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :n`。
+   - **提高本库上限**：`ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :n`，
+     **一次最多加 4**（`router.MaxBranchFanoutIncrease`）。加宽语义树是需要反复判断的决定，
+     不是一次性的：每次提高都要单独的理由和单独的 revision，因此拥挤的父节点不能靠
+     一步跳到天花板解决。降低上限不受此限制，只有增长需要审议。
+     越界错误里会直接给出本次最多能调到的值，Agent 不必试错。
 4. 引擎不替 Agent 选。它只保证上限可发现、越界必然失败、两条出路都可执行。
+5. `100`（`router.MaxConfigurableBranchFanout`）是配置值的天花板，**不是默认值也不是目标**；
+   按每次 +4 计算，从 12 走到 100 需要 22 次各自独立论证的提高。
 
 `branch_fanout` 是**结构**上限，与 `query_budgets.route_children`（一次 `SHOW ROUTES`
 的读取分页预算）是两个概念，因此使用独立配置键、独立 revision 链和独立理由。

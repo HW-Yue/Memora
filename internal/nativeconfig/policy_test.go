@@ -122,3 +122,61 @@ func stableCode(err error, code result.Code) bool {
 	var stable interface{ StableCode() string }
 	return errors.As(err, &stable) && stable.StableCode() == string(code)
 }
+
+func TestRoutePolicyRaisesFanoutByAtMostFourPerMutation(t *testing.T) {
+	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	service, err := New(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A single jump past the step limit must fail: the owning Agent has to
+	// decide, and justify, one bounded raise at a time.
+	for _, fanout := range []int{17, 30, 100} {
+		if _, err := service.UpdatePolicy(
+			RoutePolicy{BranchFanout: fanout}, 1, "agent:test", "jump",
+		); !stableCode(err, result.CodeConstraint) {
+			t.Fatalf("fan-out 12 -> %d = %v, want constraint violation", fanout, err)
+		}
+	}
+
+	// Exactly +4 is allowed, and the next raise starts from the new value.
+	revision, err := service.UpdatePolicy(RoutePolicy{BranchFanout: 16}, 1, "agent:test", "first raise")
+	if err != nil {
+		t.Fatalf("fan-out 12 -> 16 = %v, want success", err)
+	}
+	if revision.Policy.BranchFanout != 16 {
+		t.Fatalf("branch_fanout = %d, want 16", revision.Policy.BranchFanout)
+	}
+	if _, err := service.UpdatePolicy(
+		RoutePolicy{BranchFanout: 21}, revision.Revision, "agent:test", "too far",
+	); !stableCode(err, result.CodeConstraint) {
+		t.Fatalf("fan-out 16 -> 21 = %v, want constraint violation", err)
+	}
+	second, err := service.UpdatePolicy(
+		RoutePolicy{BranchFanout: 20}, revision.Revision, "agent:test", "second raise",
+	)
+	if err != nil {
+		t.Fatalf("fan-out 16 -> 20 = %v, want success", err)
+	}
+
+	// Lowering is unrestricted; only growth is deliberated.
+	lowered, err := service.UpdatePolicy(
+		RoutePolicy{BranchFanout: 2}, second.Revision, "agent:test", "shrink",
+	)
+	if err != nil {
+		t.Fatalf("fan-out 20 -> 2 = %v, want success", err)
+	}
+
+	// Restore must not become a way to skip the steps: jumping back up to a
+	// previously reached value is still a raise.
+	if _, err := service.RestorePolicy(
+		second.Revision, lowered.Revision, "agent:test", "restore past the step limit",
+	); !stableCode(err, result.CodeConstraint) {
+		t.Fatalf("restore 2 -> 20 = %v, want constraint violation", err)
+	}
+}
