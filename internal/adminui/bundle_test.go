@@ -338,7 +338,7 @@ func TestRouteTreeModuleValidatesVersionedAliasesContract(t *testing.T) {
 	}
 	javascript := string(routes)
 	for _, required := range []string{
-		`"route_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"`,
+		`"route_id", "database_id", "table_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"`,
 		"function validateAliases", "Array.from(alias).length", "new TextEncoder().encode(alias).length",
 		"Route aliases are invalid", "Route aliases are duplicated", "Route aliases exceed their byte budget",
 	} {
