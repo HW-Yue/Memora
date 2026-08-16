@@ -112,7 +112,12 @@ filter that silently drops Databases outside that scope, so a guessed or
 placeholder name can hide the real catalog. Bind authorization only after the
 user has named a Database; never widen or invent the scope.
 
+The install detector, the health check, and the unauthenticated catalog read
+are independent and their error envelopes are small, so run them together in
+one turn instead of waiting between them:
+
 ```sh
+/bin/sh "<skill-directory>/scripts/check.sh"
 memora doctor
 memora query "SHOW DATABASES LIMIT 32 COMPACT"
 ```
