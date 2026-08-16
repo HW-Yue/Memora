@@ -45,18 +45,18 @@ const (
 type ObjectKind uint16
 
 const (
-	ObjectKindOpaque          ObjectKind = 1
-	ObjectKindDatabase        ObjectKind = 2
-	ObjectKindTable           ObjectKind = 3
-	ObjectKindColumn          ObjectKind = 4
-	ObjectKindRow             ObjectKind = 5
-	ObjectKindHistory         ObjectKind = 6
-	ObjectKindRelation        ObjectKind = 7
-	ObjectKindRoute           ObjectKind = 8
-	ObjectKindRouteMembership ObjectKind = 9
-	ObjectKindSnapshotMeta    ObjectKind = 10
-	ObjectKindConfiguration   ObjectKind = 11
-	ObjectKindCommittedChange ObjectKind = 12
+	ObjectKindOpaque             ObjectKind = 1
+	ObjectKindDatabase           ObjectKind = 2
+	ObjectKindTable              ObjectKind = 3
+	ObjectKindColumn             ObjectKind = 4
+	ObjectKindRow                ObjectKind = 5
+	ObjectKindHistory            ObjectKind = 6
+	ObjectKindRelation           ObjectKind = 7
+	ObjectKindRoute              ObjectKind = 8
+	ObjectKindRouteMembership    ObjectKind = 9
+	ObjectKindSnapshotMeta       ObjectKind = 10
+	ObjectKindConfiguration      ObjectKind = 11
+	ObjectKindCommittedChange    ObjectKind = 12
 	ObjectKindRouteRowMembership ObjectKind = 13
 
 	// ObjectKindMax is the largest persisted object kind. Discovery and

@@ -9,8 +9,8 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
-	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/router"
+	"github.com/HW-Yue/Memora/internal/row"
 )
 
 func TestIndexedPointGetOwnsExactAutocommitSelectsWithoutLegacyFallback(t *testing.T) {
