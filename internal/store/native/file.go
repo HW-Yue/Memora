@@ -57,6 +57,11 @@ const (
 	ObjectKindSnapshotMeta    ObjectKind = 10
 	ObjectKindConfiguration   ObjectKind = 11
 	ObjectKindCommittedChange ObjectKind = 12
+	ObjectKindRouteRowMembership ObjectKind = 13
+
+	// ObjectKindMax is the largest persisted object kind. Discovery and
+	// migration sweeps enumerate [ObjectKindDatabase, ObjectKindMax].
+	ObjectKindMax ObjectKind = ObjectKindRouteRowMembership
 )
 
 const (

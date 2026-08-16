@@ -50,6 +50,7 @@ type Rows interface {
 	GetRouterNode(context.Context, string) (router.Node, error)
 	ListRouterChildrenPage(context.Context, string, string, int) ([]router.Node, router.ReadPage, error)
 	ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
+	MembershipsForRow(context.Context, string, string, string) ([]router.Membership, error)
 }
 
 // PointReads owns exact autocommit SELECT reads when configured. Implementations

@@ -128,7 +128,10 @@ func (repository *Repository) Attach(leafID string, locator router.Locator, memb
 	if err != nil {
 		return err
 	}
-	return repository.file.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload)
+	if err := repository.file.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload); err != nil {
+		return err
+	}
+	return repository.file.Put(nativestore.ObjectKindRouteRowMembership, schemaVersion, rowMembershipRecordID(value), payload)
 }
 
 func (repository *Repository) StageMembership(transaction *nativestore.Transaction, value router.Membership) error {
@@ -142,7 +145,10 @@ func (repository *Repository) StageMembership(transaction *nativestore.Transacti
 	if err != nil {
 		return err
 	}
-	return transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload)
+	if err := transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload); err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRouteRowMembership, schemaVersion, rowMembershipRecordID(value), payload)
 }
 
 func (repository *Repository) StageNode(transaction *nativestore.Transaction, value router.Node) error {
@@ -223,7 +229,10 @@ func (repository *Repository) StagePlannedMembership(transaction *nativestore.Tr
 	if err != nil {
 		return err
 	}
-	return transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload)
+	if err := transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload); err != nil {
+		return err
+	}
+	return transaction.Put(nativestore.ObjectKindRouteRowMembership, schemaVersion, rowMembershipRecordID(value), payload)
 }
 
 func (repository *Repository) validateMembership(value router.Membership) error {
@@ -240,6 +249,14 @@ func (repository *Repository) validateMembership(value router.Membership) error 
 
 func membershipRecordID(value router.Membership) string {
 	id := value.LeafID + "@" + value.RowID
+	if value.MembershipRevision > 1 {
+		id += fmt.Sprintf("@%020d", value.MembershipRevision)
+	}
+	return id
+}
+
+func rowMembershipRecordID(value router.Membership) string {
+	id := value.RowID + "@" + value.LeafID
 	if value.MembershipRevision > 1 {
 		id += fmt.Sprintf("@%020d", value.MembershipRevision)
 	}
@@ -425,28 +442,41 @@ func membershipKey(value router.Membership) string {
 }
 
 func (repository *Repository) Memberships(rowID string) ([]router.Membership, error) {
-	values, err := repository.latestMemberships(false)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]router.Membership, 0)
-	for _, value := range values {
-		if value.RowID == rowID {
-			result = append(result, value)
-		}
-	}
-	sort.Slice(result, func(left, right int) bool { return result[left].LeafID < result[right].LeafID })
-	return result, nil
+	return repository.membershipsForRow(rowID, false)
 }
 
 func (repository *Repository) MembershipsIncludingDeleted(rowID string) ([]router.Membership, error) {
-	values, err := repository.latestMemberships(true)
+	return repository.membershipsForRow(rowID, true)
+}
+
+func (repository *Repository) membershipsForRow(rowID string, includeDeleted bool) ([]router.Membership, error) {
+	ids, err := repository.file.IDs(nativestore.ObjectKindRouteRowMembership)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]router.Membership, 0)
-	for _, value := range values {
-		if value.RowID == rowID {
+	prefix := rowID + "@"
+	latest := make(map[string]router.Membership)
+	for _, id := range ids {
+		if !strings.HasPrefix(id, prefix) {
+			continue
+		}
+		payload, err := repository.file.Get(nativestore.ObjectKindRouteRowMembership, id)
+		if err != nil {
+			return nil, err
+		}
+		value, err := decodeMembership(payload)
+		if err != nil {
+			return nil, err
+		}
+		key := value.LeafID + "\x00" + value.RowID
+		current, ok := latest[key]
+		if !ok || value.MembershipRevision > current.MembershipRevision {
+			latest[key] = value
+		}
+	}
+	result := make([]router.Membership, 0, len(latest))
+	for _, value := range latest {
+		if includeDeleted || !value.Deleted {
 			result = append(result, value)
 		}
 	}
