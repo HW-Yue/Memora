@@ -287,6 +287,9 @@ func createTableMSQL(database string, table catalog.TableDefinition) (string, er
 			nullability = " NULL"
 		}
 		parts[index] = identifier(column.Name) + " " + typeSource + nullability + " PURPOSE " + literal(column.Purpose)
+		if column.SemanticRole != "" {
+			parts[index] += " ROLE " + column.SemanticRole
+		}
 	}
 	source := "CREATE TABLE " + identifier(database) + "." + identifier(table.Name) +
 		" PURPOSE " + literal(table.Purpose) + " ROW SEMANTICS " + literal(table.RowSemantics)

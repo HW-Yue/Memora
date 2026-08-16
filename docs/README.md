@@ -156,6 +156,7 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [Go SDK](./development/go-sdk-v1.md)
 - [macOS LaunchAgent](./development/macos-launch-agent-v1.md)
 - [Admin Shell](./development/embedded-admin-shell-v1.md)
+- [Admin Semantic Local Motion](./development/admin-semantic-local-motion-v1.md) — F216 局部、可中断、性能受限的 Route Tree 微动画；不启用全局布局动画。
 - [Admin 第三方前端资源](./development/admin-third-party-notices.md)
 - [Route Trace](./query/route-trace-read-v1.md)
 - [评测 Agent 与外置 Hook](./development/evaluation-agent-observability.md)

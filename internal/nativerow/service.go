@@ -1210,6 +1210,25 @@ func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor s
 	return nativerouter.New(service.repository.file).OpenPage(leafID, cursor, limit)
 }
 
+func (service *Service) MembershipsForRow(ctx context.Context, databaseID, tableID, rowID string) ([]router.Membership, error) {
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	memberships, err := nativerouter.New(service.repository.file).Memberships(rowID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]router.Membership, 0, len(memberships))
+	for _, membership := range memberships {
+		if membership.DatabaseID == databaseID && membership.TableID == tableID {
+			result = append(result, membership)
+		}
+	}
+	return result, nil
+}
+
 func (service *Service) InspectRouterLeafPage(ctx context.Context, leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
 	release, err := service.beginRouteRead(ctx)
 	if err != nil {

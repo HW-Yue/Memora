@@ -55,6 +55,44 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 	}
 }
 
+func TestAdminShellUsesMinimalNavigationAndPresentation(t *testing.T) {
+	t.Parallel()
+
+	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexText := string(index)
+	for _, forbidden := range []string{
+		"LOCAL SEMANTIC DATABASE", "你的知识，由 AI 建模", "nav-caption",
+		`data-nav="overview"`, `data-nav="routes"`, "Admin Shell 已离线加载",
+	} {
+		if strings.Contains(indexText, forbidden) {
+			t.Errorf("minimal Admin shell still contains %q", forbidden)
+		}
+	}
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appText := string(app)
+	if !strings.Contains(appText, `window.history.replaceState(null, "", "/catalog")`) {
+		t.Fatal("root Admin route does not redirect to Catalog")
+	}
+	for _, asset := range []string{
+		"dist/assets/catalog.js", "dist/assets/changes.js", "dist/assets/diffs.js",
+		"dist/assets/rows.js", "dist/assets/routes.js", "dist/assets/traces.js",
+	} {
+		content, readErr := fs.ReadFile(embeddedFiles, asset)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if strings.Contains(string(content), "snapshot ${") {
+			t.Errorf("%s still renders internal snapshot labels", asset)
+		}
+	}
+}
+
 func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	t.Parallel()
 
@@ -83,7 +121,8 @@ func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 		"SHOW DATABASES LIMIT 32 COMPACT", "DESCRIBE DATABASE", "SHOW ROUTE TRACES IN DATABASE",
 		"CURSOR :cursor LIMIT 20", "SHOW ROUTE TRACE :trace IN DATABASE", "LIMIT 24",
 		"CURSOR :cursor LIMIT 24", "parameters", "named", "trace_id", "trace_sequence",
-		"database_id", "table_id", "candidate_route_ids", "selected_route_id", "locators",
+		"database_id", "anti_scope", "row.anti_scope !== undefined", "table_id",
+		"candidate_route_ids", "selected_route_id", "locators",
 		"elapsed_ms", "remaining_budget", "loading", "empty", "ready", "truncated",
 		"permission", "corrupt", "revision_conflict",
 	} {
@@ -177,7 +216,8 @@ func TestChangeTimelineModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 		"SHOW DATABASES LIMIT 32 COMPACT", "DESCRIBE DATABASE", "SHOW CHANGES IN DATABASE",
 		"CURSOR :cursor LIMIT 20", "SHOW CHANGE :transaction IN DATABASE", "LIMIT 32",
 		"CURSOR :cursor LIMIT 32", "parameters", "named", "transaction_id", "commit_sequence",
-		"database_ids", "entry_count", "object_kind", "history_locator", "related_object_ids",
+		"database_ids", "anti_scope", "row.anti_scope !== undefined", "entry_count", "object_kind",
+		"history_locator", "related_object_ids",
 		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
 	} {
 		if !strings.Contains(javascript, required) {
@@ -245,8 +285,8 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(index), `href="/routes" data-route`) {
-		t.Fatal("Admin shell does not expose Route Tree navigation")
+	if strings.Contains(string(index), `data-nav="routes"`) {
+		t.Fatal("Route Tree should be entered from a Table, not exposed as an empty top-level page")
 	}
 	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
 	if err != nil {
@@ -280,7 +320,7 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 		}
 	}
 	for _, forbidden := range []string{
-		"innerHTML", "INSERT ", "UPDATE ", "DELETE ", "CREATE ",
+		"INSERT ", "UPDATE ", "DELETE ", "CREATE ",
 		"localStorage", "sessionStorage", "OPEN ROUTE :route CURSOR",
 	} {
 		if strings.Contains(javascript, forbidden) {
@@ -298,12 +338,27 @@ func TestRouteTreeModuleValidatesVersionedAliasesContract(t *testing.T) {
 	}
 	javascript := string(routes)
 	for _, required := range []string{
-		`"route_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"`,
+		`"route_id", "database_id", "table_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"`,
 		"function validateAliases", "Array.from(alias).length", "new TextEncoder().encode(alias).length",
 		"Route aliases are invalid", "Route aliases are duplicated", "Route aliases exceed their byte budget",
 	} {
 		if !strings.Contains(javascript, required) {
 			t.Errorf("Route Tree aliases contract is missing %q", required)
+		}
+	}
+}
+
+func TestRouteTreeNeverPaginatesBranchOverflow(t *testing.T) {
+	t.Parallel()
+
+	routes, err := fs.ReadFile(embeddedFiles, "dist/assets/routes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(routes)
+	for _, forbidden := range []string{"继续加载这一层", "route_more_", "appendRootPage", "moreNode"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Route Tree still paginates with %q", forbidden)
 		}
 	}
 }
@@ -345,10 +400,25 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	}
 	routeText := string(routes)
 	for _, required := range []string{
-		"window.G6", "compact-box", "drag-canvas", "zoom-canvas", "collapse-expand",
-		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "ROW CONTENT", "documentNode",
-		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"", "documentText",
+		"window.G6", "compact-box", "drag-canvas", "scroll-canvas", "collapse-expand",
+		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "MEMORA ROW", "documentNode",
+		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"",
 		"DOCUMENT_NODE_WIDTH", "documentWidth", "translateElementTo", "focusElement",
+		"type: (data) => data.kind === \"document\" ? \"html\" : \"rect\"",
+		"innerHTML: documentNodeHTML", "markdownit({ html: false", "DOMPurify.sanitize",
+		"semantic-document-node", "semantic-document-reading", "semantic-document-properties",
+		"trackpad-pan", "trackpad-zoom", "event.ctrlKey", "event.metaKey",
+		"zoomRange: [0.25, 2]", "sensitivity: 0.2",
+		"autoFit: false", "animation: false,\n    zoomRange: [0.25, 2]", "node.childrenLoaded === true",
+		"animation: false,\n        align: true",
+		"requestAnimationFrame", "prefers-reduced-motion", "semantic-document-enter",
+		"BRANCH_ENTER_MS", "DOCUMENT_ENTER_MS", "cancelAnimationFrame", "motionOpacity", "getNodeData",
+		"graph.localMotion", "graph.draw()", "__semanticGraph", "localMotion?.cancel",
+		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
+		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
+		"semantic-canvas-fullscreen", "semantic-canvas-controls", "返回表",
+		"alignDocumentColumn", "DOCUMENT_COLUMN_GAP", "DOCUMENT_VERTICAL_GAP",
+		"CANVAS_FOCUS_MAX_ZOOM", "zoomTo", "focusRouteNode",
 		"for (const column of preview.columns)",
 	} {
 		if !strings.Contains(routeText, required) {
@@ -357,11 +427,15 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"route-canvas-inspector", "canvas-inline-preview", "canvas-inline-close",
-		"打开完整文档", "preview.columns.slice",
+		"打开完整文档", "preview.columns.slice", "documentText", "labelWordWrap",
+		"\"drag-canvas\", \"zoom-canvas\"", "placeDocumentAfterLeaf",
 	} {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
 		}
+	}
+	if strings.Contains(routeText, "const pending = statusDocumentNode") {
+		t.Error("Leaf click still renders a temporary document before final Row content")
 	}
 
 	rows, err := fs.ReadFile(embeddedFiles, "dist/assets/rows.js")
@@ -387,6 +461,13 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		".route-rows .content { width: 100%; max-width: none;",
 		".route-rows .route-outlet { max-width: none; padding: 0; border: 0; background: transparent;",
 		"grid-template-columns: minmax(0, 920px) minmax(240px, 290px)",
+		".semantic-document-node", "width: 900px", ".semantic-document-reading",
+		".semantic-document-metadata", ".semantic-document-properties",
+		"user-select: none", "touch-action: none", "overscroll-behavior: contain",
+		"@keyframes semantic-document-enter", "prefers-reduced-motion: reduce",
+		".route-semantic-detail .topbar", ".route-semantic-detail .sidebar",
+		".route-semantic-detail .semantic-canvas-stage", ".semantic-canvas-controls",
+		"route-semantic-detail",
 	} {
 		if !strings.Contains(styleText, required) {
 			t.Errorf("Wide Row document layout is missing %q", required)

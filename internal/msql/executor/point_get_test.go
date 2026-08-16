@@ -9,6 +9,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
@@ -164,6 +165,10 @@ func (rows *legacyPointRows) ListPage(context.Context, string, string, int) ([]r
 	return append([]row.Row(nil), rows.values...), false, nil
 }
 
+func (rows *legacyPointRows) MembershipsForRow(context.Context, string, string, string) ([]router.Membership, error) {
+	return []router.Membership{}, nil
+}
+
 func (rows *poisonPointRows) Get(context.Context, string, string, string) (row.Row, error) {
 	rows.calls++
 	return row.Row{}, fmt.Errorf("legacy Get must not be called")
@@ -177,6 +182,10 @@ func (rows *poisonPointRows) AsOfRevision(context.Context, string, string, strin
 func (rows *poisonPointRows) AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error) {
 	rows.calls++
 	return row.Row{}, fmt.Errorf("legacy AsOfCommit must not be called")
+}
+
+func (rows *poisonPointRows) MembershipsForRow(context.Context, string, string, string) ([]router.Membership, error) {
+	return []router.Membership{}, nil
 }
 
 type stubPointReads struct {

@@ -157,7 +157,7 @@ function validateSnapshot(result, databaseID, tableID, rowID, revision) {
   const detail = validateDetail(result, databaseID, tableID, columns);
   if (result.rows.length !== 1) throw new DiffViewError("corrupt", "Revision point read is not exact");
   const row = result.rows[0];
-  if (!exactKeys(row, columns.map((column) => column.name)) || row.row_id !== rowID ||
+  if (!exactKeys(row, [...columns.map((column) => column.name), "route_paths"]) || row.row_id !== rowID ||
       row.revision !== revision || !positiveInteger(row.commit_sequence) ||
       !["live", "deleted", "superseded"].includes(row.row_state) ||
       !positiveInteger(row.schema_version)) {
@@ -217,11 +217,10 @@ function displayValue(value) {
 function breadcrumbs(databaseID, tableID, rowID) {
   const node = element("nav", "breadcrumbs");
   node.setAttribute("aria-label", "Revision diff 路径");
-  const row = element("a", "", rowID);
+  const row = element("a", "", "Row");
   row.href = `/rows/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}/${encodeURIComponent(rowID)}`;
   row.dataset.route = "";
-  node.append(element("span", "", "Row"), element("span", "", "/"), row,
-    element("span", "", "/"), element("span", "", "Diff"));
+  node.append(row, element("span", "", "/"), element("span", "", "Diff"));
   return node;
 }
 
@@ -236,8 +235,7 @@ function heading(before, after, rowID) {
   content.append(element("h2", "", titleFor(after, rowID)),
     element("p", "", before.detail.row_semantics));
   const meta = element("div", "catalog-meta");
-  meta.append(element("span", "object-id", rowID),
-    element("span", "schema-badge", `revision ${before.row.revision} → ${after.row.revision}`),
+  meta.append(element("span", "schema-badge", `revision ${before.row.revision} → ${after.row.revision}`),
     element("span", "schema-badge", `${before.row.row_state} → ${after.row.row_state}`));
   content.append(meta);
   wrapper.append(content);
@@ -263,7 +261,7 @@ function fieldDiff(column, before, after) {
   section.dataset.changed = changed ? "true" : "false";
   const header = element("div", "row-field-heading");
   const identity = element("div");
-  identity.append(element("h3", "", column.name), element("small", "", column.column_id));
+  identity.append(element("h3", "", column.name));
   const badges = element("div", "row-field-badges");
   badges.append(element("span", "schema-badge", column.type),
     element("span", "schema-badge", changed ? "changed" : "unchanged"));

@@ -105,8 +105,29 @@ Start a new task or stale Route Frame with bounded discovery. Inspect databases,
 then the selected schema and Router. Reuse an existing semantic scope when it
 fits; do not invent a table from a name alone.
 
+When the host does not yet know a Database name — a cold Instance, a new task
+with no user-named Database, or an expired Route Frame — discover names first.
+`SHOW DATABASES` without an `authorization` object is discovery mode and
+returns every Database. Supplying an `authorization` object switches it to a
+filter that silently drops Databases outside that scope, so a guessed or
+placeholder name can hide the real catalog. Bind authorization only after the
+user has named a Database; never widen or invent the scope.
+
+The install detector, the health check, and the unauthenticated catalog read
+are independent and their error envelopes are small, so run them together in
+one turn instead of waiting between them:
+
 ```sh
+/bin/sh "<skill-directory>/scripts/check.sh"
 memora doctor
+memora query "SHOW DATABASES LIMIT 32 COMPACT"
+```
+
+Show the discovered Database names and purposes to the user and ask which one
+to use before the first authorized read or write. Once the user names a
+Database, continue the bounded discovery below with that exact name:
+
+```sh
 memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW TABLES FROM work COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "DESCRIBE TABLE work.notes COMPACT"
@@ -149,6 +170,12 @@ navigation outcomes, not query failures.
 memora query --input '{"parameters":{"named":{"lexical_query":"crash recovery","lexical_limit":8,"lexical_bytes":4096}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
 ```
 
+`SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query` is the full-content inverted index: it returns every object matching the query in one bounded page, with `kind` one of `database | table | column | route | row`. Use it when a keyword must locate both the semantic index (route) and a concrete Row, instead of the route-only `SHOW ROUTE CANDIDATES`. A Row hit returns `database_id/table_id/object_id/revision`; follow it with `SELECT ... WHERE row_id = :row` to read the Row, whose own `route_paths` already carries its semantic path, so membership need not be reverse-resolved.
+
+```sh
+memora query --input '{"parameters":{"named":{"query":"crash recovery","location_limit":10,"utf8_byte_limit":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query LIMIT :location_limit BYTES :utf8_byte_limit"
+```
+
 Treat every Discovery candidate and prefetched Route as `navigation_only`.
 They are neither answers nor evidence, and scores with different kinds are not
 comparable. Explicitly choose one or more Tables from the compact Atlas; a
@@ -172,8 +199,10 @@ call. Choose a node explicitly, request only its immediate children, and repeat
 until a leaf is reached. Every leaf locates at most one active Row, and
 `OPEN ROUTE` returns only that Row's locator; never answer from the locator.
 Select projected semantic fields by Row ID, then summarize only the returned
-Row. Report empty, stale, or permission-limited results instead of inventing a
-fallback.
+Row. Every SELECT Row already carries its own `route_paths` — the full
+semantic-index paths of the leaves that locate it — so the host need not
+reverse-resolve membership after the fact. Report empty, stale, or
+permission-limited results instead of inventing a fallback.
 
 Use this bounded state machine:
 

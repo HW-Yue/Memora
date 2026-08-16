@@ -196,6 +196,58 @@ func TestValidateMembershipChangesAllowsAtomicLeafTransfer(t *testing.T) {
 	}
 }
 
+func TestReverseMembershipFollowsSoftDeleteAndTransfer(t *testing.T) {
+	t.Parallel()
+
+	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	repository := New(file)
+	root, err := repository.CreateRoot("route_root", "db_work", "tbl_notes", "Notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstLeaf, err := repository.CreateChild("route_first", root.ID, "first", router.KindLeaf, "First leaf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondLeaf, err := repository.CreateChild("route_second", root.ID, "second", router.KindLeaf, "Second leaf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	locator := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_moved", Revision: 1}
+	if err := repository.Attach(firstLeaf.ID, locator, 1); err != nil {
+		t.Fatal(err)
+	}
+	if memberships, err := repository.Memberships(locator.RowID); err != nil || len(memberships) != 1 || memberships[0].LeafID != firstLeaf.ID {
+		t.Fatalf("reverse Memberships after attach = %#v, %v", memberships, err)
+	}
+	deleted := router.Membership{LeafID: firstLeaf.ID, MembershipRevision: 2, Deleted: true, Locator: locator}
+	replaced := router.Membership{LeafID: secondLeaf.ID, MembershipRevision: 1, Locator: locator}
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.StageMembership(transaction, deleted); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.StageMembership(transaction, replaced); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if memberships, err := repository.Memberships(locator.RowID); err != nil || len(memberships) != 1 || memberships[0].LeafID != secondLeaf.ID {
+		t.Fatalf("reverse Memberships after transfer = %#v, %v", memberships, err)
+	}
+	if includingDeleted, err := repository.MembershipsIncludingDeleted(locator.RowID); err != nil ||
+		len(includingDeleted) != 2 {
+		t.Fatalf("reverse MembershipsIncludingDeleted after transfer = %#v, %v", includingDeleted, err)
+	}
+}
+
 func TestNodesReturnsStableCurrentRoutesAfterReopen(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "database.memora")

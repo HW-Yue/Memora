@@ -70,6 +70,25 @@ func TestEnsureCreatesNewDomainAndReusesSemanticSynonyms(t *testing.T) {
 	}
 }
 
+func TestEnsurePreservesSemanticRole(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	session, dictionary, closeSession := schemaSession(t, ctx)
+	defer closeSession()
+	tool := sessionSchemaTool(session)
+
+	plan := ensurePlan()
+	plan.Ensure.Table.Columns[0].SemanticRole = "title"
+	if _, err := skillschema.New(tool).Run(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	table, err := dictionary.DescribeTable(ctx, "work", "notes")
+	if err != nil || len(table.Columns) != 1 || table.Columns[0].SemanticRole != "title" {
+		t.Fatalf("semantic role was dropped by ensure: %#v, %v", table, err)
+	}
+}
+
 func TestEnsureRejectsMissingPurposeScopeOrRowSemanticsBeforeToolCall(t *testing.T) {
 	t.Parallel()
 

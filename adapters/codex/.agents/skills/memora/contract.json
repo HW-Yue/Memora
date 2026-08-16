@@ -146,6 +146,11 @@
       "msql": "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
     },
     {
+      "name": "lexical-locations",
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"query\":\"crash recovery\",\"location_limit\":10,\"utf8_byte_limit\":8192}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query LIMIT :location_limit BYTES :utf8_byte_limit\"",
+      "msql": "SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query LIMIT :location_limit BYTES :utf8_byte_limit"
+    },
+    {
       "name": "route-root",
       "command": "memora query --input '{\"parameters\":{\"named\":{\"cursor\":\"\",\"limit\":12}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit\"",
       "msql": "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"

@@ -64,7 +64,8 @@ func TestRouteReadProtocolPaginatesChildrenAndReturnsOneLocatorWithoutRowBodies(
 		t.Fatalf("first children page = %#v", children)
 	}
 	for _, child := range children.Rows {
-		if len(child) != 8 || child["aliases"] == nil || child["synopsis"] != nil || child["title"] != nil {
+		if len(child) != 10 || child["aliases"] == nil || child["synopsis"] != nil || child["title"] != nil ||
+			child["database_id"] != "db_database" || child["table_id"] != "tbl_table" {
 			t.Fatalf("child frame leaked on-demand or Row content = %#v", child)
 		}
 	}
@@ -171,10 +172,14 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 		t.Fatalf("discovery frames = %#v, %#v, %#v", databases.Rows, tables.Rows, described.Rows)
 	}
 	if len(top.Rows) != 1 || top.Rows[0]["route_id"] != "route_branch" ||
-		len(top.Rows[0]) != 8 || top.Rows[0]["aliases"] == nil {
+		len(top.Rows[0]) != 10 || top.Rows[0]["aliases"] == nil ||
+		top.Rows[0]["database_id"] != tables.Rows[0]["database_id"] ||
+		top.Rows[0]["table_id"] != tables.Rows[0]["table_id"] {
 		t.Fatalf("top Route Frame = %#v", top)
 	}
-	if len(children.Rows) != 1 || children.Rows[0]["route_id"] != "route_leaf" {
+	if len(children.Rows) != 1 || children.Rows[0]["route_id"] != "route_leaf" ||
+		children.Rows[0]["database_id"] != tables.Rows[0]["database_id"] ||
+		children.Rows[0]["table_id"] != tables.Rows[0]["table_id"] {
 		t.Fatalf("child Route Frame = %#v", children)
 	}
 	if len(opened.Rows) != 1 || opened.Rows[0]["row_id"] != "row_first" || len(opened.Rows[0]) != 4 {
@@ -182,6 +187,9 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	}
 	if len(selected.Rows) != 1 || selected.Rows[0]["title"] != "native authority" {
 		t.Fatalf("exact RowID SELECT = %#v", selected)
+	}
+	if paths, ok := selected.Rows[0]["route_paths"].([]string); !ok || len(paths) != 1 || paths[0] != "/architecture/storage" {
+		t.Fatalf("exact RowID SELECT route_paths = %#v", selected.Rows[0]["route_paths"])
 	}
 	updated := executeMSQL(t, ctx, engine,
 		"UPDATE work.notes SET title = :title WHERE row_id = :row",

@@ -1,5 +1,7 @@
 const CHILD_LIMIT = 12;
 const LOCATOR_LIMIT = 1;
+const BRANCH_ENTER_MS = 140;
+const DOCUMENT_ENTER_MS = 180;
 
 class RouteViewError extends Error {
   constructor(code, message) {
@@ -117,8 +119,8 @@ function tablePoint(result, databaseID, tableID) {
 }
 
 function validateRouteRow(row, point, databaseID = "", tableID = "", parentID = "") {
-  const childKeys = ["route_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"];
-  const pointKeys = [...childKeys, "database_id", "table_id", "synopsis"];
+  const childKeys = ["route_id", "database_id", "table_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"];
+  const pointKeys = [...childKeys, "synopsis"];
   if (!row || !exactKeys(row, point ? pointKeys : childKeys)) {
     throw new RouteViewError("corrupt", "Route node fields are invalid");
   }
@@ -215,13 +217,11 @@ function breadcrumbs(parts) {
   return node;
 }
 
-function heading(title, purpose, meta) {
+function heading(title, purpose) {
   const wrapper = element("header", "catalog-heading route-heading");
   const content = element("div");
-  content.append(element("h2", "", title), element("p", "", purpose));
-  const badges = element("div", "catalog-meta");
-  for (const value of meta) badges.append(element("span", "schema-badge", value));
-  content.append(badges);
+  content.append(element("h2", "", title));
+  if (purpose) content.append(element("p", "", purpose));
   wrapper.append(content);
   return wrapper;
 }
@@ -232,8 +232,7 @@ function routeCard(row, databaseID, tableID) {
   card.dataset.route = "";
   const marker = element("span", `route-kind route-kind-${row.kind}`, row.kind);
   const text = element("div");
-  text.append(element("strong", "", row.name), element("p", "", row.purpose),
-    element("small", "", `${row.path} · revision ${row.revision}`));
+  text.append(element("strong", "", row.name), element("p", "", row.purpose));
   card.append(marker, text);
   return card;
 }
@@ -242,9 +241,7 @@ function locatorCard(row) {
   const card = element("a", "locator-card");
   card.href = `/rows/${encodeURIComponent(row.database_id)}/${encodeURIComponent(row.table_id)}/${encodeURIComponent(row.row_id)}`;
   card.dataset.route = "";
-  card.append(element("strong", "", row.row_id), element("span", "", `revision ${row.revision}`));
-  const scope = element("small", "", `${row.database_id} / ${row.table_id}`);
-  card.append(scope);
+  card.append(element("strong", "", "Row"), element("span", "", `revision ${row.revision}`));
   return card;
 }
 
@@ -256,7 +253,7 @@ function markComplete(section) {
 function pagedSection(title, rows, page, render, loadMore) {
   const section = element("section", "catalog-section route-section");
   const header = element("div", "section-heading");
-  header.append(element("h3", "", title), element("span", "", `snapshot ${page.snapshot.slice(0, 18)}…`));
+  header.append(element("h3", "", title));
   const list = element("div", "route-list");
   for (const row of rows) list.append(render(row));
   section.append(header, list);
@@ -342,9 +339,12 @@ async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
   return data;
 }
 
-const DOCUMENT_NODE_WIDTH = 760;
-const DOCUMENT_NODE_MIN_HEIGHT = 560;
-const DOCUMENT_NODE_LINE_HEIGHT = 18;
+const DOCUMENT_NODE_WIDTH = 900;
+const DOCUMENT_NODE_MIN_HEIGHT = 620;
+const DOCUMENT_COLUMN_GAP = 72;
+const DOCUMENT_VERTICAL_GAP = 72;
+const CANVAS_FOCUS_MAX_ZOOM = 1.25;
+const SYSTEM_COLUMNS = ["row_id", "revision", "commit_sequence", "row_state", "schema_version"];
 
 function displayValue(value) {
   if (value === null) return "null";
@@ -371,45 +371,125 @@ async function loadRowPreview(executeMSQL, locator) {
   return { row, columns: result.columns, detail: result.row_detail };
 }
 
-function documentNodeLines(text) {
-  return String(text).split("\n").reduce((count, line) =>
-    count + Math.max(1, Math.ceil(Array.from(line).length / 56)), 0);
+function markdownFragment(value) {
+  if (typeof value !== "string" || typeof window.markdownit !== "function" ||
+      !window.DOMPurify || typeof window.DOMPurify.sanitize !== "function") {
+    return null;
+  }
+  const markdownit = window.markdownit({ html: false, linkify: false, typographer: false });
+  const clean = window.DOMPurify.sanitize(markdownit.render(value), { USE_PROFILES: { html: true } });
+  const parsed = new DOMParser().parseFromString(clean, "text/html");
+  const fragment = document.createDocumentFragment();
+  for (const child of parsed.body.childNodes) fragment.append(child.cloneNode(true));
+  return fragment;
 }
 
-function documentNodeHeight(text) {
-  const estimatedLines = documentNodeLines(text);
-  return Math.max(DOCUMENT_NODE_MIN_HEIGHT,
-    112 + estimatedLines * DOCUMENT_NODE_LINE_HEIGHT);
+function appendMarkdown(parent, value) {
+  const rendered = element("div", "markdown-body semantic-document-reading");
+  const fragment = markdownFragment(value);
+  if (fragment) rendered.append(fragment);
+  else rendered.append(element("pre", "semantic-document-plain", displayValue(value)));
+  parent.append(rendered);
 }
 
-function rowDocumentText(locator, preview) {
-  const lines = [
-    "ROW CONTENT",
-    `row_id: ${locator.row_id}`,
-    `revision: ${locator.revision}`,
-    "",
-  ];
+function documentTitle(locator, preview) {
+  const titleColumn = preview.detail.display.title_column;
+  if (preview.row && titleColumn && preview.row[titleColumn] !== null) {
+    return displayValue(preview.row[titleColumn]);
+  }
+  return `${locator.row_id} · revision ${locator.revision}`;
+}
+
+function documentNodeElement(locator, preview, state) {
+  const article = element("article", `semantic-document-node semantic-document-${state}`);
+  const finish = () => {
+    const motion = element("div", "semantic-document-motion semantic-document-enter");
+    motion.style.animationDuration = `${DOCUMENT_ENTER_MS}ms`;
+    while (article.firstChild) motion.append(article.firstChild);
+    article.append(motion);
+    return article;
+  };
+  const header = element("header", "semantic-document-header");
+  header.append(element("p", "semantic-document-kicker", "MEMORA ROW"));
+
+  if (state !== "ready") {
+    const lines = String(preview).split("\n");
+    header.append(element("h2", "", lines.shift() || "Row 内容"));
+    const body = element("div", "semantic-document-status");
+    body.append(element("p", "", lines.join("\n")));
+    article.append(header, body);
+    return finish();
+  }
+
   if (!preview.row) {
-    lines.push("当前 Row 不可见", "locator 仍存在，但当前 revision 没有 live value。");
-    return lines.join("\n");
+    header.append(element("h2", "", "当前 Row 不可见"));
+    const body = element("div", "semantic-document-status");
+    body.append(element("p", "", "locator 仍存在，但当前 revision 没有 live value。"));
+    article.append(header, body);
+    return finish();
   }
-  lines.push(preview.detail.row_semantics || "当前语义记录", "");
+
+  header.append(element("h2", "", documentTitle(locator, preview)),
+    element("p", "semantic-document-semantics", preview.detail.row_semantics || "当前语义记录"));
+
+  const metadata = element("dl", "semantic-document-metadata");
   for (const column of preview.columns) {
-    lines.push(`${column.name}  ·  ${column.type}`, displayValue(preview.row[column.name]), "");
+    if (!SYSTEM_COLUMNS.includes(column.name)) continue;
+    const item = element("div", "semantic-document-meta-item");
+    item.append(element("dt", "", column.name),
+      element("dd", "", displayValue(preview.row[column.name])));
+    metadata.append(item);
   }
-  return lines.join("\n");
+  header.append(metadata);
+  article.append(header);
+
+  const titleColumn = preview.detail.display.title_column || "";
+  const summaryColumn = preview.detail.display.summary_column || "";
+  const body = element("section", "semantic-document-body");
+  if (summaryColumn) appendMarkdown(body, preview.row[summaryColumn]);
+  else body.append(element("p", "semantic-document-empty", "这张表没有配置 summary 字段。"));
+  article.append(body);
+
+  const properties = element("footer", "semantic-document-properties");
+  properties.append(element("h3", "", "记录字段"));
+  const list = element("dl", "semantic-document-property-list");
+  for (const column of preview.columns) {
+    if (SYSTEM_COLUMNS.includes(column.name) || column.name === titleColumn ||
+        column.name === summaryColumn) continue;
+    const item = element("div", "semantic-document-property");
+    const term = element("dt", "", column.name);
+    term.append(element("span", "", column.type));
+    item.append(term, element("dd", "", displayValue(preview.row[column.name])));
+    list.append(item);
+  }
+  if (list.childElementCount) properties.append(list);
+  else properties.append(element("p", "semantic-document-empty", "没有其他业务字段。"));
+  article.append(properties);
+  return finish();
+}
+
+function measuredDocumentHeight(article) {
+  const probe = article.cloneNode(true);
+  probe.classList.add("semantic-document-measure");
+  document.body.append(probe);
+  const height = Math.ceil(probe.getBoundingClientRect().height);
+  probe.remove();
+  return Math.max(DOCUMENT_NODE_MIN_HEIGHT, height);
+}
+
+function documentNodeHTML(data) {
+  return data.kind === "document" ? data.documentHTML : "";
 }
 
 function documentNode(locator, preview, state = "ready") {
-  const documentText = state === "ready" ? rowDocumentText(locator, preview) : preview;
+  const article = documentNodeElement(locator, preview, state);
   return {
     id: `row_document_${locator.row_id}`,
     kind: "document",
-    name: "ROW CONTENT",
-    documentText,
+    name: "MEMORA ROW",
+    documentHTML: article.outerHTML,
     documentWidth: DOCUMENT_NODE_WIDTH,
-    documentHeight: documentNodeHeight(documentText),
-    documentLines: documentNodeLines(documentText),
+    documentHeight: measuredDocumentHeight(article),
     documentState: state,
     children: [],
   };
@@ -463,7 +543,7 @@ function treeNode(row) {
 }
 
 function treeRoot(table, rows, page) {
-  const root = {
+  return {
     id: "table-root",
     name: table.name,
     kind: "root",
@@ -471,22 +551,6 @@ function treeRoot(table, rows, page) {
     children: rows.map(treeNode),
     childrenLoaded: true,
     page
-  };
-  if (page.truncated) root.children.push(moreNode(root, page.next_cursor));
-  return root;
-}
-
-function moreNode(parent, cursor) {
-  const suffix = String(cursor).replace(/[^A-Za-z0-9_-]/g, "").slice(-24) || "next";
-  return {
-    id: `route_more_${parent.id}_${suffix}`,
-    name: "继续加载这一层",
-    kind: "more",
-    purpose: "这一层还有更多语义节点",
-    parent_id: parent.id,
-    moreParent: parent.id,
-    moreCursor: cursor,
-    children: []
   };
 }
 
@@ -500,7 +564,62 @@ function findTreeNode(node, id) {
 }
 
 function graphData(tree) {
-  return window.G6.treeToGraphData(tree);
+  return window.G6.treeToGraphData(tree, {
+    getNodeData: (node, depth) => {
+      node.depth = depth;
+      const data = node.children ?
+        { ...node, children: node.children.map((child) => child.id) } : node;
+      if (node.motionOpacity !== undefined) {
+        data.style = { ...(node.style || {}), opacity: node.motionOpacity };
+      }
+      return data;
+    },
+  });
+}
+
+function reducedMotionPreferred() {
+  return typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function localMotionController(graph) {
+  let generation = 0;
+  let frame = 0;
+  const cancel = () => {
+    generation += 1;
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+  };
+  const animateNodes = async (ids, duration = BRANCH_ENTER_MS) => {
+    const nodeIDs = [...new Set(ids)].filter(Boolean);
+    cancel();
+    if (!nodeIDs.length) return;
+    if (reducedMotionPreferred()) {
+      graph.updateNodeData(nodeIDs.map((id) => ({ id, style: { opacity: 1 } })));
+      await Promise.resolve(graph.draw());
+      return;
+    }
+    const token = generation;
+    await new Promise((resolve) => {
+      const started = performance.now();
+      const step = (now) => {
+        if (token !== generation) return resolve();
+        const progress = Math.min(1, (now - started) / duration);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        graph.updateNodeData(nodeIDs.map((id) => ({ id, style: { opacity: eased } })));
+        Promise.resolve(graph.draw()).then(() => {
+          if (progress >= 1 || token !== generation) {
+            frame = 0;
+            resolve();
+          } else {
+            frame = requestAnimationFrame(step);
+          }
+        });
+      };
+      frame = requestAnimationFrame(step);
+    });
+  };
+  return { cancel, animateNodes };
 }
 
 function setCanvasState(stage, kind, title, detail) {
@@ -516,46 +635,189 @@ function clearCanvasState(stage) {
   if (current) current.remove();
 }
 
-async function placeDocumentAfterLeaf(graph, leaf, document) {
-  if (!document || typeof graph.getElementPosition !== "function" ||
-      typeof graph.translateElementTo !== "function") return;
-  const position = graph.getElementPosition(leaf.id);
+function graphPosition(graph, id) {
+  const position = graph.getElementPosition(id);
   const x = Array.isArray(position) ? position[0] : position?.x;
   const y = Array.isArray(position) ? position[1] : position?.y;
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const documentWidth = document.documentWidth || DOCUMENT_NODE_WIDTH;
-  await graph.translateElementTo(document.id, [x + 110 + 72 + documentWidth / 2, y], false);
+  return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
+}
+
+async function alignDocumentColumn(graph, tree) {
+  if (typeof graph.getElementPosition !== "function" ||
+      typeof graph.translateElementTo !== "function") return;
+  const routes = [];
+  const documents = [];
+  const collect = (node) => {
+    if (node.kind === "document") documents.push(node);
+    else routes.push(node);
+    for (const child of node.children || []) collect(child);
+  };
+  collect(tree);
+  if (!documents.length) return;
+
+  let routeRight = Number.NEGATIVE_INFINITY;
+  for (const route of routes) {
+    const position = graphPosition(graph, route.id);
+    if (position) routeRight = Math.max(routeRight, position[0] + graphNodeWidth(route) / 2);
+  }
+  if (!Number.isFinite(routeRight)) return;
+
+  const placements = documents.map((document) => {
+    const position = graphPosition(graph, document.id);
+    return position ? {
+      document,
+      originalY: position[1],
+      y: position[1],
+      height: document.documentHeight || DOCUMENT_NODE_MIN_HEIGHT,
+    } : null;
+  }).filter(Boolean).sort((left, right) => left.originalY - right.originalY);
+  if (!placements.length) return;
+
+  for (let index = 1; index < placements.length; index += 1) {
+    const previous = placements[index - 1];
+    const current = placements[index];
+    const minimumY = previous.y + previous.height / 2 +
+      DOCUMENT_VERTICAL_GAP + current.height / 2;
+    current.y = Math.max(current.y, minimumY);
+  }
+  const originalMean = placements.reduce((sum, item) => sum + item.originalY, 0) / placements.length;
+  const adjustedMean = placements.reduce((sum, item) => sum + item.y, 0) / placements.length;
+  const verticalShift = originalMean - adjustedMean;
+  const columnLeft = routeRight + DOCUMENT_COLUMN_GAP;
+  await Promise.all(placements.map((item) => graph.translateElementTo(item.document.id, [
+    columnLeft + (item.document.documentWidth || DOCUMENT_NODE_WIDTH) / 2,
+    item.y + verticalShift,
+  ], false)));
 }
 
 async function replaceDocumentNode(graph, tree, node, document) {
   node.children = document ? [document] : [];
   graph.setData(graphData(tree));
   await graph.render();
-  await placeDocumentAfterLeaf(graph, node, document);
+  await alignDocumentColumn(graph, tree);
   return document;
 }
 
 async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableID, cursor = "") {
   const next = await loadChildren(executeMSQL, databaseID, tableID, node.route_id, cursor);
   const existing = cursor ? node.children.filter((child) => child.kind !== "more") : [];
-  node.children = existing.concat(next.rows.map(treeNode));
-  if (next.page.truncated) node.children.push(moreNode(node, next.page.next_cursor));
+  const added = next.rows.map(treeNode);
+  const addedIDs = added.map((child) => child.id);
+  if (!reducedMotionPreferred()) added.forEach((child) => { child.motionOpacity = 0; });
+  node.children = existing.concat(added);
   node.childrenLoaded = true;
   node.page = next.page;
   const selected = node.id;
   graph.setData(graphData(tree));
   await graph.render();
   if (graph.expandElement) await graph.expandElement(selected, { animation: false });
+  await alignDocumentColumn(graph, tree);
+  await graph.localMotion?.animateNodes(addedIDs);
+  added.forEach((child) => { delete child.motionOpacity; });
 }
 
-async function appendRootPage(graph, tree, executeMSQL, databaseID, tableID, cursor) {
-  const next = await loadTableRoot(executeMSQL, databaseID, tableID, cursor);
-  const existing = tree.children.filter((child) => child.kind !== "more");
-  tree.children = existing.concat(next.rows.map(treeNode));
-  if (next.page.truncated) tree.children.push(moreNode(tree, next.page.next_cursor));
-  tree.page = next.page;
-  graph.setData(graphData(tree));
-  await graph.render();
+function installCanvasGestureBridge(graph, container) {
+  let pan = null;
+  let selecting = null;
+  const caretAtPoint = (x, y) => {
+    const position = document.caretPositionFromPoint?.(x, y);
+    if (position) return { node: position.offsetNode, offset: position.offset };
+    const range = document.caretRangeFromPoint?.(x, y);
+    return range ? { node: range.startContainer, offset: range.startOffset } : null;
+  };
+  const cleanupSelection = () => {
+    if (selecting) {
+      selecting.element.classList.remove(
+        "semantic-document-selecting", "semantic-document-selected");
+    }
+    selecting = null;
+  };
+  const onPointerDown = (event) => {
+    const target = event.target instanceof Element ?
+      event.target.closest(".semantic-document-node") : null;
+    if (!target || event.button !== 0) return;
+    if (event.altKey) {
+      cleanupSelection();
+      const caret = caretAtPoint(event.clientX, event.clientY);
+      if (!caret || !target.contains(caret.node)) return;
+      selecting = {
+        element: target,
+        pointerID: event.pointerId,
+        anchorNode: caret.node,
+        anchorOffset: caret.offset,
+      };
+      target.classList.add("semantic-document-selecting");
+      container.setPointerCapture?.(event.pointerId);
+      window.getSelection()?.setBaseAndExtent(
+        caret.node, caret.offset, caret.node, caret.offset);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    cleanupSelection();
+    window.getSelection()?.removeAllRanges();
+    pan = { pointerID: event.pointerId, x: event.clientX, y: event.clientY };
+    container.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onPointerMove = (event) => {
+    if (selecting && selecting.pointerID === event.pointerId) {
+      const caret = caretAtPoint(event.clientX, event.clientY);
+      if (caret && selecting.element.contains(caret.node)) {
+        window.getSelection()?.setBaseAndExtent(
+          selecting.anchorNode, selecting.anchorOffset, caret.node, caret.offset);
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (!pan || pan.pointerID !== event.pointerId) return;
+    const dx = event.clientX - pan.x;
+    const dy = event.clientY - pan.y;
+    pan.x = event.clientX;
+    pan.y = event.clientY;
+    if (dx || dy) graph.translateBy?.([dx, dy], false);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onPointerUp = (event) => {
+    if (pan && pan.pointerID === event.pointerId) {
+      container.releasePointerCapture?.(event.pointerId);
+      pan = null;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (selecting && selecting.pointerID === event.pointerId) {
+      container.releasePointerCapture?.(event.pointerId);
+      selecting.pointerID = null;
+      selecting.element.classList.remove("semantic-document-selecting");
+      selecting.element.classList.add("semantic-document-selected");
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+  const onWheel = (event) => {
+    const target = event.target instanceof Element ?
+      event.target.closest(".semantic-document-node") : null;
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.ctrlKey || event.metaKey) {
+      const origin = container.getBoundingClientRect();
+      const delta = Number(event.deltaY) || Number(event.deltaX) || 0;
+      const ratio = Math.pow(1.001, -delta);
+      graph.zoomBy?.(ratio, false, [event.clientX - origin.left, event.clientY - origin.top]);
+      return;
+    }
+    graph.translateBy?.([-(Number(event.deltaX) || 0), -(Number(event.deltaY) || 0)], false);
+  };
+  container.addEventListener("pointerdown", onPointerDown, true);
+  container.addEventListener("pointermove", onPointerMove, true);
+  container.addEventListener("pointerup", onPointerUp, true);
+  container.addEventListener("pointercancel", onPointerUp, true);
+  container.addEventListener("lostpointercapture", onPointerUp, true);
+  container.addEventListener("wheel", onWheel, { capture: true, passive: false });
 }
 
 function createSemanticGraph(container, tree, onNodeClick) {
@@ -564,35 +826,33 @@ function createSemanticGraph(container, tree, onNodeClick) {
   }
   const graph = new window.G6.Graph({
     container,
-    autoFit: "view",
+    autoFit: false,
+    animation: false,
+    zoomRange: [0.25, 2],
     padding: [40, 420, 40, 80],
     data: graphData(tree),
     node: {
-      type: "rect",
+      type: (data) => data.kind === "document" ? "html" : "rect",
       style: {
         size: graphNodeSize,
+        dx: (data) => data.kind === "document" ?
+          -(data.documentWidth || DOCUMENT_NODE_WIDTH) / 2 : 0,
+        dy: (data) => data.kind === "document" ?
+          -(data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT) / 2 : 0,
+        innerHTML: documentNodeHTML,
         radius: (data) => data.kind === "document" ? 22 : 16,
         fill: (data) => data.kind === "document" ? "#fffef3" :
           data.kind === "leaf" ? "#f5edcf" : data.kind === "more" ? "#eef3ef" : "#e4efe7",
         stroke: (data) => data.kind === "document" ? "#6f947e" :
           data.kind === "leaf" ? "#b6a56d" : "#7c9e8b",
         lineWidth: (data) => data.kind === "document" ? 2.5 : 1.5,
-        labelText: (data) => data.kind === "document" ? data.documentText : data.name,
+        labelText: (data) => data.kind === "document" ? "" : data.name,
         labelPlacement: "center",
-        labelTextAlign: (data) => data.kind === "document" ? "left" : "center",
-        labelTextBaseline: (data) => data.kind === "document" ? "top" : "middle",
-        labelTransform: (data) => data.kind === "document" ? [["translate",
-          -(data.documentWidth || DOCUMENT_NODE_WIDTH) / 2 + 34,
-          -(data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT) / 2 + 32]] : [],
-        labelFill: (data) => data.kind === "document" ? "#263a2f" : "#2d4539",
-        labelFontSize: (data) => data.kind === "document" ? 12 : 14,
-        labelFontWeight: (data) => data.kind === "document" ? 500 : 700,
-        labelWordWrap: (data) => data.kind === "document",
-        labelWordWrapWidth: (data) => data.kind === "document" ?
-          (data.documentWidth || DOCUMENT_NODE_WIDTH) - 52 : 180,
-        labelMaxLines: (data) => data.kind === "document" ?
-          Math.max(40, (data.documentLines || 1) + 8) : 2,
-        labelLineHeight: (data) => data.kind === "document" ? DOCUMENT_NODE_LINE_HEIGHT : 21,
+        labelTextAlign: "center",
+        labelTextBaseline: "middle",
+        labelFill: "#2d4539",
+        labelFontSize: 14,
+        labelFontWeight: 700,
       },
     },
     edge: {
@@ -608,28 +868,59 @@ function createSemanticGraph(container, tree, onNodeClick) {
       getVGap: () => 22,
     },
     behaviors: [
-      "drag-canvas", "zoom-canvas", "click-select",
+      "drag-canvas",
+      {
+        type: "scroll-canvas",
+        key: "trackpad-pan",
+        enable: (event) => !event.ctrlKey && !event.metaKey && !event.altKey,
+        sensitivity: 1,
+      },
+      {
+        type: "zoom-canvas",
+        key: "trackpad-zoom",
+        enable: (event) => event.ctrlKey || event.metaKey,
+        sensitivity: 0.2,
+      },
+      "click-select",
       {
         type: "collapse-expand",
         key: "collapse-expand",
         trigger: "click",
-        enable: (event) => event.targetType === "node" &&
-          findTreeNode(tree, event.target.id)?.kind === "branch",
-        animation: true,
+        enable: (event) => {
+          const node = event.targetType === "node" ?
+            findTreeNode(tree, event.target.id) : null;
+          return node?.kind === "branch" && node.childrenLoaded === true;
+        },
+        animation: false,
         align: true,
       },
     ],
   });
+  graph.localMotion = localMotionController(graph);
+  container.__semanticGraph = graph;
+  installCanvasGestureBridge(graph, container);
   graph.on("node:click", (event) => onNodeClick(graph, event.target.id));
   return graph;
 }
 
-function focusSemanticGraph(graph) {
+async function capFocusZoom(graph) {
+  const zoom = graph.getZoom?.();
+  if (Number.isFinite(zoom) && zoom > CANVAS_FOCUS_MAX_ZOOM &&
+      typeof graph.zoomTo === "function") {
+    await graph.zoomTo(CANVAS_FOCUS_MAX_ZOOM, false);
+  }
+}
+
+async function focusSemanticGraph(graph) {
   if (typeof graph.fitView === "function") {
-    graph.fitView({ animation: { duration: 300 } });
+    await graph.fitView({ animation: { duration: 180 } });
+    await capFocusZoom(graph);
     return;
   }
-  if (typeof graph.fitCenter === "function") graph.fitCenter({ animation: { duration: 300 } });
+  if (typeof graph.fitCenter === "function") {
+    await graph.fitCenter({ animation: { duration: 180 } });
+    await capFocusZoom(graph);
+  }
 }
 
 function statusDocumentNode(node, text, state = "status") {
@@ -637,14 +928,18 @@ function statusDocumentNode(node, text, state = "status") {
 }
 
 function statusDocumentText(title, detail) {
-  return `ROW CONTENT\n\n${title}\n${detail}`;
+  return `${title}\n${detail}`;
 }
 
 function focusDocumentBranch(graph, routeID, documentID) {
   const zoom = Math.min(1, Math.max(graph.getZoom?.() || 0, 0.8));
-  Promise.resolve(graph.zoomTo?.(zoom, { duration: 220 }))
-    .then(() => graph.focusElement?.([routeID, documentID], { duration: 260 }))
+  Promise.resolve(graph.zoomTo?.(zoom, false))
+    .then(() => graph.focusElement?.([routeID, documentID], { duration: 160 }))
     .catch(() => {});
+}
+
+function focusRouteNode(graph, routeID) {
+  Promise.resolve(graph.focusElement?.(routeID, { duration: 160 })).catch(() => {});
 }
 
 async function toggleLeafDocument(graph, tree, node, executeMSQL, databaseID, tableID) {
@@ -653,13 +948,10 @@ async function toggleLeafDocument(graph, tree, node, executeMSQL, databaseID, ta
   const current = findDocumentNode(node);
   if (current) {
     await replaceDocumentNode(graph, tree, node, null);
-    focusSemanticGraph(graph);
+    focusRouteNode(graph, node.id);
     return;
   }
 
-  const pending = statusDocumentNode(node, statusDocumentText("正在读取 Row 内容", "先打开唯一 locator，再按 RowID 回表…"));
-  await replaceDocumentNode(graph, tree, node, pending);
-  focusDocumentBranch(graph, node.id, pending.id);
   try {
     const locators = await loadLocators(executeMSQL, databaseID, tableID, node.route_id);
     if (request !== node.documentRequest) return;
@@ -686,7 +978,7 @@ async function toggleLeafDocument(graph, tree, node, executeMSQL, databaseID, ta
 
 function landingView() {
   const view = element("div", "catalog-view route-view");
-  view.append(breadcrumbs([]), heading("Route Tree", "每棵语义索引属于一个 Table。", ["read only"]));
+  view.append(breadcrumbs([]), heading("Semantic Index", "每棵语义索引属于一个 Table。"));
   const guide = stateNode("empty", "请先选择一个 Table", "从 Catalog 的 Table Schema 页面进入对应 Route Tree。");
   const link = element("a", "route-entry", "打开 Catalog");
   link.href = "/catalog";
@@ -697,6 +989,9 @@ function landingView() {
 }
 
 export async function renderRoutes(root, options) {
+  const previousCanvas = root.querySelector(".semantic-canvas");
+  previousCanvas?.__semanticGraph?.localMotion?.cancel();
+  previousCanvas?.__semanticGraph?.destroy?.();
   showState(root, "loading", "正在读取语义索引", "加载根节点；展开分支时按需读取下一层…");
   try {
     const parts = pathParts(options.path);
@@ -710,22 +1005,24 @@ export async function renderRoutes(root, options) {
     const data = await loadTableRoot(options.executeMSQL, databaseID, tableID);
     if (!options.isCurrent()) return;
     const tree = treeRoot(data.object, data.rows, data.page);
-    const view = element("div", "semantic-canvas-page");
-    view.append(breadcrumbs([{ label: data.object.name, href: `/catalog/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}` }]),
-      heading(`${data.object.name} 语义索引`, "在这张 Table 的语义路由树中定位 Row。点击 Branch 展开，点击 Leaf 在画布中展开 Row 内容。",
-        [data.object.table_id, `schema v${data.object.schema_version}`]));
-    const toolbar = element("div", "semantic-canvas-toolbar");
-    toolbar.append(element("span", "canvas-hint", "拖动画布 · 滚轮缩放 · 点击 Branch 展开/收起 · 点击 Leaf 展开内容"));
+    const view = element("div", "semantic-canvas-page semantic-canvas-fullscreen");
+    const controls = element("div", "semantic-canvas-controls");
+    const back = element("a", "canvas-control canvas-back", "返回表");
+    back.href = `/catalog/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}`;
+    back.dataset.route = "";
+    back.setAttribute("aria-label", `返回 ${data.object.name} 表`);
+    back.title = `返回 ${data.object.name} 表`;
+    controls.append(back);
     const focusButton = element("button", "canvas-focus-button", "聚焦到中心");
     focusButton.type = "button";
     focusButton.setAttribute("aria-label", "聚焦到语义索引中心");
     focusButton.title = "将当前已加载的语义索引重新适配到画布中心";
-    toolbar.append(focusButton);
+    controls.append(focusButton);
     const stage = element("div", "semantic-canvas-stage");
     const canvas = element("div", "semantic-canvas");
     canvas.setAttribute("aria-label", "语义索引树无限画布");
-    stage.append(canvas);
-    view.append(toolbar, stage);
+    stage.append(controls, canvas);
+    view.append(stage);
     root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
     root.replaceChildren(view);
     if (data.rows.length === 0) {
@@ -737,18 +1034,6 @@ export async function renderRoutes(root, options) {
       if (!node) return;
       clearCanvasState(stage);
       currentGraph.setElementState(nodeID, "selected");
-      if (node.kind === "more") {
-        const parent = findTreeNode(tree, node.moreParent);
-        if (!parent) return;
-        try {
-          await (parent.id === tree.id ? appendRootPage(graph, tree, options.executeMSQL, databaseID, tableID, node.moreCursor) :
-            appendChildren(graph, tree, parent, options.executeMSQL, databaseID, tableID, node.moreCursor));
-        } catch (error) {
-          const [kind, title, detail] = errorState(error);
-          setCanvasState(stage, kind, title, detail);
-        }
-        return;
-      }
       if (node.kind === "branch") {
         if (!node.childrenLoaded) {
           try {
@@ -763,8 +1048,9 @@ export async function renderRoutes(root, options) {
       if (node.kind !== "leaf") return;
       await toggleLeafDocument(currentGraph, tree, node, options.executeMSQL, databaseID, tableID);
     });
-    focusButton.addEventListener("click", () => focusSemanticGraph(graph));
+    focusButton.addEventListener("click", () => { void focusSemanticGraph(graph); });
     await graph.render();
+    await focusSemanticGraph(graph);
     if (parts.length === 3) {
       const routeID = stableID(parts[2], "route_", "Route");
       const selected = findTreeNode(tree, routeID);

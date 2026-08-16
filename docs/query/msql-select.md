@@ -1,6 +1,6 @@
 # MSQL SELECT Planner v1
 
-状态：F15d 已实现；F112 已补充 point Row detail metadata。
+状态：F15d 已实现；F112 已补充 point Row detail metadata；每条 Row 返回 `route_paths`。
 
 ## 绑定边界
 
@@ -30,6 +30,11 @@ named/positional 参数由 [MSQL 参数与表达式 v1](./msql-expressions.md) �
 ## 输出
 
 Planner 返回 Result Envelope 可直接采用的 Column metadata 和 Row maps。系统整数保持 revision/schema version，Timestamp 已规范化 UTC，业务值不做字符串插值或再解析。
+
+每条返回的 Row 都携带 `route_paths`：该 Row 当前挂载的全部 leaf 的完整语义索引路径
+（如 `/架构/存储`）。它由 `row_id → memberships` 反向索引直接解析，不依赖逐层 Route
+导航或 `OPEN ROUTE`；Row 未挂载任何 leaf 时为空数组。路径用于导航归并与语义定位，
+不替代 `row_detail` 或 Row 正文。
 
 包含精确 RowID predicate 的 SELECT 还返回 `memora.row-detail/v1`。业务 Column metadata
 携带稳定 Column ID、purpose 与显式 semantic role；`SELECT *` 按 Catalog Column 顺序

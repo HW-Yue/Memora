@@ -46,7 +46,8 @@ Database/Table/Row scope、完整 revision snapshot 和下一 offset；损坏或
 ## 边界
 
 - 不新增 Admin Store API，不绕过 MSQL、授权或 point index；
-- 不把 Route locator 扩充为 Row 正文；
+- Route locator 不扩充为 Row 正文；`route_paths` 作为独立字段返回完整语义索引路径，
+  但仍是导航定位信息，不是 Row 正文或答案；
 - 不读取全局 committed changes，它属于 F113；
 - 不实现 Admin 页面，它属于 F119。
 

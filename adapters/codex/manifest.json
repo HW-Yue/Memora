@@ -1,7 +1,7 @@
 {
   "version": "memora.codex-adapter/v2",
-  "canonical_digest": "ceca51c131d9b94aa66b434a4c7875f9b1e3ceb948286fbbd9703d031331d36c",
-  "protocol_digest": "f4b25a6b6466d2d21c2a735189aa3a88adbd24a4a4e22442733055757e29b2b1",
+  "canonical_digest": "468165b2129de27c5606033dc950292e66b21dba2440b1bd4dc634b27fe63e5f",
+  "protocol_digest": "f266348cc39e571f5edf0039f0b78f109ce1bc42ee712d5ca6e343a01c218a9b",
   "task_contract_digest": "abb76eaf088e154cad636837ab0f5b0c9496ae74adc30d261c4a8b9e94acee44",
   "files": [
     {
@@ -16,7 +16,7 @@
     },
     {
       "path": ".agents/skills/memora/SKILL.md",
-      "sha256": "ceca51c131d9b94aa66b434a4c7875f9b1e3ceb948286fbbd9703d031331d36c",
+      "sha256": "468165b2129de27c5606033dc950292e66b21dba2440b1bd4dc634b27fe63e5f",
       "mode": "0644"
     },
     {
@@ -26,7 +26,7 @@
     },
     {
       "path": ".agents/skills/memora/contract.json",
-      "sha256": "f4b25a6b6466d2d21c2a735189aa3a88adbd24a4a4e22442733055757e29b2b1",
+      "sha256": "f266348cc39e571f5edf0039f0b78f109ce1bc42ee712d5ca6e343a01c218a9b",
       "mode": "0644"
     },
     {

@@ -301,12 +301,30 @@ func (service *Service) RouterMemberships(
 	return memberships, stableError(err)
 }
 
+func (service *Service) MembershipsForRow(
+	ctx context.Context,
+	databaseID, tableID, rowID string,
+) ([]router.Membership, error) {
+	memberships, err := service.routes.MembershipsForRow(ctx, databaseID, tableID, rowID)
+	return memberships, stableError(err)
+}
+
 func (transaction *Transaction) RouterMemberships(
 	ctx context.Context,
 	value Row,
 ) ([]router.Membership, error) {
 	memberships, err := transaction.service.routes.MembershipsForRowIn(
 		ctx, transaction.tx, value.DatabaseID, value.TableID, value.ID,
+	)
+	return memberships, stableError(err)
+}
+
+func (transaction *Transaction) MembershipsForRow(
+	ctx context.Context,
+	databaseID, tableID, rowID string,
+) ([]router.Membership, error) {
+	memberships, err := transaction.service.routes.MembershipsForRowIn(
+		ctx, transaction.tx, databaseID, tableID, rowID,
 	)
 	return memberships, stableError(err)
 }
