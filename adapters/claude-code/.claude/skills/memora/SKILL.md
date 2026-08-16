@@ -193,8 +193,10 @@ call. Choose a node explicitly, request only its immediate children, and repeat
 until a leaf is reached. Every leaf locates at most one active Row, and
 `OPEN ROUTE` returns only that Row's locator; never answer from the locator.
 Select projected semantic fields by Row ID, then summarize only the returned
-Row. Report empty, stale, or permission-limited results instead of inventing a
-fallback.
+Row. Every SELECT Row already carries its own `route_paths` — the full
+semantic-index paths of the leaves that locate it — so the host need not
+reverse-resolve membership after the fact. Report empty, stale, or
+permission-limited results instead of inventing a fallback.
 
 Use this bounded state machine:
 
