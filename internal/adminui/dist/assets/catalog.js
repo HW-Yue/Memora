@@ -139,7 +139,7 @@ function errorState(error) {
 function breadcrumbs(parts) {
   const node = element("nav", "breadcrumbs");
   node.setAttribute("aria-label", "Catalog 路径");
-  const root = element("a", "", "Instance");
+  const root = element("a", "", "Catalog");
   root.href = "/catalog";
   root.dataset.route = "";
   node.append(root);
@@ -154,15 +154,11 @@ function breadcrumbs(parts) {
   return node;
 }
 
-function heading(title, purpose, id, version, extra) {
+function heading(title, purpose) {
   const wrapper = element("header", "catalog-heading");
   const text = element("div");
-  text.append(element("h2", "", title), element("p", "", purpose));
-  const meta = element("div", "catalog-meta");
-  if (id) meta.append(element("span", "object-id", id));
-  if (version !== undefined) meta.append(element("span", "schema-badge", `schema v${version}`));
-  if (extra) meta.append(element("span", "schema-badge", extra));
-  text.append(meta);
+  text.append(element("h2", "", title));
+  if (purpose) text.append(element("p", "", purpose));
   wrapper.append(text);
   return wrapper;
 }
@@ -175,8 +171,7 @@ function objectCard(row, href, kind) {
 		link.dataset.route = "";
 		link.setAttribute("aria-label", `查看 ${row.name} 表信息`);
 		link.append(element("strong", "", row.name));
-		link.append(element("p", "", row.row_semantics || row.purpose),
-			element("code", "", row.table_id));
+		link.append(element("p", "", row.row_semantics || row.purpose));
 		const actions = element("div", "table-card-actions");
 		const schema = element("a", "table-action", "查看表结构");
 		schema.href = href;
@@ -195,14 +190,14 @@ function objectCard(row, href, kind) {
   card.dataset.route = "";
   card.append(element("strong", "", row.name));
   const detail = kind === "table" ? row.row_semantics || row.purpose : row.purpose;
-  card.append(element("p", "", detail), element("code", "", row[`${kind}_id`]));
+  card.append(element("p", "", detail));
   return card;
 }
 
 function columnRow(row) {
   const wrapper = element("div", "column-row");
   const identity = element("div");
-  identity.append(element("strong", "", row.name), element("small", "", row.column_id));
+  identity.append(element("strong", "", row.name));
   let type = row.type;
   if (row.max_characters) type += `(${row.max_characters})`;
   if (row.nullable === false) type += " · required";
@@ -226,7 +221,7 @@ function markPaginationComplete(section) {
 function listSection(title, kind, rows, hrefFor, page, loadMore) {
   const section = element("section", "catalog-section");
   const sectionHeading = element("div", "section-heading");
-  sectionHeading.append(element("h3", "", title), element("span", "", `snapshot ${page.snapshot.slice(0, 18)}…`));
+  sectionHeading.append(element("h3", "", title));
   section.append(sectionHeading);
   const list = element("div", kind === "column" ? "column-list" : "object-grid");
   for (const row of rows) {
@@ -348,7 +343,7 @@ export async function renderCatalog(root, options) {
     if (parts.length === 0) {
       const page = await loadRoot(options.executeMSQL);
       if (!options.isCurrent()) return;
-      view.append(breadcrumbs([]), heading("Local Instance", "当前授权范围内的语义数据库。"));
+      view.append(breadcrumbs([]), heading("Databases", "当前授权范围内的数据库。"));
       if (page.rows.length === 0) {
         showState(root, "empty", "还没有可见 Database", "当前 scope 内没有可浏览的 Database。");
         return;
@@ -364,8 +359,7 @@ export async function renderCatalog(root, options) {
       const data = await loadDatabase(options.executeMSQL, parts[0]);
       if (!options.isCurrent()) return;
       if (!data.object) throw new CatalogViewError("corrupt", "Database point result is empty");
-      view.append(breadcrumbs([{ label: data.object.name }]), heading(data.object.name, data.object.purpose,
-        data.object.database_id, data.object.schema_version, data.object.scope));
+      view.append(breadcrumbs([{ label: data.object.name }]), heading(data.object.name, data.object.purpose));
       if (data.rows.length === 0) {
         view.append(stateNode("empty", "这个 Database 还没有 Table", "Schema 建模后，Table 会显示在这里。"));
       } else {
@@ -381,10 +375,9 @@ export async function renderCatalog(root, options) {
     if (!options.isCurrent()) return;
     if (!data.object) throw new CatalogViewError("corrupt", "Table point result is empty");
     view.append(breadcrumbs([
-      { label: data.object.database_id, href: `/catalog/${encodeURIComponent(data.object.database_id)}` },
+      { label: "Database", href: `/catalog/${encodeURIComponent(data.object.database_id)}` },
       { label: data.object.name }
-    ]), heading(data.object.name,
-      data.object.purpose, data.object.table_id, data.object.schema_version, data.object.row_semantics),
+    ]), heading(data.object.name, data.object.purpose),
     routeEntry(data.object.database_id, data.object.table_id));
     if (data.rows.length === 0) {
       view.append(stateNode("empty", "这个 Table 还没有 Column", "Schema Column 会显示在这里。"));

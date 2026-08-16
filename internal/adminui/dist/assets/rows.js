@@ -261,15 +261,8 @@ function heading(current, rowID) {
     current.row ? `${rowID} · revision ${current.row.revision}` : rowID;
   const wrapper = element("header", "catalog-heading row-heading");
   const content = element("div");
-  content.append(element("h2", "", title), element("p", "", detail.row_semantics));
-  const badges = element("div", "catalog-meta");
-  badges.append(element("span", "object-id", rowID),
-    element("span", "schema-badge", `schema v${detail.schema_version}`));
-  if (current.row) {
-    badges.append(element("span", "schema-badge", current.row.row_state),
-      element("span", "schema-badge", `revision ${current.row.revision}`));
-  }
-  content.append(badges);
+  content.append(element("h2", "", title));
+  if (detail.row_semantics) content.append(element("p", "", detail.row_semantics));
   if (current.row && detail.display.summary_column) {
     content.append(element("p", "row-summary", displayValue(current.row[detail.display.summary_column])));
   }
@@ -281,7 +274,7 @@ function fieldSection(column, value) {
   const section = element("section", "row-field");
   const header = element("div", "row-field-heading");
   const identity = element("div");
-  identity.append(element("h3", "", column.name), element("small", "", column.column_id));
+  identity.append(element("h3", "", column.name));
   const badges = element("div", "row-field-badges");
   badges.append(element("span", "schema-badge", column.type));
   if (column.semantic_role) badges.append(element("span", "schema-badge", column.semantic_role));
@@ -305,7 +298,7 @@ function historyCard(row, databaseID, tableID) {
   const header = element("div", "history-card-heading");
   header.append(element("strong", "", `revision ${row.revision}`),
     element("span", "", row.operation), element("time", "", row.updated_at));
-  card.append(header, element("p", "", `${row.row_state} · commit ${row.commit_sequence} · schema v${row.schema_version}`));
+  card.append(header, element("p", "", `${row.row_state} · commit ${row.commit_sequence}`));
   const provenance = [row.actor, row.source_kind, row.source, row.reason].filter((value) => value);
   if (provenance.length) card.append(element("small", "", provenance.join(" · ")));
   if (row.revision > 1) {
@@ -326,8 +319,7 @@ function markHistoryComplete(section, finalState) {
 function historySection(history, loadMore, finalState, databaseID, tableID) {
   const section = element("section", "catalog-section history-section");
   const header = element("div", "section-heading");
-  header.append(element("h3", "", "History"),
-    element("span", "", `snapshot ${history.page.snapshot.slice(0, 18)}…`));
+  header.append(element("h3", "", "History"));
   const list = element("div", "history-list");
   for (const row of history.rows) list.append(historyCard(row, databaseID, tableID));
   section.append(header, list);
@@ -336,19 +328,6 @@ function historySection(history, loadMore, finalState, databaseID, tableID) {
       finalState, databaseID, tableID);
   }
   return section;
-}
-
-function metadataPanel(current, rowID) {
-  const panel = element("div", "row-side-metadata");
-  panel.append(element("p", "inspector-kicker", "ROW METADATA"), element("h3", "", "当前记录"));
-  panel.append(element("span", "object-id", rowID),
-    element("span", "schema-badge", `schema v${current.detail.schema_version}`));
-  if (current.row) {
-    panel.append(element("span", "schema-badge", `revision ${current.row.revision}`),
-      element("span", "schema-badge", current.row.row_state));
-  }
-  panel.append(element("p", "row-side-semantics", current.detail.row_semantics));
-  return panel;
 }
 
 function addHistoryContinuation(section, list, rows, page, loadMore, finalState, databaseID, tableID) {
@@ -422,7 +401,6 @@ export async function renderRow(root, options) {
     if (data.current.row) paper.append(documentSection(data.current));
     else paper.append(stateNode("empty", "当前 Row 不可见", "Row detail contract 有效，但当前 revision 没有 live value。"));
     const side = element("aside", "row-side-panel");
-    side.append(metadataPanel(data.current, rowID));
     if (data.history.rows.length) {
       const finalState = data.current.row ? "ready" : "empty";
       side.append(historySection(data.history,

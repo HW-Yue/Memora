@@ -217,13 +217,11 @@ function breadcrumbs(parts) {
   return node;
 }
 
-function heading(title, purpose, meta) {
+function heading(title, purpose) {
   const wrapper = element("header", "catalog-heading route-heading");
   const content = element("div");
-  content.append(element("h2", "", title), element("p", "", purpose));
-  const badges = element("div", "catalog-meta");
-  for (const value of meta) badges.append(element("span", "schema-badge", value));
-  content.append(badges);
+  content.append(element("h2", "", title));
+  if (purpose) content.append(element("p", "", purpose));
   wrapper.append(content);
   return wrapper;
 }
@@ -234,8 +232,7 @@ function routeCard(row, databaseID, tableID) {
   card.dataset.route = "";
   const marker = element("span", `route-kind route-kind-${row.kind}`, row.kind);
   const text = element("div");
-  text.append(element("strong", "", row.name), element("p", "", row.purpose),
-    element("small", "", `${row.path} · revision ${row.revision}`));
+  text.append(element("strong", "", row.name), element("p", "", row.purpose));
   card.append(marker, text);
   return card;
 }
@@ -244,9 +241,7 @@ function locatorCard(row) {
   const card = element("a", "locator-card");
   card.href = `/rows/${encodeURIComponent(row.database_id)}/${encodeURIComponent(row.table_id)}/${encodeURIComponent(row.row_id)}`;
   card.dataset.route = "";
-  card.append(element("strong", "", row.row_id), element("span", "", `revision ${row.revision}`));
-  const scope = element("small", "", `${row.database_id} / ${row.table_id}`);
-  card.append(scope);
+  card.append(element("strong", "", "Row"), element("span", "", `revision ${row.revision}`));
   return card;
 }
 
@@ -258,7 +253,7 @@ function markComplete(section) {
 function pagedSection(title, rows, page, render, loadMore) {
   const section = element("section", "catalog-section route-section");
   const header = element("div", "section-heading");
-  header.append(element("h3", "", title), element("span", "", `snapshot ${page.snapshot.slice(0, 18)}…`));
+  header.append(element("h3", "", title));
   const list = element("div", "route-list");
   for (const row of rows) list.append(render(row));
   section.append(header, list);
@@ -1016,7 +1011,7 @@ async function toggleLeafDocument(graph, tree, node, executeMSQL, databaseID, ta
 
 function landingView() {
   const view = element("div", "catalog-view route-view");
-  view.append(breadcrumbs([]), heading("Route Tree", "每棵语义索引属于一个 Table。", ["read only"]));
+  view.append(breadcrumbs([]), heading("Semantic Index", "每棵语义索引属于一个 Table。"));
   const guide = stateNode("empty", "请先选择一个 Table", "从 Catalog 的 Table Schema 页面进入对应 Route Tree。");
   const link = element("a", "route-entry", "打开 Catalog");
   link.href = "/catalog";

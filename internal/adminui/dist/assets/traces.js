@@ -156,11 +156,13 @@ function validateDatabaseRows(rows) {
       "database_id", "name", "aliases", "purpose", "scope", "schema_version",
       "tables", "created_at", "updated_at"
     ];
+    if (row.anti_scope !== undefined) fields.push("anti_scope");
     if (!exactKeys(row, fields)) throw new TraceViewError("corrupt", "Database summary is invalid");
     stableID(row.database_id, "db_", "Database");
     safeText(row.name, "Database name", 256);
     safeText(row.purpose, "Database purpose");
     safeText(row.scope, "Database scope");
+    if (row.anti_scope !== undefined) safeText(row.anti_scope, "Database anti-scope");
     if (!positiveInteger(row.schema_version) || !Array.isArray(row.aliases) ||
         !Array.isArray(row.tables) || row.tables.length !== 0 ||
         !validTimestamp(row.created_at) || !validTimestamp(row.updated_at) ||
@@ -322,14 +324,8 @@ function breadcrumbs(database, trace) {
 function heading(title, purpose, database, extra) {
   const wrapper = element("header", "catalog-heading trace-heading");
   const text = element("div");
-  text.append(element("h2", "", title), element("p", "", purpose));
-  if (database) {
-    const meta = element("div", "catalog-meta");
-    meta.append(element("span", "object-id", database.database_id),
-      element("span", "schema-badge", `schema v${database.schema_version}`));
-    if (extra) meta.append(element("span", "schema-badge", extra));
-    text.append(meta);
-  }
+  text.append(element("h2", "", title));
+  if (purpose) text.append(element("p", "", purpose));
   wrapper.append(text);
   return wrapper;
 }
@@ -338,8 +334,7 @@ function databaseCard(row) {
   const card = element("a", "object-card");
   card.href = `/traces/${encodeURIComponent(row.database_id)}`;
   card.dataset.route = "";
-  card.append(element("strong", "", row.name), element("p", "", row.purpose),
-    element("code", "", row.database_id));
+  card.append(element("strong", "", row.name), element("p", "", row.purpose));
   return card;
 }
 
@@ -350,8 +345,7 @@ function traceCard(row) {
   card.dataset.route = "";
   const header = element("div", "trace-card-heading");
   const identity = element("div");
-  identity.append(element("strong", "", `trace ${row.trace_sequence}`),
-    element("code", "", row.trace_id));
+  identity.append(element("strong", "", `Trace ${row.trace_sequence}`));
   const status = element("span", "trace-status", row.status);
   status.dataset.status = row.status;
   header.append(identity, status);
@@ -373,7 +367,8 @@ function locatorLink(databaseID, tableID, locator) {
   link.href = `/rows/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}/` +
     `${encodeURIComponent(locator.row_id)}`;
   link.dataset.route = "";
-  link.append(element("strong", "", locator.row_id),
+  link.setAttribute("aria-label", "打开 Row 文档");
+  link.append(element("strong", "", "打开 Row"),
     element("span", "", `revision ${locator.revision}`));
   return link;
 }
@@ -505,8 +500,7 @@ function addDatabaseContinuation(section, list, rows, page, executeMSQL) {
 function databaseSection(rows, page, executeMSQL) {
   const section = element("section", "catalog-section");
   const header = element("div", "section-heading");
-  header.append(element("h3", "", "Databases"),
-    element("span", "", `snapshot ${page.snapshot.slice(0, 18)}…`));
+  header.append(element("h3", "", "Databases"));
   const list = element("div", "object-grid");
   for (const row of rows) list.append(databaseCard(row));
   section.append(header, list);
@@ -549,8 +543,7 @@ function addTimelineContinuation(section, list, rows, page, databaseID, executeM
 function timelineSection(timeline, databaseID, executeMSQL) {
   const section = element("section", "catalog-section trace-timeline");
   const header = element("div", "section-heading");
-  header.append(element("h3", "", "Route Traces · oldest first"),
-    element("span", "", `snapshot ${timeline.page.snapshot.slice(0, 18)}…`));
+  header.append(element("h3", "", "Route Traces"));
   const list = element("div", "trace-list");
   for (const row of timeline.rows) list.append(traceCard(row));
   section.append(header, list);
@@ -596,8 +589,7 @@ function addStepContinuation(section, list, rows, page, databaseID, tableID, sel
 function stepSection(steps, databaseID, tableID, selectedTraceID, executeMSQL) {
   const section = element("section", "catalog-section trace-flow");
   const header = element("div", "section-heading");
-  header.append(element("h3", "", "Navigation steps"),
-    element("span", "", `snapshot ${steps.page.snapshot.slice(0, 18)}…`));
+  header.append(element("h3", "", "Navigation steps"));
   const list = element("div", "trace-step-list");
   for (const row of steps.rows) list.append(stepCard(row));
   section.append(header, list);
@@ -632,7 +624,8 @@ export async function renderTraces(root, options) {
       if (!options.isCurrent()) return;
       view.append(breadcrumbs(data.database), heading(data.database.name, data.database.purpose, data.database));
       if (data.timeline.rows.length === 0) {
-        view.append(stateNode("empty", "还没有 Route Trace", "宿主提交脱敏导航收据后会显示在这里。"));
+        view.append(stateNode("empty", "还没有导航记录",
+          "当前没有 Agent 向 Memora 上报 Route Trace；接入 Agent 或 Hook 后会显示选择、回退、耗时和预算。"));
         root.dataset.pageState = "empty";
         root.replaceChildren(view);
         return;

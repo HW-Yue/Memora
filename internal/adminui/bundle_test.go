@@ -55,6 +55,44 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 	}
 }
 
+func TestAdminShellUsesMinimalNavigationAndPresentation(t *testing.T) {
+	t.Parallel()
+
+	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexText := string(index)
+	for _, forbidden := range []string{
+		"LOCAL SEMANTIC DATABASE", "你的知识，由 AI 建模", "nav-caption",
+		`data-nav="overview"`, `data-nav="routes"`, "Admin Shell 已离线加载",
+	} {
+		if strings.Contains(indexText, forbidden) {
+			t.Errorf("minimal Admin shell still contains %q", forbidden)
+		}
+	}
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appText := string(app)
+	if !strings.Contains(appText, `window.history.replaceState(null, "", "/catalog")`) {
+		t.Fatal("root Admin route does not redirect to Catalog")
+	}
+	for _, asset := range []string{
+		"dist/assets/catalog.js", "dist/assets/changes.js", "dist/assets/diffs.js",
+		"dist/assets/rows.js", "dist/assets/routes.js", "dist/assets/traces.js",
+	} {
+		content, readErr := fs.ReadFile(embeddedFiles, asset)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if strings.Contains(string(content), "snapshot ${") {
+			t.Errorf("%s still renders internal snapshot labels", asset)
+		}
+	}
+}
+
 func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	t.Parallel()
 
@@ -83,7 +121,8 @@ func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 		"SHOW DATABASES LIMIT 32 COMPACT", "DESCRIBE DATABASE", "SHOW ROUTE TRACES IN DATABASE",
 		"CURSOR :cursor LIMIT 20", "SHOW ROUTE TRACE :trace IN DATABASE", "LIMIT 24",
 		"CURSOR :cursor LIMIT 24", "parameters", "named", "trace_id", "trace_sequence",
-		"database_id", "table_id", "candidate_route_ids", "selected_route_id", "locators",
+		"database_id", "anti_scope", "row.anti_scope !== undefined", "table_id",
+		"candidate_route_ids", "selected_route_id", "locators",
 		"elapsed_ms", "remaining_budget", "loading", "empty", "ready", "truncated",
 		"permission", "corrupt", "revision_conflict",
 	} {
@@ -177,7 +216,8 @@ func TestChangeTimelineModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 		"SHOW DATABASES LIMIT 32 COMPACT", "DESCRIBE DATABASE", "SHOW CHANGES IN DATABASE",
 		"CURSOR :cursor LIMIT 20", "SHOW CHANGE :transaction IN DATABASE", "LIMIT 32",
 		"CURSOR :cursor LIMIT 32", "parameters", "named", "transaction_id", "commit_sequence",
-		"database_ids", "entry_count", "object_kind", "history_locator", "related_object_ids",
+		"database_ids", "anti_scope", "row.anti_scope !== undefined", "entry_count", "object_kind",
+		"history_locator", "related_object_ids",
 		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
 	} {
 		if !strings.Contains(javascript, required) {
@@ -245,8 +285,8 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(index), `href="/routes" data-route`) {
-		t.Fatal("Admin shell does not expose Route Tree navigation")
+	if strings.Contains(string(index), `data-nav="routes"`) {
+		t.Fatal("Route Tree should be entered from a Table, not exposed as an empty top-level page")
 	}
 	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
 	if err != nil {

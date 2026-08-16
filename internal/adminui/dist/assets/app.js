@@ -11,7 +11,6 @@ let sessionReady = false;
 const sessionCard = document.querySelector("[data-session-state]");
 const statusTitle = document.querySelector("[data-status-title]");
 const statusDetail = document.querySelector("[data-status-detail]");
-const routeLabel = document.querySelector("[data-route-label]");
 const routeOutlet = document.querySelector(".route-outlet");
 
 function setStatus(state, title, detail) {
@@ -29,7 +28,6 @@ async function bootstrapSession() {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   let bootstrapToken = fragment.get("token") || "";
   clearFragment();
-  routeLabel.textContent = window.location.pathname;
   try {
     const headers = { "Content-Type": "application/json" };
     if (bootstrapToken) headers.Authorization = `Bearer ${bootstrapToken}`;
@@ -78,16 +76,6 @@ export async function executeMSQL(source, statements = []) {
   return response.json();
 }
 
-function overviewNode() {
-  const fragment = document.createDocumentFragment();
-  const title = document.createElement("p");
-  title.textContent = "Admin Shell 已离线加载";
-  const route = document.createElement("small");
-  route.textContent = window.location.pathname;
-  fragment.append(title, route);
-  return fragment;
-}
-
 function updateNavigation(section) {
   for (const link of document.querySelectorAll("[data-nav]")) {
     link.classList.toggle("is-current", link.dataset.nav === section);
@@ -97,9 +85,12 @@ function updateNavigation(section) {
 async function renderCurrentRoute() {
   if (!sessionReady) return;
   const path = window.location.pathname;
+  if (path === "/" || path === "") {
+    window.history.replaceState(null, "", "/catalog");
+    return renderCurrentRoute();
+  }
   document.body.classList.toggle("route-semantic-detail", path.startsWith("/routes/"));
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  routeLabel.textContent = path;
   if (path === "/catalog" || path.startsWith("/catalog/")) {
     document.body.classList.add("route-catalog");
     document.body.classList.remove("route-routes");
@@ -116,6 +107,10 @@ async function renderCurrentRoute() {
     return;
   }
   if (path === "/routes" || path.startsWith("/routes/")) {
+    if (path === "/routes") {
+      window.history.replaceState(null, "", "/catalog");
+      return renderCurrentRoute();
+    }
     document.body.classList.remove("route-catalog");
     document.body.classList.add("route-routes");
     document.body.classList.remove("route-rows");
@@ -196,9 +191,8 @@ async function renderCurrentRoute() {
   document.body.classList.remove("route-changes");
   document.body.classList.remove("route-diffs");
   document.body.classList.remove("route-traces");
-  updateNavigation("overview");
-  routeOutlet.dataset.pageState = "ready";
-  routeOutlet.replaceChildren(overviewNode());
+  window.history.replaceState(null, "", "/catalog");
+  return renderCurrentRoute();
 }
 
 document.addEventListener("click", (event) => {

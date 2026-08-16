@@ -13,6 +13,12 @@ F116 只交付导航容器、session 状态和统一 MSQL client。Catalog、Rou
 Diff 与 Trace 页面逐项实现；壳不得猜测或读取业务 Row。当前 Route 页面使用本地 G6
 无限画布，Leaf 预览仍然通过 `OPEN ROUTE` 和 RowID `SELECT` 回表。
 
+当前壳采用最小导航：根路径直接进入 Catalog；Overview 和没有 Table 上下文的 Route
+Tree 空壳入口不再出现在导航中。Changes、Route Traces、History 和 Revision Diff
+仍保留为可回溯的观察入口。Catalog 与观察列表的标题区不展示内部 snapshot 哈希、对象
+ID 和列 ID 等重复技术元数据，但它们仍参与 MSQL 校验、分页一致性和审计链接；Row
+文档正文仍保留必要的 revision 与来源信息。
+
 ## Bundle 与路由
 
 内嵌 bundle 的文件集合、大小和 SHA-256 在 Go manifest 中冻结。启动前必须验证
@@ -29,6 +35,8 @@ index/JS/CSS 全部存在且逐字节匹配；缺失、增加或 tamper 都拒�
 validator 与 frozen bundle 必须在同一 Feature 中同步升级。Route Tree 接受并校验
 F182a 定义的非 null `aliases` 字段（最多 8 项、单项 1–64 个 Unicode 字符、合计最多
 512 UTF-8 bytes）。这类协议扩展不要求迁移或删除已有数据库。
+Changes 与 Route Traces 的 Database summary 校验同时接受省略或携带 `anti_scope` 的合法
+COMPACT 响应；字段存在时仍执行非空文本和长度校验，未知字段继续拒绝。
 
 Route Canvas 默认从左到右显示 Table 语义树。进入页面只读取根和第一层节点；点击
 Branch 才读取下一层。点击 Leaf 先打开唯一 locator，并按 RowID 回表，将 Row 的全部字段
