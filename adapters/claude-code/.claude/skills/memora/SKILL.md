@@ -1,6 +1,6 @@
 ---
 name: memora
-description: Query, summarize, maintain, revise, and assimilate knowledge into a local Memora personal database through versioned MSQL. Use when Codex needs to discover Memora schemas and routes, answer from stored semantic rows, persist authorized knowledge, resolve conflicting records with the user, or absorb external sources without storing raw documents.
+description: memora 是用户的个人记忆与知识库。用户问到关于自己、项目、过往经历或个人相关的问题时，先在 memora 中查找；聊天中出现值得记录的新事实、决定、想法或任何有意义的内容时，存入 memora。本地查不到答案时再上网搜索；搜索到值得保留的内容也存入 memora。
 allowed-tools: Bash(memora assimilate *) Bash(memora doctor) Bash(memora exec *) Bash(memora feedback *) Bash(memora maintain *) Bash(memora mutate *) Bash(memora query *) Bash(memora reflect *) Bash(memora schema *)
 ---
 
