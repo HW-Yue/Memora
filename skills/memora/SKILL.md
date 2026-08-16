@@ -364,6 +364,17 @@ by those module plans. Bind every important number or other key fact separately 
 field, value SHA-256, and exact anchor. Do not copy source windows or quotations
 into the submission merely to support review.
 
+Each semantic module's `summary` is a complete, self-contained Markdown
+document of roughly 1,000 CJK characters — the full rendered body the reader
+should see, not a compressed extract or a few bullet points. Configure the
+summary Column's TEXT limit (e.g. `TEXT(2500)`) to hold the document plus
+Markdown syntax; the 1200-character default ceiling is too small for a
+1,000-CJK-character body. Length is counted in Unicode code points, so Markdown
+headers, list markers, and code blocks consume the same budget as CJK text.
+Never silently truncate: if the ceiling is too low, submit a Schema change to
+widen the summary Column before writing, and write the document to match the
+configured budget.
+
 Run a second pass as `memora.assimilation-review/v1`. It may use another Agent,
 or the same Agent with a context ID isolated from the draft. It must bind the
 draft SHA-256 and coverage revision, check the exact module/relationship/key-fact
