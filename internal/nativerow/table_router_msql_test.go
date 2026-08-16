@@ -188,6 +188,9 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	if len(selected.Rows) != 1 || selected.Rows[0]["title"] != "native authority" {
 		t.Fatalf("exact RowID SELECT = %#v", selected)
 	}
+	if paths, ok := selected.Rows[0]["route_paths"].([]string); !ok || len(paths) != 1 || paths[0] != "/architecture/storage" {
+		t.Fatalf("exact RowID SELECT route_paths = %#v", selected.Rows[0]["route_paths"])
+	}
 	updated := executeMSQL(t, ctx, engine,
 		"UPDATE work.notes SET title = :title WHERE row_id = :row",
 		executor.Parameters{Named: map[string]any{"title": "native authority revised", "row": "row_first"}},

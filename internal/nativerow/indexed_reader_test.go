@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
@@ -333,6 +334,10 @@ func (rows *poisonIndexedRows) AsOfRevision(context.Context, string, string, str
 func (rows *poisonIndexedRows) AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error) {
 	(*rows.calls)++
 	return row.Row{}, fmt.Errorf("legacy commit path was called")
+}
+
+func (rows *poisonIndexedRows) MembershipsForRow(context.Context, string, string, string) ([]router.Membership, error) {
+	return []router.Membership{}, nil
 }
 
 type mismatchingVersionLookup struct{ delegate *rowversionindex.Index }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -164,7 +165,9 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		if !matches {
 			continue
 		}
-		output.Rows = append(output.Rows, projectRow(candidate, projections))
+		projected := projectRow(candidate, projections)
+		projected["route_paths"] = engine.routePathsForRow(ctx, table.DatabaseID, table.ID, candidate.ID)
+		output.Rows = append(output.Rows, projected)
 		if len(output.Rows) == int(limit) {
 			return output, nil
 		}
@@ -347,6 +350,23 @@ func projectRow(current datarow.Row, projections []projection) result.Row {
 		}
 	}
 	return projected
+}
+
+func (engine *Engine) routePathsForRow(ctx context.Context, databaseID, tableID, rowID string) []string {
+	memberships, err := engine.rows.MembershipsForRow(ctx, databaseID, tableID, rowID)
+	if err != nil {
+		return []string{}
+	}
+	paths := make([]string, 0, len(memberships))
+	for _, membership := range memberships {
+		node, nodeErr := engine.rows.GetRouterNode(ctx, membership.LeafID)
+		if nodeErr != nil || node.Path == "" {
+			continue
+		}
+		paths = append(paths, node.Path)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 func validateIdentifiers(table catalog.Table, expression *ast.Expression) error {

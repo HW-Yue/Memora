@@ -434,6 +434,9 @@ func (transaction *Transaction) ListRouterChildrenPage(context.Context, string, 
 func (transaction *Transaction) ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error) {
 	return nil, router.ReadPage{}, transactionFailure(result.CodeUnsupported, "Route reads are not supported inside an explicit transaction", nil)
 }
+func (transaction *Transaction) MembershipsForRow(context.Context, string, string, string) ([]router.Membership, error) {
+	return nil, transactionFailure(result.CodeUnsupported, "Route reads are not supported inside an explicit transaction", nil)
+}
 
 func (transaction *Transaction) mutationTarget(ctx context.Context, database, table, id string, options row.WriteOptions) (catalog.Table, row.Row, error) {
 	definition, err := transaction.DescribeTable(ctx, database, table)
