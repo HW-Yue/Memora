@@ -1,4 +1,8 @@
 const CHILD_LIMIT = 12;
+// CHILD_LIMIT 只是单次请求的页大小，不是一层能显示多少个节点。
+// 结构上限是 Database 级的 route_policy.branch_fanout（F223），可以被调高，
+// 因此这里必须顺着 cursor 取完所有页，否则会静默隐藏超出首页的兄弟节点。
+const MAX_CHILD_PAGES = 40;
 const LOCATOR_LIMIT = 1;
 const BRANCH_ENTER_MS = 140;
 const DOCUMENT_ENTER_MS = 180;
@@ -291,20 +295,22 @@ function addContinuation(section, list, rows, page, render, loadMore) {
   section.append(button);
 }
 
-async function loadTableRoot(executeMSQL, databaseID, tableID, cursor = "") {
+async function loadTableRoot(executeMSQL, databaseID, tableID) {
   const subject = `${quoteIdentifier(databaseID, "db_")}.${quoteIdentifier(tableID, "tbl_")}`;
-  if (cursor) {
-    const source = `SHOW ROUTES FROM TABLE ${subject} AT ROOT CURSOR :cursor LIMIT 12`;
-    const result = resultsFrom(await executeMSQL(source, [statementInput({ cursor })]), 1)[0];
-    return { rows: routeRows(result, databaseID, tableID), page: validatePage(result, CHILD_LIMIT) };
-  }
   const source = `DESCRIBE TABLE ${subject} COMPACT; SHOW ROUTES FROM TABLE ${subject} AT ROOT LIMIT 12`;
   const results = resultsFrom(await executeMSQL(source), 2);
-  return {
-    object: tablePoint(results[0], databaseID, tableID),
-    rows: routeRows(results[1], databaseID, tableID),
-    page: validatePage(results[1], CHILD_LIMIT)
-  };
+  const object = tablePoint(results[0], databaseID, tableID);
+  let rows = routeRows(results[1], databaseID, tableID);
+  let page = validatePage(results[1], CHILD_LIMIT);
+  for (let fetched = 1; page.truncated && fetched < MAX_CHILD_PAGES; fetched += 1) {
+    const next = `SHOW ROUTES FROM TABLE ${subject} AT ROOT CURSOR :cursor LIMIT 12`;
+    const result = resultsFrom(
+      await executeMSQL(next, [statementInput({ cursor: page.next_cursor })]), 1
+    )[0];
+    rows = rows.concat(routeRows(result, databaseID, tableID));
+    page = validatePage(result, CHILD_LIMIT);
+  }
+  return { object, rows, page };
 }
 
 async function describeRoute(executeMSQL, databaseID, tableID, routeID) {
@@ -314,15 +320,21 @@ async function describeRoute(executeMSQL, databaseID, tableID, routeID) {
   return validateRouteRow(result.rows[0], true, databaseID, tableID);
 }
 
-async function loadChildren(executeMSQL, databaseID, tableID, routeID, cursor = "") {
-  const source = cursor ? "SHOW ROUTES UNDER :route CURSOR :cursor LIMIT 12" :
-    "SHOW ROUTES UNDER :route LIMIT 12";
-  const named = cursor ? { route: routeID, cursor } : { route: routeID };
-  const result = resultsFrom(await executeMSQL(source, [statementInput(named)]), 1)[0];
-  return {
-    rows: routeRows(result, databaseID, tableID, routeID),
-    page: validatePage(result, CHILD_LIMIT)
-  };
+async function loadChildren(executeMSQL, databaseID, tableID, routeID) {
+  const first = resultsFrom(
+    await executeMSQL("SHOW ROUTES UNDER :route LIMIT 12", [statementInput({ route: routeID })]), 1
+  )[0];
+  let rows = routeRows(first, databaseID, tableID, routeID);
+  let page = validatePage(first, CHILD_LIMIT);
+  for (let fetched = 1; page.truncated && fetched < MAX_CHILD_PAGES; fetched += 1) {
+    const result = resultsFrom(
+      await executeMSQL("SHOW ROUTES UNDER :route CURSOR :cursor LIMIT 12",
+        [statementInput({ route: routeID, cursor: page.next_cursor })]), 1
+    )[0];
+    rows = rows.concat(routeRows(result, databaseID, tableID, routeID));
+    page = validatePage(result, CHILD_LIMIT);
+  }
+  return { rows, page };
 }
 
 async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
@@ -698,9 +710,9 @@ async function replaceDocumentNode(graph, tree, node, document) {
   return document;
 }
 
-async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableID, cursor = "") {
-  const next = await loadChildren(executeMSQL, databaseID, tableID, node.route_id, cursor);
-  const existing = cursor ? node.children.filter((child) => child.kind !== "more") : [];
+async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableID) {
+  const next = await loadChildren(executeMSQL, databaseID, tableID, node.route_id);
+  const existing = [];
   const added = next.rows.map(treeNode);
   const addedIDs = added.map((child) => child.id);
   if (!reducedMotionPreferred()) added.forEach((child) => { child.motionOpacity = 0; });
