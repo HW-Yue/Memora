@@ -152,7 +152,7 @@ function validateCurrent(result, databaseID, tableID, rowID) {
   if (result.rows.length > 1) throw new RowViewError("corrupt", "Point Row returned multiple values");
   const row = result.rows[0];
   if (row) {
-    if (!exactKeys(row, columns.map((column) => column.name)) || row.row_id !== rowID ||
+    if (!exactKeys(row, [...columns.map((column) => column.name), "route_paths"]) || row.row_id !== rowID ||
         !positiveInteger(row.revision) || !positiveInteger(row.commit_sequence) ||
         row.row_state !== "live" || row.schema_version !== detail.schema_version) {
       throw new RowViewError("corrupt", "Point Row identity or revision is invalid");

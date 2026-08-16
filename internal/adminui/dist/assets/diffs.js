@@ -157,7 +157,7 @@ function validateSnapshot(result, databaseID, tableID, rowID, revision) {
   const detail = validateDetail(result, databaseID, tableID, columns);
   if (result.rows.length !== 1) throw new DiffViewError("corrupt", "Revision point read is not exact");
   const row = result.rows[0];
-  if (!exactKeys(row, columns.map((column) => column.name)) || row.row_id !== rowID ||
+  if (!exactKeys(row, [...columns.map((column) => column.name), "route_paths"]) || row.row_id !== rowID ||
       row.revision !== revision || !positiveInteger(row.commit_sequence) ||
       !["live", "deleted", "superseded"].includes(row.row_state) ||
       !positiveInteger(row.schema_version)) {
