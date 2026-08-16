@@ -104,8 +104,6 @@ func (engine *Engine) describeRoute(
 		return Output{}, err
 	}
 	row := routeResult(node)
-	row["database_id"] = node.DatabaseID
-	row["table_id"] = node.TableID
 	row["synopsis"] = node.Synopsis
 	return Output{
 		Columns: []result.Column{
@@ -299,6 +297,8 @@ func (engine *Engine) showRoutes(
 	output := Output{
 		Columns: []result.Column{
 			{Name: "route_id", Type: "ID"},
+			{Name: "database_id", Type: "ID"},
+			{Name: "table_id", Type: "ID"},
 			{Name: "parent_id", Type: "ID", Nullable: true},
 			{Name: "path", Type: "TEXT"},
 			{Name: "name", Type: "TEXT"},
@@ -431,7 +431,8 @@ func (engine *Engine) authorizeRouterIDAtLevel(ctx context.Context, level securi
 
 func routeResult(node router.Node) result.Row {
 	return result.Row{
-		"route_id": node.ID, "parent_id": node.ParentID,
+		"route_id": node.ID, "database_id": node.DatabaseID,
+		"table_id": node.TableID, "parent_id": node.ParentID,
 		"path": node.Path, "name": node.Name, "kind": string(node.Kind),
 		"aliases": append([]string{}, node.Aliases...),
 		"purpose": node.Purpose, "revision": node.Revision,
@@ -540,6 +541,8 @@ func routerNodeMutationOutput(node router.Node) Output {
 	return Output{
 		Columns: []result.Column{
 			{Name: "route_id", Type: "ID"},
+			{Name: "database_id", Type: "ID"},
+			{Name: "table_id", Type: "ID"},
 			{Name: "parent_id", Type: "ID", Nullable: true},
 			{Name: "path", Type: "TEXT"},
 			{Name: "name", Type: "TEXT"},
