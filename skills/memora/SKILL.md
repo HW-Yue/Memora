@@ -104,8 +104,24 @@ Start a new task or stale Route Frame with bounded discovery. Inspect databases,
 then the selected schema and Router. Reuse an existing semantic scope when it
 fits; do not invent a table from a name alone.
 
+When the host does not yet know a Database name — a cold Instance, a new task
+with no user-named Database, or an expired Route Frame — discover names first.
+`SHOW DATABASES` without an `authorization` object is discovery mode and
+returns every Database. Supplying an `authorization` object switches it to a
+filter that silently drops Databases outside that scope, so a guessed or
+placeholder name can hide the real catalog. Bind authorization only after the
+user has named a Database; never widen or invent the scope.
+
 ```sh
 memora doctor
+memora query "SHOW DATABASES LIMIT 32 COMPACT"
+```
+
+Show the discovered Database names and purposes to the user and ask which one
+to use before the first authorized read or write. Once the user names a
+Database, continue the bounded discovery below with that exact name:
+
+```sh
 memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW TABLES FROM work COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "DESCRIBE TABLE work.notes COMPACT"
