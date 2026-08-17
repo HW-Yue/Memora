@@ -140,7 +140,8 @@ Instance；若使用了可选 scope，再确认该 Database 名称或 ID 正确�
 ## 安装、运行与故障处理
 
 独立 Skill 仓库：<https://github.com/HW-Yue/memora-skill>。
-当前 Release：<https://github.com/HW-Yue/Memora/releases/tag/v0.1.0>。
+当前 Release：<https://github.com/HW-Yue/Memora/releases/latest>。安装器默认取最新版本，
+不要向用户念出某个具体版本号——以 `memora version --json` 的实际输出为准。
 
 每次首次使用先执行 `scripts/check.sh`：
 
@@ -168,8 +169,8 @@ memora exec  --input '{...authorization...}' 'SELECT ...'
 
 ## 边界与当前版本
 
-- v0.1.0 提供 macOS arm64/amd64 制品、daemon、CLI、MCP、Skill、语义 Router、lexical
-  postings、事务历史、Admin 和恢复基础设施。
+- 当前发行提供 macOS arm64/amd64 制品、daemon、CLI、MCP、Skill、语义 Router、lexical
+  postings、事务历史、Admin 和恢复基础设施；具体版本以 `memora version --json` 为准。
 - HNSW、Apple Accelerate、复制、PITR、多设备同步和大规模真实质量评测尚未作为默认能力。
 - Admin 的可视化不能替代外部 Agent 的答案质量测评；Recall/MRR 必须使用独立 evaluator。
 - 任何不确定的事实都回到当前 Instance 的 MSQL 结果，不从本手册或旧会话推断动态状态。

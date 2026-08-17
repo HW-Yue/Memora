@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 
-release_url="https://github.com/HW-Yue/Memora/releases/tag/v0.1.0"
+# 不固定版本：安装器默认取最新 Release，这里给出的入口必须跟着走，
+# 否则用户会被指向一个早已过时的 tag。
+release_url="https://github.com/HW-Yue/Memora/releases/latest"
 
 if ! command -v memora >/dev/null 2>&1; then
   printf '{"status":"missing","release_url":"%s","default_binary":"~/.local/bin/memora"}\n' "$release_url"
