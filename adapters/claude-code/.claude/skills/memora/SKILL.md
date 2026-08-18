@@ -260,6 +260,11 @@ from large to small scope and only create when reuse is impossible:
    distinct, recurring kind the user will keep adding to.
 5. Never create on a hunch or from a name alone: match by the object's declared
    purpose/scope and semantic description, not by guessing equivalence.
+6. Every new Table MUST declare exactly one Column with `ROLE 'summary'`, and
+   its TEXT ceiling must hold a ~1,000-CJK-character Markdown document plus
+   syntax (for example `TEXT(2500)`; the 1,200 default is too small). A Table
+   without a `summary` Column cannot hold a displayable Row. Declare
+   `ROLE 'title'` as well when the Table needs a short label.
 
 ## Write
 
@@ -275,19 +280,31 @@ Use parameters, expected schema/revision, a maximum affected-row count, actor,
 source, reason, and the complete current Route leaf membership snapshot.
 Keep transactions short and verify the returned revision and logical row.
 
+Every INSERT and every UPDATE that creates or replaces a semantic module MUST
+write the `summary` Column. `summary` is the Row's body: a complete,
+self-contained Markdown document of roughly 1,000 CJK characters that a reader
+can understand without opening anything else. It is not a one-line abstract,
+not a bullet list, and not a restatement of `title`. A Row without a usable
+`summary` is not a usable memory — never write one and never leave `summary`
+empty to "fill in later". If the configured TEXT ceiling cannot hold the
+document, submit a Schema change to widen the Column first (see
+"Evolve schemas"); never silently truncate.
+
 Build one `memora.mutation-plan/v1` object. Every decision includes at least one
 read-only preflight with explicit Row expectations. IGNORE has no steps. INSERT,
 REVISE, MOVE, and RELATE have one step; MERGE is one UPDATE plus DELETE steps;
 SPLIT is one UPDATE plus INSERT steps. Keep at most eight steps. Every INSERT or
-UPDATE supplies the complete `route_leaf_ids` snapshot, including an explicit
-empty array. Before attaching a new Row, verify that every target leaf is empty;
+UPDATE supplies the complete `route_leaf_ids` snapshot with at least one leaf.
+A Row with no Route membership can never be reached by semantic navigation, so
+an empty array is not a valid snapshot: attach an existing empty leaf, or create
+the leaf first. Before attaching a new Row, verify that every target leaf is empty;
 an occupied leaf requires a new semantic leaf, while the same Row may still use
 multiple distinct leaves. Submit the plan through `mutate` so
 Policy validation occurs before any Tool call and multi-step changes share one
 short transaction.
 
 ```sh
-memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"Route results are locators only"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
+memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"<complete self-contained ~1,000-CJK-character Markdown document; abbreviated in this example>"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
 memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decision":"IGNORE","database":"work","table":"notes","actor":"agent:host","source_event_id":"conversation:event-7","reason":"existing Row already captures it","authorized_databases":["work"],"preflight":[{"id":"duplicate-check","msql":"SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1","input":{"parameters":{"named":{"row":"row_01"}}},"expect_rows":1}],"steps":[],"verify":[]}'
 ```
 

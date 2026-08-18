@@ -106,6 +106,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
   report/gate 双模式，解除 F185b 与 ADR-0010 的死锁。
 - [F224：Row 必须可导航](./planning/f224-mandatory-row-route.md) — 候选；写入时强制语义索引，
   杜绝零 Route 归属的孤儿 Row。
+- [F225：Row 必须可展示](./planning/f225-mandatory-row-summary.md) — 候选；写入时强制 summary 非空，
+  引擎判定「非空」、Skill 承载「完整自足文档」的语义要求。
 - [F223：Route Branch Fan-out 硬上限](./planning/f223-route-branch-fanout-limit.md) — 已实现；
   一个节点最多 12 个 live child（本库可改），越界一律失败并给出重构或提高上限两条出路。
 

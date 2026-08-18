@@ -91,6 +91,19 @@
 - **为什么单列**：无 Route 的 Row 是静默数据丢失——写进去了但语义导航永远到不了，
   与查询侧的导航修复是两个独立故障域
 
+### 5c. F225 Row 必须可展示
+
+- **前置**：无。与 5b 同执行点，建议同批实现
+- **规格**：[F225](./f225-mandatory-row-summary.md)
+- **改动**：`internal/nativerow`（执行点，与 F224 同处）、`internal/semantichealth`
+  （新增 `unsummarized_row`）；SKILL.md 强约束已先行落地（见下）
+- **RED**：证明 summary 为空或缺列的 INSERT 当前提交成功
+- **完成**：live Row 的 summary role 列必须存在且 trim 后非空；Table 无 summary 列时
+  写入失败并指明加列出路；UPDATE 不触碰 summary 时保留既有值；DELETE 豁免；
+  引擎只判定「非空」不判定质量
+- **已完成的部分**：SKILL.md 四项强约束与 contract.json 示例已于本轮落地并重新生成
+  adapters；剩余的是引擎侧强制
+
 ## 阶段 C：工程稳态（可并行，不阻塞阶段 A）
 
 ### 6. CI 增加 Linux runner
