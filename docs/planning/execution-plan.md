@@ -19,6 +19,20 @@
 | 工作集淘汰策略 | **v1 冻结为 LRU + Pinned 最后淘汰**。相关性淘汰作为第 10 项，由 A4 数据决定是否需要 | [F220](./f220-query-working-set.md) |
 | A1 用朴素累积还是工作集 | **工作集**。朴素累积会在实现 F220 时整个作废 | 路线 v2 |
 
+## 阶段 0：可用性缺陷（最高优先，插在所有阶段之前）
+
+### 0. F226 Stage 1 收敛 poison 作用域
+
+- **前置**：无。这是当前队列的真正队头
+- **规格**：[F226](./f226-per-database-fault-isolation.md)（Stage 1 部分）
+- **改动**：`internal/pagestoremigration/authority.go`
+- **RED**：证明一个 Database 发布失败后，另一个 Database 的 SELECT 与 INSERT
+  都返回 `ErrAuthorityPoisoned`
+- **完成**：读不再因写发布失败而失效；`poisoned` 从全实例布尔改为受影响 Database
+  集合；失败信封点明范围；`closed` 仍阻断全部；reopen 后集合正确重建
+- **为什么最高优先**：现在改一个 Database 的字段出错会让**整个 Instance 读写全停**，
+  这是可用性缺陷而非优化。Stage 1 改动集中在一个文件，先拿回可用性
+
 ## 阶段 A：让 Agent 真的能导航
 
 出口判据：第 5 项产出三组可复现对照结论，且第 1、2 项修复前后的同题对照显示
@@ -153,6 +167,14 @@ Query Workspace 的跨会话持久化与恢复。需先出独立规格。
 让 Memora 引用但不拥有外部原始资料归档，打通「用户重新提供原文 → 重新吸收 →
 与现有 Row 做 diff」。收据已有 locator 与 content digest，缺的是重吸收与 diff 语义。
 需先出独立规格。依据[语义重建的不对称性](../data/semantic-rebuild-asymmetry.md)。
+
+### 12b. F226 Stage 2 物理文件按 Database 拆分
+
+`databases/db_<stable-id>/` 各自持有 Page/WAL。**开工前必须先冻结三件事**：
+事务作用域（`TransactionFactory` 现在没有 database 参数，事务是实例级的）、
+change log 全局序的归属、lexical/fulltext 的 fan-out 语义。
+走 `instanceupgrade` 的 `--plan`/`--apply` 显式流程，不静默迁移。
+同时修正 `native-minimal-store.md` 与实现的布局漂移。
 
 ### 13. 写入反馈回路
 

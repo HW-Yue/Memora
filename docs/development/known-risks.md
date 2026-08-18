@@ -5,6 +5,27 @@
 
 修好一条就从这里移除并写进[系统能力](../product/system-capabilities.md)。
 
+## 致命：单库故障导致整实例不可用
+
+### 0. 一个 Database 出错，所有 Database 读写全停
+
+`internal/pagestoremigration/authority.go` 的 `poisonPublication`（`:541`）只做
+`authority.poisoned = true`——全实例单一布尔，没有任何 Database 或对象作用域。
+`healthyLocked`（`:568`）见到它就返回 `ErrAuthorityPoisoned`，而
+`BeginWrite`（`:199`）**和 `lockRead`（`:554`）都查它**。
+
+后果：任一 Database 的一次 Page 发布失败，整个 Instance 的全部 Database
+既写不了也**读不了**。读被连带阻断尤其没必要——已提交的旧 generation 完好，
+读它是安全的。
+
+叠加成因：所有 Database 共用一套物理文件（实测 `databases/page-index-v1/` 下
+单套 Page/WAL，没有按库分目录），所以物理故障域也等于整个 Instance。
+这与 [原生 Store](../storage/native-minimal-store.md) 第 21 行声称的
+`databases/db_<stable-id>/database.memora` 不一致——实现漂移了。
+
+修复见 [F226](../planning/f226-per-database-fault-isolation.md)：Stage 1 收敛
+poison 作用域（小改动，拿回可用性），Stage 2 拆分物理文件。
+
 ## 严重：会导致产品主张不成立
 
 ### 1. Query Agent 只有一步记忆，多跳导航结构上不可能

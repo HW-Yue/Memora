@@ -158,6 +158,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - F222 候选：Release Gate Policy v2；确定性主判定与 report/gate 双模式，解除 F185b 死锁。
 - F224 候选：Row 必须可导航；写入时强制至少一个 Route 归属，杜绝语义上不可达的孤儿 Row。
 - F225 候选：Row 必须可展示；写入时强制 summary role 列非空。SKILL.md 强约束已落地，引擎侧待实现。
+- F226 候选：Database 级故障隔离；当前一个库出错会让整实例读写全停，Stage 1 收敛 poison 作用域、Stage 2 拆分物理文件。
 - F223 已实现：Route Branch Fan-out 硬上限；`route_policy.branch_fanout` 启动默认 12，
   `CREATE ROUTE`、Route Mutation Plan 与 Semantic Health 统一读取本库值，越界一律失败并在
   信封里给出重构子树与提高上限两条可执行出路。取代下面「Database 级 Route Branch 自治
