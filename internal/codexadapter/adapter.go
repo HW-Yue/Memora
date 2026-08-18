@@ -15,6 +15,13 @@ import (
 
 const Version = "memora.codex-adapter/v2"
 
+// Files SKILL.md references by relative path. They are not declared in the
+// contract, so the adapter carries the canonical locations explicitly.
+const (
+	checkScriptPath   = "scripts/check.sh"
+	productManualPath = "references/product-manual.md"
+)
+
 type File struct {
 	Content []byte
 	Mode    os.FileMode
@@ -65,19 +72,32 @@ func Build(canonicalDirectory string) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, fmt.Errorf("read canonical bootstrap: %w", err)
 	}
+	// SKILL.md instructs the host to run scripts/check.sh and to read
+	// references/product-manual.md. Both must ship with the adapter, otherwise
+	// the installed Skill points at files that do not exist.
+	checker, err := os.ReadFile(filepath.Join(canonicalDirectory, checkScriptPath))
+	if err != nil {
+		return Bundle{}, fmt.Errorf("read canonical check script: %w", err)
+	}
+	manual, err := os.ReadFile(filepath.Join(canonicalDirectory, productManualPath))
+	if err != nil {
+		return Bundle{}, fmt.Errorf("read canonical product manual: %w", err)
+	}
 	license, commercialLicense, err := readRepositoryLicenses(canonicalDirectory)
 	if err != nil {
 		return Bundle{}, fmt.Errorf("build Codex adapter: %w", err)
 	}
 	files := map[string]File{
-		".agents/skills/memora/COMMERCIAL-LICENSE.md": {Content: commercialLicense, Mode: 0o644},
-		".agents/skills/memora/LICENSE":               {Content: license, Mode: 0o644},
-		".agents/skills/memora/SKILL.md":              {Content: skill, Mode: 0o644},
-		".agents/skills/memora/contract.json":         {Content: contract, Mode: 0o644},
-		".agents/skills/memora/host-contract.json":    {Content: hostContract, Mode: 0o644},
-		".agents/skills/memora/scripts/install.sh":    {Content: installer, Mode: 0o755},
-		".agents/skills/memora/agents/openai.yaml":    {Content: []byte(openAIMetadata), Mode: 0o644},
-		".codex/rules/memora.rules":                   {Content: []byte(commandRules), Mode: 0o644},
+		".agents/skills/memora/COMMERCIAL-LICENSE.md":        {Content: commercialLicense, Mode: 0o644},
+		".agents/skills/memora/LICENSE":                      {Content: license, Mode: 0o644},
+		".agents/skills/memora/SKILL.md":                     {Content: skill, Mode: 0o644},
+		".agents/skills/memora/contract.json":                {Content: contract, Mode: 0o644},
+		".agents/skills/memora/host-contract.json":           {Content: hostContract, Mode: 0o644},
+		".agents/skills/memora/scripts/install.sh":           {Content: installer, Mode: 0o755},
+		".agents/skills/memora/scripts/check.sh":             {Content: checker, Mode: 0o755},
+		".agents/skills/memora/references/product-manual.md": {Content: manual, Mode: 0o644},
+		".agents/skills/memora/agents/openai.yaml":           {Content: []byte(openAIMetadata), Mode: 0o644},
+		".codex/rules/memora.rules":                          {Content: []byte(commandRules), Mode: 0o644},
 	}
 	manifest := Manifest{
 		Version: Version, CanonicalDigest: digest(skill), ProtocolDigest: digest(contract),

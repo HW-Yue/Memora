@@ -76,6 +76,19 @@ func TestCheckedInClaudeAdapterMatchesDeterministicGenerator(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o755 {
 		t.Fatalf("Claude bootstrap mode = %v, %v", info, err)
 	}
+	// SKILL.md tells the host to run check.sh and to read the product manual.
+	// Shipping SKILL.md without them leaves the installed Skill pointing at
+	// files that do not exist.
+	check, err := os.Stat(filepath.Join(destination, ".claude", "skills", "memora", "scripts", "check.sh"))
+	if err != nil || check.Mode().Perm() != 0o755 {
+		t.Fatalf("Claude check script mode = %v, %v", check, err)
+	}
+	manual, err := os.Stat(filepath.Join(
+		destination, ".claude", "skills", "memora", "references", "product-manual.md",
+	))
+	if err != nil || manual.Size() == 0 {
+		t.Fatalf("Claude product manual = %v, %v", manual, err)
+	}
 }
 
 func repositoryRoot(t *testing.T) string {

@@ -35,6 +35,16 @@
       "mode": "0644"
     },
     {
+      "path": ".agents/skills/memora/references/product-manual.md",
+      "sha256": "cb7ea81f96f3a5db1caddf9a02470ad796a046ed614ee4a98b4b81527c7ada15",
+      "mode": "0644"
+    },
+    {
+      "path": ".agents/skills/memora/scripts/check.sh",
+      "sha256": "8e2c8420b17586f6694ede54228f08e50a07b744f5c6839204c1f2d096fe5ceb",
+      "mode": "0755"
+    },
+    {
       "path": ".agents/skills/memora/scripts/install.sh",
       "sha256": "24561e5e387fc6184a3934e6df7c890485b6c13a48b57aa51c36054522b0ef56",
       "mode": "0755"
