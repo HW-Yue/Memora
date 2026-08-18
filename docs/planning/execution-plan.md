@@ -76,6 +76,21 @@
 - **完成**：`report` 模式报告发布；**产出物之一是冻结 `gate` 阈值并写回 F222**；
   结论不因换模型而反转的部分单独标注为架构结论
 
+## 阶段 A′：写入正确性（可并行，不阻塞阶段 A）
+
+### 5b. F224 Row 必须可导航
+
+- **前置**：无。与阶段 A 互不依赖
+- **规格**：[F224](./f224-mandatory-row-route.md)
+- **改动**：`internal/nativerow`（执行点）、`internal/skillwrite/policy.go`
+  （`validateSnapshot` 空数组漏洞）
+- **RED**：证明不带 `route_leaf_ids` 的 INSERT 当前提交成功且 Row 零归属
+- **完成**：live Row 必须 ≥1 个 Route 归属；UPDATE 的「nil = 保留既有」语义不变；
+  DELETE 豁免；`msql.execute` 直连与 skillwrite 两条路径都被拦；存量无 Route Row
+  不追溯清理，继续由 `semantichealth` 报告
+- **为什么单列**：无 Route 的 Row 是静默数据丢失——写进去了但语义导航永远到不了，
+  与查询侧的导航修复是两个独立故障域
+
 ## 阶段 C：工程稳态（可并行，不阻塞阶段 A）
 
 ### 6. CI 增加 Linux runner
