@@ -1097,6 +1097,46 @@ func (service *Service) DeleteRouterNode(ctx context.Context, id string, expecte
 	return committed.Revision, err
 }
 
+// RestoreRouterNode un-archives a Route node. Archiving is a pure tombstone, so
+// the node's memberships, children and aliases are still on disk and come back
+// with it. The parent must be live: restoring into an archived parent would
+// produce a node that is reachable by ID but not by navigation.
+func (service *Service) RestoreRouterNode(ctx context.Context, id string, expected uint64) (uint64, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+	routes := nativerouter.New(service.repository.file)
+	current, err := routes.Get(id)
+	if err != nil {
+		return 0, err
+	}
+	if current.Revision != expected {
+		return 0, ErrRevisionConflict
+	}
+	if !current.Deleted {
+		return 0, fmt.Errorf("%w: Route node is not archived", nativerouter.ErrInvalid)
+	}
+	if current.ParentID != "" {
+		parent, err := routes.Get(current.ParentID)
+		if err != nil {
+			return 0, err
+		}
+		if parent.Deleted {
+			return 0, fmt.Errorf(
+				"%w: parent Route %q is archived; restore it first",
+				nativerouter.ErrInvalid, parent.ID,
+			)
+		}
+	}
+	current.Revision, current.Deleted = current.Revision+1, false
+	committed, err := service.commitRouteNodeChange(ctx, change.OperationCompensate, "restore Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
+		return current, routes.StageNode(transaction, current)
+	})
+	return committed.Revision, err
+}
+
 func (service *Service) commitRouteNodeChange(
 	ctx context.Context,
 	operation change.Operation,
@@ -1177,6 +1217,20 @@ func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node
 	}
 	if value.Deleted {
 		return router.Node{}, serviceFailure(result.CodeNotFound, "Router node was not found", nativestore.ErrNotFound)
+	}
+	return value, nil
+}
+
+// GetArchivedRouterNode reads a Route node whatever its archived state. Only
+// UNARCHIVE and archive-aware reads may use it; GetRouterNode stays the live
+// surface so an archived node cannot leak into ordinary navigation.
+func (service *Service) GetArchivedRouterNode(_ context.Context, id string) (router.Node, error) {
+	value, err := nativerouter.New(service.repository.file).Get(id)
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return router.Node{}, serviceFailure(result.CodeNotFound, "Router node was not found", err)
+	}
+	if err != nil {
+		return router.Node{}, err
 	}
 	return value, nil
 }

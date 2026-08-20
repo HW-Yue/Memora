@@ -493,6 +493,7 @@ func mutationStatement(statement ast.Statement) bool {
 	return statement.Insert != nil || statement.Update != nil || statement.Delete != nil ||
 		statement.Restore != nil || statement.Reshape != nil || statement.Relate != nil || statement.Unrelate != nil ||
 		statement.CreateRoute != nil || statement.RenameRoute != nil || statement.UpdateRoute != nil || statement.DeleteRoute != nil ||
+		statement.Archive != nil ||
 		statement.ApplyRoute != nil || statement.ApplySchema != nil ||
 		statement.Assimilation != nil && statement.Assimilation.Action == "SUBMIT" ||
 		statement.Configuration != nil ||

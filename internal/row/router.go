@@ -160,6 +160,39 @@ func (transaction *Transaction) DeleteRouterNode(
 	return expectedRevision + 1, nil
 }
 
+func (service *Service) RestoreRouterNode(
+	ctx context.Context,
+	nodeID string,
+	expectedRevision uint64,
+) (uint64, error) {
+	transaction, err := service.BeginTransaction(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	revision, err := transaction.RestoreRouterNode(ctx, nodeID, expectedRevision)
+	if err != nil {
+		return 0, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return 0, err
+	}
+	return revision, nil
+}
+
+func (transaction *Transaction) RestoreRouterNode(
+	ctx context.Context,
+	nodeID string,
+	expectedRevision uint64,
+) (uint64, error) {
+	if err := transaction.service.routes.RestoreNodeIn(
+		ctx, transaction.tx, nodeID, expectedRevision,
+	); err != nil {
+		return 0, stableError(err)
+	}
+	return expectedRevision + 1, nil
+}
+
 func (service *Service) GetRouterNode(
 	ctx context.Context,
 	nodeID string,
@@ -168,11 +201,30 @@ func (service *Service) GetRouterNode(
 	return node, stableError(err)
 }
 
+// GetArchivedRouterNode reads a Route node whatever its archived state. Only
+// UNARCHIVE and archive-aware reads may use it; GetRouterNode stays the live
+// surface so an archived node cannot leak into ordinary navigation.
+func (service *Service) GetArchivedRouterNode(
+	ctx context.Context,
+	nodeID string,
+) (router.Node, error) {
+	node, err := service.routes.GetIncludingArchived(ctx, nodeID)
+	return node, stableError(err)
+}
+
 func (transaction *Transaction) GetRouterNode(
 	ctx context.Context,
 	nodeID string,
 ) (router.Node, error) {
 	node, err := transaction.service.routes.GetIn(ctx, transaction.tx, nodeID)
+	return node, stableError(err)
+}
+
+func (transaction *Transaction) GetArchivedRouterNode(
+	ctx context.Context,
+	nodeID string,
+) (router.Node, error) {
+	node, err := transaction.service.routes.GetIncludingArchivedIn(ctx, transaction.tx, nodeID)
 	return node, stableError(err)
 }
 

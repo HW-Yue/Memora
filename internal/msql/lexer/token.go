@@ -47,7 +47,8 @@ func (token Token) IsKeyword(keyword string) bool {
 }
 
 var keywords = map[string]struct{}{
-	"ADD": {}, "AGAINST": {}, "ALL": {}, "ALTER": {}, "AND": {}, "ANTI": {}, "AS": {}, "AT": {}, "BEGIN": {},
+	"ADD": {}, "AGAINST": {}, "ALL": {}, "ALTER": {}, "AND": {}, "ANTI": {}, "ARCHIVE": {}, "ARCHIVED": {},
+	"AS": {}, "AT": {}, "BEGIN": {},
 	"ATLAS": {}, "BY": {}, "BYTES": {}, "CANDIDATES": {}, "CATALOG": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
 	"DATABASES": {}, "DELETE": {}, "DESCRIBE": {}, "DOCTOR": {}, "DROP": {},
 	"EXPLAIN": {}, "EXPORT": {}, "FALSE": {}, "FOR": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
@@ -57,6 +58,7 @@ var keywords = map[string]struct{}{
 	"RENAME": {}, "RESTORE": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "ROW": {},
 	"SCOPE": {}, "SELECT": {}, "SEMANTICS": {}, "SET": {}, "SHOW": {}, "SPACE": {}, "START": {},
 	"COLUMN": {}, "COLUMNS": {}, "TABLE": {}, "TABLES": {}, "TO": {},
-	"TRANSACTION": {}, "TRUE": {}, "TRUSTED": {}, "UPDATE": {}, "USING": {}, "VALUES": {}, "VECTOR": {}, "WHERE": {}, "WIKI": {},
+	"TRANSACTION": {}, "TRUE": {}, "TRUSTED": {}, "UNARCHIVE": {}, "UPDATE": {}, "USING": {}, "VALUES": {},
+	"VECTOR": {}, "WHERE": {}, "WIKI": {}, "INCLUDING": {},
 	"RELATE": {}, "UNRELATE": {},
 }

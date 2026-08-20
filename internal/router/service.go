@@ -112,18 +112,26 @@ func (service *Service) CreateNodeIn(
 	if err := validateDefinition(definition); err != nil {
 		return Node{}, err
 	}
-	parent, err := getNode(ctx, tx, parentID)
+	parent, err := getNodeAny(ctx, tx, parentID)
 	if err != nil {
 		return Node{}, err
 	}
 	if parent.Kind == KindLeaf {
 		return Node{}, routerError(result.CodeConstraint, "Router leaf cannot contain child nodes")
 	}
+	if parent.Deleted {
+		return Node{}, routerError(result.CodeConstraint, "parent Router node is archived; UNARCHIVE it first")
+	}
 	children, err := loadStrings(ctx, tx, childrenBucket, parent.ID)
 	if err != nil {
 		return Node{}, err
 	}
-	if len(children) >= service.maxChildren {
+	live, err := service.liveChildCount(ctx, tx, children)
+	if err != nil {
+		return Node{}, err
+	}
+	// Archived siblings stay on disk but must not consume the fan-out budget.
+	if live >= service.maxChildren {
 		return Node{}, routerError(result.CodeConstraint, "Router child capacity exceeded; semantic split is required")
 	}
 	path := joinPath(parent.Path, definition.Name)
@@ -153,6 +161,20 @@ func (service *Service) CreateNodeIn(
 	return node, saveStrings(ctx, tx, childrenBucket, parent.ID, children)
 }
 
+func (service *Service) liveChildCount(ctx context.Context, tx store.Tx, ids []string) (int, error) {
+	live := 0
+	for _, id := range ids {
+		child, err := getNodeAny(ctx, tx, id)
+		if err != nil {
+			return 0, err
+		}
+		if !child.Deleted {
+			live++
+		}
+	}
+	return live, nil
+}
+
 func (service *Service) RenameIn(
 	ctx context.Context,
 	tx store.Tx,
@@ -162,12 +184,15 @@ func (service *Service) RenameIn(
 	if err := validateName(newName); err != nil {
 		return Node{}, err
 	}
-	node, err := getNode(ctx, tx, nodeID)
+	node, err := getNodeAny(ctx, tx, nodeID)
 	if err != nil {
 		return Node{}, err
 	}
 	if node.Kind == KindRoot {
 		return Node{}, routerError(result.CodeConstraint, "Router root cannot be renamed")
+	}
+	if node.Deleted {
+		return Node{}, routerError(result.CodeConstraint, "Router node is archived; UNARCHIVE it first")
 	}
 	if expectedRevision == 0 || node.Revision != expectedRevision {
 		return Node{}, routerError(result.CodeRevisionConflict, "Router node revision conflict")
@@ -239,7 +264,9 @@ func (service *Service) repathDescendants(
 		return err
 	}
 	for _, childID := range children {
-		child, err := getNode(ctx, tx, childID)
+		// Archived descendants are repathed too: their stored Path must stay
+		// correct so that restoring them later lands at the right place.
+		child, err := getNodeAny(ctx, tx, childID)
 		if err != nil {
 			return err
 		}
@@ -269,12 +296,15 @@ func (service *Service) ReplaceMembershipsIn(
 	}
 	leafIDs = uniqueSorted(leafIDs)
 	for _, leafID := range leafIDs {
-		leaf, err := getNode(ctx, tx, leafID)
+		leaf, err := getNodeAny(ctx, tx, leafID)
 		if err != nil {
 			return nil, err
 		}
 		if leaf.Kind != KindLeaf || leaf.DatabaseID != locator.DatabaseID {
 			return nil, routerError(result.CodeConstraint, "Router membership target must be a leaf in the same Database")
+		}
+		if leaf.Deleted {
+			return nil, routerError(result.CodeConstraint, "Router leaf is archived; UNARCHIVE it first")
 		}
 	}
 	reverseKey := locatorKey(locator)
@@ -357,58 +387,79 @@ func (service *Service) DeleteNodeIn(
 	if expectedRevision == 0 || node.Revision != expectedRevision {
 		return routerError(result.CodeRevisionConflict, "Router node revision conflict")
 	}
-	return service.deleteSubtree(ctx, tx, node)
+	return service.archiveSubtree(ctx, tx, node)
 }
 
-func (service *Service) deleteSubtree(ctx context.Context, tx store.Tx, node Node) error {
+// RestoreNodeIn un-archives a node. Archiving is a pure tombstone, so the
+// node's memberships and children links are still on disk and come back with
+// it. Descendants archived by the same subtree sweep are restored too; a
+// descendant archived by an earlier, separate decision stays archived only if
+// it is not part of this sweep — the sweep records nothing, so restoring is
+// symmetric with archiving and reverses exactly one operation's worth.
+func (service *Service) RestoreNodeIn(
+	ctx context.Context,
+	tx store.Tx,
+	nodeID string,
+	expectedRevision uint64,
+) error {
+	node, err := getNodeAny(ctx, tx, nodeID)
+	if err != nil {
+		return err
+	}
+	if !node.Deleted {
+		return routerError(result.CodeConstraint, "Router node is not archived")
+	}
+	if expectedRevision == 0 || node.Revision != expectedRevision {
+		return routerError(result.CodeRevisionConflict, "Router node revision conflict")
+	}
+	if node.ParentID != "" {
+		parent, err := getNodeAny(ctx, tx, node.ParentID)
+		if err != nil {
+			return err
+		}
+		if parent.Deleted {
+			return routerError(
+				result.CodeConstraint,
+				"parent Router node is archived; restore it first",
+			)
+		}
+	}
+	return service.setSubtreeArchived(ctx, tx, node, false)
+}
+
+// archiveSubtree marks a node and its descendants archived. It is deliberately
+// lossless: leaf locators, reverse memberships and the parent's children list
+// are left exactly as they are, so the semantic structure can be restored.
+// Visibility is decided by the Deleted flag at read time, never by unwiring.
+func (service *Service) archiveSubtree(ctx context.Context, tx store.Tx, node Node) error {
+	return service.setSubtreeArchived(ctx, tx, node, true)
+}
+
+func (service *Service) setSubtreeArchived(
+	ctx context.Context,
+	tx store.Tx,
+	node Node,
+	archived bool,
+) error {
 	children, err := loadStrings(ctx, tx, childrenBucket, node.ID)
 	if err != nil {
 		return err
 	}
 	for _, childID := range children {
-		child, err := getNode(ctx, tx, childID)
+		child, err := getNodeAny(ctx, tx, childID)
 		if err != nil {
 			return err
 		}
-		if err := service.deleteSubtree(ctx, tx, child); err != nil {
+		if child.Deleted == archived {
+			continue
+		}
+		if err := service.setSubtreeArchived(ctx, tx, child, archived); err != nil {
 			return err
 		}
 	}
-	if node.Kind == KindLeaf {
-		locators, err := loadLocators(ctx, tx, node.ID)
-		if err != nil {
-			return err
-		}
-		for _, locator := range locators {
-			key := locatorKey(locator)
-			leafIDs, err := loadStrings(ctx, tx, reverseBucket, key)
-			if err != nil {
-				return err
-			}
-			leafIDs = removeString(leafIDs, node.ID)
-			if err := saveStrings(ctx, tx, reverseBucket, key, leafIDs); err != nil {
-				return err
-			}
-		}
-		if err := saveLocators(ctx, tx, node.ID, []Locator{}); err != nil {
-			return err
-		}
-	}
-	node.Deleted = true
+	node.Deleted = archived
 	node.Revision++
-	if err := putNode(ctx, tx, node); err != nil {
-		return err
-	}
-	if node.ParentID != "" {
-		siblings, err := loadStrings(ctx, tx, childrenBucket, node.ParentID)
-		if err != nil {
-			return err
-		}
-		if err := saveStrings(ctx, tx, childrenBucket, node.ParentID, removeString(siblings, node.ID)); err != nil {
-			return err
-		}
-	}
-	return nil
+	return putNode(ctx, tx, node)
 }
 
 func (service *Service) Get(ctx context.Context, nodeID string) (Node, error) {
@@ -422,6 +473,21 @@ func (service *Service) Get(ctx context.Context, nodeID string) (Node, error) {
 
 func (service *Service) GetIn(ctx context.Context, tx store.Tx, nodeID string) (Node, error) {
 	return getNode(ctx, tx, nodeID)
+}
+
+// GetIncludingArchived reads a node whatever its archived state. Only UNARCHIVE
+// and archive-aware reads may use it.
+func (service *Service) GetIncludingArchived(ctx context.Context, nodeID string) (Node, error) {
+	tx, err := service.store.Begin(ctx, store.ReadOnly)
+	if err != nil {
+		return Node{}, stableError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return getNodeAny(ctx, tx, nodeID)
+}
+
+func (service *Service) GetIncludingArchivedIn(ctx context.Context, tx store.Tx, nodeID string) (Node, error) {
+	return getNodeAny(ctx, tx, nodeID)
 }
 
 func (service *Service) ResolvePath(ctx context.Context, databaseID, path string) (Node, error) {
@@ -500,12 +566,15 @@ func (service *Service) ListLeafCursorPageIn(
 	if limit < 1 || limit > maxPageSize {
 		return nil, ReadPage{}, routerError(result.CodeValidation, "Router leaf limit must be between 1 and 100")
 	}
-	node, err := getNode(ctx, tx, leafID)
+	node, err := getNodeAny(ctx, tx, leafID)
 	if err != nil {
 		return nil, ReadPage{}, err
 	}
 	if node.Kind != KindLeaf {
 		return nil, ReadPage{}, routerError(result.CodeConstraint, "Router node is not a leaf")
+	}
+	if node.Deleted {
+		return nil, ReadPage{}, routerError(result.CodeConstraint, "Router leaf is archived; UNARCHIVE it first")
 	}
 	locators, err := loadLocators(ctx, tx, leafID)
 	if err != nil {
@@ -550,7 +619,19 @@ func (service *Service) MembershipsForRowIn(
 	if err != nil {
 		return nil, err
 	}
-	return memberships(current, leafIDs), nil
+	// A membership survives archiving its leaf untouched; the leaf's state, not
+	// the membership's, decides whether it is visible.
+	live := make([]string, 0, len(leafIDs))
+	for _, leafID := range leafIDs {
+		leaf, err := getNodeAny(ctx, tx, leafID)
+		if err != nil {
+			return nil, err
+		}
+		if !leaf.Deleted {
+			live = append(live, leafID)
+		}
+	}
+	return memberships(current, live), nil
 }
 
 func (service *Service) ListChildren(
@@ -594,7 +675,7 @@ func (service *Service) ListChildrenPageIn(
 	if limit < 1 || limit > maxPageSize {
 		return nil, ReadPage{}, routerError(result.CodeValidation, "Router child limit must be between 1 and 100")
 	}
-	parent, err := getNode(ctx, tx, parentID)
+	parent, err := getNodeAny(ctx, tx, parentID)
 	if err != nil {
 		return nil, ReadPage{}, err
 	}
@@ -605,11 +686,17 @@ func (service *Service) ListChildrenPageIn(
 	if err != nil {
 		return nil, ReadPage{}, err
 	}
+	if parent.Deleted {
+		return nil, ReadPage{}, routerError(result.CodeConstraint, "Router node is archived; UNARCHIVE it first")
+	}
 	nodes := make([]Node, 0, len(ids))
 	for _, id := range ids {
-		node, err := getNode(ctx, tx, id)
+		node, err := getNodeAny(ctx, tx, id)
 		if err != nil {
 			return nil, ReadPage{}, err
+		}
+		if node.Deleted {
+			continue
 		}
 		nodes = append(nodes, node)
 	}
@@ -717,6 +804,21 @@ func putNode(ctx context.Context, tx store.Tx, node Node) error {
 }
 
 func getNode(ctx context.Context, tx store.Tx, nodeID string) (Node, error) {
+	node, err := getNodeAny(ctx, tx, nodeID)
+	if err != nil {
+		return Node{}, err
+	}
+	if node.Deleted {
+		return Node{}, routerError(result.CodeNotFound, "Router node was not found")
+	}
+	return node, nil
+}
+
+// getNodeAny reads a node regardless of its archived state. Archiving is a
+// tombstone, so structural work — counting live siblings, walking a subtree,
+// restoring — has to see archived nodes; only the live read surface uses
+// getNode, which hides them.
+func getNodeAny(ctx context.Context, tx store.Tx, nodeID string) (Node, error) {
 	encoded, err := tx.Get(ctx, nodeBucket, nodeID)
 	if errors.Is(err, store.ErrNotFound) {
 		return Node{}, routerError(result.CodeNotFound, "Router node was not found")
@@ -726,7 +828,7 @@ func getNode(ctx context.Context, tx store.Tx, nodeID string) (Node, error) {
 	}
 	var node Node
 	if decodeJSON(encoded, &node) != nil || node.Version != Version || node.ID != nodeID ||
-		node.DatabaseID == "" || node.Revision == 0 || node.Deleted {
+		node.DatabaseID == "" || node.Revision == 0 {
 		return Node{}, routerError(result.CodeNotFound, "Router node was not found")
 	}
 	return node, nil

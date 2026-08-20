@@ -232,6 +232,57 @@ func (engine *Engine) deleteRoute(
 	return routerRevisionMutationOutput(revision), nil
 }
 
+// archive runs ARCHIVE and UNARCHIVE. Archiving never destroys anything, so
+// UNARCHIVE is the exact inverse and both sides share this dispatch.
+func (engine *Engine) archive(
+	ctx context.Context,
+	statement *ast.ArchiveStatement,
+	bound bindings,
+	options MutationOptions,
+) (Output, error) {
+	switch statement.Object {
+	case "ROUTE":
+		return engine.archiveRoute(ctx, statement, bound, options)
+	default:
+		return Output{}, executeError(result.CodeValidation, "ARCHIVE object kind is unsupported")
+	}
+}
+
+func (engine *Engine) archiveRoute(
+	ctx context.Context,
+	statement *ast.ArchiveStatement,
+	bound bindings,
+	options MutationOptions,
+) (Output, error) {
+	if err := validateRouterMutationOptions(options, true); err != nil {
+		return Output{}, err
+	}
+	routeID, err := routerString(statement.Target, bound, "Router node ID")
+	if err != nil {
+		return Output{}, err
+	}
+	if !statement.Restore {
+		if _, err := routerString(statement.Reason, bound, "archive reason"); err != nil {
+			return Output{}, err
+		}
+	}
+	// UNARCHIVE has to authorize against a node the live surface hides, so the
+	// restore path resolves its Database through the archive-aware read.
+	lookup := engine.rows.GetRouterNode
+	mutate := engine.rows.DeleteRouterNode
+	if statement.Restore {
+		lookup, mutate = engine.rows.GetArchivedRouterNode, engine.rows.RestoreRouterNode
+	}
+	if err := engine.authorizeRouterNodeAtLevel(ctx, security.LevelStructural, routeID, lookup); err != nil {
+		return Output{}, err
+	}
+	revision, err := mutate(ctx, routeID, options.ExpectedRevision)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return routerRevisionMutationOutput(revision), nil
+}
+
 func (engine *Engine) showRoutes(
 	ctx context.Context,
 	statement ast.Statement,
@@ -410,11 +461,20 @@ func (engine *Engine) authorizeRouterID(ctx context.Context, routeID string) err
 }
 
 func (engine *Engine) authorizeRouterIDAtLevel(ctx context.Context, level security.RiskLevel, routeID string) error {
+	return engine.authorizeRouterNodeAtLevel(ctx, level, routeID, engine.rows.GetRouterNode)
+}
+
+func (engine *Engine) authorizeRouterNodeAtLevel(
+	ctx context.Context,
+	level security.RiskLevel,
+	routeID string,
+	lookup func(context.Context, string) (router.Node, error),
+) error {
 	_, authorized := security.AuthorizationFrom(ctx)
 	if !authorized && level == security.LevelRead {
 		return nil
 	}
-	node, err := engine.rows.GetRouterNode(ctx, routeID)
+	node, err := lookup(ctx, routeID)
 	if err != nil {
 		return normalizeError(err)
 	}

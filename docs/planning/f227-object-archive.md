@@ -24,24 +24,32 @@
 | 对象 | 归档 | 取消归档 | 列出已归档 | 差距 |
 |---|---|---|---|---|
 | Row | `DELETE FROM`（`State=deleted`） | 仅 `RESTORE … TO REVISION :n`，须先知道 revision | **无**（`includeDeleted` 只在 `row/service.go:140` 内部存在，MSQL 无入口） | 缺读面、缺直接逆操作 |
-| Route | `DELETE ROUTE`（`Deleted=true`） | **无** | 无 | **删除是有损的，见下** |
+| Route | `DELETE ROUTE`（`Deleted=true`） | **Stage 1 已加 `UNARCHIVE ROUTE`** | 无 | 三处可见性泄漏，Stage 1 已修，见下 |
 | Relation | `UNRELATE`（`StateDeleted`） | 无（只能重新 `RELATE`，换新身份） | 无 | 缺保持身份的逆操作 |
 | Column | `DROP_COLUMN` | 无，且明确 `Reversible=false` | 无 | 真的从 schema 移除，不是归档 |
 | Table | 无 | 无 | 无 | 整体缺失 |
 | Database | 无 | 无 | 无 | 整体缺失 |
 
-### 最重要的一条：`DELETE ROUTE` 现在是有损的
+### 关于 Route：一次记录订正
 
-`router.deleteSubtree`（`service.go:361`）在打 `Deleted=true` 之前做了两件销毁性的事：
+本文档初版称 `router.deleteSubtree`（`internal/router/service.go`）会清空 locator
+并摘除 children，因此"现有 `DELETE ROUTE` 是有损的"。**该结论只对了一半**：
+`internal/router` 与 `internal/row` 是一套平行实现，daemon 并不接线它
+（`daemon/lifecycle.go:198` 用的是 `nativerow` + `nativerouter`），
+所以那条有损路径不在真实运行路径上。
 
-- `saveLocators(ctx, tx, node.ID, []Locator{})` —— **叶子到 Row 的归属被清空**；
-- `saveStrings(childrenBucket, node.ParentID, removeString(siblings, node.ID))`
-  —— 从父节点的 children 列表里摘除。
+线上路径 `nativerow.DeleteRouterNode` 本来就只翻 `Deleted` 标志，是无损的。
+它真实存在的问题是另外三条**可见性泄漏**，都已在 Stage 1 修掉：
 
-所以节点虽然只是 tombstone，**语义结构已经不可复原**。
-在它满足不变量 1 之前，`DELETE ROUTE` 不能被称作归档。
-这是本轮最需要改的引擎代码：归档只翻 `Deleted` 标志，
-locator 与 children 链接原样保留，可见性交给过滤器。
+- `Roots(tableID)` 不过滤 `Deleted`，归档的 root 仍会被列出；
+- `openPage` 只检查 `Kind`，**`OPEN ROUTE` 能打开一个已归档的叶子**；
+- `membershipsForRow` 只看 membership 自己的 `Deleted`，
+  指向已归档叶子的归属照样返回。
+
+另外 `nodes()` 与 `StageNode` 都把"删除后还有修订"判为损坏，
+等于把删除写死成不可逆——`UNARCHIVE` 必须放开这一条（只允许纯还原）。
+平行实现里的有损 `deleteSubtree` 一并改成了无损 tombstone，
+不留一条"删除即销毁"的代码路径。
 
 ## 语法
 
@@ -130,8 +138,12 @@ Relation 端点解析／`SELECT`／Semantic Health 扫描，
 ## 分阶段
 
 - **Stage 0（已完成 2026-08-20）**：SKILL.md 写明容器当前不可删除。
-- **Stage 1**：`router.deleteSubtree` 改为无损 tombstone + `UNARCHIVE ROUTE`。
-  这是唯一一处现存的数据销毁，先修它。
+- **Stage 1（已完成 2026-08-20）**：Route 归档的可见性泄漏与不可逆性。
+  `Roots`／`openPage`／`membershipsForRow` 按 `Deleted` 过滤；
+  `nodes()`／`StageNode` 放开"归档后只允许纯还原"；新增
+  `ARCHIVE ROUTE :id REASON :r` 与 `UNARCHIVE ROUTE :id`（L2，走 `ExpectedRevision`）；
+  归档的兄弟节点不再占用 fan-out 名额；平行实现的有损 `deleteSubtree`
+  一并改为无损 tombstone。
 - **Stage 2**：Catalog 归档字段（`archived_at`/`archived_reason`）+
   Table/Database 的 `ARCHIVE`/`UNARCHIVE` + 可见性过滤全清单 + 写入拒绝。
 - **Stage 3**：`INCLUDING ARCHIVED` 修饰词铺到全部读面；
@@ -153,8 +165,9 @@ Relation 端点解析／`SELECT`／Semantic Health 扫描，
 
 ## RED 与完成门
 
-- RED 先证明：`DELETE ROUTE` 之后 leaf 的 locator 已被清空、
-  父节点 children 已摘除，即当前归档是有损的；
+- RED 先证明（Stage 1，已完成）：归档一个叶子后 `OPEN ROUTE` 仍打得开、
+  `Roots` 仍列出归档的 root、指向归档叶子的 membership 仍返回、
+  且 `StageNode` 拒绝任何还原；
 - RED 先证明：`DROP TABLE` / `DROP DATABASE` 是 `unsupported_statement`；
 - 归档后：`SHOW TABLES`／Catalog Atlas／Bootstrap Frame／
   `SHOW LEXICAL LOCATIONS FROM ALL TABLES`／别名解析／`OPEN ROUTE`

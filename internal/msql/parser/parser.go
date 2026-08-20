@@ -93,6 +93,10 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		} else {
 			statement, err = parser.parseRestore()
 		}
+	case parser.matchWord("ARCHIVE"):
+		statement, err = parser.parseArchive(false)
+	case parser.matchWord("UNARCHIVE"):
+		statement, err = parser.parseArchive(true)
 	case parser.matchWord("SPLIT"):
 		statement, err = parser.parseSplit()
 	case parser.matchWord("MERGE"):
@@ -1239,6 +1243,42 @@ func (parser *parser) parseDelete() (ast.Statement, error) {
 		deleteStatement.Where = &where
 	}
 	return ast.Statement{Kind: "DELETE", Delete: deleteStatement}, nil
+}
+
+// parseArchive parses ARCHIVE and UNARCHIVE. Archiving is Memora's only delete
+// semantics; each object kind resolves its target differently, so the grammar
+// branches on the kind keyword rather than sharing one target rule.
+func (parser *parser) parseArchive(restore bool) (ast.Statement, error) {
+	statement := &ast.ArchiveStatement{Restore: restore}
+	switch {
+	case parser.matchWord("ROUTE"):
+		statement.Object = "ROUTE"
+		target, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Target = &target
+	default:
+		return ast.Statement{}, parser.unexpected("ROUTE")
+	}
+	if parser.matchWord("REASON") {
+		reason, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Reason = &reason
+	}
+	if !restore && statement.Reason == nil {
+		return ast.Statement{}, parser.unexpected("REASON")
+	}
+	return ast.Statement{Kind: archiveStatementKind(restore), Archive: statement}, nil
+}
+
+func archiveStatementKind(restore bool) string {
+	if restore {
+		return "UNARCHIVE"
+	}
+	return "ARCHIVE"
 }
 
 func (parser *parser) parseRestore() (ast.Statement, error) {

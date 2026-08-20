@@ -33,6 +33,7 @@ type Statement struct {
 	RenameRoute   *RenameRouteStatement        `json:"rename_route,omitempty"`
 	UpdateRoute   *UpdateRouteStatement        `json:"update_route,omitempty"`
 	DeleteRoute   *DeleteRouteStatement        `json:"delete_route,omitempty"`
+	Archive       *ArchiveStatement            `json:"archive,omitempty"`
 	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
@@ -202,6 +203,18 @@ type UpdateRouteStatement struct {
 
 type DeleteRouteStatement struct {
 	Route *Expression `json:"route"`
+}
+
+// ArchiveStatement carries both ARCHIVE and UNARCHIVE for every archivable
+// object kind. Archiving is Memora's only delete semantics, so one node keeps
+// the risk classification, batch dispatch and authorization scope in one place
+// instead of one statement type per object.
+type ArchiveStatement struct {
+	Restore bool        `json:"restore,omitempty"`
+	Object  string      `json:"object"`
+	Name    Name        `json:"name,omitempty"`
+	Target  *Expression `json:"target,omitempty"`
+	Reason  *Expression `json:"reason,omitempty"`
 }
 
 type OpenRouteStatement struct {
@@ -393,6 +406,9 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.UpdateRoute.Aliases)
 	case statement.DeleteRoute != nil:
 		appendExpression(statement.DeleteRoute.Route)
+	case statement.Archive != nil:
+		appendExpression(statement.Archive.Target)
+		appendExpression(statement.Archive.Reason)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
 		appendExpression(statement.Show.Route)
 		appendExpression(statement.Show.Cursor)

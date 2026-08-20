@@ -425,7 +425,13 @@ func (transaction *Transaction) RenameRouterNode(context.Context, string, string
 func (transaction *Transaction) DeleteRouterNode(context.Context, string, uint64) (uint64, error) {
 	return 0, transactionFailure(result.CodeUnsupported, "Route mutations are not supported inside an explicit transaction", nil)
 }
+func (transaction *Transaction) RestoreRouterNode(context.Context, string, uint64) (uint64, error) {
+	return 0, transactionFailure(result.CodeUnsupported, "Route mutations are not supported inside an explicit transaction", nil)
+}
 func (transaction *Transaction) GetRouterNode(context.Context, string) (router.Node, error) {
+	return router.Node{}, transactionFailure(result.CodeUnsupported, "Route mutations are not supported inside an explicit transaction", nil)
+}
+func (transaction *Transaction) GetArchivedRouterNode(context.Context, string) (router.Node, error) {
 	return router.Node{}, transactionFailure(result.CodeUnsupported, "Route mutations are not supported inside an explicit transaction", nil)
 }
 func (transaction *Transaction) ListRouterChildrenPage(context.Context, string, string, int) ([]router.Node, router.ReadPage, error) {

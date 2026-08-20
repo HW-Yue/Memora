@@ -85,7 +85,7 @@ func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 		return security.LevelWrite
 	case statement.Create != nil, statement.Alter != nil, statement.Reshape != nil,
 		statement.CreateRoute != nil, statement.RenameRoute != nil,
-		statement.UpdateRoute != nil, statement.DeleteRoute != nil,
+		statement.UpdateRoute != nil, statement.DeleteRoute != nil, statement.Archive != nil,
 		statement.ApplyRoute != nil, statement.ApplySchema != nil,
 		statement.Configuration != nil,
 		statement.Rebuild != nil,

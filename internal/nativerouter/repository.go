@@ -174,9 +174,12 @@ func (repository *Repository) StageNode(transaction *nativestore.Transaction, va
 	if err != nil {
 		return err
 	}
-	if latest.Deleted || value.Revision != latest.Revision+1 || value.DatabaseID != latest.DatabaseID ||
+	if value.Revision != latest.Revision+1 || value.DatabaseID != latest.DatabaseID ||
 		value.TableID != latest.TableID || value.ParentID != latest.ParentID || value.Kind != latest.Kind {
 		return fmt.Errorf("%w: route revision conflicts with latest", ErrInvalid)
+	}
+	if latest.Deleted && !restoresNode(latest, value) {
+		return fmt.Errorf("%w: an archived Route may only be restored, not edited", ErrInvalid)
 	}
 	if err := validateSynopsis(value.Synopsis); err != nil {
 		return err
@@ -307,11 +310,39 @@ func (repository *Repository) Get(id string) (router.Node, error) {
 	return latest, nil
 }
 
+// restoresNode reports whether next is the pure un-archive of an archived
+// current: the Deleted flag drops and nothing else moves. Restoring must never
+// smuggle an edit past the revision chain, so every other field is compared.
+func restoresNode(current, next router.Node) bool {
+	if next.Deleted {
+		return false
+	}
+	candidate := next
+	candidate.Revision, candidate.Deleted = current.Revision, current.Deleted
+	return sameNodeContent(current, candidate)
+}
+
+func sameNodeContent(left, right router.Node) bool {
+	if left.Version != right.Version || left.ID != right.ID || left.DatabaseID != right.DatabaseID ||
+		left.TableID != right.TableID || left.ParentID != right.ParentID || left.Name != right.Name ||
+		left.Path != right.Path || left.Kind != right.Kind || left.Purpose != right.Purpose ||
+		left.Synopsis != right.Synopsis || left.Revision != right.Revision || left.Deleted != right.Deleted ||
+		len(left.Aliases) != len(right.Aliases) {
+		return false
+	}
+	for index := range left.Aliases {
+		if left.Aliases[index] != right.Aliases[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func (repository *Repository) Roots(tableID string) []router.Node {
 	nodes, _ := repository.nodes()
 	result := make([]router.Node, 0, 1)
 	for _, node := range nodes {
-		if node.TableID == tableID && node.Kind == router.KindRoot {
+		if node.TableID == tableID && node.Kind == router.KindRoot && !node.Deleted {
 			result = append(result, node)
 		}
 	}
@@ -361,22 +392,30 @@ func (repository *Repository) Open(leafID string, limit int) ([]router.Locator, 
 }
 
 func (repository *Repository) OpenPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
-	return repository.openPage(leafID, cursor, limit, true)
+	return repository.openPage(leafID, cursor, limit, true, false)
 }
 
 // InspectLeafPage is a maintenance-only read used to diagnose and monotonically
-// repair legacy multi-Row leaves. Normal Router reads must use OpenPage.
+// repair legacy multi-Row leaves, and to read an archived leaf that OpenPage
+// deliberately hides. Normal Router reads must use OpenPage.
 func (repository *Repository) InspectLeafPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
-	return repository.openPage(leafID, cursor, limit, false)
+	return repository.openPage(leafID, cursor, limit, false, true)
 }
 
-func (repository *Repository) openPage(leafID, cursor string, limit int, enforceSingleRow bool) ([]router.Locator, router.ReadPage, error) {
+func (repository *Repository) openPage(
+	leafID, cursor string,
+	limit int,
+	enforceSingleRow, includeArchived bool,
+) ([]router.Locator, router.ReadPage, error) {
 	leaf, err := repository.Get(leafID)
 	if err != nil {
 		return nil, router.ReadPage{}, err
 	}
 	if leaf.Kind != router.KindLeaf || limit < 1 || limit > 1000 {
 		return nil, router.ReadPage{}, fmt.Errorf("%w: OPEN requires a leaf and valid limit", ErrInvalid)
+	}
+	if leaf.Deleted && !includeArchived {
+		return nil, router.ReadPage{}, fmt.Errorf("%w: Route leaf is archived; UNARCHIVE it first", ErrInvalid)
 	}
 	memberships, err := repository.memberships()
 	if err != nil {
@@ -489,9 +528,23 @@ func (repository *Repository) membershipsForRow(rowID string, includeDeleted boo
 			latest[key] = value
 		}
 	}
+	archivedLeaves := map[string]bool{}
+	if !includeDeleted {
+		nodes, err := repository.nodes()
+		if err != nil {
+			return nil, err
+		}
+		for _, node := range nodes {
+			if node.Deleted {
+				archivedLeaves[node.ID] = true
+			}
+		}
+	}
 	result := make([]router.Membership, 0, len(latest))
 	for _, value := range latest {
-		if includeDeleted || !value.Deleted {
+		// A membership survives archiving its leaf untouched; it is the leaf's
+		// state, not the membership's, that decides whether it is visible.
+		if includeDeleted || (!value.Deleted && !archivedLeaves[value.LeafID]) {
 			result = append(result, value)
 		}
 	}
@@ -557,10 +610,15 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 				continue
 			}
 			previous := history[index-1]
-			if previous.Deleted || value.Version != previous.Version ||
+			if value.Version != previous.Version ||
 				value.DatabaseID != previous.DatabaseID || value.TableID != previous.TableID ||
 				value.Kind != previous.Kind {
 				return nil, fmt.Errorf("%w: Route %q revision identity", ErrCorrupt, id)
+			}
+			// An archived revision may be followed only by its own restore.
+			// Everything else after an archive is a corrupt chain.
+			if previous.Deleted && !restoresNode(previous, value) {
+				return nil, fmt.Errorf("%w: Route %q revision after archive", ErrCorrupt, id)
 			}
 		}
 		result = append(result, history[len(history)-1])

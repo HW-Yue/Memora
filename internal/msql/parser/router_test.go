@@ -46,6 +46,16 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			parameters: 1,
 		},
 		{
+			source:     "ARCHIVE ROUTE :route REASON :reason",
+			kind:       "ARCHIVE",
+			parameters: 2,
+		},
+		{
+			source:     "UNARCHIVE ROUTE :route",
+			kind:       "UNARCHIVE",
+			parameters: 1,
+		},
+		{
 			source:     "SHOW ROUTES UNDER :parent CURSOR :cursor LIMIT :limit",
 			kind:       "SHOW",
 			parameters: 3,
@@ -131,6 +141,11 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 		"ALTER ROUTE :route SET ALIASES",
 		"ALTER ROUTE :route SET UNKNOWN :value",
 		"DELETE ROUTE",
+		"ARCHIVE ROUTE :route",
+		"ARCHIVE ROUTE",
+		"ARCHIVE TABLE work.notes REASON :reason",
+		"UNARCHIVE ROUTE",
+		"UNARCHIVE DATABASE work",
 		"SHOW ROUTES FROM TABLE work.notes LIMIT 10",
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :query LIMIT 8",
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING VECTOR :query LIMIT 8 BYTES 4096",
