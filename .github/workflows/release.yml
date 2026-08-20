@@ -397,13 +397,16 @@ jobs:
           fi
 
           cd "$mirror"
-          if git diff --quiet && git diff --cached --quiet; then
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Stage first, then ask. `git diff` cannot see untracked files, so
+          # checking before staging silently skips a release whose only change
+          # is a newly added Skill file.
+          git add -A
+          if git diff --cached --quiet; then
             printf 'Skill mirror already matches %s; nothing to publish\n' "$RELEASE_TAG"
             exit 0
           fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
           git commit \
             -m "sync: Memora ${RELEASE_TAG} canonical Skill" \
             -m "Source: HW-Yue/Memora@${RELEASE_COMMIT} (${RELEASE_TAG})" \
