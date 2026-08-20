@@ -160,10 +160,13 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - F224 候选：Row 必须可导航；写入时强制至少一个 Route 归属，杜绝语义上不可达的孤儿 Row。
 - F225 候选：Row 必须可展示；写入时强制 summary role 列非空。SKILL.md 强约束已落地，引擎侧待实现。
 - F226：Stage 1（poison 按库收敛）已实现；Stage 2（按库拆分文件）已评估并延后，见上表。
-- [F227](./f227-object-deletion.md) 候选：Row/Table/Database 的删除。Row、Route、Relation、
+- [F227](./f227-object-deletion.md) 候选：Table / Database 归档。Row、Route、Relation、
   Column 已可删；**Table 与 Database 完全不可删除**，`DROP` 不是 parser 接受的语句。
-  方案为 tombstone → 保留期 → PURGE，容器可见性不下沉到每一行，走 `PLAN DROP`／`APPLY DROP`
-  两阶段哈希绑定审批。Stage 0（SKILL.md 说明当前不可删）已随本条落地。
+  方案定为**只归档不物理删除**：动词是 `ARCHIVE`/`UNARCHIVE` 而非 `DROP`，单条 L2 语句
+  （完全可逆，因此不需要 `PLAN`/`APPLY` 两阶段审批）；可见性由容器状态决定，不下沉到每一行，
+  归档只产生 1 条 change log 且 Row `revision` 不变；Admin UI 增"已归档"区。
+  真正的物理擦除是产品级问题（Row `DELETE` 同样保留 History），单独立项。
+  Stage 0（SKILL.md 说明当前不可删）已落地。
 - F223 已实现：Route Branch Fan-out 硬上限；`route_policy.branch_fanout` 启动默认 12，
   `CREATE ROUTE`、Route Mutation Plan 与 Semantic Health 统一读取本库值，越界一律失败并在
   信封里给出重构子树与提高上限两条可执行出路。取代下面「Database 级 Route Branch 自治
