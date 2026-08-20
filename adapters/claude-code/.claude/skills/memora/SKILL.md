@@ -297,7 +297,32 @@ SPLIT is one UPDATE plus INSERT steps. Keep at most eight steps. Every INSERT or
 UPDATE supplies the complete `route_leaf_ids` snapshot with at least one leaf.
 A Row with no Route membership can never be reached by semantic navigation, so
 an empty array is not a valid snapshot: attach an existing empty leaf, or create
-the leaf first. Before attaching a new Row, verify that every target leaf is empty;
+the leaf first.
+
+### Create the Route leaf you are about to write into
+
+Discovery statements (`SHOW ROUTES`, `OPEN ROUTE`) only navigate an existing
+tree. Creating the semantic index itself uses `CREATE ROUTE`, which runs at
+risk level **L2** — the L1 level used for Row writes is refused:
+
+```text
+CREATE ROUTE ROOT FOR TABLE <db>.<table> PURPOSE :purpose [SYNOPSIS :synopsis]
+CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose [SYNOPSIS :synopsis]
+```
+
+`KIND` is `'branch'` for a grouping node and `'leaf'` for a node that locates a
+Row. Both forms return the new `route_id`; pass that id in the Row write's
+`route_leaf_ids`. A Table needs its root once, then one leaf per Row.
+
+A leaf holds at most one live Row, so a new Row needs its own leaf: check the
+target leaf is empty with `OPEN ROUTE`, and create a sibling when it is taken.
+When a parent already carries `route_policy.branch_fanout` live children the
+create fails; decide between restructuring the subtree and raising the limit,
+which moves by at most 4 per change.
+
+```sh
+memora exec --input '{"mutation":{"expected_schema_version":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"new semantic leaf"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "CREATE ROUTE UNDER :parent NAME 'agent-loop' KIND 'leaf' PURPOSE 'Agent loop decisions'"
+``` Before attaching a new Row, verify that every target leaf is empty;
 an occupied leaf requires a new semantic leaf, while the same Row may still use
 multiple distinct leaves. Submit the plan through `mutate` so
 Policy validation occurs before any Tool call and multi-step changes share one

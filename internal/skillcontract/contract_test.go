@@ -288,3 +288,25 @@ func repositoryRoot(t *testing.T) string {
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
+
+// TestCanonicalSkillDocumentsRouteCreation guards a gap that made the Skill
+// unusable in practice: SKILL.md documented only Route discovery, so an Agent
+// asked to supply route_leaf_ids had no way to learn how a Route is created,
+// nor that creation runs at L2 while Row writes run at L1.
+func TestCanonicalSkillDocumentsRouteCreation(t *testing.T) {
+	t.Parallel()
+
+	bundle, err := skillcontract.Load(filepath.Join(repositoryRoot(t), "skills", "memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"CREATE ROUTE ROOT FOR TABLE",
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
+		"risk level **L2**",
+	} {
+		if !strings.Contains(bundle.Markdown, required) {
+			t.Errorf("SKILL.md does not document %q", required)
+		}
+	}
+}
