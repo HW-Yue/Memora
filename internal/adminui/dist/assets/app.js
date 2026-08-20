@@ -7,6 +7,13 @@ import { renderTraces } from "./traces.js?v=3";
 
 let csrfToken = "";
 let sessionReady = false;
+// Archive mode is deliberately in-memory only. A remembered "show deleted
+// things" switch eventually has someone making a decision in the wrong view;
+// a refresh always lands back on the live Catalog.
+let archiveMode = false;
+
+const archiveToggle = document.querySelector("[data-archive-toggle]");
+const archiveBadge = document.querySelector("[data-archive-badge]");
 
 const sessionCard = document.querySelector("[data-session-state]");
 const statusTitle = document.querySelector("[data-status-title]");
@@ -76,6 +83,20 @@ export async function executeMSQL(source, statements = []) {
   return response.json();
 }
 
+function applyArchiveMode() {
+  document.body.classList.toggle("archive-mode", archiveMode);
+  if (archiveToggle) archiveToggle.setAttribute("aria-pressed", archiveMode ? "true" : "false");
+  if (archiveBadge) archiveBadge.hidden = !archiveMode;
+}
+
+if (archiveToggle) {
+  archiveToggle.addEventListener("click", () => {
+    archiveMode = !archiveMode;
+    applyArchiveMode();
+    renderCurrentRoute();
+  });
+}
+
 function updateNavigation(section) {
   for (const link of document.querySelectorAll("[data-nav]")) {
     link.classList.toggle("is-current", link.dataset.nav === section);
@@ -102,6 +123,7 @@ async function renderCurrentRoute() {
     await renderCatalog(routeOutlet, {
       path,
       executeMSQL,
+      archiveMode,
       isCurrent: () => window.location.pathname === path
     });
     return;
@@ -121,6 +143,7 @@ async function renderCurrentRoute() {
     await renderRoutes(routeOutlet, {
       path,
       executeMSQL,
+      archiveMode,
       isCurrent: () => window.location.pathname === path
     });
     return;
@@ -136,6 +159,7 @@ async function renderCurrentRoute() {
     await renderRow(routeOutlet, {
       path,
       executeMSQL,
+      archiveMode,
       isCurrent: () => window.location.pathname === path
     });
     return;
@@ -151,6 +175,7 @@ async function renderCurrentRoute() {
     await renderChanges(routeOutlet, {
       path,
       executeMSQL,
+      archiveMode,
       isCurrent: () => window.location.pathname === path
     });
     return;
@@ -166,6 +191,7 @@ async function renderCurrentRoute() {
     await renderDiff(routeOutlet, {
       path,
       executeMSQL,
+      archiveMode,
       isCurrent: () => window.location.pathname === path
     });
     return;
@@ -181,6 +207,7 @@ async function renderCurrentRoute() {
     await renderTraces(routeOutlet, {
       path,
       executeMSQL,
+      archiveMode,
       isCurrent: () => window.location.pathname === path
     });
     return;

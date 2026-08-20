@@ -118,7 +118,7 @@ func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	}
 	javascript := string(traces)
 	for _, required := range []string{
-		"SHOW DATABASES LIMIT 32 COMPACT", "DESCRIBE DATABASE", "SHOW ROUTE TRACES IN DATABASE",
+		"SHOW DATABASES LIMIT 32", "DESCRIBE DATABASE", "SHOW ROUTE TRACES IN DATABASE",
 		"CURSOR :cursor LIMIT 20", "SHOW ROUTE TRACE :trace IN DATABASE", "LIMIT 24",
 		"CURSOR :cursor LIMIT 24", "parameters", "named", "trace_id", "trace_sequence",
 		"database_id", "anti_scope", "row.anti_scope !== undefined", "table_id",
@@ -213,7 +213,7 @@ func TestChangeTimelineModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	}
 	javascript := string(changes)
 	for _, required := range []string{
-		"SHOW DATABASES LIMIT 32 COMPACT", "DESCRIBE DATABASE", "SHOW CHANGES IN DATABASE",
+		"SHOW DATABASES LIMIT 32", "DESCRIBE DATABASE", "SHOW CHANGES IN DATABASE",
 		"CURSOR :cursor LIMIT 20", "SHOW CHANGE :transaction IN DATABASE", "LIMIT 32",
 		"CURSOR :cursor LIMIT 32", "parameters", "named", "transaction_id", "commit_sequence",
 		"database_ids", "anti_scope", "row.anti_scope !== undefined", "entry_count", "object_kind",
@@ -516,12 +516,16 @@ func TestCatalogModuleUsesBoundedStableIDMSQLAndDefinesEveryPageState(t *testing
 	}
 	javascript := string(catalog)
 	for _, required := range []string{
-		"SHOW DATABASES LIMIT 32 COMPACT",
+		"SHOW DATABASES LIMIT 32",
 		"DESCRIBE DATABASE",
 		"SHOW TABLES FROM",
 		"DESCRIBE TABLE",
 		"SHOW COLUMNS FROM",
-		"CURSOR :cursor LIMIT 32 COMPACT",
+		"CURSOR :cursor LIMIT 32",
+		// The archive modifier is spelled in exactly one helper; a per-call-site
+		// copy would let one missed spot silently return the live-only answer.
+		"INCLUDING ARCHIVED",
+		"function archived(archiveMode)",
 		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
 		`replaceAll('"', '""')`,
 	} {
@@ -632,4 +636,59 @@ func copyEmbeddedFiles(t *testing.T) fstest.MapFS {
 		t.Fatal(err)
 	}
 	return files
+}
+
+// TestArchiveModeIsExplicitGlobalAndNotRemembered pins the front-end half of
+// F227. The engine already refuses to hand an archived object to a read that
+// did not ask for it, so the UI cannot leak one by forgetting a filter; what
+// the UI still owns is making the mode obvious, global, and temporary.
+func TestArchiveModeIsExplicitGlobalAndNotRemembered(t *testing.T) {
+	t.Parallel()
+
+	shell, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"data-archive-toggle", "data-archive-badge", `aria-pressed="false"`} {
+		if !strings.Contains(string(shell), required) {
+			t.Errorf("Admin shell is missing %q", required)
+		}
+	}
+
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(app)
+	for _, required := range []string{
+		"let archiveMode = false;", // starts off on every load
+		"archive-mode",             // a site-wide marker, not a per-page hint
+		"applyArchiveMode",
+		"archiveMode,", // handed to every view from one place
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Admin shell script is missing %q", required)
+		}
+	}
+	// A remembered "show archived" switch eventually has someone deciding in
+	// the wrong view. The forbidden-storage check in the asset sweep covers
+	// localStorage and sessionStorage; this pins the cookie route too.
+	for _, forbidden := range []string{"localStorage", "sessionStorage", "document.cookie"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("archive mode must not be persisted, found %q", forbidden)
+		}
+	}
+
+	catalog, err := fs.ReadFile(embeddedFiles, "dist/assets/catalog.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One helper spells the modifier; every loader calls it. Counting keeps a
+	// future loader from hand-rolling the string and missing the mode.
+	if strings.Count(string(catalog), `" INCLUDING ARCHIVED"`) != 1 {
+		t.Error("the archive modifier must be spelled in exactly one helper")
+	}
+	if !strings.Contains(string(catalog), "archiveNote") {
+		t.Error("an archived object reached by deep link must be explained in place")
+	}
 }

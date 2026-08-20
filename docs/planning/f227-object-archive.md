@@ -152,14 +152,20 @@ Relation 端点解析／`SELECT`／Semantic Health 扫描，
   `SHOW`／Row 服务）自动生效，不必逐处记住规则；`ShowDatabases`／`ShowTables` 过滤，
   `Describe/ShowArchived*` 是唯一的穿透读。归档**不改 Row**，实测 `revision` 不变。
   **归档不自增 SchemaVersion**——那会被误当成 schema 变更（详见下方"一个前置缺陷"）。
-- **Stage 3**：`INCLUDING ARCHIVED` 修饰词铺到全部读面；
-  `ARCHIVE ROW`/`ARCHIVE RELATION` 作为保持身份的直接逆操作。
+- **Stage 3（部分完成 2026-08-20）**：`INCLUDING ARCHIVED` 已铺到
+  `SHOW DATABASES`／`SHOW TABLES`／`DESCRIBE DATABASE`／`DESCRIBE TABLE`，
+  只放宽出现它的那一条语句，后端能力用可选接口断言、不支持就明确报错。
+  **未做**：`ARCHIVE ROW`／`ARCHIVE RELATION` 这两个保持身份的直接逆操作——
+  Row 的 `DELETE` 目前会把 Route 归属清空为 `[]`（`nativerow/service.go` 的
+  `emptyRoutes`），Relation 的 `StageRelation` 也把「删除后还有修订」判为冲突，
+  两者都要先改成无损，与 Stage 1 对 Route 做的是同一类改动。
 - **Stage 4**：`ARCHIVE COLUMN`，`DROP_COLUMN` 重定义为它的别名，
   移除 `Reversible=false`。
 - **Stage 5**：change log `object_archived`、`archived_container` 健康项、
   F224/F225 归档豁免。
-- **Stage 6**：[Admin UI](./f227-archive-admin-ui.md)、CLI 子命令、
-  SKILL.md 与两个 adapter。
+- **Stage 6（Admin UI 已完成 2026-08-20）**：[Admin UI](./f227-archive-admin-ui.md)
+  的全局归档模式、站点标识、不持久化与深链接说明已落地；Gateway 只读，
+  前端不代为执行归档。**未做**：CLI 子命令、SKILL.md 与两个 adapter。
 
 ## 一个前置缺陷（已单独修复）
 

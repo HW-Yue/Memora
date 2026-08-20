@@ -19,12 +19,16 @@
           <span>Memora Admin</span>
         </a>
         <div class="local-badge" title="本地只读">只读</div>
+        <div class="archive-badge" data-archive-badge hidden>正在查看已归档对象</div>
       </header>
       <div class="workspace">
         <nav class="sidebar" aria-label="Admin 导航">
           <a class="nav-item" href="/catalog" data-route data-nav="catalog">Catalog</a>
           <a class="nav-item" href="/changes" data-route data-nav="changes">Changes</a>
           <a class="nav-item" href="/traces" data-route data-nav="traces">Route Traces</a>
+          <button class="nav-item nav-toggle" type="button" data-archive-toggle aria-pressed="false">
+            已归档
+          </button>
         </nav>
         <main class="content" id="app-shell">
           <section class="session-card" aria-live="polite" data-session-state="bootstrapping">

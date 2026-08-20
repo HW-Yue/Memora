@@ -18,6 +18,13 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
 .sidebar { padding: 30px 18px; border-right: 1px solid #d5dad4; background: rgb(247 247 242 / 74%); }
 .nav-item { display: block; margin: 3px 0; padding: 10px 12px; border-radius: 8px; color: #69736e; font-size: 14px; text-decoration: none; }
 .nav-item.is-current { color: #244f3d; background: #dfebe0; font-weight: 700; }
+.nav-toggle { width: 100%; margin-top: 16px; border: 1px dashed #c0c7bf; background: none; font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.nav-toggle[aria-pressed="true"] { color: #6b4a12; border-style: solid; border-color: #d8bf7d; background: #fbf1d9; font-weight: 700; }
+.archive-badge { border: 1px solid #d8bf7d; border-radius: 999px; padding: 6px 11px; color: #6b4a12; background: #fbf1d9; font-size: 12px; font-weight: 650; }
+body.archive-mode { box-shadow: inset 0 4px 0 #d8bf7d; }
+.archive-note { margin: 0 0 20px; padding: 12px 14px; border: 1px solid #d8bf7d; border-left-width: 4px; border-radius: 10px; background: #fbf1d9; color: #6b4a12; font-size: 13px; }
+.archive-note strong { display: block; margin-bottom: 4px; font-size: 14px; }
+.archive-note code { display: block; margin-top: 8px; padding: 8px 10px; border-radius: 7px; background: rgb(255 255 252 / 70%); font-family: ui-monospace, monospace; font-size: 12px; overflow-x: auto; white-space: pre; }
 .content { width: min(920px, 100%); padding: 72px clamp(28px, 6vw, 86px); }
 .session-card { display: flex; gap: 14px; align-items: flex-start; margin-top: 42px; max-width: 620px; padding: 18px 20px; border: 1px solid #cbd4cc; border-radius: 14px; background: rgb(255 255 252 / 76%); box-shadow: 0 16px 44px rgb(42 66 54 / 8%); }
 .status-dot { width: 10px; height: 10px; flex: 0 0 auto; margin-top: 6px; border-radius: 50%; background: #c3982e; box-shadow: 0 0 0 5px rgb(195 152 46 / 13%); }
@@ -270,6 +277,8 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
   .shell { background: radial-gradient(circle at 72% 18%, #203b2c 0, transparent 35%), #111713; }
   .topbar, .sidebar { background: rgb(17 23 19 / 90%); border-color: #334039; }
   .local-badge, .nav-item.is-current { color: #b9dfc6; background: #223b2d; border-color: #3d5949; }
+  .nav-toggle[aria-pressed="true"], .archive-badge, .archive-note { color: #f0d9a4; background: #3a2f16; border-color: #6b5828; }
+  .archive-note code { background: rgb(20 24 20 / 60%); }
   .nav-item, .lede, .status-detail, .route-outlet { color: #aab7b0; }
   .session-card { background: rgb(25 34 29 / 85%); border-color: #3a4940; }
   .route-outlet { background: rgb(20 28 23 / 70%); border-color: #465249; }

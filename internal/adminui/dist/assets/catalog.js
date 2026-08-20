@@ -290,16 +290,49 @@ function listSectionContinuation(kind, rows, hrefFor, page, loadMore) {
   return button;
 }
 
-async function loadRoot(executeMSQL, cursor = "") {
-  const source = cursor ? "SHOW DATABASES CURSOR :cursor LIMIT 32 COMPACT" : "SHOW DATABASES LIMIT 32 COMPACT";
+// archived() is the single place the archive modifier is spelled. Writing it
+// per call site would mean one missed spot silently returns the live-only
+// answer, which is the failure mode the archive rule cannot tolerate.
+function archived(archiveMode) {
+  return archiveMode ? " INCLUDING ARCHIVED" : "";
+}
+
+// archiveNote explains an archived object in place. Reaching one by deep link
+// must never 404 and must never render as if it were live; it also has to say
+// which level holds the archive, because the usual next question after "this
+// Row is archived" is "I never archived it".
+function archiveNote(object, kind, blockedByAncestor) {
+  if (!object || !object.archived_at) return null;
+  const note = element("div", "archive-note");
+  const title = element("strong");
+  title.textContent = blockedByAncestor ? "已归档（由上级 Database 连带隐藏）" : "已归档";
+  const detail = element("p");
+  detail.textContent = `归档于 ${object.archived_at}${object.archived_reason ? `，原因：${object.archived_reason}` : ""}`;
+  detail.style.margin = "0";
+  const how = element("code");
+  // The Admin gateway is read-only by design, so the page shows the exact
+  // statement instead of offering a button it is not allowed to run.
+  how.textContent = kind === "database"
+    ? `UNARCHIVE DATABASE ${object.name}`
+    : `UNARCHIVE TABLE ${object.database_id}.${object.name}`;
+  note.append(title, detail, how);
+  return note;
+}
+
+async function loadRoot(executeMSQL, archiveMode, cursor = "") {
+  const scope = archived(archiveMode);
+  const source = cursor
+    ? `SHOW DATABASES CURSOR :cursor LIMIT 32${scope} COMPACT`
+    : `SHOW DATABASES LIMIT 32${scope} COMPACT`;
   const inputs = cursor ? [{ parameters: { named: { cursor } } }] : [];
   const result = resultsFrom(await executeMSQL(source, inputs), 1)[0];
   return { rows: validateRows(result.rows, "database"), page: validatePage(result) };
 }
 
-async function loadDatabase(executeMSQL, databaseID) {
+async function loadDatabase(executeMSQL, archiveMode, databaseID) {
   const database = quoteIdentifier(databaseID, "db_");
-  const source = `DESCRIBE DATABASE ${database} COMPACT; SHOW TABLES FROM ${database} LIMIT 32 COMPACT`;
+  const scope = archived(archiveMode);
+  const source = `DESCRIBE DATABASE ${database}${scope} COMPACT; SHOW TABLES FROM ${database} LIMIT 32${scope} COMPACT`;
   const results = resultsFrom(await executeMSQL(source), 2);
   return {
     object: pointRow(results[0], "database", databaseID),
@@ -308,18 +341,19 @@ async function loadDatabase(executeMSQL, databaseID) {
   };
 }
 
-async function loadDatabasePage(executeMSQL, databaseID, cursor) {
+async function loadDatabasePage(executeMSQL, archiveMode, databaseID, cursor) {
   const database = quoteIdentifier(databaseID, "db_");
-  const source = `SHOW TABLES FROM ${database} CURSOR :cursor LIMIT 32 COMPACT`;
+  const source = `SHOW TABLES FROM ${database} CURSOR :cursor LIMIT 32${archived(archiveMode)} COMPACT`;
   const result = resultsFrom(await executeMSQL(source, [{ parameters: { named: { cursor } } }]), 1)[0];
   return { rows: validateRows(result.rows, "table", databaseID), page: validatePage(result) };
 }
 
-async function loadTable(executeMSQL, databaseID, tableID) {
+async function loadTable(executeMSQL, archiveMode, databaseID, tableID) {
   const database = quoteIdentifier(databaseID, "db_");
   const table = quoteIdentifier(tableID, "tbl_");
   const subject = `${database}.${table}`;
-  const source = `DESCRIBE TABLE ${subject} COMPACT; SHOW COLUMNS FROM ${subject} LIMIT 32 COMPACT`;
+  const scope = archived(archiveMode);
+  const source = `DESCRIBE TABLE ${subject}${scope} COMPACT; SHOW COLUMNS FROM ${subject} LIMIT 32 COMPACT`;
   const results = resultsFrom(await executeMSQL(source), 2);
   return {
     object: pointRow(results[0], "table", tableID, databaseID),
@@ -341,37 +375,43 @@ export async function renderCatalog(root, options) {
     const parts = pathParts(options.path);
     const view = element("div", "catalog-view");
     if (parts.length === 0) {
-      const page = await loadRoot(options.executeMSQL);
+      const page = await loadRoot(options.executeMSQL, options.archiveMode);
       if (!options.isCurrent()) return;
-      view.append(breadcrumbs([]), heading("Databases", "当前授权范围内的数据库。"));
+      view.append(breadcrumbs([]), heading(
+        options.archiveMode ? "已归档 Databases" : "Databases",
+        options.archiveMode ? "只列出已归档的数据库。" : "当前授权范围内的数据库。"));
       if (page.rows.length === 0) {
-        showState(root, "empty", "还没有可见 Database", "当前 scope 内没有可浏览的 Database。");
+        showState(root, "empty",
+          options.archiveMode ? "没有已归档的 Database" : "还没有可见 Database",
+          options.archiveMode ? "归档过的 Database 会显示在这里。" : "当前 scope 内没有可浏览的 Database。");
         return;
       }
       view.append(listSection("Databases", "database", page.rows,
         (row) => `/catalog/${encodeURIComponent(row.database_id)}`, page.page,
-        (cursor) => loadRoot(options.executeMSQL, cursor)));
+        (cursor) => loadRoot(options.executeMSQL, options.archiveMode, cursor)));
       root.dataset.pageState = page.page.truncated ? "truncated" : "ready";
       root.replaceChildren(view);
       return;
     }
     if (parts.length === 1) {
-      const data = await loadDatabase(options.executeMSQL, parts[0]);
+      const data = await loadDatabase(options.executeMSQL, options.archiveMode, parts[0]);
       if (!options.isCurrent()) return;
       if (!data.object) throw new CatalogViewError("corrupt", "Database point result is empty");
       view.append(breadcrumbs([{ label: data.object.name }]), heading(data.object.name, data.object.purpose));
+      const databaseNote = archiveNote(data.object, "database", false);
+      if (databaseNote) view.append(databaseNote);
       if (data.rows.length === 0) {
         view.append(stateNode("empty", "这个 Database 还没有 Table", "Schema 建模后，Table 会显示在这里。"));
       } else {
         view.append(listSection("Tables", "table", data.rows,
           (row) => `/catalog/${encodeURIComponent(data.object.database_id)}/${encodeURIComponent(row.table_id)}`,
-          data.page, (cursor) => loadDatabasePage(options.executeMSQL, data.object.database_id, cursor)));
+          data.page, (cursor) => loadDatabasePage(options.executeMSQL, options.archiveMode, data.object.database_id, cursor)));
       }
       root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
       root.replaceChildren(view);
       return;
     }
-    const data = await loadTable(options.executeMSQL, parts[0], parts[1]);
+    const data = await loadTable(options.executeMSQL, options.archiveMode, parts[0], parts[1]);
     if (!options.isCurrent()) return;
     if (!data.object) throw new CatalogViewError("corrupt", "Table point result is empty");
     view.append(breadcrumbs([
@@ -379,6 +419,8 @@ export async function renderCatalog(root, options) {
       { label: data.object.name }
     ]), heading(data.object.name, data.object.purpose),
     routeEntry(data.object.database_id, data.object.table_id));
+    const tableNote = archiveNote(data.object, "table", false);
+    if (tableNote) view.append(tableNote);
     if (data.rows.length === 0) {
       view.append(stateNode("empty", "这个 Table 还没有 Column", "Schema Column 会显示在这里。"));
     } else {
