@@ -1114,7 +1114,7 @@ func (service *Service) DeleteRouterNode(ctx context.Context, id string, expecte
 	if current.Revision != expected {
 		return 0, ErrRevisionConflict
 	}
-	// Archiving is bottom-up: a node keeps its children links, so archiving a
+	// Deleting is bottom-up: a node keeps its children links, so deleting a
 	// parent while children are live would leave them reachable by ID but
 	// unreachable by navigation. Say that plainly — reporting it as a revision
 	// conflict sends the caller to re-read a revision that was never wrong.
