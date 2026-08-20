@@ -160,12 +160,14 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - F224 候选：Row 必须可导航；写入时强制至少一个 Route 归属，杜绝语义上不可达的孤儿 Row。
 - F225 候选：Row 必须可展示；写入时强制 summary role 列非空。SKILL.md 强约束已落地，引擎侧待实现。
 - F226：Stage 1（poison 按库收敛）已实现；Stage 2（按库拆分文件）已评估并延后，见上表。
-- [F227](./f227-object-deletion.md) 候选：Table / Database 归档。Row、Route、Relation、
-  Column 已可删；**Table 与 Database 完全不可删除**，`DROP` 不是 parser 接受的语句。
-  方案定为**只归档不物理删除**：动词是 `ARCHIVE`/`UNARCHIVE` 而非 `DROP`，单条 L2 语句
-  （完全可逆，因此不需要 `PLAN`/`APPLY` 两阶段审批）；可见性由容器状态决定，不下沉到每一行，
-  归档只产生 1 条 change log 且 Row `revision` 不变；Admin UI 增"已归档"区。
-  真正的物理擦除是产品级问题（Row `DELETE` 同样保留 History），单独立项。
+- [F227](./f227-object-archive.md) 候选：统一归档模型。**六类对象全部可归档，归档即唯一的
+  删除语义，不提供物理擦除**。动词 `ARCHIVE`/`UNARCHIVE`，读面统一加 `INCLUDING ARCHIVED`
+  修饰词；可见性 iff 自身与每级祖先均未归档，绝不下沉到后代（归档只产生 1 条 change log，
+  后代 `revision` 不变）；磁盘状态字符串保持 `deleted` 不变，统一的是对外词汇。
+  实测差距：Table/Database 整体缺失；`DROP_COLUMN` 是真移除不是归档；
+  **`router.deleteSubtree` 会清空 locator 并摘除 children，现有 `DELETE ROUTE` 是有损的**，
+  Stage 1 先修它。前端规则见 [Admin UI 归档](./f227-archive-admin-ui.md)：
+  默认全站不可见，唯一全局开关，深链接返回 200 + 归因横幅。
   Stage 0（SKILL.md 说明当前不可删）已落地。
 - F223 已实现：Route Branch Fan-out 硬上限；`route_policy.branch_fanout` 启动默认 12，
   `CREATE ROUTE`、Route Mutation Plan 与 Semantic Health 统一读取本库值，越界一律失败并在
