@@ -731,6 +731,89 @@ func (service *Service) DeleteRelation(ctx context.Context, id string, expected 
 	return deleted, nil
 }
 
+// RestoreRelation un-archives a Relation while keeping its identity. Creating
+// a fresh RELATE would produce a different relation_id, which breaks every
+// reference to the old one; archiving is reversible, so the inverse must land
+// on the same object.
+func (service *Service) RestoreRelation(ctx context.Context, id string, expected uint64) (relation.Relation, error) {
+	release, err := service.BeginAuthorityWrite(ctx)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	defer release()
+	current, err := service.repository.GetRelation(id, true)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	if current.State != relation.StateDeleted {
+		return relation.Relation{}, serviceFailure(result.CodeConstraint, "relation is not archived", nil)
+	}
+	if current.Revision != expected {
+		return relation.Relation{}, serviceFailure(result.CodeRevisionConflict, "relation revision conflicts with latest", ErrRevisionConflict)
+	}
+	restored := current
+	restored.Revision++
+	restored.CommitSequence, err = service.NextCommitSequence(ctx)
+	if err != nil {
+		return relation.Relation{}, err
+	}
+	restored.State = relation.StateLive
+	restored.UpdatedAt = service.clock.Now().UTC()
+	if err := service.commitRelationChange(ctx, restored); err != nil {
+		return relation.Relation{}, err
+	}
+	return restored, nil
+}
+
+// RestoreRow un-archives a Row in place. A Route snapshot is mandatory because
+// archiving clears Route memberships and F224 forbids a live Row that nothing
+// can navigate to; the caller has to say where the Row belongs again.
+func (service *Service) RestoreRow(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (row.Row, error) {
+	if len(options.RouteLeafIDs) == 0 {
+		return row.Row{}, serviceFailure(
+			result.CodeValidation,
+			"UNARCHIVE ROW requires a complete Route snapshot; a live Row must be reachable",
+			nil,
+		)
+	}
+	lockTable, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return row.Row{}, err
+	}
+	release, err := service.BeginRowAuthorityWrite(ctx, lockTable, []string{rowID})
+	if err != nil {
+		return row.Row{}, err
+	}
+	defer release()
+	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
+	if err != nil {
+		return row.Row{}, err
+	}
+	current, err := service.CurrentBody(ctx, table, rowID)
+	if err != nil {
+		return row.Row{}, err
+	}
+	if current.State != row.StateDeleted {
+		return row.Row{}, serviceFailure(result.CodeConstraint, "Row is not archived", nil)
+	}
+	if options.ExpectedRevision != 0 && current.Revision != options.ExpectedRevision {
+		return row.Row{}, serviceFailure(result.CodeRevisionConflict, "Row revision conflicts with latest", ErrRevisionConflict)
+	}
+	restored := current
+	restored.Revision++
+	restored.CommitSequence, err = service.NextCommitSequence(ctx)
+	if err != nil {
+		return row.Row{}, err
+	}
+	restored.SchemaVersion = table.SchemaVersion
+	restored.State = row.StateLive
+	restored.UpdatedAt = service.clock.Now().UTC()
+	if err := service.commitRowRevision(ctx, restored, history.OperationCompensate, options.Metadata, options.RouteLeafIDs); err != nil {
+		return row.Row{}, err
+	}
+	return project(table, restored), nil
+}
+
 func (service *Service) commitRelationChange(ctx context.Context, value relation.Relation) error {
 	changeSequence, err := service.NextChangeSequence(ctx)
 	if err != nil {

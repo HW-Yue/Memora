@@ -1295,8 +1295,27 @@ func (parser *parser) parseArchive(restore bool) (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		statement.Name = name
+	case parser.matchWord("ROW"):
+		statement.Object = "ROW"
+		name, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Name = name
+		target, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Target = &target
+	case parser.matchWord("RELATION"):
+		statement.Object = "RELATION"
+		target, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Target = &target
 	default:
-		return ast.Statement{}, parser.unexpected("DATABASE, TABLE or ROUTE")
+		return ast.Statement{}, parser.unexpected("DATABASE, TABLE, COLUMN, ROUTE, ROW or RELATION")
 	}
 	if parser.matchWord("REASON") {
 		reason, err := parser.parseExpression(1)

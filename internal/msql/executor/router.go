@@ -247,6 +247,10 @@ func (engine *Engine) archive(
 		return engine.archiveDatabase(ctx, statement, bound)
 	case "TABLE":
 		return engine.archiveTable(ctx, statement, bound)
+	case "ROW":
+		return engine.archiveRow(ctx, statement, bound, options)
+	case "RELATION":
+		return engine.archiveRelation(ctx, statement, bound, options)
 	default:
 		return Output{}, executeError(result.CodeValidation, "ARCHIVE object kind is unsupported")
 	}
