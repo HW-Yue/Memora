@@ -44,9 +44,15 @@ type Source interface {
 type Request struct {
 	Query       string
 	DatabaseIDs []string
-	Cursor      string
-	Limit       uint64
-	ByteLimit   uint64
+	// TableIDs, when non-empty, restricts results to these Tables. It mirrors
+	// DatabaseIDs one level down so a caller can hide an archived Table
+	// without post-filtering the page, which would silently under-fill the
+	// Limit and break the truncation contract. Empty means no Table
+	// restriction, for callers that only scope by Database.
+	TableIDs  []string
+	Cursor    string
+	Limit     uint64
+	ByteLimit uint64
 }
 
 type Location struct {
@@ -107,7 +113,7 @@ func Search(ctx context.Context, source Source, request Request) (Page, error) {
 	if err := ctx.Err(); err != nil {
 		return Page{}, err
 	}
-	terms, databaseIDs, scope, err := validateRequest(source, request)
+	terms, databaseIDs, tableIDs, scope, err := validateRequest(source, request)
 	if err != nil {
 		return Page{}, err
 	}
@@ -126,7 +132,7 @@ func Search(ctx context.Context, source Source, request Request) (Page, error) {
 			return Page{}, err
 		}
 	}
-	locations, err := aggregatePostings(terms, databaseIDs, postings)
+	locations, err := aggregatePostings(terms, databaseIDs, tableIDs, postings)
 	if err != nil {
 		return Page{}, err
 	}
@@ -181,7 +187,7 @@ func Search(ctx context.Context, source Source, request Request) (Page, error) {
 
 // Validate checks the public request contract without reading postings.
 func Validate(request Request) error {
-	_, _, _, err := normalizeRequest(request)
+	_, _, _, _, err := normalizeRequest(request)
 	return err
 }
 
@@ -189,7 +195,7 @@ func Validate(request Request) error {
 // out-of-scope implementations. It validates the visible page, not the hidden
 // remainder used to derive its snapshot.
 func ValidatePage(page Page, request Request) error {
-	_, databaseIDs, scope, err := normalizeRequest(request)
+	_, databaseIDs, tableIDs, scope, err := normalizeRequest(request)
 	if err != nil {
 		return err
 	}
@@ -210,10 +216,19 @@ func ValidatePage(page Page, request Request) error {
 	for _, databaseID := range databaseIDs {
 		allowed[databaseID] = struct{}{}
 	}
+	allowedTables := make(map[string]struct{}, len(tableIDs))
+	for _, tableID := range tableIDs {
+		allowedTables[tableID] = struct{}{}
+	}
 	used := uint64(2)
 	for index, location := range page.Locations {
 		if _, ok := allowed[location.DatabaseID]; !ok {
 			return ErrSourceScope
+		}
+		if len(allowedTables) != 0 && location.TableID != "" {
+			if _, ok := allowedTables[location.TableID]; !ok {
+				return ErrSourceScope
+			}
 		}
 		if !validLocation(location) || (index > 0 && lessLocation(location, page.Locations[index-1])) {
 			return ErrInvalid
@@ -248,44 +263,60 @@ func validDigest(value string) bool {
 	return err == nil
 }
 
-func validateRequest(source Source, request Request) ([]string, []string, string, error) {
+func validateRequest(source Source, request Request) ([]string, []string, []string, string, error) {
 	if source == nil {
-		return nil, nil, "", ErrInvalid
+		return nil, nil, nil, "", ErrInvalid
 	}
 	return normalizeRequest(request)
 }
 
-func normalizeRequest(request Request) ([]string, []string, string, error) {
+func normalizeRequest(request Request) ([]string, []string, []string, string, error) {
 	if !utf8.ValidString(request.Query) || strings.TrimSpace(request.Query) == "" ||
 		utf8.RuneCountInString(request.Query) > maximumQuery || request.Limit == 0 || request.Limit > maximumLimit ||
 		request.ByteLimit < minimumBytes || request.ByteLimit > maximumBytes || len(request.Cursor) > maximumCursor {
-		return nil, nil, "", ErrInvalid
+		return nil, nil, nil, "", ErrInvalid
 	}
 	terms, err := lexical.UniqueTerms(request.Query)
 	if err != nil || len(terms) == 0 || len(terms) > maximumTerms {
-		return nil, nil, "", ErrInvalid
+		return nil, nil, nil, "", ErrInvalid
 	}
-	databaseIDs := append([]string(nil), request.DatabaseIDs...)
-	sort.Strings(databaseIDs)
-	for index, value := range databaseIDs {
-		if strings.TrimSpace(value) == "" || !utf8.ValidString(value) || (index > 0 && value == databaseIDs[index-1]) {
-			return nil, nil, "", ErrInvalid
-		}
+	databaseIDs, err := normalizeIDs(request.DatabaseIDs)
+	if err != nil {
+		return nil, nil, nil, "", err
 	}
+	tableIDs, err := normalizeIDs(request.TableIDs)
+	if err != nil {
+		return nil, nil, nil, "", err
+	}
+	// The Table scope is part of the cursor digest: a page taken before a
+	// Table was archived must not continue against the narrowed scope.
 	encoded, err := json.Marshal(struct {
 		Version     string   `json:"version"`
 		Query       string   `json:"query"`
 		Terms       []string `json:"terms"`
 		DatabaseIDs []string `json:"database_ids"`
-	}{Version: Version, Query: request.Query, Terms: terms, DatabaseIDs: databaseIDs})
+		TableIDs    []string `json:"table_ids,omitempty"`
+	}{Version: Version, Query: request.Query, Terms: terms, DatabaseIDs: databaseIDs, TableIDs: tableIDs})
 	if err != nil {
-		return nil, nil, "", ErrInvalid
+		return nil, nil, nil, "", ErrInvalid
 	}
 	digest := sha256.Sum256(encoded)
-	return terms, databaseIDs, "sha256:" + hex.EncodeToString(digest[:]), nil
+	return terms, databaseIDs, tableIDs, "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
-func aggregatePostings(terms, databases []string, postings []fulltext.Posting) ([]Location, error) {
+func normalizeIDs(values []string) ([]string, error) {
+	normalized := append([]string(nil), values...)
+	sort.Strings(normalized)
+	for index, value := range normalized {
+		if strings.TrimSpace(value) == "" || !utf8.ValidString(value) ||
+			(index > 0 && value == normalized[index-1]) {
+			return nil, ErrInvalid
+		}
+	}
+	return normalized, nil
+}
+
+func aggregatePostings(terms, databases, tables []string, postings []fulltext.Posting) ([]Location, error) {
 	allowedTerms := make(map[string]struct{}, len(terms))
 	for _, term := range terms {
 		allowedTerms[term] = struct{}{}
@@ -294,8 +325,20 @@ func aggregatePostings(terms, databases []string, postings []fulltext.Posting) (
 	for _, databaseID := range databases {
 		allowedDatabases[databaseID] = struct{}{}
 	}
+	allowedTables := make(map[string]struct{}, len(tables))
+	for _, tableID := range tables {
+		allowedTables[tableID] = struct{}{}
+	}
 	values := make(map[identity]*aggregate)
 	for _, posting := range postings {
+		// A posting for a Table outside the scope is dropped, not an error:
+		// the index legitimately still holds an archived Table's postings, and
+		// dropping here keeps Limit and truncation computed on the real set.
+		if len(allowedTables) != 0 && posting.TableID != "" {
+			if _, ok := allowedTables[posting.TableID]; !ok {
+				continue
+			}
+		}
 		if _, ok := allowedDatabases[posting.DatabaseID]; !ok {
 			return nil, ErrSourceScope
 		}

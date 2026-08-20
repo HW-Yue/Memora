@@ -35,6 +35,13 @@ type routeCandidateRows interface {
 	ListRouterNodes(context.Context) ([]router.Node, error)
 }
 
+// archivedCatalogReader lets the scope check tell an archived Table apart from
+// a Table that does not exist. Without it, a Route node under an archived
+// Table looks identical to a dangling Route node.
+type archivedCatalogReader interface {
+	ShowArchivedTables(context.Context, string) ([]catalog.Table, error)
+}
+
 func (engine *Engine) showRouteCandidates(
 	ctx context.Context,
 	show *ast.ShowStatement,
@@ -261,6 +268,7 @@ func (engine *Engine) lexicalRouteSource(ctx context.Context) (routelexical.Sour
 	visible := make([]catalog.Database, 0, len(databases))
 	visibleDatabaseIDs := make(map[string]struct{})
 	visibleTableIDs := make(map[string]struct{})
+	archivedTableIDs := make(map[string]struct{})
 	for _, database := range databases {
 		if restricted && !security.AllowsAnyDatabase(
 			authorization, append([]string{database.ID, database.Name}, database.Aliases...)...,
@@ -277,6 +285,15 @@ func (engine *Engine) lexicalRouteSource(ctx context.Context) (routelexical.Sour
 		for _, table := range tables {
 			visibleTableIDs[table.ID] = struct{}{}
 		}
+		if reader, ok := engine.candidateCatalog.(archivedCatalogReader); ok {
+			archived, err := reader.ShowArchivedTables(ctx, database.ID)
+			if err != nil {
+				return routelexical.Source{}, normalizeError(err)
+			}
+			for _, table := range archived {
+				archivedTableIDs[table.ID] = struct{}{}
+			}
+		}
 	}
 	nodes, err := routeRows.ListRouterNodes(ctx)
 	if err != nil {
@@ -291,6 +308,11 @@ func (engine *Engine) lexicalRouteSource(ctx context.Context) (routelexical.Sour
 			continue
 		}
 		if _, ok := visibleTableIDs[node.TableID]; !ok {
+			// An archived Table is deliberately out of scope; anything else is
+			// a Route pointing at a Table that does not exist, which is corrupt.
+			if _, archived := archivedTableIDs[node.TableID]; archived {
+				continue
+			}
 			return routelexical.Source{}, executeError(result.CodeInternal, "Route candidate source violates its visible Table scope")
 		}
 		visibleNodes = append(visibleNodes, node)

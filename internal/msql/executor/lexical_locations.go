@@ -49,12 +49,12 @@ func (engine *Engine) showLexicalLocations(
 			return Output{}, executeError(result.CodeValidation, "lexical location cursor must not be empty")
 		}
 	}
-	databaseIDs, err := engine.visibleLexicalDatabaseIDs(ctx)
+	databaseIDs, tableIDs, err := engine.visibleLexicalScope(ctx)
 	if err != nil {
 		return Output{}, err
 	}
-	request := lexicallocation.Request{Query: query, DatabaseIDs: databaseIDs, Cursor: cursor,
-		Limit: limit, ByteLimit: byteLimit}
+	request := lexicallocation.Request{Query: query, DatabaseIDs: databaseIDs, TableIDs: tableIDs,
+		Cursor: cursor, Limit: limit, ByteLimit: byteLimit}
 	if err := lexicallocation.Validate(request); err != nil {
 		return Output{}, executeError(result.CodeValidation, err.Error())
 	}
@@ -96,23 +96,36 @@ func (engine *Engine) showLexicalLocations(
 		Truncated: page.Truncated, NextCursor: page.NextCursor}, nil
 }
 
-func (engine *Engine) visibleLexicalDatabaseIDs(ctx context.Context) ([]string, error) {
+// visibleLexicalScope returns the Databases and Tables a lexical search may
+// touch. The Table scope is not redundant with the Database scope: archiving a
+// Table leaves its postings in the index, so without an explicit Table
+// allow-list an archived Table's Rows keep matching SHOW LEXICAL LOCATIONS.
+func (engine *Engine) visibleLexicalScope(ctx context.Context) ([]string, []string, error) {
 	if engine == nil || engine.candidateCatalog == nil {
-		return nil, executeError(result.CodeUnsupported, "lexical location query requires a complete Catalog service")
+		return nil, nil, executeError(result.CodeUnsupported, "lexical location query requires a complete Catalog service")
 	}
 	databases, err := engine.candidateCatalog.ShowDatabases(ctx)
 	if err != nil {
-		return nil, normalizeError(err)
+		return nil, nil, normalizeError(err)
 	}
 	authorization, scoped := security.AuthorizationFrom(ctx)
-	resultIDs := make([]string, 0, len(databases))
+	databaseIDs := make([]string, 0, len(databases))
+	tableIDs := []string{}
 	for _, database := range databases {
 		if scoped && !security.AllowsAnyDatabase(authorization,
 			append([]string{database.ID, database.Name}, database.Aliases...)...) {
 			continue
 		}
-		resultIDs = append(resultIDs, database.ID)
+		databaseIDs = append(databaseIDs, database.ID)
+		tables, err := engine.candidateCatalog.ShowTables(ctx, database.ID)
+		if err != nil {
+			return nil, nil, normalizeError(err)
+		}
+		for _, table := range tables {
+			tableIDs = append(tableIDs, table.ID)
+		}
 	}
-	sort.Strings(resultIDs)
-	return resultIDs, nil
+	sort.Strings(databaseIDs)
+	sort.Strings(tableIDs)
+	return databaseIDs, tableIDs, nil
 }
