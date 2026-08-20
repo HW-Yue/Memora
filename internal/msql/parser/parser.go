@@ -748,6 +748,11 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			show.ByteLimit = &byteLimit
 		}
 	}
+	includingArchived, err := parser.parseIncludingArchived()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	show.IncludingArchived = includingArchived
 	show.Compact = parser.matchWord("COMPACT")
 	if show.Object == "CATALOG_ATLAS" && !show.Compact {
 		return ast.Statement{}, parser.unexpected("COMPACT")
@@ -780,8 +785,26 @@ func (parser *parser) parseDescribe() (ast.Statement, error) {
 		return ast.Statement{}, err
 	}
 	describe.Name = name
+	includingArchived, err := parser.parseIncludingArchived()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	describe.IncludingArchived = includingArchived
 	describe.Compact = parser.matchWord("COMPACT")
 	return ast.Statement{Kind: "DESCRIBE", Describe: describe}, nil
+}
+
+// parseIncludingArchived reads the single opt-in that widens a read to archived
+// objects. It is spelled the same way everywhere so a caller never has to
+// remember a per-statement variant.
+func (parser *parser) parseIncludingArchived() (bool, error) {
+	if !parser.matchWord("INCLUDING") {
+		return false, nil
+	}
+	if _, err := parser.expectWord("ARCHIVED"); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (parser *parser) parseCreate() (ast.Statement, error) {

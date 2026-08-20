@@ -77,13 +77,17 @@ type ShowStatement struct {
 	Query     *Expression `json:"query,omitempty"`
 	Space     *Expression `json:"space,omitempty"`
 	ByteLimit *Expression `json:"byte_limit,omitempty"`
+	// IncludingArchived widens exactly this statement to archived objects. It
+	// never changes the ancestor rule and never leaks into another statement.
+	IncludingArchived bool `json:"including_archived,omitempty"`
 }
 
 type DescribeStatement struct {
-	Object  string      `json:"object"`
-	Name    Name        `json:"name"`
-	Compact bool        `json:"compact,omitempty"`
-	Route   *Expression `json:"route,omitempty"`
+	Object            string      `json:"object"`
+	Name              Name        `json:"name"`
+	Compact           bool        `json:"compact,omitempty"`
+	Route             *Expression `json:"route,omitempty"`
+	IncludingArchived bool        `json:"including_archived,omitempty"`
 }
 
 type CreateStatement struct {

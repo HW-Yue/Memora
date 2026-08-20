@@ -27,8 +27,26 @@ type CatalogService interface {
 	RenameColumn(context.Context, string, string, string, string) (dictionary.Column, error)
 }
 
+// CatalogArchiveService is the optional archive-aware read surface. A backend
+// without it simply rejects INCLUDING ARCHIVED rather than quietly ignoring the
+// modifier and returning the live-only answer.
+type CatalogArchiveService interface {
+	ShowArchivedDatabases(context.Context) ([]dictionary.Database, error)
+	ShowArchivedTables(context.Context, string) ([]dictionary.Table, error)
+	DescribeArchivedDatabase(context.Context, string) (dictionary.Database, error)
+	DescribeArchivedTable(context.Context, string, string) (dictionary.Table, error)
+}
+
 type Catalog struct {
 	service CatalogService
+}
+
+func (binder *Catalog) archiveService() (CatalogArchiveService, error) {
+	service, ok := binder.service.(CatalogArchiveService)
+	if !ok {
+		return nil, bindError(result.CodeUnsupported, "INCLUDING ARCHIVED is not supported by this backend")
+	}
+	return service, nil
 }
 
 type CatalogResult struct {
@@ -96,7 +114,15 @@ func (binder *Catalog) create(ctx context.Context, create *ast.CreateStatement) 
 func (binder *Catalog) show(ctx context.Context, show *ast.ShowStatement) (CatalogResult, error) {
 	switch show.Object {
 	case "DATABASES":
-		databases, err := binder.service.ShowDatabases(ctx)
+		list := binder.service.ShowDatabases
+		if show.IncludingArchived {
+			archive, err := binder.archiveService()
+			if err != nil {
+				return CatalogResult{}, err
+			}
+			list = archive.ShowArchivedDatabases
+		}
+		databases, err := list(ctx)
 		for index := range databases {
 			databases[index].Tables = []dictionary.Table{}
 		}
@@ -109,7 +135,15 @@ func (binder *Catalog) show(ctx context.Context, show *ast.ShowStatement) (Catal
 		if err != nil {
 			return CatalogResult{}, err
 		}
-		tables, err := binder.service.ShowTables(ctx, names[0])
+		list := binder.service.ShowTables
+		if show.IncludingArchived {
+			archive, err := binder.archiveService()
+			if err != nil {
+				return CatalogResult{}, err
+			}
+			list = archive.ShowArchivedTables
+		}
+		tables, err := list(ctx, names[0])
 		for index := range tables {
 			tables[index].Columns = []dictionary.Column{}
 		}
@@ -136,7 +170,15 @@ func (binder *Catalog) describe(ctx context.Context, describe *ast.DescribeState
 		if err != nil {
 			return CatalogResult{}, err
 		}
-		database, err := binder.service.DescribeDatabase(ctx, names[0])
+		read := binder.service.DescribeDatabase
+		if describe.IncludingArchived {
+			archive, archiveErr := binder.archiveService()
+			if archiveErr != nil {
+				return CatalogResult{}, archiveErr
+			}
+			read = archive.DescribeArchivedDatabase
+		}
+		database, err := read(ctx, names[0])
 		if describe.Compact {
 			database.Tables = []dictionary.Table{}
 		}
@@ -146,7 +188,15 @@ func (binder *Catalog) describe(ctx context.Context, describe *ast.DescribeState
 		if err != nil {
 			return CatalogResult{}, err
 		}
-		table, err := binder.service.DescribeTable(ctx, names[0], names[1])
+		read := binder.service.DescribeTable
+		if describe.IncludingArchived {
+			archive, archiveErr := binder.archiveService()
+			if archiveErr != nil {
+				return CatalogResult{}, archiveErr
+			}
+			read = archive.DescribeArchivedTable
+		}
+		table, err := read(ctx, names[0], names[1])
 		if describe.Compact {
 			table.ColumnSummaries = make([]dictionary.ColumnSummary, 0, len(table.Columns))
 			for _, column := range table.Columns {
