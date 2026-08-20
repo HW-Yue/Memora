@@ -542,6 +542,17 @@ receipt directly. A destructive plan containing DROP has no automatic
 compensation proposal because History values must not be presented as an
 ordinary reversible Schema action.
 
+Memora can delete exactly four things: a Row (`DELETE FROM`, reversible with
+`RESTORE`), a Route subtree (`DELETE ROUTE`, root excluded), a Relation
+(`UNRELATE`), and a Column (`DROP_COLUMN` through the plan above). **A Table or
+a Database cannot be deleted at all** — there is no `DROP TABLE`, no
+`DROP DATABASE`, and no CLI equivalent; `DROP` is not a statement the parser
+accepts. Never tell the user a Table or Database was or can be removed, and
+never emulate removal by deleting its Rows one by one. If the user asks to
+remove one, say plainly that the engine has no such operation, and offer to
+delete the Rows, retire the Route tree, or rename the object out of the way
+instead.
+
 ```sh
 memora schema --plan '{"version":"memora.schema-plan/v1","id":"schema-8","actor":"agent:host","source_event_id":"conversation:event-8","reason":"new durable project domain","authorized_databases":["work"],"ensure":{"database":{"name":"work","purpose":"Project knowledge","scope":"Reviewed projects"},"database_synonyms":["projects"],"table":{"name":"notes","purpose":"Durable decisions","row_semantics":"One reviewed decision","columns":[{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title"}]},"table_synonyms":["decisions"]}}'
 ```
