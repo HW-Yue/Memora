@@ -1,7 +1,8 @@
 # F227：统一归档模型
 
-状态：候选（2026-08-20 立项，同日两次重写：先由"删除"改为"归档"，
-再由"只有 Table/Database"改为"全部对象"）。
+状态：**Stage 0–2 与 Admin UI 已实现，Stage 3 部分完成（2026-08-20）**。
+剩余：`ARCHIVE ROW`／`ARCHIVE RELATION`（Stage 3 后半）、`ARCHIVE COLUMN`（Stage 4）、
+change log 与健康项（Stage 5）、CLI 与 SKILL.md（Stage 6 后半）。逐阶段进度见下。
 
 **每一类对象都可归档，归档即唯一的删除语义，Memora 不提供物理擦除。**
 前端默认看不到任何归档对象，只有点开归档才可见——见
