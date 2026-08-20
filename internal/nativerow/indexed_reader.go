@@ -285,10 +285,19 @@ func validateIndexedTable(ctx context.Context, table catalog.Table) error {
 	return nil
 }
 
+// locatorMatchesTable checks that an index entry belongs to this Table. It
+// deliberately does not require the Row's recorded schema revision to equal
+// the Table's current one: a Catalog change bumps the Table while existing
+// Rows keep the revision they were written at, and the engine rewrites Rows
+// only when a schema-change plan says RequiresRowRewrite. Demanding equality
+// made every Row unreadable after any Catalog bump, a rename included.
+// A revision ahead of the Table is still corrupt — no Row can conform to a
+// schema that does not exist yet.
 func locatorMatchesTable(locator rowversionindex.Locator, table catalog.Table) bool {
 	return locator.DatabaseID == table.DatabaseID &&
 		locator.TableID == table.ID &&
-		locator.SchemaRevision == table.SchemaVersion
+		locator.SchemaRevision != 0 &&
+		locator.SchemaRevision <= table.SchemaVersion
 }
 
 func currentMatchesVersion(

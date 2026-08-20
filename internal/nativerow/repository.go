@@ -430,9 +430,16 @@ func (repository *Repository) table(databaseID, tableID string) (catalog.Table, 
 }
 
 func normalize(value row.Row, table catalog.Table) (row.Row, error) {
+	// A Row keeps the SchemaVersion it was written at. Catalog changes bump the
+	// Table without rewriting Rows — a schema-change plan rewrites them only
+	// when it reports RequiresRowRewrite — so demanding equality here made every
+	// Row unreadable after any Catalog bump, a rename included. A version ahead
+	// of the Table is still invalid, and the column checks below remain the
+	// substantive guarantee that the Row fits the current schema.
 	if value.ID == "" || value.DatabaseID == "" || value.TableID == "" ||
 		value.Revision == 0 || (value.State != row.StateLive && value.State != row.StateDeleted && value.State != row.StateSuperseded) ||
-		value.CreatedAt.IsZero() || value.UpdatedAt.IsZero() || value.SchemaVersion != table.SchemaVersion {
+		value.CreatedAt.IsZero() || value.UpdatedAt.IsZero() ||
+		value.SchemaVersion == 0 || value.SchemaVersion > table.SchemaVersion {
 		return row.Row{}, fmt.Errorf("%w: invalid identity, state, revision, timestamps, or schema", ErrInvalid)
 	}
 	columns := make(map[string]catalog.Column, len(table.Columns))
