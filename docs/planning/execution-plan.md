@@ -168,14 +168,6 @@ Query Workspace 的跨会话持久化与恢复。需先出独立规格。
 与现有 Row 做 diff」。收据已有 locator 与 content digest，缺的是重吸收与 diff 语义。
 需先出独立规格。依据[语义重建的不对称性](../data/semantic-rebuild-asymmetry.md)。
 
-### 12b. F226 Stage 2 物理文件按 Database 拆分
-
-`databases/db_<stable-id>/` 各自持有 Page/WAL。**开工前必须先冻结三件事**：
-事务作用域（`TransactionFactory` 现在没有 database 参数，事务是实例级的）、
-change log 全局序的归属、lexical/fulltext 的 fan-out 语义。
-走 `instanceupgrade` 的 `--plan`/`--apply` 显式流程，不静默迁移。
-同时修正 `native-minimal-store.md` 与实现的布局漂移。
-
 ### 13. 写入反馈回路
 
 检索失败与人工修正回流到建模决策，形成可观测信号。需先出独立规格。
@@ -188,7 +180,10 @@ change log 全局序的归属、lexical/fulltext 的 fan-out 语义。
 
 ## 阶段 D：不在当前路线
 
-保留设施、不再投入，恢复条件见各自文档：大语料批量评测（F212–F215、
+保留设施、不再投入，恢复条件见各自文档：**F226 Stage 2 物理文件按 Database 拆分**
+（2026-08-20 已评估并延后——最热读路径本来就跨库，拆分会把 Catalog Atlas 与
+`SHOW LEXICAL LOCATIONS FROM ALL TABLES` 变成常态 fan-out，而主导损坏模式是共享
+引擎代码缺陷，拆文件对它零作用）、大语料批量评测（F212–F215、
 候选 F216–F218）、OCR/视觉运行时（候选 F209）、内置 `memora ask` 产品化、
 Compaction／Secondary Index／Advanced MVCC／Replication／PITR／多设备同步／
 Apple Accelerate／HNSW。

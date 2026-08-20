@@ -22,6 +22,12 @@
   no-steal；未实现 physical undo（当前策略下不需要）。
 - **索引**：Catalog／当前 Row／Row Version 三类权威索引；Catalog／Route／Row Fulltext
   派生树；Table Row cursor；COW generation replacement（当前 v3）；free Page reuse。
+- **文件布局**：所有 Database 共用一套物理文件（`databases/` 下单个
+  `database.memora` 加一套 `page-index-v1/` 与 `change-index-v1/`），**这是有意选择**：
+  最热的读路径（Catalog Atlas 与 `SHOW LEXICAL LOCATIONS FROM ALL TABLES`）本来就
+  跨 Database，按库拆分会把它变成常态 fan-out。故障隔离在逻辑层完成：poison 按
+  Database 收敛，读永不因写发布失败而失效
+  （[F226](../planning/f226-per-database-fault-isolation.md)）。
 
 **实测性能**（容器化 Linux／Xeon 2.8 GHz，fsync 未必反映真实盘）：
 

@@ -14,15 +14,33 @@ Pool。
 
 ## 磁盘位置
 
+F52 起草时设想的是每 Database 一个文件（`databases/db_<stable-id>/database.memora`）。
+**实现没有走这条路，而且不会走了**：所有 Database 共用一套物理文件，理由与评估见
+[F226](../planning/f226-per-database-fault-isolation.md)。下面是实测的当前布局
+（两个 Database 与一个 Database 的文件集合完全相同）：
+
 ```text
 <instance>/
 ├── instance.meta
-├── system/system.memora
-├── databases/db_<stable-id>/database.memora
-└── tmp/
+├── system/{auxiliary,security}.memora, daemon.lock
+├── databases/
+│   ├── database.memora            # 所有 Database 的权威 Record
+│   ├── page-authority-v1.json
+│   ├── page-index-v1/             # 四棵派生树，全 Instance 共用
+│   │   ├── {catalog,current,versions,fulltext}.pages
+│   │   ├── {catalog,current,versions,fulltext}.wal/
+│   │   └── manifest.json
+│   └── change-index-v1/           # 单一全局 commit sequence
+│       ├── changes.pages
+│       └── changes.wal/
+└── {tmp,binlog,redo,undo}/
 ```
 
-F52 只在测试临时目录创建一个 `database.memora`。它不读取、修改或迁移现有
+单套文件是**有意选择**，不是待办：最热的读路径（Catalog Atlas 与
+`SHOW LEXICAL LOCATIONS FROM ALL TABLES`）本来就跨 Database，拆分会把它变成
+常态 fan-out。故障隔离改在逻辑层做，见 F226 Stage 1。
+
+F52 当时只在测试临时目录创建一个 `database.memora`，不读取、修改或迁移现有
 SQLite 文件，也不切换 daemon 默认后端。
 
 ## Bootstrap v0 文件

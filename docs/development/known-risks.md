@@ -26,8 +26,11 @@
 **2026-08-11 [F226](../planning/f226-per-database-fault-isolation.md) Stage 1 已实现**：
 读不再受 poison 影响；poison 按 Database 收敛（Row/Route 按受影响库，Catalog 按
 实际变更的库，generation 替换保持 Instance 级）；`BeginRowWrite` 早失败并在错误里
-点名受影响 Database。物理文件拆分（Stage 2）仍未做，因此**物理**故障域仍是整个
-Instance——单个 Page/WAL 真损坏依然会影响所有 Database。
+点名受影响 Database。
+
+物理文件仍是全 Instance 共用，**这是 2026-08-20 评估后的有意选择，不是遗留缺口**：
+最热读路径本来就跨 Database，拆分会给它加上常态 fan-out，而主导的损坏模式是共享
+引擎代码缺陷，拆文件对其零作用。评估、替代方案与重新评估的触发条件见 F226 Stage 2。
 
 ## 严重：会导致产品主张不成立
 

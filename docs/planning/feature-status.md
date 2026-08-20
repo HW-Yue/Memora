@@ -138,6 +138,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 | F161 Multi-device Sync | 没有双设备离线写与冲突语义 |
 | F162 Apple Accelerate | 4,368×384 CPU exact p95 最高 2.434 ms |
 | F163 HNSW | 17,472×384 CPU exact p95 最高 9.957 ms、33.171 MB |
+| F226 Stage 2 按库拆分文件 | 最热读路径（Catalog Atlas、`SHOW LEXICAL LOCATIONS FROM ALL TABLES`）本来就跨库，拆分即常态 fan-out；主导损坏模式是共享引擎代码缺陷，拆文件零作用；570 行仅 556 KB，规模不支持。Stage 1 已在逻辑层解决实际故障隔离 |
 | F212–F215 外部大语料评测设施 | 设施已交付并验收，但三次真实运行（Kimi 12 题、三 arm 36 题、DeepSeek 9/12）均未产出可用质量结论；改走小规模确定性对照，设施冻结保留。见 [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md) |
 | 候选 F216–F218 公开语料桥接层 | 依赖 F212–F215，随之 Deferred；恢复条件同 ADR-0010 |
 
@@ -158,7 +159,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - F222 候选：Release Gate Policy v2；确定性主判定与 report/gate 双模式，解除 F185b 死锁。
 - F224 候选：Row 必须可导航；写入时强制至少一个 Route 归属，杜绝语义上不可达的孤儿 Row。
 - F225 候选：Row 必须可展示；写入时强制 summary role 列非空。SKILL.md 强约束已落地，引擎侧待实现。
-- F226 候选：Database 级故障隔离；当前一个库出错会让整实例读写全停，Stage 1 收敛 poison 作用域、Stage 2 拆分物理文件。
+- F226：Stage 1（poison 按库收敛）已实现；Stage 2（按库拆分文件）已评估并延后，见上表。
 - F223 已实现：Route Branch Fan-out 硬上限；`route_policy.branch_fanout` 启动默认 12，
   `CREATE ROUTE`、Route Mutation Plan 与 Semantic Health 统一读取本库值，越界一律失败并在
   信封里给出重构子树与提高上限两条可执行出路。取代下面「Database 级 Route Branch 自治
