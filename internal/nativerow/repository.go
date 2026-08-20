@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -33,7 +32,8 @@ func (repository *Repository) Write(value row.Row) error {
 	if value.Revision != 1 || value.State != row.StateLive {
 		return fmt.Errorf("%w: initial row must be live revision 1", ErrInvalid)
 	}
-	return repository.writeRecord(value, value.ID)
+	// Revision 1 terminates the chain: there is nothing before it to point at.
+	return repository.writeRecord(value, value.ID, nativestore.Location{})
 }
 
 func (repository *Repository) StageInitial(transaction *nativestore.Transaction, value row.Row) error {
@@ -65,7 +65,21 @@ func (repository *Repository) WriteRevision(value row.Row) error {
 	if err := repository.validateRevision(value); err != nil {
 		return err
 	}
-	return repository.writeRecord(value, revisionRecordID(value.ID, value.Revision))
+	previous, err := repository.RevisionLocation(value.ID, value.Revision-1)
+	if err != nil {
+		return err
+	}
+	return repository.writeRecord(value, revisionRecordID(value.ID, value.Revision), previous)
+}
+
+// RevisionLocation is the entry point into a Row's version chain: it resolves
+// one revision's record to a physical address, and every older revision is then
+// reachable by following previousLocation from there.
+func (repository *Repository) RevisionLocation(id string, revision uint64) (nativestore.Location, error) {
+	if repository == nil || repository.file == nil || id == "" || revision == 0 {
+		return nativestore.Location{}, fmt.Errorf("%w: RowID and revision are required", ErrInvalid)
+	}
+	return repository.file.Location(nativestore.ObjectKindRow, revisionRecordID(id, revision))
 }
 
 func (repository *Repository) StageRevision(transaction *nativestore.Transaction, value row.Row) error {
@@ -83,7 +97,14 @@ func (repository *Repository) StageRevision(transaction *nativestore.Transaction
 	if err != nil {
 		return err
 	}
-	payload, err := encode(normalized, table)
+	// validateRevision has already established that revision-1 is the committed
+	// latest, so its address is resolvable here and the chain cannot be staged
+	// with a hole in it.
+	previous, err := repository.RevisionLocation(value.ID, value.Revision-1)
+	if err != nil {
+		return err
+	}
+	payload, err := encodeLinked(normalized, table, previous)
 	if err != nil {
 		return err
 	}
@@ -103,7 +124,9 @@ func (repository *Repository) validateRevision(value row.Row) error {
 	return nil
 }
 
-func (repository *Repository) writeRecord(value row.Row, recordID string) error {
+func (repository *Repository) writeRecord(
+	value row.Row, recordID string, previous nativestore.Location,
+) error {
 	table, err := repository.table(value.DatabaseID, value.TableID)
 	if err != nil {
 		return err
@@ -112,7 +135,7 @@ func (repository *Repository) writeRecord(value row.Row, recordID string) error 
 	if err != nil {
 		return err
 	}
-	payload, err := encode(normalized, table)
+	payload, err := encodeLinked(normalized, table, previous)
 	if err != nil {
 		return err
 	}
@@ -137,28 +160,61 @@ func (repository *Repository) ReadIncludingDeleted(id string) (row.Row, error) {
 	if repository == nil || repository.file == nil || id == "" {
 		return row.Row{}, fmt.Errorf("%w: native file and RowID are required", ErrInvalid)
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	latest, err := repository.latestRevision(id)
 	if err != nil {
 		return row.Row{}, err
 	}
-	var latest row.Row
-	found := false
-	for _, recordID := range ids {
-		if recordID != id && !strings.HasPrefix(recordID, id+"@") {
-			continue
-		}
-		value, err := repository.readRecord(recordID)
+	return repository.readRecord(revisionRecordID(id, latest))
+}
+
+// latestRevision finds a Row's newest revision by probing for it rather than by
+// sweeping every record. Revisions are contiguous from 1 — validateRevision
+// admits only latest+1 — so the highest present revision can be found by
+// doubling until a revision is missing and then bisecting the gap, which costs
+// O(log revisions) point lookups instead of one pass over the whole file.
+func (repository *Repository) latestRevision(id string) (uint64, error) {
+	present, err := repository.revisionExists(id, 1)
+	if err != nil {
+		return 0, err
+	}
+	if !present {
+		return 0, nativestore.ErrNotFound
+	}
+	low, high := uint64(1), uint64(2)
+	for {
+		present, err := repository.revisionExists(id, high)
 		if err != nil {
-			return row.Row{}, err
+			return 0, err
 		}
-		if value.ID == id && (!found || value.Revision > latest.Revision) {
-			latest, found = value, true
+		if !present {
+			break
+		}
+		low, high = high, high*2
+	}
+	for high-low > 1 {
+		middle := low + (high-low)/2
+		present, err := repository.revisionExists(id, middle)
+		if err != nil {
+			return 0, err
+		}
+		if present {
+			low = middle
+		} else {
+			high = middle
 		}
 	}
-	if !found {
-		return row.Row{}, nativestore.ErrNotFound
+	return low, nil
+}
+
+func (repository *Repository) revisionExists(id string, revision uint64) (bool, error) {
+	_, err := repository.file.Location(nativestore.ObjectKindRow, revisionRecordID(id, revision))
+	if err == nil {
+		return true, nil
 	}
-	return latest, nil
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (repository *Repository) ReadRevision(id string, revision uint64) (row.Row, error) {
@@ -494,10 +550,28 @@ func normalizeRow(value row.Row, table catalog.Table, carryUnlistedValues bool) 
 
 type encoder struct{ bytes []byte }
 
+// A Row record ends with the physical address of the revision before it, so a
+// reader holding one revision can reach the whole chain without an index. The
+// pointer is fixed width and always last, which is what lets previousLocation
+// find it without decoding the Row.
+const (
+	flagPreviousLocation uint16 = 1 << 0
+	chainFooterSize             = 8 + 4 + 4
+	flagsFieldOffset            = 2
+)
+
 func encode(value row.Row, table catalog.Table) ([]byte, error) {
+	return encodeLinked(value, table, nativestore.Location{})
+}
+
+func encodeLinked(value row.Row, table catalog.Table, previous nativestore.Location) ([]byte, error) {
 	output := encoder{bytes: make([]byte, 0, 256)}
+	flags := uint16(0)
+	if previous.Valid() {
+		flags |= flagPreviousLocation
+	}
 	output.u16(recordSchemaVersion)
-	output.u16(0)
+	output.u16(flags)
 	output.u64(value.SchemaVersion)
 	output.u64(value.Revision)
 	output.u64(value.CommitSequence)
@@ -519,7 +593,39 @@ func encode(value row.Row, table catalog.Table) ([]byte, error) {
 			return nil, fmt.Errorf("%w: column %q", err, column.ID)
 		}
 	}
+	if previous.Valid() {
+		output.u64(previous.Offset)
+		output.u32(previous.Length)
+		output.u32(previous.CRC)
+	}
 	return output.bytes, nil
+}
+
+// previousLocation reads a record's chain pointer without decoding the Row.
+// The pointer is the fixed-width tail of the payload, so this costs a slice —
+// walking a version chain never pays for a full decode of revisions the caller
+// is only passing through.
+func previousLocation(payload []byte) (nativestore.Location, error) {
+	if len(payload) < flagsFieldOffset+2 {
+		return nativestore.Location{}, fmt.Errorf("%w: record is shorter than its header", ErrCorrupt)
+	}
+	flags := binary.LittleEndian.Uint16(payload[flagsFieldOffset : flagsFieldOffset+2])
+	if flags&flagPreviousLocation == 0 {
+		return nativestore.Location{}, nil
+	}
+	if len(payload) < flagsFieldOffset+2+chainFooterSize {
+		return nativestore.Location{}, fmt.Errorf("%w: record claims a chain pointer it does not carry", ErrCorrupt)
+	}
+	footer := payload[len(payload)-chainFooterSize:]
+	location := nativestore.Location{
+		Offset: binary.LittleEndian.Uint64(footer[0:8]),
+		Length: binary.LittleEndian.Uint32(footer[8:12]),
+		CRC:    binary.LittleEndian.Uint32(footer[12:16]),
+	}
+	if !location.Valid() {
+		return nativestore.Location{}, fmt.Errorf("%w: chain pointer addresses nothing", ErrCorrupt)
+	}
+	return location, nil
 }
 
 func (output *encoder) value(kind logical.Kind, value any) error {
@@ -585,7 +691,7 @@ func decode(payload []byte) (row.Row, error) {
 		return row.Row{}, fmt.Errorf("%w: invalid version", ErrCorrupt)
 	}
 	flags, err := input.u16()
-	if err != nil || flags != 0 {
+	if err != nil || flags&^flagPreviousLocation != 0 {
 		return row.Row{}, fmt.Errorf("%w: invalid flags", ErrCorrupt)
 	}
 	value := row.Row{}
@@ -637,6 +743,20 @@ func decode(payload []byte) (row.Row, error) {
 		value.Values[columnID], err = input.value()
 		if err != nil {
 			return row.Row{}, err
+		}
+	}
+	// The chain pointer is physical metadata, not Row content: consume it so the
+	// trailing-bytes check keeps catching real corruption, and drop it. Callers
+	// that want it read it through previousLocation.
+	if flags&flagPreviousLocation != 0 {
+		for _, skip := range []func() error{
+			func() error { _, err := input.u64(); return err },
+			func() error { _, err := input.u32(); return err },
+			func() error { _, err := input.u32(); return err },
+		} {
+			if err := skip(); err != nil {
+				return row.Row{}, err
+			}
 		}
 	}
 	if input.offset != len(input.bytes) {

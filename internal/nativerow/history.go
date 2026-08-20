@@ -62,7 +62,9 @@ func (repository *Repository) History(databaseID, tableID, rowID string, limit i
 	if limit < 1 || limit > 1000 {
 		return nil, false, fmt.Errorf("%w: history limit must be between 1 and 1000", ErrInvalid)
 	}
-	result, err := repository.HistoryAll(databaseID, tableID, rowID)
+	// Read one past the page so "more" is answered without walking the rest of
+	// the chain: a caller asking for 3 of 40 revisions pays for 4, not 40.
+	result, err := repository.historyWalk(databaseID, tableID, rowID, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
@@ -74,33 +76,51 @@ func (repository *Repository) History(databaseID, tableID, rowID string, limit i
 }
 
 func (repository *Repository) HistoryAll(databaseID, tableID, rowID string) ([]history.Record, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindHistory)
+	return repository.historyWalk(databaseID, tableID, rowID, 0)
+}
+
+// historyWalk follows a Row's version chain from its newest revision backwards,
+// newest first. Each hop is a direct read at the address the newer revision
+// carries, so the walk costs one read per revision returned and never touches a
+// revision the caller did not ask for. A limit of 0 walks to revision 1.
+func (repository *Repository) historyWalk(
+	databaseID, tableID, rowID string, limit int,
+) ([]history.Record, error) {
+	latest, err := repository.latestRevision(rowID)
 	if err != nil {
 		return nil, err
 	}
-	metadata := make([]historyMetadata, 0)
-	for _, recordID := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindHistory, recordID)
-		if err != nil {
-			return nil, err
-		}
-		item, err := decodeHistory(payload)
-		if err != nil {
-			return nil, err
-		}
-		if item.rowID == rowID {
-			metadata = append(metadata, item)
-		}
+	table, err := repository.table(databaseID, tableID)
+	if err != nil {
+		return nil, err
 	}
-	sort.Slice(metadata, func(left, right int) bool { return metadata[left].revision > metadata[right].revision })
-	result := make([]history.Record, 0, len(metadata))
-	for _, item := range metadata {
-		value, err := repository.ReadRevision(rowID, item.revision)
+	location, err := repository.RevisionLocation(rowID, latest)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]history.Record, 0, latest)
+	for revision := latest; revision >= 1 && location.Valid(); revision-- {
+		payload, err := repository.file.ReadAtLocation(location)
+		if err != nil {
+			return nil, err
+		}
+		decoded, err := decode(payload)
+		if err != nil {
+			return nil, err
+		}
+		value, err := normalizeDecodedRecord(decoded, table)
 		if err != nil {
 			return nil, err
 		}
 		if value.DatabaseID != databaseID || value.TableID != tableID {
 			return nil, fmt.Errorf("%w: history Row belongs to another table", ErrCorrupt)
+		}
+		if value.Revision != revision {
+			return nil, fmt.Errorf("%w: version chain skips revision %d", ErrCorrupt, revision)
+		}
+		item, err := repository.historyMetadataFor(rowID, revision)
+		if err != nil {
+			return nil, err
 		}
 		result = append(result, history.Record{
 			Version: history.Version, DatabaseID: value.DatabaseID, TableID: value.TableID,
@@ -111,8 +131,29 @@ func (repository *Repository) HistoryAll(databaseID, tableID, rowID string) ([]h
 			SourceContentHash: item.sourceContentHash, Reason: item.reason,
 			CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, RecordedAt: item.recordedAt,
 		})
+		if limit > 0 && len(result) == limit {
+			break
+		}
+		if location, err = previousLocation(payload); err != nil {
+			return nil, err
+		}
 	}
 	return result, nil
+}
+
+func (repository *Repository) historyMetadataFor(rowID string, revision uint64) (historyMetadata, error) {
+	payload, err := repository.file.Get(nativestore.ObjectKindHistory, revisionRecordID(rowID, revision))
+	if err != nil {
+		return historyMetadata{}, err
+	}
+	item, err := decodeHistory(payload)
+	if err != nil {
+		return historyMetadata{}, err
+	}
+	if item.rowID != rowID || item.revision != revision {
+		return historyMetadata{}, fmt.Errorf("%w: history record identifies another revision", ErrCorrupt)
+	}
+	return item, nil
 }
 
 func (repository *Repository) AllHistory() ([]history.Record, error) {

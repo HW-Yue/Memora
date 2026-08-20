@@ -13,6 +13,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 )
 
@@ -76,6 +77,10 @@ type File struct {
 	records        map[recordKey]recordMeta
 	recoveryOffset int64
 	closed         bool
+	// enumerations counts full-file sweeps (IDs, Records). Every one of them is
+	// O(all records ever written), so a read path that takes one does not scale
+	// with the data. Tests assert this stays at zero for point reads.
+	enumerations atomic.Uint64
 }
 
 type recordKey struct {
@@ -97,6 +102,32 @@ type RecordRef struct {
 	PayloadLength uint32
 }
 
+// Location is a record payload's physical address in the file. It is durable —
+// records are append-only and never move — so a Location may be persisted
+// inside another record to chain revisions together, and resolving one costs a
+// single read with no index in the way.
+//
+// A Location is self-verifying: ReadAtLocation checks the payload against the
+// CRC recorded here, so an address recovered from an older record cannot
+// silently return the wrong bytes.
+type Location struct {
+	Offset uint64
+	Length uint32
+	CRC    uint32
+}
+
+// Valid reports whether a Location addresses anything. The zero Location is the
+// end of a chain, never a readable address: offset 0 is inside the file header.
+func (location Location) Valid() bool { return location.Offset > 0 }
+
+func (meta recordMeta) location() Location {
+	return Location{
+		Offset: uint64(meta.payloadOffset),
+		Length: meta.payloadLength,
+		CRC:    meta.payloadCRC,
+	}
+}
+
 type bufferedRecord struct {
 	kind    ObjectKind
 	schema  uint32
@@ -110,6 +141,9 @@ type Transaction struct {
 	records []bufferedRecord
 	keys    map[recordKey]struct{}
 	closed  bool
+	// locations is filled by Commit. A writer that needs to chain a later
+	// revision to one it just wrote reads the address back from here.
+	locations map[recordKey]Location
 }
 
 type fileHeader struct {
@@ -322,10 +356,23 @@ func (transaction *Transaction) Commit() error {
 	if err := transaction.file.file.Sync(); err != nil {
 		return fmt.Errorf("sync native transaction commit: %w", err)
 	}
+	transaction.locations = make(map[recordKey]Location, len(metas))
 	for key, meta := range metas {
 		transaction.file.records[key] = meta
+		transaction.locations[key] = meta.location()
 	}
 	return nil
+}
+
+// Location returns the physical address Commit assigned to a record this
+// transaction wrote. It reports false before the commit succeeds: an uncommitted
+// record has no durable address to point at.
+func (transaction *Transaction) Location(kind ObjectKind, id string) (Location, bool) {
+	if transaction == nil || transaction.locations == nil {
+		return Location{}, false
+	}
+	location, ok := transaction.locations[recordKey{kind: kind, id: id}]
+	return location, ok
 }
 
 func deterministicTransactionID(records []bufferedRecord) string {
@@ -402,6 +449,61 @@ func (f *File) Get(kind ObjectKind, id string) ([]byte, error) {
 	return payload, nil
 }
 
+// Enumerations reports how many full-file sweeps this handle has served. A read
+// path that scales with the data takes none: the count is the regression guard
+// against a point read quietly going back to enumerating every record.
+func (f *File) Enumerations() uint64 {
+	if f == nil {
+		return 0
+	}
+	return f.enumerations.Load()
+}
+
+// Location returns a record's physical address so a writer can point a new
+// revision at an existing one. It resolves the name through the record map;
+// ReadAtLocation then needs no map at all.
+func (f *File) Location(kind ObjectKind, id string) (Location, error) {
+	if f == nil {
+		return Location{}, ErrClosed
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
+		return Location{}, ErrClosed
+	}
+	meta, ok := f.records[recordKey{kind: kind, id: id}]
+	if !ok {
+		return Location{}, ErrNotFound
+	}
+	return meta.location(), nil
+}
+
+// ReadAtLocation reads a payload by physical address alone. This is the read
+// that a version chain walks: it never consults the record map, so a revision
+// reachable only through a pointer stored in a newer revision still resolves in
+// one read.
+func (f *File) ReadAtLocation(location Location) ([]byte, error) {
+	if f == nil {
+		return nil, ErrClosed
+	}
+	if !location.Valid() {
+		return nil, fmt.Errorf("%w: location does not address a payload", ErrInvalidArgument)
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
+		return nil, ErrClosed
+	}
+	payload := make([]byte, location.Length)
+	if _, err := f.file.ReadAt(payload, int64(location.Offset)); err != nil {
+		return nil, fmt.Errorf("read native record payload at %d: %w", location.Offset, err)
+	}
+	if crc32.ChecksumIEEE(payload) != location.CRC {
+		return nil, fmt.Errorf("%w: payload CRC mismatch at %d", ErrCorrupt, location.Offset)
+	}
+	return payload, nil
+}
+
 func (f *File) Kind() (FileKind, error) {
 	if f == nil {
 		return 0, ErrClosed
@@ -423,6 +525,7 @@ func (f *File) IDs(kind ObjectKind) ([]string, error) {
 	if f.closed {
 		return nil, ErrClosed
 	}
+	f.enumerations.Add(1)
 	ids := make([]string, 0)
 	for key := range f.records {
 		if key.kind == kind {
@@ -444,6 +547,7 @@ func (f *File) Records() ([]RecordRef, error) {
 	if f.closed {
 		return nil, ErrClosed
 	}
+	f.enumerations.Add(1)
 	result := make([]RecordRef, 0, len(f.records))
 	for key, meta := range f.records {
 		result = append(result, RecordRef{
