@@ -542,16 +542,55 @@ receipt directly. A destructive plan containing DROP has no automatic
 compensation proposal because History values must not be presented as an
 ordinary reversible Schema action.
 
-Memora can delete exactly four things: a Row (`DELETE FROM`, reversible with
-`RESTORE`), a Route subtree (`DELETE ROUTE`, root excluded), a Relation
-(`UNRELATE`), and a Column (`DROP_COLUMN` through the plan above). **A Table or
-a Database cannot be deleted at all** — there is no `DROP TABLE`, no
-`DROP DATABASE`, and no CLI equivalent; `DROP` is not a statement the parser
-accepts. Never tell the user a Table or Database was or can be removed, and
-never emulate removal by deleting its Rows one by one. If the user asks to
-remove one, say plainly that the engine has no such operation, and offer to
-delete the Rows, retire the Route tree, or rename the object out of the way
-instead.
+## Archiving is the only delete
+
+Memora never erases anything. Every removal is an archive: the object stops
+resolving by name and leaves every read surface, while its definition, its
+values and its History stay on disk, and `UNARCHIVE` puts it back on the same
+object with the same ID. Say "archived", never "deleted", and never promise a
+user that data is gone — it is not, at any level, including Row `DELETE`.
+
+```sh
+memora exec --input '{"parameters":{"named":{"reason":"retired project"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ARCHIVE DATABASE work REASON :reason"
+```
+
+`ARCHIVE|UNARCHIVE` accepts `DATABASE work`, `TABLE work.notes`,
+`COLUMN work.notes.draft`, `ROUTE :route_id`, `ROW work.notes :row_id` and
+`RELATION :relation_id`. `ARCHIVE` always requires `REASON`; `UNARCHIVE` never
+takes one. Container and structural kinds (Database, Table, Column, Route) are
+**L2**; Row and Relation are **L1** and carry the usual `expected_revision`.
+`DROP TABLE` and `DROP DATABASE` are still not statements the parser accepts —
+`ARCHIVE` is the operation. `DELETE FROM`, `DELETE ROUTE`, `UNRELATE` and
+`DROP_COLUMN` all still work and all now mean "archive".
+
+Four rules that decide what an archive does:
+
+1. **It never touches descendants.** Archiving a Table changes no Row and bumps
+   no Row revision. An object is visible only when neither it nor any ancestor
+   is archived, computed at read time;
+2. **`UNARCHIVE` reverses exactly one decision.** Restoring a Database leaves a
+   Table you archived separately still archived;
+3. **The name stays taken.** Creating over an archived object fails and names
+   it. Do not work around this by inventing a new name — `UNARCHIVE` it or
+   rename it deliberately;
+4. **`UNARCHIVE ROW` needs a Route snapshot.** Archiving a Row clears its Route
+   memberships, and a live Row must be reachable, so pass `route_leaf_ids`.
+
+Archived objects are invisible until a read asks for them:
+
+```sh
+memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW TABLES FROM work INCLUDING ARCHIVED"
+```
+
+`INCLUDING ARCHIVED` works on `SHOW DATABASES`, `SHOW TABLES`, `SHOW COLUMNS`,
+`DESCRIBE DATABASE` and `DESCRIBE TABLE`. It widens exactly the statement it
+appears on, and the rows it returns carry `archived_at` and `archived_reason`
+so an archived object can never be mistaken for a live one. Use it before
+`UNARCHIVE` — it is the only way to find out what is archived and why.
+
+Ask the user before archiving a Database or a Table. Both hide everything
+underneath in one statement, and while nothing is destroyed, the user loses
+sight of the content until someone restores it.
 
 ```sh
 memora schema --plan '{"version":"memora.schema-plan/v1","id":"schema-8","actor":"agent:host","source_event_id":"conversation:event-8","reason":"new durable project domain","authorized_databases":["work"],"ensure":{"database":{"name":"work","purpose":"Project knowledge","scope":"Reviewed projects"},"database_synonyms":["projects"],"table":{"name":"notes","purpose":"Durable decisions","row_semantics":"One reviewed decision","columns":[{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title"}]},"table_synonyms":["decisions"]}}'

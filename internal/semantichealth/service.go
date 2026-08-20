@@ -152,7 +152,9 @@ func (service *Service) Maintain(ctx context.Context, request Request) (Receipt,
 
 func synonymousColumnIssues(database catalog.Database, table catalog.Table) []Issue {
 	groups := map[string][]string{}
-	for _, column := range table.Columns {
+	// An archived Column is invisible, so proposing to merge it with a live one
+	// would be advice the user cannot act on.
+	for _, column := range catalog.LiveColumns(table.Columns) {
 		key := string(column.Type) + "\x00" + stringBoolean(column.Nullable) + "\x00" + normalizeWords(column.Purpose)
 		groups[key] = append(groups[key], column.ID)
 	}

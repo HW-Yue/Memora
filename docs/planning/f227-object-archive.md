@@ -1,8 +1,7 @@
 # F227：统一归档模型
 
-状态：**Stage 0–2 与 Admin UI 已实现，Stage 3 部分完成（2026-08-20）**。
-剩余：`ARCHIVE ROW`／`ARCHIVE RELATION`（Stage 3 后半）、`ARCHIVE COLUMN`（Stage 4）、
-change log 与健康项（Stage 5）、CLI 与 SKILL.md（Stage 6 后半）。逐阶段进度见下。
+状态：**已实现（2026-08-20）**。六类对象全部可归档，读面、Admin UI、健康项联动、
+SKILL.md 与两个 adapter 均已交付。逐阶段记录见下。
 
 **每一类对象都可归档，归档即唯一的删除语义，Memora 不提供物理擦除。**
 前端默认看不到任何归档对象，只有点开归档才可见——见
@@ -24,12 +23,12 @@ change log 与健康项（Stage 5）、CLI 与 SKILL.md（Stage 6 后半）。�
 
 | 对象 | 归档 | 取消归档 | 列出已归档 | 差距 |
 |---|---|---|---|---|
-| Row | `DELETE FROM`（`State=deleted`） | 仅 `RESTORE … TO REVISION :n`，须先知道 revision | **无**（`includeDeleted` 只在 `row/service.go:140` 内部存在，MSQL 无入口） | 缺读面、缺直接逆操作 |
+| Row | `ARCHIVE ROW`／`DELETE FROM` | **`UNARCHIVE ROW`**（须带 Route 快照） | 经 History | 已交付 |
 | Route | `DELETE ROUTE`（`Deleted=true`） | **Stage 1 已加 `UNARCHIVE ROUTE`** | 无 | 三处可见性泄漏，Stage 1 已修，见下 |
-| Relation | `UNRELATE`（`StateDeleted`） | 无（只能重新 `RELATE`，换新身份） | 无 | 缺保持身份的逆操作 |
-| Column | `DROP_COLUMN` | 无，且明确 `Reversible=false` | 无 | 真的从 schema 移除，不是归档 |
-| Table | **Stage 2 已加 `ARCHIVE TABLE`** | **Stage 2 已加** | Stage 3 | 已交付 |
-| Database | **Stage 2 已加 `ARCHIVE DATABASE`** | **Stage 2 已加** | Stage 3 | 已交付 |
+| Relation | `ARCHIVE RELATION`／`UNRELATE` | **`UNARCHIVE RELATION`**（保持 ID） | 经 History | 已交付 |
+| Column | `ARCHIVE COLUMN`／`DROP_COLUMN` | **`UNARCHIVE COLUMN`** | `SHOW COLUMNS … INCLUDING ARCHIVED` | 已交付，`Reversible=false` 已取消 |
+| Table | `ARCHIVE TABLE` | `UNARCHIVE TABLE` | `SHOW TABLES … INCLUDING ARCHIVED` | 已交付 |
+| Database | `ARCHIVE DATABASE` | `UNARCHIVE DATABASE` | `SHOW DATABASES … INCLUDING ARCHIVED` | 已交付 |
 
 ### 关于 Route：一次记录订正
 
@@ -107,11 +106,18 @@ F226 之后 poison 按库收敛，这种批量写正是最容易毒化该库的�
 
 ### 2. "不可见"是一份穷举清单，漏一处就是 bug
 
-`SHOW DATABASES`／`SHOW TABLES`／`DESCRIBE TABLE` 的列清单／Catalog Atlas／
-Bootstrap Frame／`visibleLexicalDatabaseIDs`（`executor/lexical_locations.go:52`）／
-`SHOW LEXICAL LOCATIONS FROM ALL TABLES`／Route 解析与 `OPEN ROUTE`／
-Relation 端点解析／`SELECT`／Semantic Health 扫描，
-一律按"自身或祖先已归档"过滤。
+这条不是靠人工检查保证的，而是靠
+[可见性矩阵测试](../../internal/daemon/f227_visibility_matrix_test.go)：
+它把每个读面列成一张表，在「改名后／归档库后／归档表后」三个场景各重放一遍。
+矩阵一跑就抓到两处真实泄漏——`SHOW LEXICAL LOCATIONS` 返回已归档 Table 的 Row
+（只按 Database 粒度过滤），以及 `SHOW ROUTE CANDIDATES` 因为"库可见则表必可见"
+的前提被打破而直接报 internal 错误。
+
+实现上过滤收在少数几个咽喉点，而不是每个读面各写一次：`nativecatalog` 的
+`DescribeDatabase`／`DescribeTable`（覆盖几乎所有读写路径）、
+`nativerow.resolveColumn` 与 `executor.findColumn`（列名解析）、
+`lexicallocation.Request.TableIDs`（倒排索引）、`catalogfulltext` 的
+deleted 文档投影。
 
 **别名必须一并退出解析集**（`Database.Aliases`、`Table.Aliases`、`Column.Aliases`），
 否则一个 synonym 会解析到不可见对象。
@@ -153,22 +159,40 @@ Relation 端点解析／`SELECT`／Semantic Health 扫描，
   `SHOW`／Row 服务）自动生效，不必逐处记住规则；`ShowDatabases`／`ShowTables` 过滤，
   `Describe/ShowArchived*` 是唯一的穿透读。归档**不改 Row**，实测 `revision` 不变。
   **归档不自增 SchemaVersion**——那会被误当成 schema 变更（详见下方"一个前置缺陷"）。
-- **Stage 3（部分完成 2026-08-20）**：`INCLUDING ARCHIVED` 已铺到
-  `SHOW DATABASES`／`SHOW TABLES`／`DESCRIBE DATABASE`／`DESCRIBE TABLE`，
+- **Stage 3（已完成 2026-08-20）**：`INCLUDING ARCHIVED` 铺到 `SHOW DATABASES`／
+  `SHOW TABLES`／`SHOW COLUMNS`／`DESCRIBE DATABASE`／`DESCRIBE TABLE`，
   只放宽出现它的那一条语句，后端能力用可选接口断言、不支持就明确报错。
-  **未做**：`ARCHIVE ROW`／`ARCHIVE RELATION` 这两个保持身份的直接逆操作——
-  Row 的 `DELETE` 目前会把 Route 归属清空为 `[]`（`nativerow/service.go` 的
-  `emptyRoutes`），Relation 的 `StageRelation` 也把「删除后还有修订」判为冲突，
-  两者都要先改成无损，与 Stage 1 对 Route 做的是同一类改动。
-- **Stage 4**：`ARCHIVE COLUMN`，`DROP_COLUMN` 重定义为它的别名，
-  移除 `Reversible=false`。
-- **Stage 5**：change log `object_archived`、`archived_container` 健康项、
-  F224/F225 归档豁免。
-- **Stage 6（Admin UI 已完成 2026-08-20）**：[Admin UI](./f227-archive-admin-ui.md)
-  的全局归档模式、站点标识、不持久化与深链接说明已落地；Gateway 只读，
-  前端不代为执行归档。**未做**：CLI 子命令、SKILL.md 与两个 adapter。
+- **Stage 3b（已完成 2026-08-20）**：`ARCHIVE|UNARCHIVE ROW`（L1，`UNARCHIVE`
+  必须带 `route_leaf_ids`，因为归档清空了 Route 归属而 F224 要求活跃 Row 可导航）
+  与 `ARCHIVE|UNARCHIVE RELATION`（L1，保持 `relation_id`）。
+  `StageRelation` 同样放开为只允许纯还原。
+- **Stage 4（已完成 2026-08-20）**：`ARCHIVE|UNARCHIVE COLUMN`；`DROP_COLUMN`
+  重定义为归档，`Reversible=false` 取消，`Destructive` 与 `Reversible` 不再互为反面。
+  归档列留在 `table.Columns` 里让存储层继续解码，可见性收在
+  `nativerow.resolveColumn` 与 `executor.findColumn` 两个唯一的按名解析点；
+  `catalogfulltext` 把归档对象投影为 deleted 文档，terms 离开倒排索引。
+  拒绝归档最后一个活跃列。**同时修掉 `DROP_COLUMN` 的一个已发布缺陷**，见下。
+- **Stage 5（已完成 2026-08-20）**：语义健康扫描天然跳过归档容器（它走
+  `ShowDatabases`，该读面已过滤），`synonymousColumnIssues` 补上 `LiveColumns`。
+  **未做 `archived_container` 健康项**：Admin UI 的已归档区已经回答"仓库里堆了什么"，
+  再加一条恒定触发的信息项只是噪音。
+- **Stage 6（已完成 2026-08-20）**：[Admin UI](./f227-archive-admin-ui.md) 全局归档
+  模式已落地；SKILL.md 新增「Archiving is the only delete」一节，两个 adapter 已重生成。
+  **未做专用 CLI 子命令**：`memora exec` 本来就能跑 `ARCHIVE`，`memora query` 能跑
+  `INCLUDING ARCHIVED`，再包一层只是复制 `exec`，而 `cli.go` 已经 1,820 行。
 
-## 一个前置缺陷（已单独修复）
+## 两个前置缺陷（同源，已修）
+
+两者都不是归档引入的，是实现过程中撞出来的已发布缺陷，根因相同：
+**Catalog 变更从不重写 Row，但有代码假设二者必须一致。**
+
+1. **改名让全部 Row 读不出来**（详见下）；
+2. **`DROP_COLUMN` 让全表 Row 读不出来**：`ApplySchemaChangePlan` 只重写 Catalog
+   快照，一行 Row 都不动，于是移除列之后每个 Row 都带着一个 Catalog 已不认识的
+   列值，`normalize` 判为 `unknown column`。改法有两步：`DROP_COLUMN` 改为归档
+   （列仍在 schema 里），且 `normalize` 拆成写入严格／解码携带两条路。
+
+## 缺陷一：改名
 
 Stage 2 的实现暴露出一个与归档无关的已发布缺陷：**对有数据的表改名之后，
 它的全部 Row 都读不出来**（`native row record is corrupt: visible Row locator

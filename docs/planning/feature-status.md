@@ -160,8 +160,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - F224 候选：Row 必须可导航；写入时强制至少一个 Route 归属，杜绝语义上不可达的孤儿 Row。
 - F225 候选：Row 必须可展示；写入时强制 summary role 列非空。SKILL.md 强约束已落地，引擎侧待实现。
 - F226：Stage 1（poison 按库收敛）已实现；Stage 2（按库拆分文件）已评估并延后，见上表。
-- [F227](./f227-object-archive.md) **进行中**（Stage 0–2 与 Admin UI 已实现，Stage 3 部分完成）：
-  统一归档模型。**六类对象全部可归档，归档即唯一的
+- [F227](./f227-object-archive.md) **已实现**（2026-08-20）：统一归档模型。**六类对象全部可归档，归档即唯一的
   删除语义，不提供物理擦除**。动词 `ARCHIVE`/`UNARCHIVE`，读面统一加 `INCLUDING ARCHIVED`
   修饰词；可见性 iff 自身与每级祖先均未归档，绝不下沉到后代（归档只产生 1 条 change log，
   后代 `revision` 不变）；磁盘状态字符串保持 `deleted` 不变，统一的是对外词汇。
@@ -169,11 +168,12 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
   **`router.deleteSubtree` 会清空 locator 并摘除 children，现有 `DELETE ROUTE` 是有损的**，
   Stage 1 先修它。前端规则见 [Admin UI 归档](./f227-archive-admin-ui.md)：
   默认全站不可见，唯一全局开关，深链接返回 200 + 归因横幅。
-  已交付：`ARCHIVE|UNARCHIVE ROUTE|TABLE|DATABASE`、`INCLUDING ARCHIVED` 读面、
-  Admin UI 全局归档模式，以及一张覆盖全部读面的
+  六类对象（Database/Table/Column/Route/Row/Relation）全部可归档，`INCLUDING ARCHIVED`
+  读面、Admin UI 全局归档模式、健康项联动、SKILL.md 与两个 adapter 均已交付，
+  并有一张覆盖全部读面的
   [可见性矩阵测试](../../internal/daemon/f227_visibility_matrix_test.go)。
-  实现过程中另修一个已发布缺陷：**给有数据的表改名会让它的全部 Row 读不出来**
-  （Row 保留写入时的 schema 版本，两处却要求与 Table 当前版本严格相等）。
+  实现过程中另修两个同源的已发布缺陷：**改名**与 **`DROP_COLUMN`** 都会让相关 Row
+  全部读不出来——Catalog 变更从不重写 Row，但有代码假设二者必须一致。
 - F223 已实现：Route Branch Fan-out 硬上限；`route_policy.branch_fanout` 启动默认 12，
   `CREATE ROUTE`、Route Mutation Plan 与 Semantic Health 统一读取本库值，越界一律失败并在
   信封里给出重构子树与提高上限两条可执行出路。取代下面「Database 级 Route Branch 自治

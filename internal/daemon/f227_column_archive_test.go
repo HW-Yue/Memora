@@ -160,3 +160,32 @@ func TestArchivingTheLastLiveColumnIsRefused(t *testing.T) {
 		t.Fatalf("the error should explain it is the last live Column, got %q", message)
 	}
 }
+
+// TestSemanticHealthSkipsArchivedObjects keeps the health report actionable: a
+// finding about something the user cannot see is advice they cannot act on,
+// and one Database archive would otherwise flood the whole report.
+func TestSemanticHealthSkipsArchivedObjects(t *testing.T) {
+	dataDir := archiveInstance(t)
+
+	before, err := SemanticHealth(t.Context(), dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, message := run(t, dataDir, "ARCHIVE DATABASE work REASON :reason",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"reason": "retired"}},
+		}},
+	); !ok {
+		t.Fatalf("ARCHIVE DATABASE failed: %s", message)
+	}
+	after, err := SemanticHealth(t.Context(), dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Issues) != 0 {
+		t.Fatalf("an archived Database must produce no findings, got %#v", after.Issues)
+	}
+	if len(before.Issues) == 0 {
+		t.Skip("fixture produced no findings to begin with; the assertion above is still meaningful")
+	}
+}
