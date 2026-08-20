@@ -369,20 +369,35 @@ jobs:
       # drifted eight days and 165 SKILL.md lines behind, still pinning v0.1.0.
       - name: Publish the canonical Skill to the mirror
         env:
-          SKILL_REPO_TOKEN: ${{ secrets.SKILL_REPO_TOKEN }}
+          SKILL_REPO_DEPLOY_KEY: ${{ secrets.SKILL_REPO_DEPLOY_KEY }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
           set -euo pipefail
-          if [[ -z "${SKILL_REPO_TOKEN:-}" ]]; then
-            printf 'SKILL_REPO_TOKEN is not configured; cannot sync the Skill mirror\n' >&2
+          if [[ -z "${SKILL_REPO_DEPLOY_KEY:-}" ]]; then
+            printf 'SKILL_REPO_DEPLOY_KEY is not configured; cannot sync the Skill mirror\n' >&2
             exit 1
           fi
+
+          # A write-enabled deploy key scoped to HW-Yue/memora-skill. Kept in the
+          # runner's temp directory so it never lands in the workspace, and used
+          # only through GIT_SSH_COMMAND for this one clone and push.
+          ssh_directory="$RUNNER_TEMP/skill-sync-ssh"
+          mkdir -p "$ssh_directory"
+          chmod 700 "$ssh_directory"
+          printf '%s\n' "$SKILL_REPO_DEPLOY_KEY" >"$ssh_directory/id_ed25519"
+          chmod 600 "$ssh_directory/id_ed25519"
+          ssh-keyscan -t ed25519 github.com >"$ssh_directory/known_hosts" 2>/dev/null
+          if [[ ! -s "$ssh_directory/known_hosts" ]]; then
+            printf 'could not resolve the github.com host key; refusing to sync\n' >&2
+            exit 1
+          fi
+          chmod 600 "$ssh_directory/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_directory/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_directory/known_hosts -o StrictHostKeyChecking=yes"
+
           mirror="$RUNNER_TEMP/memora-skill"
-          git clone --depth 1 \
-            "https://x-access-token:${SKILL_REPO_TOKEN}@github.com/HW-Yue/memora-skill.git" \
-            "$mirror"
+          git clone --depth 1 git@github.com:HW-Yue/memora-skill.git "$mirror"
 
           # Replace the published tree wholesale so deletions propagate too.
           rm -rf "$mirror/memora"
