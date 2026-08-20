@@ -304,6 +304,13 @@ func TestCanonicalSkillDocumentsRouteCreation(t *testing.T) {
 		"CREATE ROUTE ROOT FOR TABLE",
 		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
 		"risk level **L2**",
+		// memora-skill#1: parse success is not execution success. Double quotes
+		// are identifiers and a bare LEAF is an identifier, so both spellings
+		// parse and then fail in the executor.
+		"Router purpose must be a literal or parameter",
+		"Router kind must be a literal or parameter",
+		"Bootstrap a Router on a Table that has none",
+		"PLAN ROUTE MUTATION` only restructures an existing tree",
 	} {
 		if !strings.Contains(bundle.Markdown, required) {
 			t.Errorf("SKILL.md does not document %q", required)

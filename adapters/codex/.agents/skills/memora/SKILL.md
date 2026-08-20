@@ -319,9 +319,49 @@ When a parent already carries `route_policy.branch_fanout` live children the
 create fails; decide between restructuring the subtree and raising the limit,
 which moves by at most 4 per change.
 
+### Quote rules that `memora parse` will not catch
+
+`PURPOSE`, `NAME` and `KIND` must be a **string literal in single quotes** or a
+**named parameter**. Two spellings parse cleanly and then fail at execution:
+
+| Written | Parsed as | Execution result |
+| --- | --- | --- |
+| `PURPOSE "root navigation"` | quoted identifier | `Router purpose must be a literal or parameter` |
+| `KIND LEAF` | bare identifier | `Router kind must be a literal or parameter` |
+| `PURPOSE 'root navigation'` | string literal | accepted |
+| `KIND :kind` with `"kind":"leaf"` | parameter | accepted |
+
+Double quotes mean *identifier*, not string. A successful `memora parse` only
+proves the shape is grammatical; the executor validates types separately, so
+parse success is not permission to skip a real execution check.
+
+**Prefer named parameters for every dynamic value and every enum**, including
+`KIND`. That keeps user text out of the statement and removes the whole class of
+parser/executor mismatch above.
+
+### Bootstrap a Router on a Table that has none
+
 ```sh
-memora exec --input '{"mutation":{"expected_schema_version":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"new semantic leaf"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "CREATE ROUTE UNDER :parent NAME 'agent-loop' KIND 'leaf' PURPOSE 'Agent loop decisions'"
-``` Before attaching a new Row, verify that every target leaf is empty;
+# 1. Confirm the Table really has no root yet — an empty rows array means none.
+memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12"
+
+# 2. Create the root (L2, parameterised).
+memora exec --input '{"parameters":{"named":{"purpose":"Semantic navigation root for work notes"}},"mutation":{"expected_schema_version":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"bootstrap router"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE :purpose"
+
+# 3. Create a branch, then a leaf under it, reusing the returned route_id.
+memora exec --input '{"parameters":{"named":{"parent":"route_root","name":"architecture","kind":"branch","purpose":"Architecture decisions"}},"mutation":{"expected_schema_version":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"group architecture notes"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose"
+
+# 4. Verify: the child appears under the parent, and the leaf is still empty.
+memora query --input '{"parameters":{"named":{"parent":"route_root"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES UNDER :parent LIMIT 12"
+memora query --input '{"parameters":{"named":{"leaf":"route_leaf"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "OPEN ROUTE :leaf LIMIT 1"
+```
+
+This bootstrap is ordinary Router construction, not a Route mutation plan.
+`PLAN ROUTE MUTATION` only restructures an existing tree (SPLIT, MERGE, MOVE);
+it cannot create the first root, and it is not the path for adding a leaf to
+hold a new Row.
+
+Before attaching a new Row, verify that every target leaf is empty;
 an occupied leaf requires a new semantic leaf, while the same Row may still use
 multiple distinct leaves. Submit the plan through `mutate` so
 Policy validation occurs before any Tool call and multi-step changes share one
