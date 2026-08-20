@@ -24,7 +24,7 @@ SKILL.md 与两个 adapter 均已交付。逐阶段记录见下。
 | 对象 | 归档 | 取消归档 | 列出已归档 | 差距 |
 |---|---|---|---|---|
 | Row | `ARCHIVE ROW`／`DELETE FROM` | **`UNARCHIVE ROW`**（须带 Route 快照） | 经 History | 已交付 |
-| Route | `DELETE ROUTE`（`Deleted=true`） | **Stage 1 已加 `UNARCHIVE ROUTE`** | 无 | 三处可见性泄漏，Stage 1 已修，见下 |
+| Route | `ARCHIVE ROUTE`／`DELETE ROUTE` | `UNARCHIVE ROUTE` | `SHOW ROUTES UNDER … INCLUDING ARCHIVED` | 已交付，三处可见性泄漏见下 |
 | Relation | `ARCHIVE RELATION`／`UNRELATE` | **`UNARCHIVE RELATION`**（保持 ID） | 经 History | 已交付 |
 | Column | `ARCHIVE COLUMN`／`DROP_COLUMN` | **`UNARCHIVE COLUMN`** | `SHOW COLUMNS … INCLUDING ARCHIVED` | 已交付，`Reversible=false` 已取消 |
 | Table | `ARCHIVE TABLE` | `UNARCHIVE TABLE` | `SHOW TABLES … INCLUDING ARCHIVED` | 已交付 |
@@ -70,14 +70,21 @@ UNARCHIVE <同上，无 REASON>                                      (同级)
 ```text
 SHOW DATABASES INCLUDING ARCHIVED
 SHOW TABLES FROM work INCLUDING ARCHIVED
-SHOW ROUTES FROM TABLE work.notes AT ROOT INCLUDING ARCHIVED
-SELECT … FROM work.notes INCLUDING ARCHIVED WHERE …
+SHOW COLUMNS FROM work.notes INCLUDING ARCHIVED
+SHOW ROUTES UNDER :parent LIMIT 12 INCLUDING ARCHIVED
+DESCRIBE DATABASE work INCLUDING ARCHIVED
 DESCRIBE TABLE work.notes INCLUDING ARCHIVED
 ```
 
-`INCLUDING ARCHIVED` 只放宽**该语句**的过滤器，不改变任何祖先规则，
-结果行必须带 `archived`、`archived_at`、`archived_reason` 三个字段，
-让调用方无法把归档对象误当活跃对象。
+`INCLUDING ARCHIVED` 只放宽**该语句**的过滤器，不改变任何祖先规则。
+`SHOW …` 的归档变体**只返回归档对象**（不是活跃 + 归档的并集），
+`DESCRIBE …` 可能返回活跃对象，靠 `archived_at` 是否存在区分——
+`catalog` 结构体的这两个字段是 `omitempty`，活跃对象没有这两个键。
+
+**`SELECT … INCLUDING ARCHIVED` 不存在，也不打算做**：它是读放宽而不是写放宽，
+但 Row 的归档语义已经由 `SHOW HISTORY` 与 `RESTORE … TO REVISION` 覆盖，
+再给 `SELECT` 开一个口子只会让"这一行是不是活的"在每个查询里都要判一次。
+`INSERT … INCLUDING ARCHIVED` 同样不被接受——修饰词永远不放宽写入。
 
 ### 兼容与命名
 
@@ -98,8 +105,9 @@ DESCRIBE TABLE work.notes INCLUDING ARCHIVED
 
 理由是硬的：5,000 行的 Table 不该为一次归档产生 5,000 次 Row 修订；
 F226 之后 poison 按库收敛，这种批量写正是最容易毒化该库的写入形态。
-直接后果——归档只产生 **1 条** change log（`object_archived`），
-`UNARCHIVE` 之后每行的 `revision` 一个都没变。
+直接后果——归档只产生 **1 条** change log（走既有的 Catalog 差异信封，
+其中带上新的 `archived_at`／`archived_reason`；没有单独的 `object_archived`
+变更种类，也不需要），`UNARCHIVE` 之后每行的 `revision` 一个都没变。
 
 同一条规则决定了嵌套行为：单独归档过的 Table，在库被 `UNARCHIVE` 之后
 **仍然是归档状态**。`UNARCHIVE` 不替用户撤销另一个决定。
@@ -140,7 +148,8 @@ deleted 文档投影。
 - `unrouted_row`、`orphan_membership`、F224 强制 Route、F225 强制 summary
   **一律跳过归档对象及归档祖先之下的对象**，否则一次归档淹掉整份报告；
 - 不需要 `dangling_relation`：没有物理删除，端点永远还在，只是被隐藏；
-- 新增 `archived_container`（low_risk，纯信息）：报出归档对象数量与占用。
+- **不做 `archived_container`**：Admin UI 的已归档区已经回答"仓库里堆了什么"，
+  一条恒定触发的信息项只会稀释报告里真正可执行的条目。
 
 ## 分阶段
 
@@ -160,8 +169,10 @@ deleted 文档投影。
   `Describe/ShowArchived*` 是唯一的穿透读。归档**不改 Row**，实测 `revision` 不变。
   **归档不自增 SchemaVersion**——那会被误当成 schema 变更（详见下方"一个前置缺陷"）。
 - **Stage 3（已完成 2026-08-20）**：`INCLUDING ARCHIVED` 铺到 `SHOW DATABASES`／
-  `SHOW TABLES`／`SHOW COLUMNS`／`DESCRIBE DATABASE`／`DESCRIBE TABLE`，
-  只放宽出现它的那一条语句，后端能力用可选接口断言、不支持就明确报错。
+  `SHOW TABLES`／`SHOW COLUMNS`／`SHOW ROUTES UNDER`／`DESCRIBE DATABASE`／
+  `DESCRIBE TABLE`，只放宽出现它的那一条语句，后端能力用可选接口断言、
+  不支持就明确报错。`validateRouteChildren` 的作用域自检对归档页反转一个子句，
+  两种列表都不会静默接受另一种节点。
 - **Stage 3b（已完成 2026-08-20）**：`ARCHIVE|UNARCHIVE ROW`（L1，`UNARCHIVE`
   必须带 `route_leaf_ids`，因为归档清空了 Route 归属而 F224 要求活跃 Row 可导航）
   与 `ARCHIVE|UNARCHIVE RELATION`（L1，保持 `relation_id`）。

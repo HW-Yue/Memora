@@ -1369,6 +1369,14 @@ func (service *Service) ListRouterChildrenPage(ctx context.Context, parentID, cu
 	defer release()
 	return nativerouter.New(service.repository.file).ShowUnderPage(parentID, cursor, limit)
 }
+func (service *Service) ListArchivedRouterChildrenPage(ctx context.Context, parentID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	defer release()
+	return nativerouter.New(service.repository.file).ShowArchivedUnderPage(parentID, cursor, limit)
+}
 func (service *Service) ListRouterLeaf(_ context.Context, leafID string, limit int) ([]router.Locator, bool, error) {
 	return nativerouter.New(service.repository.file).Open(leafID, limit)
 }

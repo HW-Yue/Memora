@@ -9,7 +9,7 @@ import (
 
 // rowArchiveFixture builds two Routed Rows and one Relation between them, so
 // archiving either end has something real to hide.
-func rowArchiveFixture(t *testing.T) (string, string, string, string) {
+func rowArchiveFixture(t *testing.T) (string, string, string, string, string) {
 	t.Helper()
 	dataDir := archiveInstance(t)
 	rootResult := executeTraceMSQL(t, dataDir,
@@ -62,14 +62,14 @@ func rowArchiveFixture(t *testing.T) (string, string, string, string) {
 		}},
 	)
 	relationID, _ := related.Results[0].Rows[0]["relation_id"].(string)
-	return dataDir, sourceRow, relationID, first
+	return dataDir, sourceRow, relationID, first, rootID
 }
 
 // TestArchivingARowHidesItAndUnarchiveRestoresTheSameRow pins that the inverse
 // lands on the same Row: re-inserting would mint a new RowID and orphan every
 // reference to the old one.
 func TestArchivingARowHidesItAndUnarchiveRestoresTheSameRow(t *testing.T) {
-	dataDir, rowID, _, leaf := rowArchiveFixture(t)
+	dataDir, rowID, _, leaf, _ := rowArchiveFixture(t)
 
 	before := rowCount(t, dataDir, "SELECT title FROM work.notes LIMIT 10")
 
@@ -125,7 +125,7 @@ func TestArchivingARowHidesItAndUnarchiveRestoresTheSameRow(t *testing.T) {
 // TestArchivingARelationKeepsItsIdentity is the same point one level over:
 // re-running RELATE would produce a different relation_id.
 func TestArchivingARelationKeepsItsIdentity(t *testing.T) {
-	dataDir, _, relationID, _ := rowArchiveFixture(t)
+	dataDir, _, relationID, _, _ := rowArchiveFixture(t)
 
 	if ok, message := run(t, dataDir, "ARCHIVE RELATION :relation REASON :reason",
 		[]executor.StatementInput{{
@@ -165,7 +165,7 @@ func TestArchivingARelationKeepsItsIdentity(t *testing.T) {
 }
 
 func TestArchiveRowAndRelationRequireReason(t *testing.T) {
-	dataDir, rowID, relationID, _ := rowArchiveFixture(t)
+	dataDir, rowID, relationID, _, _ := rowArchiveFixture(t)
 
 	for _, source := range []string{
 		"ARCHIVE ROW work.notes :row",

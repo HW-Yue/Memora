@@ -366,6 +366,42 @@ func (repository *Repository) Children(parentID string) []router.Node {
 	return result
 }
 
+// ArchivedChildren lists only the archived children of a parent. Without it
+// UNARCHIVE ROUTE would need the caller to remember a route_id, which is the
+// same dead end INCLUDING ARCHIVED removes for containers.
+func (repository *Repository) ArchivedChildren(parentID string) []router.Node {
+	nodes, _ := repository.nodes()
+	result := make([]router.Node, 0)
+	for _, node := range nodes {
+		if node.ParentID == parentID && node.Deleted {
+			result = append(result, node)
+		}
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].Name == result[right].Name {
+			return result[left].ID < result[right].ID
+		}
+		return result[left].Name < result[right].Name
+	})
+	return result
+}
+
+// ShowArchivedUnderPage pages the archived children. The parent itself must be
+// live: an archived parent is reached by restoring it, not by browsing into it.
+func (repository *Repository) ShowArchivedUnderPage(parentID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
+	if limit < 1 || limit > 1000 {
+		return nil, router.ReadPage{}, fmt.Errorf("%w: limit must be between 1 and 1000", ErrInvalid)
+	}
+	parent, err := repository.Get(parentID)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	if parent.Deleted || parent.Kind == router.KindLeaf {
+		return nil, router.ReadPage{}, fmt.Errorf("%w: children require a live root or branch", ErrInvalid)
+	}
+	return router.PaginateNodes("parent-archived:"+parentID, cursor, limit, repository.ArchivedChildren(parentID))
+}
+
 func (repository *Repository) ShowUnder(parentID, cursor string, limit int) ([]router.Node, string, error) {
 	nodes, page, err := repository.ShowUnderPage(parentID, cursor, limit)
 	return nodes, page.NextCursor, err

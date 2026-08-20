@@ -25,6 +25,12 @@ type routeAliasRows interface {
 	UpdateRouterAliases(context.Context, string, []string, uint64) (router.Node, error)
 }
 
+// archivedRouteRows is the archive-aware child listing behind
+// SHOW ROUTES … INCLUDING ARCHIVED.
+type archivedRouteRows interface {
+	ListArchivedRouterChildrenPage(context.Context, string, string, int) ([]router.Node, router.ReadPage, error)
+}
+
 func (engine *Engine) createRoute(
 	ctx context.Context,
 	statement *ast.CreateRouteStatement,
@@ -344,7 +350,15 @@ func (engine *Engine) showRoutes(
 			return Output{}, executeError(result.CodeConstraint, "SHOW ROUTES UNDER requires a root or branch; use OPEN ROUTE for a leaf")
 		}
 		expectedDatabaseID, expectedTableID, expectedParentID = parent.DatabaseID, parent.TableID, parent.ID
-		nodes, page, err = engine.rows.ListRouterChildrenPage(ctx, parent.ID, cursor, limit)
+		if show.IncludingArchived {
+			archived, ok := engine.rows.(archivedRouteRows)
+			if !ok {
+				return Output{}, executeError(result.CodeUnsupported, "INCLUDING ARCHIVED is not supported by this backend")
+			}
+			nodes, page, err = archived.ListArchivedRouterChildrenPage(ctx, parent.ID, cursor, limit)
+		} else {
+			nodes, page, err = engine.rows.ListRouterChildrenPage(ctx, parent.ID, cursor, limit)
+		}
 	}
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -352,7 +366,7 @@ func (engine *Engine) showRoutes(
 	if page.Snapshot == "" {
 		return Output{}, executeError(result.CodeInternal, "Route child page has no snapshot")
 	}
-	if err := validateRouteChildren(nodes, expectedDatabaseID, expectedTableID, expectedParentID); err != nil {
+	if err := validateRouteChildren(nodes, expectedDatabaseID, expectedTableID, expectedParentID, show.IncludingArchived); err != nil {
 		return Output{}, err
 	}
 	output := Output{
@@ -532,13 +546,16 @@ func routerAliases(expression *ast.Expression, bound bindings) ([]string, error)
 	}
 }
 
-func validateRouteChildren(nodes []router.Node, databaseID, tableID, parentID string) error {
+// validateRouteChildren guards the live listing. archived reverses exactly one
+// clause — the page is expected to be entirely archived nodes — so an archive
+// listing cannot silently accept a live node or vice versa.
+func validateRouteChildren(nodes []router.Node, databaseID, tableID, parentID string, archived bool) error {
 	if parentID == "" && len(nodes) > 0 {
 		parentID = nodes[0].ParentID
 	}
 	seen := make(map[string]struct{}, len(nodes))
 	for _, node := range nodes {
-		if node.Version != router.Version || node.ID == "" || node.Revision == 0 || node.Deleted ||
+		if node.Version != router.Version || node.ID == "" || node.Revision == 0 || node.Deleted != archived ||
 			node.DatabaseID != databaseID || node.TableID != tableID || node.ParentID == "" ||
 			node.ParentID != parentID || (node.Kind != router.KindBranch && node.Kind != router.KindLeaf) {
 			return executeError(result.CodeInternal, "Route child page violates its logical scope")

@@ -156,3 +156,50 @@ func TestNativeDaemonRefusesArchiveWithoutReason(t *testing.T) {
 		t.Fatalf("error should name REASON, got %q (%#v)", message, envelope)
 	}
 }
+
+// TestShowRoutesIncludingArchivedFindsAnArchivedLeaf closes the last gap in the
+// archive read surface: without it, UNARCHIVE ROUTE would need the caller to
+// remember a route_id, which is exactly the dead end INCLUDING ARCHIVED removes
+// for Databases and Tables.
+func TestShowRoutesIncludingArchivedFindsAnArchivedLeaf(t *testing.T) {
+	dataDir, _, _, leaf, rootID := rowArchiveFixture(t)
+
+	under := func(source string) []map[string]any {
+		t.Helper()
+		envelope, execErr := Execute(t.Context(), dataDir, source,
+			[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"parent": rootID}}}},
+		)
+		if execErr != nil || !envelope.OK {
+			t.Fatalf("%q = %#v, %v", source, envelope, execErr)
+		}
+		values := make([]map[string]any, 0, len(envelope.Results[0].Rows))
+		for _, value := range envelope.Results[0].Rows {
+			values = append(values, value)
+		}
+		return values
+	}
+
+	if live := under("SHOW ROUTES UNDER :parent LIMIT 12"); len(live) != 2 {
+		t.Fatalf("fixture should have two live leaves, got %d", len(live))
+	}
+	if archived := under("SHOW ROUTES UNDER :parent LIMIT 12 INCLUDING ARCHIVED"); len(archived) != 0 {
+		t.Fatalf("nothing is archived yet, got %#v", archived)
+	}
+
+	if ok, message := run(t, dataDir, "ARCHIVE ROUTE :leaf REASON :reason",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"leaf": leaf, "reason": "superseded"}},
+			Mutation:   executor.MutationOptions{MaxAffectedRows: 1, ExpectedRevision: 1},
+		}},
+	); !ok {
+		t.Fatalf("ARCHIVE ROUTE failed: %s", message)
+	}
+
+	if live := under("SHOW ROUTES UNDER :parent LIMIT 12"); len(live) != 1 {
+		t.Fatalf("the archived leaf must leave the plain listing, got %d", len(live))
+	}
+	archived := under("SHOW ROUTES UNDER :parent LIMIT 12 INCLUDING ARCHIVED")
+	if len(archived) != 1 || archived[0]["route_id"] != leaf {
+		t.Fatalf("INCLUDING ARCHIVED must name the archived leaf, got %#v", archived)
+	}
+}
