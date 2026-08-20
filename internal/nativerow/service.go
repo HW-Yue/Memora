@@ -1176,8 +1176,19 @@ func (service *Service) DeleteRouterNode(ctx context.Context, id string, expecte
 	if err != nil {
 		return 0, err
 	}
-	if current.Revision != expected || len(routes.Children(id)) > 0 {
+	if current.Revision != expected {
 		return 0, ErrRevisionConflict
+	}
+	// Archiving is bottom-up: a node keeps its children links, so archiving a
+	// parent while children are live would leave them reachable by ID but
+	// unreachable by navigation. Say that plainly — reporting it as a revision
+	// conflict sends the caller to re-read a revision that was never wrong.
+	if children := routes.Children(id); len(children) > 0 {
+		return 0, serviceFailure(
+			result.CodeConstraint,
+			fmt.Sprintf("Route node has %d live child node(s); archive them first", len(children)),
+			nil,
+		)
 	}
 	current.Revision, current.Deleted = current.Revision+1, true
 	committed, err := service.commitRouteNodeChange(ctx, change.OperationDelete, "delete Route node", func(transaction *nativestore.Transaction) (router.Node, error) {

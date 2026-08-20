@@ -203,3 +203,24 @@ func TestShowRoutesIncludingArchivedFindsAnArchivedLeaf(t *testing.T) {
 		t.Fatalf("INCLUDING ARCHIVED must name the archived leaf, got %#v", archived)
 	}
 }
+
+// TestArchivingARouteWithLiveChildrenSaysWhy pins the diagnostic, not just the
+// refusal. Archiving is bottom-up because a node keeps its children links, and
+// reporting that as a revision conflict sends the caller to re-read a revision
+// that was never wrong.
+func TestArchivingARouteWithLiveChildrenSaysWhy(t *testing.T) {
+	dataDir, _, _, _, rootID := rowArchiveFixture(t)
+
+	ok, message := run(t, dataDir, "ARCHIVE ROUTE :node REASON :reason",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"node": rootID, "reason": "retire the tree"}},
+			Mutation:   executor.MutationOptions{MaxAffectedRows: 1, ExpectedRevision: 1},
+		}},
+	)
+	if ok {
+		t.Fatal("archiving a node with live children must fail")
+	}
+	if !strings.Contains(message, "child") {
+		t.Fatalf("the error must name the real reason, got %q", message)
+	}
+}
