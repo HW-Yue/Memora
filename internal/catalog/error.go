@@ -8,6 +8,7 @@ const (
 	CodeValidation    Code = "validation_error"
 	CodeNotFound      Code = "not_found"
 	CodeAlreadyExists Code = "already_exists"
+	CodeArchived      Code = "constraint_violation"
 )
 
 type Error struct {
@@ -25,6 +26,14 @@ func (err *Error) Error() string {
 		return fmt.Sprintf("catalog %s %q was not found", err.Object, err.Name)
 	case CodeAlreadyExists:
 		return fmt.Sprintf("catalog %s name or alias %q already exists", err.Object, err.Name)
+	case CodeArchived:
+		if err.Field != "" {
+			return fmt.Sprintf(
+				"catalog %s %q is hidden because %s is archived; UNARCHIVE it first",
+				err.Object, err.Name, err.Field,
+			)
+		}
+		return fmt.Sprintf("catalog %s %q is archived; UNARCHIVE it first", err.Object, err.Name)
 	default:
 		return fmt.Sprintf("catalog %s %q failed", err.Object, err.Name)
 	}

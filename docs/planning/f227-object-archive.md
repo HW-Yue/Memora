@@ -27,8 +27,8 @@
 | Route | `DELETE ROUTE`（`Deleted=true`） | **Stage 1 已加 `UNARCHIVE ROUTE`** | 无 | 三处可见性泄漏，Stage 1 已修，见下 |
 | Relation | `UNRELATE`（`StateDeleted`） | 无（只能重新 `RELATE`，换新身份） | 无 | 缺保持身份的逆操作 |
 | Column | `DROP_COLUMN` | 无，且明确 `Reversible=false` | 无 | 真的从 schema 移除，不是归档 |
-| Table | 无 | 无 | 无 | 整体缺失 |
-| Database | 无 | 无 | 无 | 整体缺失 |
+| Table | **Stage 2 已加 `ARCHIVE TABLE`** | **Stage 2 已加** | Stage 3 | 已交付 |
+| Database | **Stage 2 已加 `ARCHIVE DATABASE`** | **Stage 2 已加** | Stage 3 | 已交付 |
 
 ### 关于 Route：一次记录订正
 
@@ -144,8 +144,14 @@ Relation 端点解析／`SELECT`／Semantic Health 扫描，
   `ARCHIVE ROUTE :id REASON :r` 与 `UNARCHIVE ROUTE :id`（L2，走 `ExpectedRevision`）；
   归档的兄弟节点不再占用 fan-out 名额；平行实现的有损 `deleteSubtree`
   一并改为无损 tombstone。
-- **Stage 2**：Catalog 归档字段（`archived_at`/`archived_reason`）+
-  Table/Database 的 `ARCHIVE`/`UNARCHIVE` + 可见性过滤全清单 + 写入拒绝。
+- **Stage 2（已完成 2026-08-20）**：`catalog.Database`／`catalog.Table` 增
+  `ArchivedAt`／`ArchivedReason`（原生 codec 可选字段 18/19 与 13/14，旧文件读为未归档）；
+  `ARCHIVE|UNARCHIVE DATABASE|TABLE`（L2，`ARCHIVE` 必填 `REASON`）；
+  可见性收在 `nativecatalog` 的 `DescribeDatabase`／`DescribeTable` 一个咽喉点上——
+  它们直接拒绝归档对象，于是**所有**读写路径（`SELECT`／`INSERT`／`DESCRIBE`／
+  `SHOW`／Row 服务）自动生效，不必逐处记住规则；`ShowDatabases`／`ShowTables` 过滤，
+  `Describe/ShowArchived*` 是唯一的穿透读。归档**不改 Row**，实测 `revision` 不变。
+  **归档不自增 SchemaVersion**——那会被误当成 schema 变更（详见下方"一个前置缺陷"）。
 - **Stage 3**：`INCLUDING ARCHIVED` 修饰词铺到全部读面；
   `ARCHIVE ROW`/`ARCHIVE RELATION` 作为保持身份的直接逆操作。
 - **Stage 4**：`ARCHIVE COLUMN`，`DROP_COLUMN` 重定义为它的别名，
@@ -154,6 +160,15 @@ Relation 端点解析／`SELECT`／Semantic Health 扫描，
   F224/F225 归档豁免。
 - **Stage 6**：[Admin UI](./f227-archive-admin-ui.md)、CLI 子命令、
   SKILL.md 与两个 adapter。
+
+## 一个前置缺陷（已单独修复）
+
+Stage 2 的实现暴露出一个与归档无关的已发布缺陷：**对有数据的表改名之后，
+它的全部 Row 都读不出来**（`native row record is corrupt: visible Row locator
+has wrong Table`）。根因是两处要求 Row 的 schema 版本与 Table 当前版本严格相等
+（`nativerow/indexed_reader.go` 的 `locatorMatchesTable`、`nativerow/repository.go`
+的 `normalize`），而 Row 保留的是写入时的版本，引擎本就不会因 Catalog 变更重写 Row。
+已改为「非零且不超过 Table 当前版本」并单独提交。
 
 ## 明确不做
 

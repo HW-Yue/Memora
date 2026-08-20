@@ -122,6 +122,10 @@ func statementDatabaseNames(statement ast.Statement) []string {
 		} else {
 			appendQualifiedTable(statement.Describe.Name)
 		}
+	case statement.Archive != nil:
+		if len(statement.Archive.Name.Parts) > 0 {
+			appendDatabase(statement.Archive.Name)
+		}
 	case statement.Create != nil:
 		if strings.EqualFold(statement.Create.Object, "DATABASE") {
 			appendDatabase(statement.Create.Name)

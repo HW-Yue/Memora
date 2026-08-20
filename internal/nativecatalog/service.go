@@ -82,19 +82,52 @@ func (service *Service) CreateDatabase(ctx context.Context, definition catalog.D
 	return created, err
 }
 
+// ShowDatabases and every other method below are the live read surface: an
+// archived object never appears and never resolves. Use the Describe/Show
+// Archived variants in archive.go when the caller means to see them.
 func (service *Service) ShowDatabases(ctx context.Context) ([]catalog.Database, error) {
-	if service.authority != nil {
-		return service.authority.ShowDatabases(ctx)
-	}
-	databases, err := service.read(ctx)
+	databases, err := service.showDatabasesIncludingArchived(ctx)
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(databases, func(left, right int) bool { return canonical(databases[left].Name) < canonical(databases[right].Name) })
-	return databases, nil
+	live := make([]catalog.Database, 0, len(databases))
+	for _, database := range databases {
+		if database.Archived() {
+			continue
+		}
+		database.Tables = liveTables(database.Tables)
+		live = append(live, database)
+	}
+	sortDatabasesByName(live)
+	return live, nil
+}
+
+func (service *Service) showDatabasesIncludingArchived(ctx context.Context) ([]catalog.Database, error) {
+	if service.authority != nil {
+		return service.authority.ShowDatabases(ctx)
+	}
+	return service.read(ctx)
+}
+
+// snapshot is the archive-aware whole-Catalog read used by the archive
+// surface; it deliberately does not filter.
+func (service *Service) snapshot(ctx context.Context) ([]catalog.Database, error) {
+	return service.showDatabasesIncludingArchived(ctx)
 }
 
 func (service *Service) DescribeDatabase(ctx context.Context, name string) (catalog.Database, error) {
+	database, err := service.describeDatabaseIncludingArchived(ctx, name)
+	if err != nil {
+		return catalog.Database{}, err
+	}
+	if database.Archived() {
+		return catalog.Database{}, archivedFailure("database", database.Name, nil)
+	}
+	database.Tables = liveTables(database.Tables)
+	return database, nil
+}
+
+func (service *Service) describeDatabaseIncludingArchived(ctx context.Context, name string) (catalog.Database, error) {
 	if service.authority != nil {
 		return service.authority.DescribeDatabase(ctx, name)
 	}
@@ -107,6 +140,28 @@ func (service *Service) DescribeDatabase(ctx context.Context, name string) (cata
 		return catalog.Database{}, catalogFailure(catalog.CodeNotFound, "database", name, "")
 	}
 	return *database, nil
+}
+
+func liveTables(tables []catalog.Table) []catalog.Table {
+	live := make([]catalog.Table, 0, len(tables))
+	for _, table := range tables {
+		if !table.Archived() {
+			live = append(live, table)
+		}
+	}
+	return live
+}
+
+func sortDatabasesByName(databases []catalog.Database) {
+	sort.Slice(databases, func(left, right int) bool {
+		return canonical(databases[left].Name) < canonical(databases[right].Name)
+	})
+}
+
+func sortTablesByName(tables []catalog.Table) {
+	sort.Slice(tables, func(left, right int) bool {
+		return canonical(tables[left].Name) < canonical(tables[right].Name)
+	})
 }
 
 func (service *Service) CreateTable(ctx context.Context, databaseName string, definition catalog.TableDefinition) (catalog.Table, error) {
@@ -143,25 +198,54 @@ func (service *Service) CreateTable(ctx context.Context, databaseName string, de
 }
 
 func (service *Service) ShowTables(ctx context.Context, databaseName string) ([]catalog.Table, error) {
-	if service.authority != nil {
-		return service.authority.ShowTables(ctx, databaseName)
-	}
-	database, err := service.DescribeDatabase(ctx, databaseName)
-	if err != nil {
+	// DescribeDatabase already refuses an archived Database and drops archived
+	// Tables, so the visibility rule lives in exactly one place.
+	if _, err := service.DescribeDatabase(ctx, databaseName); err != nil {
 		return nil, err
 	}
-	tables := append([]catalog.Table(nil), database.Tables...)
-	sort.Slice(tables, func(left, right int) bool { return canonical(tables[left].Name) < canonical(tables[right].Name) })
+	var tables []catalog.Table
+	if service.authority != nil {
+		fromAuthority, err := service.authority.ShowTables(ctx, databaseName)
+		if err != nil {
+			return nil, err
+		}
+		tables = liveTables(fromAuthority)
+	} else {
+		database, err := service.DescribeDatabase(ctx, databaseName)
+		if err != nil {
+			return nil, err
+		}
+		tables = append([]catalog.Table(nil), database.Tables...)
+	}
+	sortTablesByName(tables)
 	return tables, nil
 }
 
 func (service *Service) DescribeTable(ctx context.Context, databaseName, tableName string) (catalog.Table, error) {
-	if service.authority != nil {
-		return service.authority.DescribeTable(ctx, databaseName, tableName)
-	}
-	database, err := service.DescribeDatabase(ctx, databaseName)
+	database, err := service.describeDatabaseIncludingArchived(ctx, databaseName)
 	if err != nil {
 		return catalog.Table{}, err
+	}
+	if database.Archived() {
+		return catalog.Table{}, archivedFailure("table", tableName, &database)
+	}
+	table, err := service.describeTableIncludingArchived(ctx, databaseName, tableName, database)
+	if err != nil {
+		return catalog.Table{}, err
+	}
+	if table.Archived() {
+		return catalog.Table{}, archivedFailure("table", table.Name, nil)
+	}
+	return table, nil
+}
+
+func (service *Service) describeTableIncludingArchived(
+	ctx context.Context,
+	databaseName, tableName string,
+	database catalog.Database,
+) (catalog.Table, error) {
+	if service.authority != nil {
+		return service.authority.DescribeTable(ctx, databaseName, tableName)
 	}
 	table, ok := findTable(&database, tableName)
 	if !ok {

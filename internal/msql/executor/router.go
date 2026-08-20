@@ -243,6 +243,10 @@ func (engine *Engine) archive(
 	switch statement.Object {
 	case "ROUTE":
 		return engine.archiveRoute(ctx, statement, bound, options)
+	case "DATABASE":
+		return engine.archiveDatabase(ctx, statement, bound)
+	case "TABLE":
+		return engine.archiveTable(ctx, statement, bound)
 	default:
 		return Output{}, executeError(result.CodeValidation, "ARCHIVE object kind is unsupported")
 	}

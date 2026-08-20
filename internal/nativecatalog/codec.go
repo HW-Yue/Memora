@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 	"unicode/utf8"
 )
 
@@ -186,6 +187,20 @@ func (fields fieldSet) optionalBool(id uint16) (bool, error) {
 		return false, nil
 	}
 	return fields.bool(id)
+}
+
+// optionalTimestamp decodes an absent field as nil rather than the zero time,
+// so "never archived" and "archived at the Unix epoch" stay distinguishable.
+func (fields fieldSet) optionalTimestamp(id uint16) (*time.Time, error) {
+	if _, ok := fields[id]; !ok {
+		return nil, nil
+	}
+	nanoseconds, err := fields.int64(id)
+	if err != nil {
+		return nil, err
+	}
+	value := time.Unix(0, nanoseconds).UTC()
+	return &value, nil
 }
 
 func (fields fieldSet) textList(id uint16) ([]string, error) {
