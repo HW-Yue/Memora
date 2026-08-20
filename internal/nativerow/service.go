@@ -256,9 +256,15 @@ func bindValues(table catalog.Table, values map[string]any) (map[string]any, err
 	return bound, nil
 }
 
+// resolveColumn is the single place a Column name becomes a Column. Archived
+// Columns stay in table.Columns so stored values keep decoding, so this is also
+// the single place that has to refuse to resolve one by name.
 func resolveColumn(table catalog.Table, name string) (catalog.Column, bool) {
 	candidate := strings.ToLower(strings.TrimSpace(name))
 	for _, column := range table.Columns {
+		if column.Archived() {
+			continue
+		}
 		if strings.ToLower(column.Name) == candidate || strings.ToLower(column.ID) == candidate {
 			return column, true
 		}

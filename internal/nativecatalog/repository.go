@@ -522,6 +522,12 @@ func encodeColumn(value catalog.Column, tableID string, order uint64) ([]byte, e
 	if value.SemanticRole != "" {
 		values = append(values, fieldValue{13, value.SemanticRole})
 	}
+	if value.ArchivedAt != nil {
+		values = append(values, fieldValue{14, value.ArchivedAt.UTC().UnixNano()})
+	}
+	if value.ArchivedReason != "" {
+		values = append(values, fieldValue{15, value.ArchivedReason})
+	}
 	return encodeObject(values)
 }
 
@@ -630,7 +636,9 @@ func decodeColumn(payload []byte) (columnRecord, error) {
 	created, e11 := fields.int64(11)
 	updated, e12 := fields.int64(12)
 	semanticRole, e13 := fields.optionalText(13)
-	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13); err != nil {
+	archivedAt, e14 := fields.optionalTimestamp(14)
+	archivedReason, e15 := fields.optionalText(15)
+	if err := firstError(e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15); err != nil {
 		return columnRecord{}, err
 	}
 	if maxChars < 0 || maxChars > math.MaxInt {
@@ -639,7 +647,7 @@ func decodeColumn(payload []byte) (columnRecord, error) {
 	if !validSemanticRole(semanticRole) || semanticRole != normalizeSemanticRole(semanticRole) {
 		return columnRecord{}, fmt.Errorf("%w: invalid semantic role", ErrCorrupt)
 	}
-	return columnRecord{order: order, tableID: tableID, value: catalog.Column{ID: id, Name: name, Aliases: aliases, Type: kind, MaxCharacters: int(maxChars), Nullable: nullable, Purpose: purpose, SemanticRole: semanticRole, SchemaVersion: schema, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
+	return columnRecord{order: order, tableID: tableID, value: catalog.Column{ID: id, Name: name, Aliases: aliases, Type: kind, MaxCharacters: int(maxChars), Nullable: nullable, Purpose: purpose, SemanticRole: semanticRole, SchemaVersion: schema, ArchivedAt: archivedAt, ArchivedReason: archivedReason, CreatedAt: time.Unix(0, created).UTC(), UpdatedAt: time.Unix(0, updated).UTC()}}, nil
 }
 
 func firstError(errors ...error) error {

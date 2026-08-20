@@ -93,7 +93,10 @@ func Build(
 	}
 	for _, action := range actions {
 		if action.Action == ActionDrop {
-			plan.Impact.Destructive, plan.Impact.Reversible = true, false
+			// Still destructive in the sense that the Column leaves every read
+			// surface, but no longer irreversible: DROP_COLUMN archives, and
+			// UNARCHIVE COLUMN brings it back with its values intact.
+			plan.Impact.Destructive = true
 		}
 	}
 	if plan.Impact.IncompatibleRows > 0 {

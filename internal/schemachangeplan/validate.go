@@ -99,7 +99,12 @@ func Validate(plan Plan) error {
 	}
 	if plan.Impact.AffectedColumns != len(plan.Actions) || plan.Impact.IncompatibleRows != 0 ||
 		plan.Impact.RequiresRowRewrite || len(plan.Blockers) != 0 ||
-		plan.Impact.Destructive != destructive || plan.Impact.Reversible == destructive ||
+		// Destructive and Reversible are no longer opposites. DROP_COLUMN
+		// archives the Column instead of removing it, so it hides the Column
+		// from every read surface (destructive) while staying exactly
+		// undoable (reversible). Every action a plan can carry is now
+		// reversible, so the flag must be set.
+		plan.Impact.Destructive != destructive || !plan.Impact.Reversible ||
 		plan.Impact.PopulatedDroppedValues < 0 ||
 		plan.Impact.PopulatedDroppedValues > plan.Impact.RowsScanned*droppedColumns {
 		return planError(result.CodeValidation, "plan impact does not match executable actions")
@@ -154,7 +159,7 @@ func ApplyToSnapshot(plan Plan, database catalog.Database, table catalog.Table, 
 		return catalog.Database{}, catalog.Table{}, planError(result.CodeRevisionConflict, "bound Catalog snapshot changed after planning")
 	}
 	current := make([]ColumnShape, 0, len(table.Columns))
-	for _, column := range table.Columns {
+	for _, column := range catalog.LiveColumns(table.Columns) {
 		shape, err := existingShape(column)
 		if err != nil {
 			return catalog.Database{}, catalog.Table{}, planError(result.CodeInternal, "current Column schema is invalid")
@@ -183,6 +188,16 @@ func ApplyToSnapshot(plan Plan, database catalog.Database, table catalog.Table, 
 			continue
 		}
 		if action.Action == ActionDrop {
+			// DROP_COLUMN archives rather than removes. Nothing is destroyed:
+			// the definition and every Row's stored value stay put, the Column
+			// simply stops resolving by name. That is what makes the action
+			// reversible, and it also keeps existing Rows readable — removing
+			// the Column outright left a value the Catalog no longer listed.
+			archived := column
+			archived.ArchivedAt, archived.ArchivedReason = &now, "DROP_COLUMN"
+			archived.SchemaVersion++
+			archived.UpdatedAt = now
+			columns = append(columns, archived)
 			continue
 		}
 		columns = append(columns, columnFromShape(*action.After, column.CreatedAt, now))

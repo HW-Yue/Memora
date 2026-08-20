@@ -247,6 +247,8 @@ func (engine *Engine) archive(
 		return engine.archiveDatabase(ctx, statement, bound)
 	case "TABLE":
 		return engine.archiveTable(ctx, statement, bound)
+	case "COLUMN":
+		return engine.archiveColumn(ctx, statement, bound)
 	case "ROW":
 		return engine.archiveRow(ctx, statement, bound, options)
 	case "RELATION":

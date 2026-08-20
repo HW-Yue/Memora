@@ -394,7 +394,7 @@ func (repository *Repository) readDecodedRecord(recordID string) (row.Row, error
 }
 
 func normalizeDecodedRecord(value row.Row, table catalog.Table) (row.Row, error) {
-	normalized, err := normalize(value, table)
+	normalized, err := normalizeStored(value, table)
 	if err != nil {
 		return row.Row{}, fmt.Errorf("%w: row %q fails catalog validation", ErrCorrupt, value.ID)
 	}
@@ -429,7 +429,21 @@ func (repository *Repository) table(databaseID, tableID string) (catalog.Table, 
 	return catalog.Table{}, fmt.Errorf("%w: table %q does not belong to database %q", ErrInvalid, tableID, databaseID)
 }
 
+// normalize validates a Row that is about to be written. It is strict: an
+// unknown Column ID here means the caller built a bad write.
 func normalize(value row.Row, table catalog.Table) (row.Row, error) {
+	return normalizeRow(value, table, false)
+}
+
+// normalizeStored decodes a Row already on disk. It carries values for Columns
+// the Catalog no longer lists, because that state is expected rather than
+// corrupt: DROP_COLUMN removes a Column without rewriting a single Row, and an
+// archived Column deliberately keeps its values so a restore is exact.
+func normalizeStored(value row.Row, table catalog.Table) (row.Row, error) {
+	return normalizeRow(value, table, true)
+}
+
+func normalizeRow(value row.Row, table catalog.Table, carryUnlistedValues bool) (row.Row, error) {
 	// A Row keeps the SchemaVersion it was written at. Catalog changes bump the
 	// Table without rewriting Rows — a schema-change plan rewrites them only
 	// when it reports RequiresRowRewrite — so demanding equality here made every
@@ -446,19 +460,25 @@ func normalize(value row.Row, table catalog.Table) (row.Row, error) {
 	for _, column := range table.Columns {
 		columns[column.ID] = column
 	}
-	for columnID := range value.Values {
-		if _, ok := columns[columnID]; !ok {
-			return row.Row{}, fmt.Errorf("%w: unknown column %q", ErrInvalid, columnID)
-		}
-	}
 	result := value
 	result.CreatedAt = value.CreatedAt.UTC()
 	result.UpdatedAt = value.UpdatedAt.UTC()
-	result.Values = make(map[string]any, len(columns))
+	result.Values = make(map[string]any, len(value.Values))
+	for columnID, carried := range value.Values {
+		if _, ok := columns[columnID]; ok {
+			continue
+		}
+		if !carryUnlistedValues {
+			return row.Row{}, fmt.Errorf("%w: unknown column %q", ErrInvalid, columnID)
+		}
+		result.Values[columnID] = carried
+	}
 	for _, column := range table.Columns {
 		input, ok := value.Values[column.ID]
 		if !ok {
-			if !column.Nullable {
+			// An archived Column is never required: a write made after the
+			// archive had no way to supply it.
+			if !column.Nullable && !column.Archived() {
 				return row.Row{}, fmt.Errorf("%w: missing column %q", ErrInvalid, column.ID)
 			}
 			input = nil

@@ -35,6 +35,9 @@ func Project(databases []catalog.Database) ([]fulltext.Document, error) {
 				textField("anti_scope", database.AntiScope),
 			},
 		)
+		if database.Archived() {
+			document = archivedDocument(fulltext.KindDatabase, database.ID, "", database.ID, database.SchemaVersion)
+		}
 		if err := validate(document); err != nil {
 			return nil, fmt.Errorf("%w: Database %q: %v", ErrInvalid, database.ID, err)
 		}
@@ -63,6 +66,9 @@ func Project(databases []catalog.Database) ([]fulltext.Document, error) {
 					textField("row_semantics", table.RowSemantics),
 				},
 			)
+			if table.Archived() {
+				document = archivedDocument(fulltext.KindTable, database.ID, table.ID, table.ID, table.SchemaVersion)
+			}
 			if err := validate(document); err != nil {
 				return nil, fmt.Errorf("%w: Table %q: %v", ErrInvalid, table.ID, err)
 			}
@@ -87,6 +93,11 @@ func Project(databases []catalog.Database) ([]fulltext.Document, error) {
 						textField("semantic_role", column.SemanticRole),
 					},
 				)
+				if column.Archived() {
+					document = archivedDocument(
+						fulltext.KindColumn, database.ID, table.ID, column.ID, column.SchemaVersion,
+					)
+				}
 				if err := validate(document); err != nil {
 					return nil, fmt.Errorf("%w: Column %q: %v", ErrInvalid, column.ID, err)
 				}
@@ -111,6 +122,22 @@ func Tombstone(object fulltext.Object) (fulltext.Document, error) {
 		return fulltext.Document{}, fmt.Errorf("%w: tombstone: %v", ErrInvalid, err)
 	}
 	return document, nil
+}
+
+// archivedDocument is what an archived Catalog object projects to. It carries
+// no fields, so the object's terms leave the index exactly as a delete would,
+// while the revision chain stays continuous — the object is still there and a
+// restore republishes it.
+func archivedDocument(
+	kind fulltext.ObjectKind,
+	databaseID, tableID, objectID string,
+	revision uint64,
+) fulltext.Document {
+	return fulltext.Document{
+		Version: fulltext.DocumentVersion, Kind: kind, DatabaseID: databaseID, TableID: tableID,
+		ObjectID: objectID, Revision: revision, SchemaRevision: revision,
+		State: fulltext.StateDeleted, Complete: true,
+	}
 }
 
 func liveDocument(

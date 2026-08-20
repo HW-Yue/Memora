@@ -1295,6 +1295,13 @@ func (parser *parser) parseArchive(restore bool) (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		statement.Name = name
+	case parser.matchWord("COLUMN"):
+		statement.Object = "COLUMN"
+		name, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Name = name
 	case parser.matchWord("ROW"):
 		statement.Object = "ROW"
 		name, err := parser.parseName()

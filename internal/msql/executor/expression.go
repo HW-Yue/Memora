@@ -176,9 +176,15 @@ func fieldValue(table catalog.Table, current datarow.Row, name *ast.Name) (any, 
 	return current.Values[column.Name], nil
 }
 
+// findColumn is the executor's single Column-name resolver. Archived Columns
+// stay in table.Columns so stored values keep decoding, so this is where a
+// name must stop resolving to one.
 func findColumn(table catalog.Table, name string) (catalog.Column, bool) {
 	candidate := strings.ToLower(strings.TrimSpace(name))
 	for _, column := range table.Columns {
+		if column.Archived() {
+			continue
+		}
 		if strings.ToLower(column.Name) == candidate {
 			return column, true
 		}

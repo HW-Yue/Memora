@@ -95,7 +95,9 @@ func (service *Service) ShowColumns(ctx context.Context, databaseName, tableName
 	if err != nil {
 		return nil, err
 	}
-	columns := append([]catalog.Column(nil), table.Columns...)
+	// DescribeTable keeps archived Columns so stored values still decode; the
+	// listing surface is where they stop being visible.
+	columns := catalog.LiveColumns(table.Columns)
 	sort.Slice(columns, func(left, right int) bool { return canonical(columns[left].Name) < canonical(columns[right].Name) })
 	return columns, nil
 }
@@ -108,6 +110,9 @@ func (service *Service) DescribeColumn(ctx context.Context, databaseName, tableN
 	column, ok := findColumn(&table, columnName)
 	if !ok {
 		return catalog.Column{}, catalogFailure(catalog.CodeNotFound, "column", columnName, "")
+	}
+	if column.Archived() {
+		return catalog.Column{}, archivedFailure("column", column.Name, nil)
 	}
 	return *column, nil
 }

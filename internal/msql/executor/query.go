@@ -279,7 +279,7 @@ func starProjections(table catalog.Table) []projection {
 		mustSystemProjection("row_state"),
 		mustSystemProjection("schema_version"),
 	}
-	for _, column := range table.Columns {
+	for _, column := range catalog.LiveColumns(table.Columns) {
 		projections = append(projections, projection{
 			name: column.Name,
 			column: result.Column{Name: column.Name, Type: column.Type, Nullable: column.Nullable,

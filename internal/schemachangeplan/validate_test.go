@@ -82,11 +82,21 @@ func TestApplyToSnapshotMaterializesAddAlterAndDropAsOneRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// DROP_COLUMN archives instead of removing: the Column stays in the
+	// snapshot carrying its definition, so existing Rows keep decoding and the
+	// action is exactly undoable. It is still destructive — the Column leaves
+	// every read surface — but no longer irreversible.
+	live := catalog.LiveColumns(updatedTable.Columns)
 	if updatedDatabase.SchemaVersion != database.SchemaVersion+1 || updatedTable.SchemaVersion != table.SchemaVersion+1 ||
-		len(updatedTable.Columns) != 2 || updatedTable.Columns[0].Purpose != "Primary heading" ||
-		updatedTable.Columns[0].SchemaVersion != 3 || updatedTable.Columns[1].Name != "status" ||
-		updatedTable.Columns[1].SchemaVersion != 1 || !plan.Impact.Destructive {
+		len(updatedTable.Columns) != 3 || len(live) != 2 ||
+		live[0].Purpose != "Primary heading" || live[0].SchemaVersion != 3 ||
+		live[1].Name != "status" || live[1].SchemaVersion != 1 ||
+		!plan.Impact.Destructive || !plan.Impact.Reversible {
 		t.Fatalf("updated snapshot = %#v / %#v", updatedDatabase, updatedTable)
+	}
+	dropped := updatedTable.Columns[1]
+	if dropped.Name != "body" || !dropped.Archived() || dropped.ArchivedReason != "DROP_COLUMN" {
+		t.Fatalf("DROP_COLUMN must archive the Column, got %#v", dropped)
 	}
 	if _, ok := schemachangeplan.CompensationProposal(plan, updatedTable.SchemaVersion); ok {
 		t.Fatal("destructive mixed plan unexpectedly produced compensation")

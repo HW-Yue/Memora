@@ -33,6 +33,7 @@ type CatalogService interface {
 type CatalogArchiveService interface {
 	ShowArchivedDatabases(context.Context) ([]dictionary.Database, error)
 	ShowArchivedTables(context.Context, string) ([]dictionary.Table, error)
+	ShowArchivedColumns(context.Context, string, string) ([]dictionary.Column, error)
 	DescribeArchivedDatabase(context.Context, string) (dictionary.Database, error)
 	DescribeArchivedTable(context.Context, string, string) (dictionary.Table, error)
 }
@@ -156,7 +157,15 @@ func (binder *Catalog) show(ctx context.Context, show *ast.ShowStatement) (Catal
 		if err != nil {
 			return CatalogResult{}, err
 		}
-		columns, err := binder.service.ShowColumns(ctx, names[0], names[1])
+		list := binder.service.ShowColumns
+		if show.IncludingArchived {
+			archive, err := binder.archiveService()
+			if err != nil {
+				return CatalogResult{}, err
+			}
+			list = archive.ShowArchivedColumns
+		}
+		columns, err := list(ctx, names[0], names[1])
 		return CatalogResult{Object: "COLUMNS", Columns: columns}, catalogError(err)
 	default:
 		return CatalogResult{}, bindError(result.CodeUnsupported, fmt.Sprintf("unsupported SHOW object %q", show.Object))
@@ -197,6 +206,9 @@ func (binder *Catalog) describe(ctx context.Context, describe *ast.DescribeState
 			read = archive.DescribeArchivedTable
 		}
 		table, err := read(ctx, names[0], names[1])
+		if !describe.IncludingArchived {
+			table.Columns = dictionary.LiveColumns(table.Columns)
+		}
 		if describe.Compact {
 			table.ColumnSummaries = make([]dictionary.ColumnSummary, 0, len(table.Columns))
 			for _, column := range table.Columns {

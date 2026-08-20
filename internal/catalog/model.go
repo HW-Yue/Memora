@@ -90,17 +90,33 @@ type ColumnSummary struct {
 }
 
 type Column struct {
-	ID            string    `json:"column_id"`
-	Name          string    `json:"name"`
-	Aliases       []string  `json:"aliases"`
-	Type          string    `json:"type"`
-	MaxCharacters int       `json:"max_characters,omitempty"`
-	Nullable      bool      `json:"nullable"`
-	Purpose       string    `json:"purpose"`
-	SemanticRole  string    `json:"semantic_role,omitempty"`
-	SchemaVersion uint64    `json:"schema_version"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             string     `json:"column_id"`
+	Name           string     `json:"name"`
+	Aliases        []string   `json:"aliases"`
+	Type           string     `json:"type"`
+	MaxCharacters  int        `json:"max_characters,omitempty"`
+	Nullable       bool       `json:"nullable"`
+	Purpose        string     `json:"purpose"`
+	SemanticRole   string     `json:"semantic_role,omitempty"`
+	SchemaVersion  uint64     `json:"schema_version"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	ArchivedAt     *time.Time `json:"archived_at,omitempty"`
+	ArchivedReason string     `json:"archived_reason,omitempty"`
+}
+
+func (column Column) Archived() bool { return column.ArchivedAt != nil }
+
+// LiveColumns drops archived Columns. Callers that must still see every stored
+// value — Row decoding above all — keep the full list instead.
+func LiveColumns(columns []Column) []Column {
+	live := make([]Column, 0, len(columns))
+	for _, column := range columns {
+		if !column.Archived() {
+			live = append(live, column)
+		}
+	}
+	return live
 }
 
 func (column Column) Validate(value any) (any, error) {

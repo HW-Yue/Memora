@@ -20,6 +20,35 @@ type archiveCatalog interface {
 	UnarchiveDatabase(context.Context, string) (catalog.Database, error)
 	ArchiveTable(context.Context, string, string, string) (catalog.Table, error)
 	UnarchiveTable(context.Context, string, string) (catalog.Table, error)
+	ArchiveColumn(context.Context, string, string, string, string) (catalog.Column, error)
+	UnarchiveColumn(context.Context, string, string, string) (catalog.Column, error)
+}
+
+func (engine *Engine) archiveColumn(
+	ctx context.Context,
+	statement *ast.ArchiveStatement,
+	bound bindings,
+) (Output, error) {
+	service, names, reason, err := engine.archiveTarget(ctx, statement, bound, 3)
+	if err != nil {
+		return Output{}, err
+	}
+	action := func() (catalog.Column, error) {
+		return service.ArchiveColumn(ctx, names[0], names[1], names[2], reason)
+	}
+	if statement.Restore {
+		action = func() (catalog.Column, error) {
+			return service.UnarchiveColumn(ctx, names[0], names[1], names[2])
+		}
+	}
+	column, err := action()
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return archiveOutput(
+		"COLUMN", column.ID, names[0]+"."+names[1]+"."+column.Name,
+		column.ArchivedAt, column.ArchivedReason,
+	), nil
 }
 
 func (engine *Engine) archiveDatabase(

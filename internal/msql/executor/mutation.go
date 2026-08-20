@@ -493,7 +493,7 @@ func (engine *Engine) matchingRows(
 
 func insertColumns(table catalog.Table, identifiers []ast.Identifier) ([]catalog.Column, error) {
 	if len(identifiers) == 0 {
-		return append([]catalog.Column{}, table.Columns...), nil
+		return catalog.LiveColumns(table.Columns), nil
 	}
 	columns := make([]catalog.Column, 0, len(identifiers))
 	seen := make(map[string]struct{}, len(identifiers))
