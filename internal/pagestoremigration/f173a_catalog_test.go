@@ -150,8 +150,9 @@ func TestAuthorityCatalogFulltextWALFaultPoisonsAndReopenConverges(t *testing.T)
 	if !errors.Is(err, ErrOutcomeUnknown) {
 		t.Fatalf("Catalog Fulltext WAL fault error = %v", err)
 	}
-	if _, err := authority.ShowDatabases(ctx); !errors.Is(err, ErrAuthorityPoisoned) {
-		t.Fatalf("WAL fault did not poison Authority: %v", err)
+	// F226: Catalog reads stay available after an uncertain publication.
+	if _, err := authority.ShowDatabases(ctx); err != nil {
+		t.Fatalf("ShowDatabases() after fault = %v, want success", err)
 	}
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)

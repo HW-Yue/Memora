@@ -193,7 +193,9 @@ func (authority *Authority) replaceGeneration(
 	}
 
 	authority.mu.Lock()
-	if err := authority.healthyLocked(ctx); err != nil {
+	// Generation replacement rewrites every Database's index at once, so its
+	// health gate and its poison stay Instance-wide by nature.
+	if err := authority.writableLocked(ctx); err != nil {
 		authority.mu.Unlock()
 		return ReplacementReceipt{}, err
 	}
@@ -203,13 +205,13 @@ func (authority *Authority) replaceGeneration(
 	}
 	if err := writeAuthorityMarkerWithOperations(authority.directory, marker, operations.marker); err != nil {
 		if errors.Is(err, ErrOutcomeUnknown) {
-			authority.poisoned = true
+			authority.poisonedAll = true
 		}
 		authority.mu.Unlock()
 		return ReplacementReceipt{}, err
 	}
 	if err := replacementCheckpoint(ctx, operations, phaseReplacementMarkerPublished); err != nil {
-		authority.poisoned = true
+		authority.poisonedAll = true
 		authority.mu.Unlock()
 		return ReplacementReceipt{}, fmt.Errorf("%w: marker published before replacement swap: %v", ErrOutcomeUnknown, err)
 	}

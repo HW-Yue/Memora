@@ -5,9 +5,9 @@
 
 修好一条就从这里移除并写进[系统能力](../product/system-capabilities.md)。
 
-## 致命：单库故障导致整实例不可用
+## 已修复（保留一轮供追溯）
 
-### 0. 一个 Database 出错，所有 Database 读写全停
+### 0. 一个 Database 出错，所有 Database 读写全停 —— **Stage 1 已修复**
 
 `internal/pagestoremigration/authority.go` 的 `poisonPublication`（`:541`）只做
 `authority.poisoned = true`——全实例单一布尔，没有任何 Database 或对象作用域。
@@ -23,8 +23,11 @@
 这与 [原生 Store](../storage/native-minimal-store.md) 第 21 行声称的
 `databases/db_<stable-id>/database.memora` 不一致——实现漂移了。
 
-修复见 [F226](../planning/f226-per-database-fault-isolation.md)：Stage 1 收敛
-poison 作用域（小改动，拿回可用性），Stage 2 拆分物理文件。
+**2026-08-11 [F226](../planning/f226-per-database-fault-isolation.md) Stage 1 已实现**：
+读不再受 poison 影响；poison 按 Database 收敛（Row/Route 按受影响库，Catalog 按
+实际变更的库，generation 替换保持 Instance 级）；`BeginRowWrite` 早失败并在错误里
+点名受影响 Database。物理文件拆分（Stage 2）仍未做，因此**物理**故障域仍是整个
+Instance——单个 Page/WAL 真损坏依然会影响所有 Database。
 
 ## 严重：会导致产品主张不成立
 

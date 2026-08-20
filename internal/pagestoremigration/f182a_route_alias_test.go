@@ -110,9 +110,11 @@ func TestRouteAliasPublicationFaultPoisonsThenReopenConverges(t *testing.T) {
 	if !errors.Is(err, ErrOutcomeUnknown) {
 		t.Fatalf("faulted alias update error = %v", err)
 	}
-	if _, err := authority.Capture(ctx); !errors.Is(err, ErrAuthorityPoisoned) {
-		t.Fatalf("faulted alias update did not poison Authority: %v", err)
+	// F226: reads stay available; the affected Database fails closed for writes.
+	if _, err := authority.Capture(ctx); err != nil {
+		t.Fatalf("Capture() after fault = %v, want success", err)
 	}
+	assertDatabaseWritesPoisoned(t, ctx, authority, leaf.DatabaseID)
 	authority.checkpoint = nil
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)

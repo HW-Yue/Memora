@@ -295,8 +295,16 @@ func TestAuthorityRowPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
 			if !errors.Is(err, ErrOutcomeUnknown) || !strings.Contains(err.Error(), injected.Error()) {
 				t.Fatalf("Update(%s fault) error = %v", phase, err)
 			}
-			if _, err := authority.Capture(ctx); !errors.Is(err, ErrAuthorityPoisoned) {
-				t.Fatalf("poisoned Capture() error = %v", err)
+			// F226: an uncertain publication no longer blocks reads — the
+			// committed generation stays consistent — but the affected
+			// Database still fails closed for writes.
+			if _, err := authority.Capture(ctx); err != nil {
+				t.Fatalf("poisoned Capture() error = %v, want success", err)
+			}
+			if _, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "blocked"}, row.WriteOptions{
+				ExpectedSchemaVersion: table.SchemaVersion,
+			}); !errors.Is(err, ErrAuthorityPoisoned) {
+				t.Fatalf("write to the poisoned Database = %v, want ErrAuthorityPoisoned", err)
 			}
 			authority.checkpoint = nil
 			if err := authority.Close(); err != nil {
@@ -352,8 +360,9 @@ func TestAuthorityCatalogPublicationFaultsPoisonAndReopenConverges(t *testing.T)
 			if !errors.Is(err, ErrOutcomeUnknown) {
 				t.Fatalf("CreateDatabase(%s fault) error = %v", phase, err)
 			}
-			if _, err := authority.ShowDatabases(ctx); !errors.Is(err, ErrAuthorityPoisoned) {
-				t.Fatalf("poisoned ShowDatabases() error = %v", err)
+			// F226: Catalog reads stay available after an uncertain publication.
+			if _, err := authority.ShowDatabases(ctx); err != nil {
+				t.Fatalf("poisoned ShowDatabases() error = %v, want success", err)
 			}
 			authority.checkpoint = nil
 			if err := authority.Close(); err != nil {
@@ -513,4 +522,92 @@ func authorityValuesWithoutRow(
 		nativerow.New(file), dictionary, nativerow.ServiceOptions{Authority: authority},
 	)
 	return dictionary, rows, table, row.Row{}
+}
+
+// TestRowPublicationFaultIsolatesOneDatabase proves that a failed publication in
+// one Database neither blocks reads anywhere nor blocks writes to a different
+// Database. Before F226 the Authority carried a single instance-wide poisoned
+// flag that both BeginWrite and lockRead consulted, so one bad publication took
+// the whole Instance offline for reads and writes alike.
+func TestRowPublicationFaultIsolatesOneDatabase(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	dictionary, rows, table, inserted := authorityValues(t, ctx, file, authority)
+
+	// A second Database that the injected fault never touches.
+	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{
+		Name: "personal", Purpose: "Personal", Scope: "Life",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	other, err := dictionary.CreateTable(ctx, "personal", catalog.TableDefinition{
+		Name: "notes", Purpose: "Notes", RowSemantics: "One note",
+		Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT(40)", Purpose: "Title"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	injected := errors.New("injected publication fault")
+	authority.checkpoint = func(current authorityPhase) error {
+		if current == phaseRowBodyCommitted {
+			return injected
+		}
+		return nil
+	}
+	if _, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "recovered"}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: inserted.Revision,
+	}); !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("faulted Update error = %v, want ErrOutcomeUnknown", err)
+	}
+	authority.checkpoint = nil
+
+	// Reads stay available everywhere: each generation is swapped atomically
+	// under the same lock readers hold, so a reader always sees one complete
+	// generation. Refusing reads turns one uncertain write into a dead Instance.
+	snapshot, err := authority.Capture(ctx)
+	if err != nil {
+		t.Fatalf("Capture() after fault = %v, want success", err)
+	}
+	if _, err := authority.Get(ctx, table, inserted.ID, snapshot); err != nil {
+		t.Fatalf("Get() on the affected Database = %v, want success", err)
+	}
+	if _, err := authority.ShowDatabases(ctx); err != nil {
+		t.Fatalf("ShowDatabases() after fault = %v, want success", err)
+	}
+
+	// Writes to the untouched Database stay available.
+	if _, err := rows.Insert(ctx, "personal", "notes", map[string]any{"title": "unaffected"}, row.WriteOptions{
+		ExpectedSchemaVersion: other.SchemaVersion,
+	}); err != nil {
+		t.Fatalf("Insert into the unaffected Database = %v, want success", err)
+	}
+
+	// Writes to the affected Database still fail closed, and say which one.
+	_, err = rows.Insert(ctx, "work", "notes", map[string]any{"title": "blocked"}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion,
+	})
+	if !errors.Is(err, ErrAuthorityPoisoned) {
+		t.Fatalf("Insert into the affected Database = %v, want ErrAuthorityPoisoned", err)
+	}
+	if !strings.Contains(err.Error(), table.DatabaseID) {
+		t.Fatalf("poison error %q does not name the affected Database %q", err, table.DatabaseID)
+	}
+}
+
+// assertDatabaseWritesPoisoned checks that one Database fails closed for writes
+// after an uncertain publication. F226 scopes poison per Database, so probing a
+// read (the old proxy) no longer proves anything: reads stay available.
+func assertDatabaseWritesPoisoned(
+	t *testing.T, ctx context.Context, authority *Authority, databaseID string,
+) {
+	t.Helper()
+	release, err := authority.BeginRowWrite(ctx, databaseID, "tbl_probe", []string{"row_probe"})
+	if err == nil {
+		release()
+		t.Fatalf("writes to database %s are still allowed, want ErrAuthorityPoisoned", databaseID)
+	}
+	if !errors.Is(err, ErrAuthorityPoisoned) {
+		t.Fatalf("write to database %s = %v, want ErrAuthorityPoisoned", databaseID, err)
+	}
 }

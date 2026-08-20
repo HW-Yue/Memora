@@ -1,7 +1,8 @@
 # F226：Database 级故障隔离
 
-状态：候选，2026-08-11 提出；尚未 Review、尚未获得实现授权。
-**这是可用性缺陷，不是优化**：一个 Database 出问题会让整个 Instance 读写全停。
+状态：**Stage 1 已实现（2026-08-11）**；Stage 2 仍为候选、未获授权。
+这是可用性缺陷，不是优化：Stage 1 之前，一个 Database 出问题会让整个 Instance
+读写全停。
 
 ## 现象
 
@@ -45,7 +46,7 @@ databases/
 
 ## 分两阶段，先拿回可用性
 
-### Stage 1：收敛 poison 作用域（小改动，解决绝大部分痛）
+### Stage 1：收敛 poison 作用域（已实现）
 
 即使文件暂不拆，也必须做到：
 
@@ -58,6 +59,14 @@ databases/
    只是作用域从全实例变为单 Database。
 
 Stage 1 之后，「改一个库出错导致全实例停摆」不再成立。
+
+**实现说明（2026-08-11）**：`poisoned bool` 拆为 `poisonedAll bool` 与
+`poisonedDatabases map[string]struct{}`；`healthyLocked` 拆为 `openLocked`（读，
+只看 `closed`）与 `writableLocked(ctx, databaseIDs...)`（写）。Row/Route 发布按
+`mutationDatabaseIDs` 收敛；Catalog 发布按 `changedDatabaseIDs` 收敛（无法判定
+差异时 fail closed 到 Instance 级）；generation 替换保持 Instance 级，因为它本来
+就重写所有 Database 的索引。`BeginRowWrite` 增加早失败检查，不再等到发布阶段。
+poison 仍只在内存中，reopen 后由既有 reconciliation 收敛，与改动前一致。
 
 ### Stage 2：物理文件按 Database 拆分
 

@@ -2,10 +2,13 @@ package pagestoremigration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -57,12 +60,19 @@ type Authority struct {
 	catalog    *nativecatalog.IndexedReader
 	rows       *nativerow.IndexedReader
 	changes    *authorityChangeTree
-	poisoned   bool
-	closed     bool
-	writeGate  chan struct{}
-	locks      *objectlock.Manager
-	nextOwner  atomic.Uint64
-	checkpoint func(authorityPhase) error
+	// poisonedAll marks failures whose blast radius really is the whole
+	// Instance: generation replacement and undeterminable Catalog transitions.
+	// poisonedDatabases marks failures confined to named Databases. Reads are
+	// never gated on either: generations are swapped under the same lock
+	// readers hold, so a reader always sees one complete generation, and
+	// refusing reads turns one uncertain write into a dead Instance.
+	poisonedAll       bool
+	poisonedDatabases map[string]struct{}
+	closed            bool
+	writeGate         chan struct{}
+	locks             *objectlock.Manager
+	nextOwner         atomic.Uint64
+	checkpoint        func(authorityPhase) error
 }
 
 func OpenAuthority(
@@ -172,6 +182,15 @@ func (authority *Authority) BeginRowWrite(
 		_ = guard.Release()
 		return nil, err
 	}
+	// Fail early on a poisoned Database instead of doing the work and only
+	// discovering it at publication time.
+	authority.mu.RLock()
+	writable := authority.writableLocked(ctx, databaseID)
+	authority.mu.RUnlock()
+	if writable != nil {
+		_ = guard.Release()
+		return nil, writable
+	}
 	releaseWrite, err := authority.BeginWrite(ctx)
 	if err != nil {
 		_ = guard.Release()
@@ -196,7 +215,7 @@ func (authority *Authority) BeginWrite(ctx context.Context) (func(), error) {
 	case <-authority.writeGate:
 	}
 	authority.mu.RLock()
-	err := authority.healthyLocked(ctx)
+	err := authority.writableLocked(ctx)
 	authority.mu.RUnlock()
 	if err != nil {
 		authority.writeGate <- struct{}{}
@@ -241,7 +260,7 @@ func (authority *Authority) ListCommittedChanges(
 	defer release()
 	authority.mu.Lock()
 	defer authority.mu.Unlock()
-	if err := authority.healthyLocked(ctx); err != nil {
+	if err := authority.openLocked(ctx); err != nil {
 		return nil, 0, false, err
 	}
 	if err := authority.changes.reconcile(ctx, false); err != nil {
@@ -275,7 +294,7 @@ func (authority *Authority) GetCommittedChange(
 	defer release()
 	authority.mu.Lock()
 	defer authority.mu.Unlock()
-	if err := authority.healthyLocked(ctx); err != nil {
+	if err := authority.openLocked(ctx); err != nil {
 		return change.Envelope{}, err
 	}
 	if err := authority.changes.reconcile(ctx, false); err != nil {
@@ -355,7 +374,8 @@ func (authority *Authority) PublishMutation(
 	}
 	authority.mu.Lock()
 	defer authority.mu.Unlock()
-	if err := authority.healthyLocked(ctx); err != nil {
+	affected := mutationDatabaseIDs(rows, routes)
+	if err := authority.writableLocked(ctx, affected...); err != nil {
 		return err
 	}
 	databases, err := authority.catalog.Snapshot(ctx)
@@ -376,12 +396,12 @@ func (authority *Authority) PublishMutation(
 	}
 	if len(rows) != 0 {
 		if err := authority.checkpointPhase(phaseRowBodyCommitted); err != nil {
-			return authority.poisonPublication("Row/Route body", err)
+			return authority.poisonPublication("Row/Route body", affected, err)
 		}
 	}
 	if len(routes) != 0 {
 		if err := authority.checkpointPhase(phaseRouteBodyCommitted); err != nil {
-			return authority.poisonPublication("Row/Route body", err)
+			return authority.poisonPublication("Row/Route body", affected, err)
 		}
 	}
 	versions := make([]rowversionindex.Locator, 0, len(rows))
@@ -436,7 +456,7 @@ func (authority *Authority) PublishMutation(
 		err = authority.checkpointPhase(phaseRowCurrentPublished)
 	}
 	if err != nil {
-		return authority.poisonPublication("Row/Route body", err)
+		return authority.poisonPublication("Row/Route body", affected, err)
 	}
 	return nil
 }
@@ -491,11 +511,20 @@ func (authority *Authority) PublishCatalog(
 	}
 	authority.mu.Lock()
 	defer authority.mu.Unlock()
-	if err := authority.healthyLocked(ctx); err != nil {
+	if err := authority.openLocked(ctx); err != nil {
 		return err
 	}
 	current, err := authority.catalog.Snapshot(ctx)
 	if err != nil {
+		return err
+	}
+	// Only the Databases whose Catalog entry actually changes are left uncertain
+	// by a failed publication; an undeterminable diff fails closed Instance-wide.
+	affected, determined := changedDatabaseIDs(current, databases)
+	if !determined {
+		affected = nil
+	}
+	if err := authority.writableLocked(ctx, affected...); err != nil {
 		return err
 	}
 	documents, err := catalogTransitionDocuments(current, databases)
@@ -506,7 +535,7 @@ func (authority *Authority) PublishCatalog(
 		return err
 	}
 	if err := authority.checkpointPhase(phaseCatalogBodyCommitted); err != nil {
-		return authority.poisonPublication("Catalog body", err)
+		return authority.poisonPublication("Catalog body", affected, err)
 	}
 	id, err := authority.nextTransactionID("catalog")
 	if err == nil {
@@ -526,7 +555,7 @@ func (authority *Authority) PublishCatalog(
 		err = authority.checkpointPhase(phaseCatalogFulltextPublished)
 	}
 	if err != nil {
-		return authority.poisonPublication("Catalog body", err)
+		return authority.poisonPublication("Catalog body", affected, err)
 	}
 	return nil
 }
@@ -538,9 +567,89 @@ func (authority *Authority) checkpointPhase(phase authorityPhase) error {
 	return authority.checkpoint(phase)
 }
 
-func (authority *Authority) poisonPublication(object string, err error) error {
-	authority.poisoned = true
-	return fmt.Errorf("%w: %s committed before Page publication completed: %v", ErrOutcomeUnknown, object, err)
+// poisonPublication records an uncertain publication. databaseIDs narrows the
+// blast radius; an empty list means the outcome is undeterminable and the whole
+// Instance must fail closed for writes.
+func (authority *Authority) poisonPublication(
+	object string, databaseIDs []string, err error,
+) error {
+	if len(databaseIDs) == 0 {
+		authority.poisonedAll = true
+		return fmt.Errorf(
+			"%w: %s committed before Page publication completed: %v",
+			ErrOutcomeUnknown, object, err,
+		)
+	}
+	if authority.poisonedDatabases == nil {
+		authority.poisonedDatabases = make(map[string]struct{}, len(databaseIDs))
+	}
+	for _, databaseID := range databaseIDs {
+		authority.poisonedDatabases[databaseID] = struct{}{}
+	}
+	return fmt.Errorf(
+		"%w: %s committed before Page publication completed for database %s; "+
+			"other databases stay writable: %v",
+		ErrOutcomeUnknown, object, strings.Join(databaseIDs, ", "), err,
+	)
+}
+
+// mutationDatabaseIDs returns the sorted, deduplicated Databases a Row/Route
+// publication touches.
+func mutationDatabaseIDs(rows []row.Row, routes []router.Node) []string {
+	seen := make(map[string]struct{}, len(rows)+len(routes))
+	for _, value := range rows {
+		seen[value.DatabaseID] = struct{}{}
+	}
+	for _, value := range routes {
+		seen[value.DatabaseID] = struct{}{}
+	}
+	ids := make([]string, 0, len(seen))
+	for id := range seen {
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// changedDatabaseIDs reports which Databases differ between two Catalog
+// snapshots. Only those are left uncertain by a failed Catalog publication; the
+// rest are byte-identical in both generations. The second result is false when
+// the difference cannot be determined, which must fail closed Instance-wide.
+func changedDatabaseIDs(current, next []catalog.Database) ([]string, bool) {
+	encode := func(values []catalog.Database) (map[string]string, bool) {
+		result := make(map[string]string, len(values))
+		for _, value := range values {
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return nil, false
+			}
+			result[value.ID] = string(encoded)
+		}
+		return result, true
+	}
+	before, ok := encode(current)
+	if !ok {
+		return nil, false
+	}
+	after, ok := encode(next)
+	if !ok {
+		return nil, false
+	}
+	changed := make([]string, 0)
+	for id, encoded := range after {
+		if before[id] != encoded {
+			changed = append(changed, id)
+		}
+	}
+	for id := range before {
+		if _, exists := after[id]; !exists {
+			changed = append(changed, id)
+		}
+	}
+	sort.Strings(changed)
+	return changed, true
 }
 
 func (authority *Authority) lockRead(ctx context.Context) error {
@@ -551,22 +660,43 @@ func (authority *Authority) lockRead(ctx context.Context) error {
 		return err
 	}
 	authority.mu.RLock()
-	if err := authority.healthyLocked(ctx); err != nil {
+	if err := authority.openLocked(ctx); err != nil {
 		authority.mu.RUnlock()
 		return err
 	}
 	return nil
 }
 
-func (authority *Authority) healthyLocked(ctx context.Context) error {
+// openLocked reports whether the Authority can serve reads. Only a closed
+// Authority refuses; a poisoned publication does not, because the committed
+// generation stays internally consistent and readable.
+func (authority *Authority) openLocked(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if authority.closed {
 		return fmt.Errorf("%w: authority is closed", ErrAuthorityPoisoned)
 	}
-	if authority.poisoned {
+	return nil
+}
+
+// writableLocked reports whether the named Databases may be written. Passing no
+// Database asks only about Instance-wide health, which is what Catalog and
+// replacement gates need before they know which Databases they will touch.
+func (authority *Authority) writableLocked(ctx context.Context, databaseIDs ...string) error {
+	if err := authority.openLocked(ctx); err != nil {
+		return err
+	}
+	if authority.poisonedAll {
 		return ErrAuthorityPoisoned
+	}
+	for _, databaseID := range databaseIDs {
+		if _, poisoned := authority.poisonedDatabases[databaseID]; poisoned {
+			return fmt.Errorf(
+				"%w: database %s awaits reopen recovery; other databases are unaffected",
+				ErrAuthorityPoisoned, databaseID,
+			)
+		}
 	}
 	return nil
 }

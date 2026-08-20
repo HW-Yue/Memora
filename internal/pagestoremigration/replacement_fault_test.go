@@ -202,8 +202,13 @@ func TestReplacementMarkerOutcomeUnknownPoisonsAndReopenChoosesMarker(t *testing
 			if _, err := authority.replaceGeneration(ctx, operations); !errors.Is(err, ErrOutcomeUnknown) {
 				t.Fatalf("outcome-unknown replacement error = %v", err)
 			}
-			if _, err := authority.Capture(ctx); !errors.Is(err, ErrAuthorityPoisoned) {
-				t.Fatalf("poisoned Capture() error = %v", err)
+			// F226: generation replacement poisons Instance-wide writes, but
+			// reads keep serving the generation that is actually published.
+			if _, err := authority.Capture(ctx); err != nil {
+				t.Fatalf("poisoned Capture() error = %v, want success", err)
+			}
+			if _, err := authority.BeginWrite(ctx); !errors.Is(err, ErrAuthorityPoisoned) {
+				t.Fatalf("write after replacement fault = %v, want ErrAuthorityPoisoned", err)
 			}
 			marker, err := decodeAuthorityMarker(directory)
 			if err != nil || marker.Epoch != 1 {
