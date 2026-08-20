@@ -178,8 +178,10 @@ func (repository *Repository) StageNode(transaction *nativestore.Transaction, va
 		value.TableID != latest.TableID || value.ParentID != latest.ParentID || value.Kind != latest.Kind {
 		return fmt.Errorf("%w: route revision conflicts with latest", ErrInvalid)
 	}
-	if latest.Deleted && !restoresNode(latest, value) {
-		return fmt.Errorf("%w: an archived Route may only be restored, not edited", ErrInvalid)
+	// Deleting a Route node is final: an index node is cheap to rebuild, so no
+	// revision may follow its tombstone.
+	if latest.Deleted {
+		return fmt.Errorf("%w: route revision conflicts with latest", ErrInvalid)
 	}
 	if err := validateSynopsis(value.Synopsis); err != nil {
 		return err
@@ -310,18 +312,6 @@ func (repository *Repository) Get(id string) (router.Node, error) {
 	return latest, nil
 }
 
-// restoresNode reports whether next is the pure un-archive of an archived
-// current: the Deleted flag drops and nothing else moves. Restoring must never
-// smuggle an edit past the revision chain, so every other field is compared.
-func restoresNode(current, next router.Node) bool {
-	if next.Deleted {
-		return false
-	}
-	candidate := next
-	candidate.Revision, candidate.Deleted = current.Revision, current.Deleted
-	return sameNodeContent(current, candidate)
-}
-
 func sameNodeContent(left, right router.Node) bool {
 	if left.Version != right.Version || left.ID != right.ID || left.DatabaseID != right.DatabaseID ||
 		left.TableID != right.TableID || left.ParentID != right.ParentID || left.Name != right.Name ||
@@ -366,42 +356,6 @@ func (repository *Repository) Children(parentID string) []router.Node {
 	return result
 }
 
-// ArchivedChildren lists only the archived children of a parent. Without it
-// UNARCHIVE ROUTE would need the caller to remember a route_id, which is the
-// same dead end INCLUDING ARCHIVED removes for containers.
-func (repository *Repository) ArchivedChildren(parentID string) []router.Node {
-	nodes, _ := repository.nodes()
-	result := make([]router.Node, 0)
-	for _, node := range nodes {
-		if node.ParentID == parentID && node.Deleted {
-			result = append(result, node)
-		}
-	}
-	sort.Slice(result, func(left, right int) bool {
-		if result[left].Name == result[right].Name {
-			return result[left].ID < result[right].ID
-		}
-		return result[left].Name < result[right].Name
-	})
-	return result
-}
-
-// ShowArchivedUnderPage pages the archived children. The parent itself must be
-// live: an archived parent is reached by restoring it, not by browsing into it.
-func (repository *Repository) ShowArchivedUnderPage(parentID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
-	if limit < 1 || limit > 1000 {
-		return nil, router.ReadPage{}, fmt.Errorf("%w: limit must be between 1 and 1000", ErrInvalid)
-	}
-	parent, err := repository.Get(parentID)
-	if err != nil {
-		return nil, router.ReadPage{}, err
-	}
-	if parent.Deleted || parent.Kind == router.KindLeaf {
-		return nil, router.ReadPage{}, fmt.Errorf("%w: children require a live root or branch", ErrInvalid)
-	}
-	return router.PaginateNodes("parent-archived:"+parentID, cursor, limit, repository.ArchivedChildren(parentID))
-}
-
 func (repository *Repository) ShowUnder(parentID, cursor string, limit int) ([]router.Node, string, error) {
 	nodes, page, err := repository.ShowUnderPage(parentID, cursor, limit)
 	return nodes, page.NextCursor, err
@@ -432,8 +386,8 @@ func (repository *Repository) OpenPage(leafID, cursor string, limit int) ([]rout
 }
 
 // InspectLeafPage is a maintenance-only read used to diagnose and monotonically
-// repair legacy multi-Row leaves, and to read an archived leaf that OpenPage
-// deliberately hides. Normal Router reads must use OpenPage.
+// repair legacy multi-Row leaves, and to check whether a leaf still holds Rows
+// before deleting it. Normal Router reads must use OpenPage.
 func (repository *Repository) InspectLeafPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
 	return repository.openPage(leafID, cursor, limit, false, true)
 }
@@ -441,7 +395,7 @@ func (repository *Repository) InspectLeafPage(leafID, cursor string, limit int) 
 func (repository *Repository) openPage(
 	leafID, cursor string,
 	limit int,
-	enforceSingleRow, includeArchived bool,
+	enforceSingleRow, includeDeletedLeaf bool,
 ) ([]router.Locator, router.ReadPage, error) {
 	leaf, err := repository.Get(leafID)
 	if err != nil {
@@ -450,8 +404,8 @@ func (repository *Repository) openPage(
 	if leaf.Kind != router.KindLeaf || limit < 1 || limit > 1000 {
 		return nil, router.ReadPage{}, fmt.Errorf("%w: OPEN requires a leaf and valid limit", ErrInvalid)
 	}
-	if leaf.Deleted && !includeArchived {
-		return nil, router.ReadPage{}, fmt.Errorf("%w: Route leaf is archived; UNARCHIVE it first", ErrInvalid)
+	if leaf.Deleted && !includeDeletedLeaf {
+		return nil, router.ReadPage{}, fmt.Errorf("%w: Route leaf is deleted", ErrInvalid)
 	}
 	memberships, err := repository.memberships()
 	if err != nil {
@@ -578,7 +532,7 @@ func (repository *Repository) membershipsForRow(rowID string, includeDeleted boo
 	}
 	result := make([]router.Membership, 0, len(latest))
 	for _, value := range latest {
-		// A membership survives archiving its leaf untouched; it is the leaf's
+		// A membership record survives its leaf untouched; it is the leaf's
 		// state, not the membership's, that decides whether it is visible.
 		if includeDeleted || (!value.Deleted && !archivedLeaves[value.LeafID]) {
 			result = append(result, value)
@@ -651,10 +605,8 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 				value.Kind != previous.Kind {
 				return nil, fmt.Errorf("%w: Route %q revision identity", ErrCorrupt, id)
 			}
-			// An archived revision may be followed only by its own restore.
-			// Everything else after an archive is a corrupt chain.
-			if previous.Deleted && !restoresNode(previous, value) {
-				return nil, fmt.Errorf("%w: Route %q revision after archive", ErrCorrupt, id)
+			if previous.Deleted {
+				return nil, fmt.Errorf("%w: Route %q revision after delete", ErrCorrupt, id)
 			}
 		}
 		result = append(result, history[len(history)-1])

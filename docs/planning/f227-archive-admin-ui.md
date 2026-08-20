@@ -1,6 +1,10 @@
 # F227：Admin UI 的归档规则
 
-状态：**已实现（2026-08-20）**。[F227 统一归档模型](./f227-object-archive.md) 的前端部分。
+状态：**已实现（2026-08-20）**。[F227 删除与归档](./f227-object-archive.md) 的前端部分。
+
+**归档区里只有三类对象：Database、Table、Column。** Route 节点、Row、Relation
+是真删，删了就不存在，前端不为它们提供"已删除"视图——一个查不到也还不回来的对象，
+在界面上多出一行只会让用户误以为还能点回去。
 
 **实现时的一处重要修正**：本文档初稿假定前端可以执行归档／取消归档。实际不行——
 Admin Gateway 是硬性只读的（`internal/msql/readquery/policy.go` 的 `Allowed`
@@ -45,7 +49,7 @@ Admin Gateway 是硬性只读的（`internal/msql/readquery/policy.go` 的 `Allo
 ## 深链接必须说实话
 
 `/rows/<id>`、`/routes/<id>`、`/catalog/<db>` 都是可直接访问的深链接
-（`app.js:94-131`）。指向归档对象时：
+（`app.js:94-131`）。落在归档容器（或归档容器之下的 Row）时：
 
 - **不返回 404**，也**不照常渲染**；
 - 渲染对象内容，同时置顶不可忽略的"已归档"横幅，写明归档时间、原因、
@@ -54,6 +58,9 @@ Admin Gateway 是硬性只读的（`internal/msql/readquery/policy.go` 的 `Allo
 
 祖先归因这一条不能省：用户看到一个 Row 显示"已归档"，
 最常见的下一个问题就是"我没归档它啊"——答案是它的 Table 被归档了。
+
+指向**已删除**的 Route 节点或 Row 的深链接是另一回事：引擎返回 not found，
+前端就照常报"找不到"。这里不该编一个"已删除"横幅——它已经不存在了。
 
 ## 归档与取消归档的操作面
 
@@ -93,5 +100,5 @@ Admin Gateway 只读，前端不执行任何归档操作。归档对象的页面
 
 ## 关联
 
-- [F227 统一归档模型](./f227-object-archive.md)
+- [F227 删除与归档](./f227-object-archive.md)
 - [F223 Route Branch Fan-out 上限](./f223-route-branch-fanout-limit.md)

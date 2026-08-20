@@ -49,36 +49,36 @@ func archiveNode(t *testing.T, file *nativestore.File, repository *Repository, n
 	return archived
 }
 
-func TestArchivedLeafIsNotOpenableAndKeepsItsMemberships(t *testing.T) {
+func TestDeletedLeafIsNotOpenable(t *testing.T) {
 	t.Parallel()
 
 	file, repository, _, leaf := archiveFixture(t)
 	archiveNode(t, file, repository, leaf)
 
 	if _, _, err := repository.OpenPage(leaf.ID, "", 10); err == nil {
-		t.Fatal("expected OPEN on an archived leaf to fail")
+		t.Fatal("expected OPEN on a deleted leaf to fail")
 	}
 	locators, _, err := repository.InspectLeafPage(leaf.ID, "", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(locators) != 1 || locators[0].RowID != "row_01" {
-		t.Fatalf("archiving a leaf must not destroy its memberships, got %#v", locators)
+		t.Fatalf("deleting a leaf must not corrupt its membership records, got %#v", locators)
 	}
 }
 
-func TestArchivedRootLeavesTheRootListing(t *testing.T) {
+func TestDeletedRootLeavesTheRootListing(t *testing.T) {
 	t.Parallel()
 
 	file, repository, root, _ := archiveFixture(t)
 	archiveNode(t, file, repository, root)
 
 	if roots := repository.Roots("tbl_notes"); len(roots) != 0 {
-		t.Fatalf("archived root must not be listed, got %#v", roots)
+		t.Fatalf("deleted root must not be listed, got %#v", roots)
 	}
 }
 
-func TestArchivedLeafLeavesRowMemberships(t *testing.T) {
+func TestDeletedLeafLeavesRowMemberships(t *testing.T) {
 	t.Parallel()
 
 	file, repository, _, leaf := archiveFixture(t)
@@ -89,18 +89,21 @@ func TestArchivedLeafLeavesRowMemberships(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(memberships) != 0 {
-		t.Fatalf("membership pointing at an archived leaf must be hidden, got %#v", memberships)
+		t.Fatalf("membership pointing at a deleted leaf must be hidden, got %#v", memberships)
 	}
 	all, err := repository.MembershipsIncludingDeleted("row_01")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(all) != 1 {
-		t.Fatalf("membership must survive archiving, got %#v", all)
+		t.Fatalf("membership record must survive the delete, got %#v", all)
 	}
 }
 
-func TestArchivedNodeCanBeRestoredAndSurvivesReopen(t *testing.T) {
+// TestDeletedNodeStaysDeletedAcrossReopen pins that a Route node's tombstone is
+// final: an index entry carries no content of its own and is rebuilt by
+// creating a new one, so no revision may follow its delete.
+func TestDeletedNodeStaysDeletedAcrossReopen(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "database.memora")
@@ -117,24 +120,18 @@ func TestArchivedNodeCanBeRestoredAndSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	locator := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_01", Revision: 3}
-	if err := repository.Attach(leaf.ID, locator, 1); err != nil {
-		t.Fatal(err)
-	}
-	archived := archiveNode(t, file, repository, leaf)
+	deleted := archiveNode(t, file, repository, leaf)
 
 	transaction, err := file.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	restored := archived
-	restored.Revision, restored.Deleted = archived.Revision+1, false
-	if err := repository.StageNode(transaction, restored); err != nil {
-		t.Fatalf("restoring an archived node must be allowed: %v", err)
+	restored := deleted
+	restored.Revision, restored.Deleted = deleted.Revision+1, false
+	if err := repository.StageNode(transaction, restored); err == nil {
+		t.Fatal("a deleted Route node must not accept a follow-up revision")
 	}
-	if err := transaction.Commit(); err != nil {
-		t.Fatal(err)
-	}
+	_ = transaction.Rollback()
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -149,39 +146,28 @@ func TestArchivedNodeCanBeRestoredAndSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if node.Deleted || node.Revision != 3 {
-		t.Fatalf("restored node state is wrong: %#v", node)
+	if !node.Deleted {
+		t.Fatalf("the node must still be deleted after reopen: %#v", node)
 	}
-	locators, _, err := after.OpenPage(leaf.ID, "", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(locators) != 1 || locators[0].RowID != "row_01" {
-		t.Fatalf("restore must bring memberships back, got %#v", locators)
-	}
-	memberships, err := after.Memberships("row_01")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(memberships) != 1 {
-		t.Fatalf("restore must bring reverse memberships back, got %#v", memberships)
+	if children := after.Children(root.ID); len(children) != 0 {
+		t.Fatalf("a deleted node must leave the child listing, got %#v", children)
 	}
 }
 
-func TestArchivedNodeRejectsEditsOtherThanRestore(t *testing.T) {
+func TestDeletedNodeRejectsEveryFollowUpRevision(t *testing.T) {
 	t.Parallel()
 
 	file, repository, _, leaf := archiveFixture(t)
-	archived := archiveNode(t, file, repository, leaf)
+	deleted := archiveNode(t, file, repository, leaf)
 
 	transaction, err := file.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	edited := archived
-	edited.Revision, edited.Purpose = archived.Revision+1, "改写用途"
+	edited := deleted
+	edited.Revision, edited.Purpose = deleted.Revision+1, "改写用途"
 	if err := repository.StageNode(transaction, edited); err == nil {
-		t.Fatal("expected an edit on an archived node to be refused")
+		t.Fatal("expected an edit on a deleted node to be refused")
 	}
 	_ = transaction.Rollback()
 }

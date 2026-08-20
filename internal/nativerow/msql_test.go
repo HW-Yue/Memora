@@ -193,7 +193,10 @@ func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
 	if _, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "revised"}, row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, Metadata: row.WriteMetadata{Actor: "agent:editor", Source: "feedback", Reason: "correct"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rows.Delete(ctx, "work", "notes", inserted.ID, row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 2, Metadata: row.WriteMetadata{Actor: "agent:editor", Source: "feedback", Reason: "remove"}}); err != nil {
+	// A third revision keeps this test's real subject — History pagination and
+	// reopen — while leaving the Row live. Deletion now takes a Row's History
+	// with it, which TestDeletingARowIsFinalAndTakesItsHistory covers instead.
+	if _, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "final"}, row.WriteOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 2, Metadata: row.WriteMetadata{Actor: "agent:editor", Source: "feedback", Reason: "refine"}}); err != nil {
 		t.Fatal(err)
 	}
 	engine := executor.New(dictionary, rows)
@@ -230,7 +233,7 @@ func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
 		"SHOW HISTORY FROM work.notes FOR ROW :row_id LIMIT 10",
 		executor.Parameters{Named: map[string]any{"row_id": inserted.ID}}, executor.MutationOptions{},
 	)
-	if len(shown.Rows) != 3 || shown.Rows[0]["operation"] != "DELETE" || shown.Rows[1]["operation"] != "UPDATE" || shown.Rows[2]["actor"] != "agent:writer" {
+	if len(shown.Rows) != 3 || shown.Rows[0]["operation"] != "UPDATE" || shown.Rows[1]["operation"] != "UPDATE" || shown.Rows[2]["actor"] != "agent:writer" {
 		t.Fatalf("SHOW HISTORY rows = %#v", shown.Rows)
 	}
 	atFirst := executeMSQL(t, ctx, engine,

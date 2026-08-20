@@ -7,8 +7,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 )
 
-// rowArchiveFixture builds two Routed Rows and one Relation between them, so
-// archiving either end has something real to hide.
+// rowArchiveFixture builds two Routed Rows and one Relation between them.
 func rowArchiveFixture(t *testing.T) (string, string, string, string, string) {
 	t.Helper()
 	dataDir := archiveInstance(t)
@@ -38,6 +37,17 @@ func rowArchiveFixture(t *testing.T) (string, string, string, string, string) {
 
 	existing := executeTraceMSQL(t, dataDir, "SELECT row_id FROM work.notes LIMIT 10", nil)
 	sourceRow, _ := existing.Results[0].Rows[0]["row_id"].(string)
+	executeTraceMSQL(t, dataDir,
+		"UPDATE work.notes SET title = :title WHERE row_id = :row",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"title": "first", "row": sourceRow}},
+			Mutation: executor.MutationOptions{
+				ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
+				RouteLeafIDs: []string{first},
+				Actor:        "agent:test", Source: "event_1b", Reason: "attach to a leaf",
+			},
+		}},
+	)
 	inserted := executeTraceMSQL(t, dataDir,
 		"INSERT INTO work.notes (title) VALUES (:title)",
 		[]executor.StatementInput{{
@@ -65,121 +75,86 @@ func rowArchiveFixture(t *testing.T) (string, string, string, string, string) {
 	return dataDir, sourceRow, relationID, first, rootID
 }
 
-// TestArchivingARowHidesItAndUnarchiveRestoresTheSameRow pins that the inverse
-// lands on the same Row: re-inserting would mint a new RowID and orphan every
-// reference to the old one.
-func TestArchivingARowHidesItAndUnarchiveRestoresTheSameRow(t *testing.T) {
-	dataDir, rowID, _, leaf, _ := rowArchiveFixture(t)
+// TestDeletingARowIsFinalAndTakesItsHistory pins the rule that separates UPDATE
+// from DELETE: an UPDATE keeps every earlier revision, because the Row is still
+// there to reach them through. A deleted Row is reachable from nothing —
+// SHOW HISTORY is addressable only by RowID, and a deleted Row appears in no
+// listing — so keeping its History would only mean content the user deleted
+// stays queryable by whoever kept the ID.
+func TestDeletingARowIsFinalAndTakesItsHistory(t *testing.T) {
+	dataDir, rowID, _, _, _ := rowArchiveFixture(t)
 
-	before := rowCount(t, dataDir, "SELECT title FROM work.notes LIMIT 10")
-
-	if ok, message := run(t, dataDir, "ARCHIVE ROW work.notes :row REASON :reason",
-		[]executor.StatementInput{{
-			Parameters: executor.Parameters{Named: map[string]any{"row": rowID, "reason": "superseded"}},
-			Mutation: executor.MutationOptions{
-				ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
-				Actor: "agent:test", Source: "event_4", Reason: "superseded",
-			},
-		}},
-	); !ok {
-		t.Fatalf("ARCHIVE ROW failed: %s", message)
-	}
-	if after := rowCount(t, dataDir, "SELECT title FROM work.notes LIMIT 10"); after != before-1 {
-		t.Fatalf("archived Row must leave SELECT, got %d of %d", after, before)
+	history := executeTraceMSQL(t, dataDir,
+		"SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
+	)
+	if len(history.Results[0].Rows) < 2 {
+		t.Fatalf("an updated Row should carry its earlier revisions, got %#v", history.Results[0].Rows)
 	}
 
-	// A restored Row must be reachable again: F224 forbids a live Row that no
-	// Route points at, and archiving cleared the memberships.
-	if ok, message := run(t, dataDir, "UNARCHIVE ROW work.notes :row",
+	if ok, message := run(t, dataDir, "DELETE FROM work.notes WHERE row_id = :row",
 		[]executor.StatementInput{{
 			Parameters: executor.Parameters{Named: map[string]any{"row": rowID}},
 			Mutation: executor.MutationOptions{
-				ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
-				Actor: "agent:test", Source: "event_5", Reason: "restore",
+				ExpectedSchemaVersion: 1, ExpectedRevision: 2, MaxAffectedRows: 1,
+				Actor: "agent:test", Source: "event_4", Reason: "no longer wanted",
+			},
+		}},
+	); !ok {
+		t.Fatalf("DELETE failed: %s", message)
+	}
+
+	if ok, _ := run(t, dataDir, "SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 10",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
+	); ok {
+		t.Fatal("a deleted Row must take its History with it")
+	}
+
+	// There is no way back: no UNARCHIVE ROW, and RESTORE rewinds a live Row
+	// rather than resurrecting a deleted one.
+	if ok, message := run(t, dataDir, "UNARCHIVE ROW work.notes :row",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
+	); ok {
+		t.Fatal("UNARCHIVE ROW must not exist")
+	} else if !strings.Contains(message, "DATABASE, TABLE or COLUMN") {
+		t.Fatalf("the grammar should say archiving is for containers, got %q", message)
+	}
+	if ok, message := run(t, dataDir, "RESTORE work.notes ROW :row TO REVISION :revision",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"row": rowID, "revision": 1}},
+			Mutation: executor.MutationOptions{
+				ExpectedSchemaVersion: 1, ExpectedRevision: 3, MaxAffectedRows: 1,
+				Actor: "agent:test", Source: "event_5", Reason: "try to resurrect",
 			},
 		}},
 	); ok {
-		t.Fatalf("UNARCHIVE ROW without a Route snapshot must fail: %s", message)
-	}
-
-	if ok, message := run(t, dataDir, "UNARCHIVE ROW work.notes :row",
-		[]executor.StatementInput{{
-			Parameters: executor.Parameters{Named: map[string]any{"row": rowID}},
-			Mutation: executor.MutationOptions{
-				ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{leaf},
-				Actor: "agent:test", Source: "event_6", Reason: "restore",
-			},
-		}},
-	); !ok {
-		t.Fatalf("UNARCHIVE ROW failed: %s", message)
-	}
-	restored := executeTraceMSQL(t, dataDir,
-		"SELECT title, row_id FROM work.notes WHERE row_id = :row LIMIT 1",
-		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"row": rowID}}}},
-	)
-	if len(restored.Results[0].Rows) != 1 || restored.Results[0].Rows[0]["row_id"] != rowID {
-		t.Fatalf("UNARCHIVE must restore the same RowID, got %#v", restored.Results[0].Rows)
+		t.Fatal("RESTORE must not resurrect a deleted Row")
+	} else if !strings.Contains(message, "final") {
+		t.Fatalf("the error should say deletion is final, got %q", message)
 	}
 }
 
-// TestArchivingARelationKeepsItsIdentity is the same point one level over:
-// re-running RELATE would produce a different relation_id.
-func TestArchivingARelationKeepsItsIdentity(t *testing.T) {
+// TestDeletingARelationIsFinal is the same rule one level over: a link is cheap
+// to recreate, so UNRELATE has no inverse.
+func TestDeletingARelationIsFinal(t *testing.T) {
 	dataDir, _, relationID, _, _ := rowArchiveFixture(t)
 
-	if ok, message := run(t, dataDir, "ARCHIVE RELATION :relation REASON :reason",
+	if ok, message := run(t, dataDir, "UNRELATE :relation",
 		[]executor.StatementInput{{
-			Parameters: executor.Parameters{Named: map[string]any{"relation": relationID, "reason": "wrong direction"}},
+			Parameters: executor.Parameters{Named: map[string]any{"relation": relationID}},
 			Mutation: executor.MutationOptions{
 				MaxAffectedRows: 1, ExpectedRevision: 1,
 				Actor: "agent:test", Source: "event_4", Reason: "wrong direction",
 			},
 		}},
 	); !ok {
-		t.Fatalf("ARCHIVE RELATION failed: %s", message)
+		t.Fatalf("UNRELATE failed: %s", message)
 	}
-
-	restore := []executor.StatementInput{{
-		Parameters: executor.Parameters{Named: map[string]any{"relation": relationID}},
-		Mutation: executor.MutationOptions{
-			MaxAffectedRows: 1, ExpectedRevision: 2,
-			Actor: "agent:test", Source: "event_5", Reason: "restore",
-		},
-	}}
-	envelope, err := Execute(t.Context(), dataDir, "UNARCHIVE RELATION :relation", restore)
-	if err != nil || !envelope.OK {
-		message := ""
-		for _, statement := range envelope.Results {
-			if statement.Error != nil {
-				message = statement.Error.Message
-			}
-		}
-		t.Fatalf("UNARCHIVE RELATION failed: %s (%v)", message, err)
-	}
-	if envelope.Results[0].Rows[0]["id"] != relationID {
-		t.Fatalf("UNARCHIVE must restore the same relation_id, got %#v", envelope.Results[0].Rows[0])
-	}
-	if ok, _ := run(t, dataDir, "UNARCHIVE RELATION :relation", restore); ok {
-		t.Fatal("unarchiving a live Relation must fail")
-	}
-}
-
-func TestArchiveRowAndRelationRequireReason(t *testing.T) {
-	dataDir, rowID, relationID, _, _ := rowArchiveFixture(t)
-
-	for _, source := range []string{
-		"ARCHIVE ROW work.notes :row",
-		"ARCHIVE RELATION :relation",
-	} {
-		ok, message := run(t, dataDir, source, []executor.StatementInput{{
-			Parameters: executor.Parameters{Named: map[string]any{"row": rowID, "relation": relationID}},
-			Mutation:   executor.MutationOptions{MaxAffectedRows: 1, ExpectedRevision: 1},
-		}})
-		if ok {
-			t.Fatalf("%q without REASON must fail", source)
-		}
-		if !strings.Contains(strings.ToUpper(message), "REASON") {
-			t.Fatalf("%q error should name REASON, got %q", source, message)
-		}
+	if ok, message := run(t, dataDir, "UNARCHIVE RELATION :relation",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"relation": relationID}}}},
+	); ok {
+		t.Fatal("UNARCHIVE RELATION must not exist")
+	} else if !strings.Contains(message, "DATABASE, TABLE or COLUMN") {
+		t.Fatalf("the grammar should say archiving is for containers, got %q", message)
 	}
 }

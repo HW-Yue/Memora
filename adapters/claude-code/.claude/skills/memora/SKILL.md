@@ -542,28 +542,50 @@ receipt directly. A destructive plan containing DROP has no automatic
 compensation proposal because History values must not be presented as an
 ordinary reversible Schema action.
 
-## Archiving is the only delete
+## Delete what rebuilds, archive what does not
 
-Memora never erases anything. Every removal is an archive: the object stops
-resolving by name and leaves every read surface, while its definition, its
-values and its History stay on disk, and `UNARCHIVE` puts it back on the same
-object with the same ID. Say "archived", never "deleted", and never promise a
-user that data is gone — it is not, at any level, including Row `DELETE`.
+Removal splits in two, along one line: can the user recreate the thing exactly?
+
+**Route nodes, Rows and Relations are deleted, and deletion is final.** A Route
+node is a semantic index entry — a name, a purpose, aliases, an edge — and
+`CREATE ROUTE` rebuilds an identical one, so it keeps no archive. A Relation is
+one link; `RELATE` rebuilds it. A deleted Row is unreachable by construction:
+`SHOW HISTORY` is addressable only by `row_id` and a deleted Row appears in no
+listing, so its History goes with it. History earns its keep on **UPDATE**,
+where the Row is still there to explain.
+
+**Databases, Tables and Columns are archived, and archiving is reversible.**
+They hold other people's content and cannot be recreated by hand, so removal
+here means "leaves every read surface", not "gone".
+
+Three rules govern deletion, and all three fail hard rather than losing data:
+
+1. **A Route leaf must be emptied before it can be deleted.** Deleting a leaf
+   that still holds Rows would strip their navigation, and a live Row must be
+   reachable. Move the Rows to another leaf first — the error names how many are
+   in the way. A node with live children refuses the same way;
+2. **Nothing follows a delete.** A deleted Route node or Relation rejects every
+   later revision, restore included;
+3. **`RESTORE … TO REVISION` is not a way back from `DELETE FROM`.** It rewinds
+   a live Row to an earlier revision; on a deleted Row it refuses and says so.
+
+Deletion today is semantic — the object is unreachable and unrecoverable, but
+the bytes stay on disk until compaction lands. Never tell a user their data has
+been erased.
 
 ```sh
 memora exec --input '{"parameters":{"named":{"reason":"retired project"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ARCHIVE DATABASE work REASON :reason"
 ```
 
-`ARCHIVE|UNARCHIVE` accepts `DATABASE work`, `TABLE work.notes`,
-`COLUMN work.notes.draft`, `ROUTE :route_id`, `ROW work.notes :row_id` and
-`RELATION :relation_id`. `ARCHIVE` always requires `REASON`; `UNARCHIVE` never
-takes one. Container and structural kinds (Database, Table, Column, Route) are
-**L2**; Row and Relation are **L1** and carry the usual `expected_revision`.
-`DROP TABLE` and `DROP DATABASE` are still not statements the parser accepts —
-`ARCHIVE` is the operation. `DELETE FROM`, `DELETE ROUTE`, `UNRELATE` and
-`DROP_COLUMN` all still work and all now mean "archive".
+`ARCHIVE|UNARCHIVE` accepts **only** `DATABASE work`, `TABLE work.notes` and
+`COLUMN work.notes.draft`, all **L2**. `ARCHIVE` always requires `REASON`;
+`UNARCHIVE` never takes one. There is no `ARCHIVE ROUTE|ROW|RELATION` — the
+parser rejects it — and no `SHOW ROUTES … INCLUDING ARCHIVED`. `DROP TABLE` and
+`DROP DATABASE` are still not statements the parser accepts; `ARCHIVE` is the
+operation. `DROP_COLUMN` in a Schema Plan now archives the column, which is why
+it is reversible.
 
-Four rules that decide what an archive does:
+Three rules that decide what an archive does:
 
 1. **It never touches descendants.** Archiving a Table changes no Row and bumps
    no Row revision. An object is visible only when neither it nor any ancestor
@@ -572,9 +594,7 @@ Four rules that decide what an archive does:
    Table you archived separately still archived;
 3. **The name stays taken.** Creating over an archived object fails and names
    it. Do not work around this by inventing a new name — `UNARCHIVE` it or
-   rename it deliberately;
-4. **`UNARCHIVE ROW` needs a Route snapshot.** Archiving a Row clears its Route
-   memberships, and a live Row must be reachable, so pass `route_leaf_ids`.
+   rename it deliberately.
 
 Archived objects are invisible until a read asks for them:
 
@@ -590,7 +610,8 @@ so an archived object can never be mistaken for a live one. Use it before
 
 Ask the user before archiving a Database or a Table. Both hide everything
 underneath in one statement, and while nothing is destroyed, the user loses
-sight of the content until someone restores it.
+sight of the content until someone restores it. Ask before deleting anything,
+full stop — there is no `UNARCHIVE` on that side.
 
 ```sh
 memora schema --plan '{"version":"memora.schema-plan/v1","id":"schema-8","actor":"agent:host","source_event_id":"conversation:event-8","reason":"new durable project domain","authorized_databases":["work"],"ensure":{"database":{"name":"work","purpose":"Project knowledge","scope":"Reviewed projects"},"database_synonyms":["projects"],"table":{"name":"notes","purpose":"Durable decisions","row_semantics":"One reviewed decision","columns":[{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title"}]},"table_synonyms":["decisions"]}}'

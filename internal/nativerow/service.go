@@ -552,6 +552,14 @@ func (service *Service) HistoryPage(ctx context.Context, databaseName, tableName
 	if err != nil {
 		return nil, history.ReadPage{}, err
 	}
+	// A deleted Row takes its History with it. SHOW HISTORY is only addressable
+	// by RowID, and a deleted Row appears in no listing, so the RowID cannot be
+	// obtained any more — leaving the records readable would only mean content
+	// the user deleted stays queryable by anyone who kept the ID.
+	current, err := service.CurrentBody(ctx, table, rowID)
+	if err == nil && current.State == row.StateDeleted {
+		return nil, history.ReadPage{}, serviceFailure(result.CodeNotFound, "Row was not found", nativestore.ErrNotFound)
+	}
 	records, err := service.repository.HistoryAll(table.DatabaseID, table.ID, rowID)
 	if err != nil {
 		return nil, history.ReadPage{}, err
@@ -619,6 +627,16 @@ func (service *Service) Restore(
 	}
 	if target.State != row.StateLive && target.State != row.StateDeleted {
 		return row.Row{}, serviceFailure(result.CodeConstraint, "target Row revision cannot be restored", nil)
+	}
+	// Deleting a Row is final. RESTORE rewinds a live Row to an earlier
+	// revision; it is not a way back from delete, and letting it resurrect one
+	// would make "deleted" mean "hidden until someone knows the revision".
+	if current.State == row.StateDeleted {
+		return row.Row{}, serviceFailure(
+			result.CodeConstraint,
+			"Row was deleted; deletion is final and RESTORE cannot bring it back",
+			nil,
+		)
 	}
 	values := make(map[string]any, len(table.Columns))
 	for _, column := range table.Columns {
@@ -735,89 +753,6 @@ func (service *Service) DeleteRelation(ctx context.Context, id string, expected 
 		return relation.Relation{}, err
 	}
 	return deleted, nil
-}
-
-// RestoreRelation un-archives a Relation while keeping its identity. Creating
-// a fresh RELATE would produce a different relation_id, which breaks every
-// reference to the old one; archiving is reversible, so the inverse must land
-// on the same object.
-func (service *Service) RestoreRelation(ctx context.Context, id string, expected uint64) (relation.Relation, error) {
-	release, err := service.BeginAuthorityWrite(ctx)
-	if err != nil {
-		return relation.Relation{}, err
-	}
-	defer release()
-	current, err := service.repository.GetRelation(id, true)
-	if err != nil {
-		return relation.Relation{}, err
-	}
-	if current.State != relation.StateDeleted {
-		return relation.Relation{}, serviceFailure(result.CodeConstraint, "relation is not archived", nil)
-	}
-	if current.Revision != expected {
-		return relation.Relation{}, serviceFailure(result.CodeRevisionConflict, "relation revision conflicts with latest", ErrRevisionConflict)
-	}
-	restored := current
-	restored.Revision++
-	restored.CommitSequence, err = service.NextCommitSequence(ctx)
-	if err != nil {
-		return relation.Relation{}, err
-	}
-	restored.State = relation.StateLive
-	restored.UpdatedAt = service.clock.Now().UTC()
-	if err := service.commitRelationChange(ctx, restored); err != nil {
-		return relation.Relation{}, err
-	}
-	return restored, nil
-}
-
-// RestoreRow un-archives a Row in place. A Route snapshot is mandatory because
-// archiving clears Route memberships and F224 forbids a live Row that nothing
-// can navigate to; the caller has to say where the Row belongs again.
-func (service *Service) RestoreRow(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (row.Row, error) {
-	if len(options.RouteLeafIDs) == 0 {
-		return row.Row{}, serviceFailure(
-			result.CodeValidation,
-			"UNARCHIVE ROW requires a complete Route snapshot; a live Row must be reachable",
-			nil,
-		)
-	}
-	lockTable, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
-	if err != nil {
-		return row.Row{}, err
-	}
-	release, err := service.BeginRowAuthorityWrite(ctx, lockTable, []string{rowID})
-	if err != nil {
-		return row.Row{}, err
-	}
-	defer release()
-	table, err := service.catalog.DescribeTable(ctx, databaseName, tableName)
-	if err != nil {
-		return row.Row{}, err
-	}
-	current, err := service.CurrentBody(ctx, table, rowID)
-	if err != nil {
-		return row.Row{}, err
-	}
-	if current.State != row.StateDeleted {
-		return row.Row{}, serviceFailure(result.CodeConstraint, "Row is not archived", nil)
-	}
-	if options.ExpectedRevision != 0 && current.Revision != options.ExpectedRevision {
-		return row.Row{}, serviceFailure(result.CodeRevisionConflict, "Row revision conflicts with latest", ErrRevisionConflict)
-	}
-	restored := current
-	restored.Revision++
-	restored.CommitSequence, err = service.NextCommitSequence(ctx)
-	if err != nil {
-		return row.Row{}, err
-	}
-	restored.SchemaVersion = table.SchemaVersion
-	restored.State = row.StateLive
-	restored.UpdatedAt = service.clock.Now().UTC()
-	if err := service.commitRowRevision(ctx, restored, history.OperationCompensate, options.Metadata, options.RouteLeafIDs); err != nil {
-		return row.Row{}, err
-	}
-	return project(table, restored), nil
 }
 
 func (service *Service) commitRelationChange(ctx context.Context, value relation.Relation) error {
@@ -1186,52 +1121,29 @@ func (service *Service) DeleteRouterNode(ctx context.Context, id string, expecte
 	if children := routes.Children(id); len(children) > 0 {
 		return 0, serviceFailure(
 			result.CodeConstraint,
-			fmt.Sprintf("Route node has %d live child node(s); archive them first", len(children)),
+			fmt.Sprintf("Route node has %d live child node(s); delete them first", len(children)),
 			nil,
 		)
 	}
-	current.Revision, current.Deleted = current.Revision+1, true
-	committed, err := service.commitRouteNodeChange(ctx, change.OperationDelete, "delete Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
-		return current, routes.StageNode(transaction, current)
-	})
-	return committed.Revision, err
-}
-
-// RestoreRouterNode un-archives a Route node. Archiving is a pure tombstone, so
-// the node's memberships, children and aliases are still on disk and come back
-// with it. The parent must be live: restoring into an archived parent would
-// produce a node that is reachable by ID but not by navigation.
-func (service *Service) RestoreRouterNode(ctx context.Context, id string, expected uint64) (uint64, error) {
-	release, err := service.BeginAuthorityWrite(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer release()
-	routes := nativerouter.New(service.repository.file)
-	current, err := routes.Get(id)
-	if err != nil {
-		return 0, err
-	}
-	if current.Revision != expected {
-		return 0, ErrRevisionConflict
-	}
-	if !current.Deleted {
-		return 0, fmt.Errorf("%w: Route node is not archived", nativerouter.ErrInvalid)
-	}
-	if current.ParentID != "" {
-		parent, err := routes.Get(current.ParentID)
+	// Deleting a Route node is final, so the node must be empty first. An index
+	// node is cheap to rebuild and carries no content of its own, but a Row it
+	// still points at would be left unreachable by navigation — move the Rows to
+	// another leaf before deleting this one.
+	if current.Kind == router.KindLeaf {
+		locators, _, err := routes.InspectLeafPage(id, "", 1000)
 		if err != nil {
 			return 0, err
 		}
-		if parent.Deleted {
-			return 0, fmt.Errorf(
-				"%w: parent Route %q is archived; restore it first",
-				nativerouter.ErrInvalid, parent.ID,
+		if len(locators) > 0 {
+			return 0, serviceFailure(
+				result.CodeConstraint,
+				fmt.Sprintf("Route leaf still holds %d Row(s); move them to another leaf first", len(locators)),
+				nil,
 			)
 		}
 	}
-	current.Revision, current.Deleted = current.Revision+1, false
-	committed, err := service.commitRouteNodeChange(ctx, change.OperationCompensate, "restore Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
+	current.Revision, current.Deleted = current.Revision+1, true
+	committed, err := service.commitRouteNodeChange(ctx, change.OperationDelete, "delete Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
 		return current, routes.StageNode(transaction, current)
 	})
 	return committed.Revision, err
@@ -1321,19 +1233,6 @@ func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node
 	return value, nil
 }
 
-// GetArchivedRouterNode reads a Route node whatever its archived state. Only
-// UNARCHIVE and archive-aware reads may use it; GetRouterNode stays the live
-// surface so an archived node cannot leak into ordinary navigation.
-func (service *Service) GetArchivedRouterNode(_ context.Context, id string) (router.Node, error) {
-	value, err := nativerouter.New(service.repository.file).Get(id)
-	if errors.Is(err, nativestore.ErrNotFound) {
-		return router.Node{}, serviceFailure(result.CodeNotFound, "Router node was not found", err)
-	}
-	if err != nil {
-		return router.Node{}, err
-	}
-	return value, nil
-}
 func (service *Service) ListRouterNodes(ctx context.Context) ([]router.Node, error) {
 	release, err := service.beginRouteRead(ctx)
 	if err != nil {
@@ -1379,14 +1278,6 @@ func (service *Service) ListRouterChildrenPage(ctx context.Context, parentID, cu
 	}
 	defer release()
 	return nativerouter.New(service.repository.file).ShowUnderPage(parentID, cursor, limit)
-}
-func (service *Service) ListArchivedRouterChildrenPage(ctx context.Context, parentID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
-	release, err := service.beginRouteRead(ctx)
-	if err != nil {
-		return nil, router.ReadPage{}, err
-	}
-	defer release()
-	return nativerouter.New(service.repository.file).ShowArchivedUnderPage(parentID, cursor, limit)
 }
 func (service *Service) ListRouterLeaf(_ context.Context, leafID string, limit int) ([]router.Locator, bool, error) {
 	return nativerouter.New(service.repository.file).Open(leafID, limit)

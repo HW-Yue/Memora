@@ -1268,19 +1268,13 @@ func (parser *parser) parseDelete() (ast.Statement, error) {
 	return ast.Statement{Kind: "DELETE", Delete: deleteStatement}, nil
 }
 
-// parseArchive parses ARCHIVE and UNARCHIVE. Archiving is Memora's only delete
-// semantics; each object kind resolves its target differently, so the grammar
-// branches on the kind keyword rather than sharing one target rule.
+// parseArchive parses ARCHIVE and UNARCHIVE, which apply to containers only:
+// Database, Table and Column hold content that cannot be rebuilt from anything
+// else, so hiding them has to be reversible. Route, Row and Relation are
+// deleted outright instead — see the default branch below.
 func (parser *parser) parseArchive(restore bool) (ast.Statement, error) {
 	statement := &ast.ArchiveStatement{Restore: restore}
 	switch {
-	case parser.matchWord("ROUTE"):
-		statement.Object = "ROUTE"
-		target, err := parser.parseExpression(1)
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		statement.Target = &target
 	case parser.matchWord("DATABASE"):
 		statement.Object = "DATABASE"
 		name, err := parser.parseName()
@@ -1302,27 +1296,11 @@ func (parser *parser) parseArchive(restore bool) (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		statement.Name = name
-	case parser.matchWord("ROW"):
-		statement.Object = "ROW"
-		name, err := parser.parseName()
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		statement.Name = name
-		target, err := parser.parseExpression(1)
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		statement.Target = &target
-	case parser.matchWord("RELATION"):
-		statement.Object = "RELATION"
-		target, err := parser.parseExpression(1)
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		statement.Target = &target
 	default:
-		return ast.Statement{}, parser.unexpected("DATABASE, TABLE, COLUMN, ROUTE, ROW or RELATION")
+		// Route, Row and Relation are deleted, not archived: an index node and a
+		// link are cheap to rebuild, and a Row the user deleted is meant to be
+		// gone. They keep DELETE ROUTE / DELETE FROM / UNRELATE.
+		return ast.Statement{}, parser.unexpected("DATABASE, TABLE or COLUMN")
 	}
 	if parser.matchWord("REASON") {
 		reason, err := parser.parseExpression(1)

@@ -1,13 +1,80 @@
-# F227：统一归档模型
+# F227：删除与归档
 
-状态：**已实现（2026-08-20）**。六类对象全部可归档，读面、Admin UI、健康项联动、
-SKILL.md 与两个 adapter 均已交付。逐阶段记录见下。
+状态：**已实现（2026-08-20）**。读面、Admin UI、健康项联动、SKILL.md
+与两个 adapter 均已交付。逐阶段记录见下。
 
-**每一类对象都可归档，归档即唯一的删除语义，Memora 不提供物理擦除。**
+**一句话规则：能重建的真删，不能重建的归档。**
+
+Route 节点、Relation、Row 删了就是删了，不留回头路；
+Column、Table、Database 归档，进入已归档区，可以 `UNARCHIVE` 取回。
 前端默认看不到任何归档对象，只有点开归档才可见——见
 [Admin UI 归档规则](./f227-archive-admin-ui.md)。
 
-## 一条不变量，五个对象
+## 为什么按"能否重建"划线
+
+早期版本把六类对象一律做成归档，靠 `UNARCHIVE` 兜底。放弃这个模型的理由：
+
+- **Route 节点身上没有内容。** 它是一条语义索引条目：名字、用途、别名、父子边。
+  用户重新 `CREATE ROUTE` 就是完全等价的重建，为它维护一套归档区、
+  一套"已归档 Route 列表"读面、一套还原时的路径冲突规则，是纯负债；
+- **Relation 同理**，一条连边重新 `RELATE` 即可；
+- **删掉的 Row 是孤儿。** `SHOW HISTORY` 只按 `row_id` 寻址
+  （`internal/msql/executor/history.go:19` 要求 `show.Row != nil`），
+  而删掉的 Row 不出现在任何列表里。给一个谁也拿不到 ID 的对象保留 History，
+  保的是一份永远查不到的记录。History 的价值在 **UPDATE**：Row 还活着，
+  用户能看它怎么变成今天这样。删除就把 History 一起带走；
+- **Table 和 Database 装着别人的东西。** 一次误删覆盖成千上万个 Row，
+  且它们没法"重新 CREATE 一遍"。这一层必须可逆——这才是归档存在的理由。
+
+## 各对象的处置
+
+| 对象 | 操作 | 结果 | 找回 |
+|---|---|---|---|
+| Route 节点 | `DELETE ROUTE :id` (L2) | 终局，不可还原 | 重新 `CREATE ROUTE` |
+| Row | `DELETE FROM …` (L1) | 终局，**连同 History** | 无 |
+| Relation | `UNRELATE :id` (L1) | 终局 | 重新 `RELATE` |
+| Column | `ARCHIVE COLUMN`／`DROP_COLUMN` (L2) | 归档 | `UNARCHIVE COLUMN` |
+| Table | `ARCHIVE TABLE` (L2) | 归档 | `UNARCHIVE TABLE` |
+| Database | `ARCHIVE DATABASE` (L2) | 归档 | `UNARCHIVE DATABASE` |
+
+`ARCHIVE`／`UNARCHIVE` **只接受 DATABASE / TABLE / COLUMN**。
+`ARCHIVE ROUTE`、`ARCHIVE ROW`、`ARCHIVE RELATION` 会被 parser 拒绝并点名
+「DATABASE, TABLE or COLUMN」——三者的动词是 `DELETE ROUTE` / `DELETE FROM` /
+`UNRELATE`。
+
+## 删除是终局：三条强制规则
+
+### 1. 删 Route 之前，它下面必须是空的
+
+`DELETE ROUTE` 依次检查三件事，任何一条不满足都硬失败并说清原因
+（`nativerow.DeleteRouterNode`）：
+
+- `expected_revision` 不匹配 → `ErrRevisionConflict`；
+- 还有活跃子节点 → `CodeConstraint`，错误里带上子节点个数，
+  「delete them first」；
+- 是叶子且还挂着 Row → `CodeConstraint`，错误里带上 Row 个数，
+  「move them to another leaf first」。
+
+第三条是这次改动的核心。删一个还挂着 Row 的叶子，等于让这些 Row 失去导航
+（F224 要求活跃 Row 至少有一个 Route 归属），用户得到的是一批语义上不可达的数据。
+**先把 Row 搬到别的叶子，再删这个叶子**——这个顺序不可协商，
+也正因为强制了它，删除才敢做成终局。
+
+删除之后 `StageNode` 拒绝**任何**后续修订（还原和改写都拒），
+`nodes()` 把"删除后还有修订"判为文件损坏。一个 Route 节点的墓碑是最终状态。
+
+### 2. 删 Row 带走它的 History
+
+`HistoryPage` 先查当前 Row 状态，若是 `StateDeleted` 就返回 `CodeNotFound`，
+和这个 Row 从未存在过一样。`RESTORE … TO REVISION` 同样拒绝：
+它的语义是"把活着的 Row 倒回某个修订"，不是删除的后门，
+错误明说「deletion is final and RESTORE cannot bring it back」。
+
+### 3. 删 Relation 是终局
+
+`StageRelation` 与 Route 一致：删除后不接受任何后续修订。
+
+## 归档：一条不变量，三个对象
 
 1. 归档**不销毁任何数据**，也**不重写任何后代**；
 2. 归档**总是可逆**，逆操作是同一对象的 `UNARCHIVE`；
@@ -16,40 +83,7 @@ SKILL.md 与两个 adapter 均已交付。逐阶段记录见下。
 5. 对归档对象（或归档祖先之下的对象）的**任何写入硬失败**，
    错误点明"已归档，先 UNARCHIVE"。
 
-祖先链：`Database → Table → Column`，`Database → Table → Row`，
-`Database → Table → Route → Row 归属`，`Relation → 两端 Row`。
-
-## 各对象的实测差距
-
-| 对象 | 归档 | 取消归档 | 列出已归档 | 差距 |
-|---|---|---|---|---|
-| Row | `ARCHIVE ROW`／`DELETE FROM` | **`UNARCHIVE ROW`**（须带 Route 快照） | 经 History | 已交付 |
-| Route | `ARCHIVE ROUTE`／`DELETE ROUTE` | `UNARCHIVE ROUTE` | `SHOW ROUTES UNDER … INCLUDING ARCHIVED` | 已交付，三处可见性泄漏见下 |
-| Relation | `ARCHIVE RELATION`／`UNRELATE` | **`UNARCHIVE RELATION`**（保持 ID） | 经 History | 已交付 |
-| Column | `ARCHIVE COLUMN`／`DROP_COLUMN` | **`UNARCHIVE COLUMN`** | `SHOW COLUMNS … INCLUDING ARCHIVED` | 已交付，`Reversible=false` 已取消 |
-| Table | `ARCHIVE TABLE` | `UNARCHIVE TABLE` | `SHOW TABLES … INCLUDING ARCHIVED` | 已交付 |
-| Database | `ARCHIVE DATABASE` | `UNARCHIVE DATABASE` | `SHOW DATABASES … INCLUDING ARCHIVED` | 已交付 |
-
-### 关于 Route：一次记录订正
-
-本文档初版称 `router.deleteSubtree`（`internal/router/service.go`）会清空 locator
-并摘除 children，因此"现有 `DELETE ROUTE` 是有损的"。**该结论只对了一半**：
-`internal/router` 与 `internal/row` 是一套平行实现，daemon 并不接线它
-（`daemon/lifecycle.go:198` 用的是 `nativerow` + `nativerouter`），
-所以那条有损路径不在真实运行路径上。
-
-线上路径 `nativerow.DeleteRouterNode` 本来就只翻 `Deleted` 标志，是无损的。
-它真实存在的问题是另外三条**可见性泄漏**，都已在 Stage 1 修掉：
-
-- `Roots(tableID)` 不过滤 `Deleted`，归档的 root 仍会被列出；
-- `openPage` 只检查 `Kind`，**`OPEN ROUTE` 能打开一个已归档的叶子**；
-- `membershipsForRow` 只看 membership 自己的 `Deleted`，
-  指向已归档叶子的归属照样返回。
-
-另外 `nodes()` 与 `StageNode` 都把"删除后还有修订"判为损坏，
-等于把删除写死成不可逆——`UNARCHIVE` 必须放开这一条（只允许纯还原）。
-平行实现里的有损 `deleteSubtree` 一并改成了无损 tombstone，
-不留一条"删除即销毁"的代码路径。
+祖先链：`Database → Table → Column`，`Database → Table → Row`。
 
 ## 语法
 
@@ -57,10 +91,7 @@ SKILL.md 与两个 adapter 均已交付。逐阶段记录见下。
 ARCHIVE   DATABASE work                      REASON :reason     (L2)
 ARCHIVE   TABLE    work.notes                REASON :reason     (L2)
 ARCHIVE   COLUMN   work.notes.draft_score    REASON :reason     (L2)
-ARCHIVE   ROUTE    :route_id                 REASON :reason     (L2)
-ARCHIVE   ROW      work.notes :row_id        REASON :reason     (L1)
-ARCHIVE   RELATION :relation_id              REASON :reason     (L1)
-UNARCHIVE <同上，无 REASON>                                      (同级)
+UNARCHIVE <同上，无 REASON>                                      (L2)
 ```
 
 `REASON` 必填并写入 change log。
@@ -71,7 +102,6 @@ UNARCHIVE <同上，无 REASON>                                      (同级)
 SHOW DATABASES INCLUDING ARCHIVED
 SHOW TABLES FROM work INCLUDING ARCHIVED
 SHOW COLUMNS FROM work.notes INCLUDING ARCHIVED
-SHOW ROUTES UNDER :parent LIMIT 12 INCLUDING ARCHIVED
 DESCRIBE DATABASE work INCLUDING ARCHIVED
 DESCRIBE TABLE work.notes INCLUDING ARCHIVED
 ```
@@ -81,20 +111,30 @@ DESCRIBE TABLE work.notes INCLUDING ARCHIVED
 `DESCRIBE …` 可能返回活跃对象，靠 `archived_at` 是否存在区分——
 `catalog` 结构体的这两个字段是 `omitempty`，活跃对象没有这两个键。
 
-**`SELECT … INCLUDING ARCHIVED` 不存在，也不打算做**：它是读放宽而不是写放宽，
-但 Row 的归档语义已经由 `SHOW HISTORY` 与 `RESTORE … TO REVISION` 覆盖，
-再给 `SELECT` 开一个口子只会让"这一行是不是活的"在每个查询里都要判一次。
-`INSERT … INCLUDING ARCHIVED` 同样不被接受——修饰词永远不放宽写入。
+**没有 `SHOW ROUTES … INCLUDING ARCHIVED`**：删掉的 Route 不进任何归档区。
+**`SELECT … INCLUDING ARCHIVED` 不存在，也不打算做**——删掉的 Row 没有归档区，
+归档的容器已经由容器级读面覆盖。`INSERT … INCLUDING ARCHIVED` 同样不被接受：
+修饰词永远不放宽写入。
 
 ### 兼容与命名
 
-- `DELETE FROM`、`DELETE ROUTE`、`UNRELATE`、`DROP_COLUMN` **全部保留**，
-  语义重新定义为对应对象的归档，不再声称是删除；
+- `DELETE FROM`、`DELETE ROUTE`、`UNRELATE` 保持删除语义，且**现在是真的终局**；
+- `DROP_COLUMN` 重定义为归档（见下方缺陷二）；
 - 磁盘状态字符串**保持 `deleted` 不变**（`row/model.go:13`、`relation/model.go:13`、
-  `router.Node.Deleted`）。改成 `archived` 是零收益的存储格式迁移，
-  `repository.go:434` 一类的解码校验都得跟着动。统一的是**对外词汇**，不是磁盘编码；
+  `router.Node.Deleted`）。容器的归档另用 `ArchivedAt`／`ArchivedReason` 表达，
+  与 `deleted` 不共用字段；
 - `DROP TABLE` / `DROP DATABASE` 继续不被 parser 接受，
   但错误信息从 `unsupported_statement` 改为点名 `ARCHIVE`。
+
+## 存储层的真相：删除只能是语义上的
+
+`nativestore.Transaction` 只有 `Put`／`Commit`／`Rollback`，**没有 Delete**。
+所以"删除"在今天的 Memora 里只能意味着**语义上不可达且不可逆**，
+磁盘上的字节还在，直到 F151 Compaction 落地才谈得上回收。
+
+这不是给删除打折：对用户可见的行为——查不到、列不出、还不回来——是完整的。
+但**不要对用户承诺"数据已被抹除"**。真正的擦除需要一个统一的
+"抹除并重写 History"能力，单独立项一次做对。
 
 ## 三条实现约束
 
@@ -132,13 +172,20 @@ deleted 文档投影。
 
 归档 Column 的额外要求：列定义与所有 Row 里的值**原样保留**，
 只从 `DESCRIBE`、`SELECT *` 的展开、Catalog Atlas 与 schema 校验中消失。
-这比 `DROP_COLUMN` 严格更好——它让"不可逆"这个属性直接消失。
+这比原来的 `DROP_COLUMN` 严格更好——它让"不可逆"这个属性直接消失。
+
+Route 侧同样有一份过滤清单，只不过针对的是删除而非归档：
+`Roots(tableID)` 过滤 `Deleted`；`openPage` 拒绝打开已删除叶子
+（只有维护读 `InspectLeafPage` 穿透）；`membershipsForRow` 隐藏指向已删除叶子的归属。
 
 ### 3. 名字继续占用命名空间
 
 归档对象保留原名。再建同名 Database/Table/Column **硬失败**，错误里点名那个归档对象，
 给出 `UNARCHIVE` 与改名两条出路。不做自动改名（`work@archived-<ts>` 之类）：
 悄悄改用户的数据名比报错更糟，而对 Agent 来说一次带解法的报错只是一个 round trip。
+
+删除的对象不占名字：一个删掉的 Route 路径可以立刻重建同名节点——
+这正是"能重建"的含义。
 
 只读库（`ReadOnly=true`）与包安装库（`PackageSHA256 != ""`）拒绝归档，
 那属于包卸载，本 Feature 不做。
@@ -147,19 +194,18 @@ deleted 文档投影。
 
 - `unrouted_row`、`orphan_membership`、F224 强制 Route、F225 强制 summary
   **一律跳过归档对象及归档祖先之下的对象**，否则一次归档淹掉整份报告；
-- 不需要 `dangling_relation`：没有物理删除，端点永远还在，只是被隐藏；
+- 不需要 `dangling_relation`：Row 删除不级联，但 Relation 端点校验走的是当前状态；
 - **不做 `archived_container`**：Admin UI 的已归档区已经回答"仓库里堆了什么"，
   一条恒定触发的信息项只会稀释报告里真正可执行的条目。
 
 ## 分阶段
 
 - **Stage 0（已完成 2026-08-20）**：SKILL.md 写明容器当前不可删除。
-- **Stage 1（已完成 2026-08-20）**：Route 归档的可见性泄漏与不可逆性。
+- **Stage 1（已完成 2026-08-20）**：Route 的可见性泄漏。
   `Roots`／`openPage`／`membershipsForRow` 按 `Deleted` 过滤；
-  `nodes()`／`StageNode` 放开"归档后只允许纯还原"；新增
-  `ARCHIVE ROUTE :id REASON :r` 与 `UNARCHIVE ROUTE :id`（L2，走 `ExpectedRevision`）；
-  归档的兄弟节点不再占用 fan-out 名额；平行实现的有损 `deleteSubtree`
-  一并改为无损 tombstone。
+  已删除的兄弟节点不再占用 fan-out 名额；平行实现 `internal/router` 的有损
+  `deleteSubtree` 一并改为无损 tombstone（membership 记录原样留在盘上，
+  只是不再可达），不留一条"删除即销毁 locator"的代码路径。
 - **Stage 2（已完成 2026-08-20）**：`catalog.Database`／`catalog.Table` 增
   `ArchivedAt`／`ArchivedReason`（原生 codec 可选字段 18/19 与 13/14，旧文件读为未归档）；
   `ARCHIVE|UNARCHIVE DATABASE|TABLE`（L2，`ARCHIVE` 必填 `REASON`）；
@@ -167,16 +213,10 @@ deleted 文档投影。
   它们直接拒绝归档对象，于是**所有**读写路径（`SELECT`／`INSERT`／`DESCRIBE`／
   `SHOW`／Row 服务）自动生效，不必逐处记住规则；`ShowDatabases`／`ShowTables` 过滤，
   `Describe/ShowArchived*` 是唯一的穿透读。归档**不改 Row**，实测 `revision` 不变。
-  **归档不自增 SchemaVersion**——那会被误当成 schema 变更（详见下方"一个前置缺陷"）。
+  **归档不自增 SchemaVersion**——那会被误当成 schema 变更（详见下方"缺陷一"）。
 - **Stage 3（已完成 2026-08-20）**：`INCLUDING ARCHIVED` 铺到 `SHOW DATABASES`／
-  `SHOW TABLES`／`SHOW COLUMNS`／`SHOW ROUTES UNDER`／`DESCRIBE DATABASE`／
-  `DESCRIBE TABLE`，只放宽出现它的那一条语句，后端能力用可选接口断言、
-  不支持就明确报错。`validateRouteChildren` 的作用域自检对归档页反转一个子句，
-  两种列表都不会静默接受另一种节点。
-- **Stage 3b（已完成 2026-08-20）**：`ARCHIVE|UNARCHIVE ROW`（L1，`UNARCHIVE`
-  必须带 `route_leaf_ids`，因为归档清空了 Route 归属而 F224 要求活跃 Row 可导航）
-  与 `ARCHIVE|UNARCHIVE RELATION`（L1，保持 `relation_id`）。
-  `StageRelation` 同样放开为只允许纯还原。
+  `SHOW TABLES`／`SHOW COLUMNS`／`DESCRIBE DATABASE`／`DESCRIBE TABLE`，
+  只放宽出现它的那一条语句，后端能力用可选接口断言、不支持就明确报错。
 - **Stage 4（已完成 2026-08-20）**：`ARCHIVE|UNARCHIVE COLUMN`；`DROP_COLUMN`
   重定义为归档，`Reversible=false` 取消，`Destructive` 与 `Reversible` 不再互为反面。
   归档列留在 `table.Columns` 里让存储层继续解码，可见性收在
@@ -188,13 +228,20 @@ deleted 文档投影。
   **未做 `archived_container` 健康项**：Admin UI 的已归档区已经回答"仓库里堆了什么"，
   再加一条恒定触发的信息项只是噪音。
 - **Stage 6（已完成 2026-08-20）**：[Admin UI](./f227-archive-admin-ui.md) 全局归档
-  模式已落地；SKILL.md 新增「Archiving is the only delete」一节，两个 adapter 已重生成。
+  模式已落地；SKILL.md 新增删除／归档一节，两个 adapter 已重生成。
   **未做专用 CLI 子命令**：`memora exec` 本来就能跑 `ARCHIVE`，`memora query` 能跑
   `INCLUDING ARCHIVED`，再包一层只是复制 `exec`，而 `cli.go` 已经 1,820 行。
+- **Stage 7（已完成 2026-08-20）**：按"能重建的真删"收束模型。
+  Route／Row／Relation 的归档能力整体撤除（`ARCHIVE ROUTE|ROW|RELATION`、
+  `UNARCHIVE …`、`SHOW ROUTES … INCLUDING ARCHIVED`、
+  `RestoreRouterNode`／`RestoreRelation`／`RestoreRow`／`GetArchivedRouterNode`／
+  `ListArchivedRouterChildrenPage` 全部删除），删除恢复为终局；
+  新增"删 Route 叶子前必须先搬空 Row"约束；`SHOW HISTORY` 对已删除 Row 返回
+  not found；`RESTORE … TO REVISION` 拒绝复活已删除 Row。
 
 ## 两个前置缺陷（同源，已修）
 
-两者都不是归档引入的，是实现过程中撞出来的已发布缺陷，根因相同：
+两者都不是本 Feature 引入的，是实现过程中撞出来的已发布缺陷，根因相同：
 **Catalog 变更从不重写 Row，但有代码假设二者必须一致。**
 
 1. **改名让全部 Row 读不出来**（详见下）；
@@ -205,7 +252,7 @@ deleted 文档投影。
 
 ## 缺陷一：改名
 
-Stage 2 的实现暴露出一个与归档无关的已发布缺陷：**对有数据的表改名之后，
+Stage 2 的实现暴露出一个已发布缺陷：**对有数据的表改名之后，
 它的全部 Row 都读不出来**（`native row record is corrupt: visible Row locator
 has wrong Table`）。根因是两处要求 Row 的 schema 版本与 Table 当前版本严格相等
 （`nativerow/indexed_reader.go` 的 `locatorMatchesTable`、`nativerow/repository.go`
@@ -214,31 +261,43 @@ has wrong Table`）。根因是两处要求 Row 的 schema 版本与 Table 当�
 
 ## 明确不做
 
-- **不提供物理擦除。** Memora 今天在任何层级都没有真正的擦除——Row `DELETE`
-  同样保留 History 与旧修订。隐私场景（误写进去的密码、他人的敏感信息）需要一个
-  统一的"抹除并重写 History"能力，单独立项一次做对，不挂在归档上做半套；
-- 不引入一行式 `DROP` DDL；不为归档级联重写后代；不级联归档 Relation；
+- **不提供物理擦除**，理由见上"存储层的真相"；
+- 不给 Route／Row／Relation 做归档区、回收站节点或"已删除列表"读面。
+  尤其**不做"父节点下挂一个已归档子节点当回收站"**：它会重写被删对象的语义坐标、
+  占用 F223 的 fan-out 预算、把一次写变成子树重写、并让原路径被占住导致重建冲突；
+- 不引入一行式 `DROP` DDL；不为归档级联重写后代；不级联删除 Relation；
 - 不改磁盘状态字符串；不做跨对象的原子归档；不做 Database Package 卸载。
 
 ## RED 与完成门
 
-- RED 先证明（Stage 1，已完成）：归档一个叶子后 `OPEN ROUTE` 仍打得开、
-  `Roots` 仍列出归档的 root、指向归档叶子的 membership 仍返回、
-  且 `StageNode` 拒绝任何还原；
+删除侧：
+
+- 删一个还挂着 Row 的 Route 叶子必须失败，错误点明 Row 个数与"先搬走"；
+- 删一个还有活跃子节点的 Route 节点必须失败，错误点明子节点个数
+  （而不是被误报成 revision 冲突）；
+- 已删除的 Route 节点拒绝任何后续修订（还原与改写都拒），重开文件后仍是删除态；
+- 删除的 Row 之后 `SHOW HISTORY` 返回 not found，`RESTORE … TO REVISION` 明确拒绝；
+- 删除的 Relation 拒绝任何后续修订；
+- `ARCHIVE ROUTE|ROW|RELATION` 被 parser 拒绝并点名 DATABASE/TABLE/COLUMN；
+- 删除的 Route 叶子的 membership 记录在盘上完好（维护读可见），但普通读面一律不可达。
+
+归档侧：
+
 - RED 先证明：`DROP TABLE` / `DROP DATABASE` 是 `unsupported_statement`；
 - 归档后：`SHOW TABLES`／Catalog Atlas／Bootstrap Frame／
   `SHOW LEXICAL LOCATIONS FROM ALL TABLES`／别名解析／`OPEN ROUTE`
   均不再出现该对象，且后代的 `revision` **一个都没变**；
 - 归档是**一条** change log 记录，不随后代数量增长；
 - 归档对象上的写入硬失败，错误点明 `UNARCHIVE`；
-- `UNARCHIVE` 后对象与全部后代原样可见，`revision` 仍未变，
-  Route 的 locator 与 children 完整复原；
+- `UNARCHIVE` 后对象与全部后代原样可见，`revision` 仍未变；
 - 归档 Database 后再 `UNARCHIVE`，此前单独归档的 Table 仍保持归档；
 - 同名对象创建失败并点名归档对象；只读库与包安装库拒绝归档；
-- `INCLUDING ARCHIVED` 的结果行必带 `archived`/`archived_at`/`archived_reason`，
+- `INCLUDING ARCHIVED` 的结果行必带 `archived_at`/`archived_reason`，
   且走与不带该修饰词时同一套 cursor/limit/bytes 预算语义；
 - 归档容器内的 Row 不产生 `unrouted_row`；
-- 归档 Column 后 `SELECT` 该列名失败，但 `INCLUDING ARCHIVED` 能取回原值。
+- 归档 Column 后 `SELECT` 该列名失败，但 Row 里的原值原样保留，
+  `UNARCHIVE COLUMN` 后可取回；
+- 改名后（Table 名与列名）全部 Row 仍可读。
 
 ## 关联
 

@@ -25,12 +25,6 @@ type routeAliasRows interface {
 	UpdateRouterAliases(context.Context, string, []string, uint64) (router.Node, error)
 }
 
-// archivedRouteRows is the archive-aware child listing behind
-// SHOW ROUTES … INCLUDING ARCHIVED.
-type archivedRouteRows interface {
-	ListArchivedRouterChildrenPage(context.Context, string, string, int) ([]router.Node, router.ReadPage, error)
-}
-
 func (engine *Engine) createRoute(
 	ctx context.Context,
 	statement *ast.CreateRouteStatement,
@@ -238,8 +232,8 @@ func (engine *Engine) deleteRoute(
 	return routerRevisionMutationOutput(revision), nil
 }
 
-// archive runs ARCHIVE and UNARCHIVE. Archiving never destroys anything, so
-// UNARCHIVE is the exact inverse and both sides share this dispatch.
+// archive runs ARCHIVE and UNARCHIVE for the three container kinds. Archiving
+// never destroys anything, so UNARCHIVE is the exact inverse.
 func (engine *Engine) archive(
 	ctx context.Context,
 	statement *ast.ArchiveStatement,
@@ -247,56 +241,15 @@ func (engine *Engine) archive(
 	options MutationOptions,
 ) (Output, error) {
 	switch statement.Object {
-	case "ROUTE":
-		return engine.archiveRoute(ctx, statement, bound, options)
 	case "DATABASE":
 		return engine.archiveDatabase(ctx, statement, bound)
 	case "TABLE":
 		return engine.archiveTable(ctx, statement, bound)
 	case "COLUMN":
 		return engine.archiveColumn(ctx, statement, bound)
-	case "ROW":
-		return engine.archiveRow(ctx, statement, bound, options)
-	case "RELATION":
-		return engine.archiveRelation(ctx, statement, bound, options)
 	default:
 		return Output{}, executeError(result.CodeValidation, "ARCHIVE object kind is unsupported")
 	}
-}
-
-func (engine *Engine) archiveRoute(
-	ctx context.Context,
-	statement *ast.ArchiveStatement,
-	bound bindings,
-	options MutationOptions,
-) (Output, error) {
-	if err := validateRouterMutationOptions(options, true); err != nil {
-		return Output{}, err
-	}
-	routeID, err := routerString(statement.Target, bound, "Router node ID")
-	if err != nil {
-		return Output{}, err
-	}
-	if !statement.Restore {
-		if _, err := routerString(statement.Reason, bound, "archive reason"); err != nil {
-			return Output{}, err
-		}
-	}
-	// UNARCHIVE has to authorize against a node the live surface hides, so the
-	// restore path resolves its Database through the archive-aware read.
-	lookup := engine.rows.GetRouterNode
-	mutate := engine.rows.DeleteRouterNode
-	if statement.Restore {
-		lookup, mutate = engine.rows.GetArchivedRouterNode, engine.rows.RestoreRouterNode
-	}
-	if err := engine.authorizeRouterNodeAtLevel(ctx, security.LevelStructural, routeID, lookup); err != nil {
-		return Output{}, err
-	}
-	revision, err := mutate(ctx, routeID, options.ExpectedRevision)
-	if err != nil {
-		return Output{}, normalizeError(err)
-	}
-	return routerRevisionMutationOutput(revision), nil
 }
 
 func (engine *Engine) showRoutes(
@@ -350,15 +303,7 @@ func (engine *Engine) showRoutes(
 			return Output{}, executeError(result.CodeConstraint, "SHOW ROUTES UNDER requires a root or branch; use OPEN ROUTE for a leaf")
 		}
 		expectedDatabaseID, expectedTableID, expectedParentID = parent.DatabaseID, parent.TableID, parent.ID
-		if show.IncludingArchived {
-			archived, ok := engine.rows.(archivedRouteRows)
-			if !ok {
-				return Output{}, executeError(result.CodeUnsupported, "INCLUDING ARCHIVED is not supported by this backend")
-			}
-			nodes, page, err = archived.ListArchivedRouterChildrenPage(ctx, parent.ID, cursor, limit)
-		} else {
-			nodes, page, err = engine.rows.ListRouterChildrenPage(ctx, parent.ID, cursor, limit)
-		}
+		nodes, page, err = engine.rows.ListRouterChildrenPage(ctx, parent.ID, cursor, limit)
 	}
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -366,7 +311,7 @@ func (engine *Engine) showRoutes(
 	if page.Snapshot == "" {
 		return Output{}, executeError(result.CodeInternal, "Route child page has no snapshot")
 	}
-	if err := validateRouteChildren(nodes, expectedDatabaseID, expectedTableID, expectedParentID, show.IncludingArchived); err != nil {
+	if err := validateRouteChildren(nodes, expectedDatabaseID, expectedTableID, expectedParentID); err != nil {
 		return Output{}, err
 	}
 	output := Output{
@@ -546,16 +491,13 @@ func routerAliases(expression *ast.Expression, bound bindings) ([]string, error)
 	}
 }
 
-// validateRouteChildren guards the live listing. archived reverses exactly one
-// clause — the page is expected to be entirely archived nodes — so an archive
-// listing cannot silently accept a live node or vice versa.
-func validateRouteChildren(nodes []router.Node, databaseID, tableID, parentID string, archived bool) error {
+func validateRouteChildren(nodes []router.Node, databaseID, tableID, parentID string) error {
 	if parentID == "" && len(nodes) > 0 {
 		parentID = nodes[0].ParentID
 	}
 	seen := make(map[string]struct{}, len(nodes))
 	for _, node := range nodes {
-		if node.Version != router.Version || node.ID == "" || node.Revision == 0 || node.Deleted != archived ||
+		if node.Version != router.Version || node.ID == "" || node.Revision == 0 || node.Deleted ||
 			node.DatabaseID != databaseID || node.TableID != tableID || node.ParentID == "" ||
 			node.ParentID != parentID || (node.Kind != router.KindBranch && node.Kind != router.KindLeaf) {
 			return executeError(result.CodeInternal, "Route child page violates its logical scope")

@@ -10,7 +10,7 @@ import (
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
-func archiveFixture(t *testing.T) (context.Context, *router.Service, store.Tx, router.Node, router.Node, router.Locator) {
+func deleteFixture(t *testing.T) (context.Context, *router.Service, store.Tx, router.Node, router.Node, router.Locator) {
 	t.Helper()
 	ctx := context.Background()
 	databaseStore, err := nativekvstore.Open(filepath.Join(t.TempDir(), "database.db"))
@@ -35,50 +35,40 @@ func archiveFixture(t *testing.T) (context.Context, *router.Service, store.Tx, r
 	return ctx, service, tx, branch, leaf, locator
 }
 
-func TestArchivingASubtreeIsLosslessAndRestorable(t *testing.T) {
+func TestDeletingASubtreeLeavesMembershipRecordsIntact(t *testing.T) {
 	t.Parallel()
 
-	ctx, service, tx, branch, leaf, locator := archiveFixture(t)
+	ctx, service, tx, branch, leaf, locator := deleteFixture(t)
 	if err := service.DeleteNodeIn(ctx, tx, branch.ID, branch.Revision); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, _, err := service.ListChildrenIn(ctx, tx, branch.ID, "", 10); err == nil {
-		t.Fatal("expected listing children of an archived branch to fail")
+		t.Fatal("expected listing children of a deleted branch to fail")
 	}
 	if _, err := service.ListLeafIn(ctx, tx, leaf.ID, 10); err == nil {
-		t.Fatal("expected opening an archived leaf to fail")
+		t.Fatal("expected opening a deleted leaf to fail")
 	}
 	found, err := service.MembershipsForRowIn(ctx, tx, locator.DatabaseID, locator.TableID, locator.RowID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(found) != 0 {
-		t.Fatalf("memberships under an archived leaf must be hidden, got %#v", found)
+		t.Fatalf("memberships under a deleted leaf must be hidden, got %#v", found)
 	}
 
-	// The archive swept the branch and its leaf together, so restoring the
-	// branch brings both back with their memberships intact.
-	if err := service.RestoreNodeIn(ctx, tx, branch.ID, branch.Revision+1); err != nil {
-		t.Fatal(err)
-	}
-	locators, err := service.ListLeafIn(ctx, tx, leaf.ID, 10)
+	// Deleting is lossless in the structural sense — the membership records are
+	// untouched on disk — but it is final: nothing brings the node back.
+	all, err := service.ListLeafIncludingDeletedIn(ctx, tx, leaf.ID, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(locators) != 1 || locators[0].RowID != "row_01" {
-		t.Fatalf("restore must bring memberships back, got %#v", locators)
-	}
-	found, err = service.MembershipsForRowIn(ctx, tx, locator.DatabaseID, locator.TableID, locator.RowID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(found) != 1 || found[0].LeafID != leaf.ID {
-		t.Fatalf("restore must bring reverse memberships back, got %#v", found)
+	if len(all) != 1 || all[0].RowID != "row_01" {
+		t.Fatalf("deleting a leaf must not corrupt its membership records, got %#v", all)
 	}
 }
 
-func TestArchivedSiblingsDoNotConsumeFanoutBudget(t *testing.T) {
+func TestDeletedSiblingsDoNotConsumeFanoutBudget(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -108,26 +98,23 @@ func TestArchivedSiblingsDoNotConsumeFanoutBudget(t *testing.T) {
 	if _, err := service.CreateNodeIn(ctx, tx, root.ID, router.NodeDefinition{
 		Name: "second", Kind: router.KindLeaf, Purpose: "second scope",
 	}); err != nil {
-		t.Fatalf("an archived sibling must free its fan-out slot: %v", err)
+		t.Fatalf("a deleted sibling must free its fan-out slot: %v", err)
 	}
 }
 
-func TestArchivedParentRefusesNewChildrenAndRestore(t *testing.T) {
+func TestDeletedParentRefusesNewChildren(t *testing.T) {
 	t.Parallel()
 
-	ctx, service, tx, branch, leaf, _ := archiveFixture(t)
+	ctx, service, tx, branch, leaf, _ := deleteFixture(t)
 	if err := service.DeleteNodeIn(ctx, tx, branch.ID, branch.Revision); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.CreateNodeIn(ctx, tx, branch.ID, router.NodeDefinition{
 		Name: "another", Kind: router.KindLeaf, Purpose: "another scope",
 	}); err == nil {
-		t.Fatal("expected creating under an archived parent to fail")
+		t.Fatal("expected creating under a deleted parent to fail")
 	}
-	if err := service.RestoreNodeIn(ctx, tx, leaf.ID, leaf.Revision+1); err == nil {
-		t.Fatal("expected restoring under an archived parent to fail")
-	}
-	if err := service.RestoreNodeIn(ctx, tx, branch.ID, branch.Revision); err == nil {
-		t.Fatal("expected a stale revision to be refused")
+	if err := service.DeleteNodeIn(ctx, tx, leaf.ID, leaf.Revision); err == nil {
+		t.Fatal("expected deleting under a deleted parent to fail")
 	}
 }

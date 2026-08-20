@@ -3,6 +3,7 @@ package nativerow
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -255,21 +256,17 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	if len(openedAfterDelete.Rows) != 0 {
 		t.Fatalf("deleted Route locator = %#v", openedAfterDelete)
 	}
-	restored := executeMSQL(t, ctx, engine,
-		"RESTORE work.notes ROW :row TO REVISION :revision",
+	// Deleting a Row is final: RESTORE rewinds a live Row to an earlier
+	// revision, it is not a way back from delete. The leaf stays empty.
+	_, restoreErr := runMSQL(ctx, engine, "RESTORE work.notes ROW :row TO REVISION :revision",
 		executor.Parameters{Named: map[string]any{"row": "row_first", "revision": 2}},
 		executor.MutationOptions{
 			ExpectedSchemaVersion: 1, ExpectedRevision: 5, MaxAffectedRows: 1,
 			RouteLeafIDs: []string{"route_leaf"},
 		},
 	)
-	openedAfterRestore := executeMSQL(t, ctx, engine, "OPEN ROUTE :leaf LIMIT 1",
-		executor.Parameters{Named: map[string]any{"leaf": "route_leaf"}}, executor.MutationOptions{})
-	if restored.Revision == nil || *restored.Revision != 6 ||
-		len(openedAfterRestore.Rows) != 1 ||
-		openedAfterRestore.Rows[0]["row_id"] != "row_first" ||
-		openedAfterRestore.Rows[0]["revision"] != uint64(6) {
-		t.Fatalf("RESTORE Route locator = restored %#v, opened %#v", restored, openedAfterRestore)
+	if restoreErr == nil || !strings.Contains(restoreErr.Error(), "final") {
+		t.Fatalf("RESTORE must refuse to resurrect a deleted Row, got %v", restoreErr)
 	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
@@ -283,8 +280,7 @@ func TestAITableRouterMSQLNavigatesOneLayerAtATimeToExactRowID(t *testing.T) {
 	rows = NewService(New(reopened), dictionary, ServiceOptions{})
 	engine = executor.New(dictionary, rows)
 	afterRestart := executeMSQL(t, ctx, engine, "OPEN ROUTE 'route_leaf' LIMIT 1", executor.Parameters{}, executor.MutationOptions{})
-	if len(afterRestart.Rows) != 1 || afterRestart.Rows[0]["row_id"] != "row_first" ||
-		afterRestart.Rows[0]["revision"] != uint64(6) {
+	if len(afterRestart.Rows) != 0 {
 		t.Fatalf("OPEN after restart = %#v", afterRestart)
 	}
 }

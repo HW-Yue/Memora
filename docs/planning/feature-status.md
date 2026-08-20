@@ -160,17 +160,22 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 - F224 候选：Row 必须可导航；写入时强制至少一个 Route 归属，杜绝语义上不可达的孤儿 Row。
 - F225 候选：Row 必须可展示；写入时强制 summary role 列非空。SKILL.md 强约束已落地，引擎侧待实现。
 - F226：Stage 1（poison 按库收敛）已实现；Stage 2（按库拆分文件）已评估并延后，见上表。
-- [F227](./f227-object-archive.md) **已实现**（2026-08-20）：统一归档模型。**六类对象全部可归档，归档即唯一的
-  删除语义，不提供物理擦除**。动词 `ARCHIVE`/`UNARCHIVE`，读面统一加 `INCLUDING ARCHIVED`
-  修饰词；可见性 iff 自身与每级祖先均未归档，绝不下沉到后代（归档只产生 1 条 change log，
-  后代 `revision` 不变）；磁盘状态字符串保持 `deleted` 不变，统一的是对外词汇。
-  实测差距：Table/Database 整体缺失；`DROP_COLUMN` 是真移除不是归档；
-  **`router.deleteSubtree` 会清空 locator 并摘除 children，现有 `DELETE ROUTE` 是有损的**，
-  Stage 1 先修它。前端规则见 [Admin UI 归档](./f227-archive-admin-ui.md)：
-  默认全站不可见，唯一全局开关，深链接返回 200 + 归因横幅。
-  六类对象（Database/Table/Column/Route/Row/Relation）全部可归档，`INCLUDING ARCHIVED`
-  读面、Admin UI 全局归档模式、健康项联动、SKILL.md 与两个 adapter 均已交付，
-  并有一张覆盖全部读面的
+- [F227](./f227-object-archive.md) **已实现**（2026-08-20）：删除与归档。
+  规则是**能重建的真删，不能重建的归档**：Route 节点／Relation 重建等价于原物，
+  删掉的 Row 是没人拿得到 ID 的孤儿（History 只按 `row_id` 寻址），三者一律真删且终局；
+  Database／Table／Column 装着别人的东西又无法重建，走 `ARCHIVE`/`UNARCHIVE`。
+  `ARCHIVE` 只接受这三类，其余由 parser 点名拒绝。
+  删除侧三条强制规则：删 Route 叶子前必须先把 Row 搬空（否则留下一批不可导航的数据，
+  违反 F224），删除后拒绝任何后续修订；删 Row 连同带走 History
+  （`SHOW HISTORY` 返回 not found，`RESTORE … TO REVISION` 明确拒绝复活）。
+  归档侧：读面统一加 `INCLUDING ARCHIVED` 修饰词；可见性 iff 自身与每级祖先均未归档，
+  绝不下沉到后代（归档只产生 1 条 change log，后代 `revision` 不变）。
+  存储层 `nativestore.Transaction` 只有 `Put`，所以"删除"今天只能是**语义上不可达且不可逆**，
+  字节回收等 F151 Compaction——不要对用户承诺数据已被抹除。
+  前端规则见 [Admin UI 归档](./f227-archive-admin-ui.md)：默认全站不可见，唯一全局开关，
+  归档容器的深链接返回 200 + 归因横幅，已删除对象照常报 not found。
+  `INCLUDING ARCHIVED` 读面、Admin UI 全局归档模式、健康项联动、SKILL.md 与两个 adapter
+  均已交付，并有一张覆盖全部读面的
   [可见性矩阵测试](../../internal/daemon/f227_visibility_matrix_test.go)。
   实现过程中另修两个同源的已发布缺陷：**改名**与 **`DROP_COLUMN`** 都会让相关 Row
   全部读不出来——Catalog 变更从不重写 Row，但有代码假设二者必须一致。

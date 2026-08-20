@@ -35,10 +35,9 @@ func (repository *Repository) StageRelation(transaction *nativestore.Transaction
 		if value.Revision != latest.Revision+1 || value.Source != latest.Source || value.Target != latest.Target || !value.CreatedAt.Equal(latest.CreatedAt) {
 			return ErrRevisionConflict
 		}
-		// An archived Relation may only be restored, never edited: archiving is
-		// a tombstone, so the record chain has to allow exactly one shape of
-		// follow-up revision and reject everything else.
-		if latest.State == relation.StateDeleted && !restoresRelation(latest, value) {
+		// Deleting a Relation is final: a link is cheap to recreate, so no
+		// revision may follow its tombstone.
+		if latest.State == relation.StateDeleted {
 			return ErrRevisionConflict
 		}
 	}
@@ -148,18 +147,6 @@ func (repository *Repository) StageSnapshotRelation(transaction *nativestore.Tra
 		return err
 	}
 	return transaction.Put(nativestore.ObjectKindRelation, relationSchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
-}
-
-// restoresRelation reports whether next is the pure un-archive of an archived
-// current: the state returns to live and nothing else moves.
-func restoresRelation(current, next relation.Relation) bool {
-	if next.State != relation.StateLive {
-		return false
-	}
-	candidate := next
-	candidate.Revision, candidate.State = current.Revision, current.State
-	candidate.CommitSequence, candidate.UpdatedAt = current.CommitSequence, current.UpdatedAt
-	return candidate == current
 }
 
 func encodeRelation(value relation.Relation) ([]byte, error) {

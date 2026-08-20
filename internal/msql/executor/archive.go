@@ -6,9 +6,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
-	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
-	datarow "github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 )
 
@@ -118,96 +116,6 @@ func (engine *Engine) archiveTarget(
 		return nil, nil, "", err
 	}
 	return service, names, reason, nil
-}
-
-// archiveRowRows and archiveRelationRows are the identity-preserving inverses.
-// Re-creating the object with RELATE or INSERT would mint a new ID and break
-// every reference to the old one, so UNARCHIVE has to land on the same object.
-type archiveRowRows interface {
-	RestoreRow(context.Context, string, string, string, datarow.WriteOptions) (datarow.Row, error)
-}
-
-type archiveRelationRows interface {
-	RestoreRelation(context.Context, string, uint64) (relation.Relation, error)
-}
-
-func (engine *Engine) archiveRow(
-	ctx context.Context,
-	statement *ast.ArchiveStatement,
-	bound bindings,
-	options MutationOptions,
-) (Output, error) {
-	databaseName, tableName, _, err := engine.bindTable(ctx, statement.Name)
-	if err != nil {
-		return Output{}, err
-	}
-	rowID, err := routerString(statement.Target, bound, "Row ID")
-	if err != nil {
-		return Output{}, err
-	}
-	if !statement.Restore {
-		reason, err := routerString(statement.Reason, bound, "archive reason")
-		if err != nil {
-			return Output{}, err
-		}
-		if options.Reason == "" {
-			options.Reason = reason
-		}
-		value, err := engine.rows.Delete(ctx, databaseName, tableName, rowID, datarow.WriteOptions{
-			ExpectedSchemaVersion: options.ExpectedSchemaVersion,
-			ExpectedRevision:      options.ExpectedRevision,
-			Metadata:              mutationMetadata(options),
-		})
-		if err != nil {
-			return Output{}, normalizeError(err)
-		}
-		return archiveOutput("ROW", value.ID, databaseName+"."+tableName, nil, ""), nil
-	}
-	service, ok := engine.rows.(archiveRowRows)
-	if !ok {
-		return Output{}, executeError(result.CodeUnsupported, "UNARCHIVE ROW is not supported by this backend")
-	}
-	value, err := service.RestoreRow(ctx, databaseName, tableName, rowID, datarow.WriteOptions{
-		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
-		ExpectedRevision:      options.ExpectedRevision,
-		RouteLeafIDs:          options.RouteLeafIDs,
-		Metadata:              mutationMetadata(options),
-	})
-	if err != nil {
-		return Output{}, normalizeError(err)
-	}
-	return archiveOutput("ROW", value.ID, databaseName+"."+tableName, nil, ""), nil
-}
-
-func (engine *Engine) archiveRelation(
-	ctx context.Context,
-	statement *ast.ArchiveStatement,
-	bound bindings,
-	options MutationOptions,
-) (Output, error) {
-	relationID, err := routerString(statement.Target, bound, "relation ID")
-	if err != nil {
-		return Output{}, err
-	}
-	if !statement.Restore {
-		if _, err := routerString(statement.Reason, bound, "archive reason"); err != nil {
-			return Output{}, err
-		}
-		value, err := engine.rows.DeleteRelation(ctx, relationID, options.ExpectedRevision)
-		if err != nil {
-			return Output{}, normalizeError(err)
-		}
-		return archiveOutput("RELATION", value.ID, value.Type, nil, ""), nil
-	}
-	service, ok := engine.rows.(archiveRelationRows)
-	if !ok {
-		return Output{}, executeError(result.CodeUnsupported, "UNARCHIVE RELATION is not supported by this backend")
-	}
-	value, err := service.RestoreRelation(ctx, relationID, options.ExpectedRevision)
-	if err != nil {
-		return Output{}, normalizeError(err)
-	}
-	return archiveOutput("RELATION", value.ID, value.Type, nil, ""), nil
 }
 
 func archiveNameParts(name ast.Name, parts int) ([]string, error) {
