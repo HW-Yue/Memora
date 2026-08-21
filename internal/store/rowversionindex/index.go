@@ -139,6 +139,103 @@ func (index *Index) ByRevision(rowID string, revision uint64) (Locator, error) {
 	return locator, nil
 }
 
+const maxRevisionsPageSize = 1000
+
+// RevisionsPage is one bounded step of a walk over a single Row's revisions,
+// newest first. Truncated says another step remains; NextBeforeRevision is where
+// it resumes.
+type RevisionsPage struct {
+	Locators           []Locator
+	NextBeforeRevision uint64
+	Truncated          bool
+}
+
+// RevisionsPage walks one Row's revisions newest first. Revisions of a Row are
+// adjacent in key order, so this is a range scan along the leaf chain: it costs
+// the revisions it returns, not the revisions that exist, and it never touches
+// another Row. It replaces reading every history record in the Database.
+func (index *Index) RevisionsPage(rowID string, beforeRevision uint64, limit int) (RevisionsPage, error) {
+	if index == nil || index.runtime == nil || limit < 1 || limit > maxRevisionsPageSize {
+		return RevisionsPage{}, fmt.Errorf("%w: RevisionsPage request", ErrInvalid)
+	}
+	prefix, err := rowPrefix(keyRevision, rowID)
+	if err != nil {
+		return RevisionsPage{}, err
+	}
+	end, err := prefixSuccessor(prefix)
+	if err != nil {
+		return RevisionsPage{}, err
+	}
+	if beforeRevision != 0 {
+		// Revisions sort ascending, so "newest first" reads the range and reverses
+		// it. Resuming below a revision means ending the range there, exclusively.
+		if end, err = revisionKey(rowID, beforeRevision); err != nil {
+			return RevisionsPage{}, err
+		}
+	}
+
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return RevisionsPage{}, nil
+	}
+	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+	if err != nil {
+		return RevisionsPage{}, err
+	}
+	collected, err := tailLocators(searcher, prefix, end, limit+1)
+	if err != nil {
+		return RevisionsPage{}, err
+	}
+	result := RevisionsPage{Locators: make([]Locator, 0, limit)}
+	// collected is oldest-first and holds at most limit+1 entries ending at the
+	// newest. Reverse it, then trim: the extra entry is the oldest one, which is
+	// exactly the evidence that another page remains.
+	for position := len(collected) - 1; position >= 0; position-- {
+		if len(result.Locators) == limit {
+			result.Truncated = true
+			break
+		}
+		result.Locators = append(result.Locators, collected[position])
+	}
+	if result.Truncated {
+		result.NextBeforeRevision = result.Locators[len(result.Locators)-1].Revision
+	}
+	return result, nil
+}
+
+// tailLocators returns the last `keep` entries of a key range in ascending order.
+// The cursor only walks forwards, so reaching the newest revisions means walking
+// the range while holding a sliding window of the most recent entries seen.
+func tailLocators(searcher *btree.Searcher, start, end []byte, keep int) ([]Locator, error) {
+	cursor, err := searcher.NewCursor(start, end)
+	if err != nil {
+		return nil, err
+	}
+	window := make([]Locator, 0, keep)
+	for {
+		batch, err := cursor.Next(uint64(keep))
+		if err != nil {
+			return nil, classifyTreeError(err)
+		}
+		for _, found := range batch.Entries {
+			locator, err := decodeLocator(found.Value)
+			if err != nil {
+				return nil, err
+			}
+			if len(window) == keep {
+				window = append(window[1:], locator)
+				continue
+			}
+			window = append(window, locator)
+		}
+		if batch.Done {
+			return window, nil
+		}
+	}
+}
+
 func (index *Index) ByCommit(rowID string, sequence uint64) (Locator, error) {
 	start, err := commitStart(rowID, sequence)
 	if err != nil {
@@ -303,7 +400,7 @@ func prepareLocators(locators []Locator) ([]preparedLocator, error) {
 			return nil, err
 		}
 		secondary := locator
-		secondary.Body = ""
+		secondary.Body, secondary.History = "", ""
 		value, err := encodeLocator(secondary)
 		if err != nil {
 			return nil, err

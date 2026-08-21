@@ -66,6 +66,28 @@ type Source interface {
 	Routes(context.Context) ([]router.Node, error)
 }
 
+// rowHistorySource is an optional Source capability: a source backed by the
+// record file can also produce each revision's history metadata, so a rebuilt
+// generation carries the same clustered leaves the live write path publishes.
+// A source without it simply yields no metadata rather than failing.
+type rowHistorySource interface {
+	RowHistory(rowID string, revision uint64) ([]byte, error)
+}
+
+func sourceHistory(source Source) historyLookup {
+	provider, ok := source.(rowHistorySource)
+	if !ok {
+		return nil
+	}
+	return func(value row.Row) (string, error) {
+		payload, err := provider.RowHistory(value.ID, value.Revision)
+		if err != nil {
+			return "", err
+		}
+		return string(payload), nil
+	}
+}
+
 type Reader struct{ source Source }
 
 func NewReader(source Source) (*Reader, error) {
@@ -130,7 +152,7 @@ func (reader *Reader) Build(ctx context.Context) (Plan, error) {
 	// Bodies are attached after validation so a structurally broken history is
 	// reported as corruption by the validator rather than as an encoding failure,
 	// and so encoding only ever runs against a history already known to be sound.
-	if err := attachRowBodies(&plan, rows); err != nil {
+	if err := attachRowBodies(reader.source, &plan, rows); err != nil {
 		return Plan{}, err
 	}
 	digest, err := planDigest(plan)
@@ -216,6 +238,25 @@ func (source *nativeSource) Inventory(ctx context.Context) (SourceState, error) 
 	return SourceState{Fingerprint: fingerprint, Counts: counts}, nil
 }
 
+// RowHistory reads one revision's history metadata. A revision written before
+// history was recorded, or one imported without it, yields nothing rather than
+// an error: the absence is a fact about that revision, not a failure.
+func (source *nativeSource) RowHistory(rowID string, revision uint64) ([]byte, error) {
+	if source == nil || source.file == nil {
+		return nil, nil
+	}
+	payload, err := source.file.Get(
+		nativestore.ObjectKindHistory, nativerow.HistoryRecordID(rowID, revision),
+	)
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, classifySourceError(err)
+	}
+	return payload, nil
+}
+
 func (source *nativeSource) Catalog(ctx context.Context) ([]catalog.Database, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -288,16 +329,17 @@ func planRows(plan *Plan, rows []row.Row) error {
 // its clustered leaf. planRows sorted rows into the same order as RowVersions,
 // so the two line up by position. Without this a rebuilt generation would hold
 // bodyless leaves and disagree with what the live write path publishes.
-func attachRowBodies(plan *Plan, rows []row.Row) error {
+func attachRowBodies(source Source, plan *Plan, rows []row.Row) error {
 	if len(rows) != len(plan.RowVersions) {
 		return fmt.Errorf("%w: Row body and version cardinality", ErrCorrupt)
 	}
-	versions, err := clusteredVersions(plan.Catalog, rows)
+	versions, err := clusteredVersions(sourceHistory(source), plan.Catalog, rows)
 	if err != nil {
 		return err
 	}
 	for index := range plan.RowVersions {
 		plan.RowVersions[index].Body = versions[index].Body
+		plan.RowVersions[index].History = versions[index].History
 	}
 	return nil
 }

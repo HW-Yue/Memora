@@ -122,15 +122,7 @@ func (repository *Repository) historyWalk(
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, history.Record{
-			Version: history.Version, DatabaseID: value.DatabaseID, TableID: value.TableID,
-			RowID: value.ID, SchemaVersion: value.SchemaVersion, Revision: value.Revision,
-			CommitSequence: value.CommitSequence, Operation: item.operation, State: string(value.State),
-			Values: value.Values, Actor: item.actor, Source: item.source, SourceKind: item.sourceKind,
-			SourceReceiptID: item.sourceReceiptID, SourceLocator: item.sourceLocator,
-			SourceContentHash: item.sourceContentHash, Reason: item.reason,
-			CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, RecordedAt: item.recordedAt,
-		})
+		result = append(result, historyRecord(item, value))
 		if limit > 0 && len(result) == limit {
 			break
 		}
@@ -139,6 +131,21 @@ func (repository *Repository) historyWalk(
 		}
 	}
 	return result, nil
+}
+
+// historyRecord is the single definition of what SHOW HISTORY returns: the Row
+// supplies the content, the metadata supplies the provenance. Both the record
+// log path and the clustered tree path go through here so they cannot drift.
+func historyRecord(item historyMetadata, value row.Row) history.Record {
+	return history.Record{
+		Version: history.Version, DatabaseID: value.DatabaseID, TableID: value.TableID,
+		RowID: value.ID, SchemaVersion: value.SchemaVersion, Revision: value.Revision,
+		CommitSequence: value.CommitSequence, Operation: item.operation, State: string(value.State),
+		Values: value.Values, Actor: item.actor, Source: item.source, SourceKind: item.sourceKind,
+		SourceReceiptID: item.sourceReceiptID, SourceLocator: item.sourceLocator,
+		SourceContentHash: item.sourceContentHash, Reason: item.reason,
+		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, RecordedAt: item.recordedAt,
+	}
 }
 
 func (repository *Repository) historyMetadataFor(rowID string, revision uint64) (historyMetadata, error) {

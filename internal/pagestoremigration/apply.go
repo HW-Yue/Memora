@@ -21,6 +21,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
+	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
@@ -406,7 +407,15 @@ func generationDocuments(plan Plan) ([]fulltext.Document, error) {
 // clusteredVersions builds the leaf entries the Row version tree stores. The
 // leaf carries the encoded Row, so publishing a revision puts the data in the
 // tree rather than a pointer to somewhere else.
-func clusteredVersions(databases []catalog.Database, rows []row.Row) ([]rowversionindex.Locator, error) {
+// historyLookup returns the metadata a revision was written with. It is a
+// function rather than a store handle because the two callers reach it
+// differently: the live authority holds the record file, while a generation
+// rebuild goes through its Source.
+type historyLookup func(value row.Row) (string, error)
+
+func clusteredVersions(
+	lookup historyLookup, databases []catalog.Database, rows []row.Row,
+) ([]rowversionindex.Locator, error) {
 	tables := make(map[string]catalog.Table)
 	for _, database := range databases {
 		for _, table := range database.Tables {
@@ -423,14 +432,43 @@ func clusteredVersions(databases []catalog.Database, rows []row.Row) ([]rowversi
 		if err != nil {
 			return nil, err
 		}
+		metadata := ""
+		if lookup != nil {
+			if metadata, err = lookup(value); err != nil {
+				return nil, err
+			}
+		}
 		versions = append(versions, rowversionindex.Locator{
 			DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID,
 			SchemaRevision: value.SchemaVersion, Revision: value.Revision,
 			CommitSequence: value.CommitSequence, State: value.State,
-			Body: string(body),
+			Body: string(body), History: metadata,
 		})
 	}
 	return versions, nil
+}
+
+// recordFileHistory reads a revision's metadata straight out of the record file.
+// Its record ID is derived from the Row's own identity, so publication does not
+// need to be handed the metadata separately — it can look up what the write path
+// just staged. A revision with no history record (an imported or bootstrapped
+// Row) simply carries none.
+func recordFileHistory(file *nativestore.File) historyLookup {
+	if file == nil {
+		return nil
+	}
+	return func(value row.Row) (string, error) {
+		payload, err := file.Get(
+			nativestore.ObjectKindHistory, nativerow.HistoryRecordID(value.ID, value.Revision),
+		)
+		if errors.Is(err, nativestore.ErrNotFound) {
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return string(payload), nil
+	}
 }
 
 func projectRowDocuments(databases []catalog.Database, bodies []row.Row) ([]fulltext.Document, error) {
