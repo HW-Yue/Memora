@@ -17,6 +17,23 @@
 - **已评估并延后**：进入条件已执行，但证据不支持现在增加该能力；
 - **候选**：稳定方向已形成，尚未拆成获准 Feature。
 
+## 在建：聚簇行存储
+
+[聚簇行存储 v1](../storage/clustered-row-storage-v1.md) 是当前主线工作，
+把存储层收敛到"当前数据在树里、历史版本在链上、常驻内存只有定容 buffer pool"。
+
+起因是一次排查：`native.File` 用一张常驻内存的「记录 ID → 文件偏移」全量表做唯一的
+物理索引，而每个 Row 版本都是一条独立记录，于是**内存随历史上写过多少次增长**，
+不随活跃数据增长；`Open()` 还要逐条 CRC 扫完整个文件。
+根因是两份文档各描述了一套架构：`tablespace-page-record-layout.md` 写的是聚簇索引
+（被标为后置候选），`page-store-authority-v1.md` 写的是过渡方案（被当成了设计意图），
+而**两份都没写"索引叶子如何拿到正文字节"**，实现就用那张常驻表填了这个洞。
+
+已交付：Row 单行读与 `SHOW HISTORY` 不再枚举全库（`91c4ee0`）；
+叶子直接持有 Row 正文（`ed02d6f`）；通用聚簇对象树 `objectindex`（`4171a13`）；
+History 元数据与 Row 同叶（`1438eac`、`56f25b9`）。
+剩余阶段与验证门见该文档。**内存表本身尚未删除**，那是最后一个阶段。
+
 ## 已实现主线
 
 | 范围 | 当前结果 |
@@ -126,7 +143,7 @@ predictor 和 Canonical Skill 复用或替代；其旧产品结论不再有效�
 
 | Feature | 延后原因 |
 | --- | --- |
-| F151 Compaction | 等宽更新空间放大 1.00x，未越 1.25x 门 |
+| F151 Compaction | 等宽更新空间放大 1.00x，未越 1.25x 门；另见下方聚簇行存储——回收要等版本区成型 |
 | F153 Secondary Index | canonical workload 没有 10k+ 非 RowID predicate 需求 |
 | F154 Buffer Pool Scaling | M4 hot-hit 远低于 5 µs 门 |
 | F155 Advanced I/O Scheduler | 1 MiB dirty batch 远低于 5 ms 门 |

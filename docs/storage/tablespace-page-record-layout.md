@@ -1,9 +1,16 @@
 # Tablespace、Page 与 Record 布局
 
 状态：B+ Tree、16 KiB Page、单实例 Buffer Pool 与 Redo WAL 已确认为 F81–F108
-逐项必做；
+逐项必做；**聚簇索引已从后置候选转为在建**，见
+[聚簇行存储 v1](./clustered-row-storage-v1.md)；
 完整 per-table Tablespace/Extent 仍是后置候选。见
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
+
+**聚簇键是 `(table_id, row_id)`，不含版本号。** 一个存活的 Row 一个条目，
+叶子里直接是这一行的完整内容。版本号是写入时的乐观并发令牌，不是访问路径；
+历史版本不进任何树，只靠记录自带的 previous 物理指针成链回溯。
+把版本号并入聚簇键会让树的规模随"写过多少次"增长，
+使最热的当前行读取替最冷的历史数据买单。
 
 ## 核心分离
 
@@ -19,9 +26,10 @@ Page 按 Extent 批量分配
 Segment 为具体索引或存储结构持有 Page/Extent
 ```
 
-Table/Row 是逻辑身份。F90–F102 B+ Tree 将稳定 `row_id` 映射到当前/可见 immutable
-revision locator；长期语义 revision 进入独立 History。未来若采用 in-place Record
-与物理 Undo chain，仍不能与永久 History 混用。
+Table/Row 是逻辑身份。B+ Tree 按稳定 `row_id` 定位当前 Row，**叶子里就是正文**；
+索引不得只存逻辑标识而把正文放在别处，那样必然要再造一张「名字 → 位置」的表，
+而这张表会常驻内存并随写入次数无界增长。长期语义 revision 沿 previous 指针
+回溯获得，不占聚簇键。
 
 完整候选布局中，每个 User Table 使用不可变 `table_id` 的独立 Tablespace；F81–F97
 是否先共用 Database space 由实现复杂度决定。当前 Row、聚簇索引和二级 B+ Tree

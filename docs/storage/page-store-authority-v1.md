@@ -2,12 +2,22 @@
 
 状态：F107 已完成；2026-08-03 随 F173b1 补充 generation v3 边界。
 
+> **这是过渡形态，不是终点。** 本文描述的分工——`database.memora` 存不可变正文、
+> Page 树只决定哪一版可见——把"索引叶子怎么拿到正文字节"这一步留白了，
+> 实现用一张常驻内存的「记录 ID → 文件偏移」全量表填了这个洞，于是内存随
+> 历史上写过多少次增长。终点见
+> [聚簇行存储 v1](./clustered-row-storage-v1.md)：**叶子里直接是正文**，
+> 历史版本只按物理指针成链、不进任何树。读本文时请把它当作被取代的中间态。
+
 ## 结果与边界
 
 - generation 中的 Catalog、Current Row、Row Version 三棵持久树是新实例和已迁移实例的
   查询 authority；F172a 增加的 Fulltext Tree 是可重建派生索引，不成为正文 authority。
 - `database.memora` 继续保存不可变对象正文，并且只在写入和启动恢复时作为 source；
   正常 Catalog/Row 查询不得枚举它的 Record 清单，也不得把它作为索引 miss fallback。
+  **本条长期未被遵守**：Row 的单行读取一直在枚举全部 Record 清单取最大 revision，
+  已修复。这类留白正是[聚簇行存储 v1](./clustered-row-storage-v1.md) 要终结的——
+  规定了"不许枚举"却没规定"那怎么拿到字节"，实现就会自己造一张常驻表。
 - F106 `manifest.json` 是只读迁移基线。激活后树允许继续演进，不能再用基线
   `content_sha256` 或初始 root state 判断 live generation。
 - F108 才负责构建替代 generation、验证和原子 root/generation 切换；F107 不做 rebuild。

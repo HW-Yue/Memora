@@ -152,7 +152,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [Buffer Pool](./storage/buffer-pool.md)
 - [MVCC、Undo 与 Redo 边界](./storage/mvcc-undo-redo.md)
 - [持久化 B+ Tree 索引](./storage/indexing.md)
-- [Page Store Authority](./storage/page-store-authority-v1.md)
+- [聚簇行存储 v1](./storage/clustered-row-storage-v1.md)（存储终点设计）
+- [Page Store Authority](./storage/page-store-authority-v1.md)（已被上一条取代的过渡形态）
 - [Page Index Generation v3](./storage/page-index-generation-v3.md)
 - [Change Log 与未来同步](./storage/binlog-and-sync.md)
 - [备份](./storage/instance-portable-backup-v1.md)、
