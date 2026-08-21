@@ -25,6 +25,22 @@ type Row struct {
 	Values         map[string]any `json:"values"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
+	// ChangeSequence identifies the committed transaction that wrote this
+	// revision. Attribution — who wrote it, why, from what source — is recorded
+	// once per transaction in the Change Log, so a revision stores the key rather
+	// than a copy of the attribution text.
+	//
+	// It is not the same counter as CommitSequence: that one orders Row commits
+	// for MVCC visibility, this one orders every committed change including
+	// Catalog ones. Zero means the revision predates the link, and its
+	// attribution has to be resolved some other way.
+	//
+	// It never crosses an export boundary. A logical snapshot carries no Change
+	// Log, so a sequence restored into another Instance would point at a
+	// transaction that does not exist there; snapshots carry attribution
+	// explicitly instead. Restored Rows therefore have no link and resolve their
+	// attribution from the History the snapshot brought with it.
+	ChangeSequence uint64 `json:"-"`
 }
 
 type WriteOptions struct {

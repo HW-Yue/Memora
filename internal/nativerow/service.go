@@ -146,11 +146,13 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	if err != nil {
 		return row.Row{}, err
 	}
-	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now}
+	// The change sequence is allocated before the Row is built so the record can
+	// carry it: that key is how a revision finds the transaction that wrote it.
 	changeSequence, err := service.NextChangeSequence(ctx)
 	if err != nil {
 		return row.Row{}, err
 	}
+	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, ChangeSequence: changeSequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now}
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
 		return row.Row{}, err
@@ -348,6 +350,14 @@ func (service *Service) Delete(ctx context.Context, databaseName, tableName, row
 }
 
 func (service *Service) commitRowRevision(ctx context.Context, value row.Row, operation history.Operation, metadata row.WriteMetadata, desired []string) error {
+	// Allocated before the revision is staged so the record carries the key that
+	// finds the transaction which wrote it. Reading the next sequence does not
+	// consume it, and writes are already serialised by the write gate.
+	changeSequence, err := service.NextChangeSequence(ctx)
+	if err != nil {
+		return err
+	}
+	value.ChangeSequence = changeSequence
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
 		return err
@@ -403,10 +413,6 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 		changedMemberships = append(changedMemberships, membership)
 	}
 	if err := routes.ValidateMembershipChanges(changedMemberships); err != nil {
-		return err
-	}
-	changeSequence, err := service.NextChangeSequence(ctx)
-	if err != nil {
 		return err
 	}
 	if err := stageRowChange(transaction, changeSequence, value, operation, metadata, changedMemberships); err != nil {

@@ -533,15 +533,27 @@ type encoder struct{ bytes []byte }
 // by physical address. The clustered Row version tree walks revisions now, so
 // nothing writes the pointer any more — but records already on disk carry it,
 // and the decoder still consumes it so those Databases stay readable.
+//
+// flagChangeSequence marks a record that carries the committed transaction which
+// wrote it. Both trailers are optional and are read in a fixed order — change
+// sequence first, then the old chain pointer — so a record carrying either one
+// is unambiguous. In practice they never coexist: nothing writes the pointer any
+// more, and nothing wrote the sequence before this build.
 const (
 	flagPreviousLocation uint16 = 1 << 0
+	flagChangeSequence   uint16 = 1 << 1
+	knownFlags                  = flagPreviousLocation | flagChangeSequence
 	chainFooterSize             = 8 + 4 + 4
 )
 
 func encode(value row.Row, table catalog.Table) ([]byte, error) {
 	output := encoder{bytes: make([]byte, 0, 256)}
+	flags := uint16(0)
+	if value.ChangeSequence != 0 {
+		flags |= flagChangeSequence
+	}
 	output.u16(recordSchemaVersion)
-	output.u16(0)
+	output.u16(flags)
 	output.u64(value.SchemaVersion)
 	output.u64(value.Revision)
 	output.u64(value.CommitSequence)
@@ -562,6 +574,9 @@ func encode(value row.Row, table catalog.Table) ([]byte, error) {
 		if err := output.value(logical.Kind(column.Type), value.Values[column.ID]); err != nil {
 			return nil, fmt.Errorf("%w: column %q", err, column.ID)
 		}
+	}
+	if flags&flagChangeSequence != 0 {
+		output.u64(value.ChangeSequence)
 	}
 	return output.bytes, nil
 }
@@ -629,7 +644,7 @@ func decode(payload []byte) (row.Row, error) {
 		return row.Row{}, fmt.Errorf("%w: invalid version", ErrCorrupt)
 	}
 	flags, err := input.u16()
-	if err != nil || flags&^flagPreviousLocation != 0 {
+	if err != nil || flags&^knownFlags != 0 {
 		return row.Row{}, fmt.Errorf("%w: invalid flags", ErrCorrupt)
 	}
 	value := row.Row{}
@@ -683,9 +698,16 @@ func decode(payload []byte) (row.Row, error) {
 			return row.Row{}, err
 		}
 	}
-	// A record written while revisions were chained carries a trailing pointer.
-	// Consume it so the trailing-bytes check keeps catching real corruption, and
-	// drop it: the Row version tree, not this pointer, walks revisions now.
+	// Trailers are read in a fixed order: the transaction that wrote this
+	// revision, then the pointer records written while revisions were chained.
+	if flags&flagChangeSequence != 0 {
+		if value.ChangeSequence, err = input.u64(); err != nil {
+			return row.Row{}, err
+		}
+	}
+	// Nothing writes the chain pointer any more, but records already on disk
+	// carry it. Consume it so the trailing-bytes check keeps catching real
+	// corruption, and drop it: the version tree walks revisions now.
 	if flags&flagPreviousLocation != 0 {
 		for _, skip := range []func() error{
 			func() error { _, err := input.u64(); return err },

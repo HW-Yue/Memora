@@ -33,7 +33,12 @@ func RowMetadata(value row.WriteMetadata) change.Metadata {
 		metadata.Source = "direct-api"
 	}
 	if strings.TrimSpace(metadata.Reason) == "" {
-		metadata.Reason = "logical mutation"
+		// Matches the default the per-Row History record applies
+		// (nativerow.normalizedMetadata). The envelope is becoming the single
+		// source of attribution, so a Row write with no stated reason has to read
+		// the same either way — otherwise SHOW HISTORY would silently change
+		// wording the day it starts reading envelopes.
+		metadata.Reason = "row mutation"
 	}
 	return metadata
 }

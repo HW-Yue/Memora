@@ -103,6 +103,11 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 		return err
 	}
 	defer func() { _ = transaction.Rollback() }()
+	for index := range changes {
+		// Every Row this transaction writes points at the one envelope that
+		// records who wrote it and why.
+		changes[index].Row.ChangeSequence = changeSequence
+	}
 	for _, change := range changes {
 		if change.Initial {
 			err = coordinator.rows.StageInitial(transaction, change.Row)

@@ -353,6 +353,19 @@ func (tree *authorityChangeTree) get(transactionID string) (change.Envelope, err
 	return envelope, nil
 }
 
+// getBySequence resolves a transaction's envelope from the change sequence a Row
+// revision carries. It reads the immutable source directly rather than the Page
+// index: that index is reconciled lazily — only when someone lists or gets a
+// change — so it lags the source in between, and a history read must not depend
+// on that having happened. The source read is a point lookup by sequence and the
+// envelope validates its own checksum on decode.
+func (tree *authorityChangeTree) getBySequence(sequence uint64) (change.Envelope, error) {
+	if tree == nil || tree.source == nil || sequence == 0 {
+		return change.Envelope{}, changeindex.ErrNotFound
+	}
+	return tree.source.Get(sequence)
+}
+
 func (tree *authorityChangeTree) list(
 	ctx context.Context,
 	databaseID string,

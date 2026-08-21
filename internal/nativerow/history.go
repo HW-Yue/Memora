@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
@@ -119,6 +120,37 @@ func (repository *Repository) historyWalk(
 		}
 	}
 	return result, nil
+}
+
+// HistoryRecordFromEnvelope assembles what SHOW HISTORY returns for one
+// revision: the Row supplies the content, the transaction's envelope supplies
+// the attribution. Attribution is recorded once per transaction, so every Row a
+// write touched reports the same actor, source and reason.
+//
+// The operation comes from the envelope entry naming this Row and revision; an
+// envelope that does not mention it cannot describe what happened to it.
+func HistoryRecordFromEnvelope(value row.Row, envelope change.Envelope) (history.Record, bool) {
+	operation, found := history.Operation(""), false
+	for _, entry := range envelope.Entries {
+		if entry.ObjectID == value.ID && entry.AfterRevision == value.Revision {
+			operation, found = history.Operation(entry.Operation), true
+			break
+		}
+	}
+	if !found {
+		return history.Record{}, false
+	}
+	sourceKind := history.SourceKind(envelope.SourceKind)
+	if !validSourceKind(sourceKind) {
+		sourceKind = history.SourceConversationAssertion
+	}
+	return historyRecord(historyMetadata{
+		rowID: value.ID, revision: value.Revision, operation: operation,
+		actor: envelope.Actor, source: envelope.Source, sourceKind: sourceKind,
+		sourceReceiptID: envelope.SourceReceiptID, sourceLocator: envelope.SourceLocator,
+		sourceContentHash: envelope.SourceContentHash, reason: envelope.Reason,
+		recordedAt: envelope.CommittedAt,
+	}, value), true
 }
 
 // historyRecord is the single definition of what SHOW HISTORY returns: the Row

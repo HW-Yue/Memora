@@ -36,19 +36,21 @@ type VersionLookup interface {
 // a time; the cost still scales with the Row's own history, never the Database.
 const historyWalkPage = 200
 
-// History returns one Row's history newest first, built entirely from the
-// clustered leaves. Each leaf carries both the Row and the metadata it was
-// written with, so a revision costs one entry in a range scan along the leaf
-// chain — not a lookup per revision, and never a pass over other Rows.
-func (reader *IndexedReader) History(
+// HistoryVersions returns one Row's versions newest first — the data half of
+// its history. Attribution is not here: it belongs to the transaction that
+// wrote the revision, and is resolved from the Change Log by change sequence.
+//
+// A revision costs one entry in a range scan along the leaf chain, never a pass
+// over other Rows.
+func (reader *IndexedReader) HistoryVersions(
 	ctx context.Context,
 	table catalog.Table,
 	rowID string,
-) ([]history.Record, error) {
+) ([]row.Row, error) {
 	if err := validateIndexedTable(ctx, table); err != nil {
 		return nil, err
 	}
-	records := make([]history.Record, 0)
+	versions := make([]row.Row, 0)
 	before := uint64(0)
 	for {
 		page, err := reader.versions.RevisionsPage(rowID, before, historyWalkPage)
@@ -63,27 +65,28 @@ func (reader *IndexedReader) History(
 			if err != nil {
 				return nil, err
 			}
-			if locator.History == "" {
-				// A revision published before leaves carried metadata. The record log
-				// still has it, and falling back keeps existing Databases readable.
-				metadata, err := reader.repository.historyMetadataFor(rowID, locator.Revision)
-				if err != nil {
-					return nil, err
-				}
-				records = append(records, historyRecord(metadata, project(table, value)))
-				continue
-			}
-			record, err := DecodeHistoryMetadata([]byte(locator.History), project(table, value))
-			if err != nil {
-				return nil, err
-			}
-			records = append(records, record)
+			versions = append(versions, project(table, value))
 		}
 		if !page.Truncated {
-			return records, nil
+			return versions, nil
 		}
 		before = page.NextBeforeRevision
 	}
+}
+
+// LegacyHistoryRecord reads attribution from the per-Row History record that
+// Databases written before the Change Log carried it still hold. It is the
+// fallback for revisions whose change sequence is zero — they predate the link —
+// or whose envelope cannot be found.
+func (reader *IndexedReader) LegacyHistoryRecord(value row.Row) (history.Record, bool) {
+	if reader == nil || reader.repository == nil {
+		return history.Record{}, false
+	}
+	metadata, err := reader.repository.historyMetadataFor(value.ID, value.Revision)
+	if err != nil {
+		return history.Record{}, false
+	}
+	return historyRecord(metadata, value), true
 }
 
 func (reader *IndexedReader) Capture(ctx context.Context) (uint64, error) {

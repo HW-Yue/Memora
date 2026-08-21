@@ -350,8 +350,13 @@ func (authority *Authority) AsOfRevision(
 	return authority.rows.AsOfRevision(ctx, table, rowID, revision, snapshot)
 }
 
-// History walks one Row's revisions through the clustered leaves, which carry
-// both the Row and the metadata it was written with.
+// History joins the two halves of a Row's story: the versions supply the data,
+// and the Change Log supplies the attribution of the transaction that wrote each
+// one. Attribution lives once per transaction, so a write touching many Rows
+// reports the same actor and reason for all of them.
+//
+// A revision whose change sequence is zero predates that link; it falls back to
+// the per-Row History record those Databases still hold.
 func (authority *Authority) History(
 	ctx context.Context, table catalog.Table, rowID string,
 ) ([]history.Record, error) {
@@ -359,7 +364,39 @@ func (authority *Authority) History(
 		return nil, err
 	}
 	defer authority.mu.RUnlock()
-	return authority.rows.History(ctx, table, rowID)
+	versions, err := authority.rows.HistoryVersions(ctx, table, rowID)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]history.Record, 0, len(versions))
+	for _, value := range versions {
+		if record, ok := authority.attribute(value); ok {
+			records = append(records, record)
+			continue
+		}
+		record, ok := authority.rows.LegacyHistoryRecord(value)
+		if !ok {
+			return nil, fmt.Errorf(
+				"%w: revision %d of Row %q has no attribution",
+				ErrTargetCorrupt, value.Revision, value.ID,
+			)
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+// attribute resolves one revision's attribution through the change sequence it
+// carries. The caller holds the read lock.
+func (authority *Authority) attribute(value row.Row) (history.Record, bool) {
+	if authority.changes == nil || value.ChangeSequence == 0 {
+		return history.Record{}, false
+	}
+	envelope, err := authority.changes.getBySequence(value.ChangeSequence)
+	if err != nil {
+		return history.Record{}, false
+	}
+	return nativerow.HistoryRecordFromEnvelope(value, envelope)
 }
 
 func (authority *Authority) AsOfCommit(
