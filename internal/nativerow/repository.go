@@ -19,7 +19,10 @@ import (
 const recordSchemaVersion = 1
 
 var (
-	ErrCorrupt          = errors.New("native row record is corrupt")
+	ErrCorrupt = errors.New("native row record is corrupt")
+	// ErrNoBody marks a clustered leaf written before leaves carried Row bodies.
+	// It is a signal to read the body from the record log, not a missing Row.
+	ErrNoBody           = errors.New("native row clustered leaf has no body")
 	ErrInvalid          = errors.New("native row value is invalid")
 	ErrRevisionConflict = errors.New("native row revision conflicts with latest")
 )

@@ -65,13 +65,17 @@ func TestAuthorityPublishesMultipleRowsInOneFulltextTransaction(t *testing.T) {
 	_, file, authority := newAuthorityFixture(t)
 	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
 	columnID := table.Columns[0].ID
+	// Timestamps are part of a Row, not decoration: the clustered leaf stores the
+	// encoded Row, so publishing one without them would put an incomplete Row in
+	// the tree. The write path always sets them.
+	written := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
 	values := []row.Row{
 		{ID: "row_batch_a", DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion,
 			Revision: 1, CommitSequence: 1, State: row.StateLive,
-			Values: map[string]any{columnID: "alpha shared"}},
+			Values: map[string]any{columnID: "alpha shared"}, CreatedAt: written, UpdatedAt: written},
 		{ID: "row_batch_b", DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion,
 			Revision: 1, CommitSequence: 1, State: row.StateLive,
-			Values: map[string]any{columnID: "beta shared"}},
+			Values: map[string]any{columnID: "beta shared"}, CreatedAt: written, UpdatedAt: written},
 	}
 	before := fulltextTreeRevision(t, authority)
 	committed := false

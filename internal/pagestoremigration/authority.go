@@ -27,7 +27,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/objectlock"
-	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 )
 
 var ErrAuthorityPoisoned = errors.New("Page Store authority requires reopen recovery")
@@ -404,15 +403,12 @@ func (authority *Authority) PublishMutation(
 			return authority.poisonPublication("Row/Route body", affected, err)
 		}
 	}
-	versions := make([]rowversionindex.Locator, 0, len(rows))
+	versions, err := clusteredVersions(databases, rows)
+	if err != nil {
+		return err
+	}
 	current := make([]currentrowindex.Update, 0, len(rows))
 	for _, value := range rows {
-		version := rowversionindex.Locator{
-			DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID,
-			SchemaRevision: value.SchemaVersion, Revision: value.Revision,
-			CommitSequence: value.CommitSequence, State: value.State,
-		}
-		versions = append(versions, version)
 		current = append(current, currentrowindex.Update{
 			ExpectedRevision: value.Revision - 1,
 			Locator: currentrowindex.Locator{

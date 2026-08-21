@@ -13,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -400,6 +401,36 @@ func generationDocuments(plan Plan) ([]fulltext.Document, error) {
 	}
 	documents := append(catalogDocuments, routeDocuments...)
 	return append(documents, rowValues...), nil
+}
+
+// clusteredVersions builds the leaf entries the Row version tree stores. The
+// leaf carries the encoded Row, so publishing a revision puts the data in the
+// tree rather than a pointer to somewhere else.
+func clusteredVersions(databases []catalog.Database, rows []row.Row) ([]rowversionindex.Locator, error) {
+	tables := make(map[string]catalog.Table)
+	for _, database := range databases {
+		for _, table := range database.Tables {
+			tables[table.ID] = table
+		}
+	}
+	versions := make([]rowversionindex.Locator, 0, len(rows))
+	for _, value := range rows {
+		table, exists := tables[value.TableID]
+		if !exists {
+			return nil, fmt.Errorf("%w: Row %q references an unknown Table", ErrInvalid, value.ID)
+		}
+		body, err := nativerow.EncodeBody(value, table)
+		if err != nil {
+			return nil, err
+		}
+		versions = append(versions, rowversionindex.Locator{
+			DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID,
+			SchemaRevision: value.SchemaVersion, Revision: value.Revision,
+			CommitSequence: value.CommitSequence, State: value.State,
+			Body: string(body),
+		})
+	}
+	return versions, nil
 }
 
 func projectRowDocuments(databases []catalog.Database, bodies []row.Row) ([]fulltext.Document, error) {

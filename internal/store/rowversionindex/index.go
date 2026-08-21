@@ -26,12 +26,16 @@ type Index struct {
 }
 
 type preparedLocator struct {
-	locator     Locator
-	value       []byte
-	revisionKey []byte
-	commitKey   []byte
-	identityKey []byte
-	legacyKey   []byte
+	locator Locator
+	// secondary is locator without its Body, which is what the identity, commit
+	// and legacy keys store and therefore what a read of those keys compares to.
+	secondary      Locator
+	value          []byte
+	clusteredValue []byte
+	revisionKey    []byte
+	commitKey      []byte
+	identityKey    []byte
+	legacyKey      []byte
 }
 
 type entry struct {
@@ -292,7 +296,15 @@ func prepareLocators(locators []Locator) ([]preparedLocator, error) {
 	revisions := make(map[string]struct{}, len(locators))
 	identities := make(map[string]Locator)
 	for _, locator := range locators {
-		value, err := encodeLocator(locator)
+		// The clustered value carries the Row; the secondary value is the same
+		// Locator without it. Only the (rowID, revision) key gets the Row.
+		clustered, err := encodeLocator(locator)
+		if err != nil {
+			return nil, err
+		}
+		secondary := locator
+		secondary.Body = ""
+		value, err := encodeLocator(secondary)
 		if err != nil {
 			return nil, err
 		}
@@ -328,7 +340,8 @@ func prepareLocators(locators []Locator) ([]preparedLocator, error) {
 			}
 		}
 		result = append(result, preparedLocator{
-			locator: locator, value: value, revisionKey: revision,
+			locator: locator, secondary: secondary,
+			value: value, clusteredValue: clustered, revisionKey: revision,
 			commitKey: commit, identityKey: identity, legacyKey: legacy,
 		})
 	}
@@ -405,7 +418,7 @@ func (index *Index) validateAppend(
 				if err != nil {
 					return nil, err
 				}
-				if !found || commit != prepared.locator {
+				if !found || commit != prepared.secondary {
 					return nil, fmt.Errorf("%w: revision/commit key mismatch", ErrCorrupt)
 				}
 			}
@@ -428,7 +441,7 @@ func (index *Index) validateAppend(
 			active = append(active, entry{key: prepared.identityKey, value: prepared.value})
 			status.scheduled = true
 		}
-		active = append(active, entry{key: prepared.revisionKey, value: prepared.value})
+		active = append(active, entry{key: prepared.revisionKey, value: prepared.clusteredValue})
 		if len(prepared.commitKey) != 0 {
 			active = append(active, entry{key: prepared.commitKey, value: prepared.value})
 		}

@@ -245,15 +245,52 @@ func (reader *IndexedReader) AsOfCommit(
 	return project(table, value), nil
 }
 
-func (reader *IndexedReader) readBody(
+// clusteredBody prefers the Row the leaf carries and falls back to the record
+// log only for revisions written before leaves carried bodies. A secondary key
+// (commit, identity) stores no body by design, so its locator is resolved
+// through the clustered key first.
+func (reader *IndexedReader) clusteredBody(
 	table catalog.Table,
 	locator rowversionindex.Locator,
 ) (row.Row, error) {
+	if locator.Body == "" {
+		clustered, err := reader.versions.ByRevision(locator.RowID, locator.Revision)
+		if err == nil {
+			locator.Body = clustered.Body
+		} else if !errors.Is(err, rowversionindex.ErrNotFound) {
+			return row.Row{}, err
+		}
+	}
+	if locator.Body != "" {
+		value, err := RowFromLocator(locator, table)
+		if err == nil {
+			return value, nil
+		}
+		if !errors.Is(err, ErrNoBody) {
+			return row.Row{}, err
+		}
+	}
 	value, err := reader.repository.ReadRevisionWithTable(locator.RowID, locator.Revision, table)
 	if err != nil {
 		if errors.Is(err, nativestore.ErrNotFound) {
 			return row.Row{}, fmt.Errorf("%w: indexed Row body is missing", ErrCorrupt)
 		}
+		return row.Row{}, err
+	}
+	return value, nil
+}
+
+func (reader *IndexedReader) readBody(
+	table catalog.Table,
+	locator rowversionindex.Locator,
+) (row.Row, error) {
+	// The clustered leaf carries the Row. When it does, reaching the leaf was
+	// reaching the data and there is nothing further to resolve. The identity
+	// cross-check below still runs: RowFromLocator has already verified the body
+	// against its key, so the repeated check is cheap and keeps one guarantee in
+	// one place for both paths.
+	value, err := reader.clusteredBody(table, locator)
+	if err != nil {
 		return row.Row{}, err
 	}
 	if value.DatabaseID != locator.DatabaseID ||

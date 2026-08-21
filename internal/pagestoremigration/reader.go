@@ -127,6 +127,12 @@ func (reader *Reader) Build(ctx context.Context) (Plan, error) {
 	if err := validatePlan(plan, false); err != nil {
 		return Plan{}, fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}
+	// Bodies are attached after validation so a structurally broken history is
+	// reported as corruption by the validator rather than as an encoding failure,
+	// and so encoding only ever runs against a history already known to be sound.
+	if err := attachRowBodies(&plan, rows); err != nil {
+		return Plan{}, err
+	}
 	digest, err := planDigest(plan)
 	if err != nil {
 		return Plan{}, err
@@ -274,6 +280,24 @@ func planRows(plan *Plan, rows []row.Row) error {
 			})
 			plan.CurrentRowBodies = append(plan.CurrentRowBodies, cloneRow(value))
 		}
+	}
+	return nil
+}
+
+// attachRowBodies gives every planned version the encoded Row that belongs in
+// its clustered leaf. planRows sorted rows into the same order as RowVersions,
+// so the two line up by position. Without this a rebuilt generation would hold
+// bodyless leaves and disagree with what the live write path publishes.
+func attachRowBodies(plan *Plan, rows []row.Row) error {
+	if len(rows) != len(plan.RowVersions) {
+		return fmt.Errorf("%w: Row body and version cardinality", ErrCorrupt)
+	}
+	versions, err := clusteredVersions(plan.Catalog, rows)
+	if err != nil {
+		return err
+	}
+	for index := range plan.RowVersions {
+		plan.RowVersions[index].Body = versions[index].Body
 	}
 	return nil
 }

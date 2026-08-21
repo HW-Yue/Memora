@@ -24,6 +24,10 @@ const (
 	highWaterVersion  = uint16(1)
 	highWaterSize     = 24
 	maxComponentBytes = 2048
+	// maxBodyBytes is the per-record budget from the Tablespace design: a Page is
+	// 16 KiB and a leaf holds several entries, so one encoded Row targets 8 KiB.
+	// Rows above it need overflow Pages, which do not exist yet.
+	maxBodyBytes = 8 << 10
 )
 
 var (
@@ -44,6 +48,20 @@ type Locator struct {
 	Revision       uint64
 	CommitSequence uint64
 	State          row.State
+	// Body is the encoded Row itself, carried only under the (rowID, revision)
+	// key — that key is the clustered index, so reaching its leaf is reaching the
+	// data. The secondary keys (identity, commit, legacy) store the same Locator
+	// with Body empty; duplicating the Row under each of them would multiply the
+	// file size by the number of keys.
+	//
+	// It is a string rather than a []byte so a Locator stays comparable: the
+	// append path decides that a published revision is immutable by comparing the
+	// stored Locator to the incoming one, and that check has to cover the Row.
+	//
+	// It never serializes. An encoded Row is arbitrary bytes, and json.Marshal
+	// rewrites invalid UTF-8 in a string to U+FFFD, so letting it reach JSON
+	// would silently corrupt the Row and destabilise any digest taken over it.
+	Body string `json:"-"`
 }
 
 func revisionKey(rowID string, revision uint64) ([]byte, error) {
@@ -143,11 +161,14 @@ func encodeLocator(value Locator) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	size := locatorHeaderSize + len(value.DatabaseID) + len(value.TableID) + len(value.RowID)
+	size := locatorHeaderSize + len(value.DatabaseID) + len(value.TableID) + len(value.RowID) + len(value.Body)
 	result := make([]byte, size)
 	copy(result[:8], locatorMagic[:])
 	binary.LittleEndian.PutUint16(result[8:10], locatorVersion)
 	binary.LittleEndian.PutUint16(result[10:12], state)
+	// A bodyless Locator encodes to exactly the bytes it always did: the body
+	// length occupies what used to be a reserved zero word.
+	binary.LittleEndian.PutUint32(result[12:16], uint32(len(value.Body)))
 	binary.LittleEndian.PutUint64(result[16:24], value.SchemaRevision)
 	binary.LittleEndian.PutUint64(result[24:32], value.Revision)
 	binary.LittleEndian.PutUint64(result[32:40], value.CommitSequence)
@@ -155,7 +176,7 @@ func encodeLocator(value Locator) ([]byte, error) {
 	binary.LittleEndian.PutUint16(result[42:44], uint16(len(value.TableID)))
 	binary.LittleEndian.PutUint16(result[44:46], uint16(len(value.RowID)))
 	offset := locatorHeaderSize
-	for _, component := range []string{value.DatabaseID, value.TableID, value.RowID} {
+	for _, component := range []string{value.DatabaseID, value.TableID, value.RowID, value.Body} {
 		copy(result[offset:], component)
 		offset += len(component)
 	}
@@ -166,16 +187,19 @@ func decodeLocator(encoded []byte) (Locator, error) {
 	if len(encoded) < locatorHeaderSize ||
 		!bytes.Equal(encoded[:8], locatorMagic[:]) ||
 		binary.LittleEndian.Uint16(encoded[8:10]) != locatorVersion ||
-		binary.LittleEndian.Uint32(encoded[12:16]) != 0 ||
 		binary.LittleEndian.Uint16(encoded[46:48]) != 0 {
 		return Locator{}, fmt.Errorf("%w: locator header", ErrCorrupt)
+	}
+	bodyLength := int(binary.LittleEndian.Uint32(encoded[12:16]))
+	if bodyLength > maxBodyBytes {
+		return Locator{}, fmt.Errorf("%w: locator body size", ErrCorrupt)
 	}
 	lengths := [3]int{
 		int(binary.LittleEndian.Uint16(encoded[40:42])),
 		int(binary.LittleEndian.Uint16(encoded[42:44])),
 		int(binary.LittleEndian.Uint16(encoded[44:46])),
 	}
-	total := locatorHeaderSize
+	total := locatorHeaderSize + bodyLength
 	for _, length := range lengths {
 		if length == 0 || length > maxComponentBytes {
 			return Locator{}, fmt.Errorf("%w: locator component size", ErrCorrupt)
@@ -195,6 +219,9 @@ func decodeLocator(encoded []byte) (Locator, error) {
 		components[index] = string(value)
 		offset += length
 	}
+	// The Row body is opaque bytes — it is an encoded record, not text — so it is
+	// taken verbatim rather than validated as UTF-8 like the identity components.
+	body := string(encoded[offset : offset+bodyLength])
 	state, err := decodeState(binary.LittleEndian.Uint16(encoded[10:12]))
 	if err != nil {
 		return Locator{}, err
@@ -207,6 +234,7 @@ func decodeLocator(encoded []byte) (Locator, error) {
 		Revision:       binary.LittleEndian.Uint64(encoded[24:32]),
 		CommitSequence: binary.LittleEndian.Uint64(encoded[32:40]),
 		State:          state,
+		Body:           body,
 	}
 	if err := validateLocator(result, ErrCorrupt); err != nil {
 		return Locator{}, err
@@ -221,6 +249,15 @@ func validateLocator(value Locator, class error) error {
 		value.SchemaRevision == 0 ||
 		value.Revision == 0 {
 		return fmt.Errorf("%w: locator identity or revision", class)
+	}
+	// A leaf entry shares a 16 KiB Page with its neighbours, so one encoded
+	// record is capped well below a full Page. Refusing by name beats splitting
+	// the Row across Pages before overflow Pages exist.
+	if len(value.Body) > maxBodyBytes {
+		return fmt.Errorf(
+			"%w: Row %q revision %d encodes to %d bytes, over the %d byte record limit",
+			class, value.RowID, value.Revision, len(value.Body), maxBodyBytes,
+		)
 	}
 	if _, err := encodeState(value.State, class); err != nil {
 		return err
