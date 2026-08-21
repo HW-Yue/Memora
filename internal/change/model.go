@@ -51,11 +51,21 @@ const (
 	OperationRestore    Operation = "RESTORE"
 )
 
+// Metadata is a committed transaction's attribution: who wrote it, why, and
+// where the assertion came from. It is recorded once per transaction — a write
+// touching fifty Rows has one envelope, not fifty copies.
+//
+// The three anchor fields are omitempty because envelopes written before they
+// existed carry none of them: an absent field must serialize away entirely so
+// those envelopes keep checksumming to the value they were sealed with.
 type Metadata struct {
-	Actor           string `json:"actor"`
-	Source          string `json:"source"`
-	Reason          string `json:"reason"`
-	SourceReceiptID string `json:"source_receipt_id,omitempty"`
+	Actor             string `json:"actor"`
+	Source            string `json:"source"`
+	Reason            string `json:"reason"`
+	SourceReceiptID   string `json:"source_receipt_id,omitempty"`
+	SourceKind        string `json:"source_kind,omitempty"`
+	SourceLocator     string `json:"source_locator,omitempty"`
+	SourceContentHash string `json:"source_content_hash,omitempty"`
 }
 
 type Entry struct {
@@ -92,8 +102,11 @@ func NewEnvelope(
 		Version: Version, CommitSequence: sequence, CommittedAt: committedAt.UTC(),
 		Metadata: Metadata{
 			Actor: strings.TrimSpace(metadata.Actor), Source: strings.TrimSpace(metadata.Source),
-			Reason:          strings.TrimSpace(metadata.Reason),
-			SourceReceiptID: strings.TrimSpace(metadata.SourceReceiptID),
+			Reason:            strings.TrimSpace(metadata.Reason),
+			SourceReceiptID:   strings.TrimSpace(metadata.SourceReceiptID),
+			SourceKind:        strings.TrimSpace(metadata.SourceKind),
+			SourceLocator:     strings.TrimSpace(metadata.SourceLocator),
+			SourceContentHash: strings.TrimSpace(metadata.SourceContentHash),
 		},
 		Entries: cloneEntries(entries),
 	}
@@ -118,6 +131,9 @@ func (value Envelope) Validate() error {
 		value.CommittedAt.Location() != time.UTC ||
 		!validText(value.Actor, maxActorBytes) || !validText(value.Source, maxSourceBytes) ||
 		!validText(value.Reason, maxReasonBytes) || !validOptionalText(value.SourceReceiptID, maxIdentityBytes) ||
+		!validOptionalText(value.SourceKind, maxIdentityBytes) ||
+		!validOptionalText(value.SourceLocator, maxIdentityBytes) ||
+		!validOptionalText(value.SourceContentHash, maxIdentityBytes) ||
 		len(value.Checksum) != sha256.Size*2 || value.TransactionID != "txn_"+value.Checksum[:32] {
 		return ErrInvalid
 	}

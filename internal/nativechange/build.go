@@ -13,9 +13,18 @@ import (
 )
 
 func RowMetadata(value row.WriteMetadata) change.Metadata {
+	// The envelope is the single home for attribution, so every provenance field
+	// a write carries has to reach it — including the document- and
+	// repository-anchor fields, which used to be recorded only per Row.
 	metadata := change.Metadata{
 		Actor: value.Actor, Source: value.Source, Reason: value.Reason,
-		SourceReceiptID: value.SourceReceiptID,
+		SourceReceiptID:   value.SourceReceiptID,
+		SourceKind:        string(value.SourceKind),
+		SourceLocator:     value.SourceLocator,
+		SourceContentHash: value.SourceContentHash,
+	}
+	if strings.TrimSpace(metadata.SourceKind) == "" {
+		metadata.SourceKind = string(history.SourceConversationAssertion)
 	}
 	if strings.TrimSpace(metadata.Actor) == "" {
 		metadata.Actor = "system:direct-api"
