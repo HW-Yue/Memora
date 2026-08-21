@@ -2,6 +2,13 @@
 
 状态：F100 已完成；F103 已追加 snapshot 契约；F106 已追加空树完整历史 Bootstrap。
 
+> **这棵树将被移除。** 它按 `(rowID, revision)` 建键，**一个版本一个条目**，
+> 于是树的规模随"写过多少次"增长；而读一个当前行要先查 current 树、再降这棵树
+> 拿正文，等于让最热的路径去背最冷的数据。
+> [聚簇行存储 v1](./clustered-row-storage-v1.md) 把当前行正文移进 current 树叶子，
+> 历史版本改由记录自带的 previous 物理指针成链，本树整棵退场。
+> 现状与目标的差距见[存储层总览](./README.md)「已知偏差」。
+
 ## 唯一结果
 
 历史 Row revision 通过持久化 B+ Tree 按 Row ID + revision 精确定位，也能按

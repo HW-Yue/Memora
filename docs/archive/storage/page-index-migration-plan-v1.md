@@ -53,7 +53,7 @@ fingerprint 与各 kind count，旧 Plan 不能在源变化后写入目标。
 
 ## 关联
 
-- [Catalog Lookup Index v1](./catalog-lookup-index-v1.md)
-- [Current Row Index v1](./current-row-index-v1.md)
-- [Row Version Index v1](./row-version-index-v1.md)
-- [SQLite 兼容迁移边界](./sqlite-compatibility-migration.md)
+- [Catalog Lookup Index v1](../../storage/catalog-lookup-index-v1.md)
+- [Current Row Index v1](../../storage/current-row-index-v1.md)
+- [Row Version Index v1](../../storage/row-version-index-v1.md)
+- [SQLite 兼容迁移边界](../../storage/sqlite-compatibility-migration.md)

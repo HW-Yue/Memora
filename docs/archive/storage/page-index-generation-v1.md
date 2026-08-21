@@ -1,7 +1,7 @@
 # Page Index Generation v1
 
 状态：历史兼容格式；F106–F108 已完成。新写格式由
-[Generation v3](./page-index-generation-v3.md)取代，v1 仅保留只读升级能力。
+[Generation v3](../../storage/page-index-generation-v3.md)取代，v1 仅保留只读升级能力。
 
 ## 唯一结果
 
@@ -61,5 +61,5 @@ corruption、全仓 race 与 CI 已覆盖。
 ## 关联
 
 - [Page Index Migration Plan v1](./page-index-migration-plan-v1.md)
-- [Durable Tree Runtime v1](./durable-tree-runtime-v1.md)
-- [Page File Manager v1](./page-file-manager-v1.md)
+- [Durable Tree Runtime v1](../../storage/durable-tree-runtime-v1.md)
+- [Page File Manager v1](../../storage/page-file-manager-v1.md)

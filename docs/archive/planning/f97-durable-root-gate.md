@@ -62,8 +62,8 @@ F97c1 冻结格式保留 F82 的 slot 0 space manifest 不变；slot 1 使用独
 control Page，保存 committed root、generation 与连续 allocator high-water。新 Tree root
 从 slot 2 开始。F97 首版不复用 retired Page：删除/merge 在同一事务把它变为 `free`
 Page，但空间复用或 generation compaction 留给后续独立 Feature，避免同时引入 free-list
-恢复协议。控制格式见 [Tree Control v1](../../storage/tree-control-v1.md)，redo payload
-见 [Root/Allocator Redo v1](../../storage/root-allocator-redo-v1.md)，恢复顺序见
+恢复协议。控制格式见 [Tree Control v1](../storage/tree-control-v1.md)，redo payload
+见 [Root/Allocator Redo v1](../storage/root-allocator-redo-v1.md)，恢复顺序见
 [Tree Metadata Recovery v1](../../storage/tree-metadata-recovery-v1.md)。
 
 ## RED 与完成证据候选

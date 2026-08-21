@@ -5,6 +5,27 @@ Store writer，物理 Undo 继续后置。见
 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)和
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
+## 先分清三个东西
+
+这三样都在描述"这行数据怎么变成现在这样"，但粒度和用途完全不同。
+文档长期没把它们分开讲，是设计被反复误解的一个来源。
+
+| 概念 | 是什么 | 粒度 | 谁用 |
+| --- | --- | --- | --- |
+| **snapshot** | MVCC read view，一个 commit sequence 水位 | 每次读 | 引擎内部事务可见性；`Authority.Capture()` → `versions.HighWater()` |
+| **版本链／旧版本** | 这一行过去长什么样，是**数据** | 每个版本 | `AS OF`、`SHOW HISTORY`、MVCC 回溯 |
+| **Change Log** | 谁改的、为什么改，是**归属** | 每个**事务** | `SHOW CHANGES`、审计、同步 |
+
+`snapshot` **不是**"数据库快照文件"，是事务可见性水位。
+
+`ObjectKindHistory` 记录是**第二份归属拷贝**：它按行记 actor／source／reason，
+而 Change Log 的 `change.Metadata` 已经按事务记了同一批字段，
+`change.Entry` 里甚至有 `HistoryLocator` 直接指向它
+（`internal/change/model.go:70`）。一个事务碰 50 行只有一条 envelope，
+把归属抄到 50 个版本上才是真重复。该记录类型将被删除，
+`SHOW HISTORY` 改由「版本链取数据 + Change Log 按 commit_sequence 取归属」拼出。
+见[聚簇行存储 v1](./clustered-row-storage-v1.md)与[存储层总览](./README.md)。
+
 ## 事务与版本标识
 
 - transaction ID：标识当前 Instance 内的一次事务，用于活跃事务、锁、Undo 和提交状态；

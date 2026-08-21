@@ -10,7 +10,7 @@ committed root 的 generation-0 bootstrap 状态。
 ## 产品与边界
 
 - 依赖：F81 Page Codec、F82 Page File Manager；
-- 规格：[Tree Control v1](../../storage/tree-control-v1.md)；
+- 规格：[Tree Control v1](../storage/tree-control-v1.md)；
 - 明确不做：WAL payload、recovery、Tree mutation、online commit 和业务 key。
 
 结论：PASS。Codec 与 redo recovery 是独立格式/故障域；原 F97c 因生产代码超过

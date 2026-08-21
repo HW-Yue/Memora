@@ -6,7 +6,7 @@
 ## 唯一结果
 
 已提交 `root`/`allocator` redo 可严格、幂等恢复到
-[Tree Control v1](./tree-control-v1.md)，普通 Page 先写，control Page 最后发布。
+[Tree Control v1](../archive/storage/tree-control-v1.md)，普通 Page 先写，control Page 最后发布。
 
 ## Validation
 

@@ -147,17 +147,15 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 
 ### 存储与可靠性
 
-- [原生 Store](./storage/native-minimal-store.md)
-- [Page/Record 布局](./storage/tablespace-page-record-layout.md)
-- [Buffer Pool](./storage/buffer-pool.md)
-- [MVCC、Undo 与 Redo 边界](./storage/mvcc-undo-redo.md)
-- [持久化 B+ Tree 索引](./storage/indexing.md)
-- [聚簇行存储 v1](./storage/clustered-row-storage-v1.md)（存储终点设计）
-- [Page Store Authority](./storage/page-store-authority-v1.md)（已被上一条取代的过渡形态）
-- [Page Index Generation v3](./storage/page-index-generation-v3.md)
-- [Change Log 与未来同步](./storage/binlog-and-sync.md)
-- [备份](./storage/instance-portable-backup-v1.md)、
-  [恢复](./storage/instance-restore-v1.md)与[搬迁](./storage/instance-move-v1.md)
+**先读这两份**：
+
+- **[存储层：当前实现总览](./storage/README.md)** — 现在实际是什么样，
+  逐层给出事实并指向对应的冻结规格。读懂这一层的唯一入口；
+- **[聚簇行存储 v1](./storage/clustered-row-storage-v1.md)** — 设计终点：
+  当前数据在树里、历史版本在链上。总览末尾列出两者之间的已知偏差。
+
+其余按 Feature 切分的规格在各自验收门通过时冻结，是证据链而非现状描述，
+从总览的对应小节进入。被取代的已移入 `archive/storage/`。
 
 ### 使用与观察
 

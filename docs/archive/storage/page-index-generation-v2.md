@@ -1,6 +1,6 @@
 # Page Index Generation v2
 
-状态：已被 [Generation v3](./page-index-generation-v3.md) 取代；保留为 v2 兼容格式说明。
+状态：已被 [Generation v3](../../storage/page-index-generation-v3.md) 取代；保留为 v2 兼容格式说明。
 
 ## 结果
 
@@ -39,5 +39,5 @@ replacement 生成四树 generation 并原子切 marker；当前新 build 写 v3
 ## 关联
 
 - [Generation v1](./page-index-generation-v1.md)
-- [F172a](../planning/f172a-row-posting-generation.md)
-- [F171 Posting Store](../planning/f171-persistent-posting-store.md)
+- [F172a](../../planning/f172a-row-posting-generation.md)
+- [F171 Posting Store](../../planning/f171-persistent-posting-store.md)

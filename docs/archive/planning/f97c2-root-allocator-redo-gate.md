@@ -11,7 +11,7 @@ high-water、retired Page 和未知版本。
 
 - 用户故事：`US-RECOVER`、`US-ENGINE`、`US-DEVELOPER`；
 - 依赖：F83 WAL Record Stream、F97c1 Tree Control Codec；
-- 规格：[Root/Allocator Redo v1](../../storage/root-allocator-redo-v1.md)；
+- 规格：[Root/Allocator Redo v1](../storage/root-allocator-redo-v1.md)；
 - 明确不做：Page recovery、生成 Tree mutation、运行时 durable commit、业务索引、
   MVCC 和 Page 复用。
 

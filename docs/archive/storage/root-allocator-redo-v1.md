@@ -1,7 +1,7 @@
 # Root/Allocator Redo v1
 
 状态：F97c2 已实现并验收；generation 语义已被
-[Root/Allocator Redo v2](./root-allocator-redo-v2.md) 取代。
+[Root/Allocator Redo v2](../../storage/root-allocator-redo-v2.md) 取代。
 
 ## 唯一结果
 

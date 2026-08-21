@@ -2,6 +2,12 @@
 
 状态：F99 已完成；F106 已追加空树 final-locator Bootstrap。
 
+> **这棵树正在成为聚簇索引。** 现在它的 leaf 只存逻辑 Locator，拿到 revision
+> 之后还要再降一次版本树才能取到正文。
+> [聚簇行存储 v1](./clustered-row-storage-v1.md) 让 leaf **直接持有当前行的完整内容**：
+> 键仍是 `(table_id, row_id)`、**不含版本号**，一个存活的 Row 一个条目，
+> 读一行就是一次下降。见[存储层总览](./README.md)。
+
 ## 唯一结果
 
 稳定键 table_id + row_id 通过持久化 B+ Tree 精确定位该 Row 最新已提交
