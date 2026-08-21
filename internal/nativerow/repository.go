@@ -35,8 +35,7 @@ func (repository *Repository) Write(value row.Row) error {
 	if value.Revision != 1 || value.State != row.StateLive {
 		return fmt.Errorf("%w: initial row must be live revision 1", ErrInvalid)
 	}
-	// Revision 1 terminates the chain: there is nothing before it to point at.
-	return repository.writeRecord(value, value.ID, nativestore.Location{})
+	return repository.writeRecord(value, value.ID)
 }
 
 func (repository *Repository) StageInitial(transaction *nativestore.Transaction, value row.Row) error {
@@ -68,21 +67,7 @@ func (repository *Repository) WriteRevision(value row.Row) error {
 	if err := repository.validateRevision(value); err != nil {
 		return err
 	}
-	previous, err := repository.RevisionLocation(value.ID, value.Revision-1)
-	if err != nil {
-		return err
-	}
-	return repository.writeRecord(value, revisionRecordID(value.ID, value.Revision), previous)
-}
-
-// RevisionLocation is the entry point into a Row's version chain: it resolves
-// one revision's record to a physical address, and every older revision is then
-// reachable by following previousLocation from there.
-func (repository *Repository) RevisionLocation(id string, revision uint64) (nativestore.Location, error) {
-	if repository == nil || repository.file == nil || id == "" || revision == 0 {
-		return nativestore.Location{}, fmt.Errorf("%w: RowID and revision are required", ErrInvalid)
-	}
-	return repository.file.Location(nativestore.ObjectKindRow, revisionRecordID(id, revision))
+	return repository.writeRecord(value, revisionRecordID(value.ID, value.Revision))
 }
 
 func (repository *Repository) StageRevision(transaction *nativestore.Transaction, value row.Row) error {
@@ -100,14 +85,7 @@ func (repository *Repository) StageRevision(transaction *nativestore.Transaction
 	if err != nil {
 		return err
 	}
-	// validateRevision has already established that revision-1 is the committed
-	// latest, so its address is resolvable here and the chain cannot be staged
-	// with a hole in it.
-	previous, err := repository.RevisionLocation(value.ID, value.Revision-1)
-	if err != nil {
-		return err
-	}
-	payload, err := encodeLinked(normalized, table, previous)
+	payload, err := encode(normalized, table)
 	if err != nil {
 		return err
 	}
@@ -127,9 +105,7 @@ func (repository *Repository) validateRevision(value row.Row) error {
 	return nil
 }
 
-func (repository *Repository) writeRecord(
-	value row.Row, recordID string, previous nativestore.Location,
-) error {
+func (repository *Repository) writeRecord(value row.Row, recordID string) error {
 	table, err := repository.table(value.DatabaseID, value.TableID)
 	if err != nil {
 		return err
@@ -138,7 +114,7 @@ func (repository *Repository) writeRecord(
 	if err != nil {
 		return err
 	}
-	payload, err := encodeLinked(normalized, table, previous)
+	payload, err := encode(normalized, table)
 	if err != nil {
 		return err
 	}
@@ -553,28 +529,19 @@ func normalizeRow(value row.Row, table catalog.Table, carryUnlistedValues bool) 
 
 type encoder struct{ bytes []byte }
 
-// A Row record ends with the physical address of the revision before it, so a
-// reader holding one revision can reach the whole chain without an index. The
-// pointer is fixed width and always last, which is what lets previousLocation
-// find it without decoding the Row.
+// flagPreviousLocation marks a record written while Row revisions were chained
+// by physical address. The clustered Row version tree walks revisions now, so
+// nothing writes the pointer any more — but records already on disk carry it,
+// and the decoder still consumes it so those Databases stay readable.
 const (
 	flagPreviousLocation uint16 = 1 << 0
 	chainFooterSize             = 8 + 4 + 4
-	flagsFieldOffset            = 2
 )
 
 func encode(value row.Row, table catalog.Table) ([]byte, error) {
-	return encodeLinked(value, table, nativestore.Location{})
-}
-
-func encodeLinked(value row.Row, table catalog.Table, previous nativestore.Location) ([]byte, error) {
 	output := encoder{bytes: make([]byte, 0, 256)}
-	flags := uint16(0)
-	if previous.Valid() {
-		flags |= flagPreviousLocation
-	}
 	output.u16(recordSchemaVersion)
-	output.u16(flags)
+	output.u16(0)
 	output.u64(value.SchemaVersion)
 	output.u64(value.Revision)
 	output.u64(value.CommitSequence)
@@ -596,39 +563,7 @@ func encodeLinked(value row.Row, table catalog.Table, previous nativestore.Locat
 			return nil, fmt.Errorf("%w: column %q", err, column.ID)
 		}
 	}
-	if previous.Valid() {
-		output.u64(previous.Offset)
-		output.u32(previous.Length)
-		output.u32(previous.CRC)
-	}
 	return output.bytes, nil
-}
-
-// previousLocation reads a record's chain pointer without decoding the Row.
-// The pointer is the fixed-width tail of the payload, so this costs a slice —
-// walking a version chain never pays for a full decode of revisions the caller
-// is only passing through.
-func previousLocation(payload []byte) (nativestore.Location, error) {
-	if len(payload) < flagsFieldOffset+2 {
-		return nativestore.Location{}, fmt.Errorf("%w: record is shorter than its header", ErrCorrupt)
-	}
-	flags := binary.LittleEndian.Uint16(payload[flagsFieldOffset : flagsFieldOffset+2])
-	if flags&flagPreviousLocation == 0 {
-		return nativestore.Location{}, nil
-	}
-	if len(payload) < flagsFieldOffset+2+chainFooterSize {
-		return nativestore.Location{}, fmt.Errorf("%w: record claims a chain pointer it does not carry", ErrCorrupt)
-	}
-	footer := payload[len(payload)-chainFooterSize:]
-	location := nativestore.Location{
-		Offset: binary.LittleEndian.Uint64(footer[0:8]),
-		Length: binary.LittleEndian.Uint32(footer[8:12]),
-		CRC:    binary.LittleEndian.Uint32(footer[12:16]),
-	}
-	if !location.Valid() {
-		return nativestore.Location{}, fmt.Errorf("%w: chain pointer addresses nothing", ErrCorrupt)
-	}
-	return location, nil
 }
 
 func (output *encoder) value(kind logical.Kind, value any) error {
@@ -748,9 +683,9 @@ func decode(payload []byte) (row.Row, error) {
 			return row.Row{}, err
 		}
 	}
-	// The chain pointer is physical metadata, not Row content: consume it so the
-	// trailing-bytes check keeps catching real corruption, and drop it. Callers
-	// that want it read it through previousLocation.
+	// A record written while revisions were chained carries a trailing pointer.
+	// Consume it so the trailing-bytes check keeps catching real corruption, and
+	// drop it: the Row version tree, not this pointer, walks revisions now.
 	if flags&flagPreviousLocation != 0 {
 		for _, skip := range []func() error{
 			func() error { _, err := input.u64(); return err },

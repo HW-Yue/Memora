@@ -50,6 +50,7 @@ type PageAuthority interface {
 	ListPage(context.Context, catalog.Table, int, uint64) ([]row.Row, bool, error)
 	AsOfRevision(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
+	History(context.Context, catalog.Table, string) ([]history.Record, error)
 	PublishRows(context.Context, []row.Row, func() error) error
 	PublishMutation(context.Context, []row.Row, []router.Node, func() error) error
 }
@@ -560,12 +561,24 @@ func (service *Service) HistoryPage(ctx context.Context, databaseName, tableName
 	if err == nil && current.State == row.StateDeleted {
 		return nil, history.ReadPage{}, serviceFailure(result.CodeNotFound, "Row was not found", nativestore.ErrNotFound)
 	}
-	records, err := service.repository.HistoryAll(table.DatabaseID, table.ID, rowID)
+	// The clustered leaves hold both the Row and its provenance, so the indexed
+	// path walks one Row's revisions along the leaf chain. The repository path
+	// remains for an Instance running without a Page authority.
+	records, err := service.historyRecords(ctx, table, rowID)
 	if err != nil {
 		return nil, history.ReadPage{}, err
 	}
 	return history.Paginate(table.DatabaseID+"\x00"+table.ID+"\x00"+rowID, cursor, limit, records)
 }
+func (service *Service) historyRecords(
+	ctx context.Context, table catalog.Table, rowID string,
+) ([]history.Record, error) {
+	if service.authority != nil {
+		return service.authority.History(ctx, table, rowID)
+	}
+	return service.repository.HistoryAll(table.DatabaseID, table.ID, rowID)
+}
+
 func (service *Service) Restore(
 	ctx context.Context,
 	databaseName, tableName, rowID string,

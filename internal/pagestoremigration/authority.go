@@ -16,6 +16,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerow"
@@ -347,6 +348,18 @@ func (authority *Authority) AsOfRevision(
 	}
 	defer authority.mu.RUnlock()
 	return authority.rows.AsOfRevision(ctx, table, rowID, revision, snapshot)
+}
+
+// History walks one Row's revisions through the clustered leaves, which carry
+// both the Row and the metadata it was written with.
+func (authority *Authority) History(
+	ctx context.Context, table catalog.Table, rowID string,
+) ([]history.Record, error) {
+	if err := authority.lockRead(ctx); err != nil {
+		return nil, err
+	}
+	defer authority.mu.RUnlock()
+	return authority.rows.History(ctx, table, rowID)
 }
 
 func (authority *Authority) AsOfCommit(

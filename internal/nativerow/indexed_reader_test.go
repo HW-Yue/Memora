@@ -362,6 +362,12 @@ func (lookup *mismatchingVersionLookup) HighWater() (uint64, error) {
 	return lookup.delegate.HighWater()
 }
 
+func (lookup *mismatchingVersionLookup) RevisionsPage(
+	rowID string, beforeRevision uint64, limit int,
+) (rowversionindex.RevisionsPage, error) {
+	return lookup.delegate.RevisionsPage(rowID, beforeRevision, limit)
+}
+
 func indexedPointRequest() executor.BatchRequest {
 	return executor.BatchRequest{
 		RequestID: "indexed-point-envelope",

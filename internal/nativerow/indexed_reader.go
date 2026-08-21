@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
@@ -26,7 +27,63 @@ type VersionLookup interface {
 	ByRevision(string, uint64) (rowversionindex.Locator, error)
 	AsOfCommit(string, uint64) (rowversionindex.Locator, error)
 	VisibleAt(string, uint64) (rowversionindex.Locator, error)
+	RevisionsPage(string, uint64, int) (rowversionindex.RevisionsPage, error)
 	HighWater() (uint64, error)
+}
+
+// historyWalkPage bounds one step of the walk. History pages are assembled in
+// memory by the caller, so the walk reads in chunks rather than one revision at
+// a time; the cost still scales with the Row's own history, never the Database.
+const historyWalkPage = 200
+
+// History returns one Row's history newest first, built entirely from the
+// clustered leaves. Each leaf carries both the Row and the metadata it was
+// written with, so a revision costs one entry in a range scan along the leaf
+// chain — not a lookup per revision, and never a pass over other Rows.
+func (reader *IndexedReader) History(
+	ctx context.Context,
+	table catalog.Table,
+	rowID string,
+) ([]history.Record, error) {
+	if err := validateIndexedTable(ctx, table); err != nil {
+		return nil, err
+	}
+	records := make([]history.Record, 0)
+	before := uint64(0)
+	for {
+		page, err := reader.versions.RevisionsPage(rowID, before, historyWalkPage)
+		if err != nil {
+			return nil, versionLookupError(err, "Row history was not found")
+		}
+		for _, locator := range page.Locators {
+			if !locatorMatchesTable(locator, table) {
+				return nil, serviceFailure(result.CodeNotFound, "Row was not found in requested table", nil)
+			}
+			value, err := reader.clusteredBody(table, locator)
+			if err != nil {
+				return nil, err
+			}
+			if locator.History == "" {
+				// A revision published before leaves carried metadata. The record log
+				// still has it, and falling back keeps existing Databases readable.
+				metadata, err := reader.repository.historyMetadataFor(rowID, locator.Revision)
+				if err != nil {
+					return nil, err
+				}
+				records = append(records, historyRecord(metadata, project(table, value)))
+				continue
+			}
+			record, err := DecodeHistoryMetadata([]byte(locator.History), project(table, value))
+			if err != nil {
+				return nil, err
+			}
+			records = append(records, record)
+		}
+		if !page.Truncated {
+			return records, nil
+		}
+		before = page.NextBeforeRevision
+	}
 }
 
 func (reader *IndexedReader) Capture(ctx context.Context) (uint64, error) {

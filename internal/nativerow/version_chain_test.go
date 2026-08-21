@@ -1,6 +1,7 @@
 package nativerow
 
 import (
+	"encoding/binary"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ import (
 )
 
 // chainFixture writes one Row and then revisions it `revisions-1` times, so the
-// Row ends at revision `revisions` with a complete version chain behind it.
+// Row ends at revision `revisions` with its full history behind it.
 func chainFixture(t *testing.T, revisions int) (*nativestore.File, *Repository, row.Row) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "database.memora")
@@ -46,144 +47,77 @@ func chainFixture(t *testing.T, revisions int) (*nativestore.File, *Repository, 
 	return file, repository, value
 }
 
-// TestEveryRevisionPointsAtThePreviousOne pins the version chain: a revision
-// carries the physical address of the revision before it, so walking a Row's
-// history is a sequence of direct reads rather than a lookup per step. The last
-// hop must land on revision 1 and stop there.
-func TestEveryRevisionPointsAtThePreviousOne(t *testing.T) {
+// TestRecordsNoLongerCarryAChainPointer pins that the physical version chain is
+// gone from new writes. The clustered Row version tree walks revisions now, and
+// a second, independently maintained way to reach the previous revision is a
+// second source of truth that can only drift.
+func TestRecordsNoLongerCarryAChainPointer(t *testing.T) {
 	t.Parallel()
 
-	file, repository, current := chainFixture(t, 5)
+	file, _, current := chainFixture(t, 4)
 
-	location, err := repository.RevisionLocation(current.ID, current.Revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := make([]uint64, 0, 5)
-	for location.Valid() {
-		payload, err := file.ReadAtLocation(location)
+	for revision := uint64(1); revision <= current.Revision; revision++ {
+		payload, err := file.Get(nativestore.ObjectKindRow, revisionRecordID(current.ID, revision))
 		if err != nil {
 			t.Fatal(err)
 		}
-		value, err := decode(payload)
-		if err != nil {
-			t.Fatal(err)
-		}
-		seen = append(seen, value.Revision)
-		if location, err = previousLocation(payload); err != nil {
-			t.Fatal(err)
-		}
-	}
-	want := []uint64{5, 4, 3, 2, 1}
-	if len(seen) != len(want) {
-		t.Fatalf("chain walked %v revisions, want %v", seen, want)
-	}
-	for index, revision := range want {
-		if seen[index] != revision {
-			t.Fatalf("chain walked %v, want %v", seen, want)
+		if flags := binary.LittleEndian.Uint16(payload[2:4]); flags != 0 {
+			t.Fatalf("revision %d was written with flags %d, want 0", revision, flags)
 		}
 	}
 }
 
-// TestRevisionOnePointsAtNothing pins the chain terminator. Revision 1 has no
-// predecessor, so its pointer must be the zero Location and not, say, an
-// address that happens to decode.
-func TestRevisionOnePointsAtNothing(t *testing.T) {
+// TestRecordsWrittenWithAChainPointerStillDecode pins backward compatibility.
+// Databases written while revisions were chained hold records with a trailing
+// pointer and the flag set; dropping the writer must not make them unreadable.
+func TestRecordsWrittenWithAChainPointerStillDecode(t *testing.T) {
 	t.Parallel()
 
-	file, repository, _ := chainFixture(t, 1)
-	location, err := repository.RevisionLocation("row_fixture", 1)
+	databases, value := rowFixture()
+	table := databases[0].Tables[0]
+	payload, err := encode(value, table)
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := file.ReadAtLocation(location)
+	// Rebuild the historical layout: flag set, fixed-width pointer appended.
+	chained := append([]byte(nil), payload...)
+	binary.LittleEndian.PutUint16(chained[2:4], flagPreviousLocation)
+	chained = binary.LittleEndian.AppendUint64(chained, 4096)
+	chained = binary.LittleEndian.AppendUint32(chained, 128)
+	chained = binary.LittleEndian.AppendUint32(chained, 99)
+	if len(chained) != len(payload)+chainFooterSize {
+		t.Fatalf("chained record is %d bytes, want %d", len(chained), len(payload)+chainFooterSize)
+	}
+
+	decoded, err := decode(chained)
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous, err := previousLocation(payload)
-	if err != nil {
-		t.Fatal(err)
+	if decoded.ID != value.ID || decoded.Revision != value.Revision {
+		t.Fatalf("decoded identity = %#v", decoded)
 	}
-	if previous.Valid() {
-		t.Fatalf("revision 1 must terminate the chain, got %#v", previous)
+	if decoded.Values["col_text"] != value.Values["col_text"] {
+		t.Fatalf("decoded values = %#v, want %#v", decoded.Values, value.Values)
 	}
 }
 
-// TestVersionChainSurvivesReopen pins that the chain is a durable file address,
-// not a process-local one: the pointers keep resolving in a fresh process that
-// never saw the writes.
-func TestVersionChainSurvivesReopen(t *testing.T) {
+// TestHistoryStillReadsEveryRevisionAfterTheChainIsGone pins that removing the
+// chain changed nothing a caller sees.
+func TestHistoryStillReadsEveryRevisionAfterTheChainIsGone(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "database.memora")
-	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	_, repository, current := chainFixture(t, 5)
+
+	records, err := repository.HistoryAll(current.DatabaseID, current.TableID, current.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalogValue, value := rowFixture()
-	if err := nativecatalog.New(file).Write(catalogValue); err != nil {
-		t.Fatal(err)
+	if len(records) != 5 {
+		t.Fatalf("HistoryAll() returned %d records, want 5", len(records))
 	}
-	repository := New(file)
-	if err := repository.Write(value); err != nil {
-		t.Fatal(err)
-	}
-	for revision := 2; revision <= 4; revision++ {
-		value.Revision = uint64(revision)
-		value.Values["col_integer"] = int64(revision)
-		if err := repository.WriteRevision(value); err != nil {
-			t.Fatal(err)
+	for position, record := range records {
+		if record.Revision != uint64(5-position) {
+			t.Fatalf("position %d = revision %d, want %d", position, record.Revision, 5-position)
 		}
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	reopened, err := nativestore.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = reopened.Close() })
-	location, err := New(reopened).RevisionLocation("row_fixture", 4)
-	if err != nil {
-		t.Fatal(err)
-	}
-	depth := 0
-	for location.Valid() {
-		payload, err := reopened.ReadAtLocation(location)
-		if err != nil {
-			t.Fatal(err)
-		}
-		depth++
-		if location, err = previousLocation(payload); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if depth != 4 {
-		t.Fatalf("chain depth after reopen = %d, want 4", depth)
-	}
-}
-
-// TestChainedRowStillDecodesToTheSameRow pins that the chain pointer is
-// physical metadata and changes nothing a caller sees: a revision written with
-// a predecessor must decode to exactly the Row that was handed in.
-func TestChainedRowStillDecodesToTheSameRow(t *testing.T) {
-	t.Parallel()
-
-	_, repository, current := chainFixture(t, 3)
-
-	got, err := repository.ReadRevision(current.ID, current.Revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Revision != 3 || got.Values["col_integer"] != int64(3) {
-		t.Fatalf("ReadRevision() = %#v", got)
-	}
-	first, err := repository.ReadRevision(current.ID, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Revision != 1 || first.Values["col_integer"] != int64(-42) {
-		t.Fatalf("ReadRevision(1) = %#v", first)
 	}
 }

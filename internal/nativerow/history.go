@@ -94,21 +94,12 @@ func (repository *Repository) historyWalk(
 	if err != nil {
 		return nil, err
 	}
-	location, err := repository.RevisionLocation(rowID, latest)
-	if err != nil {
-		return nil, err
-	}
+	// Revisions are contiguous from 1, so walking backwards from the latest is a
+	// sequence of point lookups on known record IDs — the cost is the revisions
+	// returned, never the records the Database holds.
 	result := make([]history.Record, 0, latest)
-	for revision := latest; revision >= 1 && location.Valid(); revision-- {
-		payload, err := repository.file.ReadAtLocation(location)
-		if err != nil {
-			return nil, err
-		}
-		decoded, err := decode(payload)
-		if err != nil {
-			return nil, err
-		}
-		value, err := normalizeDecodedRecord(decoded, table)
+	for revision := latest; revision >= 1; revision-- {
+		value, err := repository.readRecordWithTable(revisionRecordID(rowID, revision), table)
 		if err != nil {
 			return nil, err
 		}
@@ -116,7 +107,7 @@ func (repository *Repository) historyWalk(
 			return nil, fmt.Errorf("%w: history Row belongs to another table", ErrCorrupt)
 		}
 		if value.Revision != revision {
-			return nil, fmt.Errorf("%w: version chain skips revision %d", ErrCorrupt, revision)
+			return nil, fmt.Errorf("%w: revision record %d identifies revision %d", ErrCorrupt, revision, value.Revision)
 		}
 		item, err := repository.historyMetadataFor(rowID, revision)
 		if err != nil {
@@ -125,9 +116,6 @@ func (repository *Repository) historyWalk(
 		result = append(result, historyRecord(item, value))
 		if limit > 0 && len(result) == limit {
 			break
-		}
-		if location, err = previousLocation(payload); err != nil {
-			return nil, err
 		}
 	}
 	return result, nil
