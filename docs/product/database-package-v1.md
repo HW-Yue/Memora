@@ -2,6 +2,17 @@
 
 状态：F44 已冻结并实现。
 
+> **已实现，但生产未接线。** `INSTALL PACKAGE` 的语法在词法与解析层齐全
+> （`msql/lexer/token.go:54-55`、`msql/parser/parser.go:1734`），
+> 但执行时 `executor/package.go:19` 判空后固定返回 `CodeUnsupported`——
+> 生产的 `newNativeDatabaseHandler` 不注入 `Packages`，只有测试用的
+> `newDatabaseHandler`（`daemon/execute.go:58,86`）注入。
+>
+> **功能保留**（2026-08-22 裁定），属接线缺失而非废弃。
+> 前置：`internal/dbpackage` 现在依赖已死的 legacy service 层，接线要么一并迁移、要么先解耦。
+> 见[已知风险](../development/known-risks.md) §7c 与
+> [架构审计](../development/architecture-audit-2026-08.md) §1.2。
+
 ## 格式
 
 扩展名建议使用 `.memora-db`；识别依据始终是内容版本

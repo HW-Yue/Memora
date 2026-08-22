@@ -111,6 +111,52 @@ F220 Stage 1 因此采用保守全丢，绕开该依赖。
 但长连接内轮换 session id 的调用方会让 map 单调增长。当前是本地单用户，风险低，
 属于"应加上界"而非"正在出问题"。
 
+### 7a. redo WAL 永不回收，无界增长
+
+`internal/store/wal/` 的 `SegmentSet.Roll`（`segment_set.go:397`）、
+`PublishCheckpoint` 与 `LatestCheckpoint`（`checkpoint.go:32`）、
+`Reclaim`（`reclaim.go:39`）**四个都是零生产调用方**（各有 12–52 处测试引用）。
+生产对 `wal` 包只用 `OpenSegmentSet`／`CreateSegmentSet`／`RecoverSegmentSet`。
+
+后果：WAL 从不滚段、从不 checkpoint、从不回收，随写入量单调增长；
+恢复起点也永远是最初那一段，重启重放时间随库龄增长。
+
+代码已写、已测、文档已冻结（`docs/storage/{wal-segment-set,checkpoint-publish,
+wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的只是接线**——
+主要待决的是触发时机（按段数？按字节？按 checkpoint 间隔？）。
+三份文档已加"已实现但未接线"注记。
+
+### 7b. schema 与 route 变更不加对象锁
+
+`internal/store/objectlock/objectlock.go` 的 `SchemaKey`（`:46`）与
+`RouteKey`（`:50`）非测试调用方均为 **0**，只有 `RowKey` 有 1 个调用方。
+锁机制设计成三级，实际只用一级。
+
+当前 daemon 串行发布写事务，所以**未必正在出问题**；但"设计了三级、只用一级"
+本身会让人误判并发安全边界。应先判定是缺陷还是不需要——若并发写入永不开启则
+删掉那两个 Key，若要开则补上。**不要维持现状。**
+
+### 7c. `EXPORT WIKI` / `INSTALL PACKAGE` 能解析、执行必失败
+
+词法（`msql/lexer/token.go:54-55`）与解析（`parser.go:1699,1734`）齐全，
+执行时 `executor/package.go:19`、`executor/wiki_export.go:18` 判空后固定返回
+`CodeUnsupported`——生产的 `newNativeDatabaseHandler` 不注入 `Packages`/`Wiki`，
+只有测试用的 `newDatabaseHandler`（`daemon/execute.go:58,86`）注入。
+
+Database Package 有 7 份产品文档，读文档会以为能用。
+**功能保留**（2026-08-22 裁定），属接线缺失。前置：`dbpackage`／`wikiexport`
+现在依赖 legacy service 层，接线要么一并迁移、要么先解耦。
+
+### 7d. 向量检索没有生产发布方
+
+`routevector.Service.Publish`（`service.go:27`）只有测试调用；生产只在
+`daemon/lifecycle.go:218` 构造服务并经 `OpenActive` 只读。
+无发布方 ⇒ 无 generation ⇒ `USING VECTOR` 实际返回 `PredictorUnavailable`。
+
+同时 `Generation.vectors`（`routevector/model.go:125`）把一个 generation 的全部
+route 向量装进内存，`OpenActive` 每次查询重新加载并重新校验，无缓存。
+方向已裁定保留，见[候选预测器只给路径](../query/predictor-path-only-v1.md)。
+
 ## 轻微：工程卫生
 
 ### 8. CI 只有 macOS runner

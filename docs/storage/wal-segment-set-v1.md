@@ -2,6 +2,14 @@
 
 状态：F86a 已完成；冻结 checkpoint 之前的多 Segment 顺序边界。
 
+> **已实现，但未接线。** `SegmentSet.Roll`／`PublishCheckpoint`／`LatestCheckpoint`／
+> `Reclaim` 在生产代码里**零调用方**——生产对 `wal` 包只用 `OpenSegmentSet`／
+> `CreateSegmentSet`／`RecoverSegmentSet`。因此 WAL 实际上**从不滚段、从不
+> checkpoint、从不回收，无界增长**。
+> 本文描述的协议正确且有测试覆盖，但**不描述运行时行为**。
+> 判据与建议动作见[架构审计](../development/architecture-audit-2026-08.md) §1.1，
+> 风险已登记在[已知风险](../development/known-risks.md)。
+
 ## 目录与身份
 
 一个 Segment Set 使用独占目录，v1 文件名固定为：

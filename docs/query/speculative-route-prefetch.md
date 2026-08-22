@@ -3,6 +3,16 @@
 状态：F176 已将 Atlas、全内容 lexical locations 与最多两个 Table root 组装为确定性
 Agent Bootstrap Frame；是否默认采用仍由 F185 真实答案门验证。
 
+> **目标形态已改。** [查询形态](../product/query-model.md) §6 与
+> [架构原则](../product/architecture-principles.md) §3 冻结了新规则：
+> 关键词检索与向量检索**只返回命中项的完整语义树路径，不做任何其他操作**。
+> 新规范明确「预测器不得代替调用方做动作」，**预取**属于此列。
+> 本文描述的 Bootstrap Frame 组装发生在 `internal/agent`（不在产品二进制内），
+> 不是引擎行为；但若将来下沉进引擎，需先与该边界对齐。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。迁移设计见
+> [候选预测器只给路径](./predictor-path-only-v1.md)。
+
 ## 动机
 
 当前标准读取先选 Database、再选 Table、再逐层读取 Table Router。单层约 16 个

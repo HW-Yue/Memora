@@ -2,6 +2,17 @@
 
 状态：F124c 已冻结并实现；只包含可重建 generation，不包含候选查询。
 
+> **目标形态已改。** [查询形态](../product/query-model.md) §6 与
+> [架构原则](../product/architecture-principles.md) §3 冻结了新规则：
+> 关键词检索与向量检索**只返回命中项的完整语义树路径，不做任何其他操作**。
+> 本文描述的 generation **目前没有生产发布方**（`routevector.Service.Publish`
+> 只有测试在调），所以 `USING VECTOR` 实际返回 `PredictorUnavailable`；
+> 这记为缺陷，见[已知风险](../development/known-risks.md) §7d。
+> 方向保留，但候选返回值同样收窄为只给路径。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。迁移设计见
+> [候选预测器只给路径](./predictor-path-only-v1.md)。
+
 ## 目的
 
 Route 向量只是导航预测器的派生数据。F124c 接收外部或本地 encoder 已生成的归一化

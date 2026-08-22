@@ -5,25 +5,32 @@
 
 ## 从这里开始
 
-**最高产品参考规范——任何设计与实现与这两份冲突时，以这两份为准：**
+**最高产品参考规范——任何设计与实现与这三份冲突时，以这三份为准：**
 
 1. **[写入形态](./product/write-model.md)** — 数据怎么落库：每张表一棵独立 B+ 树、
    history 独立成表、语义索引叶子直接挂 RowID、三份日志各司其职、binlog 唯一恢复依据；
 2. **[查询形态](./product/query-model.md)** — 数据怎么被找到：发现 → 语义导航 →
-   叶子拿 RowID → 回表点查 → 查历史，一条有界导航链路。
+   叶子拿 RowID → 回表点查 → 查历史，一条有界导航链路；
+   候选预测器只给完整语义树路径，不做任何其他操作；
+3. **[架构原则](./product/architecture-principles.md)** — 代码与结构怎么组织：
+   高内聚低耦合、能用一张表解决就别造复杂逻辑、预测器只给路径。
+   每条附**判据**（怎么算违反）与已知实例。
 
-**再读这四份理解系统现状并派发工作，不需要读 F 编号。**
+**再读这五份理解系统现状并派发工作，不需要读 F 编号。**
 
-3. [当前系统能力](./product/system-capabilities.md) — 系统现在是什么、各能力域的成熟度和实测性能；
-4. [已知风险](./development/known-risks.md) — 已确认存在但未被 Feature 文档记录的问题，按严重度排序；
-5. [路线 v2](./planning/roadmap-v2.md) — AI-native 的五个差距与 A/B/C/D 分阶段计划；
-6. [执行计划](./planning/execution-plan.md) — **当前唯一的工作队列**，编号工单，
+4. [当前系统能力](./product/system-capabilities.md) — 系统现在是什么、各能力域的成熟度和实测性能；
+5. [已知风险](./development/known-risks.md) — 已确认存在但未被 Feature 文档记录的问题，按严重度排序；
+6. [架构审计 2026-08](./development/architecture-audit-2026-08.md) — 某一时点的**实测清单**：
+   缺陷、耦合、重复与半迁移逐条列出，每条带 `文件:行` 与调用方计数。
+   **不是规格**，过期请按文末命令重扫；
+7. [路线 v2](./planning/roadmap-v2.md) — AI-native 的五个差距与 A/B/C/D 分阶段计划；
+8. [执行计划](./planning/execution-plan.md) — **当前唯一的工作队列**，编号工单，
    每项带前置、改动范围、RED 和完成判据。派发实现从这里取。
 
 配套的最高层原则与规则：
 
 - [AI-native 产品宪章](./product/ai-native-product-charter.md) — 最高层产品原则和永久边界。
-  方向与边界看宪章，写入与查询的具体形态看上面两份规范；
+  方向与边界看宪章，写入与查询的具体形态、代码结构的组织方式看上面三份规范；
 - [Feature 产品门](./planning/feature-product-gate.md)与
   [TDD 协议](./planning/feature-tdd-protocol.md) — 新开发的拆分、授权和验收规则。
 
@@ -34,7 +41,7 @@
 ## Feature 账本（按编号回溯用，不是导航入口）
 
 F 编号按时间顺序记录开发过程，累计两百多项。它用于单项开发的 TDD 与授权，
-以及回溯某项能力的历史证据；**理解系统与派发工作请走上面四份文档**。
+以及回溯某项能力的历史证据；**理解系统与派发工作请走上面那几份文档**。
 
 - [Feature 状态](./planning/feature-status.md) — 权威的完成、撤销、证据不完整和延期账本；
 - [当前产品基线](./product/current-product.md) — 早于本次重组的产品快照，仍然有效；

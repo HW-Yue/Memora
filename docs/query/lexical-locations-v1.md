@@ -2,6 +2,16 @@
 
 状态：F174 已批准实现；这是全内容倒排索引的第一个用户可见查询协议。
 
+> **目标形态已改。** [查询形态](../product/query-model.md) §6 与
+> [架构原则](../product/architecture-principles.md) §3 冻结了新规则：
+> 关键词检索与向量检索**只返回命中项的完整语义树路径，不做任何其他操作**。
+> 本文冻结的返回列（`kind`／`object_id`／`revision`／`matched_term_count`／
+> `matched_field_count`／`frequency`／`matched_field_ids`）里，除身份外全部去掉，
+> 改为返回 `database` + `table` + **完整语义树路径**。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。迁移设计见
+> [候选预测器只给路径](./predictor-path-only-v1.md)。
+
 ## 语法与预算
 
 ```sql

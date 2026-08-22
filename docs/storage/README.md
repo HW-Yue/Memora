@@ -277,6 +277,10 @@ membership 的职责拆解、每项新归宿、对外可见面变更与分阶段
 
 ### E. 与规范无关的既有欠账
 
+存储层之外还有若干缺陷、耦合与重复（含 **redo WAL 从不 checkpoint／回收**
+这一条），逐条证据见[架构审计 2026-08](../development/architecture-audit-2026-08.md)，
+不在此重复。
+
 11. **`File.records` 常驻表仍在**，`Open()` 仍逐条 CRC 扫完整个文件；
     这是与数据量相关的唯一无上界常驻结构（见第 7 节）；
 12. **Catalog／Change 树只存逻辑 Locator**，正文仍在记录文件；
