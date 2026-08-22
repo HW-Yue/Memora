@@ -512,6 +512,9 @@ func (service *Service) AsOfRevision(ctx context.Context, databaseName, tableNam
 		}
 		return service.authority.AsOfRevision(ctx, table, rowID, revision, snapshot)
 	}
+	if err := service.refuseDeleted(rowID); err != nil {
+		return row.Row{}, err
+	}
 	value, err := service.repository.ReadRevision(rowID, revision)
 	if err != nil {
 		return row.Row{}, err
@@ -520,6 +523,21 @@ func (service *Service) AsOfRevision(ctx context.Context, databaseName, tableNam
 		return row.Row{}, serviceFailure(result.CodeNotFound, "historical Row was not found in requested table", nil)
 	}
 	return project(table, value), nil
+}
+
+// refuseDeleted is the Repository-path twin of IndexedReader.refuseDeleted: an
+// Instance running without a Page authority has to honour the same contract.
+// It judges the Row's current state, not the target revision's, because reading
+// a superseded revision is what AS OF is for.
+func (service *Service) refuseDeleted(rowID string) error {
+	current, err := service.repository.ReadIncludingDeleted(rowID)
+	if err != nil {
+		return nil
+	}
+	if current.State == row.StateDeleted {
+		return serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), nil)
+	}
+	return nil
 }
 func (service *Service) AsOfCommit(
 	ctx context.Context,
@@ -536,6 +554,9 @@ func (service *Service) AsOfCommit(
 			return row.Row{}, err
 		}
 		return service.authority.AsOfCommit(ctx, table, rowID, commitSequence, snapshot)
+	}
+	if err := service.refuseDeleted(rowID); err != nil {
+		return row.Row{}, err
 	}
 	value, err := service.repository.ReadAsOfCommit(rowID, commitSequence)
 	if err != nil {
@@ -622,6 +643,21 @@ func (service *Service) Restore(
 	if options.ExpectedSchemaVersion != table.SchemaVersion || options.ExpectedRevision != current.Revision {
 		return row.Row{}, serviceFailure(result.CodeRevisionConflict, "row or schema revision conflicts with latest", ErrRevisionConflict)
 	}
+	// Deleting a Row is final. RESTORE rewinds a live Row to an earlier
+	// revision; it is not a way back from delete, and letting it resurrect one
+	// would make "deleted" mean "hidden until someone knows the revision".
+	//
+	// This is checked before the target revision is read, both to fail with the
+	// reason that actually applies and because reading an earlier revision of a
+	// deleted Row is itself refused now — going that way round would report a
+	// bare "not found" and lose why.
+	if current.State == row.StateDeleted {
+		return row.Row{}, serviceFailure(
+			result.CodeConstraint,
+			"Row was deleted; deletion is final and RESTORE cannot bring it back",
+			nil,
+		)
+	}
 	var target row.Row
 	if service.authority != nil {
 		snapshot, captureErr := service.authority.Capture(ctx)
@@ -646,16 +682,6 @@ func (service *Service) Restore(
 	}
 	if target.State != row.StateLive && target.State != row.StateDeleted {
 		return row.Row{}, serviceFailure(result.CodeConstraint, "target Row revision cannot be restored", nil)
-	}
-	// Deleting a Row is final. RESTORE rewinds a live Row to an earlier
-	// revision; it is not a way back from delete, and letting it resurrect one
-	// would make "deleted" mean "hidden until someone knows the revision".
-	if current.State == row.StateDeleted {
-		return row.Row{}, serviceFailure(
-			result.CodeConstraint,
-			"Row was deleted; deletion is final and RESTORE cannot bring it back",
-			nil,
-		)
 	}
 	values := make(map[string]any, len(table.Columns))
 	for _, column := range table.Columns {

@@ -206,9 +206,15 @@ func TestAuthorityPublishesCurrentAndHistoricalRowRevisions(t *testing.T) {
 	if _, err := rows.Get(ctx, "work", "notes", inserted.ID); err == nil {
 		t.Fatal("deleted Row remained visible through Current Index")
 	}
-	second, err := rows.AsOfRevision(ctx, "work", "notes", inserted.ID, 2)
-	if err != nil || second.Values["title"] != "revised" {
-		t.Fatalf("AsOfRevision(2) = %+v, %v", second, err)
+	// Deletion makes a Row unreachable, and AS OF is a read of the values
+	// themselves — so publishing historical revisions must not leave them
+	// readable once the Row is gone. Both of this Row's earlier revisions are
+	// still published; the refusal is what keeps them out of reach.
+	if second, err := rows.AsOfRevision(ctx, "work", "notes", inserted.ID, 2); err == nil {
+		t.Fatalf("AsOfRevision must refuse a deleted Row, got %+v", second)
+	}
+	if first, err := rows.AsOfRevision(ctx, "work", "notes", inserted.ID, 1); err == nil {
+		t.Fatalf("AsOfRevision must refuse every revision of a deleted Row, got %+v", first)
 	}
 }
 

@@ -134,6 +134,58 @@ func TestDeletingARowIsFinalAndTakesItsHistory(t *testing.T) {
 	}
 }
 
+// TestAsOfCannotReadADeletedRow closes the third door in the same contract.
+// SHOW HISTORY and RESTORE are already refused above; AS OF is addressable by
+// exactly the same thing — a RowID someone kept — and it returns the values
+// themselves, so leaving it open would hand back in full what the other two
+// refuse to describe.
+//
+// The revision numbers this test names are obtainable in practice: SHOW CHANGES
+// keeps reporting a deleted Row's ID with its before/after revisions.
+func TestAsOfCannotReadADeletedRow(t *testing.T) {
+	dataDir, rowID, _, _, _ := rowArchiveFixture(t)
+	parameters := []executor.StatementInput{{
+		Parameters: executor.Parameters{Named: map[string]any{"row": rowID, "revision": 1}},
+	}}
+
+	// While the Row is alive, AS OF is a supported read. Pinning that here keeps
+	// the fix honest: the point is to refuse deleted Rows, not to disable AS OF.
+	alive := executeTraceMSQL(t, dataDir,
+		"SELECT title, revision FROM work.notes AS OF REVISION :revision WHERE row_id = :row LIMIT 1",
+		parameters,
+	)
+	if len(alive.Results[0].Rows) != 1 {
+		t.Fatalf("AS OF should read an earlier revision of a live Row, got %#v", alive.Results[0].Rows)
+	}
+
+	if ok, message := run(t, dataDir, "DELETE FROM work.notes WHERE row_id = :row",
+		[]executor.StatementInput{{
+			Parameters: executor.Parameters{Named: map[string]any{"row": rowID}},
+			Mutation: executor.MutationOptions{
+				ExpectedSchemaVersion: 1, ExpectedRevision: 2, MaxAffectedRows: 1,
+				Actor: "agent:test", Source: "event_6", Reason: "no longer wanted",
+			},
+		}},
+	); !ok {
+		t.Fatalf("DELETE failed: %s", message)
+	}
+
+	if ok, _ := run(t,
+		dataDir,
+		"SELECT title, revision FROM work.notes AS OF REVISION :revision WHERE row_id = :row LIMIT 1",
+		parameters,
+	); ok {
+		t.Fatal("AS OF REVISION must not read back a deleted Row")
+	}
+	if ok, _ := run(t,
+		dataDir,
+		"SELECT title FROM work.notes AS OF COMMIT_SEQUENCE :revision WHERE row_id = :row LIMIT 1",
+		parameters,
+	); ok {
+		t.Fatal("AS OF COMMIT_SEQUENCE must not read back a deleted Row")
+	}
+}
+
 // TestDeletingARelationIsFinal is the same rule one level over: a link is cheap
 // to recreate, so UNRELATE has no inverse.
 func TestDeletingARelationIsFinal(t *testing.T) {

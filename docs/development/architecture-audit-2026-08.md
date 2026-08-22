@@ -79,6 +79,30 @@
 另见 2.3 的常驻内存问题与
 [候选预测器只给路径](../query/predictor-path-only-v1.md)。
 
+### 1.5 三个导出面对已删除 Row 的处理不一致（已裁定接受）
+
+**现象**：同一个"要不要导出已删除 Row"的问题，三处给了两种答案。
+
+**证据**：
+- `wikiexport` **过滤**：`internal/wikiexport/export.go:203`
+  `if stored.State != row.StateLive { continue }`；
+- `nativesnapshot` **不过滤**：`internal/nativesnapshot/native.go:85,89` 走
+  `AllRows()`／`AllHistory()`，两者都不按 state 过滤；
+- `dbpackage` **不过滤**：`Service.Pack`（`internal/dbpackage/package.go:117`）
+  经 `snapshot.FilterDatabase`（`:128`）只按 database 过滤，`RowCount` 把墓碑一起数进去。
+
+实测：给 e2e 剧本加一个"插入即删除"的 Row 后，`doctor` 的 `Rows` 由 5 变 6、
+`History` 由 12 变 13。
+
+**为什么记在这里**：这**不违反**删除契约——契约是可达性，而
+[F227](../planning/f227-object-archive.md) 明说字节还在是接受的；
+且已核实导入后仍不可达（`Import` 从 history 重建状态并保留墓碑，读面照样拒绝）。
+**2026-08-22 已裁定：可接受，只记不改。** 记下来是因为三者不一致本身会让人
+反复重新发现它，并误判成缺陷——本审计的 known-risks 7e 就误判过一次。
+
+**若将来要改**：真正的动因会是数据披露（交给第三方的包里带着已删内容与归属），
+不是契约。改之前注意它会动快照哈希与导入的历史链完整性校验。
+
 ---
 
 ## 二、耦合

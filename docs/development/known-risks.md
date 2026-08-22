@@ -157,24 +157,35 @@ Database Package 有 7 份产品文档，读文档会以为能用。
 route 向量装进内存，`OpenActive` 每次查询重新加载并重新校验，无缓存。
 方向已裁定保留，见[候选预测器只给路径](../query/predictor-path-only-v1.md)。
 
-### 7e. 「删除是终态」在 MSQL 面成立，在逻辑快照面不成立
+### 7e. `SELECT ... AS OF` 曾能读回已删除 Row 的完整内容 —— **已修复**
 
-F227 把删除定为终态：`SHOW HISTORY` 拒绝服务已删除 Row 的历史
-（`internal/daemon/f227_row_relation_archive_test.go` 断言"a deleted Row must
-take its History with it"），`RESTORE` 拒绝复活
-（`internal/nativerow/service.go:652-659`）。
+**先澄清判据**，因为本条最初写错过一次：删除的契约是
+**语义上不可达且不可逆**，**不是物理擦除**。F227
+（[f227-object-archive.md](../planning/f227-object-archive.md) §「存储层的真相」）
+明说磁盘上的字节还在、要等 Compaction 才谈得上回收，并要求
+「**不要对用户承诺"数据已被抹除"**」。所以"逻辑快照里还留着已删行的字节"
+**本身不是缺陷**——本条最初据此判定"规则漏了"，是误判，已订正。
 
-但**逻辑快照仍然导出它们**：`nativesnapshot` 走
-`rows.AllRows()`／`rows.AllHistory()`（`internal/nativesnapshot/native.go:85,89`），
-两者都**不按 state 过滤**（`internal/nativerow/repository.go:290`）。
+按「可达性」这个正确判据复查七条读路径，查出一处真漏：
+**`SELECT ... AS OF REVISION|COMMIT_SEQUENCE` 没有任何删除态检查**。
+`IndexedReader.AsOfRevision`／`AsOfCommit` 从 locator 直接 `readBody` → `project`
+返回，而同一文件的 `Get` 有检查。放大它的两点：`Delete` 是 `deleted := current`，
+**保留了 Values**；row_id 与前后 revision 可以从不设防的 `SHOW CHANGES` 拿到。
+于是任何留着 ID 的人都能点名任一版本，把每一列的值读回来——
+正是 `HistoryPage` 注释里写明并堵上的那个威胁，隔壁没堵。
 
-实测证据（2026-08-22，`tests/e2e/vertical_slice_test.go`）：新增一个"插入即删除"
-的 Row 后，`doctor` 的 `Rows` 由 5 变 6、`History` 由 12 变 13——
-即已删除的 Row 连同它的两条 History 都进了导出。
+**2026-08-22 已修复**：`IndexedReader.refuseDeleted` 与
+`Service.refuseDeleted` 覆盖 authority 与 repository 两条路径，
+按 Row 的**当前**状态判断（不是目标版本的——读 superseded 旧版本正是 AS OF 的本职），
+返回 `CodeNotFound`，与 `SHOW HISTORY` 一致。`Restore` 的删除检查同时提前到读取
+目标版本之前，以免报错退化成裸的 not found。
+契约与全部把关面已写进[查询形态 §7](../product/query-model.md)。
 
-后果：导出再导入就能拿回 MSQL 面声称已经消失的历史，「删除是终态」这条产品规则
-在跨实例边界上漏了。需要先判定哪一面是对的——是快照应当过滤，还是 `SHOW HISTORY`
-的规则过严——再改，不要两边各改一半。
+**仍然接受、只作记录的**：已删除 Row 的正文与归属会随逻辑快照与 Database Package
+交给第三方（`wikiexport` 过滤，`nativesnapshot`／`dbpackage` 不过滤）。
+已核实导入后仍不可达——`Import` 从 history 重建状态并保留墓碑，所有读面照样拒绝——
+所以不违反契约。三者不一致这一事实记在
+[架构审计](./architecture-audit-2026-08.md)。
 
 ## 轻微：工程卫生
 

@@ -268,11 +268,35 @@ func (reader *IndexedReader) AsOfRevision(
 	if locator.CommitSequence != 0 && locator.CommitSequence > snapshot {
 		return row.Row{}, serviceFailure(result.CodeNotFound, "historical Row revision is newer than the read snapshot", nil)
 	}
+	if err := reader.refuseDeleted(ctx, table, rowID); err != nil {
+		return row.Row{}, err
+	}
 	value, err := reader.readBody(table, locator)
 	if err != nil {
 		return row.Row{}, err
 	}
 	return project(table, value), nil
+}
+
+// refuseDeleted stops AS OF from reading back a Row that has been deleted.
+//
+// It asks for the Row's *current* state, not the target revision's: naming a
+// superseded revision is exactly what AS OF is for, so judging the target would
+// refuse every legitimate read. Deletion is what makes a Row unreachable, and
+// unreachable has to include this surface — AS OF is addressable by a RowID
+// someone kept, the same key SHOW HISTORY refuses on, except AS OF hands back
+// the values themselves.
+func (reader *IndexedReader) refuseDeleted(ctx context.Context, table catalog.Table, rowID string) error {
+	current, err := reader.CurrentIncludingDeleted(ctx, table, rowID)
+	if err != nil {
+		// A missing current body means nothing to protect; let the caller's own
+		// lookup decide what the read returns.
+		return nil
+	}
+	if current.State == row.StateDeleted {
+		return serviceFailure(result.CodeNotFound, fmt.Sprintf("row %q was not found", rowID), nil)
+	}
+	return nil
 }
 
 func (reader *IndexedReader) AsOfCommit(
@@ -297,6 +321,9 @@ func (reader *IndexedReader) AsOfCommit(
 	}
 	if !locatorMatchesTable(locator, table) {
 		return row.Row{}, serviceFailure(result.CodeNotFound, "historical Row was not found in requested table", nil)
+	}
+	if err := reader.refuseDeleted(ctx, table, rowID); err != nil {
+		return row.Row{}, err
 	}
 	value, err := reader.readBody(table, locator)
 	if err != nil {

@@ -166,6 +166,61 @@ func TestNativeUpdateDeleteMSQLUseExpectedRevision(t *testing.T) {
 	}
 }
 
+// TestNativeAsOfRefusesADeletedRowWithoutAnAuthority covers the same contract as
+// the daemon-level test, on the Repository path an Instance uses when it runs
+// without a Page authority. A deleted Row is unreachable, and AS OF is a read of
+// the values themselves, so it has to refuse too — otherwise the one surface
+// that hands back full content would be the one left open.
+func TestNativeAsOfRefusesADeletedRowWithoutAnAuthority(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	now := time.Date(2026, 8, 22, 15, 0, 0, 0, time.UTC)
+	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{
+		IDs: &testIDs{values: []string{"database", "table", "title"}}, Clock: testClock{value: now},
+	})
+	rows := NewService(New(file), dictionary, ServiceOptions{
+		IDs: &testIDs{values: []string{"first"}}, Clock: testClock{value: now},
+	})
+	engine := executor.New(dictionary, rows)
+	executeMSQL(t, ctx, engine, "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(20) NOT NULL PURPOSE 'Title')", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "INSERT INTO work.notes (title) VALUES ('first')", executor.Parameters{}, executor.MutationOptions{ExpectedSchemaVersion: 1, MaxAffectedRows: 1})
+	executeMSQL(t, ctx, engine,
+		"UPDATE work.notes SET title = 'second' WHERE row_id = 'row_first'", executor.Parameters{},
+		executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1},
+	)
+
+	// Alive: AS OF is a supported read of an earlier revision.
+	alive, err := rows.AsOfRevision(ctx, "work", "notes", "row_first", 1)
+	if err != nil || alive.Values["title"] != "first" {
+		t.Fatalf("AS OF on a live Row = %#v, %v", alive.Values, err)
+	}
+
+	executeMSQL(t, ctx, engine,
+		"DELETE FROM work.notes WHERE row_id = 'row_first'", executor.Parameters{},
+		executor.MutationOptions{ExpectedSchemaVersion: 1, ExpectedRevision: 2, MaxAffectedRows: 1},
+	)
+
+	var stable interface{ StableCode() string }
+	if _, err := rows.AsOfRevision(ctx, "work", "notes", "row_first", 1); err == nil {
+		t.Fatal("AsOfRevision must refuse a deleted Row")
+	} else if !errors.As(err, &stable) || stable.StableCode() != string(result.CodeNotFound) {
+		t.Fatalf("AsOfRevision error = %v", err)
+	}
+	if _, err := rows.AsOfCommit(ctx, "work", "notes", "row_first", 1); err == nil {
+		t.Fatal("AsOfCommit must refuse a deleted Row")
+	} else if !errors.As(err, &stable) || stable.StableCode() != string(result.CodeNotFound) {
+		t.Fatalf("AsOfCommit error = %v", err)
+	}
+}
+
 func TestNativeHistoryMSQLSurvivesReopen(t *testing.T) {
 	t.Parallel()
 
