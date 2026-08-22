@@ -4,8 +4,11 @@
 其余文档按 Feature 切分、在各自验收门通过时冻结，是证据链而非现状描述——
 本文每一节末尾指向对应的冻结规格。
 
-设计终点见[聚簇行存储 v1](./clustered-row-storage-v1.md)。
+设计终点见[写入形态](../product/write-model.md)——最高产品参考规范。
 现役实现与终点的差距在文末「已知偏差」一节逐条列出。
+
+（此前的设计终点[聚簇行存储 v1](../archive/storage/clustered-row-storage-v1.md)
+已于 2026-08-22 被写入形态取代并归档。）
 
 **编写原则**：每条断言都能指到具体文件或函数。指不到的不写。
 
@@ -157,7 +160,7 @@ schemaVersion}`（`file.go:77`）。
 由于每个版本是一条独立记录，**这张表随"历史上写过多少次"增长，
 不随活跃数据增长**。一行改 100 次就是 100 个永不释放的条目。
 这是与数据量相关的唯一无上界常驻结构，也是
-[聚簇行存储 v1](./clustered-row-storage-v1.md) 要消除的目标。
+[写入形态](../product/write-model.md)要消除的目标。
 
 `File.Enumerations()`（`file.go:455`）计数全库扫描（`IDs`／`Records`），
 作为"读路径不得枚举全库"的回归护栏。
@@ -167,19 +170,25 @@ schemaVersion}`（`file.go:77`）。
 
 ## 8. 各类对象现在存在哪
 
-| Object Kind | 正文在哪 | 索引 | 目标（见新设计） |
+「目标」一列按[写入形态](../product/write-model.md)填写。
+
+| Object Kind | 正文在哪 | 索引 | 目标（写入形态） |
 | --- | --- | --- | --- |
-| Row（当前版本） | versions 树叶子 | current 树给 revision | **current 树叶子** |
-| Row（历史版本） | versions 树叶子 | versions 树 | 记录文件，仅按指针链到达 |
-| History | 记录文件 | 内存表 | **整个删除**，归属并入 Change Log |
-| Database／Table／Column | 记录文件 | catalog 树 + 内存表 | objects 树叶子 |
-| Route／两种 Membership | 记录文件 | **仅内存表** | objects 树叶子 |
-| Relation | 记录文件 | **仅内存表** | objects 树叶子 |
-| Configuration／SnapshotMeta／Opaque | 记录文件 | **仅内存表** | objects 树叶子 |
-| CommittedChange | 记录文件 | change 树 | objects 树叶子 |
+| Row（当前版本） | versions 树叶子 | current 树给 revision | **该表专属的聚簇 B+ 树**，叶子即正文 |
+| Row（历史版本） | versions 树叶子 | versions 树 | **该表专属的 history 表**，键 `(row_id, 序号)` |
+| History | 记录文件 | 内存表 | **升格为每业务表一张 history 表**（不是删除） |
+| Database／Table／Column | 记录文件 | catalog 树 + 内存表 | 树叶子 |
+| Route | 记录文件 | **仅内存表** | 树叶子；**叶子直接挂 RowID** |
+| 两种 Membership | 记录文件 | **仅内存表** | **整个删除**——叶子直接挂 RowID，不再有独立对应关系 |
+| Relation | 记录文件 | **仅内存表** | 树叶子 |
+| Configuration／SnapshotMeta／Opaque | 记录文件 | **仅内存表** | 树叶子 |
+| CommittedChange | 记录文件 | change 树 | **分离为独立的 change log**，与 binlog 不同文件 |
 
 「仅内存表」的那几行意味着：读它们只能靠 `file.IDs(kind)` 全库枚举，
 或按名字查那张常驻表。
+
+注意 History 一行与上一版设计相反：曾计划整个删除、把归属并入 Change Log
+（`48ef5b6` 已按此加了 `Row.ChangeSequence` 外键），写入形态改为让它升格成表。
 
 ## 9. 三个容易混淆的概念
 
@@ -192,10 +201,19 @@ schemaVersion}`（`file.go:77`）。
 | **Change Log** | 谁改的、为什么改，是**归属** | 每个**事务** | `SHOW CHANGES`、审计、同步 |
 
 `snapshot` 不是"数据库快照文件"，是事务可见性水位。
-`ObjectKindHistory` 记录是第二份归属拷贝，与 Change Log 的
+`ObjectKindHistory` 记录目前是第二份归属拷贝，与 Change Log 的
 `change.Metadata`（actor／source／reason／sourceReceiptID）重复，
 `change.Entry` 里甚至有 `HistoryLocator` 字段直接指向它
-（`internal/change/model.go:70`）——它将被删除。
+（`internal/change/model.go:70`）。
+
+**去重方向已改**：曾计划删掉 History、让归属只留在 Change Log 里
+（`48ef5b6` 的 `Row.ChangeSequence` 外键即为此）。
+[写入形态](../product/write-model.md)改为反向去重——归属归 **history 表**
+（每业务表一张，键 `(row_id, 序号)`），change log 收窄为**事务回滚的 undo 依据**。
+
+同时注意日志的命名：[Change Log 与未来同步](./binlog-and-sync.md)那份文档把
+Change Log 叫做 "Binlog"，而写入形态里 change log / redolog / binlog 是**三份不同的
+日志**，binlog 才是唯一恢复依据。
 
 细节：[MVCC、Undo 与 Redo 边界](./mvcc-undo-redo.md)、
 [Change Log 与未来同步](./binlog-and-sync.md)
@@ -216,19 +234,49 @@ schemaVersion}`（`file.go:77`）。
 
 ## 11. 已知偏差
 
-现役实现与[聚簇行存储 v1](./clustered-row-storage-v1.md) 的差距，
-括号内是该文档定义的阶段编号：
+现役实现与[写入形态](../product/write-model.md)的差距，按该规范的四个结构性要求分组。
+**尚未排期**——写入形态于 2026-08-22 确立，实施计划待定。
 
-1. **正文在 versions 树而不是 current 树**（阶段 1）。
-   读一个当前行要降两次树，第二次降的是按版本建键、随历史增长的大树；
-2. **版本链已被删除**（阶段 2）。写入不再产生 previous 指针，
-   解码器仍兼容既有记录；历史读目前靠按 revision 逐个点查；
-3. **`objectindex` 已建好但没有调用方**（阶段 3）。
-   Route／Relation／Config 等仍只能全库枚举；
-4. **Catalog／Change 树只存逻辑 Locator**（阶段 4），正文仍在记录文件；
-   `nativerow.table()` 每读一条记录就重读一遍整个 Catalog；
-5. **`File.records` 常驻表仍在**（阶段 5），`Open()` 仍逐条 CRC 扫完整个文件；
-6. **`ObjectKindHistory` 仍在写**（阶段 1'），与 Change Log 重复；
-7. **Overflow Page 未实现**：单条编码记录超过 8 KiB 硬失败，不跨页拆分；
-8. **`routevector.Generation.vectors`** 把全部 Route 向量常驻内存
-   （`internal/routevector/model.go:125`），随语义索引规模增长，尚未评估。
+### A. 每张表一棵独立 B+ 树（写入形态 §1）
+
+1. **全实例共用一棵 current 树 + 一棵 versions 树**，靠键里嵌 `table_id` 区分
+   （`currentrowindex/codec.go:42` 的 `encodeKey(tableID, rowID)`）。表不是物理分区，
+   而是一个过滤谓词；扫一张表要扫过所有表的条目；
+2. **正文在 versions 树而不是聚簇叶子**。读一个当前行要降两次树，
+   第二次降的是按版本建键、随历史增长的大树；
+3. **RowID 是全局 UUID**（`nativerow/service.go:1355` 的 `uuidSource`），
+   规范要求**按表递增**；`IDSource.Next()` 连表参数都不接受，改造要动接口签名。
+
+### B. history 独立成表（写入形态 §1／§7）
+
+4. **`ObjectKindHistory` 是扁平记录**，不是每业务表一张 B+ 树表，
+   也没有 `(row_id, 序号)` 复合键，读不了范围扫；
+5. **业务行没有 `history_id` 字段**。`48ef5b6` 加的是 `Row.ChangeSequence`
+   （指向 Change Log 事务），方向与规范相反，去留待定。
+
+### C. 语义索引叶子直接挂 RowID（写入形态 §2）
+
+6. **Membership 是独立关系**（`router/model.go:43`），两套实现各自维护正反双向索引；
+   `router.Node` 上没有任何能放 RowID 的字段。约 310 处引用散在 32 个文件里；
+7. **Route／Relation／Config 仅有内存表**：`objectindex` 已建好但没有调用方，
+   这些对象目前只能全库枚举。
+
+### D. 三份日志各司其职（写入形态 §3／§5／§6）
+
+8. **binlog 与 change log 混装在同一个文件**。`database.memora` 事实上已在扮演
+   binlog（append-only、BEGIN/COMMIT 成帧、所有二级结构从它重建），
+   但 change envelope（`ObjectKindCommittedChange`）也塞在同一个记录流里；
+9. **redolog 没有独立的 prepare 阶段**。当前只有单个 commit record + digest
+   （`store/wal/transaction.go`），规范要求 `prepare` → binlog 写成功 → `commit`；
+10. **change log 目前不参与回滚**。规范给它的职责是事务 undo 依据，
+    现在它只做归属／审计，`Rollback()` 只是丢弃未提交的内存缓冲。
+
+### E. 与规范无关的既有欠账
+
+11. **`File.records` 常驻表仍在**，`Open()` 仍逐条 CRC 扫完整个文件；
+    这是与数据量相关的唯一无上界常驻结构（见第 7 节）；
+12. **Catalog／Change 树只存逻辑 Locator**，正文仍在记录文件；
+    `nativerow.table()` 每读一条记录就重读一遍整个 Catalog；
+13. **Overflow Page 未实现**：单条编码记录超过 8 KiB 硬失败，不跨页拆分；
+14. **`routevector.Generation.vectors`** 把全部 Route 向量常驻内存
+    （`internal/routevector/model.go:125`），随语义索引规模增长，尚未评估。

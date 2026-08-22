@@ -1,8 +1,20 @@
 # 聚簇行存储 v1：当前数据在树里，历史版本在链上
 
-状态：**设计定稿，实施中**。取代 [Page Store Authority v1](./page-store-authority-v1.md)
-描述的过渡形态，兑现 [Tablespace/Page/Record 布局](./tablespace-page-record-layout.md)
-里"当前 Row、聚簇索引和二级 B+ Tree"那个一直被标为后置候选的终点。
+状态：**已归档，被取代**（2026-08-22）。继任规范是
+[写入形态](../../product/write-model.md)。**不要照本文实现。**
+
+> **为什么被取代。** 本文的核心结论是"历史版本不进任何树，只靠记录自带的物理指针
+> 成链，读历史可以慢"。写入形态规范给出的是相反的答案：**history 独立成表**
+> （每张业务表配一张，同样是一棵 B+ 树），键为 `(row_id, 序号)`，读一行的完整历史
+> 是一次**范围扫**而不是顺链回溯。两者互斥，不是局部修订。
+>
+> **哪些结论仍然成立**，并已被继任规范吸收：聚簇键不含版本号、叶子里直接是正文、
+> 同一份内容只存一处、常驻内存有上界。写入形态在此之上更进一步——
+> **每张表各是一棵独立的 B+ 树**，而不是全实例共用一棵靠键里嵌 `table_id` 区分。
+>
+> 原状态行：设计定稿，实施中；取代 [Page Store Authority v1](../../storage/page-store-authority-v1.md)
+> 描述的过渡形态，兑现 [Tablespace/Page/Record 布局](../../storage/tablespace-page-record-layout.md)
+> 里"当前 Row、聚簇索引和二级 B+ Tree"那个一直被标为后置候选的终点。
 
 ## 一句话
 
@@ -94,7 +106,7 @@ SHOW HISTORY / AS OF / MVCC 可见性
 下降一棵被历史撑肿的树。稀疏跳点索引（每 N 版一个锚点）是独立候选项，
 需先有基准证据再引入。
 
-删除的 Row 带走自己的历史，见 [F227](../planning/f227-object-archive.md)：
+删除的 Row 带走自己的历史，见 [F227](../../planning/f227-object-archive.md)：
 `SHOW HISTORY` 只按 row_id 寻址，而删除的 Row 不出现在任何列表里。
 
 ## 兼容
@@ -138,8 +150,8 @@ SHOW HISTORY / AS OF / MVCC 可见性
 
 ## 关联
 
-- [Tablespace、Page 与 Record 布局](./tablespace-page-record-layout.md)
-- [Page Store Authority v1](./page-store-authority-v1.md)（过渡形态）
-- [Buffer Pool](./buffer-pool.md)
-- [MVCC、Undo 与 Redo 边界](./mvcc-undo-redo.md)
-- [ADR-0006：MySQL 式 Page/Buffer Pool/WAL](../decisions/0006-mysql-page-buffer-wal-cow.md)
+- [Tablespace、Page 与 Record 布局](../../storage/tablespace-page-record-layout.md)
+- [Page Store Authority v1](../../storage/page-store-authority-v1.md)（过渡形态）
+- [Buffer Pool](../../storage/buffer-pool.md)
+- [MVCC、Undo 与 Redo 边界](../../storage/mvcc-undo-redo.md)
+- [ADR-0006：MySQL 式 Page/Buffer Pool/WAL](../../decisions/0006-mysql-page-buffer-wal-cow.md)

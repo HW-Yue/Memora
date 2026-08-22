@@ -5,19 +5,31 @@
 
 ## 从这里开始
 
-**读这四份就能理解系统现状并派发工作，不需要读 F 编号。**
+**最高产品参考规范——任何设计与实现与这两份冲突时，以这两份为准：**
 
-1. [当前系统能力](./product/system-capabilities.md) — 系统现在是什么、各能力域的成熟度和实测性能；
-2. [已知风险](./development/known-risks.md) — 已确认存在但未被 Feature 文档记录的问题，按严重度排序；
-3. [路线 v2](./planning/roadmap-v2.md) — AI-native 的五个差距与 A/B/C/D 分阶段计划；
-4. [执行计划](./planning/execution-plan.md) — **当前唯一的工作队列**，编号工单，
+1. **[写入形态](./product/write-model.md)** — 数据怎么落库：每张表一棵独立 B+ 树、
+   history 独立成表、语义索引叶子直接挂 RowID、三份日志各司其职、binlog 唯一恢复依据；
+2. **[查询形态](./product/query-model.md)** — 数据怎么被找到：发现 → 语义导航 →
+   叶子拿 RowID → 回表点查 → 查历史，一条有界导航链路。
+
+**再读这四份理解系统现状并派发工作，不需要读 F 编号。**
+
+3. [当前系统能力](./product/system-capabilities.md) — 系统现在是什么、各能力域的成熟度和实测性能；
+4. [已知风险](./development/known-risks.md) — 已确认存在但未被 Feature 文档记录的问题，按严重度排序；
+5. [路线 v2](./planning/roadmap-v2.md) — AI-native 的五个差距与 A/B/C/D 分阶段计划；
+6. [执行计划](./planning/execution-plan.md) — **当前唯一的工作队列**，编号工单，
    每项带前置、改动范围、RED 和完成判据。派发实现从这里取。
 
 配套的最高层原则与规则：
 
-- [AI-native 产品宪章](./product/ai-native-product-charter.md) — 最高层产品原则和永久边界；
+- [AI-native 产品宪章](./product/ai-native-product-charter.md) — 最高层产品原则和永久边界。
+  方向与边界看宪章，写入与查询的具体形态看上面两份规范；
 - [Feature 产品门](./planning/feature-product-gate.md)与
   [TDD 协议](./planning/feature-tdd-protocol.md) — 新开发的拆分、授权和验收规则。
+
+> **注意**：写入与查询形态规范于 2026-08-22 确立，仓库里相当一部分存储与查询文档
+> 早于它。凡头部带「**目标形态已改**」注记的，只如实描述**当前代码**，
+> 可以照它读代码，但**不能作为新开发的设计依据**。
 
 ## Feature 账本（按编号回溯用，不是导航入口）
 
@@ -151,11 +163,13 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 
 - **[存储层：当前实现总览](./storage/README.md)** — 现在实际是什么样，
   逐层给出事实并指向对应的冻结规格。读懂这一层的唯一入口；
-- **[聚簇行存储 v1](./storage/clustered-row-storage-v1.md)** — 设计终点：
-  当前数据在树里、历史版本在链上。总览末尾列出两者之间的已知偏差。
+- **[写入形态](./product/write-model.md)** — 存储层的**设计终点**，
+  最高产品参考规范。总览末尾列出现役实现与它之间的已知偏差。
 
 其余按 Feature 切分的规格在各自验收门通过时冻结，是证据链而非现状描述，
-从总览的对应小节进入。被取代的已移入 `archive/storage/`。
+从总览的对应小节进入。被取代的已移入 `archive/storage/`——包括
+[聚簇行存储 v1](./archive/storage/clustered-row-storage-v1.md)，
+它曾是设计终点，2026-08-22 被写入形态取代。
 
 ### 使用与观察
 

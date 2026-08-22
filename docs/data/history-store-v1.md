@@ -2,6 +2,13 @@
 
 状态：F17a–F17c 追加、Row API 和 MSQL 历史链路已实现。
 
+> **目标形态已改。** 本文描述的"History 是一种系统对象、每个 Row 版本一条独立记录"
+> 已被[写入形态](../product/write-model.md)取代：**history 独立成表**——每张业务表配
+> 一张 history 表，同样是一棵 B+ 树，键为 `(row_id, 序号)`，读一行的完整历史是一次
+> **范围扫**；业务行带 `history_id` 直接跳到最近一次改动。
+> 本文仍如实描述**当前代码**（`ObjectKindHistory` 扁平记录），在实现改完之前可以照它
+> 读代码，但**不能作为新开发的设计依据**。
+
 ## 目的与边界
 
 History Store 保存已提交 Row 的长期语义 revision，用于解释“谁、从哪里、为什么改了什么”。它是权威数据，不是事务 Undo，也不参与 Undo Purge。原型通过 `Store`/`Tx` 持久化 `memora.history/v1` 逻辑记录，不暴露 SQLite 表或文件编码。

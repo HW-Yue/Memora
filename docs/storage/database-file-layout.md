@@ -1,7 +1,14 @@
 # Database 物理目录
 
-状态：B+ Tree 是必做主索引；本文的完整 Tablespace/History/独立 generation
-目录仍是后置候选。F81–F97 先在当前 Database 物理边界内实现 Page/root。
+状态：B+ Tree 是必做主索引；F81–F97 先在当前 Database 物理边界内实现 Page/root。
+
+> **目标形态已改，本文一处判断需要订正。** 原状态行把"完整 Tablespace/History/
+> 独立 generation 目录"标为**后置候选**——[写入形态](../product/write-model.md)把
+> per-table 切分变成了**目标**：每张业务表一棵独立 B+ 树，每张业务表另配一张
+> history 表（同样一棵独立树）。此外 `database.memora` 的角色收敛为 **binlog**
+> （唯一恢复依据），change log 分离为独立日志。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。
 
 ## 稳定目录身份
 

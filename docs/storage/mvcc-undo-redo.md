@@ -5,6 +5,20 @@ Store writer，物理 Undo 继续后置。见
 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)和
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
+> **目标形态已改，本文两处结论作废。**
+> [写入形态](../product/write-model.md)取代了它们：
+>
+> 1. **日志分工与命名**。本文标题里的 "Binlog" 指的是 Change Log。新形态里这是
+>    **三份不同的日志**：change log 管事务回滚（undo）、redolog 管
+>    `prepare`/`commit` 崩溃原子性、**binlog 是唯一恢复依据**。
+>    下文凡称 "Binlog" 之处，按 change log 理解；
+> 2. **history 的去向**。下文"该记录类型将被删除，`SHOW HISTORY` 改由版本链取数据 +
+>    Change Log 取归属拼出"**不再是目标**。新形态是 **history 独立成表**——每张业务表
+>    配一张 history 表，键 `(row_id, 序号)`，读一行的完整历史一次范围扫。
+>
+> 本文的 MVCC、snapshot 水位、事务与版本标识几节仍然有效，也仍如实描述当前代码。
+> 上述两处**不能作为新开发的设计依据**。
+
 ## 先分清三个东西
 
 这三样都在描述"这行数据怎么变成现在这样"，但粒度和用途完全不同。
@@ -22,9 +36,15 @@ Store writer，物理 Undo 继续后置。见
 而 Change Log 的 `change.Metadata` 已经按事务记了同一批字段，
 `change.Entry` 里甚至有 `HistoryLocator` 直接指向它
 （`internal/change/model.go:70`）。一个事务碰 50 行只有一条 envelope，
-把归属抄到 50 个版本上才是真重复。该记录类型将被删除，
-`SHOW HISTORY` 改由「版本链取数据 + Change Log 按 commit_sequence 取归属」拼出。
-见[聚簇行存储 v1](./clustered-row-storage-v1.md)与[存储层总览](./README.md)。
+把归属抄到 50 个版本上才是真重复。
+
+> 这一段的**诊断**成立（当前确实是两份归属拷贝），但它开的**药方已作废**。
+> 曾经的计划是删掉该记录类型、让 `SHOW HISTORY` 由「版本链取数据 + Change Log 取归属」
+> 拼出——`48ef5b6` 已按此加了 `Row.ChangeSequence` 外键。
+> [写入形态](../product/write-model.md)给的是另一个答案：**history 独立成表**，
+> 归属就存在 history 表里，一行的全部变更按 `(row_id, 序号)` 范围扫。
+> `Row.ChangeSequence` 在新形态下何去何从待定。
+> 现状见[存储层总览](./README.md)。
 
 ## 事务与版本标识
 

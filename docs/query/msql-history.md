@@ -2,6 +2,13 @@
 
 状态：F17c 已实现；F112 已补充 History snapshot cursor。
 
+> **目标形态已改。** 本文描述的 MSQL 历史读取建立在"History 是一种系统对象"之上，
+> 已被[写入形态](../product/write-model.md)取代：history 独立成表，键为
+> `(row_id, 序号)`，读一行的完整历史是一次**范围扫**。
+> 对外语法（`SHOW HISTORY`、`AS OF`）预期不变，变的是它底下怎么取数。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。
+
 ## AS OF
 
 历史 snapshot 通过 SELECT 的 table 后缀读取：

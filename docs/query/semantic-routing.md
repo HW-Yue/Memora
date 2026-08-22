@@ -5,6 +5,15 @@ F77 增加按需中间 Route synopsis，F111 冻结 snapshot cursor 读取协议
 将 Leaf 冻结为单 Row locator，F182a 增加 alias MSQL round-trip；ADR-0007 允许可回退的
 Route 候选预测器。
 
+> **目标形态已改。** 本文描述的 Leaf → Row 是靠独立的 **Membership 关系**建立的
+> （`router.Membership`，自带 revision 与正反双向索引）。
+> [写入形态](../product/write-model.md)取代了这一层：**叶子直接挂 RowID**，
+> 找到叶子 = 找到它下面的 RowID，不再有独立的 membership 对应关系。
+> **不变的是**："一个 Leaf 最多一个活跃 Row"这条不变量保留，同一 Row 仍可属于多个
+> Leaf；变的只是它靠什么实现。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。
+
 ## 定义
 
 Router 是给 AI 阅读的多层多叉语义目录树。它不是 B+ Tree、文件目录、Vector

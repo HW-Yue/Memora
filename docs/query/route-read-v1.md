@@ -2,6 +2,13 @@
 
 状态：F111 已实现；F182a 增加有界 Route aliases 读取列；SHOW 增加 database_id/table_id scope 字段。
 
+> **目标形态已改。** 本文的 `OPEN ROUTE` 读 Leaf 成员是走独立的 **Membership**
+> 索引（按 leaf ID 查 locator 列表）。[写入形态](../product/write-model.md)与
+> [查询形态](../product/query-model.md)取代了这一层：**叶子直接挂 RowID**，
+> 拿到叶子就拿到 RowID，不再经 membership 关系。对外读取协议预期不变。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。
+
 ## 目的
 
 Admin 与 Agent 使用同一条 MSQL 链路逐层读取 Table Router：point node、children page、

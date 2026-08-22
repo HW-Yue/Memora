@@ -2,6 +2,17 @@
 
 状态：F85 已完成；冻结已提交 Page redo 的幂等重放边界。
 
+> **目标形态已改。** 本文的恢复只重放 Redo WAL 的 Page 物理日志，
+> 已被[写入形态](../product/write-model.md)取代，两处不同：
+>
+> 1. **binlog 是唯一恢复依据**——业务表当前数据、history 表、语义索引挂载都从 binlog
+>    重放重建；redolog 退到只判定"哪些事务算已提交"，不再充当业务数据的重建来源；
+> 2. redolog 要有**显式 `prepare` → `commit` 两阶段标记**（binlog 写成功后才置
+>    commit）。当前 WAL 只有单个 commit record + digest，没有独立的 prepare 阶段。
+>
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。
+
 ## 输入与顺序
 
 Recovery 接收一个已由 F83 校验的 WAL Segment，以及 `space_id → Page Store` 映射。
