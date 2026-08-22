@@ -2,6 +2,16 @@
 
 状态：F15e Executor 与 F16b batch transaction / Result Envelope 接线已实现。
 
+> **目标形态已改——但 `route_leaf_ids` 的三态语义保留。**
+> 本文冻结的「非 nil 完整快照 = 替换 / 缺省 = 保留 / DELETE = 清空」在
+> [写入形态](../product/write-model.md)下不变，wire 面也不变。
+> 变的是落地方式：不再写独立的 membership 记录，而是直接改叶子上的 RowID 字段，
+> 并同事务更新反向索引树。
+> 一并消失的是 membership 自带的 `MembershipRevision` 与墓碑——
+> 挂载关系并进叶子后由叶子自己的 revision 接管。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码。
+> 迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+
 F31 起，Canonical Skill 的正式自主写入先通过版本化 Mutation Plan 和
 Policy，再由本 Executor 执行；直接 `exec` 仍是底层逻辑 MSQL 入口，不能
 替代写前发现、decision、完整语义快照和 verify。详见

@@ -3,6 +3,12 @@
 状态：F31 已冻结 Mutation Plan、Policy、短事务和收据协议；F76 已把
 SPLIT/MERGE 收敛为单条公开原子 MSQL。
 
+> **目标形态已改。** 本文提到的 Route membership 是一种独立的挂载关系记录；
+> [写入形态](../product/write-model.md)取代了它——**叶子直接挂 RowID**，
+> 挂载不再是单独的对象。策略里「最多 32 个 Route membership」「同一 Row 仍可属于多个 Leaf」**都保留**。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码。
+> 迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+
 ## Mutation Plan
 
 宿主查询相邻 Row 后，把语义决定写成 `memora.mutation-plan/v1`：

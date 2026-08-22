@@ -2,6 +2,12 @@
 
 状态：F38 实现规格，已冻结。
 
+> **目标形态已改。** 本文提到的 Route membership 是一种独立的挂载关系记录；
+> [写入形态](../product/write-model.md)取代了它——**叶子直接挂 RowID**，
+> 挂载不再是单独的对象。逻辑 Undo 快照仍需携带同等信息，字段承载方式改变。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码。
+> 迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+
 ## 反馈不修改事实
 
 宿主通过 `memora feedback --event <JSON>` 发送

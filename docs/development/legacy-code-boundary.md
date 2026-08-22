@@ -23,6 +23,14 @@
 - `internal/catalog`、`internal/row`、`internal/router`、`internal/snapshot`：仍被迁移、
   package、逻辑快照和 native parity/reference-model 测试使用；不是生产存储 authority，
   但目前不能删除；
+  - 补充（2026-08-22）：`internal/router/service.go` 的 **membership 部分**
+    （`ReplaceMembershipsIn`、`MembershipsForRowIn`、`router_leaf_members` 与
+    `router_row_memberships` 两个 bucket）对 daemon **已是死代码**——生产只构造
+    `nativerouter.New`（`internal/daemon/lifecycle.go:199`），而 `row.New(` 的调用方
+    全是测试。它随[叶子直挂 RowID](../storage/leaf-rowid-v1.md) 的迁移一并退场，
+    但删除仍受本文下面的删除规则约束：先证明不在生产依赖图中，并先加 RED。
+    同一迁移里 `nativerouter.Repository.Attach`（`repository.go:134`）也没有
+    非测试调用方；
 - Page index legacy reader 与旧 snapshot decoder：承担已发布格式的显式升级和 corruption
   证据；
 - MCP 旧协议版本：属于明确的客户端兼容面，不是旧产品检索思路；

@@ -166,6 +166,11 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - **[写入形态](./product/write-model.md)** — 存储层的**设计终点**，
   最高产品参考规范。总览末尾列出现役实现与它之间的已知偏差。
 
+落实写入形态的迁移设计：
+
+- [叶子直挂 RowID](./storage/leaf-rowid-v1.md) — membership 的废弃与迁移：
+  职责拆解、反向索引树、对外可见面变更与分阶段顺序。
+
 其余按 Feature 切分的规格在各自验收门通过时冻结，是证据链而非现状描述，
 从总览的对应小节进入。被取代的已移入 `archive/storage/`——包括
 [聚簇行存储 v1](./archive/storage/clustered-row-storage-v1.md)，

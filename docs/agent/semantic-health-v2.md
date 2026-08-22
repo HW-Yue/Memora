@@ -2,6 +2,25 @@
 
 状态：F128 已完成。
 
+> **目标形态已改，本文的四类 membership 问题项里有三类将结构性消失。**
+> [写入形态](../product/write-model.md)让**叶子直接挂 RowID**，不再有独立的
+> membership 关系，于是：
+>
+> - `stale_membership`（locator revision 与当前 Row 不同）——叶子上不存 revision，
+>   无从过期；
+> - `invalid_membership_scope`（locator 的 Database/Table 与 leaf 不一致）——
+>   叶子自己就带这两个字段，不存在第二份可以对不上；
+> - `multi_row_leaf`（一个叶子挂了多行）——一个字段放不下两个 RowID。
+>
+> 三者从"要扫、要报告、要人工修"变成**不可能发生**。
+> `unrouted_row`（live Row 没有 live 挂载）与 `orphan_membership`（指向不存在的 Row）
+> 保留，改由反向索引树解析。
+> **这是对外可见的能力减少**，实施时须在发布说明中点名。
+>
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
+> 但**不能作为新开发的设计依据**。职责拆解与分阶段迁移见
+> [叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+
 ## 只读快照
 
 `memora maintain --report` 返回 `memora.semantic-health/v2`。扫描读取当前 Catalog、每表

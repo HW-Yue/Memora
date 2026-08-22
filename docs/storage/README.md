@@ -256,8 +256,12 @@ Change Log 叫做 "Binlog"，而写入形态里 change log / redolog / binlog �
 
 ### C. 语义索引叶子直接挂 RowID（写入形态 §2）
 
-6. **Membership 是独立关系**（`router/model.go:43`），两套实现各自维护正反双向索引；
-   `router.Node` 上没有任何能放 RowID 的字段。约 310 处引用散在 32 个文件里；
+迁移设计已单独成文：[叶子直挂 RowID](./leaf-rowid-v1.md)——
+membership 的职责拆解、每项新归宿、对外可见面变更与分阶段顺序。
+
+6. **Membership 是独立关系**（`router/model.go:43`），native 侧是两个 object kind
+   （9 正向、13 反向，`store/native/file.go:56-65`）；`router.Node` 上没有任何能放
+   RowID 的字段。约 310 处引用散在 32 个文件里；
 7. **Route／Relation／Config 仅有内存表**：`objectindex` 已建好但没有调用方，
    这些对象目前只能全库枚举。
 

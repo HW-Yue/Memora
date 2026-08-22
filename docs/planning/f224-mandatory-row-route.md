@@ -3,6 +3,13 @@
 状态：候选，2026-08-11 提出；尚未 Review、尚未获得实现授权。
 沿用 [F223](./f223-route-branch-fanout-limit.md) 的处理形状：越界不是警告，是写入失败。
 
+> **目标形态已改，本候选需按新形态重写后再评估。** 本文建立在
+> membership 之上（「Row 有没有 live membership」是它的判据）。
+> [写入形态](../product/write-model.md)去掉了独立的 membership 关系——
+> 叶子直接挂 RowID，判据变成"有没有叶子指向这个 Row"，靠反向索引树回答。
+> **问题本身依然成立**（零 Route 归属的孤儿 Row 要在写入时挡住），
+> 变的是判据的取法。迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+
 ## 问题
 
 一条 Row 可以在**没有任何 Route 归属**的情况下写入成功，无报错、无警告。

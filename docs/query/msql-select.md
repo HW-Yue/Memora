@@ -2,6 +2,14 @@
 
 状态：F15d 已实现；F112 已补充 point Row detail metadata；每条 Row 返回 `route_paths`。
 
+> **目标形态已改——但 `route_paths` 的行为不变，只是换数据来源。**
+> 本文说它「由 `row_id → memberships` 反向索引直接解析」。
+> [写入形态](../product/write-model.md)去掉了独立的 membership 关系，
+> 这个反查改由一棵专门的**反向索引树**（`row_id → leaf_ids`）承担。
+> 返回内容、字段名和语义都不变。
+> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码。
+> 迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+
 ## 绑定边界
 
 F15d SELECT 必须：
