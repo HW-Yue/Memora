@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -211,26 +212,13 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		reopenedRoute.Results[0].Rows[0]["revision"] != float64(2) {
 		t.Fatalf("reopened Route = %#v", reopenedRoute)
 	}
-	e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
-		"--input", statementInput(
-			map[string]any{"row": rowID},
-			map[string]any{
-				"expected_schema_version": 1, "expected_revision": 2, "max_affected_rows": 1,
-				"actor": "agent:e2e", "source": "e2e:delete", "reason": "verify compensation",
-			},
-		),
-		"DELETE FROM work.notes WHERE row_id = :row")
-	deletedRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
-		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
-		"OPEN ROUTE :leaf LIMIT 1")
-	if len(deletedRoute.Results[0].Rows) != 0 {
-		t.Fatalf("Route after DELETE = %#v", deletedRoute)
-	}
+	// RESTORE rewinds a live Row to an earlier revision. It is not a way back
+	// from DELETE — deletion is final, which is proven on its own Row below.
 	restored := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
 		"--input", statementInput(
-			map[string]any{"row": rowID, "revision": 2},
+			map[string]any{"row": rowID, "revision": 1},
 			map[string]any{
-				"expected_schema_version": 1, "expected_revision": 3, "max_affected_rows": 1,
+				"expected_schema_version": 1, "expected_revision": 2, "max_affected_rows": 1,
 				"route_leaf_ids": []string{leafID},
 				"actor":          "agent:e2e", "source": "e2e:restore", "reason": "verify compensation",
 			},
@@ -239,17 +227,18 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	restoredRoute := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
 		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
 		"OPEN ROUTE :leaf LIMIT 1")
-	if restored.Results[0].Revision == nil || *restored.Results[0].Revision != 4 ||
+	if restored.Results[0].Revision == nil || *restored.Results[0].Revision != 3 ||
 		len(restoredRoute.Results[0].Rows) != 1 ||
 		restoredRoute.Results[0].Rows[0]["row_id"] != rowID ||
-		restoredRoute.Results[0].Rows[0]["revision"] != float64(4) {
+		restoredRoute.Results[0].Rows[0]["revision"] != float64(3) {
 		t.Fatalf("Route after RESTORE = restore %#v, route %#v", restored, restoredRoute)
 	}
+	verifyDeletionIsFinal(t, root, binary, dataDir, branchID)
 	feedbackEvent := feedback.Event{
 		Version: feedback.EventVersion, EventID: "e2e-feedback-wrong",
 		Kind: feedback.KindWrong, Actor: "user:e2e",
 		Reason: "the restored wording is not the confirmed revision",
-		Target: feedback.Target{Database: "work", Table: "notes", RowID: rowID, Revision: 4},
+		Target: feedback.Target{Database: "work", Table: "notes", RowID: rowID, Revision: 3},
 	}
 	encodedFeedback, err := json.Marshal(feedbackEvent)
 	if err != nil {
@@ -258,14 +247,14 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	var feedbackReceipt feedback.Receipt
 	e2eJSON(t, root, &feedbackReceipt, binary,
 		"feedback", "--data-dir", dataDir, "--event", string(encodedFeedback))
-	if feedbackReceipt.Status != "recorded" || feedbackReceipt.Target.Revision != 4 {
+	if feedbackReceipt.Status != "recorded" || feedbackReceipt.Target.Revision != 3 {
 		t.Fatalf("Feedback Receipt = %#v", feedbackReceipt)
 	}
 	confirmation := feedback.Confirmation{
 		Version: feedback.ConfirmationVersion, ConfirmationID: "e2e-confirm-undo",
 		FeedbackEventID: feedbackEvent.EventID, SourceEventID: "e2e:user-confirmation",
 		Actor: "agent:e2e", Instruction: "restore the last confirmed wording",
-		Action: feedback.ActionUndo, ExpectedRevision: 4,
+		Action: feedback.ActionUndo, ExpectedRevision: 3,
 		AuthorizedDatabases: []string{"work"},
 		Undo: &feedback.Undo{
 			TargetRevision: 2, ExpectedSchemaVersion: 1, RouteLeafIDs: []string{leafID},
@@ -279,7 +268,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 	e2eJSON(t, root, &confirmationReceipt, binary,
 		"feedback", "--data-dir", dataDir, "--confirmation", string(encodedConfirmation))
 	if confirmationReceipt.Status != "confirmed" || !confirmationReceipt.Verified ||
-		confirmationReceipt.NewRevision == nil || *confirmationReceipt.NewRevision != 5 ||
+		confirmationReceipt.NewRevision == nil || *confirmationReceipt.NewRevision != 4 ||
 		confirmationReceipt.RestoredRevision == nil || *confirmationReceipt.RestoredRevision != 2 {
 		t.Fatalf("Feedback Confirmation Receipt = %#v", confirmationReceipt)
 	}
@@ -288,7 +277,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		"OPEN ROUTE :leaf LIMIT 1")
 	if len(openedAfterFeedback.Results[0].Rows) != 1 ||
 		openedAfterFeedback.Results[0].Rows[0]["row_id"] != rowID ||
-		openedAfterFeedback.Results[0].Rows[0]["revision"] != float64(5) {
+		openedAfterFeedback.Results[0].Rows[0]["revision"] != float64(4) {
 		t.Fatalf("Route after feedback undo = %#v", openedAfterFeedback)
 	}
 	var health semantichealth.Report
@@ -331,7 +320,7 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 				"source": rowID, "first": "manifest atomicity", "second": "manifest generation",
 			},
 			map[string]any{
-				"expected_schema_version": 1, "expected_revision": 5, "max_affected_rows": 3,
+				"expected_schema_version": 1, "expected_revision": 4, "max_affected_rows": 3,
 				"target_route_leaf_ids":    [][]string{{leafID}, {secondLeafID}},
 				"relation_target_ordinals": map[string]int{relationID: 1},
 				"route_updates": []map[string]any{{
@@ -481,8 +470,13 @@ func TestLocalDatabaseVerticalSliceThroughCLIAndDaemon(t *testing.T) {
 		"SELECT row_id FROM work.notes LIMIT 10")
 	var doctor doctorOutput
 	e2eJSON(t, root, &doctor, binary, "doctor", "--data-dir", dataDir)
+	// doctor counts the logical snapshot export, and AllRows/AllHistory do not
+	// filter by state — a deleted Row and its History still export. So the Row
+	// retired by verifyDeletionIsFinal adds one Row and two History entries
+	// (insert, delete), while the main Row lost one revision when DELETE left
+	// its lifecycle.
 	if doctor.Status != "healthy" || doctor.Databases != 1 ||
-		doctor.Rows != 5 || doctor.History != 12 || doctor.Relations != 3 ||
+		doctor.Rows != 6 || doctor.History != 13 || doctor.Relations != 3 ||
 		doctor.SnapshotHash == "" {
 		t.Fatalf("final doctor = %#v", doctor)
 	}
@@ -519,6 +513,66 @@ func routeContainsRevision(envelope result.Envelope, rowID string, revision floa
 		}
 	}
 	return false
+}
+
+// verifyDeletionIsFinal proves the DELETE contract end to end: the Route Leaf
+// empties out, and RESTORE refuses to bring the Row back.
+//
+// It uses a Row created for this and nothing else. The slice's main Row has to
+// stay live for SPLIT/MERGE and the post-restart reads, and deletion is final,
+// so the two cannot be the same Row.
+func verifyDeletionIsFinal(t *testing.T, root, binary, dataDir, branchID string) {
+	t.Helper()
+	leaf := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{
+				"parent": branchID, "name": "retired-note", "kind": "leaf",
+				"purpose": "Row retired to prove deletion is final",
+			},
+			map[string]any{"max_affected_rows": 1},
+		),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose")
+	leafID, _ := leaf.Results[0].Rows[0]["route_id"].(string)
+	inserted := e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(nil, map[string]any{
+			"expected_schema_version": 1, "max_affected_rows": 1,
+			"route_leaf_ids": []string{leafID},
+			"actor":          "agent:e2e", "source": "e2e:retire", "reason": "delete subject",
+		}),
+		"INSERT INTO work.notes (title) VALUES ('retired manifest')")
+	doomedID, _ := inserted.Results[0].Rows[0]["row_id"].(string)
+
+	e2eEnvelope(t, root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{"row": doomedID},
+			map[string]any{
+				"expected_schema_version": 1, "expected_revision": 1, "max_affected_rows": 1,
+				"actor": "agent:e2e", "source": "e2e:delete", "reason": "verify deletion is final",
+			},
+		),
+		"DELETE FROM work.notes WHERE row_id = :row")
+	emptied := e2eEnvelope(t, root, binary, "query", "--data-dir", dataDir,
+		"--input", statementInput(map[string]any{"leaf": leafID}, nil),
+		"OPEN ROUTE :leaf LIMIT 1")
+	if len(emptied.Results[0].Rows) != 0 {
+		t.Fatalf("Route after DELETE = %#v", emptied)
+	}
+
+	output, err := e2eRun(root, binary, "exec", "--data-dir", dataDir,
+		"--input", statementInput(
+			map[string]any{"row": doomedID, "revision": 1},
+			map[string]any{
+				"expected_schema_version": 1, "expected_revision": 2, "max_affected_rows": 1,
+				"actor": "agent:e2e", "source": "e2e:resurrect", "reason": "deletion must be final",
+			},
+		),
+		"RESTORE work.notes ROW :row TO REVISION :revision")
+	if err == nil {
+		t.Fatalf("RESTORE must not resurrect a deleted Row, got: %s", output)
+	}
+	if !strings.Contains(output, "deletion is final") {
+		t.Fatalf("the refusal should say deletion is final, got: %s", output)
+	}
 }
 
 func e2eEnvelope(

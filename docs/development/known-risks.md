@@ -157,6 +157,25 @@ Database Package 有 7 份产品文档，读文档会以为能用。
 route 向量装进内存，`OpenActive` 每次查询重新加载并重新校验，无缓存。
 方向已裁定保留，见[候选预测器只给路径](../query/predictor-path-only-v1.md)。
 
+### 7e. 「删除是终态」在 MSQL 面成立，在逻辑快照面不成立
+
+F227 把删除定为终态：`SHOW HISTORY` 拒绝服务已删除 Row 的历史
+（`internal/daemon/f227_row_relation_archive_test.go` 断言"a deleted Row must
+take its History with it"），`RESTORE` 拒绝复活
+（`internal/nativerow/service.go:652-659`）。
+
+但**逻辑快照仍然导出它们**：`nativesnapshot` 走
+`rows.AllRows()`／`rows.AllHistory()`（`internal/nativesnapshot/native.go:85,89`），
+两者都**不按 state 过滤**（`internal/nativerow/repository.go:290`）。
+
+实测证据（2026-08-22，`tests/e2e/vertical_slice_test.go`）：新增一个"插入即删除"
+的 Row 后，`doctor` 的 `Rows` 由 5 变 6、`History` 由 12 变 13——
+即已删除的 Row 连同它的两条 History 都进了导出。
+
+后果：导出再导入就能拿回 MSQL 面声称已经消失的历史，「删除是终态」这条产品规则
+在跨实例边界上漏了。需要先判定哪一面是对的——是快照应当过滤，还是 `SHOW HISTORY`
+的规则过严——再改，不要两边各改一半。
+
 ## 轻微：工程卫生
 
 ### 8. CI 只有 macOS runner

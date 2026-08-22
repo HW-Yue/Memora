@@ -175,34 +175,28 @@ func (journey *runtimeJourney) run() error {
 	); err != nil {
 		return err
 	}
-	if _, err := journey.envelope(
-		"row-delete", "exec", mutationInput(map[string]any{"row": rowID}, map[string]any{
-			"expected_schema_version": 1, "expected_revision": 2, "max_affected_rows": 1,
-			"actor": "agent:" + journey.options.Host, "source": "story:delete", "reason": "runtime delete",
-		}), "DELETE FROM work.notes WHERE row_id = :row",
-	); err != nil {
-		return err
-	}
-	if err := journey.discover("after-delete", branchID, leafID, map[string]uint64{}); err != nil {
-		return err
-	}
+	// RESTORE rewinds a live Row to an earlier revision. It is not a way back
+	// from DELETE — that is proven separately below, on a Row created for it.
 	restored, err := journey.envelope(
-		"row-restore", "exec", mutationInput(map[string]any{"row": rowID, "revision": 2}, map[string]any{
-			"expected_schema_version": 1, "expected_revision": 3, "max_affected_rows": 1,
+		"row-restore", "exec", mutationInput(map[string]any{"row": rowID, "revision": 1}, map[string]any{
+			"expected_schema_version": 1, "expected_revision": 2, "max_affected_rows": 1,
 			"route_leaf_ids": []string{leafID}, "actor": "agent:" + journey.options.Host,
 			"source": "story:restore", "reason": "runtime recovery",
 		}), "RESTORE work.notes ROW :row TO REVISION :revision",
 	)
-	if err != nil || revision(restored) != 4 {
+	if err != nil || revision(restored) != 3 {
 		return fmt.Errorf("runtime RESTORE failed: %w", err)
 	}
-	if err := journey.discover("after-restore", branchID, leafID, map[string]uint64{rowID: 4}); err != nil {
+	if err := journey.discover("after-restore", branchID, leafID, map[string]uint64{rowID: 3}); err != nil {
+		return err
+	}
+	if err := journey.deleteIsFinal(branchID); err != nil {
 		return err
 	}
 	feedbackEvent := feedback.Event{
 		Version: feedback.EventVersion, EventID: journey.options.Host + "-feedback",
 		Kind: feedback.KindWrong, Actor: "user:story-gate", Reason: "exercise correction receipt",
-		Target: feedback.Target{Database: "work", Table: "notes", RowID: rowID, Revision: 4},
+		Target: feedback.Target{Database: "work", Table: "notes", RowID: rowID, Revision: 3},
 	}
 	if _, err := journey.jsonCommand("feedback-record", "feedback", "--data-dir", journey.options.DataDir, "--event", mustJSON(feedbackEvent)); err != nil {
 		return err
@@ -218,7 +212,7 @@ func (journey *runtimeJourney) run() error {
 	secondaryLeafID := stringRow(secondaryLeaf, 0, "route_id")
 	split, err := journey.envelope(
 		"row-split", "exec", mutationInput(map[string]any{"row": rowID, "first": "manifest atomicity", "second": "manifest publication"}, map[string]any{
-			"expected_schema_version": 1, "expected_revision": 4, "max_affected_rows": 3,
+			"expected_schema_version": 1, "expected_revision": 3, "max_affected_rows": 3,
 			"target_route_leaf_ids": [][]string{{leafID}, {secondaryLeafID}}, "actor": "agent:" + journey.options.Host,
 			"source": "story:split", "reason": "runtime semantic split",
 		}), "SPLIT work.notes ROW :row INTO (title) VALUES (:first), (:second)",
@@ -388,6 +382,82 @@ func (journey *runtimeJourney) assimilate(leafID string) error {
 	return nil
 }
 
+// deleteIsFinal proves the DELETE contract on a Row created for exactly that:
+// the Route Leaf empties out, and RESTORE refuses to bring the Row back.
+//
+// It needs its own Leaf and Row because deletion is final — the journey's main
+// Row has to stay live for SPLIT/MERGE and the post-restart discovery, so it
+// cannot be the one that gets deleted.
+func (journey *runtimeJourney) deleteIsFinal(branchID string) error {
+	leaf, err := journey.envelope(
+		"route-doomed-leaf-create", "exec",
+		mutationInput(map[string]any{
+			"parent": branchID, "name": "retired-note", "kind": "leaf",
+			"purpose": "Row retired to prove deletion is final",
+		}, map[string]any{"max_affected_rows": 1}),
+		"CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose",
+	)
+	if err != nil {
+		return err
+	}
+	leafID := stringRow(leaf, 0, "route_id")
+	inserted, err := journey.envelope(
+		"row-insert-doomed", "exec", mutationInput(nil, map[string]any{
+			"expected_schema_version": 1, "max_affected_rows": 1,
+			"route_leaf_ids": []string{leafID}, "actor": "agent:" + journey.options.Host,
+			"source": "story:retire", "reason": "runtime delete subject",
+		}), "INSERT INTO work.notes (title) VALUES ('retired manifest')",
+	)
+	if err != nil {
+		return err
+	}
+	rowID := stringRow(inserted, 0, "row_id")
+	if _, err := journey.envelope(
+		"row-delete", "exec", mutationInput(map[string]any{"row": rowID}, map[string]any{
+			"expected_schema_version": 1, "expected_revision": 1, "max_affected_rows": 1,
+			"actor": "agent:" + journey.options.Host, "source": "story:delete", "reason": "runtime delete",
+		}), "DELETE FROM work.notes WHERE row_id = :row",
+	); err != nil {
+		return err
+	}
+	if err := journey.discover("after-delete", branchID, leafID, map[string]uint64{}); err != nil {
+		return err
+	}
+	return journey.refusal(
+		"row-restore-refused", mutationInput(map[string]any{"row": rowID, "revision": 1}, map[string]any{
+			"expected_schema_version": 1, "expected_revision": 2, "max_affected_rows": 1,
+			"actor": "agent:" + journey.options.Host, "source": "story:resurrect", "reason": "runtime delete is final",
+		}), "RESTORE work.notes ROW :row TO REVISION :revision", "deletion is final",
+	)
+}
+
+// refusal records a step whose value is that the binary said no. The CLI exits
+// non-zero, so it cannot go through envelope(); the step is still recorded so
+// the report carries the same evidence as a successful one.
+func (journey *runtimeJourney) refusal(id string, input *string, msql, want string) error {
+	if journey.steps[id] {
+		return fmt.Errorf("runtime story step %q is duplicated", id)
+	}
+	args := []string{"exec", "--data-dir", journey.options.DataDir}
+	if input != nil {
+		args = append(args, "--input", *input)
+	}
+	args = append(args, msql)
+	output, err := exec.CommandContext(journey.ctx, journey.options.Binary, args...).CombinedOutput()
+	if err == nil {
+		return fmt.Errorf("%s: expected the binary to refuse, got: %s", id, output)
+	}
+	if !strings.Contains(string(output), want) {
+		return fmt.Errorf("%s: refusal should mention %q, got: %s", id, want, output)
+	}
+	sum := sha256.Sum256(output)
+	journey.report.Steps = append(journey.report.Steps, Step{
+		ID: id, Surface: "public-cli", OutputSHA256: hex.EncodeToString(sum[:]),
+	})
+	journey.steps[id] = true
+	return nil
+}
+
 func (journey *runtimeJourney) discover(tag, branchID, leafID string, expected map[string]uint64) error {
 	open, err := journey.route(tag, branchID, leafID)
 	if err != nil {
@@ -513,7 +583,7 @@ func (journey *runtimeJourney) storyResults() []StoryResult {
 		"US-READ":       {"after-insert-root", "after-insert-children", "after-insert-open", "after-insert-select-" + firstStepSuffix(journey.steps, "after-insert-select-")},
 		"US-INSERT":     {"row-insert", "after-insert-root", "after-insert-open"},
 		"US-UPDATE":     {"row-update", "after-update-root", "after-update-open"},
-		"US-DELETE":     {"row-delete", "after-delete-root", "after-delete-open"},
+		"US-DELETE":     {"row-delete", "after-delete-root", "after-delete-open", "row-restore-refused"},
 		"US-CORRECT":    {"feedback-record", "row-update", "after-update-root"},
 		"US-SCHEMA":     {"schema-create", "after-insert-schema"},
 		"US-DBA":        {"semantic-health", "final-doctor"},
