@@ -1,12 +1,24 @@
 # 路线 v2：AI-native 差距与后续计划
 
-状态：2026-08-11 建立。取代散落在 `post-f169-development-plan.md`、
-`post-f204-development-plan.md` 和 Feature 状态「新候选」一节的候选清单。
+状态：**已归档，被取代**（2026-08-22）。继任是
+[路线 v3](../../planning/roadmap-v3.md)。
 
-前置阅读：[系统能力](../product/system-capabilities.md)（现在有什么）、
-[已知风险](../development/known-risks.md)（哪里有问题）。
+> **为什么被取代。** 本文写于三份最高准则（写入形态／查询形态／架构原则，
+> 2026-08-22 确立）之前，排序依据是「AI-native 的五个差距」，
+> 于是它派发的 14 项工单里**没有一项**来自那三份准则。
+> v3 把排序依据换成「准则符合性 + 架构审计」，引擎侧提到最前。
+>
+> **本文哪些仍然有效**：它建立的四层文档结构（能力／风险／路线／执行计划／
+> Feature 状态）被 v3 原样保留；**五个差距的诊断也仍然成立**，
+> 已整体收进 v3 的「Agent 侧」一节——只是不再排在最前，理由见 v3。
+>
+> 原状态行：2026-08-11 建立。取代散落在 `post-f169-development-plan.md`、
+> `post-f204-development-plan.md` 和 Feature 状态「新候选」一节的候选清单。
 
-> **要派发工作请用[执行计划](./execution-plan.md)。** 本文档说明为什么是这个顺序；
+前置阅读：[系统能力](../../product/system-capabilities.md)（现在有什么）、
+[已知风险](../../development/known-risks.md)（哪里有问题）。
+
+> **要派发工作请用[执行计划](../../planning/execution-plan.md)。** 本文档说明为什么是这个顺序；
 > 执行计划是编号工作队列，每项带前置、改动范围、RED 和完成判据。
 
 ## 为什么要重排
@@ -19,11 +31,11 @@
 
 | 文档 | 回答 | 更新时机 |
 | --- | --- | --- |
-| [系统能力](../product/system-capabilities.md) | 现在是什么 | 能力交付或移除时 |
-| [已知风险](../development/known-risks.md) | 哪里有问题 | 发现或修复问题时 |
+| [系统能力](../../product/system-capabilities.md) | 现在是什么 | 能力交付或移除时 |
+| [已知风险](../../development/known-risks.md) | 哪里有问题 | 发现或修复问题时 |
 | 本文档 | 接下来做什么、**为什么是这个顺序** | 阶段完成或方向变化时 |
-| [执行计划](./execution-plan.md) | **派发什么工单**、前置与完成判据 | 每项工单完成时 |
-| [Feature 状态](./feature-status.md) | 某能力的历史证据 | 仅追加，不再作为导航入口 |
+| [执行计划](../../planning/execution-plan.md) | **派发什么工单**、前置与完成判据 | 每项工单完成时 |
+| [Feature 状态](../../planning/feature-status.md) | 某能力的历史证据 | 仅追加，不再作为导航入口 |
 
 F 编号继续用于单项开发的 TDD 与授权，但**不再是理解系统的入口**。
 
@@ -34,7 +46,7 @@ AI 那半边有五个真实差距，按依赖顺序排列。
 
 ### 差距 1：Agent 不会导航（结构缺陷，非能力不足）
 
-见[已知风险](../development/known-risks.md)第 1、2 条。当前循环只有一步记忆，
+见[已知风险](../../development/known-risks.md)第 1、2 条。当前循环只有一步记忆，
 且第一条 SELECT（哪怕零行）就终止导航。一个「AI-native 数据库」的 AI 无法完成多跳导航，
 它就只是一个长得像 AI 接口的数据库。
 
@@ -53,7 +65,7 @@ AI 那半边有五个真实差距，按依赖顺序排列。
 
 AI 判断「什么值得写」，写完之后没有任何信号告诉它写得好不好。检索失败不会回流到建模。
 更严重的是原文在 Job 释放后回收，语义分解不可重建——最依赖模型能力的那层恰好不可重建。
-见[语义重建的不对称性](../data/semantic-rebuild-asymmetry.md)。
+见[语义重建的不对称性](../../data/semantic-rebuild-asymmetry.md)。
 
 真正 AI-native 的系统会随时间修正自己的 schema；当前每次吸收都是一次性的。
 
@@ -79,27 +91,27 @@ AI 建 Route，但数据增长后没有重组机制。今天 15 个 Leaf 可以�
 | 项 | 内容 | 依据 |
 | --- | --- | --- |
 | A2 | 证据判定引入行数与充分性条件，零行 SELECT 不再终止导航；`ToolChoiceNone` 改由模型显式声明完成或预算耗尽触发。改动小，先做 | 风险 2 |
-| A1 | [F220](./f220-query-working-set.md) Query Working Set Stage 1：Row + 完整 Route 链路的有界工作集，替换单步 `previousCall/previousResult`；保守失效、LRU + 独立预算、紧凑渲染、命中率指标 | 风险 1 |
-| A3 | [F219](./f219-deterministic-answer-scoring.md) 确定性主评分与部分指标表示 | ADR-0010 |
-| A4 | 按 [ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md) 跑三组小规模对照：三 arm 同模型对照；强/弱模型建索引的能力梯度对照；工作集冷启动 vs 预热 | ADR-0010、F220 |
+| A1 | [F220](../../planning/f220-query-working-set.md) Query Working Set Stage 1：Row + 完整 Route 链路的有界工作集，替换单步 `previousCall/previousResult`；保守失效、LRU + 独立预算、紧凑渲染、命中率指标 | 风险 1 |
+| A3 | [F219](../../planning/f219-deterministic-answer-scoring.md) 确定性主评分与部分指标表示 | ADR-0010 |
+| A4 | 按 [ADR-0010](../../decisions/0010-small-scale-high-quality-evaluation.md) 跑三组小规模对照：三 arm 同模型对照；强/弱模型建索引的能力梯度对照；工作集冷启动 vs 预热 | ADR-0010、F220 |
 
-A1 采用 [F220](./f220-query-working-set.md) 的语义工作集，而不是朴素地累积原始 transcript。
+A1 采用 [F220](../../planning/f220-query-working-set.md) 的语义工作集，而不是朴素地累积原始 transcript。
 两者都能修复多轮记忆缺陷，但工作集额外提供去重、横向导航和负向记忆，且不是会被丢弃的
 中间产物——它就是 F220 的 Stage 1。朴素累积则会在实现工作集时整个作废。
 
 **出口判据**：A4 三组对照给出可复现结论，且 A1/A2 修复前后的同题对照显示导航深度实际变化。
-在此之前不开新能力。逐项工单、改动范围与完成判据见[执行计划](./execution-plan.md)第 1–5 项。
+在此之前不开新能力。逐项工单、改动范围与完成判据见[执行计划](../../planning/execution-plan.md)第 1–5 项。
 
 ### 阶段 B：把 AI-native 主张补实
 
 依赖阶段 A 出口。
 
-- B1 [F220](./f220-query-working-set.md) Stage 2 与跨会话：负向记忆、相关性淘汰、
+- B1 [F220](../../planning/f220-query-working-set.md) Stage 2 与跨会话：负向记忆、相关性淘汰、
   （若指标支持）精确失效，以及跨 Session topic 身份与有界恢复（差距 2）。
-  精确失效前必须先修[已知风险](../development/known-risks.md)第 6 条；
+  精确失效前必须先修[已知风险](../../development/known-risks.md)第 6 条；
 - B2 写入反馈回路：检索失败与人工修正回流到建模决策，形成可观测信号（差距 3）；
 - B3 原文可恢复性：候选 B（worthiness 默认偏向多写）已于 2026-08-11 立即生效，
-  候选 A（外部原文归档 + 重吸收 diff）为[执行计划](./execution-plan.md)第 12 项（差距 3）；
+  候选 A（外部原文归档 + 重吸收 diff）为[执行计划](../../planning/execution-plan.md)第 12 项（差距 3）；
 - B4 Route 自治维护：初始 fan-out、超量拆分、合并，由 AI 判断并留 revision/理由（差距 4）。
 
 **出口判据**：一个真实用户的真实资料，连续使用两周以上，追问可用、Route 未退化。
@@ -120,11 +132,11 @@ C1、C2 与阶段 A 并行执行，不等待任何前置；两项加起来不到
 
 均已执行证据门或有明确延后理由，**保留设施、不再投入**：
 
-- 大语料批量评测：F212–F215 与候选 F216–F218（[ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md)）；
+- 大语料批量评测：F212–F215 与候选 F216–F218（[ADR-0010](../../decisions/0010-small-scale-high-quality-evaluation.md)）；
 - OCR/视觉运行时：候选 F209，等 F203 返回 `eligible`；
 - 内置 `memora ask` 产品化：等阶段 A、B 出口；
 - Compaction、Secondary Index、Advanced MVCC、Replication、PITR、多设备同步、
-  Apple Accelerate、HNSW：见 [Feature 状态](./feature-status.md)的证据门表格。
+  Apple Accelerate、HNSW：见 [Feature 状态](../../planning/feature-status.md)的证据门表格。
 
 ## 明确不做
 
@@ -135,7 +147,7 @@ C1、C2 与阶段 A 并行执行，不等待任何前置；两项加起来不到
 
 ## 关联
 
-- [系统能力](../product/system-capabilities.md)
-- [已知风险](../development/known-risks.md)
-- [ADR-0010 小规模高质量评测](../decisions/0010-small-scale-high-quality-evaluation.md)
-- [AI-native 产品宪章](../product/ai-native-product-charter.md)
+- [系统能力](../../product/system-capabilities.md)
+- [已知风险](../../development/known-risks.md)
+- [ADR-0010 小规模高质量评测](../../decisions/0010-small-scale-high-quality-evaluation.md)
+- [AI-native 产品宪章](../../product/ai-native-product-charter.md)

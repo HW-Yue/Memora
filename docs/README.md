@@ -23,7 +23,7 @@
 6. [架构审计 2026-08](./development/architecture-audit-2026-08.md) — 某一时点的**实测清单**：
    缺陷、耦合、重复与半迁移逐条列出，每条带 `文件:行` 与调用方计数。
    **不是规格**，过期请按文末命令重扫；
-7. [路线 v2](./planning/roadmap-v2.md) — AI-native 的五个差距与 A/B/C/D 分阶段计划；
+7. [路线 v3](./planning/roadmap-v3.md) — 两条轨道、引擎优先，以及**为什么是这个顺序**；
 8. [执行计划](./planning/execution-plan.md) — **当前唯一的工作队列**，编号工单，
    每项带前置、改动范围、RED 和完成判据。派发实现从这里取。
 
@@ -47,7 +47,7 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [当前产品基线](./product/current-product.md) — 早于本次重组的产品快照，仍然有效；
 - [F169 之后的开发序列](./planning/post-f169-development-plan.md)与
   [F204 之后的开发计划](./planning/post-f204-development-plan.md) — 历史顺序，
-  已被[路线 v2](./planning/roadmap-v2.md)取代；
+  已被[路线 v3](./planning/roadmap-v3.md)取代；
 - [查询 Agent Feature 序列](./planning/query-agent-feature-sequence.md)与
   [资料吸收 Agent Feature 序列](./planning/assimilation-agent-feature-sequence.md) — 两条独立垂直链；
 - [后续路线](./planning/future-roadmap.md) — 早期路线，已被路线 v2 取代。

@@ -126,6 +126,9 @@ wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的�
 主要待决的是触发时机（按段数？按字节？按 checkpoint 间隔？）。
 三份文档已加"已实现但未接线"注记。
 
+**2026-08-22 已排期为[执行计划](../planning/execution-plan.md) E0，是当前队头**——
+它是本文件里唯一随时间持续恶化的一条。
+
 ### 7b. schema 与 route 变更不加对象锁
 
 `internal/store/objectlock/objectlock.go` 的 `SchemaKey`（`:46`）与
@@ -219,6 +222,6 @@ AGENTS.md 对文档定了约 150 行上限，对代码没有对等约束。
 ## 关联
 
 - [系统能力](../product/system-capabilities.md)
-- [路线 v2](../planning/roadmap-v2.md)
+- [路线 v3](../planning/roadmap-v3.md)
 - [语义重建的不对称性](../data/semantic-rebuild-asymmetry.md)
 - [ADR-0010 小规模高质量评测](../decisions/0010-small-scale-high-quality-evaluation.md)

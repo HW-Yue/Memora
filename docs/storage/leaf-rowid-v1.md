@@ -11,7 +11,8 @@
 
 `router.Node` 上没有能放 RowID 的字段，于是叶子到行的对应被做成了一个独立的、
 自带版本号和墓碑的记录类型。**给叶子加上那个字段，这个记录类型整体退场**——
-它的职责一部分被吸收，一部分改由反向索引树承担，还有一部分结构性地消失。
+它的职责一部分被吸收进叶子，一部分改由 Row 上的一个默认字段承担，
+还有一部分结构性地消失。
 
 ## 1. membership 是什么
 
@@ -62,9 +63,9 @@ native 侧它是**两个** object kind（`internal/store/native/file.go:56-65`�
 | 职责 | 活的调用点 | 新归宿 |
 |---|---|---|
 | `OPEN ROUTE` 叶子→行 | `msql/executor/router.go:343` → `nativerouter.OpenPage` | **吸收进叶子** |
-| 每条 SELECT 的 `route_paths` | `msql/executor/query.go:169,355` | **反向索引树** |
-| 删行／补偿时清空该行所有叶子 | `row/router.go:346`、`nativerow/service.go:373` | **反向索引树**定位，改叶子 |
-| SPLIT/MERGE 重挂 | `nativemutation/service.go:378`、`route_plan.go:230` | 改叶子，反向索引同事务更新 |
+| 每条 SELECT 的 `route_paths` | `msql/executor/query.go:169,355` | **Row 的 `route_leaf_ids` 字段** + 顺 `ParentID` 算 trace |
+| 删行／补偿时清空该行所有叶子 | `row/router.go:346`、`nativerow/service.go:373` | 读行上的 `route_leaf_ids` 定位，改叶子 |
+| SPLIT/MERGE 重挂 | `nativemutation/service.go:378`、`route_plan.go:230` | 叶子与行的字段同事务一起改 |
 | 路由计划的乐观并发 guard | `routemutationplan/build.go:303`、`model.go:71` | 改读**行自己的** `Revision` |
 | 「一叶最多一活跃行」校验 | `nativerouter/repository.go:435` | 结构性成立，校验退化为断言 |
 | 变更日志 `route_membership` entry | `nativechange/build.go:84`、`change/model.go:38` | 并入 `route_node` |
@@ -109,21 +110,63 @@ RowID 沿用同一手法：无条件追加在 Synopsis 之后，读取端同样�
 bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为对拍参考模型
 同步跟进，否则 parity 测试会先红。
 
-## 5. 反向索引树
+## 5. 反查：Row 上的一个默认字段
 
 「给定 RowID，找它挂在哪些叶子下」在三处活路径上被需要，不能丢：
 每条 SELECT 的 `route_paths`、删行时的叶子清理、SPLIT/MERGE 重挂。
 
-**决定：单独一棵二级索引树**，键 `row_id`、值 leaf_id 列表。
-本质是把第 13 号 object kind 换个存法保留下来。它只存指向、不存正文，
-不违反「同一份内容只存一处」。
+**决定：业务行加一个默认字段 `route_leaf_ids`，只存稳定的叶子 ID。**
 
-不选「业务行存 `route_leaf_ids` 列」是因为那会让叶子和行两边各存一份指向，
-必须在同一事务里维持一致——多一个可以不一致的地方，就多一类
-`KindStaleMembership` 那样的健康项，与本次改动的初衷相反。
+理由是写入顺序本来就给了它：写入形态 §2 的次序是
+「分配 RowID → 把 RowID 挂到叶子 → 再写真实数据」，
+所以**写数据那一刻挂载已经确定**——`row.WriteOptions.RouteLeafIDs`
+（`internal/row/model.go:50`）现在就在手里。直接填进行里即可，
+不需要再造第三个结构去回答一个写入时已知的问题。
 
-实现参照现有二级索引：`internal/store/objectindex`（已建好但尚无调用方）与
-`internal/store/catalogindex`。与叶子改动**同一事务**提交，走 `treecommit.Runtime`。
+> **修订记录（2026-08-22）**：本节原先定的是"单独一棵反向索引树"。
+> 那个方案作废——它要维护一个写入时已知的映射，是多余的结构。
+> 一并订正：把该方案称作"反向索引树"是转述失真，
+> 原始意见是"建一张表存对应关系、靠 B+ 树快速取"。
+
+### 5.1 两边都不存路径，trace 实时算
+
+`router.Node.ParentID`（`internal/router/model.go:25`）**已经存在**——
+语义树本来就是双向的。从叶子顺 `ParentID` 走到根即得完整 trace。
+
+**任何被记下来的路径都会过期**：SPLIT／MERGE／RENAME 都是一等 MSQL，
+语义重构是这个产品的日常，不是例外。所以行上只存叶子 ID，叶子上只存 RowID，
+**两边都是稳定 ID，谁都不存路径**。
+
+### 5.2 顺带解掉一个今天就存在的问题：`Node.Path` 这个缓存
+
+同样的道理适用于 `Node.Path` 自己——它就是一份被物化的 trace，维护代价是实测的：
+
+`RenameRouterNode`（`internal/nativerow/service.go:1082-1093`）现在会
+`routes.Nodes()` **全树扫描** → 按 path 前缀匹配 → 重写每个子孙的 `Path`
+**并给每个子孙 `Revision++`** → 一个事务里全部 stage。
+**改一个分支的名字要重写整棵子树。** 参考实现那边是
+`repathDescendants`（`internal/router/service.go:256`），递归做同一件事。
+
+去掉 `Path` 之后，RENAME 退化成改一个节点，`repathDescendants` 整个消失。
+
+**取舍要说清楚，不能只讲好处**：读路径会从"拿到节点即有 path"变成
+"顺 `ParentID` 走 depth 次点查"。fanout 上限 12（F223）、语义树本就该浅，
+但 **depth 目前没有上限**。
+
+- **实施前先量一次真实深度**，并考虑要不要给 depth 设上限；
+- 若读代价不可接受，**退路是把 `Path` 降级为可过期的建议值、以 `ParentID` 链为准**，
+  而不是退回全树重写。
+
+### 5.3 两份指向的一致性
+
+叶子存 RowID、行存 leaf ID——同一份事实存了两遍，命中
+[架构原则](../product/architecture-principles.md) §2 的判据 2。
+**这是一个有意的例外，必须写明而不是默认**：
+
+- 两边都在**同一次写入的同一个事务**里落盘，不存在"两个结构各自演化"；
+- 换来的是两个方向都零额外结构、零额外查找；
+- 与 membership 的区别在于：membership 是一个**独立的对象**，有自己的
+  revision 和墓碑、能独立于两端漂移；这里两端都是既有对象上的字段。
 
 ## 6. 对外可见面的变更
 
@@ -144,11 +187,16 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 | 阶段 | 内容 | 独立可验证的性质 |
 |---|---|---|
 | 1 | `router.Node` 加 RowID 字段与编解码（两套实现同步） | 旧记录逐字解码不变；新旧混存可读 |
-| 2 | 反向索引树落地，与 membership **双写** | 两个来源对同一 RowID 返回相同叶子集合 |
-| 3 | 读路径切到叶子字段 + 反向索引树 | `OPEN ROUTE`／`route_paths`／`SHOW ROUTES` 逐字一致，且不再读 kind 9／13 |
+| 2 | Row 加 `route_leaf_ids` 字段，与 membership **双写** | 两个来源对同一 RowID 返回相同叶子集合 |
+| 3 | 读路径切到叶子字段 + 行字段 | `OPEN ROUTE`／`route_paths`／`SHOW ROUTES` 逐字一致，且不再读 kind 9／13 |
 | 4 | 写路径停写 membership；变更日志改发 `route_node` | 新事务不产生 kind 9／13 记录；旧 envelope 仍可解码 |
 | 5 | 删除 kind 9／13、`Attach`、`ValidateMembershipChanges`；`ObjectKindMax` 下调；generation 升版 | 既有库自动升级，内容逐字不变 |
 | 6 | 删除三类健康项与 `internal/router` 的死 membership 代码 | 见下 |
+| 7 | trace 改为顺 `ParentID` 实时算，删掉 `Node.Path` 与 `repathDescendants` | RENAME 一个分支只写一个节点（今天要写整棵子树）；`route_paths` 与 `SHOW ROUTES` 逐字一致 |
+
+阶段 7 **有一道前置量测**：先测真实语义树深度与 `route_paths` 的读代价。
+量完再决定是彻底删 `Path`，还是把它降级为可过期的建议值（见 §5.2 的退路）。
+这一阶段独立于 1–6，可以单独排。
 
 阶段 6 受[旧代码清理边界](../development/legacy-code-boundary.md)的删除规则约束：
 删除前必须证明目标不在 `cmd/...` 生产依赖图中，并先增加「旧路径不得重新出现」的 RED。

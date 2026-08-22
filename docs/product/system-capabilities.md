@@ -6,7 +6,7 @@
 查某项能力的历史证据再去 [Feature 状态](../planning/feature-status.md)按编号回溯。
 
 只收录已交付、有测试、当前无已知缺陷的能力。有缺陷或未验证的部分见
-[已知风险](../development/known-risks.md)，未实现的部分见[路线 v2](../planning/roadmap-v2.md)。
+[已知风险](../development/known-risks.md)，未实现的部分见[路线 v3](../planning/roadmap-v3.md)。
 
 ## 1. 存储引擎（成熟）
 
@@ -130,5 +130,5 @@ Intake → SourceStore → Document IR → ReadExtent coverage → Draft/Claim l
 ## 关联
 
 - [已知风险](../development/known-risks.md) — 有缺陷、未验证或有隐患的部分；
-- [路线 v2](../planning/roadmap-v2.md) — 未实现部分与 AI-native 差距；
+- [路线 v3](../planning/roadmap-v3.md) — 未实现部分：引擎侧准则符合性与 Agent 侧差距；
 - [Feature 状态](../planning/feature-status.md) — 按编号回溯历史证据。

@@ -1,203 +1,231 @@
 # 执行计划
 
-状态：2026-08-11 生效。**这是当前唯一的工作队列。**
-战略层理由见[路线 v2](./roadmap-v2.md)，问题依据见[已知风险](../development/known-risks.md)。
+状态：**2026-08-22 重排生效。这是当前唯一的工作队列。**
+战略层理由见[路线 v3](./roadmap-v3.md)，问题依据见[已知风险](../development/known-risks.md)
+与[架构审计](../development/architecture-audit-2026-08.md)。
 
 每项都是可独立派发的工单：有前置、改动范围、RED 和完成判据。
 **按编号顺序执行**，除非标注「可并行」。所有项仍须按
 [TDD 协议](./feature-tdd-protocol.md)逐项 Review 与授权后实现。
 
+## 这次重排改了什么
+
+上一版（2026-08-11）的 14 项工单**没有一项**来自三份最高准则——因为准则是
+2026-08-22 才确立的。本版把 **E 阶段（引擎侧准则符合性）** 插到最前，
+Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。理由见路线 v3。
+
 ## 已就地定下的决定
 
-这些此前是悬空的，现按下述结论执行，不再讨论：
+沿用上一版，并补充本轮已裁定的：
 
 | 决定 | 结论 | 依据 |
 | --- | --- | --- |
-| F185b 死锁怎么解 | **Policy v2**：保留三 arm 矩阵与身份校验，替换度量与阈值。不整体退役 | [F222](./f222-release-gate-policy-v2.md) |
-| 确定性指标阈值定多少 | **首轮不定**。A4 首轮走 `report` 模式产出分布，阈值由该分布冻结后才启用 `gate` | F222 |
-| 语义重建不对称性选 A 还是 B | **先执行 B**（吸收 Agent 默认偏向多写），A（外部原文归档）列为第 12 项 | [讨论稿](../data/semantic-rebuild-asymmetry.md) |
-| 工作集淘汰策略 | **v1 冻结为 LRU + Pinned 最后淘汰**。相关性淘汰作为第 10 项，由 A4 数据决定是否需要 | [F220](./f220-query-working-set.md) |
-| A1 用朴素累积还是工作集 | **工作集**。朴素累积会在实现 F220 时整个作废 | 路线 v2 |
+| F185b 死锁怎么解 | **Policy v2**：保留三 arm 矩阵与身份校验，替换度量与阈值 | [F222](./f222-release-gate-policy-v2.md) |
+| 确定性指标阈值定多少 | **首轮不定**，`report` 模式产出分布后再冻结 | F222 |
+| 语义重建不对称性 | **先执行 B**（吸收 Agent 偏向多写），A 列为 A12 | [讨论稿](../data/semantic-rebuild-asymmetry.md) |
+| 工作集淘汰策略 | v1 冻结为 LRU + Pinned 最后淘汰 | [F220](./f220-query-working-set.md) |
+| 行→叶子怎么反查 | **Row 加 `route_leaf_ids` 默认字段**，不另建结构；写入时挂载已确定 | [叶子直挂 RowID](../storage/leaf-rowid-v1.md) §5 |
+| 语义树路径存不存 | **不存，顺 `ParentID` 实时算**；树会被频繁重构，存下来必然过期 | 同上 §5.1 |
+| 向量检索 | **保留**方向，缺的是生产发布方 | 风险 7d |
+| 导出面对已删 Row 的过滤 | **可接受，只记不改**——契约是可达性，不是物理擦除 | 审计 §1.5 |
+| `EXPORT WIKI`／`INSTALL PACKAGE` | **功能保留**，属接线缺失 | 风险 7c |
 
-## 阶段 0：可用性缺陷（最高优先，插在所有阶段之前）
+---
 
-### 0. F226 Stage 1 收敛 poison 作用域 —— **已完成（2026-08-11）**
+## E 阶段：引擎侧准则符合性（当前优先）
 
-- **前置**：无。这是当前队列的真正队头
-- **规格**：[F226](./f226-per-database-fault-isolation.md)（Stage 1 部分）
-- **改动**：`internal/pagestoremigration/authority.go`
-- **RED**：证明一个 Database 发布失败后，另一个 Database 的 SELECT 与 INSERT
-  都返回 `ErrAuthorityPoisoned`
-- **完成**：读不再因写发布失败而失效；`poisoned` 从全实例布尔改为受影响 Database
-  集合；失败信封点明范围；`closed` 仍阻断全部；reopen 后集合正确重建
-- **为什么最高优先**：现在改一个 Database 的字段出错会让**整个 Instance 读写全停**，
-  这是可用性缺陷而非优化。Stage 1 改动集中在一个文件，先拿回可用性
+出口判据：三份最高准则逐条可核对为「已做到」，
+[存储层总览「已知偏差」](../storage/README.md)清空 A–D 组。
 
-## 阶段 A：让 Agent 真的能导航
+### E0. WAL 回收接线
 
-出口判据：第 5 项产出三组可复现对照结论，且第 1、2 项修复前后的同题对照显示
-导航深度实际变化。**在此之前不开新能力面。**
+- **前置**：无。**这是当前队头。**
+- **依据**：[已知风险](../development/known-risks.md) 7a；
+  规格已冻结于 `docs/storage/{wal-segment-set,checkpoint-publish,wal-segment-reclaim}-v1.md`
+- **改动**：`internal/store/wal/`（接线，不改协议）、
+  `internal/pagestoremigration/`（触发点）
+- **RED**：证明持续写入下 WAL 段数单调增长、`PublishCheckpoint` 零调用
+- **完成**：WAL 会滚段、会 checkpoint、会回收；恢复起点随 checkpoint 前移；
+  三份文档的「已实现但未接线」注记摘除
+- **待决**：触发时机（按段数？按字节？按 checkpoint 间隔？）——**实现前先定**
+- **为什么最前**：清单里**唯一随时间恶化**的一条。代码已写已测、文档已冻结，
+  只差接线，性价比最高
 
-### 1. F221 Evidence 充分性与导航终止条件
+### E1. 候选预测器只给路径
 
-- **前置**：无。这是队列头。
-- **规格**：[F221](./f221-evidence-sufficiency.md)
-- **改动**：`internal/agent/query_agent.go`、`query_agent_trace.go` 及对应测试
-- **RED**：证明一条零行 SELECT 当前会终止导航并迫使模型作答
-- **完成**：零行 SELECT 不终止导航；无 `substantive` 证据时拒绝作答而非编造；
-  默认预算放宽到 8/6；F181 既有 golden 逐条更新而非放宽断言
-- **为什么第一**：改动最小，且后面每一项都依赖「循环能走多跳」
+- **前置**：无。可与 E0 并行
+- **规格**：[候选预测器只给路径](../query/predictor-path-only-v1.md)（4 阶段）
+- **改动**：`internal/discovery/frame.go`、`internal/routelexical/search.go`、
+  `internal/msql/executor/{route_candidates,lexical_locations}.go`、
+  `internal/result/envelope.go`
+- **RED**：证明两个语句当前返回 score／reason／matched_fields 且**不返回路径**
+- **完成**：只返回 `database` + `table` + 完整语义树路径；排序仍在内部做但不外露；
+  对外按路径字典序稳定输出
+- **待决**：Discovery Frame 在 `result/envelope.go` 里是**已发布 wire 格式**，
+  兼容口径（提版本号还是保留旧字段不填）**实现前先定**
+- **为什么第二**：设计已写、小而独立，一次拿下一整条准则；
+  `routelexical` 甚至已经读到路径又丢掉（`search.go:281` 读、`:285` 丢）
 
-### 2. F220 Query Working Set Stage 1
+### E2. 派生索引解耦
 
-- **前置**：第 1 项。循环只能走一跳时没有第二跳可加速，命中率数字无意义
-- **规格**：[F220](./f220-query-working-set.md)（Stage 1 部分）
-- **改动**：`internal/agent/` 新增工作集类型与渲染；`query_agent.go` 替换
-  `previousCall`/`previousResult`；Hook 指标扩展
-- **RED**：证明当前循环无法跨两个以上 turn 保留任何 Row 或路径记忆
-- **完成**：正向条目携带完整 Route 链路；保守失效（`Capture()` 水位线比对）；
-  LRU + Pinned 最后淘汰；独立字节预算；紧凑表格渲染；命中率与节省指标进入
-  F204/F207 链路；写入导致水位线前进后下一 turn 必须冷启动且**不得**返回过期 Row
-- **不做**：负向记忆、相关性淘汰、精确失效、跨 Session（见第 10 项）
+- **前置**：无。但**排在 E3–E6 之前**
+- **依据**：[架构原则](../product/architecture-principles.md) §1；审计 §2.1、§2.2
+- **改动**：`internal/pagestoremigration/authority.go`（`PublishMutation`）、
+  `apply.go`（投影时机）
+- **模板**：`authorityChangeTree.reconcile`（`change_index.go:269`）——
+  变更日志驱动、游标推进、批量、读时惰性触发。**照它做，不另起炉灶**
+- **RED**：证明一次 INSERT 跨两个无原子性事务域，且 fulltext 失败会以两种形态出现
+  （投影失败 ⇒ 写入被拒；提交后索引失败 ⇒ 发布中毒）
+- **完成**：`PublishMutation` 不再同批写 fulltext；四个 phase checkpoint 相应减少；
+  写入事务只写自己的数据
+- **待决**：惰性重建对 fulltext 的读一致性要求是否够用——**实现前先确认**
+- **为什么在结构改动之前**：先做它，后面每一项要动的树就少三棵、checkpoint 少四个
 
-### 3. F219 确定性答案评分
+### E3. 语义索引叶子直挂 RowID
 
-- **前置**：无硬依赖，但排在第 2 项后，以便首轮评分测的是修好的循环
-- **规格**：[F219](./f219-deterministic-answer-scoring.md)
-- **改动**：`internal/answerevaluation/`（case 状态、`MetricScores` 可缺失、
-  `judge_error_code`）；ground truth 扩展 evaluator-only 期望 RowID 与字段
-- **RED**：证明当前 `validScores` 无法表达「四取三」，且无确定性主判定字段
-- **完成**：主指标为 `route_hit`/`field_hit`/`retrieval_correct`，判定输入只能是
-  真实 MSQL transcript；judge 指标逐个可缺失且缺失退出分母；
-  **Agent 自述命中但 transcript 不支持时判为未命中**
+- **前置**：E2
+- **规格**：[叶子直挂 RowID](../storage/leaf-rowid-v1.md)（7 阶段）
+- **改动**：`internal/router/model.go`（Node 加 RowID）、`internal/row/model.go`
+  （Row 加 `route_leaf_ids`）、`internal/nativerouter/repository.go`（编解码）、
+  以及约 310 处 membership 引用散在 21 个非测试文件
+- **RED**：证明 `router.Node` 上没有能放 RowID 的字段，叶子→行必须另查一处
+- **完成**：membership 两个 object kind（9／13）退场；`ObjectKindMax` 下调；
+  变更日志 `route_membership` entry 并入 `route_node`；三类语义健康问题
+  （`stale_membership`／`invalid_membership_scope`／`multi_row_leaf`）**结构性消失**
+- **对外可见的能力减少**：语义健康少三项，**须在发布说明中点名**
+- **可单独排的子项**：阶段 7（删 `Node.Path`、trace 改实时算）有一道
+  **前置量测**——先测真实树深度与 `route_paths` 读代价，再决定彻底删还是降级为
+  可过期建议值
 
-### 4. F222 Release Gate Policy v2
+### E4. 每表一棵独立 B+ 树 + RowID 按表递增
 
-- **前置**：第 3 项
-- **规格**：[F222](./f222-release-gate-policy-v2.md)
-- **改动**：`internal/answerrelease/`、`cmd/build-query-release-gate/`
-- **完成**：`report`/`gate` 双模式；`report` 不输出 pass/fail 与默认 arm；
-  `gate` 在阈值未冻结时拒绝运行；v1 输入 fail closed；已发布的 v1 报告不动
+- **前置**：E2
+- **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 1–3
+- **改动**：`internal/pagestoremigration/{generation,manifest}.go`（动态树集合）、
+  `internal/store/currentrowindex/`（键收缩为 `row_id`）、
+  `IDSource` 签名加表标识并收敛 8 处重复定义
+- **RED**：证明扫一张表会读到其他表的条目；证明 `IDSource.Next()` 不接受表参数
+- **完成**：每张业务表一棵聚簇树；表树内保留键做 RowID 计数器
+  （范式照搬 `rowversionindex.HighWater`）；同表连续插入拿到连续 ID，重开不回退
+- **待决**：RowID 变为**表内唯一**后，跨表引用必须带表标识——
+  `SHOW CHANGES` 的 `ObjectID`、`change.Entry.RelatedObjectIDs` 要逐一核对
 
-### 5. A4 三组小规模对照
+### E5. history 独立成表
 
-- **前置**：第 1–4 项全部完成
-- **依据**：[ADR-0010](../decisions/0010-small-scale-high-quality-evaluation.md)
-- **三组**（每组同模型、同语料、只变一个变量）：
-  1. 三 arm 对照（atlas-only / +lexical / +prefetch）
-  2. 强/弱模型建索引的能力梯度对照（查询侧固定同一模型）
-  3. 工作集冷启动 vs 预热
-- **完成**：`report` 模式报告发布；**产出物之一是冻结 `gate` 阈值并写回 F222**；
-  结论不因换模型而反转的部分单独标注为架构结论
+- **前置**：E4（同一套机制，**分开做等于写两遍**）
+- **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 4–6
+- **改动**：新增每表 history 树；`internal/row/model.go` 加 `history_id`；
+  `internal/nativerow/history.go` 读写切换
+- **RED**：证明 history 是扁平 object kind、读一行历史不是范围扫
+- **完成**：键 `(row_id, 序号)`；读完整历史一次范围扫；`ObjectKindHistory` 删除；
+  **已删除 Row 的 `(row_id, *)` 区段一并不可达**
+- **一并裁定**：`Row.ChangeSequence`（`48ef5b6`）的去留——它是已废弃路线的遗留
+- **回归**：本项起每阶段重跑「已删除 Row 从任何面都拿不到」
+  （`internal/daemon/f227_row_relation_archive_test.go`）——
+  history 变成表是这条契约最容易漏的地方
 
-## 阶段 A′：写入正确性（可并行，不阻塞阶段 A）
+### E6. 三份日志与恢复
 
-### 5b. F224 Row 必须可导航
+- **前置**：E4、E5
+- **规格**：**尚未编写**。E4/E5 定型后再出，避免 binlog 记完再改
+- **范围**：binlog 独立成日志且为唯一恢复依据；redo WAL 加
+  `prepare`/`commit` 两阶段标记；change log 收窄为事务回滚 undo 依据
+- **为什么最后**：风险最高（动恢复），且 binlog 应当记录定型后的结构
 
-- **前置**：无。与阶段 A 互不依赖
-- **规格**：[F224](./f224-mandatory-row-route.md)
-- **改动**：`internal/nativerow`（执行点）、`internal/skillwrite/policy.go`
-  （`validateSnapshot` 空数组漏洞）
-- **RED**：证明不带 `route_leaf_ids` 的 INSERT 当前提交成功且 Row 零归属
-- **完成**：live Row 必须 ≥1 个 Route 归属；UPDATE 的「nil = 保留既有」语义不变；
-  DELETE 豁免；`msql.execute` 直连与 skillwrite 两条路径都被拦；存量无 Route Row
-  不追溯清理，继续由 `semantichealth` 报告
-- **为什么单列**：无 Route 的 Row 是静默数据丢失——写进去了但语义导航永远到不了，
-  与查询侧的导航修复是两个独立故障域
+---
 
-### 5c. F225 Row 必须可展示
+## S 阶段：工程稳态（可并行，不阻塞 E）
 
-- **前置**：无。与 5b 同执行点，建议同批实现
-- **规格**：[F225](./f225-mandatory-row-summary.md)
-- **改动**：`internal/nativerow`（执行点，与 F224 同处）、`internal/semantichealth`
-  （新增 `unsummarized_row`）；SKILL.md 强约束已先行落地（见下）
-- **RED**：证明 summary 为空或缺列的 INSERT 当前提交成功
-- **完成**：live Row 的 summary role 列必须存在且 trim 后非空；Table 无 summary 列时
-  写入失败并指明加列出路；UPDATE 不触碰 summary 时保留既有值；DELETE 豁免；
-  引擎只判定「非空」不判定质量
-- **已完成的部分**：SKILL.md 四项强约束与 contract.json 示例已于本轮落地并重新生成
-  adapters；剩余的是引擎侧强制
+### S1. `EXPORT WIKI` / `INSTALL PACKAGE` 接线
 
-## 阶段 C：工程稳态（可并行，不阻塞阶段 A）
+依据风险 7c。把 `Packages`/`Wiki` 注入生产 handler。
+**前置**：`dbpackage`／`wikiexport` 现依赖已死的 legacy service 层
+（审计 §3.1），接线要么一并迁移、要么先解耦。
 
-### 6. CI 增加 Linux runner
+### S2. schema／route 对象锁的去留
 
-`.github/workflows/ci.yml` 的 `test` job 改为 matrix，加 `ubuntu-latest`。
-完成判据：两个平台全绿。依据[已知风险](../development/known-risks.md)第 8 条。
+依据风险 7b。先判定是缺陷还是「当前串行写入下不需要」：
+并发写入永不开启则删掉 `SchemaKey`／`RouteKey`，要开则补上。**不要维持现状。**
 
-### 7. 引入 golangci-lint
+### S3. 向量检索发布方
 
-启用 staticcheck、errcheck、ineffassign 三项；`scripts/ci.sh` 增加 `lint` stage。
-存量告警一次性修完或显式 `//nolint` 加理由，不留基线豁免文件。
-依据风险 9。
+依据风险 7d。接上生产发布方，或明确记为「未启用」。
+一并处理 `Generation.vectors` 每次查询重新全量加载的问题（审计 §2.3）。
 
-### 8. 文档解析内存回归门
+### S4. CI 增加 Linux runner
+
+`.github/workflows/ci.yml` 的 `test` job 改 matrix 加 `ubuntu-latest`。
+完成判据：两个平台全绿。依据风险 8。
+
+### S5. 引入 golangci-lint
+
+启用 staticcheck、errcheck、ineffassign；`scripts/ci.sh` 增加 `lint` stage。
+存量告警一次修完或显式 `//nolint` 加理由，不留基线豁免文件。依据风险 9。
+
+### S6. 文档解析内存回归门
 
 把「峰值堆 ≈ 正文 7 倍」写成回归测试（EPUB/DOCX/PDF 各一），
-并把 `DefaultEPUBAdapterConfig.MaxTotalUncompressedBytes`、
-`DefaultPDFAdapterConfig.MaxFileBytes`/`MaxDecompressedBytes` 下调到
-与实测能力一致的量级；超限时清晰失败。依据风险 4、5。
+并把三个配置上界下调到与实测能力一致。依据风险 4、5。
 
-### 9. 读路径与 Session 边界
+### S7. 读路径与 Session 边界
 
-- `ListCommittedChanges`、`GetCommittedChange` 摘除 `BeginWrite` 耦合，
+- `ListCommittedChanges`／`GetCommittedChange` 摘除 `BeginWrite` 耦合，
   或加注释说明为何必须序列化（风险 6）；
 - `msqlservice.OpenSession` 增加会话数上限（风险 7）；
 - `treecontrol.EncodeBootstrap` 改为返回 error，使「生产代码零 panic」成为
   可断言不变量（风险 11）；
 - `parser.go:28` 空分支改为直接调用或删除（风险 10）。
 
-**注意**：第一条是第 10 项精确失效的硬前置。
+**注意**：第一条是 A10 精确失效的硬前置。
 
-## 阶段 B：把 AI-native 主张补实
+---
 
-前置：阶段 A 出口判据达成。**未达成前不开工。**
+## A 阶段：Agent 侧（转后，一项未删）
 
-### 10. F220 Stage 2
+前置：**E 阶段出口判据达成**。理由见[路线 v3](./roadmap-v3.md)「为什么引擎优先」——
+简言之，这些工作全部建立在 Row 结构、挂载方式与 history 存法之上，
+顺序反过来要返工两遍。
 
-负向记忆（探过为空的路径）、相关性淘汰（由第 5 项第 3 组数据决定是否需要）、
-精确失效（前置：第 9 项第一条）。
+出口判据：A5 产出三组可复现对照结论，且 A1、A2 修复前后的同题对照显示
+导航深度实际变化。
 
-### 11. 跨 Session topic 身份与有界恢复
+| # | 工单 | 前置 | 要点 |
+| --- | --- | --- | --- |
+| A1 | [F221](./f221-evidence-sufficiency.md) Evidence 充分性与导航终止 | E 阶段 | 零行 SELECT 不终止导航；无 `substantive` 证据时拒绝作答；预算放宽到 8/6 |
+| A2 | [F220](./f220-query-working-set.md) Query Working Set Stage 1 | A1 | 正向条目带完整 Route 链路；保守失效；LRU + Pinned 最后淘汰 |
+| A3 | [F219](./f219-deterministic-answer-scoring.md) 确定性答案评分 | A2 | 主指标 `route_hit`／`field_hit`／`retrieval_correct`；transcript 不支持时判未命中 |
+| A4 | [F222](./f222-release-gate-policy-v2.md) Release Gate Policy v2 | A3 | `report`/`gate` 双模式；阈值未冻结时 `gate` 拒绝运行 |
+| A5 | 三组小规模对照 | A1–A4 | 三 arm／强弱模型建索引／工作集冷启动；产出物之一是冻结 `gate` 阈值 |
+| A6 | [F224](./f224-mandatory-row-route.md) Row 必须可导航 | **E3** | **判据要重写**：从「有没有 live membership」改为「有没有叶子指向它」，读 `route_leaf_ids` |
+| A7 | [F225](./f225-mandatory-row-summary.md) Row 必须可展示 | E 阶段 | summary role 列非空；引擎只判定非空不判定质量。SKILL.md 侧已落地 |
+| A10 | F220 Stage 2 | A5、S7 | 负向记忆、相关性淘汰、精确失效 |
+| A11 | 跨 Session topic 身份与有界恢复 | A10 | 需先出独立规格 |
+| A12 | 原文可恢复性：候选 A | — | 引用但不拥有外部原文归档；需先出独立规格 |
+| A13 | 写入反馈回路 | — | 检索失败与人工修正回流到建模决策；需先出独立规格 |
+| A14 | Route 自治维护 | E3 | 初始 fan-out 已由 F223 交付；剩余是超量时自动提拆分/合并提案与批量重构 |
 
-Query Workspace 的跨会话持久化与恢复。需先出独立规格。
+**A6 的重排是本次唯一改变依赖关系的地方**：它原本无前置，现在必须等 E3。
 
-### 12. 原文可恢复性：候选 A
+---
 
-让 Memora 引用但不拥有外部原始资料归档，打通「用户重新提供原文 → 重新吸收 →
-与现有 Row 做 diff」。收据已有 locator 与 content digest，缺的是重吸收与 diff 语义。
-需先出独立规格。依据[语义重建的不对称性](../data/semantic-rebuild-asymmetry.md)。
+## 不在当前路线
 
-### 13. 写入反馈回路
-
-检索失败与人工修正回流到建模决策，形成可观测信号。需先出独立规格。
-
-### 14. Route 自治维护
-
-~~初始 fan-out~~ 已由 [F223](./f223-route-branch-fanout-limit.md) 交付：`branch_fanout`
-是 Database 级配置，越界硬失败并给出两条出路。**剩余部分**：超量时由 AI 自动提出拆分
-与合并提案（而不是等待下一次写入失败），以及超限子树的批量重构。需先出独立规格。
-
-## 阶段 D：不在当前路线
-
-保留设施、不再投入，恢复条件见各自文档：**F226 Stage 2 物理文件按 Database 拆分**
-（2026-08-20 已评估并延后——最热读路径本来就跨库，拆分会把 Catalog Atlas 与
-`SHOW LEXICAL LOCATIONS FROM ALL TABLES` 变成常态 fan-out，而主导损坏模式是共享
-引擎代码缺陷，拆文件对它零作用）、大语料批量评测（F212–F215、
-候选 F216–F218）、OCR/视觉运行时（候选 F209）、内置 `memora ask` 产品化、
+保留设施、不再投入，恢复条件见各自文档：F226 Stage 2 物理文件按 Database 拆分
+（2026-08-20 已评估并延后）、大语料批量评测（F212–F215、候选 F216–F218）、
+OCR/视觉运行时（候选 F209）、内置 `memora ask` 产品化、
 Compaction／Secondary Index／Advanced MVCC／Replication／PITR／多设备同步／
 Apple Accelerate／HNSW。
 
 ## 立即生效的策略变更（无需工单）
 
 **吸收 Agent 的 worthiness 默认偏向多写。** 理由：过度抽取可恢复（删 Row），
-抽取不足不可恢复（原文在 Job 释放后回收）。这个不对称是严重的，
-在第 12 项完成前，默认必须偏向多写。写入
-[资料吸收](../data/assimilation.md)与吸收 Agent 的 prompt 约束。
+抽取不足不可恢复（原文在 Job 释放后回收）。在 A12 完成前，默认必须偏向多写。
 
 ## 关联
 
-- [路线 v2](./roadmap-v2.md) — 为什么是这个顺序
-- [已知风险](../development/known-risks.md) — 每项工单对应的问题依据
-- [当前系统能力](../product/system-capabilities.md) — 不要重复实现已有能力
-- [TDD 协议](./feature-tdd-protocol.md) — 每项实现前的授权与验收规则
+- [路线 v3](./roadmap-v3.md) — 为什么是这个顺序
+- [写入形态](../product/write-model.md)、[查询形态](../product/query-model.md)、
+  [架构原则](../product/architecture-principles.md) — E 阶段的依据
+- [已知风险](../development/known-risks.md)、
+  [架构审计](../development/architecture-audit-2026-08.md) — S 阶段的依据
+- [Feature 产品门](./feature-product-gate.md)、[TDD 协议](./feature-tdd-protocol.md)

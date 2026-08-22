@@ -6,7 +6,7 @@
 > **这份账本按时间顺序记录，不是理解系统的入口。** 要知道系统现在能做什么，读
 > [当前系统能力](../product/system-capabilities.md)；要知道哪里有问题，读
 > [已知风险](../development/known-risks.md)；要知道接下来做什么，读
-> [路线 v2](./roadmap-v2.md)；要派发实现工单，读[执行计划](./execution-plan.md)。
+> [路线 v3](./roadmap-v3.md)；要派发实现工单，读[执行计划](./execution-plan.md)。
 > 本文档用于按 F 编号回溯某项能力的历史证据。
 
 ## 状态定义
@@ -50,10 +50,20 @@ History 元数据与 Row 同叶（`1438eac`、`56f25b9`）。
 升格成表、归属存在 history 表里，这个字段的去留**待定**，本轮不动代码。
 
 现役实现与写入形态的完整差距，见[存储层总览](../storage/README.md)「已知偏差」。
-四处差距里，「语义索引叶子直挂 RowID」已出迁移设计：
-[叶子直挂 RowID](../storage/leaf-rowid-v1.md)——membership 不是死代码而是承重的，
-它的职责一部分被叶子吸收、一部分交给反向索引树、还有三类语义健康问题结构性消失。
-**新方向尚未排期。**
+
+**2026-08-22 已排期**：四处差距全部进入[执行计划](./execution-plan.md)的 E 阶段
+（E0–E6，引擎优先），排序理由见[路线 v3](./roadmap-v3.md)。迁移设计已备齐三份：
+[叶子直挂 RowID](../storage/leaf-rowid-v1.md)（membership 不是死代码而是承重的——
+职责一部分被叶子吸收、一部分交给 Row 上的 `route_leaf_ids` 字段，
+还有三类语义健康问题结构性消失）、
+[每表一棵树](../storage/per-table-tree-v1.md)（含 history 成表与 RowID 按表递增，
+三件是同一套机制所以合写一份）、
+[候选预测器只给路径](../query/predictor-path-only-v1.md)。
+三份日志（E6）的设计待 E4/E5 定型后再出。
+
+一处依赖重排：**F224「Row 必须可导航」移到 E3 之后**——它的判据
+「有没有 live membership」随 membership 取消而失效，要改成
+「有没有叶子指向它」，读行上的 `route_leaf_ids` 回答。
 
 ## 已实现主线
 

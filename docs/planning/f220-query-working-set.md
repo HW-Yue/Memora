@@ -1,7 +1,7 @@
 # F220：Query Working Set（语义工作集）
 
 状态：候选，2026-08-11 提出；尚未 Review、尚未获得实现授权。
-实现[路线 v2](./roadmap-v2.md) 阶段 A 的多轮记忆，并冻结此前一直未定义的
+实现[路线 v3](./roadmap-v3.md) Agent 轨道的多轮记忆，并冻结此前一直未定义的
 「Query Workspace」（[ADR-0009](../decisions/0009-memora-owned-agent-loop.md) 留的坑）。
 
 ## 命名说明
@@ -152,7 +152,7 @@ LRU + 预算、紧凑渲染、命中率指标。这一阶段本身就是多轮�
 
 ## 关联
 
-- [路线 v2](./roadmap-v2.md)
+- [路线 v3](./roadmap-v3.md)
 - [已知风险](../development/known-risks.md) 第 1、2、6 条
 - [ADR-0009 Memora-owned 薄 Agent Loop](../decisions/0009-memora-owned-agent-loop.md)
 - [ADR-0010 小规模高质量评测](../decisions/0010-small-scale-high-quality-evaluation.md)
