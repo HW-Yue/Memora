@@ -37,27 +37,38 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 出口判据：三份最高准则逐条可核对为「已做到」，
 [存储层总览「已知偏差」](../storage/README.md)清空 A–D 组。
 
-### E0. WAL 回收接线
+### E0. 共享循环 redo log
 
 - **前置**：无。**这是当前队头。**
-- **依据**：[已知风险](../development/known-risks.md) 7a；
-  规格已冻结于 `docs/storage/{wal-segment-set,checkpoint-publish,wal-segment-reclaim}-v1.md`
-- **改动**：只在 `internal/pagestoremigration/`。
-  `internal/store/wal` 与 `internal/store/treecommit` **不应有改动**——
-  `generationTree` 已同时持有 `set` 与 `runtime`，材料齐全
-- **RED**：证明持续写入下段数恒为 1（段**没有容量上限也不自动滚**）、
-  `LatestCheckpoint()` 始终为 false
-- **完成**：会滚段、会 checkpoint、会回收；**reclaim 删段之后
-  `RecoverSegmentSet` 仍能恢复出逐字一致的数据**（删日志不可逆，这是硬门）
-- **已定**（本轮查证后）：
-  - `PublishCheckpoint` 要一个 `DurabilityBarrier`，而**生产代码里没有任何实现**，
-    只有测试 recorder——得先写一个，这是原计划漏掉的工作量；
-  - barrier 用 `runtime.FlushDirty` 全刷。buffer pool 的帧**不记 LSN**，
-    无法只刷到某个 LSN，全刷是唯一正确解，代价有界（每树 ≤ 8 MiB）；
-  - 触发：每次发布后看活跃段大小，超 4 MiB 就 `Roll`→`Checkpoint`→`Reclaim`，同步做。
-    阈值取小是因为设太大个人库可能永远碰不到，等于修了个不会执行的东西
-- **为什么最前**：清单里**唯一随时间恶化**的一条。代码已写已测、文档已冻结，
-  只差接线，性价比最高
+- **规格**：[共享循环 redo log](../storage/shared-circular-redo-v1.md)（5 阶段）
+- **依据**：[已知风险](../development/known-risks.md) 7a、
+  [架构原则](../product/architecture-principles.md) §1、写入形态 §3／§5／§6
+- **改动**：`internal/pagestoremigration/{generation,manifest,authority}.go`、
+  `internal/store/treecommit/runtime.go`（接受共享 log + 多 space）、
+  阶段 5 才动 `internal/store/wal` 的物理层
+- **RED**：
+  1. 证明段**没有容量上限也不自动滚**，`LatestCheckpoint()` 恒为 false；
+  2. **证明跨树不原子**——在 versions／fulltext／current 三次写入之间注入崩溃，
+     重开后三棵树不一致。这条是本项的核心证据
+- **完成**：一个 generation 一套 redo log；跨树提交是**一次** WAL 提交；
+  四个 phase checkpoint 与 poison 补偿拆除；固定环 + 双指针，
+  **持续写入下磁盘恒定不涨**，写满时背压报错而不是覆盖
+- **恢复是硬门**：每一阶段都要验「重开后逐字一致」。改错是静默的数据丢失
+
+**为什么从「接段式回收」改成这个**（2026-08-22）：
+
+- 段式回收把磁盘占用**交给 checkpoint 策略去防**；固定环让它**结构上不可能涨**。
+  循环不替代 checkpoint——腾出环空间的正是它——但把**静默的无限增长**
+  换成**响亮的背压**；
+- 查证发现日志层**本来就支持多 space**（`Record.SpaceID`，
+  `RecoverSegmentSet(spaces map)`，`recovery.go:197` 按 space 路由），
+  只是 `OpenRuntime` 传了个单条目 map（`runtime.go:61`）。
+  「每棵树一套」是接线选择，不是限制；
+- **顺带堵上一个更要紧的洞**：`PublishMutation` 现在往三套 WAL 各提交一次，
+  崩在中间三棵树就不一致——那四个 phase checkpoint 与 poison 标记正是在补这个。
+  一套日志 = 一次提交 = 跨树原子，补丁可整个拿掉；
+- 固定大小 × 每棵树一套 = 磁盘正比于树数，而每表一棵树后正比于表数。
+  **必须先合并，环才是全局硬上界**
 
 ### E1. 候选预测器只给路径
 

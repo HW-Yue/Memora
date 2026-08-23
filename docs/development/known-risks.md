@@ -129,6 +129,12 @@ wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的�
 **2026-08-22 已排期为[执行计划](../planning/execution-plan.md) E0，是当前队头**——
 它是本文件里唯一随时间持续恶化的一条。
 
+方案已从「给段式日志接上回收」改为
+[共享循环 redo log](../storage/shared-circular-redo-v1.md)：全实例一套日志、
+固定大小、循环使用。段式把磁盘占用交给 checkpoint 策略去防，固定环让它
+**结构上不可能涨**——不 checkpoint 的后果从"磁盘静默涨到天上"变成"写入背压报错"。
+同一改动顺带堵上跨树提交不原子的洞（见该文档 §2.1）。
+
 ### 7b. schema 与 route 变更不加对象锁
 
 `internal/store/objectlock/objectlock.go` 的 `SchemaKey`（`:46`）与
