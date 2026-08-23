@@ -42,12 +42,20 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 - **前置**：无。**这是当前队头。**
 - **依据**：[已知风险](../development/known-risks.md) 7a；
   规格已冻结于 `docs/storage/{wal-segment-set,checkpoint-publish,wal-segment-reclaim}-v1.md`
-- **改动**：`internal/store/wal/`（接线，不改协议）、
-  `internal/pagestoremigration/`（触发点）
-- **RED**：证明持续写入下 WAL 段数单调增长、`PublishCheckpoint` 零调用
-- **完成**：WAL 会滚段、会 checkpoint、会回收；恢复起点随 checkpoint 前移；
-  三份文档的「已实现但未接线」注记摘除
-- **待决**：触发时机（按段数？按字节？按 checkpoint 间隔？）——**实现前先定**
+- **改动**：只在 `internal/pagestoremigration/`。
+  `internal/store/wal` 与 `internal/store/treecommit` **不应有改动**——
+  `generationTree` 已同时持有 `set` 与 `runtime`，材料齐全
+- **RED**：证明持续写入下段数恒为 1（段**没有容量上限也不自动滚**）、
+  `LatestCheckpoint()` 始终为 false
+- **完成**：会滚段、会 checkpoint、会回收；**reclaim 删段之后
+  `RecoverSegmentSet` 仍能恢复出逐字一致的数据**（删日志不可逆，这是硬门）
+- **已定**（本轮查证后）：
+  - `PublishCheckpoint` 要一个 `DurabilityBarrier`，而**生产代码里没有任何实现**，
+    只有测试 recorder——得先写一个，这是原计划漏掉的工作量；
+  - barrier 用 `runtime.FlushDirty` 全刷。buffer pool 的帧**不记 LSN**，
+    无法只刷到某个 LSN，全刷是唯一正确解，代价有界（每树 ≤ 8 MiB）；
+  - 触发：每次发布后看活跃段大小，超 4 MiB 就 `Roll`→`Checkpoint`→`Reclaim`，同步做。
+    阈值取小是因为设太大个人库可能永远碰不到，等于修了个不会执行的东西
 - **为什么最前**：清单里**唯一随时间恶化**的一条。代码已写已测、文档已冻结，
   只差接线，性价比最高
 
@@ -97,9 +105,24 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
   **前置量测**——先测真实树深度与 `route_paths` 读代价，再决定彻底删还是降级为
   可过期建议值
 
+### E3.5. 共享 buffer pool
+
+- **前置**：无。但**是 E4／E5 的硬前置**
+- **依据**：[每表一棵树](../storage/per-table-tree-v1.md) §5.5
+- **现状**：与 InnoDB 不同，这里**每棵树一个 buffer pool**——`buffer.New` 全仓只有
+  一个调用点（`treecommit/runtime.go:90`，在 `OpenRuntime` 内），每棵树调一次；
+  loader 闭包把 `SpaceID` 写死，结构上无法共享
+- **为什么是硬前置**：E4/E5 让树数正比于表数，于是内存变成 **16 MiB/表**
+  （每表业务树 + history 树）。10 张表 160 MiB，100 张表 1.6 GB——
+  「常驻内存有上界」这条准则会被直接推翻
+- **RED**：证明开 N 棵树就有 N 个 pool、常驻内存随树数线性增长
+- **完成**：一个 pool 服务所有树；容量是一份总量而不是每树一份。
+  `buffer.Key{SpaceID, PageID}` 本来就带 `SpaceID`，Page Table 已能区分——
+  缺的是 loader 按 key 路由到对应 page manager
+
 ### E4. 每表一棵独立 B+ 树 + RowID 按表递增
 
-- **前置**：E2
+- **前置**：E2、**E3.5**
 - **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 1–3
 - **改动**：`internal/pagestoremigration/{generation,manifest}.go`（动态树集合）、
   `internal/store/currentrowindex/`（键收缩为 `row_id`）、

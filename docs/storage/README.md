@@ -46,8 +46,12 @@
 
 ## 3. Buffer Pool
 
-- **单实例、硬容量上限**：`buffer.Config{Capacity, OldFrames, Writer, Durability}`
-  （`internal/store/buffer/buffer.go:44-49`）；
+- **每棵树一个实例，各自硬容量上限**：`buffer.Config{Capacity, OldFrames, Writer, Durability}`
+  （`internal/store/buffer/buffer.go:44-49`）。
+  **注意这与 InnoDB 不同**——InnoDB 一个 buffer pool 服务所有表空间，
+  这里 `buffer.New` 全仓只有一个调用点（`treecommit/runtime.go:90`，在 `OpenRuntime` 内），
+  而 `OpenRuntime` **每棵树调一次**（`pagestoremigration/generation.go:125`）。
+  pool 的 loader 闭包还把 `SpaceID` 写死，结构上无法共享；
 - Page Table 按 `buffer.Key{SpaceID, PageID}` 定位 frame；
 - 淘汰参考 InnoDB 的 **young/old LRU 与 midpoint insertion**，
   保护热点不被扫描冲掉（`young`／`old` 两条链表，`buffer.go:51-61`）；
@@ -55,7 +59,12 @@
   frames／loading／pins／young／old／evictions／dirty；
 - `PublishBatch` 做原子批量发布（`internal/store/buffer/batch.go:20`）。
 
-**这是与数据量相关的唯一一处有上界的常驻内存。** 见第 7 节的例外。
+**每个 pool 各自有上界，但总量 = 容量 × 树数，不是全局有界的。**
+现在 4 棵树 × 512 帧 × 16 KiB = 32 MiB，尚可接受；
+但[每表一棵树](./per-table-tree-v1.md)会让树数正比于表数
+（每表业务树 + history 树 = 16 MiB/表），**总量随表数增长**。
+所以**共享 buffer pool 是那次迁移的前置项，不是优化项**。
+另见第 7 节与数据量相关的另一处常驻结构。
 
 细节：[Buffer Pool](./buffer-pool.md)、[Page Loading](./buffer-pool-page-loading-v1.md)、
 [Eviction](./buffer-pool-eviction-v1.md)、[Dirty Flush](./buffer-pool-dirty-flush-v1.md)、

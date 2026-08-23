@@ -127,8 +127,36 @@ Catalog Atlas 与逻辑快照哈希。
 （`internal/daemon/f227_row_relation_archive_test.go`）——
 history 变成表是这条契约最容易被漏掉的地方。
 
+## 5.5 硬前置：共享 buffer pool
+
+**这一条不做，本文的迁移不能开工。**
+
+现状与 InnoDB 不同：InnoDB 一个 buffer pool 服务所有表空间，
+而这里**每棵树一个 pool**——`buffer.New` 全仓只有一个调用点
+（`treecommit/runtime.go:90`，在 `OpenRuntime` 内），`OpenRuntime` 每棵树调一次
+（`generation.go:125`）。pool 的 loader 闭包还把 `SpaceID` 写死：
+
+```go
+if key.SpaceID != config.SpaceID { return page.Page{}, ...ErrInvalid }
+```
+
+**结构上就无法共享。**
+
+现在 4 棵树 × 512 帧 × 16 KiB = 32 MiB，尚可接受。但本文把树数变成**正比于表数**
+（每表业务树 + history 树），于是内存变成 **16 MiB/表**——
+10 张表 160 MiB，100 张表 1.6 GB。
+
+这直接推翻[架构原则](../product/architecture-principles.md)与写入形态里
+「常驻内存有上界」那条：单个 pool 有上界，**总量没有**。
+
+**所以要先做**：一个 pool 服务所有树，`buffer.Key{SpaceID, PageID}` 本来就带
+`SpaceID`（`buffer.go`），Page Table 已经能区分不同树的页——
+缺的是把 loader 从「写死单个 space」改成「按 key 路由到对应 page manager」，
+以及容量从"每树一份"改为一份总量。
+
 ## 6. 与其他迁移的关系
 
+- **硬前置：共享 buffer pool**（见 §5.5）——不做则内存随表数增长；
 - **前置：派生索引解耦。** fulltext 目前在 `PublishMutation` 里与三棵树同批发布
   （`pagestoremigration/authority.go:485`），一次 INSERT 跨两个无原子性的事务域。
   先把它改成变更日志驱动的重放（模板见 `change_index.go:269`
