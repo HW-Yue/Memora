@@ -15,7 +15,44 @@ type treeMetadataPlan struct {
 	allocator       *AllocatorRedo
 }
 
-func parseTreeMetadata(records []Record) (*treeMetadataPlan, error) {
+// parseTreeMetadata splits one transaction into a metadata plan per Tree.
+//
+// A transaction used to describe exactly one Tree, so the rule was "one root
+// redo, and it is the last Record". A transaction now spans several Trees —
+// that is what makes a publication atomic across them — so the stream is a
+// concatenation of per-space groups, each still obeying that rule: Page redos,
+// an optional allocator redo, then the root redo that closes the group.
+//
+// One space's Records must be contiguous. A space that reappears after another
+// space's group is a corrupt stream, not a second group: the group boundary is
+// the only thing that says where one Tree's root redo belongs.
+func parseTreeMetadata(records []Record) ([]*treeMetadataPlan, error) {
+	var plans []*treeMetadataPlan
+	seen := make(map[uint64]struct{}, len(records))
+	for start := 0; start < len(records); {
+		spaceID := records[start].SpaceID
+		if _, repeated := seen[spaceID]; repeated {
+			return nil, fmt.Errorf("%w: space %d reappears in one transaction", ErrCorrupt, spaceID)
+		}
+		seen[spaceID] = struct{}{}
+		end := start
+		for end < len(records) && records[end].SpaceID == spaceID {
+			end++
+		}
+		plan, err := parseTreeMetadataGroup(records[start:end])
+		if err != nil {
+			return nil, err
+		}
+		if plan != nil {
+			plans = append(plans, plan)
+		}
+		start = end
+	}
+	return plans, nil
+}
+
+// parseTreeMetadataGroup parses the Records of a single space.
+func parseTreeMetadataGroup(records []Record) (*treeMetadataPlan, error) {
 	var plan *treeMetadataPlan
 	allocatorSeen := false
 	for index, record := range records {

@@ -135,16 +135,68 @@ func (index *Index) replaceBatch(
 	if index == nil || index.runtime == nil || transactionID == 0 || len(documents) == 0 {
 		return Receipt{}, fmt.Errorf("%w: %s request", ErrInvalid, operationName)
 	}
+	prepared, err := prepareBatch(documents, operationName)
+	if err != nil {
+		return Receipt{}, err
+	}
+
+	index.mu.Lock()
+	defer index.mu.Unlock()
+	result, err := index.planReplaceBatchLocked(prepared)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if !result.changed {
+		return Receipt{Replay: true, Digest: result.digest, State: index.runtime.State()}, nil
+	}
+	committed, err := index.runtime.Commit(transactionID, result.plan)
+	if err != nil {
+		return Receipt{}, err
+	}
+	return Receipt{
+		Changed: true, Digest: result.digest, Added: result.added, Removed: result.removed,
+		State: committed.State, WAL: committed.WAL,
+	}, nil
+}
+
+// StageReplaceBatch validates and plans a ReplaceBatch and enrols the Tree in
+// group, so it can be committed in one WAL transaction together with other
+// Trees.
+//
+// On success the Index's write lock is held until the group commit finishes —
+// the group owns releasing it. A batch that is a pure replay adds no member and
+// releases immediately.
+func (index *Index) StageReplaceBatch(group *treecommit.Group, documents []fulltext.Document) error {
+	if index == nil || index.runtime == nil || group == nil || len(documents) == 0 {
+		return fmt.Errorf("%w: StageReplaceBatch request", ErrInvalid)
+	}
+	prepared, err := prepareBatch(documents, "StageReplaceBatch")
+	if err != nil {
+		return err
+	}
+	index.mu.Lock()
+	result, err := index.planReplaceBatchLocked(prepared)
+	if err != nil || !result.changed {
+		index.mu.Unlock()
+		return err
+	}
+	group.Add(index.runtime, result.plan, index.mu.Unlock)
+	return nil
+}
+
+// prepareBatch decodes and orders the documents of one batch, rejecting a
+// batch that names the same object twice.
+func prepareBatch(documents []fulltext.Document, operationName string) ([]preparedDocument, error) {
 	prepared := make([]preparedDocument, 0, len(documents))
 	seen := make(map[string]struct{}, len(documents))
 	for _, document := range documents {
 		next, err := prepareDocument(document)
 		if err != nil {
-			return Receipt{}, err
+			return nil, err
 		}
 		identity := string(next.objectKey)
 		if _, duplicate := seen[identity]; duplicate {
-			return Receipt{}, fmt.Errorf("%w: duplicate object identity", ErrConflict)
+			return nil, fmt.Errorf("%w: duplicate object identity in %s", ErrConflict, operationName)
 		}
 		seen[identity] = struct{}{}
 		prepared = append(prepared, next)
@@ -152,57 +204,70 @@ func (index *Index) replaceBatch(
 	sort.Slice(prepared, func(left, right int) bool {
 		return bytes.Compare(prepared[left].objectKey, prepared[right].objectKey) < 0
 	})
+	return prepared, nil
+}
 
-	index.mu.Lock()
-	defer index.mu.Unlock()
+// planned is a ReplaceBatch worked out but not committed. changed is false for
+// a pure replay, which has nothing to write.
+type planned struct {
+	plan    btree.MutationPlan
+	digest  string
+	added   int
+	removed int
+	changed bool
+}
+
+// planReplaceBatchLocked builds the mutation plan for a ReplaceBatch. The
+// caller holds the write lock.
+func (index *Index) planReplaceBatchLocked(prepared []preparedDocument) (planned, error) {
 	state := index.runtime.State()
 	searcher, err := index.searcher(state)
 	if err != nil {
-		return Receipt{}, err
+		return planned{}, err
 	}
 	operations := make(map[string]operation)
 	added, removed := 0, 0
 	for _, next := range prepared {
 		current, found, err := lookupObject(searcher, next.objectKey)
 		if err != nil {
-			return Receipt{}, err
+			return planned{}, err
 		}
 		currentPostings := make(map[postingIdentity]fulltext.Posting)
 		if !found {
 			if next.compiled.Revision != 1 {
-				return Receipt{}, fmt.Errorf("%w: first incremental revision must be 1", ErrConflict)
+				return planned{}, fmt.Errorf("%w: first incremental revision must be 1", ErrConflict)
 			}
 			orphaned, err := scanPrefix(searcher, mustOwnerPrefix(next.object.kind, next.object.objectID))
 			if err != nil {
-				return Receipt{}, err
+				return planned{}, err
 			}
 			if len(orphaned) != 0 {
-				return Receipt{}, fmt.Errorf("%w: owner entries exist without object", ErrCorrupt)
+				return planned{}, fmt.Errorf("%w: owner entries exist without object", ErrCorrupt)
 			}
 		} else {
 			if current.databaseID != next.object.databaseID || current.tableID != next.object.tableID {
-				return Receipt{}, fmt.Errorf("%w: object identity changed scope", ErrConflict)
+				return planned{}, fmt.Errorf("%w: object identity changed scope", ErrConflict)
 			}
 			currentPostings, err = loadOwnedPostings(searcher, current)
 			if err != nil {
-				return Receipt{}, err
+				return planned{}, err
 			}
 			if next.compiled.Revision == current.revision {
 				if next.compiled.Digest != current.digest {
-					return Receipt{}, fmt.Errorf("%w: revision has different content", ErrConflict)
+					return planned{}, fmt.Errorf("%w: revision has different content", ErrConflict)
 				}
 				if !samePostingMaps(currentPostings, next.postings) {
-					return Receipt{}, fmt.Errorf("%w: replay postings disagree with object digest", ErrCorrupt)
+					return planned{}, fmt.Errorf("%w: replay postings disagree with object digest", ErrCorrupt)
 				}
 				continue
 			}
 			if current.revision == ^uint64(0) || next.compiled.Revision != current.revision+1 {
-				return Receipt{}, fmt.Errorf("%w: revision must advance by one", ErrConflict)
+				return planned{}, fmt.Errorf("%w: revision must advance by one", ErrConflict)
 			}
 		}
 
 		if err := addOperation(operations, operation{key: next.objectKey, value: next.objectValue}); err != nil {
-			return Receipt{}, err
+			return planned{}, err
 		}
 		for identity, posting := range currentPostings {
 			if _, retained := next.postings[identity]; retained {
@@ -210,22 +275,22 @@ func (index *Index) replaceBatch(
 			}
 			ownerKey, err := encodeOwnerKey(posting)
 			if err != nil {
-				return Receipt{}, err
+				return planned{}, err
 			}
 			postingKey, err := encodePostingKey(posting)
 			if err != nil {
-				return Receipt{}, err
+				return planned{}, err
 			}
 			if err := addOperation(operations, operation{key: ownerKey, delete: true}); err != nil {
-				return Receipt{}, err
+				return planned{}, err
 			}
 			if err := addOperation(operations, operation{key: postingKey, delete: true}); err != nil {
-				return Receipt{}, err
+				return planned{}, err
 			}
 		}
 		for _, posting := range next.postings {
 			if err := addPostingOperations(operations, posting); err != nil {
-				return Receipt{}, err
+				return planned{}, err
 			}
 		}
 		documentAdded, documentRemoved := postingDifference(currentPostings, next.postings)
@@ -237,20 +302,13 @@ func (index *Index) replaceBatch(
 		digest = prepared[0].compiled.Digest
 	}
 	if len(operations) == 0 {
-		return Receipt{Replay: true, Digest: digest, State: state}, nil
+		return planned{digest: digest}, nil
 	}
 	plan, err := index.plan(state, sortedOperations(operations))
 	if err != nil {
-		return Receipt{}, err
+		return planned{}, err
 	}
-	committed, err := index.runtime.Commit(transactionID, plan)
-	if err != nil {
-		return Receipt{}, err
-	}
-	return Receipt{
-		Changed: true, Digest: digest, Added: added, Removed: removed,
-		State: committed.State, WAL: committed.WAL,
-	}, nil
+	return planned{plan: plan, digest: digest, added: added, removed: removed, changed: true}, nil
 }
 
 func (index *Index) Postings(term string) ([]fulltext.Posting, error) {

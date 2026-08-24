@@ -81,7 +81,7 @@ func buildRowOnlyV2Generation(t *testing.T, directory string, plan Plan) {
 	for index, specification := range treeWALExpectedTrees {
 		var state treecontrol.State
 		if specification.Kind == "fulltext" {
-			state = buildRowOnlyFulltextTree(t, target, specification, capacity, documents)
+			state = buildRowOnlyFulltextTree(t, target, specification, capacity, documents, nil)
 		} else {
 			state, err = buildTreeWithOwnLog(target, specification, capacity, plan)
 			if err != nil {
@@ -107,58 +107,65 @@ func buildRowOnlyV2Generation(t *testing.T, directory string, plan Plan) {
 	}
 }
 
+// buildRowOnlyFulltextTree seeds a Fulltext Tree that carries Row documents but
+// no Route documents, which is what makes a generation look pre-F173b.
+//
+// log is the generation's shared redo log, or nil for a pre-v4 fixture whose
+// Trees each own one.
 func buildRowOnlyFulltextTree(
 	t *testing.T,
 	directory string,
 	specification treeManifest,
 	capacity uint64,
 	documents []fulltext.Document,
+	log *wal.SegmentSet,
 ) treecontrol.State {
 	t.Helper()
-	set, err := wal.CreateSegmentSet(filepath.Join(directory, specification.WALDirectory), 0)
-	if err != nil {
-		t.Fatal(err)
+	ownLog := log == nil
+	if ownLog {
+		set, err := wal.CreateSegmentSet(filepath.Join(directory, specification.WALDirectory), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		log = set
+		defer func() {
+			if err := log.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 	}
 	manager, err := page.Create(filepath.Join(directory, specification.PageFile), specification.SpaceID)
 	if err != nil {
-		_ = set.Close()
 		t.Fatal(err)
 	}
-	runtime, _, err := treecommit.OpenRuntime(set, manager, treecommit.RuntimeConfig{
+	defer func() {
+		if err := manager.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	runtime, err := treecommit.AttachRuntime(log, manager, treecommit.RuntimeConfig{
 		SpaceID: specification.SpaceID, Capacity: capacity, OldFrames: max(uint64(1), capacity/2),
 	})
 	if err != nil {
-		_ = set.Close()
-		_ = manager.Close()
+		t.Fatal(err)
+	}
+	frontier, err := log.DurableFrontier()
+	if err != nil {
 		t.Fatal(err)
 	}
 	index, err := fulltextindex.Open(runtime)
 	if err == nil {
-		_, err = index.Bootstrap(1, documents)
+		_, err = index.Bootstrap(frontier.LastTransactionID+1, documents)
 	}
 	if err != nil {
-		_ = set.Close()
-		_ = manager.Close()
 		t.Fatal(err)
 	}
 	report, err := runtime.FlushDirty(math.MaxUint64)
 	if err != nil || report.Remaining != 0 {
-		_ = set.Close()
-		_ = manager.Close()
 		t.Fatalf("flush row-only Fulltext tree: remaining=%d error=%v", report.Remaining, err)
 	}
 	if err := manager.Sync(); err != nil {
-		_ = set.Close()
-		_ = manager.Close()
 		t.Fatal(err)
 	}
-	state := runtime.State()
-	if err := set.Close(); err != nil {
-		_ = manager.Close()
-		t.Fatal(err)
-	}
-	if err := manager.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return state
+	return runtime.State()
 }

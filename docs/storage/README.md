@@ -38,14 +38,16 @@
   打开时的恢复重放、checkpoint 之后的 segment 回收；
 - dirty Page **只有在对应 WAL 已持久化之后**才允许刷回（no-steal）。
 
-**每棵树一套 WAL**（`manifest.go:68-71` 的 `catalog.wal`／`current.wal`／
-`versions.wal`／`fulltext.wal`，changeindex 另有一套），与 InnoDB「全实例一份
-redo log」不同。但**日志层本来就支持多 space**——`Record` 带 `SpaceID`、
-`RecoverSegmentSet(spaces map)` 按 space 路由（`recovery.go:197`）——
-只是 `OpenRuntime` 传了单条目 map（`treecommit/runtime.go:61`）。
-后果之一：`PublishMutation` 往三套 WAL 各提交一次，**跨树不原子**，
-现有的四个 phase checkpoint 与 poison 标记就是在补这个洞。
-改造见[共享循环 redo log](./shared-circular-redo-v1.md)。
+**一个 generation 一套 redo log**（`redo.wal`，四棵树共用；changeindex 另有一套）。
+日志层本来就是多 space 的——`Record` 带 `SpaceID`、`RecoverSegmentSet(spaces map)`
+按 space 路由（`recovery.go:197`）——从前只是接线成了每棵树一套。
+
+因此**跨树发布是一次 WAL 提交**：`PublishMutation` 通过
+`treecommit.CommitGroupFunc` 把 versions／fulltext／current 三棵树并进同一个
+事务，崩在中间三棵树不会各说各话。一个事务里每棵树一段记录，段内仍是
+「页 redo → 可选 allocator → root 收尾」（`wal/tree_recovery.go` 的
+`parseTreeMetadata`）。旧的每树一套日志的 generation 开机即 COW 升级。
+进度与剩余阶段见[共享循环 redo log](./shared-circular-redo-v1.md)。
 
 段**没有容量上限、也不会自动滚**，而 `Roll`／`PublishCheckpoint`／`Reclaim`
 零生产调用方——所以实际上永远只有一个段，无限增长（[已知风险](../development/known-risks.md) 7a）。

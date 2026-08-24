@@ -177,7 +177,7 @@ func stageTransaction(
 	touched := make(map[uint64]PageStore)
 	initialized := make(map[recoveryPageKey]page.Type)
 	freed := make(map[recoveryPageKey]struct{})
-	metadata, err := parseTreeMetadata(transaction.Records)
+	metadataPlans, err := parseTreeMetadata(transaction.Records)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -275,18 +275,22 @@ func stageTransaction(
 		}
 		staged[key] = state
 	}
-	metadataSkipped, err := stageTreeMetadata(
-		metadata,
-		spaces,
-		staged,
-		touched,
-		initialized,
-		freed,
-	)
-	if err != nil {
-		return nil, nil, 0, err
+	// One plan per Tree in the transaction. They are staged after every Page
+	// redo so each Tree's metadata sees the complete staged image.
+	for _, plan := range metadataPlans {
+		metadataSkipped, err := stageTreeMetadata(
+			plan,
+			spaces,
+			staged,
+			touched,
+			initialized,
+			freed,
+		)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		skipped += metadataSkipped
 	}
-	skipped += metadataSkipped
 	return staged, touched, skipped, nil
 }
 

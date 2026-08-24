@@ -109,15 +109,56 @@ buffer pool 的帧**不记 LSN**，无法只刷「到某个 LSN 为止」。
 每阶段独立可验证。**恢复是全程风险最高的部分**——改错了是静默的数据丢失，
 所以每一阶段的门都必须包含「重开后逐字一致」。
 
-| 阶段 | 内容 | 独立可验证的性质 |
-|---|---|---|
-| 1 | 一个 generation 一套共享 redo log（**仍是段式**）；`OpenRuntime` 接受共享 log + 全部 space | 恢复逐字一致；四棵树共用一个 WAL 目录 |
-| 2 | 跨树提交合并为**一次** WAL 提交 | 在三棵树写入之间注入崩溃，重开后三棵树一致（今天会不一致） |
-| 3 | 拆掉四个 phase checkpoint 与 poison 补偿 | 行为不变——它们补的洞已由阶段 2 堵上 |
-| 4 | barrier + checkpoint 接线 | checkpoint 能推进；`LatestCheckpoint()` 不再恒为 false |
-| 5 | 固定环 + 双指针；`offset = (LSN-base) mod size` | 持续写入下磁盘**恒定不涨**；环绕点恢复正确；写满时背压报错而不是覆盖 |
+| 阶段 | 内容 | 独立可验证的性质 | 状态 |
+|---|---|---|---|
+| 1 | 一个 generation 一套共享 redo log（**仍是段式**）；恢复一次带上全部 space | 恢复逐字一致；四棵树共用一个 WAL 目录 | **已完成** |
+| 2 | 跨树提交合并为**一次** WAL 提交 | 在三棵树写入之间注入故障，重开后三棵树一致（此前不一致） | **已完成** |
+| 3 | 拆掉四个 phase checkpoint 与 poison 补偿 | 行为不变——它们补的洞已由阶段 2 堵上 | 待做 |
+| 4 | barrier + checkpoint 接线 | checkpoint 能推进；`LatestCheckpoint()` 不再恒为 false | 待做 |
+| 5 | 固定环 + 双指针；`offset = (LSN-base) mod size` | 持续写入下磁盘**恒定不涨**；环绕点恢复正确；写满时背压报错而不是覆盖 | 待做 |
 
-**阶段 2 的崩溃注入是这份设计的核心证据**——它同时证明了旧缺陷存在与新设计修好了它。
+**阶段 2 的故障注入是这份设计的核心证据**——它同时证明了旧缺陷存在与新设计修好了它。
+实测到的 RED（`TestCrossTreePublicationIsAtomicUnderFault`）：
+
+| 故障点 | versions | fulltext | current |
+|---|---|---|---|
+| `row-version-published` | 有 | 无 | 无 |
+| `row-fulltext-published` | 有 | 有 | 无 |
+
+### 阶段 1／2 落地时改了原计划的两处
+
+**一、事务号从「每棵树各自一套」变成「每个 generation 一套」。**
+四棵树的 bootstrap 原先都用事务号 1，日志一合并立刻 `ErrDuplicateTransaction`
+——`SegmentSet` 本来就按日志去重。改为从 `DurableFrontier().LastTransactionID`
+取下一个。这一撞本身就是证据：此前四套日志互不知情，跨树提交没有共同的事务空间。
+
+**二、阶段 2 必须动 `internal/store/wal`，原文说不用，是错的。**
+`parseTreeMetadata`（`tree_recovery.go:18`）原来强制**一个事务只描述一棵树**：
+至多一条 allocator redo、恰好一条 root redo，且 root **必须是事务的最后一条**。
+三棵树塞进一个事务直接判 `ErrCorrupt`。
+
+改法是把事务定义为**按 space 分段的拼接**，每段仍守原规则（页 redo → 可选
+allocator → root 收尾）。同一 space 的记录必须连续；一个 space 在另一个 space
+之后再次出现是损坏流，不是第二段——段边界是判断 root redo 归属的唯一依据。
+单树事务是它的退化情形，旧格式一字未变。
+
+### 阶段 2 引入的接口
+
+- `treecommit.CommitGroup(id, members)`：多棵树一次 WAL 提交。按 SpaceID 排序，
+  既固定加锁顺序（两个交叠的组不会死锁），也保证每棵树的记录在事务里连续；
+- `treecommit.CommitGroupFunc(id, collect)`：`collect` 里每个 Index
+  在**持有自己写锁的状态下**校验并生成 plan，锁一直持到组提交结束——
+  否则读者可能看到组里一棵树更新了、另一棵还没有；
+- 三个 Index 各加一个 `StageX`（`StageAppend`／`StageReplaceBatch`／`StageApply`），
+  无事可做就不入组；
+- `Runtime.Commit` 变成 `CommitGroup` 的单成员情形，只有一份实现。
+
+### 一处必须一起改的地方
+
+**每棵树一套日志的旧 generation 会被开机强制 COW 升级**
+（`OpenAuthority` 判 `generation.log == nil`）。它可能四棵树俱全、
+reconcile 无事可做——**唯一的缺陷是结构性的**：日志分家就没法一次提交。
+往它上面写等于把阶段 2 刚买到的原子性又还回去，所以照「缺一棵树」的老路子重建。
 
 ## 6. 明确不做
 

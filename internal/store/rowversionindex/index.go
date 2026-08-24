@@ -102,26 +102,63 @@ func (index *Index) Append(transactionID uint64, locators []Locator) (Receipt, e
 
 	index.mu.Lock()
 	defer index.mu.Unlock()
-	state := index.runtime.State()
-	active, err := index.validateAppend(state, prepared)
+	plan, changed, err := index.planAppendLocked(prepared)
 	if err != nil {
 		return Receipt{}, err
 	}
-	if len(active) == 0 {
-		return Receipt{State: state}, nil
-	}
-	sort.Slice(active, func(left, right int) bool {
-		return bytes.Compare(active[left].key, active[right].key) < 0
-	})
-	plan, err := index.plan(state, active)
-	if err != nil {
-		return Receipt{}, err
+	if !changed {
+		return Receipt{State: index.runtime.State()}, nil
 	}
 	committed, err := index.runtime.Commit(transactionID, plan)
 	if err != nil {
 		return Receipt{}, err
 	}
 	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
+}
+
+// StageAppend validates and plans an Append and enrols the Tree in group, so it
+// can be committed in one WAL transaction together with other Trees.
+//
+// On success the Index's write lock is held until the group commit finishes —
+// the group owns releasing it. An Append whose locators are already present
+// adds no member and releases immediately.
+func (index *Index) StageAppend(group *treecommit.Group, locators []Locator) error {
+	if index == nil || index.runtime == nil || group == nil || len(locators) == 0 {
+		return fmt.Errorf("%w: Append request", ErrInvalid)
+	}
+	prepared, err := prepareLocators(locators)
+	if err != nil {
+		return err
+	}
+	index.mu.Lock()
+	plan, changed, err := index.planAppendLocked(prepared)
+	if err != nil || !changed {
+		index.mu.Unlock()
+		return err
+	}
+	group.Add(index.runtime, plan, index.mu.Unlock)
+	return nil
+}
+
+// planAppendLocked builds the mutation plan for an Append. The caller holds the
+// write lock; changed is false when every locator is already in the Tree.
+func (index *Index) planAppendLocked(prepared []preparedLocator) (btree.MutationPlan, bool, error) {
+	state := index.runtime.State()
+	active, err := index.validateAppend(state, prepared)
+	if err != nil {
+		return btree.MutationPlan{}, false, err
+	}
+	if len(active) == 0 {
+		return btree.MutationPlan{}, false, nil
+	}
+	sort.Slice(active, func(left, right int) bool {
+		return bytes.Compare(active[left].key, active[right].key) < 0
+	})
+	plan, err := index.plan(state, active)
+	if err != nil {
+		return btree.MutationPlan{}, false, err
+	}
+	return plan, true, nil
 }
 
 func (index *Index) ByRevision(rowID string, revision uint64) (Locator, error) {

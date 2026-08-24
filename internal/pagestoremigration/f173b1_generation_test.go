@@ -12,6 +12,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/treecontrol"
+	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
 func TestGenerationV3SeedIncludesCatalogRouteAndRowDocuments(t *testing.T) {
@@ -211,23 +212,34 @@ func replaceWithCatalogRowV2Generation(t *testing.T, directory string, plan Plan
 		t.Fatal(err)
 	}
 	documents := append(catalogDocuments, rowValues...)
+	// Current format, one shared redo log. What makes this generation look
+	// pre-F173b is the missing Route documents, not the log layout — a per-Tree
+	// log would be upgraded by COW on open and hide the incremental reconcile
+	// this fixture exists to exercise.
 	manifest := generationManifest{
-		Version: "memora.page-index-generation/v2", PlanVersion: "memora.page-index-migration-plan/v2",
+		Version: generationVersion, PlanVersion: PlanVersion,
 		PlanDigest: plan.Digest, SourceFingerprint: plan.SourceFingerprint,
-		Trees: make([]treeManifest, len(treeWALExpectedTrees)),
+		Trees: make([]treeManifest, len(expectedTrees)),
 	}
-	for index, specification := range treeWALExpectedTrees {
+	log, err := wal.CreateSegmentSet(filepath.Join(target, sharedWALDirectory), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, specification := range expectedTrees {
 		var state treecontrol.State
 		if specification.Kind == "fulltext" {
-			state = buildRowOnlyFulltextTree(t, target, specification, capacity, documents)
+			state = buildRowOnlyFulltextTree(t, target, specification, capacity, documents, log)
 		} else {
-			state, err = buildTreeWithOwnLog(target, specification, capacity, plan)
+			state, err = buildTree(target, specification, capacity, plan, log)
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
 		specification.State = treeStateFromRuntime(state)
 		manifest.Trees[index] = specification
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
 	}
 	manifest.ContentDigest, err = contentDigest(target, manifest)
 	if err != nil {

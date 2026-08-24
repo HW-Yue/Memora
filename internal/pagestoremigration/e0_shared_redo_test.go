@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/fulltext"
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
@@ -173,4 +174,101 @@ func generationPageBytes(t *testing.T, generationDirectory string) map[string][]
 		result[filepath.Base(path)] = content
 	}
 	return result
+}
+
+// TestPerTreeLogGenerationIsUpgradedOnOpen guards the one hole a shared log
+// leaves open.
+//
+// A v3 generation is complete and healthy — four Trees, every document present,
+// nothing for reconcile to do. Its only defect is structural: one redo log per
+// Tree, so a publication spanning Trees cannot be one transaction. Writing to
+// it would silently give up the atomicity stage 2 just bought, so the Authority
+// rebuilds it by COW instead, exactly as it does for a generation missing a
+// Tree.
+func TestPerTreeLogGenerationIsUpgradedOnOpen(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := NewNativeReader(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := reader.Build(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildPerTreeLogGeneration(t, directory, plan)
+
+	upgraded, err := OpenAuthority(ctx, file, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+	if upgraded.marker.Epoch != 1 || upgraded.marker.Generation == GenerationDirectory {
+		t.Fatalf("per-Tree-log generation was not upgraded: %+v", upgraded.marker)
+	}
+	if upgraded.generation.log == nil {
+		t.Fatal("upgraded generation still has no shared redo log")
+	}
+	assertCatalogPosting(t, upgraded.Generation(), "notes", fulltext.KindTable, table.ID, table.SchemaVersion)
+
+	// The old generation is left untouched, same as every other COW upgrade.
+	old, err := openLiveGeneration(filepath.Join(directory, GenerationDirectory))
+	if err != nil {
+		t.Fatalf("per-Tree-log generation was not preserved: %v", err)
+	}
+	defer old.Close()
+	if old.log != nil {
+		t.Fatal("preserved generation should still be the per-Tree-log one")
+	}
+}
+
+// buildPerTreeLogGeneration writes a complete v3 generation: nothing is missing
+// from it, it just predates the shared redo log.
+func buildPerTreeLogGeneration(t *testing.T, directory string, plan Plan) {
+	t.Helper()
+	if err := os.RemoveAll(filepath.Join(directory, GenerationDirectory)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(directory, AuthorityMarkerFilename)); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(directory, GenerationDirectory)
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	capacity, err := migrationCapacity(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := generationManifest{
+		Version: treeWALGenerationVersion, PlanVersion: PlanVersion,
+		PlanDigest: plan.Digest, SourceFingerprint: plan.SourceFingerprint,
+		Trees: make([]treeManifest, len(treeWALExpectedTrees)),
+	}
+	for index, specification := range treeWALExpectedTrees {
+		state, err := buildTreeWithOwnLog(target, specification, capacity, plan)
+		if err != nil {
+			t.Fatal(err)
+		}
+		specification.State = treeStateFromRuntime(state)
+		manifest.Trees[index] = specification
+	}
+	manifest.ContentDigest, err = contentDigest(target, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeManifest(target, manifest); err != nil {
+		t.Fatal(err)
+	}
+	marker, err := newAuthorityMarker(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAuthorityMarker(directory, marker); err != nil {
+		t.Fatal(err)
+	}
 }

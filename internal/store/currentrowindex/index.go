@@ -90,23 +90,60 @@ func (index *Index) Apply(transactionID uint64, updates []Update) (Receipt, erro
 
 	index.mu.Lock()
 	defer index.mu.Unlock()
-	state := index.runtime.State()
-	active, err := index.validateTransitions(state, prepared)
+	plan, changed, err := index.planApplyLocked(prepared)
 	if err != nil {
 		return Receipt{}, err
 	}
-	if len(active) == 0 {
-		return Receipt{State: state}, nil
-	}
-	plan, err := index.plan(state, active)
-	if err != nil {
-		return Receipt{}, err
+	if !changed {
+		return Receipt{State: index.runtime.State()}, nil
 	}
 	committed, err := index.runtime.Commit(transactionID, plan)
 	if err != nil {
 		return Receipt{}, err
 	}
 	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
+}
+
+// StageApply validates and plans an Apply and enrols the Tree in group, so it
+// can be committed in one WAL transaction together with other Trees.
+//
+// On success the Index's write lock is held until the group commit finishes —
+// the group owns releasing it. An Apply with nothing to do adds no member and
+// releases immediately.
+func (index *Index) StageApply(group *treecommit.Group, updates []Update) error {
+	if index == nil || index.runtime == nil || group == nil || len(updates) == 0 {
+		return fmt.Errorf("%w: Apply request", ErrInvalid)
+	}
+	prepared, err := prepareUpdates(updates)
+	if err != nil {
+		return err
+	}
+	index.mu.Lock()
+	plan, changed, err := index.planApplyLocked(prepared)
+	if err != nil || !changed {
+		index.mu.Unlock()
+		return err
+	}
+	group.Add(index.runtime, plan, index.mu.Unlock)
+	return nil
+}
+
+// planApplyLocked builds the mutation plan for an Apply. The caller holds the
+// write lock; changed is false when the updates are already in the Tree.
+func (index *Index) planApplyLocked(prepared []preparedUpdate) (btree.MutationPlan, bool, error) {
+	state := index.runtime.State()
+	active, err := index.validateTransitions(state, prepared)
+	if err != nil {
+		return btree.MutationPlan{}, false, err
+	}
+	if len(active) == 0 {
+		return btree.MutationPlan{}, false, nil
+	}
+	plan, err := index.plan(state, active)
+	if err != nil {
+		return btree.MutationPlan{}, false, err
+	}
+	return plan, true, nil
 }
 
 func (index *Index) Lookup(tableID, rowID string) (Locator, error) {

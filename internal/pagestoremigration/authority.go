@@ -28,6 +28,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/objectlock"
+	"github.com/HW-Yue/Memora/internal/store/treecommit"
 )
 
 var ErrAuthorityPoisoned = errors.New("Page Store authority requires reopen recovery")
@@ -148,7 +149,11 @@ func OpenAuthority(
 	if reconcileErr != nil && !errors.Is(reconcileErr, errFulltextRebuildRequired) {
 		return nil, errors.Join(reconcileErr, generation.Close(), changeTree.Close())
 	}
-	if reconcileErr != nil || authority.generation.fulltext == nil {
+	// A generation with one redo log per Tree cannot publish atomically across
+	// Trees, so it is upgraded on sight rather than written to. The COW rebuild
+	// produces a v4 generation with one shared log; the old one is left intact.
+	if reconcileErr != nil || authority.generation.fulltext == nil ||
+		authority.generation.log == nil {
 		if _, err := authority.ReplaceGeneration(ctx); err != nil {
 			return nil, errors.Join(err, authority.Close())
 		}
@@ -468,35 +473,39 @@ func (authority *Authority) PublishMutation(
 			},
 		})
 	}
-	if len(rows) != 0 {
-		versionID, versionErr := authority.nextTransactionID("versions")
-		err = versionErr
-		if err == nil {
-			_, err = authority.generation.versions.Append(versionID, versions)
-		}
-		if err == nil {
-			err = authority.checkpointPhase(phaseRowVersionPublished)
-		}
-	}
+	// One WAL transaction for all three Trees. Before this the versions,
+	// fulltext and current Trees were committed one after another, and a fault
+	// between them left them describing different Rows — see
+	// docs/storage/shared-circular-redo-v1.md §2.1.
+	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
-		fulltextID, idErr := authority.nextTransactionID("fulltext")
-		err = idErr
-		if err == nil {
-			_, err = authority.generation.fulltext.ReplaceBatch(fulltextID, documents)
-		}
+		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {
+			if len(rows) != 0 {
+				if err := authority.generation.versions.StageAppend(group, versions); err != nil {
+					return err
+				}
+			}
+			if err := authority.generation.fulltext.StageReplaceBatch(group, documents); err != nil {
+				return err
+			}
+			if len(rows) != 0 {
+				return authority.generation.current.StageApply(group, current)
+			}
+			return nil
+		})
+	}
+	// The phases now all fire after the single commit. They no longer mark
+	// points a publication could be torn at — there is only one — but they stay
+	// as fault-injection seams, and the tests use them to prove exactly that:
+	// a fault at any of them leaves the three Trees agreeing.
+	if err == nil && len(rows) != 0 {
+		err = authority.checkpointPhase(phaseRowVersionPublished)
 	}
 	if err == nil && len(rows) != 0 {
 		err = authority.checkpointPhase(phaseRowFulltextPublished)
 	}
 	if err == nil && len(routes) != 0 {
 		err = authority.checkpointPhase(phaseRouteFulltextPublished)
-	}
-	if err == nil && len(rows) != 0 {
-		currentID, idErr := authority.nextTransactionID("current")
-		err = idErr
-		if err == nil {
-			_, err = authority.generation.current.Apply(currentID, current)
-		}
 	}
 	if err == nil && len(rows) != 0 {
 		err = authority.checkpointPhase(phaseRowCurrentPublished)
@@ -959,6 +968,14 @@ func (authority *Authority) advanceCurrent(plan Plan) error {
 	}
 	_, err = authority.generation.current.Apply(id, updates)
 	return err
+}
+
+// nextGroupTransactionID allocates one transaction ID for a publication that
+// spans several Trees. Every Tree of a generation shares one log, so any Tree
+// answers with the same next ID — the Catalog Tree is simply the one that is
+// always present.
+func (authority *Authority) nextGroupTransactionID() (uint64, error) {
+	return authority.nextTransactionID("catalog")
 }
 
 func (authority *Authority) nextTransactionID(kind string) (uint64, error) {

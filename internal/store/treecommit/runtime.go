@@ -217,61 +217,220 @@ func (runtime *Runtime) Read(pageID uint64) (page.Page, error) {
 	return result, nil
 }
 
+// GroupMember names one Tree's contribution to a group commit.
+type GroupMember struct {
+	Runtime *Runtime
+	Plan    btree.MutationPlan
+}
+
+// stagedMember is one member's commit prepared up to, but not including, the
+// WAL append.
+type stagedMember struct {
+	offset   int
+	prepared []wal.Record
+	recipes  []batchRecipe
+}
+
+// Commit writes one Tree in its own WAL transaction.
 func (runtime *Runtime) Commit(
 	transactionID uint64,
 	plan btree.MutationPlan,
 ) (CommitReceipt, error) {
-	if runtime == nil || runtime.log == nil || runtime.pool == nil {
-		return CommitReceipt{}, fmt.Errorf("%w: Runtime", buffer.ErrInvalid)
+	receipts, err := CommitGroup(transactionID, []GroupMember{{Runtime: runtime, Plan: plan}})
+	if err != nil {
+		return CommitReceipt{}, err
 	}
-	runtime.mu.Lock()
-	defer runtime.mu.Unlock()
-	if runtime.poisoned {
-		return CommitReceipt{}, ErrRuntimePoisoned
+	return receipts[0], nil
+}
+
+// Group collects the Trees taking part in one WAL transaction.
+//
+// Each Tree is added while its Index holds its own write lock, and that lock is
+// released only after the commit. Without that a reader could observe one Tree
+// of the group updated and another not — which is the very thing the single
+// transaction exists to prevent.
+type Group struct {
+	members  []GroupMember
+	releases []func()
+}
+
+// Add enrolls one Tree's planned mutation. release, if not nil, runs after the
+// group commit finishes, in reverse order of Add.
+func (group *Group) Add(runtime *Runtime, plan btree.MutationPlan, release func()) {
+	if group == nil {
+		return
 	}
-	for _, pageID := range plan.Reused {
-		if _, reusable := runtime.free[pageID]; !reusable {
-			return CommitReceipt{}, fmt.Errorf("%w: Page %d is not reusable", ErrInvalidPlan, pageID)
+	group.members = append(group.members, GroupMember{Runtime: runtime, Plan: plan})
+	group.releases = append(group.releases, release)
+}
+
+// Len reports how many Trees the group holds.
+func (group *Group) Len() int {
+	if group == nil {
+		return 0
+	}
+	return len(group.members)
+}
+
+func (group *Group) release() {
+	for index := len(group.releases) - 1; index >= 0; index-- {
+		if group.releases[index] != nil {
+			group.releases[index]()
 		}
 	}
-	prepared, err := Prepare(runtime.state, plan)
-	if err != nil {
-		return CommitReceipt{}, err
+	group.releases = nil
+}
+
+// CommitGroupFunc builds a group with collect, commits every Tree it enrolled
+// in one WAL transaction, then releases the collected locks in reverse order.
+//
+// collect is where each Index validates and plans. An Index that finds nothing
+// to do simply does not add itself; a group that ends up empty commits nothing
+// and is not an error. The releases run even when collect fails, so a partly
+// built group never strands a lock.
+func CommitGroupFunc(transactionID uint64, collect func(*Group) error) error {
+	if collect == nil {
+		return fmt.Errorf("%w: commit group collector", buffer.ErrInvalid)
 	}
-	recipes, err := runtime.preflight(plan, prepared.Records)
-	if err != nil {
-		return CommitReceipt{}, err
+	group := &Group{}
+	defer group.release()
+	if err := collect(group); err != nil {
+		return err
 	}
-	transaction, err := runtime.log.CommitTransaction(transactionID, prepared.Records)
+	if len(group.members) == 0 {
+		return nil
+	}
+	_, err := CommitGroup(transactionID, group.members)
+	return err
+}
+
+// CommitGroup writes several Trees in ONE WAL transaction.
+//
+// That single commit Record is the whole point: recovery replays a transaction
+// or it does not, so a write spanning several Trees can no longer land in some
+// of them and not the others. Every Runtime therefore has to share one log —
+// three commits into three logs is exactly the gap this closes.
+//
+// Receipts come back in the caller's order, not the internal commit order.
+func CommitGroup(transactionID uint64, members []GroupMember) ([]CommitReceipt, error) {
+	if len(members) == 0 {
+		return nil, fmt.Errorf("%w: empty commit group", buffer.ErrInvalid)
+	}
+	// Commit in Space ID order. Two things need it: locking in a fixed order
+	// means two overlapping groups cannot deadlock, and it keeps one Tree's
+	// Records contiguous in the transaction, which is the grouping recovery
+	// parses each Tree's metadata by.
+	order := make([]int, len(members))
+	for index := range order {
+		order[index] = index
+	}
+	sort.SliceStable(order, func(left, right int) bool {
+		return spaceOf(members[order[left]].Runtime) < spaceOf(members[order[right]].Runtime)
+	})
+
+	var log commitLog
+	previousSpace := uint64(0)
+	for position, index := range order {
+		runtime := members[index].Runtime
+		if runtime == nil || runtime.log == nil || runtime.pool == nil {
+			return nil, fmt.Errorf("%w: Runtime", buffer.ErrInvalid)
+		}
+		if runtime.spaceID == previousSpace {
+			return nil, fmt.Errorf("%w: space %d twice in one group", buffer.ErrInvalid, runtime.spaceID)
+		}
+		previousSpace = runtime.spaceID
+		if position == 0 {
+			log = runtime.log
+		} else if runtime.log != log {
+			return nil, fmt.Errorf("%w: commit group spans more than one log", buffer.ErrInvalid)
+		}
+		runtime.mu.Lock()
+		defer runtime.mu.Unlock()
+	}
+
+	staged := make([]stagedMember, len(members))
+	var records []wal.Record
+	for _, index := range order {
+		runtime, plan := members[index].Runtime, members[index].Plan
+		if runtime.poisoned {
+			return nil, ErrRuntimePoisoned
+		}
+		for _, pageID := range plan.Reused {
+			if _, reusable := runtime.free[pageID]; !reusable {
+				return nil, fmt.Errorf("%w: Page %d is not reusable", ErrInvalidPlan, pageID)
+			}
+		}
+		prepared, err := Prepare(runtime.state, plan)
+		if err != nil {
+			return nil, err
+		}
+		recipes, err := runtime.preflight(plan, prepared.Records)
+		if err != nil {
+			return nil, err
+		}
+		staged[index] = stagedMember{
+			offset: len(records), prepared: prepared.Records, recipes: recipes,
+		}
+		records = append(records, prepared.Records...)
+	}
+
+	transaction, err := log.CommitTransaction(transactionID, records)
 	if err != nil {
 		if errors.Is(err, wal.ErrOutcomeUnknown) || errors.Is(err, wal.ErrPoisoned) {
-			runtime.poisoned = true
+			poisonGroup(members)
 		}
-		return CommitReceipt{}, err
+		return nil, err
 	}
-	batch, next, err := materializeBatch(
-		runtime.state,
-		plan,
-		prepared.Records,
-		transaction,
-		recipes,
-	)
-	if err != nil {
-		runtime.poisoned = true
-		return CommitReceipt{}, fmt.Errorf("%w: committed WAL batch: %v", ErrRuntimePoisoned, err)
+
+	receipts := make([]CommitReceipt, len(members))
+	for _, index := range order {
+		runtime, plan := members[index].Runtime, members[index].Plan
+		entry := staged[index]
+		// Each member sees only its own slice of the transaction. The Records
+		// are already grouped by space, so the slice is contiguous and the
+		// recipes' Record indexes stay relative to it.
+		member := wal.CommittedTransaction{
+			Receipt: transaction.Receipt,
+			Records: transaction.Records[entry.offset : entry.offset+len(entry.prepared)],
+		}
+		member.Receipt.RecordCount = uint32(len(entry.prepared))
+		batch, next, err := materializeBatch(runtime.state, plan, entry.prepared, member, entry.recipes)
+		if err != nil {
+			// The transaction is already durable, so a failure here leaves the
+			// log ahead of memory for EVERY member, not just this one — the
+			// others may have published already. All of them need a reopen.
+			poisonGroup(members)
+			return nil, fmt.Errorf("%w: committed WAL batch: %v", ErrRuntimePoisoned, err)
+		}
+		if err := runtime.pool.PublishBatch(batch); err != nil {
+			poisonGroup(members)
+			return nil, err
+		}
+		runtime.state = next
+		for _, pageID := range plan.Reused {
+			delete(runtime.free, pageID)
+		}
+		for _, pageID := range plan.Retired {
+			runtime.free[pageID] = struct{}{}
+		}
+		receipts[index] = CommitReceipt{WAL: transaction.Receipt, State: next}
 	}
-	if err := runtime.pool.PublishBatch(batch); err != nil {
-		runtime.poisoned = true
-		return CommitReceipt{}, err
+	return receipts, nil
+}
+
+func spaceOf(runtime *Runtime) uint64 {
+	if runtime == nil {
+		return 0
 	}
-	runtime.state = next
-	for _, pageID := range plan.Reused {
-		delete(runtime.free, pageID)
+	return runtime.spaceID
+}
+
+func poisonGroup(members []GroupMember) {
+	for _, member := range members {
+		if member.Runtime != nil {
+			member.Runtime.poisoned = true
+		}
 	}
-	for _, pageID := range plan.Retired {
-		runtime.free[pageID] = struct{}{}
-	}
-	return CommitReceipt{WAL: transaction.Receipt, State: next}, nil
 }
 
 func (runtime *Runtime) FlushDirty(limit uint64) (buffer.FlushReport, error) {

@@ -135,6 +135,12 @@ wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的�
 **结构上不可能涨**——不 checkpoint 的后果从"磁盘静默涨到天上"变成"写入背压报错"。
 同一改动顺带堵上跨树提交不原子的洞（见该文档 §2.1）。
 
+**进度（2026-08-24）**：阶段 1、2 已完成——一个 generation 一套 redo log，
+跨树发布是一次 WAL 提交，**跨树不原子那半个问题已解决**。
+本条剩下的仍是原问题：**日志依然不滚段、不 checkpoint、不回收**。
+阶段 4（barrier + checkpoint）与阶段 5（固定环）才会关掉它，在那之前
+7a 保持开启。
+
 ### 7b. schema 与 route 变更不加对象锁
 
 `internal/store/objectlock/objectlock.go` 的 `SchemaKey`（`:46`）与
