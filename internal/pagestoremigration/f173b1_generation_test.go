@@ -29,9 +29,9 @@ func TestGenerationV3SeedIncludesCatalogRouteAndRowDocuments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Version != "memora.page-index-generation/v3" ||
+	if manifest.Version != "memora.page-index-generation/v4" ||
 		manifest.PlanVersion != "memora.page-index-migration-plan/v3" {
-		t.Fatalf("generation v3 manifest = %#v", manifest)
+		t.Fatalf("generation v4 manifest = %#v", manifest)
 	}
 	generation, err := OpenGeneration(receipt.Directory)
 	if err != nil {
@@ -214,14 +214,14 @@ func replaceWithCatalogRowV2Generation(t *testing.T, directory string, plan Plan
 	manifest := generationManifest{
 		Version: "memora.page-index-generation/v2", PlanVersion: "memora.page-index-migration-plan/v2",
 		PlanDigest: plan.Digest, SourceFingerprint: plan.SourceFingerprint,
-		Trees: make([]treeManifest, len(expectedTrees)),
+		Trees: make([]treeManifest, len(treeWALExpectedTrees)),
 	}
-	for index, specification := range expectedTrees {
+	for index, specification := range treeWALExpectedTrees {
 		var state treecontrol.State
 		if specification.Kind == "fulltext" {
 			state = buildRowOnlyFulltextTree(t, target, specification, capacity, documents)
 		} else {
-			state, err = buildTree(target, specification, capacity, plan)
+			state, err = buildTreeWithOwnLog(target, specification, capacity, plan)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -229,7 +229,7 @@ func replaceWithCatalogRowV2Generation(t *testing.T, directory string, plan Plan
 		specification.State = treeStateFromRuntime(state)
 		manifest.Trees[index] = specification
 	}
-	manifest.ContentDigest, err = contentDigest(target, expectedTrees)
+	manifest.ContentDigest, err = contentDigest(target, manifest)
 	if err != nil {
 		t.Fatal(err)
 	}

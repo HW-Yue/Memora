@@ -174,11 +174,24 @@ func (applier *Applier) build(
 		PlanDigest: plan.Digest, SourceFingerprint: plan.SourceFingerprint,
 		Trees: make([]treeManifest, len(expectedTrees)),
 	}
+	// One redo log for the whole generation, created before any Tree: every
+	// Tree commits into it, so a write spanning several Trees is one WAL
+	// transaction. See docs/storage/shared-circular-redo-v1.md.
+	log, err := wal.CreateSegmentSet(filepath.Join(staging, sharedWALDirectory), 0)
+	if err != nil {
+		return generationManifest{}, fmt.Errorf("create generation redo log: %w", err)
+	}
+	closeLog := true
+	defer func() {
+		if closeLog {
+			_ = log.Close()
+		}
+	}()
 	for index, specification := range expectedTrees {
 		if err := ctx.Err(); err != nil {
 			return generationManifest{}, err
 		}
-		state, err := buildTree(staging, specification, capacity, plan)
+		state, err := buildTree(staging, specification, capacity, plan, log)
 		if err != nil {
 			return generationManifest{}, fmt.Errorf("build %s migration Tree: %w", specification.Kind, err)
 		}
@@ -189,7 +202,14 @@ func (applier *Applier) build(
 			return generationManifest{}, err
 		}
 	}
-	manifest.ContentDigest, err = contentDigest(staging, expectedTrees)
+	// The log has to be closed before the content digest is taken: its Segment
+	// files are part of the generation's bytes, and OpenGeneration recomputes
+	// the same digest from what is on disk.
+	closeLog = false
+	if err := log.Close(); err != nil {
+		return generationManifest{}, fmt.Errorf("close generation redo log: %w", err)
+	}
+	manifest.ContentDigest, err = contentDigest(staging, manifest)
 	if err != nil {
 		return generationManifest{}, err
 	}
@@ -253,30 +273,36 @@ func buildTree(
 	specification treeManifest,
 	capacity uint64,
 	plan Plan,
+	log *wal.SegmentSet,
 ) (state treecontrol.State, result error) {
-	set, err := wal.CreateSegmentSet(filepath.Join(directory, specification.WALDirectory), 0)
-	if err != nil {
-		return treecontrol.State{}, err
-	}
 	manager, err := page.Create(filepath.Join(directory, specification.PageFile), specification.SpaceID)
 	if err != nil {
-		_ = set.Close()
 		return treecontrol.State{}, err
 	}
 	defer func() {
-		result = errors.Join(result, set.Close(), manager.Close())
+		result = errors.Join(result, manager.Close())
 	}()
-	runtime, _, err := treecommit.OpenRuntime(set, manager, treecommit.RuntimeConfig{
-		SpaceID: specification.SpaceID, Capacity: capacity, OldFrames: max(uint64(1), capacity/2),
-	})
+	// Attach rather than open: the log is shared, and by the second Tree it
+	// already carries the first Tree's Records. Recovering here would route
+	// those Records to a space this call was not given and fail.
+	runtime, err := treecommit.AttachRuntime(log, manager, runtimeConfig(specification, capacity))
 	if err != nil {
 		return treecontrol.State{}, err
 	}
+	// Transaction IDs are per log, and the log is now shared, so the bootstrap
+	// of the second Tree can no longer reuse the first Tree's ID 1 — the Set
+	// rejects a duplicate outright. Taking the next ID from the log's frontier
+	// keeps them unique across the whole generation.
+	frontier, err := log.DurableFrontier()
+	if err != nil {
+		return treecontrol.State{}, err
+	}
+	transactionID := frontier.LastTransactionID + 1
 	switch specification.Kind {
 	case "catalog":
 		index, err := catalogindex.Open(runtime)
 		if err == nil {
-			_, err = index.Replace(1, plan.Catalog)
+			_, err = index.Replace(transactionID, plan.Catalog)
 		}
 		if err != nil {
 			return treecontrol.State{}, err
@@ -284,7 +310,7 @@ func buildTree(
 	case "current":
 		index, err := currentrowindex.Open(runtime)
 		if err == nil {
-			_, err = index.Bootstrap(1, plan.CurrentRows)
+			_, err = index.Bootstrap(transactionID, plan.CurrentRows)
 		}
 		if err != nil {
 			return treecontrol.State{}, err
@@ -292,7 +318,7 @@ func buildTree(
 	case "versions":
 		index, err := rowversionindex.Open(runtime)
 		if err == nil {
-			_, err = index.Bootstrap(1, plan.RowVersions)
+			_, err = index.Bootstrap(transactionID, plan.RowVersions)
 		}
 		if err != nil {
 			return treecontrol.State{}, err
@@ -303,7 +329,7 @@ func buildTree(
 			var documents []fulltext.Document
 			documents, err = generationDocuments(plan)
 			if err == nil {
-				_, err = index.Bootstrap(1, documents)
+				_, err = index.Bootstrap(transactionID, documents)
 			}
 		}
 		if err != nil {

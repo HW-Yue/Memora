@@ -2,9 +2,13 @@ package pagestoremigration
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/HW-Yue/Memora/internal/store/treecontrol"
+	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
 func TestGenerationBuildIncludesDurableFulltextTree(t *testing.T) {
@@ -18,9 +22,13 @@ func TestGenerationBuildIncludesDurableFulltextTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, relative := range []string{"fulltext.pages", "fulltext.wal"} {
+	// One redo log for the whole generation, not one per Tree: the fulltext
+	// Tree has its own Page file but commits into the shared log.
+	for relative, wantDirectory := range map[string]bool{
+		"fulltext.pages": false, sharedWALDirectory: true,
+	} {
 		info, err := os.Stat(filepath.Join(receipt.Directory, relative))
-		if err != nil || (relative == "fulltext.wal" && !info.IsDir()) {
+		if err != nil || info.IsDir() != wantDirectory {
 			t.Fatalf("generation entry %q = %+v, %v", relative, info, err)
 		}
 	}
@@ -28,9 +36,9 @@ func TestGenerationBuildIncludesDurableFulltextTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Version != "memora.page-index-generation/v3" ||
+	if manifest.Version != "memora.page-index-generation/v4" ||
 		manifest.PlanVersion != "memora.page-index-migration-plan/v3" || len(manifest.Trees) != 4 {
-		t.Fatalf("generation v3 manifest = %#v", manifest)
+		t.Fatalf("generation v4 manifest = %#v", manifest)
 	}
 }
 
@@ -102,14 +110,14 @@ func buildLegacyGeneration(t *testing.T, directory string, plan Plan) {
 		Trees: make([]treeManifest, len(legacyExpectedTrees)),
 	}
 	for index, specification := range legacyExpectedTrees {
-		state, err := buildTree(target, specification, capacity, plan)
+		state, err := buildTreeWithOwnLog(target, specification, capacity, plan)
 		if err != nil {
 			t.Fatal(err)
 		}
 		specification.State = treeStateFromRuntime(state)
 		manifest.Trees[index] = specification
 	}
-	manifest.ContentDigest, err = contentDigest(target, legacyExpectedTrees)
+	manifest.ContentDigest, err = contentDigest(target, manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,4 +131,22 @@ func buildLegacyGeneration(t *testing.T, directory string, plan Plan) {
 	if err := writeAuthorityMarker(directory, marker); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// buildTreeWithOwnLog builds one Tree of a pre-v4 generation, back when every
+// Tree owned its own redo log. The production build path now creates one log
+// for the whole generation, so these legacy fixtures make the per-Tree log
+// themselves rather than keeping a second layout alive in apply.go.
+func buildTreeWithOwnLog(
+	directory string,
+	specification treeManifest,
+	capacity uint64,
+	plan Plan,
+) (treecontrol.State, error) {
+	set, err := wal.CreateSegmentSet(filepath.Join(directory, specification.WALDirectory), 0)
+	if err != nil {
+		return treecontrol.State{}, err
+	}
+	state, err := buildTree(directory, specification, capacity, plan, set)
+	return state, errors.Join(err, set.Close())
 }

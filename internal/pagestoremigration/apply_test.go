@@ -236,19 +236,19 @@ func TestOpenGenerationRejectsManifestPageWALAndDirectoryCorruption(t *testing.T
 		{"Fulltext Page", func(t *testing.T, directory string) {
 			flipLastByte(t, filepath.Join(directory, "fulltext.pages"))
 		}},
-		{"WAL", func(t *testing.T, directory string) {
-			matches, err := filepath.Glob(filepath.Join(directory, "versions.wal", "segment-*.wal"))
+		// One case, not one per Tree: the whole generation now commits into a
+		// single redo log, so there is a single set of Segment files to corrupt.
+		{"redo log", func(t *testing.T, directory string) {
+			matches, err := filepath.Glob(filepath.Join(directory, "redo.wal", "segment-*.wal"))
 			if err != nil || len(matches) != 1 {
-				t.Fatalf("WAL files = %v, %v", matches, err)
+				t.Fatalf("redo log files = %v, %v", matches, err)
 			}
 			flipLastByte(t, matches[0])
 		}},
-		{"Fulltext WAL", func(t *testing.T, directory string) {
-			matches, err := filepath.Glob(filepath.Join(directory, "fulltext.wal", "segment-*.wal"))
-			if err != nil || len(matches) != 1 {
-				t.Fatalf("Fulltext WAL files = %v, %v", matches, err)
+		{"missing redo log", func(t *testing.T, directory string) {
+			if err := os.RemoveAll(filepath.Join(directory, "redo.wal")); err != nil {
+				t.Fatal(err)
 			}
-			flipLastByte(t, matches[0])
 		}},
 		{"extra entry", func(t *testing.T, directory string) {
 			if err := os.WriteFile(filepath.Join(directory, "unexpected"), []byte("x"), 0o600); err != nil {

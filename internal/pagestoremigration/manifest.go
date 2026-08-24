@@ -19,12 +19,18 @@ import (
 )
 
 const (
-	GenerationDirectory     = "page-index-v1"
-	generationVersion       = "memora.page-index-generation/v3"
-	rowGenerationVersion    = "memora.page-index-generation/v2"
-	legacyGenerationVersion = "memora.page-index-generation/v1"
-	manifestFileName        = "manifest.json"
-	maxManifestBytes        = 64 << 10
+	GenerationDirectory      = "page-index-v1"
+	generationVersion        = "memora.page-index-generation/v4"
+	treeWALGenerationVersion = "memora.page-index-generation/v3"
+	rowGenerationVersion     = "memora.page-index-generation/v2"
+	legacyGenerationVersion  = "memora.page-index-generation/v1"
+	manifestFileName         = "manifest.json"
+	maxManifestBytes         = 64 << 10
+
+	// sharedWALDirectory holds the one redo log a v4 generation writes. Every
+	// Tree commits into it, which is what makes a publication spanning several
+	// Trees a single WAL transaction instead of one per Tree.
+	sharedWALDirectory = "redo.wal"
 
 	catalogSpaceID  = uint64(0x4d454d434154) // MEMCAT
 	currentSpaceID  = uint64(0x4d454d435552) // MEMCUR
@@ -64,14 +70,26 @@ type generationManifest struct {
 	Digest            string         `json:"digest"`
 }
 
+// expectedTrees describes a v4 generation. No Tree names a WAL directory
+// because they all share sharedWALDirectory.
 var expectedTrees = []treeManifest{
+	{Kind: "catalog", SpaceID: catalogSpaceID, PageFile: "catalog.pages"},
+	{Kind: "current", SpaceID: currentSpaceID, PageFile: "current.pages"},
+	{Kind: "versions", SpaceID: versionSpaceID, PageFile: "versions.pages"},
+	{Kind: "fulltext", SpaceID: fulltextSpaceID, PageFile: "fulltext.pages"},
+}
+
+// treeWALExpectedTrees describes v3 and v2 generations, which gave every Tree
+// its own log. Kept so an existing database still opens; the Authority then
+// COW-upgrades it to v4 (see openGeneration).
+var treeWALExpectedTrees = []treeManifest{
 	{Kind: "catalog", SpaceID: catalogSpaceID, PageFile: "catalog.pages", WALDirectory: "catalog.wal"},
 	{Kind: "current", SpaceID: currentSpaceID, PageFile: "current.pages", WALDirectory: "current.wal"},
 	{Kind: "versions", SpaceID: versionSpaceID, PageFile: "versions.pages", WALDirectory: "versions.wal"},
 	{Kind: "fulltext", SpaceID: fulltextSpaceID, PageFile: "fulltext.pages", WALDirectory: "fulltext.wal"},
 }
 
-var legacyExpectedTrees = append([]treeManifest(nil), expectedTrees[:3]...)
+var legacyExpectedTrees = append([]treeManifest(nil), treeWALExpectedTrees[:3]...)
 
 func (manifest generationManifest) validate() error {
 	expected, validVersion := manifestTreeSpecifications(manifest.Version, manifest.PlanVersion)
@@ -104,8 +122,10 @@ func manifestTreeSpecifications(version, planVersion string) ([]treeManifest, bo
 	switch {
 	case version == generationVersion && planVersion == PlanVersion:
 		return expectedTrees, true
+	case version == treeWALGenerationVersion && planVersion == PlanVersion:
+		return treeWALExpectedTrees, true
 	case version == rowGenerationVersion && planVersion == rowPlanVersion:
-		return expectedTrees, true
+		return treeWALExpectedTrees, true
 	case version == legacyGenerationVersion && planVersion == legacyPlanVersion:
 		return legacyExpectedTrees, true
 	default:
@@ -118,6 +138,12 @@ func treeStateFromRuntime(state treecontrol.State) treeStateManifest {
 		Generation: state.Generation, Revision: state.Revision,
 		RootPageID: state.RootPageID, NextPageID: state.NextPageID, LSN: state.LSN,
 	}
+}
+
+// sharedLog reports whether every Tree in the generation commits into one redo
+// log. Only v4 does; older generations keep one log per Tree.
+func (manifest generationManifest) sharedLog() bool {
+	return manifest.Version == generationVersion
 }
 
 func (state treeStateManifest) runtimeState(spaceID uint64) treecontrol.State {
@@ -232,8 +258,8 @@ func writeManifest(directory string, manifest generationManifest) error {
 	return nil
 }
 
-func contentDigest(directory string, trees []treeManifest) (string, error) {
-	if err := validateGenerationEntries(directory, trees); err != nil {
+func contentDigest(directory string, manifest generationManifest) (string, error) {
+	if err := validateGenerationEntries(directory, manifest); err != nil {
 		return "", err
 	}
 	paths := make([]string, 0)
@@ -295,15 +321,20 @@ func contentDigest(directory string, trees []treeManifest) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func validateGenerationEntries(directory string, trees []treeManifest) error {
+func validateGenerationEntries(directory string, manifest generationManifest) error {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return fmt.Errorf("%w: read generation directory: %v", ErrTargetCorrupt, err)
 	}
 	expected := map[string]bool{manifestFileName: false}
-	for _, tree := range trees {
+	for _, tree := range manifest.Trees {
 		expected[tree.PageFile] = false
-		expected[tree.WALDirectory] = true
+		if tree.WALDirectory != "" {
+			expected[tree.WALDirectory] = true
+		}
+	}
+	if manifest.sharedLog() {
+		expected[sharedWALDirectory] = true
 	}
 	seen := make(map[string]bool, len(expected))
 	for _, entry := range entries {

@@ -49,14 +49,22 @@ type batchRecipe struct {
 	inferLSN    bool
 }
 
+// OpenRuntime recovers the log into the single space it is given, then attaches
+// a Runtime to it.
+//
+// Use it only when the log belongs to that one space. A log shared by several
+// spaces must be recovered once, by the caller, with wal.RecoverSegmentSet over
+// every space: recovery routes each Record by SpaceID and fails with
+// ErrMissingSpace on a Record whose space is absent from the map, so recovering
+// per space would make each pass reject the other spaces' Records. Those
+// callers use AttachRuntime instead.
 func OpenRuntime(
 	set *wal.SegmentSet,
 	store wal.PageStore,
 	config RuntimeConfig,
 ) (*Runtime, wal.RecoveryReport, error) {
-	if set == nil || store == nil || config.SpaceID == 0 || config.Capacity == 0 ||
-		config.OldFrames == 0 || config.OldFrames > config.Capacity {
-		return nil, wal.RecoveryReport{}, fmt.Errorf("%w: Runtime configuration", buffer.ErrInvalid)
+	if err := validateRuntimeInputs(set, store, config); err != nil {
+		return nil, wal.RecoveryReport{}, err
 	}
 	report, err := wal.RecoverSegmentSet(
 		set,
@@ -65,27 +73,45 @@ func OpenRuntime(
 	if err != nil {
 		return nil, report, fmt.Errorf("recover Tree Runtime: %w", err)
 	}
+	runtime, err := AttachRuntime(set, store, config)
+	if err != nil {
+		return nil, report, err
+	}
+	return runtime, report, nil
+}
+
+// AttachRuntime builds a Runtime over a log the caller has already recovered.
+// It is the second half of OpenRuntime, split out so that several spaces can
+// share one log behind a single recovery pass.
+func AttachRuntime(
+	set *wal.SegmentSet,
+	store wal.PageStore,
+	config RuntimeConfig,
+) (*Runtime, error) {
+	if err := validateRuntimeInputs(set, store, config); err != nil {
+		return nil, err
+	}
 	controlPage, err := store.Read(treecontrol.PageID)
 	if errors.Is(err, page.ErrNotFound) {
 		controlPage = treecontrol.EncodeBootstrap(config.SpaceID)
 		if err := store.Write(controlPage); err != nil {
-			return nil, report, fmt.Errorf("write bootstrap Tree control: %w", err)
+			return nil, fmt.Errorf("write bootstrap Tree control: %w", err)
 		}
 	} else if err != nil {
-		return nil, report, fmt.Errorf("read Tree control: %w", err)
+		return nil, fmt.Errorf("read Tree control: %w", err)
 	}
 	// Sync even when bootstrap was left visible by an earlier failed Sync. This
 	// makes a retry converge instead of trusting an outcome-unknown first write.
 	if err := store.Sync(); err != nil {
-		return nil, report, fmt.Errorf("sync Tree control on open: %w", err)
+		return nil, fmt.Errorf("sync Tree control on open: %w", err)
 	}
 	state, err := treecontrol.Decode(controlPage, config.SpaceID)
 	if err != nil {
-		return nil, report, fmt.Errorf("decode Tree control: %w", err)
+		return nil, fmt.Errorf("decode Tree control: %w", err)
 	}
 	free, err := scanFreePages(store, state)
 	if err != nil {
-		return nil, report, err
+		return nil, err
 	}
 	pool, err := buffer.New(
 		buffer.LoaderFunc(func(key buffer.Key) (page.Page, error) {
@@ -102,18 +128,30 @@ func OpenRuntime(
 		},
 	)
 	if err != nil {
-		return nil, report, err
+		return nil, err
 	}
 	runtime := &Runtime{log: set, pool: pool, spaceID: config.SpaceID, state: state, free: free}
 	loaded, err := runtime.Read(treecontrol.PageID)
 	if err != nil {
-		return nil, report, fmt.Errorf("load Tree control: %w", err)
+		return nil, fmt.Errorf("load Tree control: %w", err)
 	}
 	loadedState, err := treecontrol.Decode(loaded, config.SpaceID)
 	if err != nil || loadedState != state {
-		return nil, report, fmt.Errorf("%w: loaded Tree control mismatch", treecontrol.ErrCorrupt)
+		return nil, fmt.Errorf("%w: loaded Tree control mismatch", treecontrol.ErrCorrupt)
 	}
-	return runtime, report, nil
+	return runtime, nil
+}
+
+func validateRuntimeInputs(
+	set *wal.SegmentSet,
+	store wal.PageStore,
+	config RuntimeConfig,
+) error {
+	if set == nil || store == nil || config.SpaceID == 0 || config.Capacity == 0 ||
+		config.OldFrames == 0 || config.OldFrames > config.Capacity {
+		return fmt.Errorf("%w: Runtime configuration", buffer.ErrInvalid)
+	}
+	return nil
 }
 
 func scanFreePages(store wal.PageStore, state treecontrol.State) (map[uint64]struct{}, error) {
