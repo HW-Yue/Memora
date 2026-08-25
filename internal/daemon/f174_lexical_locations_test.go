@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -54,9 +53,18 @@ func TestNativeDaemonLexicalLocationsReturnCurrentAuthorizedPositionsAndReopen(t
 
 	old := lexicalF174(t, dataDir, "oldtoken", "", 64, workAuthorization)
 	rowLocation := locationF174(t, old.Results[0].Rows, "row", mutableRowID)
-	if fmt.Sprint(rowLocation["revision"]) != "1" || rowLocation["matched_term_count"] == nil ||
-		rowLocation["matched_field_ids"] == nil {
+	// The location names the Row and where it lives, and nothing about how
+	// well it matched. A Row's tree path waits on the Row-to-leaf lookup — see
+	// docs/query/predictor-path-only-v1.md stage 4.
+	if rowLocation["database_id"] != workID || rowLocation["table_id"] == nil {
 		t.Fatalf("Row lexical location = %#v", rowLocation)
+	}
+	for _, gone := range []string{
+		"revision", "matched_term_count", "matched_field_count", "frequency", "matched_field_ids",
+	} {
+		if _, exists := rowLocation[gone]; exists {
+			t.Fatalf("Row lexical location still carries %q: %#v", gone, rowLocation)
+		}
 	}
 	selected := executeF174(t, dataDir,
 		"SELECT title, revision FROM work.notes AS OF REVISION 1 WHERE row_id = :row LIMIT 1",
@@ -71,8 +79,13 @@ func TestNativeDaemonLexicalLocationsReturnCurrentAuthorizedPositionsAndReopen(t
 	if rows := lexicalF174(t, dataDir, "oldtoken", "", 64, workAuthorization).Results[0].Rows; len(rows) != 0 {
 		t.Fatalf("stale Row term remained = %#v", rows)
 	}
+	// The location listing no longer publishes a revision — the predictor is a
+	// hint and does not carry a version contract; the version comes from the
+	// read that dereferences the location. That the index followed the update
+	// is proved by the old term disappearing above and the new one appearing
+	// here.
 	updated := lexicalF174(t, dataDir, "newtoken", "", 64, workAuthorization)
-	if got := locationF174(t, updated.Results[0].Rows, "row", mutableRowID); fmt.Sprint(got["revision"]) != "2" {
+	if got := locationF174(t, updated.Results[0].Rows, "row", mutableRowID); got["object_id"] != mutableRowID {
 		t.Fatalf("updated Row location = %#v", got)
 	}
 	executeF174(t, dataDir, "DELETE FROM work.notes WHERE row_id = :row",

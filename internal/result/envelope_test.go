@@ -163,19 +163,15 @@ func TestRowDetailEnvelopeRequiresDictionaryIdentityAndExplicitFallback(t *testi
 
 func TestResultEnvelopeCarriesDiscoveryAndPropagatesTruncation(t *testing.T) {
 	t.Parallel()
-	builder, err := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
-		CandidateLimit: 1, UTF8ByteLimit: 2048,
-	})
+	builder, err := discovery.NewBuilder("sha256:view", "sha256:catalog", 1, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	score := 2.0
 	if err := builder.Add(discovery.Batch{
-		Snapshot: "sha256:view", CatalogRevision: "sha256:catalog", Predictor: "lexical/v1",
-		Status: discovery.PredictorSucceeded, ScoreKind: discovery.ScoreMatchCount, Reason: "term locations",
-		Candidates: []discovery.CandidateInput{
-			{DatabaseID: "db_work", TableID: "tbl_notes", Reason: "two terms", Score: &score},
-			{DatabaseID: "db_work", TableID: "tbl_tasks", Reason: "two terms", Score: &score},
+		Snapshot: "sha256:view", CatalogRevision: "sha256:catalog",
+		Candidates: []discovery.Candidate{
+			{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/notes"},
+			{DatabaseID: "db_work", TableID: "tbl_tasks", Path: "/tasks"},
 		},
 	}); err != nil {
 		t.Fatal(err)

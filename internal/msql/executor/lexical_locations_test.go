@@ -61,9 +61,19 @@ func TestLexicalLocationsAppliesCatalogAuthorizationBeforeNarrowRead(t *testing.
 	if err != nil || len(reader.requests) != 1 || !reflect.DeepEqual(reader.requests[0].DatabaseIDs, []string{allowed.ID}) {
 		t.Fatalf("scoped lexical output=%#v requests=%#v error=%v", output, reader.requests, err)
 	}
+	// A location is where the hit is, plus the identity of the hit itself. The
+	// counts and matched-field list are gone: they are scores under other
+	// names, and a caller given them ranks and filters by them.
 	if len(output.Rows) != 1 || output.Rows[0]["kind"] != "row" || output.Rows[0]["object_id"] != "row_1" ||
-		output.Rows[0]["revision"] != uint64(3) || output.Page == nil || output.Page.Snapshot != "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+		output.Page == nil || output.Page.Snapshot != "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
 		t.Fatalf("lexical location output = %#v", output)
+	}
+	for _, gone := range []string{
+		"revision", "matched_term_count", "matched_field_count", "frequency", "matched_field_ids",
+	} {
+		if _, exists := output.Rows[0][gone]; exists {
+			t.Fatalf("lexical location still carries %q: %#v", gone, output.Rows[0])
+		}
 	}
 }
 

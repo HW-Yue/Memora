@@ -2,16 +2,14 @@
 
 状态：F124a 已实现并冻结；由 F124b–F124e 复用，当前不包含预测算法。
 
-> **目标形态已改。** [查询形态](../product/query-model.md) §6 与
-> [架构原则](../product/architecture-principles.md) §3 冻结了新规则：
-> 关键词检索与向量检索**只返回命中项的完整语义树路径，不做任何其他操作**。
-> 本文冻结的 Frame 要瘦身：`score`／`score_kind`／`reason`／`matched_fields`／
-> `Budget` 四元组／`PredictorReceipt` 全部去掉，候选只留 `database` + `table` +
-> **完整语义树路径**。注意 Frame 在 `internal/result/envelope.go` 里是
-> **已发布的 wire 格式**，兼容口径要与协议支持窗口一起定。
-> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
-> 但**不能作为新开发的设计依据**。迁移设计见
-> [候选预测器只给路径](./predictor-path-only-v1.md)。
+> **已被 v2 取代（2026-08-25）。** Frame 瘦身完成：`score`／`score_kind`／
+> `reason`／`matched_fields`／`Budget` 四元组／`PredictorReceipt` 全部去掉，
+> 候选只剩 `database_id` + `table_id` + `path`，版本号提到
+> `memora.discovery-frame/v2`。旧字段是**删掉**而不是保留不填——
+> 一个永远为空的字段是个会被下游当真的谎。
+> 本文只作为 v1 的历史记录保留，**不描述当前代码**。
+> 当前形态见 [`internal/discovery/frame.go`](../../internal/discovery/frame.go)
+> 与[候选预测器只给路径](./predictor-path-only-v1.md)。
 
 ## 目的
 

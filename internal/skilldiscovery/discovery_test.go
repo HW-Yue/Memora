@@ -82,8 +82,10 @@ func TestFinalizeAuditsSnapshotsAndNeverTurnsNavigationIntoEvidence(t *testing.T
 		frame.Predictors[0].CatalogRevision != frame.Predictors[1].CatalogRevision {
 		t.Fatalf("predictor snapshots = %#v", frame.Predictors)
 	}
+	// A candidate is a location now: Database, Table, path. It no longer names
+	// the predictor that found it.
 	for _, candidate := range frame.Candidates {
-		if candidate.RouteID == "" || candidate.Predictor == "" {
+		if candidate.DatabaseID == "" || candidate.TableID == "" || candidate.Path == "" {
 			t.Fatalf("candidate = %#v", candidate)
 		}
 	}
@@ -237,8 +239,8 @@ func specimenResponses(t *testing.T, plan skilldiscovery.Plan) []result.Envelope
 		{"kind": "table", "database_id": "db_private", "database": "private", "table_id": "tbl_secrets", "table": "secrets"},
 	}
 	atlas.Page = &result.ListPage{Version: result.ListPageVersion, Limit: 64, Snapshot: digest('d')}
-	lexical := candidateEnvelope(t, "lexical-route/v1", discovery.ScoreMatchCount, digest('l'), digest('a'), "route_recovery", 2)
-	vector := candidateEnvelope(t, "vector-route-exact/v1", discovery.ScoreDotProduct, digest('v'), digest('a'), "route_vector", 0.9)
+	lexical := candidateEnvelope(t, "lexical-route/v1", digest('l'), digest('a'), "/recovery")
+	vector := candidateEnvelope(t, "vector-route-exact/v1", digest('v'), digest('a'), "/vector")
 	lexical.RequestID = plan.Calls[1].ID
 	vector.RequestID = plan.Calls[2].ID
 	root := statement("SHOW_ROUTES", result.Row{
@@ -253,23 +255,17 @@ func specimenResponses(t *testing.T, plan skilldiscovery.Plan) []result.Envelope
 }
 
 func candidateEnvelope(
-	t *testing.T, predictor string, kind discovery.ScoreKind,
-	snapshot, catalogRevision, routeID string, score float64,
+	t *testing.T, predictor string, snapshot, catalogRevision, path string,
 ) result.Envelope {
 	t.Helper()
-	builder, err := discovery.NewBuilder(snapshot, catalogRevision, discovery.Budget{
-		CandidateLimit: 4, UTF8ByteLimit: 2048,
-	})
+	builder, err := discovery.NewBuilder(snapshot, catalogRevision, 4, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := builder.Add(discovery.Batch{
 		Snapshot: snapshot, CatalogRevision: catalogRevision,
-		Predictor: predictor, Status: discovery.PredictorSucceeded, ScoreKind: kind,
-		Reason: "bounded navigation predictor",
-		Candidates: []discovery.CandidateInput{{
-			DatabaseID: "db_work", TableID: "tbl_notes", RouteID: routeID,
-			RouteRevision: 1, Score: &score, Reason: "navigation only",
+		Candidates: []discovery.Candidate{{
+			DatabaseID: "db_work", TableID: "tbl_notes", Path: path,
 		}},
 	}); err != nil {
 		t.Fatal(err)

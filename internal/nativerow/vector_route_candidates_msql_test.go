@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -98,11 +97,13 @@ func TestVectorRouteCandidatesUseAuthorizedNativeGenerationsAndDegradeWhenStale(
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The vector predictor returns the same shape as the lexical one: a
+	// location, with the path taken from the Router rather than from anything
+	// the derived generation stored.
 	if len(output.Rows) != 0 || output.Discovery == nil || len(output.Discovery.Candidates) != 1 ||
 		output.Discovery.Candidates[0].DatabaseID != "db_work" ||
-		output.Discovery.Candidates[0].RouteID != "route_work_match" ||
-		output.Discovery.Candidates[0].Predictor != "vector-route-exact/v1" ||
-		output.Discovery.Candidates[0].ScoreKind != discovery.ScoreDotProduct {
+		output.Discovery.Candidates[0].TableID != "tbl_notes" ||
+		output.Discovery.Candidates[0].Path != "/recovery" {
 		t.Fatalf("authorized vector discovery = %#v", output)
 	}
 	if len(recording.opened) != 1 || recording.opened[0] != "db_work" {
@@ -115,12 +116,13 @@ func TestVectorRouteCandidatesUseAuthorizedNativeGenerationsAndDegradeWhenStale(
 		"space": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"limit": int64(1), "bytes": int64(4096),
 	}
-	unavailable, err := runMSQL(authorized, vectorEngine,
+	// A frame carries no predictor receipt any more, so an unavailable
+	// predictor cannot be reported inside a successful answer. Zero candidates
+	// would claim the tree was searched and held nothing.
+	if _, err := runMSQL(authorized, vectorEngine,
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING VECTOR :query SPACE :space LIMIT :limit BYTES :bytes",
-		wrongSpace, executor.MutationOptions{})
-	if err != nil || unavailable.Discovery == nil || len(unavailable.Discovery.Candidates) != 0 ||
-		unavailable.Discovery.Predictors[0].Status != discovery.PredictorUnavailable {
-		t.Fatalf("incompatible generation fallback = %#v, %v", unavailable, err)
+		wrongSpace, executor.MutationOptions{}); !hasCode(err, string(result.CodeNotFound)) {
+		t.Fatalf("incompatible generation error = %v, want not_found", err)
 	}
 	for _, invalid := range []executor.Parameters{
 		{Named: map[string]any{"query": []any{1.0}, "space": workManifest.SpaceDigest, "limit": int64(1), "bytes": int64(4096)}},
@@ -138,11 +140,10 @@ func TestVectorRouteCandidatesUseAuthorizedNativeGenerationsAndDegradeWhenStale(
 
 	executeMSQL(t, ctx, engine, "ALTER ROUTE 'route_work_match' SET SYNOPSIS 'changed'",
 		executor.Parameters{}, executor.MutationOptions{ExpectedRevision: 1, MaxAffectedRows: 1})
-	stale, err := runMSQL(authorized, vectorEngine,
+	if _, err := runMSQL(authorized, vectorEngine,
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING VECTOR :query SPACE :space LIMIT :limit BYTES :bytes",
-		parameters, executor.MutationOptions{})
-	if err != nil || stale.Discovery == nil || stale.Discovery.Predictors[0].Status != discovery.PredictorUnavailable {
-		t.Fatalf("stale generation fallback = %#v, %v", stale, err)
+		parameters, executor.MutationOptions{}); !hasCode(err, string(result.CodeNotFound)) {
+		t.Fatalf("stale generation error = %v, want not_found", err)
 	}
 }
 

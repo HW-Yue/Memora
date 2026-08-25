@@ -31,9 +31,13 @@ type Source struct {
 }
 
 type Match struct {
-	DatabaseID    string
-	TableID       string
-	RouteID       string
+	DatabaseID string
+	TableID    string
+	RouteID    string
+	// Path is the matched Route's full semantic-tree path. Retrieval answers
+	// "where in the tree is this", so the path is the result, not decoration —
+	// see docs/query/predictor-path-only-v1.md.
+	Path          string
 	RouteRevision uint64
 	MatchedFields []string
 	MatchCount    uint64
@@ -282,7 +286,10 @@ func normalizeSource(source Source) ([]surface, catalogView, []routerView, error
 			Purpose: node.Purpose, Synopsis: node.Synopsis, Revision: node.Revision,
 		})
 		surfaces = append(surfaces, surface{
-			location: Match{DatabaseID: node.DatabaseID, TableID: node.TableID, RouteID: node.ID, RouteRevision: node.Revision},
+			location: Match{
+				DatabaseID: node.DatabaseID, TableID: node.TableID, RouteID: node.ID,
+				Path: node.Path, RouteRevision: node.Revision,
+			},
 			fields: []field{
 				{name: "route.aliases", text: aliases},
 				{name: "route.name", text: []string{node.Name}},

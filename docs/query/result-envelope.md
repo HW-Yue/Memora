@@ -50,10 +50,16 @@ Database/Table 稳定身份、Schema version、row semantics 与显式 display r
 title role 时必须声明 `row_id_revision` fallback。Column metadata 可向后兼容增加
 `column_id/purpose/semantic_role`；客户端按数组顺序读取，不猜业务列。
 
-Discovery statement 可以额外返回 `discovery`；`memora.discovery-frame/v1` 在同一
-snapshot 和全局预算内携带带 predictor 来源的 `navigation_only` 候选。单个 predictor
-不可用是成功收据，不是 statement error；Frame 截断必须传播到 statement 和顶层。
-完整契约见 [Discovery Frame v1](./discovery-frame-v1.md)。
+Discovery statement 可以额外返回 `discovery`；`memora.discovery-frame/v2` 在同一
+snapshot 与 limit 内携带 `navigation_only` 候选。**一个候选只有位置**：
+`database_id` + `table_id` + 完整语义树路径，不带分数、理由、命中字段或 predictor
+来源。候选按位置字典序输出——发布排名顺序等于换个马甲发布分数。
+Frame 截断必须传播到 statement 和顶层。
+
+**预测器不可用现在是 statement error，不再是成功回执**：Frame 里已经没有回执可放，
+而返回零个候选会宣称「搜过了，树里没有」。契约见
+[候选预测器只给路径](./predictor-path-only-v1.md)；
+v1 的历史形态见 [Discovery Frame v1](./discovery-frame-v1.md)。
 
 状态固定为：
 

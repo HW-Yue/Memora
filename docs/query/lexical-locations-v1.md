@@ -2,15 +2,14 @@
 
 状态：F174 已批准实现；这是全内容倒排索引的第一个用户可见查询协议。
 
-> **目标形态已改。** [查询形态](../product/query-model.md) §6 与
-> [架构原则](../product/architecture-principles.md) §3 冻结了新规则：
-> 关键词检索与向量检索**只返回命中项的完整语义树路径，不做任何其他操作**。
-> 本文冻结的返回列（`kind`／`object_id`／`revision`／`matched_term_count`／
-> `matched_field_count`／`frequency`／`matched_field_ids`）里，除身份外全部去掉，
-> 改为返回 `database` + `table` + **完整语义树路径**。
-> 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
-> 但**不能作为新开发的设计依据**。迁移设计见
-> [候选预测器只给路径](./predictor-path-only-v1.md)。
+> **返回列已收窄（2026-08-25）。** `revision`／`matched_term_count`／
+> `matched_field_count`／`frequency`／`matched_field_ids` 全部去掉——
+> 它们是换了名字的分数，给出去调用方就会照着排序和过滤。
+> 现在返回 `kind`／`database_id`／`table_id`／`object_id`，
+> 外加 route 与 table 命中的 `path`。
+> **row 与 column 的 path 还没有**：它要「行 → 叶子」反查，
+> 见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。在那之前它们只给身份，
+> 不给猜出来的路径。本文其余部分（游标、快照、边界）仍然有效。
 
 ## 语法与预算
 

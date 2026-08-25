@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/discovery"
@@ -164,19 +165,33 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 			discovery: envelope.Results[0].Discovery,
 		}
 	}
+	// executeExpectingFailure returns the error message of a statement that is
+	// supposed to be refused.
+	executeExpectingFailure := func(source string, statements []executor.StatementInput) string {
+		envelope, err := Execute(context.Background(), dataDir, source, statements)
+		if err != nil {
+			return err.Error()
+		}
+		if envelope.OK || len(envelope.Results) != 1 || envelope.Results[0].Error == nil {
+			t.Fatalf("Execute(%q) unexpectedly succeeded: %#v", source, envelope)
+		}
+		return envelope.Results[0].Error.Message
+	}
 	execute("CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", nil)
 	execute("CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title' ROLE title)", nil)
-	vectorFallback := execute(
+	// A Discovery Frame no longer carries a predictor receipt, so "the vector
+	// predictor has no generation for this space" has nowhere to live inside a
+	// successful answer. Reporting zero candidates would claim the tree was
+	// searched and held nothing, so it is an error instead.
+	vectorFallback := executeExpectingFailure(
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING VECTOR :query SPACE :space LIMIT 8 BYTES 4096",
 		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{
 			"query": []any{1.0, 0.0},
 			"space": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		}}}},
 	)
-	if vectorFallback.discovery == nil || len(vectorFallback.discovery.Candidates) != 0 ||
-		len(vectorFallback.discovery.Predictors) != 1 ||
-		vectorFallback.discovery.Predictors[0].Status != discovery.PredictorUnavailable {
-		t.Fatalf("daemon vector fallback = %#v", vectorFallback.discovery)
+	if vectorFallback == "" || !strings.Contains(vectorFallback, "embedding space") {
+		t.Fatalf("daemon vector fallback error = %q", vectorFallback)
 	}
 	inserted := execute(
 		"INSERT INTO work.notes (title) VALUES ('Page authority')",

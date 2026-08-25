@@ -3,7 +3,6 @@ package nativerow
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -58,11 +57,11 @@ func TestLexicalRouteCandidatesEnforcesAuthorizationBudgetAndZeroHitFallback(t *
 		output.Discovery.Usage != discovery.UsageNavigationOnly || len(output.Discovery.Candidates) != 1 {
 		t.Fatalf("bounded lexical discovery = %#v", output)
 	}
+	// The candidate is a location and nothing else: Database, Table, and the
+	// matched node's full semantic-tree path.
 	candidate := output.Discovery.Candidates[0]
 	if candidate.DatabaseID != "db_work" || candidate.TableID != "tbl_notes" ||
-		candidate.RouteID != "route_work_recovery" || candidate.Predictor != "lexical-route/v1" ||
-		candidate.ScoreKind != discovery.ScoreMatchCount || candidate.Score == nil ||
-		strings.Contains(candidate.Reason, "recovery") {
+		candidate.Path != "/crash-recovery" {
 		t.Fatalf("authorized candidate = %#v", candidate)
 	}
 	for _, value := range output.Discovery.Candidates {
@@ -90,9 +89,7 @@ func TestLexicalRouteCandidatesEnforcesAuthorizationBudgetAndZeroHitFallback(t *
 	zero, err := runMSQL(authorized, engine,
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :query LIMIT 8 BYTES 4096",
 		executor.Parameters{Named: map[string]any{"query": "astronomy"}}, executor.MutationOptions{})
-	if err != nil || zero.Discovery == nil || len(zero.Discovery.Candidates) != 0 ||
-		len(zero.Discovery.Predictors) != 1 || zero.Discovery.Predictors[0].Status != discovery.PredictorSucceeded ||
-		zero.Truncated {
+	if err != nil || zero.Discovery == nil || len(zero.Discovery.Candidates) != 0 || zero.Truncated {
 		t.Fatalf("zero-hit fallback = %#v, %v", zero, err)
 	}
 	for _, source := range []string{

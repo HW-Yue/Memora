@@ -3,236 +3,203 @@ package discovery_test
 import (
 	"encoding/json"
 	"errors"
-	"math"
+	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/discovery"
 )
 
+func newBuilder(t *testing.T, limit, byteLimit uint64) *discovery.Builder {
+	t.Helper()
+	builder, err := discovery.NewBuilder("snapshot-1", "catalog-1", limit, byteLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return builder
+}
+
 func TestBuilderRejectsMixedSnapshotAndCatalogRevision(t *testing.T) {
 	t.Parallel()
-	builder, err := discovery.NewBuilder("sha256:view-a", "sha256:catalog-a", discovery.Budget{
-		CandidateLimit: 8, UTF8ByteLimit: 4096,
-	})
-	if err != nil {
-		t.Fatal(err)
+	builder := newBuilder(t, 8, 4096)
+	if err := builder.Add(discovery.Batch{
+		Snapshot: "snapshot-2", CatalogRevision: "catalog-1",
+	}); !errors.Is(err, discovery.ErrSnapshotMismatch) {
+		t.Fatalf("Add(other snapshot) = %v", err)
 	}
-	base := discovery.Batch{
-		Snapshot: "sha256:view-a", CatalogRevision: "sha256:catalog-a",
-		Predictor: "catalog/v1", Status: discovery.PredictorSucceeded,
-		ScoreKind: discovery.ScoreNone, Reason: "authorized compact catalog",
-	}
-	if err := builder.Add(base); err != nil {
-		t.Fatal(err)
-	}
-	wrongSnapshot := base
-	wrongSnapshot.Predictor = "lexical/v1"
-	wrongSnapshot.Snapshot = "sha256:view-b"
-	if err := builder.Add(wrongSnapshot); !errors.Is(err, discovery.ErrSnapshotMismatch) {
-		t.Fatalf("mixed snapshot error = %v", err)
-	}
-	wrongCatalog := base
-	wrongCatalog.Predictor = "semantic-exact/v1"
-	wrongCatalog.CatalogRevision = "sha256:catalog-b"
-	if err := builder.Add(wrongCatalog); !errors.Is(err, discovery.ErrCatalogRevisionMismatch) {
-		t.Fatalf("mixed catalog error = %v", err)
+	if err := builder.Add(discovery.Batch{
+		Snapshot: "snapshot-1", CatalogRevision: "catalog-2",
+	}); !errors.Is(err, discovery.ErrCatalogRevisionMismatch) {
+		t.Fatalf("Add(other catalog revision) = %v", err)
 	}
 }
 
-func TestBuilderEnforcesOneGlobalCandidateAndByteBudget(t *testing.T) {
+// TestFramePublishesPathOrderNotPredictorOrder pins the contract that ordering
+// is the frame's, not the predictor's.
+//
+// Ranking still decides which hits survive the limit, but if the surviving
+// order leaked out of the predictor, a caller would read meaning into it — the
+// exposed score coming back wearing a different hat.
+func TestFramePublishesPathOrderNotPredictorOrder(t *testing.T) {
 	t.Parallel()
-	score := 3.0
-	first := discovery.Batch{
-		Snapshot: "sha256:view", CatalogRevision: "sha256:catalog", Predictor: "lexical/v1",
-		Status: discovery.PredictorSucceeded, ScoreKind: discovery.ScoreMatchCount, Reason: "term locations",
-		Candidates: []discovery.CandidateInput{
-			{DatabaseID: "db_work", TableID: "tbl_notes", Reason: "three matching route terms", Score: &score},
-			{DatabaseID: "db_work", TableID: "tbl_tasks", Reason: "three matching route terms", Score: &score},
+	builder := newBuilder(t, 8, 4096)
+	if err := builder.Add(discovery.Batch{
+		Snapshot: "snapshot-1", CatalogRevision: "catalog-1",
+		Candidates: []discovery.Candidate{
+			{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/zeta"},
+			{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/alpha"},
+			{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/mid"},
 		},
-	}
-	second := discovery.Batch{
-		Snapshot: "sha256:view", CatalogRevision: "sha256:catalog", Predictor: "semantic-exact/v1",
-		Status: discovery.PredictorSucceeded, ScoreKind: discovery.ScoreDotProduct, Reason: "exact CPU match",
-		Candidates: []discovery.CandidateInput{
-			{DatabaseID: "db_work", TableID: "tbl_people", RouteID: "r_people", RouteRevision: 2, Reason: "closest route"},
-		},
-	}
-	exactScore := 0.75
-	second.Candidates[0].Score = &exactScore
-
-	builder, err := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
-		CandidateLimit: 2, UTF8ByteLimit: 4096,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := builder.Add(first); err != nil {
-		t.Fatal(err)
-	}
-	if err := builder.Add(second); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	frame := builder.Frame()
-	if len(frame.Candidates) != 2 || frame.Budget.CandidatesUsed != 2 || !frame.Truncated {
-		t.Fatalf("global candidate budget frame = %#v", frame)
-	}
-	if len(frame.Predictors) != 2 || !frame.Predictors[1].Truncated || frame.Predictors[1].CandidateCount != 0 {
-		t.Fatalf("second predictor receipt = %#v", frame.Predictors)
-	}
-
-	probe, err := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
-		CandidateLimit: 8, UTF8ByteLimit: 4096,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := probe.Add(first); err != nil {
-		t.Fatal(err)
-	}
-	firstBytes := probe.Frame().Budget.UTF8BytesUsed
-	byteLimited, err := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
-		CandidateLimit: 8, UTF8ByteLimit: firstBytes,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := byteLimited.Add(first); err != nil {
-		t.Fatal(err)
-	}
-	if err := byteLimited.Add(second); err != nil {
-		t.Fatal(err)
-	}
-	byteFrame := byteLimited.Frame()
-	if len(byteFrame.Candidates) != 2 || !byteFrame.Truncated || byteFrame.Budget.UTF8BytesUsed != firstBytes {
-		t.Fatalf("global byte budget frame = %#v", byteFrame)
-	}
-}
-
-func TestUnavailablePredictorIsReceiptNotQueryFailure(t *testing.T) {
-	t.Parallel()
-	builder, err := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
-		CandidateLimit: 8, UTF8ByteLimit: 1024,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = builder.Add(discovery.Batch{
-		Snapshot: "sha256:view", CatalogRevision: "sha256:catalog", Predictor: "semantic-exact/v1",
-		Status: discovery.PredictorUnavailable, ScoreKind: discovery.ScoreDotProduct,
-		Reason: "compatible route encoder generation is not installed",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	frame := builder.Frame()
-	if len(frame.Candidates) != 0 || len(frame.Predictors) != 1 ||
-		frame.Predictors[0].Status != discovery.PredictorUnavailable || frame.Truncated {
-		t.Fatalf("unavailable predictor frame = %#v", frame)
-	}
 	if err := frame.Validate(); err != nil {
-		t.Fatalf("Frame.Validate() error = %v", err)
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, candidate := range frame.Candidates {
+		paths = append(paths, candidate.Path)
+	}
+	if strings.Join(paths, ",") != "/alpha,/mid,/zeta" {
+		t.Fatalf("published order = %v, want lexicographic by path", paths)
 	}
 }
 
-func TestFrameRejectsInvalidProvenanceLocationsAndScores(t *testing.T) {
+// TestBuilderDropsARepeatedLocation: two predictors finding the same node found
+// one node, not two.
+func TestBuilderDropsARepeatedLocation(t *testing.T) {
 	t.Parallel()
-	tests := map[string]discovery.Batch{
-		"missing provenance": {
-			Snapshot: "sha256:view", CatalogRevision: "sha256:catalog", Status: discovery.PredictorSucceeded,
-			ScoreKind: discovery.ScoreNone, Reason: "catalog",
-		},
-		"route skips table": validBatch(discovery.CandidateInput{
-			DatabaseID: "db_work", RouteID: "r_notes", RouteRevision: 1, Reason: "bad hierarchy",
-		}),
-		"nan score": validBatch(discovery.CandidateInput{
-			DatabaseID: "db_work", TableID: "tbl_notes", Reason: "bad score", Score: floatPointer(math.NaN()),
-		}),
-		"unsorted matched fields": validBatch(discovery.CandidateInput{
-			DatabaseID: "db_work", TableID: "tbl_notes", Reason: "bad evidence", Score: floatPointer(2),
-			MatchedFields: []string{"table.purpose", "table.name"},
-		}),
+	builder := newBuilder(t, 8, 4096)
+	same := discovery.Candidate{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/shared"}
+	for round := 0; round < 2; round++ {
+		if err := builder.Add(discovery.Batch{
+			Snapshot: "snapshot-1", CatalogRevision: "catalog-1",
+			Candidates: []discovery.Candidate{same},
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	for name, batch := range tests {
-		name, batch := name, batch
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			builder, err := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
-				CandidateLimit: 8, UTF8ByteLimit: 4096,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := builder.Add(batch); !errors.Is(err, discovery.ErrInvalidFrame) {
-				t.Fatalf("Add() error = %v", err)
-			}
+	if frame := builder.Frame(); len(frame.Candidates) != 1 {
+		t.Fatalf("candidates = %#v, want the repeat collapsed", frame.Candidates)
+	}
+}
+
+func TestFrameEnforcesBothBounds(t *testing.T) {
+	t.Parallel()
+	candidates := make([]discovery.Candidate, 0, 6)
+	for _, path := range []string{"/a", "/b", "/c", "/d", "/e", "/f"} {
+		candidates = append(candidates, discovery.Candidate{
+			DatabaseID: "db_work", TableID: "tbl_notes", Path: path,
 		})
 	}
 
-	duplicate := validBatch(discovery.CandidateInput{
-		DatabaseID: "db_work", TableID: "tbl_notes", Reason: "same place", Score: floatPointer(2),
-	})
-	duplicate.Candidates = append(duplicate.Candidates, duplicate.Candidates[0])
-	builder, _ := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
-		CandidateLimit: 8, UTF8ByteLimit: 4096,
-	})
-	if err := builder.Add(duplicate); !errors.Is(err, discovery.ErrInvalidFrame) {
-		t.Fatalf("duplicate Add() error = %v", err)
+	byCount := newBuilder(t, 2, 65536)
+	if err := byCount.Add(discovery.Batch{
+		Snapshot: "snapshot-1", CatalogRevision: "catalog-1", Candidates: candidates,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	frame := byCount.Frame()
+	if len(frame.Candidates) != 2 || !frame.Truncated {
+		t.Fatalf("count bound: %d candidates, truncated=%v", len(frame.Candidates), frame.Truncated)
+	}
+
+	// The byte bound is no longer reported in the frame, but the statement lets
+	// the caller ask for it, so it still has to bite.
+	byBytes := newBuilder(t, 64, 120)
+	if err := byBytes.Add(discovery.Batch{
+		Snapshot: "snapshot-1", CatalogRevision: "catalog-1", Candidates: candidates,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	frame = byBytes.Frame()
+	if len(frame.Candidates) == len(candidates) || !frame.Truncated {
+		t.Fatalf("byte bound: %d candidates, truncated=%v", len(frame.Candidates), frame.Truncated)
+	}
+	if err := frame.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestDiscoveryFrameWireRoundTripAndUnknownFieldCompatibility(t *testing.T) {
+func TestFrameRejectsInvalidLocations(t *testing.T) {
 	t.Parallel()
-	builder, _ := discovery.NewBuilder("sha256:view", "sha256:catalog", discovery.Budget{
-		CandidateLimit: 4, UTF8ByteLimit: 2048,
-	})
-	if err := builder.Add(validBatch(discovery.CandidateInput{
-		DatabaseID: "db_work", TableID: "tbl_notes", Reason: "matched title term", Score: floatPointer(2),
-	})); err != nil {
+	base := discovery.Frame{
+		Version: discovery.Version, Usage: discovery.UsageNavigationOnly,
+		Snapshot: "snapshot-1", CatalogRevision: "catalog-1", Limit: 8,
+		Candidates: []discovery.Candidate{},
+	}
+	tests := map[string]func(*discovery.Frame){
+		"no database": func(frame *discovery.Frame) {
+			frame.Candidates = []discovery.Candidate{{TableID: "tbl_notes", Path: "/a"}}
+		},
+		"path without table": func(frame *discovery.Frame) {
+			frame.Candidates = []discovery.Candidate{{DatabaseID: "db_work", Path: "/a"}}
+		},
+		"unsorted": func(frame *discovery.Frame) {
+			frame.Candidates = []discovery.Candidate{
+				{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/b"},
+				{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/a"},
+			}
+		},
+		"repeated": func(frame *discovery.Frame) {
+			frame.Candidates = []discovery.Candidate{
+				{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/a"},
+				{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/a"},
+			}
+		},
+		"over limit": func(frame *discovery.Frame) {
+			frame.Limit = 1
+			frame.Candidates = []discovery.Candidate{
+				{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/a"},
+				{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/b"},
+			}
+		},
+		"zero limit":  func(frame *discovery.Frame) { frame.Limit = 0 },
+		"old version": func(frame *discovery.Frame) { frame.Version = "memora.discovery-frame/v1" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			frame := base
+			mutate(&frame)
+			if err := frame.Validate(); !errors.Is(err, discovery.ErrInvalidFrame) {
+				t.Fatalf("Validate(%s) = %v", name, err)
+			}
+		})
+	}
+}
+
+func TestDiscoveryFrameWireRoundTrip(t *testing.T) {
+	t.Parallel()
+	builder := newBuilder(t, 8, 4096)
+	if err := builder.Add(discovery.Batch{
+		Snapshot: "snapshot-1", CatalogRevision: "catalog-1",
+		Candidates: []discovery.Candidate{
+			{DatabaseID: "db_work", TableID: "tbl_notes", Path: "/architecture/wal"},
+			{DatabaseID: "db_work"},
+		},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := json.Marshal(builder.Frame())
+	frame := builder.Frame()
+	encoded, err := json.Marshal(frame)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var roundTrip discovery.Frame
-	if err := json.Unmarshal(encoded, &roundTrip); err != nil {
-		t.Fatal(err)
-	}
-	if len(roundTrip.Candidates) != 1 || roundTrip.Usage != discovery.UsageNavigationOnly {
-		t.Fatalf("round trip = %#v", roundTrip)
-	}
-
-	withUnknown := append([]byte(nil), encoded[:len(encoded)-1]...)
-	withUnknown = append(withUnknown, []byte(`,"future":{"enabled":true}}`)...)
-	if err := json.Unmarshal(withUnknown, &roundTrip); err != nil {
-		t.Fatalf("unknown field Unmarshal() error = %v", err)
-	}
-
-	unknownEnum := append([]byte(nil), encoded...)
-	unknownEnum = []byte(string(unknownEnum[:]))
-	unknownEnum = replaceOnce(unknownEnum, `"score_kind":"match_count"`, `"score_kind":"mystery"`)
-	if err := json.Unmarshal(unknownEnum, &roundTrip); !errors.Is(err, discovery.ErrInvalidFrame) {
-		t.Fatalf("unknown enum error = %v", err)
-	}
-}
-
-func validBatch(candidate discovery.CandidateInput) discovery.Batch {
-	return discovery.Batch{
-		Snapshot: "sha256:view", CatalogRevision: "sha256:catalog", Predictor: "lexical/v1",
-		Status: discovery.PredictorSucceeded, ScoreKind: discovery.ScoreMatchCount,
-		Reason: "term locations", Candidates: []discovery.CandidateInput{candidate},
-	}
-}
-
-func floatPointer(value float64) *float64 { return &value }
-
-func replaceOnce(input []byte, old, replacement string) []byte {
-	for index := 0; index+len(old) <= len(input); index++ {
-		if string(input[index:index+len(old)]) == old {
-			output := append([]byte(nil), input[:index]...)
-			output = append(output, replacement...)
-			return append(output, input[index+len(old):]...)
+	// The removed fields must be gone from the wire, not merely unset in Go:
+	// leaving them present and empty is what a caller would build on.
+	for _, gone := range []string{
+		"score", "score_kind", "reason", "matched_fields", "predictor", "budget", "route_id", "route_revision",
+	} {
+		if strings.Contains(string(encoded), `"`+gone+`"`) {
+			t.Fatalf("frame still carries %q on the wire: %s", gone, encoded)
 		}
 	}
-	return input
+	var decoded discovery.Frame
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Version != discovery.Version || len(decoded.Candidates) != 2 ||
+		decoded.Candidates[1].Path != "/architecture/wal" {
+		t.Fatalf("round trip = %#v", decoded)
+	}
 }

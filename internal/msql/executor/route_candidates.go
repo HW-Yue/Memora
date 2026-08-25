@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/discovery"
@@ -22,8 +21,6 @@ const (
 	maxRouteCandidates = 64
 	minCandidateBytes  = 256
 	maxCandidateBytes  = 65536
-	lexicalPredictor   = "lexical-route/v1"
-	vectorPredictor    = "vector-route-exact/v1"
 )
 
 type routeCandidateCatalog interface {
@@ -94,26 +91,20 @@ func (engine *Engine) showLexicalRouteCandidates(
 			return Output{}, executeError(result.CodeInternal, "Route candidate source is invalid")
 		}
 	}
-	builder, err := discovery.NewBuilder(matched.Snapshot, matched.CatalogRevision, discovery.Budget{
-		CandidateLimit: uint64(candidateLimit), UTF8ByteLimit: uint64(byteLimit),
-	})
+	builder, err := discovery.NewBuilder(matched.Snapshot, matched.CatalogRevision, uint64(candidateLimit), uint64(byteLimit))
 	if err != nil {
 		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be initialized")
 	}
-	candidates := make([]discovery.CandidateInput, 0, len(matched.Matches))
+	// Ranking still happens inside routelexical — something has to decide which
+	// hits survive the limit. It just does not leave the engine.
+	candidates := make([]discovery.Candidate, 0, len(matched.Matches))
 	for _, match := range matched.Matches {
-		score := float64(match.MatchCount)
-		candidates = append(candidates, discovery.CandidateInput{
-			DatabaseID: match.DatabaseID, TableID: match.TableID, RouteID: match.RouteID,
-			RouteRevision: match.RouteRevision, Score: &score,
-			Reason:        lexicalReason(match.MatchCount, match.MatchedFields),
-			MatchedFields: append([]string(nil), match.MatchedFields...),
+		candidates = append(candidates, discovery.Candidate{
+			DatabaseID: match.DatabaseID, TableID: match.TableID, Path: match.Path,
 		})
 	}
 	if err := builder.Add(discovery.Batch{
 		Snapshot: matched.Snapshot, CatalogRevision: matched.CatalogRevision,
-		Predictor: lexicalPredictor, Status: discovery.PredictorSucceeded,
-		ScoreKind: discovery.ScoreMatchCount, Reason: "current authorized semantic metadata locations",
 		Candidates: candidates,
 	}); err != nil {
 		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be assembled")
@@ -204,41 +195,43 @@ func (engine *Engine) showVectorRouteCandidates(
 	if err != nil {
 		return Output{}, executeError(result.CodeInternal, "Route vector snapshot could not be assembled")
 	}
-	builder, err := discovery.NewBuilder(snapshot, base.CatalogRevision, discovery.Budget{
-		CandidateLimit: uint64(candidateLimit), UTF8ByteLimit: uint64(byteLimit),
-	})
+	// A frame carries no predictor receipt any more, so "the predictor could
+	// not run" has nowhere to be reported inside a successful answer. Returning
+	// an empty candidate list would assert something false — that the tree was
+	// searched and held nothing — so an unavailable predictor is an error.
+	if len(scopes) == 0 {
+		return Output{}, executeError(
+			result.CodeNotFound,
+			"no current authorized generation matches the requested Route embedding space",
+		)
+	}
+	builder, err := discovery.NewBuilder(snapshot, base.CatalogRevision, uint64(candidateLimit), uint64(byteLimit))
 	if err != nil {
 		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be initialized")
 	}
-	if len(scopes) == 0 {
-		err = builder.Add(discovery.Batch{
-			Snapshot: snapshot, CatalogRevision: base.CatalogRevision,
-			Predictor: vectorPredictor, Status: discovery.PredictorUnavailable,
-			ScoreKind: discovery.ScoreNone,
-			Reason:    "no current authorized generation matches the requested embedding space",
-		})
-	} else {
-		candidates := make([]discovery.CandidateInput, 0, len(matched.Matches))
-		for _, match := range matched.Matches {
-			score := match.Score
-			candidates = append(candidates, discovery.CandidateInput{
-				DatabaseID: match.DatabaseID, TableID: match.TableID, RouteID: match.RouteID,
-				RouteRevision: match.RouteRevision, Score: &score,
-				Reason: "exact dot product in the requested Route embedding space",
-			})
+	// The Router is the one place a path is spelled, so the path comes from the
+	// Route node rather than from anything the vector generation stored.
+	paths := make(map[string]string, len(source.Routes))
+	for _, node := range source.Routes {
+		if !node.Deleted {
+			paths[node.ID] = node.Path
 		}
-		err = builder.Add(discovery.Batch{
-			Snapshot: snapshot, CatalogRevision: base.CatalogRevision,
-			Predictor: vectorPredictor, Status: discovery.PredictorSucceeded,
-			ScoreKind: discovery.ScoreDotProduct,
-			Reason: fmt.Sprintf(
-				"%d of %d authorized Database generations compatible; %d Route vectors scanned",
-				len(scopes), len(source.Databases), matched.Scanned,
-			),
-			Candidates: candidates,
+	}
+	candidates := make([]discovery.Candidate, 0, len(matched.Matches))
+	for _, match := range matched.Matches {
+		path, live := paths[match.RouteID]
+		if !live {
+			// The generation is derived and may lag the Router. A candidate
+			// the Router no longer has is not a location.
+			continue
+		}
+		candidates = append(candidates, discovery.Candidate{
+			DatabaseID: match.DatabaseID, TableID: match.TableID, Path: path,
 		})
 	}
-	if err != nil {
+	if err := builder.Add(discovery.Batch{
+		Snapshot: snapshot, CatalogRevision: base.CatalogRevision, Candidates: candidates,
+	}); err != nil {
 		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be assembled")
 	}
 	frame := builder.Frame()
@@ -329,10 +322,6 @@ func candidateInteger(expression *ast.Expression, bound bindings, label string, 
 		return 0, executeError(result.CodeValidation, fmt.Sprintf("%s must be between %d and %d", label, minimum, maximum))
 	}
 	return int(value), nil
-}
-
-func lexicalReason(count uint64, fields []string) string {
-	return fmt.Sprintf("%d lexical field-term hits in %s", count, strings.Join(fields, ","))
 }
 
 func routeVectorParameter(expression *ast.Expression, bound bindings) ([]float32, error) {

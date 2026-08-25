@@ -110,9 +110,20 @@ type Audit struct {
 	PrefetchedTables       int
 }
 
+// PredictorStatus is the Agent's own bookkeeping. The Discovery Frame stopped
+// reporting whether a predictor succeeded — a caller that knows which predictor
+// answered starts choosing between them — but the discovery loop still has to
+// record which of its own calls came back empty-handed.
+type PredictorStatus string
+
+const (
+	PredictorSucceeded   PredictorStatus = "succeeded"
+	PredictorUnavailable PredictorStatus = "unavailable"
+)
+
 type Predictor struct {
 	Predictor       string
-	Status          discovery.PredictorStatus
+	Status          PredictorStatus
 	Snapshot        string
 	CatalogRevision string
 	CandidateCount  uint64
@@ -391,14 +402,18 @@ func (frame Frame) ContinueCatalog(topicID string, call Call, envelope result.En
 func consumePredictor(frame *Frame, call Call, envelope result.Envelope) error {
 	if !envelope.OK || len(envelope.Results) != 1 || envelope.Results[0].Discovery == nil {
 		frame.Predictors = append(frame.Predictors, Predictor{
-			Predictor: string(call.Kind) + "-route/v1", Status: discovery.PredictorUnavailable,
+			Predictor: string(call.Kind) + "-route/v1", Status: PredictorUnavailable,
 		})
 		return nil
 	}
 	value := envelope.Results[0].Discovery
-	if value.Usage != discovery.UsageNavigationOnly || len(value.Predictors) != 1 ||
-		int(value.Budget.CandidateLimit) > call.CandidateLimit ||
-		int(value.Budget.UTF8ByteLimit) > call.CandidateUTF8ByteLimit {
+	if value.Usage != discovery.UsageNavigationOnly || int(value.Limit) > call.CandidateLimit {
+		return invalid("predictor %q violated its allocated navigation budget", call.ID)
+	}
+	// The frame no longer reports how many bytes it used, so the loop measures
+	// what it received rather than trusting a self-report.
+	candidateBytes, err := candidateUTF8Bytes(value.Candidates)
+	if err != nil || candidateBytes > call.CandidateUTF8ByteLimit {
 		return invalid("predictor %q violated its allocated navigation budget", call.ID)
 	}
 	if frame.CatalogRevision == "" {
@@ -406,14 +421,15 @@ func consumePredictor(frame *Frame, call Call, envelope result.Envelope) error {
 	} else if frame.CatalogRevision != value.CatalogRevision {
 		return invalid("predictor Catalog revisions do not match")
 	}
-	receipt := value.Predictors[0]
+	// The predictor is named from the call the loop made, not from the answer:
+	// the frame deliberately no longer says who produced it.
 	frame.Predictors = append(frame.Predictors, Predictor{
-		Predictor: receipt.Predictor, Status: receipt.Status, Snapshot: value.Snapshot,
-		CatalogRevision: value.CatalogRevision, CandidateCount: receipt.CandidateCount,
-		Truncated: receipt.Truncated,
+		Predictor: string(call.Kind) + "-route/v1", Status: PredictorSucceeded, Snapshot: value.Snapshot,
+		CatalogRevision: value.CatalogRevision, CandidateCount: uint64(len(value.Candidates)),
+		Truncated: value.Truncated,
 	})
-	frame.Audit.CandidatesUsed += int(value.Budget.CandidatesUsed)
-	frame.Audit.CandidateUTF8BytesUsed += int(value.Budget.UTF8BytesUsed)
+	frame.Audit.CandidatesUsed += len(value.Candidates)
+	frame.Audit.CandidateUTF8BytesUsed += candidateBytes
 	frame.Candidates = append(frame.Candidates, cloneCandidates(value.Candidates)...)
 	frame.Truncated = frame.Truncated || value.Truncated || envelope.Truncated
 	return nil
@@ -745,17 +761,23 @@ func cloneFrame(frame Frame) Frame {
 	return frame
 }
 
+// cloneCandidates copies the candidate list. A Candidate is now a plain value
+// with no pointers or slices in it, so the copy is the whole clone.
 func cloneCandidates(values []discovery.Candidate) []discovery.Candidate {
-	result := make([]discovery.Candidate, len(values))
-	for index, value := range values {
-		result[index] = value
-		if value.Score != nil {
-			score := *value.Score
-			result[index].Score = &score
+	return append([]discovery.Candidate(nil), values...)
+}
+
+// candidateUTF8Bytes measures the encoded size of a candidate list.
+func candidateUTF8Bytes(values []discovery.Candidate) (int, error) {
+	total := 0
+	for _, value := range values {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return 0, err
 		}
-		result[index].MatchedFields = append([]string(nil), value.MatchedFields...)
+		total += len(encoded)
 	}
-	return result
+	return total, nil
 }
 
 func cloneRows(values []result.Row) []result.Row {

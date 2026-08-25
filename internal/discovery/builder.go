@@ -1,8 +1,10 @@
 package discovery
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 )
 
 var (
@@ -10,49 +12,58 @@ var (
 	ErrCatalogRevisionMismatch = errors.New("discovery catalog revision mismatch")
 )
 
-type CandidateInput struct {
-	DatabaseID    string
-	TableID       string
-	RouteID       string
-	RouteRevision uint64
-	Reason        string
-	Score         *float64
-	MatchedFields []string
-}
-
+// Batch is one predictor's contribution. The predictor is not named in the
+// output: a caller that knows which predictor answered will start choosing
+// between them, and the Router is the only authority.
 type Batch struct {
 	Snapshot        string
 	CatalogRevision string
-	Predictor       string
-	Status          PredictorStatus
-	ScoreKind       ScoreKind
-	Reason          string
-	Candidates      []CandidateInput
+	Candidates      []Candidate
 }
 
 type Builder struct {
 	frame     Frame
-	exhausted bool
+	byteLimit uint64
+	usedBytes uint64
 	locations map[string]struct{}
 }
 
-func NewBuilder(snapshot, catalogRevision string, budget Budget) (*Builder, error) {
-	budget.CandidatesUsed = 0
-	budget.UTF8BytesUsed = 0
-	frame := Frame{
-		Version: Version, Usage: UsageNavigationOnly, Snapshot: snapshot,
-		CatalogRevision: catalogRevision, Budget: budget,
-		Predictors: []PredictorReceipt{}, Candidates: []Candidate{},
-	}
+// NewBuilder starts a frame bounded by a candidate count and an encoded byte
+// size.
+//
+// Both bounds are enforced, but only the candidate limit is published: how many
+// bytes a particular answer happened to use is the sort of usage report the
+// frame no longer makes. The byte bound still has to be honoured because the
+// statement lets the caller ask for it.
+func NewBuilder(snapshot, catalogRevision string, limit, byteLimit uint64) (*Builder, error) {
 	if !validOpaque(snapshot) || !validOpaque(catalogRevision) {
 		return nil, invalid("snapshot and catalog_revision are required")
 	}
-	if err := validateBudget(budget); err != nil {
-		return nil, err
+	if limit == 0 || limit > maxCandidateLimit {
+		return nil, invalid("limit is outside protocol bounds")
 	}
-	return &Builder{frame: frame, locations: make(map[string]struct{})}, nil
+	if byteLimit == 0 {
+		return nil, invalid("byte limit is outside protocol bounds")
+	}
+	return &Builder{
+		frame: Frame{
+			Version: Version, Usage: UsageNavigationOnly, Snapshot: snapshot,
+			CatalogRevision: catalogRevision, Limit: limit, Candidates: []Candidate{},
+		},
+		byteLimit: byteLimit,
+		locations: make(map[string]struct{}),
+	}, nil
 }
 
+// Add takes a predictor's candidates, in the predictor's own ranked order.
+//
+// The bounds are applied HERE, on arrival, precisely because arrival order is
+// rank order: ranking still decides which hits are worth keeping. Sorting first
+// and cutting afterwards would let a path that happens to start with "/a"
+// displace a far better hit, which is ranking thrown away rather than hidden.
+//
+// A location repeated across batches is dropped rather than duplicated: two
+// predictors finding the same node found one node.
 func (builder *Builder) Add(batch Batch) error {
 	if builder == nil {
 		return invalid("builder is nil")
@@ -63,96 +74,58 @@ func (builder *Builder) Add(batch Batch) error {
 	if batch.CatalogRevision != builder.frame.CatalogRevision {
 		return fmt.Errorf("%w: got %q", ErrCatalogRevisionMismatch, batch.CatalogRevision)
 	}
-	receipt := PredictorReceipt{
-		Predictor: batch.Predictor, Status: batch.Status, ScoreKind: batch.ScoreKind, Reason: batch.Reason,
-	}
-	if err := validateReceipt(receipt); err != nil {
-		return err
-	}
-	for _, existing := range builder.frame.Predictors {
-		if existing.Predictor == receipt.Predictor {
-			return invalid("predictor %q already has a receipt", receipt.Predictor)
-		}
-	}
-	if batch.Status == PredictorUnavailable {
-		if len(batch.Candidates) != 0 {
-			return invalid("unavailable predictor cannot return candidates")
-		}
-		builder.frame.Predictors = append(builder.frame.Predictors, receipt)
-		return nil
-	}
-
-	candidates := make([]Candidate, len(batch.Candidates))
-	batchLocations := make(map[string]struct{}, len(batch.Candidates))
-	for index, input := range batch.Candidates {
-		candidates[index] = Candidate{
-			DatabaseID: input.DatabaseID, TableID: input.TableID, RouteID: input.RouteID,
-			RouteRevision: input.RouteRevision, Predictor: batch.Predictor, Reason: input.Reason,
-			ScoreKind: batch.ScoreKind, Score: cloneScore(input.Score),
-			MatchedFields: append([]string(nil), input.MatchedFields...),
-		}
-		if err := validateCandidate(candidates[index]); err != nil {
+	for _, candidate := range batch.Candidates {
+		if err := validateCandidate(candidate); err != nil {
 			return err
 		}
-		key := locationKey(candidates[index])
+		key := locationKey(candidate)
 		if _, exists := builder.locations[key]; exists {
-			return invalid("predictor %q repeats a candidate location", batch.Predictor)
-		}
-		if _, exists := batchLocations[key]; exists {
-			return invalid("predictor %q repeats a candidate location", batch.Predictor)
-		}
-		batchLocations[key] = struct{}{}
-	}
-
-	for _, candidate := range candidates {
-		if builder.exhausted {
-			receipt.Truncated = true
 			continue
 		}
 		size, err := candidateSize(candidate)
 		if err != nil {
-			return err
+			return invalid("encode candidate: %v", err)
 		}
-		budget := builder.frame.Budget
-		if budget.CandidatesUsed+1 > budget.CandidateLimit || budget.UTF8BytesUsed+size > budget.UTF8ByteLimit {
-			builder.exhausted = true
+		if uint64(len(builder.frame.Candidates))+1 > builder.frame.Limit ||
+			builder.usedBytes+size > builder.byteLimit {
 			builder.frame.Truncated = true
-			receipt.Truncated = true
 			continue
 		}
+		builder.usedBytes += size
+		builder.locations[key] = struct{}{}
 		builder.frame.Candidates = append(builder.frame.Candidates, candidate)
-		builder.locations[locationKey(candidate)] = struct{}{}
-		builder.frame.Budget.CandidatesUsed++
-		builder.frame.Budget.UTF8BytesUsed += size
-		receipt.CandidateCount++
 	}
-	builder.frame.Predictors = append(builder.frame.Predictors, receipt)
 	return nil
 }
 
+// Frame returns the finished frame with the kept candidates in the published
+// order.
+//
+// Order is by location, never by rank: a published rank order is an exposed
+// score wearing a different hat. Which candidates are here was decided by rank;
+// how they are listed is not.
 func (builder *Builder) Frame() Frame {
 	if builder == nil {
 		return Frame{}
 	}
 	frame := builder.frame
-	frame.Predictors = append([]PredictorReceipt(nil), builder.frame.Predictors...)
-	frame.Candidates = make([]Candidate, len(builder.frame.Candidates))
-	for index, candidate := range builder.frame.Candidates {
-		frame.Candidates[index] = candidate
-		frame.Candidates[index].Score = cloneScore(candidate.Score)
-		frame.Candidates[index].MatchedFields = append([]string(nil), candidate.MatchedFields...)
-	}
+	candidates := make([]Candidate, len(builder.frame.Candidates))
+	copy(candidates, builder.frame.Candidates)
+	sort.Slice(candidates, func(left, right int) bool {
+		return candidateLess(candidates[left], candidates[right])
+	})
+	frame.Candidates = candidates
 	return frame
 }
 
-func locationKey(candidate Candidate) string {
-	return candidate.Predictor + "\x00" + candidate.DatabaseID + "\x00" + candidate.TableID + "\x00" + candidate.RouteID
+func candidateSize(candidate Candidate) (uint64, error) {
+	encoded, err := json.Marshal(candidate)
+	if err != nil {
+		return 0, err
+	}
+	return uint64(len(encoded)), nil
 }
 
-func cloneScore(value *float64) *float64 {
-	if value == nil {
-		return nil
-	}
-	cloned := *value
-	return &cloned
+func locationKey(candidate Candidate) string {
+	return candidate.DatabaseID + "\x00" + candidate.TableID + "\x00" + candidate.Path
 }

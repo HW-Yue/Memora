@@ -4,71 +4,50 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 )
 
-const Version = "memora.discovery-frame/v1"
+// Version is v2 because v1 carried scores, reasons, matched fields, predictor
+// receipts and a four-part budget. Retrieval answers one question — where in
+// the semantic tree the hit is — so all of that is gone rather than left
+// present and unfilled: a field that is always empty is a lie a caller will
+// eventually build on. See docs/query/predictor-path-only-v1.md.
+const Version = "memora.discovery-frame/v2"
 
 const UsageNavigationOnly = "navigation_only"
 
 var ErrInvalidFrame = errors.New("invalid discovery frame")
 
-type PredictorStatus string
-
-const (
-	PredictorSucceeded   PredictorStatus = "succeeded"
-	PredictorUnavailable PredictorStatus = "unavailable"
-)
-
-type ScoreKind string
-
-const (
-	ScoreNone       ScoreKind = "none"
-	ScoreMatchCount ScoreKind = "match_count"
-	ScoreDotProduct ScoreKind = "dot_product"
-)
-
-type Budget struct {
-	CandidateLimit uint64 `json:"candidate_limit"`
-	UTF8ByteLimit  uint64 `json:"utf8_byte_limit"`
-	CandidatesUsed uint64 `json:"candidates_used"`
-	UTF8BytesUsed  uint64 `json:"utf8_bytes_used"`
-}
-
-type PredictorReceipt struct {
-	Predictor      string          `json:"predictor"`
-	Status         PredictorStatus `json:"status"`
-	ScoreKind      ScoreKind       `json:"score_kind"`
-	Reason         string          `json:"reason"`
-	CandidateCount uint64          `json:"candidate_count"`
-	Truncated      bool            `json:"truncated"`
-}
-
+// Candidate is one place in the semantic tree.
+//
+// DatabaseID and TableID stay because a path is relative to its Table. Path is
+// the answer itself. Nothing else belongs here: a score, once exposed, becomes
+// the authority the caller ranks by, and an explanation becomes a second
+// authority beside the Router.
 type Candidate struct {
-	DatabaseID    string    `json:"database_id"`
-	TableID       string    `json:"table_id,omitempty"`
-	RouteID       string    `json:"route_id,omitempty"`
-	RouteRevision uint64    `json:"route_revision,omitempty"`
-	Predictor     string    `json:"predictor"`
-	Reason        string    `json:"reason"`
-	ScoreKind     ScoreKind `json:"score_kind"`
-	Score         *float64  `json:"score,omitempty"`
-	MatchedFields []string  `json:"matched_fields,omitempty"`
+	DatabaseID string `json:"database_id"`
+	TableID    string `json:"table_id,omitempty"`
+	Path       string `json:"path,omitempty"`
 }
 
+// Frame is the envelope for a candidate listing.
+//
+// Snapshot and CatalogRevision stay: they are not scores but the evidence of
+// which view the batch was read from. Limit and Truncated stay because bounded
+// output is a charter requirement — but only the limit, not a report of how
+// much of it was consumed.
 type Frame struct {
-	Version         string             `json:"version"`
-	Usage           string             `json:"usage"`
-	Snapshot        string             `json:"snapshot"`
-	CatalogRevision string             `json:"catalog_revision"`
-	Budget          Budget             `json:"budget"`
-	Predictors      []PredictorReceipt `json:"predictors"`
-	Candidates      []Candidate        `json:"candidates"`
-	Truncated       bool               `json:"truncated"`
+	Version         string      `json:"version"`
+	Usage           string      `json:"usage"`
+	Snapshot        string      `json:"snapshot"`
+	CatalogRevision string      `json:"catalog_revision"`
+	Limit           uint64      `json:"limit"`
+	Candidates      []Candidate `json:"candidates"`
+	Truncated       bool        `json:"truncated"`
 }
+
+const maxCandidateLimit = 1024
 
 func (frame Frame) Validate() error {
 	if frame.Version != Version || frame.Usage != UsageNavigationOnly {
@@ -77,64 +56,43 @@ func (frame Frame) Validate() error {
 	if !validOpaque(frame.Snapshot) || !validOpaque(frame.CatalogRevision) {
 		return invalid("snapshot and catalog_revision are required")
 	}
-	if frame.Predictors == nil || frame.Candidates == nil {
-		return invalid("predictors and candidates must be arrays")
+	if frame.Candidates == nil {
+		return invalid("candidates must be an array")
 	}
-	if err := validateBudget(frame.Budget); err != nil {
-		return err
+	if frame.Limit == 0 || frame.Limit > maxCandidateLimit {
+		return invalid("limit is outside protocol bounds")
 	}
-	if frame.Budget.CandidatesUsed != uint64(len(frame.Candidates)) {
-		return invalid("candidates_used does not match candidates")
+	if uint64(len(frame.Candidates)) > frame.Limit {
+		return invalid("candidates exceed the limit")
 	}
-
-	receipts := make(map[string]PredictorReceipt, len(frame.Predictors))
-	truncated := false
-	for _, receipt := range frame.Predictors {
-		if err := validateReceipt(receipt); err != nil {
-			return err
-		}
-		if _, exists := receipts[receipt.Predictor]; exists {
-			return invalid("predictor %q has multiple receipts", receipt.Predictor)
-		}
-		receipts[receipt.Predictor] = receipt
-		truncated = truncated || receipt.Truncated
-	}
-	if frame.Truncated != truncated {
-		return invalid("frame truncation does not match predictor receipts")
-	}
-
-	counts := make(map[string]uint64, len(receipts))
-	locations := make(map[string]struct{}, len(frame.Candidates))
-	var encodedBytes uint64
-	for _, candidate := range frame.Candidates {
+	for index, candidate := range frame.Candidates {
 		if err := validateCandidate(candidate); err != nil {
 			return err
 		}
-		receipt, exists := receipts[candidate.Predictor]
-		if !exists || receipt.Status != PredictorSucceeded || receipt.ScoreKind != candidate.ScoreKind {
-			return invalid("candidate has no matching successful predictor receipt")
+		if index == 0 {
+			continue
 		}
-		key := candidate.Predictor + "\x00" + candidate.DatabaseID + "\x00" + candidate.TableID + "\x00" + candidate.RouteID
-		if _, exists := locations[key]; exists {
-			return invalid("predictor %q repeats a candidate location", candidate.Predictor)
-		}
-		locations[key] = struct{}{}
-		counts[candidate.Predictor]++
-		size, err := candidateSize(candidate)
-		if err != nil {
-			return err
-		}
-		encodedBytes += size
-	}
-	if encodedBytes != frame.Budget.UTF8BytesUsed {
-		return invalid("utf8_bytes_used does not match candidate encoding")
-	}
-	for predictor, receipt := range receipts {
-		if receipt.CandidateCount != counts[predictor] {
-			return invalid("predictor %q candidate_count is inconsistent", predictor)
+		// Sorted and unique by location. Ordering is part of the contract
+		// because ranking is not: without a stable published order, callers
+		// would read meaning into whatever order the predictor happened to
+		// produce, which is the exposed score coming back in disguise.
+		if !candidateLess(frame.Candidates[index-1], candidate) {
+			return invalid("candidates must be sorted unique locations")
 		}
 	}
 	return nil
+}
+
+// candidateLess is the published order: Database, then Table, then path in
+// lexicographic byte order.
+func candidateLess(left, right Candidate) bool {
+	if left.DatabaseID != right.DatabaseID {
+		return left.DatabaseID < right.DatabaseID
+	}
+	if left.TableID != right.TableID {
+		return left.TableID < right.TableID
+	}
+	return left.Path < right.Path
 }
 
 func (frame Frame) MarshalJSON() ([]byte, error) {
@@ -159,80 +117,25 @@ func (frame *Frame) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-var predictorPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]*(/v[1-9][0-9]*)?$`)
-
-var matchedFieldPattern = regexp.MustCompile(`^(database|table|route)\.[a-z][a-z0-9_]*$`)
-
-func validateBudget(value Budget) error {
-	if value.CandidateLimit == 0 || value.CandidateLimit > 1024 ||
-		value.UTF8ByteLimit == 0 || value.UTF8ByteLimit > 1024*1024 {
-		return invalid("budget limits are outside protocol bounds")
-	}
-	if value.CandidatesUsed > value.CandidateLimit || value.UTF8BytesUsed > value.UTF8ByteLimit {
-		return invalid("budget usage exceeds a hard limit")
-	}
-	return nil
-}
-
-func validateReceipt(value PredictorReceipt) error {
-	if !validPredictor(value.Predictor) || !validReason(value.Reason) || !validScoreKind(value.ScoreKind) {
-		return invalid("predictor receipt has invalid provenance")
-	}
-	switch value.Status {
-	case PredictorSucceeded:
-	case PredictorUnavailable:
-		if value.CandidateCount != 0 || value.Truncated {
-			return invalid("unavailable predictor cannot contain or truncate candidates")
-		}
-	default:
-		return invalid("unknown predictor status %q", value.Status)
-	}
-	return nil
-}
-
 func validateCandidate(value Candidate) error {
-	if !validID(value.DatabaseID) || !validPredictor(value.Predictor) || !validReason(value.Reason) ||
-		!validScoreKind(value.ScoreKind) {
-		return invalid("candidate has invalid identity or provenance")
+	if !validID(value.DatabaseID) {
+		return invalid("candidate has invalid database_id")
 	}
 	if value.TableID != "" && !validID(value.TableID) {
 		return invalid("candidate has invalid table_id")
 	}
-	if value.RouteID != "" && (!validID(value.RouteID) || value.TableID == "" || value.RouteRevision == 0) {
-		return invalid("Route candidate requires a Table and revision")
-	}
-	if value.RouteID == "" && value.RouteRevision != 0 {
-		return invalid("route_revision requires route_id")
-	}
-	for index, field := range value.MatchedFields {
-		if !matchedFieldPattern.MatchString(field) || (index > 0 && value.MatchedFields[index-1] >= field) {
-			return invalid("matched_fields must be sorted unique semantic field names")
-		}
-	}
-	if value.ScoreKind == ScoreNone {
-		if value.Score != nil {
-			return invalid("score_kind none cannot carry score")
-		}
+	if value.Path == "" {
+		// A Database- or Table-level hit has no path inside a tree. A path
+		// without a Table has nowhere to be relative to.
 		return nil
 	}
-	if value.Score == nil || math.IsNaN(*value.Score) || math.IsInf(*value.Score, 0) {
-		return invalid("scored candidate requires a finite score")
+	if value.TableID == "" {
+		return invalid("a path requires a table_id")
 	}
-	if value.ScoreKind == ScoreMatchCount && (*value.Score < 0 || math.Trunc(*value.Score) != *value.Score) {
-		return invalid("match_count score must be a non-negative integer")
-	}
-	if value.ScoreKind == ScoreDotProduct && (*value.Score < -1.000001 || *value.Score > 1.000001) {
-		return invalid("dot_product score is outside normalized bounds")
+	if !validPath(value.Path) {
+		return invalid("candidate has invalid path")
 	}
 	return nil
-}
-
-func validScoreKind(value ScoreKind) bool {
-	return value == ScoreNone || value == ScoreMatchCount || value == ScoreDotProduct
-}
-
-func validPredictor(value string) bool {
-	return len(value) <= 64 && predictorPattern.MatchString(value)
 }
 
 func validID(value string) bool {
@@ -245,18 +148,9 @@ func validOpaque(value string) bool {
 		!strings.ContainsAny(value, "\x00\r\n")
 }
 
-func validReason(value string) bool {
-	return value != "" && len(value) <= 512 && utf8.ValidString(value) && strings.TrimSpace(value) == value &&
-		!strings.ContainsAny(value, "\x00\r\n")
-}
-
-func candidateSize(candidate Candidate) (uint64, error) {
-	type wire Candidate
-	encoded, err := json.Marshal(wire(candidate))
-	if err != nil {
-		return 0, invalid("encode candidate: %v", err)
-	}
-	return uint64(len(encoded)), nil
+func validPath(value string) bool {
+	return len(value) <= 1024 && utf8.ValidString(value) && strings.TrimSpace(value) == value &&
+		!strings.ContainsAny(value, "\x00\r\n\t")
 }
 
 func invalid(format string, arguments ...any) error {
