@@ -116,11 +116,31 @@ func (pool *Pool) Flush(key Key) error {
 	if pool.config.Writer == nil {
 		return ErrReadOnly
 	}
-	_, err := pool.flush(key)
+	durableLSN, err := pool.config.Durability.DurableLSN()
+	if err != nil {
+		return fmt.Errorf("read durable WAL LSN: %w", err)
+	}
+	_, err = pool.flush(key, durableLSN)
 	return err
 }
 
 func (pool *Pool) FlushDirty(limit uint64) (FlushReport, error) {
+	durableLSN, err := pool.config.Durability.DurableLSN()
+	if err != nil {
+		return FlushReport{}, fmt.Errorf("read durable WAL LSN: %w", err)
+	}
+	return pool.FlushDirtyThrough(limit, durableLSN)
+}
+
+// FlushDirtyThrough flushes dirty Pages against a durable WAL LSN the caller
+// already knows, instead of asking the log for it.
+//
+// It exists for callers the log itself invokes — a checkpoint barrier runs
+// inside the log's own lock, so a flush that called back into the log to read
+// its durable LSN would deadlock. The bound is still enforced: a Page whose LSN
+// is beyond durableLSN is refused exactly as before, so passing a stale value
+// makes the flush fail rather than write a Page ahead of its log.
+func (pool *Pool) FlushDirtyThrough(limit, durableLSN uint64) (FlushReport, error) {
 	pool.publishMu.RLock()
 	defer pool.publishMu.RUnlock()
 
@@ -140,7 +160,7 @@ func (pool *Pool) FlushDirty(limit uint64) (FlushReport, error) {
 	report := FlushReport{Attempted: uint64(len(keys))}
 	var result error
 	for _, key := range keys {
-		flushed, err := pool.flush(key)
+		flushed, err := pool.flush(key, durableLSN)
 		if flushed {
 			report.Flushed++
 		}
@@ -154,7 +174,7 @@ func (pool *Pool) FlushDirty(limit uint64) (FlushReport, error) {
 	return report, result
 }
 
-func (pool *Pool) flush(key Key) (bool, error) {
+func (pool *Pool) flush(key Key, durableLSN uint64) (bool, error) {
 	pool.mu.Lock()
 	current, exists := pool.frames[key]
 	if !exists || current.loading {
@@ -186,10 +206,6 @@ func (pool *Pool) flush(key Key) (bool, error) {
 	value := clonePage(current.value)
 	pool.mu.Unlock()
 
-	durableLSN, err := pool.config.Durability.DurableLSN()
-	if err != nil {
-		return false, fmt.Errorf("read durable WAL LSN: %w", err)
-	}
 	if durableLSN < value.Header.LSN {
 		return false, fmt.Errorf(
 			"%w: durable WAL LSN %d is before Page LSN %d",

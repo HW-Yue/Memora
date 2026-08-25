@@ -52,24 +52,60 @@ func (index *Index) Replace(transactionID uint64, databases []catalog.Database) 
 
 	index.mu.Lock()
 	defer index.mu.Unlock()
-	state := index.runtime.State()
-	current, err := index.readEntries(state)
+	plan, changed, err := index.planReplaceLocked(desired)
 	if err != nil {
 		return Receipt{}, err
 	}
-	if equalEntries(current, desired) && state.RootPageID != 0 {
-		return Receipt{State: state}, nil
-	}
-
-	plan, err := index.planReplacement(state, current, desired)
-	if err != nil {
-		return Receipt{}, err
+	if !changed {
+		return Receipt{State: index.runtime.State()}, nil
 	}
 	committed, err := index.runtime.Commit(transactionID, plan)
 	if err != nil {
 		return Receipt{}, err
 	}
 	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
+}
+
+// StageReplace validates and plans a Replace and enrols the Tree in group, so
+// it can be committed in one WAL transaction together with other Trees.
+//
+// On success the Index's write lock is held until the group commit finishes —
+// the group owns releasing it. A Replace that changes nothing adds no member
+// and releases immediately.
+func (index *Index) StageReplace(group *treecommit.Group, databases []catalog.Database) error {
+	if index == nil || index.runtime == nil || group == nil {
+		return fmt.Errorf("%w: replace request", ErrInvalid)
+	}
+	desired, err := buildEntries(databases)
+	if err != nil {
+		return err
+	}
+	index.mu.Lock()
+	plan, changed, err := index.planReplaceLocked(desired)
+	if err != nil || !changed {
+		index.mu.Unlock()
+		return err
+	}
+	group.Add(index.runtime, plan, index.mu.Unlock)
+	return nil
+}
+
+// planReplaceLocked builds the mutation plan for a Replace. The caller holds
+// the write lock; changed is false when the Tree already holds these entries.
+func (index *Index) planReplaceLocked(desired map[string][]byte) (btree.MutationPlan, bool, error) {
+	state := index.runtime.State()
+	current, err := index.readEntries(state)
+	if err != nil {
+		return btree.MutationPlan{}, false, err
+	}
+	if equalEntries(current, desired) && state.RootPageID != 0 {
+		return btree.MutationPlan{}, false, nil
+	}
+	plan, err := index.planReplacement(state, current, desired)
+	if err != nil {
+		return btree.MutationPlan{}, false, err
+	}
+	return plan, true, nil
 }
 
 func (index *Index) DatabaseByID(id string) (Locator, error) {

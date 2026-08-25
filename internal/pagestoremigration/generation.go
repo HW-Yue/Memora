@@ -3,6 +3,7 @@ package pagestoremigration
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,6 +19,130 @@ import (
 )
 
 const openGenerationFrames = uint64(512)
+
+// walSegmentRollBytes is how large the active redo log Segment may grow before
+// a maintenance round rolls, checkpoints and reclaims.
+//
+// 4 MiB is deliberately small. A threshold sized for a server — 64 MiB, say —
+// would never be reached by a personal-scale database, which means the
+// maintenance would be code that is written, tested, and never runs. That is
+// precisely the failure mode this work exists to remove.
+//
+// It is a var only so tests can lower it; nothing configures it at runtime.
+var walSegmentRollBytes = uint64(4 << 20)
+
+// flushTarget is one Tree's contribution to a durability barrier.
+type flushTarget struct {
+	kind    string
+	runtime *treecommit.Runtime
+	manager *page.Manager
+}
+
+// redoBarrier is the wal.DurabilityBarrier a checkpoint needs: it puts every
+// Tree backed by the log on disk before the checkpoint claims they are there.
+type redoBarrier struct {
+	targets []flushTarget
+}
+
+// FlushThrough puts every Tree's dirty Pages on disk, using recoveryLSN as the
+// durability bound.
+//
+// Two things are going on here. The buffer Pool's frames carry no LSN index, so
+// there is no way to select "only the Pages below this LSN" — every dirty Page
+// is flushed, which satisfies any bound and is therefore correct, just more
+// work than strictly required. The cost is bounded by the Pools' capacity. This
+// is a classic sharp checkpoint.
+//
+// recoveryLSN is used rather than ignored: it is the no-steal bound each Page
+// is checked against. It has to be passed in rather than read back from the
+// log, because the log holds its own lock while calling this — asking it for
+// its durable LSN here deadlocks. That is what FlushDirtyThrough exists for.
+func (barrier redoBarrier) FlushThrough(recoveryLSN uint64) error {
+	for _, target := range barrier.targets {
+		report, err := target.runtime.FlushDirtyThrough(math.MaxUint64, recoveryLSN)
+		if err != nil {
+			return fmt.Errorf("flush %s Tree for checkpoint: %w", target.kind, err)
+		}
+		if report.Remaining != 0 {
+			return fmt.Errorf(
+				"%w: %s Tree kept %d dirty Pages at checkpoint",
+				ErrTargetCorrupt, target.kind, report.Remaining,
+			)
+		}
+		if err := target.manager.Sync(); err != nil {
+			return fmt.Errorf("sync %s Tree Pages for checkpoint: %w", target.kind, err)
+		}
+	}
+	return nil
+}
+
+// maintainRedoLog rolls, checkpoints and reclaims a redo log once its active
+// Segment has outgrown walSegmentRollBytes.
+//
+// It runs synchronously after a successful write, never before: the write is
+// already committed, and maintenance must not be able to undo it. Synchronous
+// because one round's flush is bounded by the Pools' capacity, and because a
+// background worker would cost a lifecycle and a shutdown ordering this
+// repository does not otherwise need.
+//
+// Three outcomes are swallowed — nothing to roll, no new commit since the last
+// checkpoint, nothing reclaimable. They mean "no work", not "failure".
+func maintainRedoLog(log *wal.SegmentSet, barrier redoBarrier) error {
+	if log == nil {
+		return nil
+	}
+	due, err := rollIsDue(log)
+	if err != nil || !due {
+		return err
+	}
+	if _, err := log.Roll(); err != nil {
+		if errors.Is(err, wal.ErrEmptySegment) {
+			return nil
+		}
+		return fmt.Errorf("roll redo log: %w", err)
+	}
+	if _, err := log.PublishCheckpoint(barrier); err != nil {
+		if errors.Is(err, wal.ErrNoCheckpointProgress) {
+			return nil
+		}
+		return fmt.Errorf("publish redo log checkpoint: %w", err)
+	}
+	if _, err := log.Reclaim(); err != nil {
+		if errors.Is(err, wal.ErrNoReclaimableSegments) {
+			return nil
+		}
+		return fmt.Errorf("reclaim redo log Segments: %w", err)
+	}
+	return nil
+}
+
+// rollIsDue reports whether the active Segment has passed the roll threshold.
+func rollIsDue(log *wal.SegmentSet) (bool, error) {
+	segments, err := log.State()
+	if err != nil {
+		return false, fmt.Errorf("read redo log state: %w", err)
+	}
+	if len(segments) == 0 {
+		return false, nil
+	}
+	active := segments[len(segments)-1]
+	return active.NextLSN-active.StartLSN >= walSegmentRollBytes, nil
+}
+
+// maintainRedoLog runs one maintenance round over the generation's shared redo
+// log. The caller must hold the Authority write lock.
+func (generation *Generation) maintainRedoLog() error {
+	if generation == nil || generation.log == nil {
+		return nil
+	}
+	targets := make([]flushTarget, 0, len(generation.trees))
+	for _, tree := range generation.trees {
+		targets = append(targets, flushTarget{
+			kind: tree.manifest.Kind, runtime: tree.runtime, manager: tree.manager,
+		})
+	}
+	return maintainRedoLog(generation.log, redoBarrier{targets: targets})
+}
 
 type generationTree struct {
 	manifest treeManifest

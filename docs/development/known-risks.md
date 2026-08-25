@@ -111,7 +111,13 @@ F220 Stage 1 因此采用保守全丢，绕开该依赖。
 但长连接内轮换 session id 的调用方会让 map 单调增长。当前是本地单用户，风险低，
 属于"应加上界"而非"正在出问题"。
 
-### 7a. redo WAL 永不回收，无界增长
+### 7a. redo WAL 永不回收，无界增长 —— **已修复（2026-08-25）**
+
+> 按本文件惯例保留一轮供追溯。修复：`pagestoremigration.maintainRedoLog` 在每次
+> 成功写入之后跑一轮——活跃段超过 4 MiB 就 `Roll` → `PublishCheckpoint` →
+> `Reclaim`；生产 barrier 是 `redoBarrier`。门是
+> `TestRedoLogRollsCheckpointsAndReclaims`，量的是**磁盘字节不随写入次数增长**。
+> 下面是修复前的原文。
 
 `internal/store/wal/` 的 `SegmentSet.Roll`（`segment_set.go:397`）、
 `PublishCheckpoint` 与 `LatestCheckpoint`（`checkpoint.go:32`）、
@@ -135,11 +141,11 @@ wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的�
 **结构上不可能涨**——不 checkpoint 的后果从"磁盘静默涨到天上"变成"写入背压报错"。
 同一改动顺带堵上跨树提交不原子的洞（见该文档 §2.1）。
 
-**进度（2026-08-24）**：阶段 1、2 已完成——一个 generation 一套 redo log，
-跨树发布是一次 WAL 提交，**跨树不原子那半个问题已解决**。
-本条剩下的仍是原问题：**日志依然不滚段、不 checkpoint、不回收**。
-阶段 4（barrier + checkpoint）与阶段 5（固定环）才会关掉它，在那之前
-7a 保持开启。
+**进度**：阶段 1、2（一个 generation 一套 redo log、跨树发布一次提交）与
+阶段 4（barrier + checkpoint + 回收接线）均已完成，**本条到此关闭**。
+剩下的阶段 5（固定环 + 双指针）不再是缺陷修复，而是把「靠策略防增长」
+换成「结构上不可能增长」，作为改进留在
+[执行计划](../planning/execution-plan.md) E0。
 
 ### 7b. schema 与 route 变更不加对象锁
 

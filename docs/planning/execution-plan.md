@@ -44,7 +44,8 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 - **进度**：阶段 1（一套共享 redo log）、阶段 2（跨树提交合并为一次 WAL 提交）
   **已完成**；阶段 3 核实后**无可拆**——phase checkpoint 是纯测试接缝，
   poison 补的是「原生文件 ↔ generation」这个阶段 2 没动的事务域（收口在 E4／E6）；
-  剩阶段 4 barrier + checkpoint、阶段 5 固定环
+  阶段 4（barrier + checkpoint + 回收接线）**已完成**，
+  [已知风险](../development/known-risks.md) 7a 随之关闭；剩阶段 5 固定环
 - **依据**：[已知风险](../development/known-risks.md) 7a、
   [架构原则](../product/architecture-principles.md) §1、写入形态 §3／§5／§6
 - **改动**：`internal/pagestoremigration/{generation,manifest,authority}.go`、

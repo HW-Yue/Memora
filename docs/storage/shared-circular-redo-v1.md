@@ -93,16 +93,34 @@ offset = (LSN - ringBase) mod ringSize
 两者之间是「在用」区间。写入前检查是否会覆盖 checkpoint LSN 之前的空间：
 会，就先强制一次 checkpoint（刷脏页 + 推进尾指针）；推不动就**背压**，不是覆盖。
 
-## 4. barrier 仍然要写
+## 4. barrier：写出来才发现接口会自死锁
 
 `PublishCheckpoint(barrier DurabilityBarrier)` 要一个能
 `FlushThrough(recoveryLSN) error` 的对象，而**生产代码里没有任何实现**，
 只有 `wal/checkpoint_test.go:245` 一个测试 recorder。
 
-buffer pool 的帧**不记 LSN**，无法只刷「到某个 LSN 为止」。
-**保守解法：忽略入参，把脏页全刷干净**——全刷之后任何 LSN 都被满足，是正确的，
-只是比必要的多刷。代价有界（合并后是一个 pool 的容量）。
-这是经典 sharp checkpoint，**要在注释里写明为什么忽略入参**，否则会被当成 bug。
+buffer pool 的帧**不记 LSN**，无法只刷「到某个 LSN 为止」，所以全刷——
+全刷满足任何上界，是正确的，只是比必要的多刷。代价有界。这是经典 sharp checkpoint。
+
+**真正的坑在别处：这个接口会自死锁。** `PublishCheckpoint` 先拿 SegmentSet 的锁，
+再回调 barrier；barrier 刷页要读 `DurableLSN`，那又要同一把锁——非重入，直接卡死。
+（这大概就是此前一个生产实现都没有的原因；`checkpoint_test.go:245` 的 recorder
+不回调，所以测不出来。）
+
+解法：新增 `buffer.Pool.FlushDirtyThrough(limit, durableLSN)`，让调用方把已知的
+durable LSN **传进去**而不是回头问日志。副作用是好的——barrier 的
+`recoveryLSN` 参数**不再被忽略**，它正是每页的 no-steal 上界，传错就刷不动
+而不是写出一个领先于日志的页。原计划「忽略入参」的妥协不需要了。
+
+**接线**：`pagestoremigration.maintainRedoLog` 在每次成功写入之后跑一轮，
+活跃段超过 `walSegmentRollBytes`（4 MiB）就 `Roll` → `PublishCheckpoint` →
+`Reclaim`。同步做，因为一轮全刷的代价有界，而后台任务要付出生命周期与关停
+顺序的复杂度。阈值取小：设成服务器规模的 64 MiB，个人库可能永远碰不到，
+那就等于修了个不会执行的东西——正是本项要消灭的失败模式。
+
+**错误策略**：三个良性哨兵（没得滚、无新提交、没得回收）一律当作「无事可做」
+吞掉。其余失败**不能让已提交的写入失败**——写已经落盘了——但也不能静默，
+记在 `Authority.RedoMaintenanceError()` 上，下一次发布重试。
 
 ## 5. 分阶段与验证门
 
@@ -114,7 +132,7 @@ buffer pool 的帧**不记 LSN**，无法只刷「到某个 LSN 为止」。
 | 1 | 一个 generation 一套共享 redo log（**仍是段式**）；恢复一次带上全部 space | 恢复逐字一致；四棵树共用一个 WAL 目录 | **已完成** |
 | 2 | 跨树提交合并为**一次** WAL 提交 | 在三棵树写入之间注入故障，重开后三棵树一致（此前不一致） | **已完成** |
 | 3 | ~~拆掉四个 phase checkpoint 与 poison 补偿~~ | **前提错误，见下** | **已核实：无可拆** |
-| 4 | barrier + checkpoint 接线 | checkpoint 能推进；`LatestCheckpoint()` 不再恒为 false | 待做 |
+| 4 | barrier + checkpoint + 回收接线 | 磁盘字节**不随写入次数增长**；checkpoint LSN 推进；reclaim 删段后重开逐字读回 | **已完成** |
 | 5 | 固定环 + 双指针；`offset = (LSN-base) mod size` | 持续写入下磁盘**恒定不涨**；环绕点恢复正确；写满时背压报错而不是覆盖 | 待做 |
 
 **阶段 2 的故障注入是这份设计的核心证据**——它同时证明了旧缺陷存在与新设计修好了它。

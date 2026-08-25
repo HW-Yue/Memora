@@ -319,6 +319,26 @@ func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting b
 		}
 		first = last + 1
 	}
+	return tree.maintainRedoLog()
+}
+
+// maintainRedoLog runs one maintenance round over the change index's own redo
+// log. That log is separate from the generation's — the change index is a
+// separate durability unit with its own Page file — so it needs its own round,
+// or it grows without bound exactly as the generation's used to.
+//
+// Unlike the generation's, a failure here is returned: reconcile is not
+// following a committed user write, so failing it costs nothing already done.
+func (tree *authorityChangeTree) maintainRedoLog() error {
+	if tree == nil || tree.set == nil {
+		return nil
+	}
+	err := maintainRedoLog(tree.set, redoBarrier{targets: []flushTarget{{
+		kind: "changes", runtime: tree.runtime, manager: tree.manager,
+	}}})
+	if err != nil {
+		return fmt.Errorf("%w: committed change index redo log: %v", ErrTargetCorrupt, err)
+	}
 	return nil
 }
 

@@ -19,22 +19,30 @@
 
 ## 一、缺陷
 
-### 1.1 redo WAL 永不回收
+### 1.1 redo WAL 永不回收 —— **已修复（2026-08-25）**
 
-**现象**：WAL 从不滚段、从不 checkpoint、从不回收，无界增长。
+**当时的现象**：WAL 从不滚段、从不 checkpoint、从不回收，无界增长。
 
-**证据**：`internal/store/wal/` 里这四个符号**零生产调用方**（各有 12–52 处测试引用）：
-`SegmentSet.Roll`（`segment_set.go:397`）、`PublishCheckpoint` 与
-`LatestCheckpoint`（`checkpoint.go:32`）、`Reclaim`（`reclaim.go:39`）。
-生产对 `wal` 包只用 `OpenSegmentSet`／`CreateSegmentSet`／`RecoverSegmentSet`／
-`Record` 与类型常量。
+**当时的证据**：`internal/store/wal/` 里这四个符号**零生产调用方**（各有 12–52
+处测试引用）：`SegmentSet.Roll`、`PublishCheckpoint`、`LatestCheckpoint`、
+`Reclaim`。生产对 `wal` 包只用 `OpenSegmentSet`／`CreateSegmentSet`／
+`RecoverSegmentSet`／`Record` 与类型常量。
 
-**为什么不清晰**：`docs/storage/{wal-segment-set,checkpoint-publish,wal-segment-reclaim}-v1.md`
-三份都写着「F86a/b/c 已完成」。协议正确、有测试、冻结了文档，就是没人调。
-「已完成」与「没人调」同时为真而只写前者，会误导下一个读文档的人。
+**为什么当时不清晰**：三份 WAL 文档都写着「F86a/b/c 已完成」。协议正确、有测试、
+冻结了文档，就是没人调。「已完成」与「没人调」同时为真而只写前者，会误导读者。
 
-**建议动作**：接线 + 加「WAL 必须能回收」的 RED。代码已写已测，主要是决定
-触发时机（按段数？按字节？按 checkpoint 间隔？）。三份文档已加注记。
+**怎么修的**：`pagestoremigration.maintainRedoLog` 在每次成功写入之后跑一轮
+——活跃段超过 4 MiB 就 `Roll` → `PublishCheckpoint` → `Reclaim`。
+生产 `DurabilityBarrier`（此前只有测试 recorder）落在 `redoBarrier`。
+
+修的过程中撞出一个**接口自死锁**：`PublishCheckpoint` 持有 SegmentSet 的锁再
+回调 barrier，而 barrier 刷页要读 `DurableLSN`，那又要同一把锁。解法是新增
+`buffer.Pool.FlushDirtyThrough`，让调用方把已知的 durable LSN **传进去**——
+顺带让 barrier 参数**不再被忽略**，no-steal 上界照旧强制。
+这大概就是此前没有生产 barrier 的原因。
+
+**门**：`TestRedoLogRollsCheckpointsAndReclaims` 量的是**磁盘字节不随写入次数增长**，
+不是「发生过 checkpoint」；外加 reclaim 删段之后重开逐字读回。
 
 ### 1.2 `EXPORT WIKI` / `INSTALL PACKAGE` 能解析、执行必失败
 

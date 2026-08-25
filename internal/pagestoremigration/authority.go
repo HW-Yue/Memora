@@ -69,11 +69,15 @@ type Authority struct {
 	// refusing reads turns one uncertain write into a dead Instance.
 	poisonedAll       bool
 	poisonedDatabases map[string]struct{}
-	closed            bool
-	writeGate         chan struct{}
-	locks             *objectlock.Manager
-	nextOwner         atomic.Uint64
-	checkpoint        func(authorityPhase) error
+	// redoMaintenanceErr holds the last failed redo log maintenance round. It
+	// never blocks a write — the write it followed was already committed — but
+	// it must not vanish either, so RedoMaintenanceError exposes it.
+	redoMaintenanceErr error
+	closed             bool
+	writeGate          chan struct{}
+	locks              *objectlock.Manager
+	nextOwner          atomic.Uint64
+	checkpoint         func(authorityPhase) error
 }
 
 func OpenAuthority(
@@ -513,7 +517,36 @@ func (authority *Authority) PublishMutation(
 	if err != nil {
 		return authority.poisonPublication("Row/Route body", affected, err)
 	}
+	authority.maintainRedoLog()
 	return nil
+}
+
+// maintainRedoLog runs one redo log maintenance round after a successful
+// publication.
+//
+// It never returns an error, on purpose: the write it follows is already
+// committed and durable, and failing it here would turn a successful write into
+// a reported failure for a reason the caller can do nothing about. A failure
+// still must not be silent, so it is recorded on the Authority and surfaced by
+// Capture; the next publication tries again, and the worst case is the log
+// keeps growing — which is exactly where this started, not something worse.
+// RedoMaintenanceError reports the last failed redo log maintenance round, or
+// nil when the last round succeeded. A failure here never failed a write.
+func (authority *Authority) RedoMaintenanceError() error {
+	if authority == nil {
+		return nil
+	}
+	authority.mu.RLock()
+	defer authority.mu.RUnlock()
+	return authority.redoMaintenanceErr
+}
+
+func (authority *Authority) maintainRedoLog() {
+	if err := authority.generation.maintainRedoLog(); err != nil {
+		authority.redoMaintenanceErr = err
+		return
+	}
+	authority.redoMaintenanceErr = nil
 }
 
 func (authority *Authority) SnapshotCatalog(ctx context.Context) ([]catalog.Database, error) {
@@ -592,19 +625,22 @@ func (authority *Authority) PublishCatalog(
 	if err := authority.checkpointPhase(phaseCatalogBodyCommitted); err != nil {
 		return authority.poisonPublication("Catalog body", affected, err)
 	}
-	id, err := authority.nextTransactionID("catalog")
+	// One WAL transaction for the Catalog Tree and the Fulltext Tree, for the
+	// same reason as a Row publication: two commits could tear between them.
+	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
-		_, err = authority.generation.catalog.Replace(id, databases)
+		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {
+			if err := authority.generation.catalog.StageReplace(group, databases); err != nil {
+				return err
+			}
+			if len(documents) == 0 {
+				return nil
+			}
+			return authority.generation.fulltext.StageReplaceBatch(group, documents)
+		})
 	}
 	if err == nil {
 		err = authority.checkpointPhase(phaseCatalogPublished)
-	}
-	if err == nil && len(documents) != 0 {
-		var id uint64
-		id, err = authority.nextTransactionID("fulltext")
-		if err == nil {
-			_, err = authority.generation.fulltext.ReplaceBatch(id, documents)
-		}
 	}
 	if err == nil {
 		err = authority.checkpointPhase(phaseCatalogFulltextPublished)
@@ -612,6 +648,7 @@ func (authority *Authority) PublishCatalog(
 	if err != nil {
 		return authority.poisonPublication("Catalog body", affected, err)
 	}
+	authority.maintainRedoLog()
 	return nil
 }
 

@@ -440,6 +440,16 @@ func (runtime *Runtime) FlushDirty(limit uint64) (buffer.FlushReport, error) {
 	return runtime.pool.FlushDirty(limit)
 }
 
+// FlushDirtyThrough flushes against a durable WAL LSN the caller already knows.
+// A checkpoint barrier runs inside the log's own lock and must use this rather
+// than FlushDirty, which would call back into the log and deadlock.
+func (runtime *Runtime) FlushDirtyThrough(limit, durableLSN uint64) (buffer.FlushReport, error) {
+	if runtime == nil || runtime.pool == nil {
+		return buffer.FlushReport{}, fmt.Errorf("%w: Runtime", buffer.ErrInvalid)
+	}
+	return runtime.pool.FlushDirtyThrough(limit, durableLSN)
+}
+
 func (runtime *Runtime) preflight(
 	plan btree.MutationPlan,
 	records []wal.Record,
