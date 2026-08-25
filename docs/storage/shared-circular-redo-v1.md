@@ -113,7 +113,7 @@ buffer pool 的帧**不记 LSN**，无法只刷「到某个 LSN 为止」。
 |---|---|---|---|
 | 1 | 一个 generation 一套共享 redo log（**仍是段式**）；恢复一次带上全部 space | 恢复逐字一致；四棵树共用一个 WAL 目录 | **已完成** |
 | 2 | 跨树提交合并为**一次** WAL 提交 | 在三棵树写入之间注入故障，重开后三棵树一致（此前不一致） | **已完成** |
-| 3 | 拆掉四个 phase checkpoint 与 poison 补偿 | 行为不变——它们补的洞已由阶段 2 堵上 | 待做 |
+| 3 | ~~拆掉四个 phase checkpoint 与 poison 补偿~~ | **前提错误，见下** | **已核实：无可拆** |
 | 4 | barrier + checkpoint 接线 | checkpoint 能推进；`LatestCheckpoint()` 不再恒为 false | 待做 |
 | 5 | 固定环 + 双指针；`offset = (LSN-base) mod size` | 持续写入下磁盘**恒定不涨**；环绕点恢复正确；写满时背压报错而不是覆盖 | 待做 |
 
@@ -141,6 +141,36 @@ buffer pool 的帧**不记 LSN**，无法只刷「到某个 LSN 为止」。
 allocator → root 收尾）。同一 space 的记录必须连续；一个 space 在另一个 space
 之后再次出现是损坏流，不是第二段——段边界是判断 root redo 归属的唯一依据。
 单树事务是它的退化情形，旧格式一字未变。
+
+### 阶段 3 的前提是错的：那些补偿补的不是这个洞
+
+原文假设四个 phase checkpoint 是生产侧的补偿逻辑。**逐条读过代码，不是。**
+
+`Authority.checkpoint` 字段**在生产代码里从未被赋值**——全仓只有测试设置它，
+`checkpointPhase`（`authority.go:609`）在生产里恒等于「立即返回 nil」。
+它们是**纯故障注入接缝**，运行时零成本；拆掉只丢测试能力，换不来任何简洁。
+
+`poisonPublication` 更不能拆，因为**它补的洞阶段 2 根本没堵**：
+
+```
+PublishMutation:
+  commit()            ← 原生存储文件的事务
+  CommitGroupFunc()   ← generation 三棵树的事务（阶段 2 合并到这里）
+```
+
+这仍是**两个互不保证原子性的事务域**。崩在两者之间，原生文件领先于
+generation，开机由 `reconcile`（`authority.go:804`）从原生文件追平——
+`TestAuthorityRowPublicationFaultsPoisonAndReopenConverges` 注入的
+`phaseRowBodyCommitted` 正是这个接缝。
+
+**阶段 2 让「三棵树彼此」原子，没让「原生文件 ↔ generation」原子。**
+后者要等[每表一棵树](./per-table-tree-v1.md)与写入形态的三份日志——
+业务 Row 自己住进 B+ 树之后，「原生存储文件」这个独立事务域才消失。
+它同样命中[架构原则](../product/architecture-principles.md) §1 判据 1，
+只是收口点在 E4／E6，不在这里。
+
+结论：阶段 3 **不做删除**，改为把这条边界写清楚，
+免得下一个人误以为写入已经全链路原子。
 
 ### 阶段 2 引入的接口
 
