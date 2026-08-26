@@ -20,6 +20,15 @@ type RuntimeConfig struct {
 	SpaceID   uint64
 	Capacity  uint64
 	OldFrames uint64
+
+	// Pool, when set, is a buffer pool shared with the other Trees of the same
+	// generation, and Capacity/OldFrames are then the shared pool's business
+	// rather than this Runtime's. Leaving it nil gives this Runtime a private
+	// pool of its own, which is what a lone Tree wants.
+	//
+	// A shared pool must be built over a buffer.Router that already has this
+	// SpaceID registered; otherwise every read of this Tree fails to route.
+	Pool *buffer.Pool
 }
 
 type CommitReceipt struct {
@@ -113,22 +122,25 @@ func AttachRuntime(
 	if err != nil {
 		return nil, err
 	}
-	pool, err := buffer.New(
-		buffer.LoaderFunc(func(key buffer.Key) (page.Page, error) {
-			if key.SpaceID != config.SpaceID {
-				return page.Page{}, fmt.Errorf("%w: Runtime space", buffer.ErrInvalid)
-			}
-			return store.Read(key.PageID)
-		}),
-		buffer.Config{
-			Capacity:   config.Capacity,
-			OldFrames:  config.OldFrames,
-			Writer:     buffer.PageWriterFunc(store.Write),
-			Durability: set,
-		},
-	)
-	if err != nil {
-		return nil, err
+	pool := config.Pool
+	if pool == nil {
+		pool, err = buffer.New(
+			buffer.LoaderFunc(func(key buffer.Key) (page.Page, error) {
+				if key.SpaceID != config.SpaceID {
+					return page.Page{}, fmt.Errorf("%w: Runtime space", buffer.ErrInvalid)
+				}
+				return store.Read(key.PageID)
+			}),
+			buffer.Config{
+				Capacity:   config.Capacity,
+				OldFrames:  config.OldFrames,
+				Writer:     buffer.PageWriterFunc(store.Write),
+				Durability: set,
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 	runtime := &Runtime{log: set, pool: pool, spaceID: config.SpaceID, state: state, free: free}
 	loaded, err := runtime.Read(treecontrol.PageID)
@@ -147,8 +159,13 @@ func validateRuntimeInputs(
 	store wal.PageStore,
 	config RuntimeConfig,
 ) error {
-	if set == nil || store == nil || config.SpaceID == 0 || config.Capacity == 0 ||
-		config.OldFrames == 0 || config.OldFrames > config.Capacity {
+	if set == nil || store == nil || config.SpaceID == 0 {
+		return fmt.Errorf("%w: Runtime configuration", buffer.ErrInvalid)
+	}
+	// Capacity is this Runtime's own only when it builds its own pool. With a
+	// shared pool the sizing was decided once, by whoever built it.
+	if config.Pool == nil &&
+		(config.Capacity == 0 || config.OldFrames == 0 || config.OldFrames > config.Capacity) {
 		return fmt.Errorf("%w: Runtime configuration", buffer.ErrInvalid)
 	}
 	return nil
@@ -170,6 +187,18 @@ func scanFreePages(store wal.PageStore, state treecontrol.State) (map[uint64]str
 		}
 	}
 	return result, nil
+}
+
+// Pool reports the buffer pool this Runtime reads and writes through.
+//
+// It is exposed so a caller that opens several Trees can verify they share one
+// pool — the property that keeps resident memory bounded by a single budget
+// instead of growing with the number of Trees.
+func (runtime *Runtime) Pool() *buffer.Pool {
+	if runtime == nil {
+		return nil
+	}
+	return runtime.pool
 }
 
 func (runtime *Runtime) State() treecontrol.State {

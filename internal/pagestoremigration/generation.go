@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/HW-Yue/Memora/internal/store/buffer"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
@@ -316,9 +317,28 @@ func openSharedLogTrees(
 	if _, err := wal.RecoverSegmentSet(log, spaces); err != nil {
 		return nil, nil, fmt.Errorf("%w: recover shared redo log: %v", ErrTargetCorrupt, err)
 	}
+	// One buffer pool for the whole generation, routed by SpaceID. Capacity is
+	// a single budget rather than one per Tree, which is what keeps resident
+	// memory bounded once the number of Trees follows the number of Tables.
+	// See docs/storage/per-table-tree-v1.md §5.5.
+	router := buffer.NewRouter()
+	for index, specification := range manifest.Trees {
+		if err := router.Register(specification.SpaceID, managers[index]); err != nil {
+			return nil, nil, fmt.Errorf("%w: register %s Pages: %v", ErrTargetCorrupt, specification.Kind, err)
+		}
+	}
+	pool, err := buffer.New(router, buffer.Config{
+		Capacity: capacity, OldFrames: max(uint64(1), capacity/2),
+		Writer: router, Durability: log,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: open generation buffer pool: %v", ErrTargetCorrupt, err)
+	}
 	trees := make([]*generationTree, 0, len(manifest.Trees))
 	for index, specification := range manifest.Trees {
-		runtime, err := treecommit.AttachRuntime(log, managers[index], runtimeConfig(specification, capacity))
+		config := runtimeConfig(specification, capacity)
+		config.Pool = pool
+		runtime, err := treecommit.AttachRuntime(log, managers[index], config)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w: attach %s Tree: %v", ErrTargetCorrupt, specification.Kind, err)
 		}
