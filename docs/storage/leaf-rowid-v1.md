@@ -206,9 +206,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 
 ## 7. 分阶段与验证门
 
-每阶段一条独立可验证的性质。generation 版本号 +1、既有库开机 COW 自动升级，
-沿用 `internal/pagestoremigration` 已有的「从已提交 Record 构建 generation」，
-不另起炉灶。
+每阶段一条独立可验证的性质。
 
 | 阶段 | 内容 | 独立可验证的性质 |
 |---|---|---|
@@ -216,7 +214,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 | 2 | Row 加 `route_leaf_ids` 字段，与 membership **双写** | 两个来源对同一 RowID 返回相同叶子集合 |
 | 3 | 读路径切到叶子字段 + 行字段 | `OPEN ROUTE`／`route_paths`／`SHOW ROUTES` 逐字一致，且不再读 kind 9／13 |
 | 4 | 写路径停写 membership；变更日志改发 `route_node` | 新事务不产生 kind 9／13 记录；旧 envelope 仍可解码 |
-| 5 | 删除 kind 9／13、`Attach`、`ValidateMembershipChanges`；`ObjectKindMax` 下调；generation 升版 | 既有库自动升级，内容逐字不变 |
+| 5 | 退役 kind 9／13、删 `Attach`／`ValidateMembershipChanges` | 新写入拒绝这两个 kind；带旧记录的库照常打开、逐字可读 |
 | 6 | 删除三类健康项与 `internal/router` 的死 membership 代码 | 见下 |
 | 7 | trace 改为顺 `ParentID` 实时算，删掉 `Node.Path` 与 `repathDescendants` | RENAME 一个分支只写一个节点（今天要写整棵子树）；`route_paths` 与 `SHOW ROUTES` 逐字一致 |
 
@@ -229,6 +227,35 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 
 **跨阶段的逐字一致基线**：切换前后比对 `OPEN ROUTE`、`SHOW ROUTES`、
 带 `route_paths` 的 `SELECT`、`SHOW CHANGES`、语义健康报告。
+
+### 7.1 阶段 5 的两处订正：编号不下调、generation 不升版
+
+原表写的是「`ObjectKindMax` 下调；generation 升版」。实现时两条都不成立，
+记在这里而不是悄悄改掉：
+
+**`ObjectKindMax` 停在 13，不下调。** 它是迁移与盘点扫描的上界
+（`pagestoremigration/reader.go` 的 `Inventory`：kind 超出上界即报
+`ErrUnsupported`）。切换之前写的库里就带着 kind 13 的记录，上界降到 12
+会让这些库**仅仅因为旧**就被判为不支持、拒绝迁移。
+所以两个编号是**退役**而不是回收：`validateRecord` 拒绝新写入，
+老记录原样躺着可读，编号永不复用——复用会让那些字节解码成别的对象。
+
+**generation 不升版。** 「每阶段 generation +1」是原文的一句通则，
+套到本阶段不成立：generation 只有 catalog／current／versions／fulltext
+四棵树，Route 节点与 Membership 都不在里面（`nativerouter` 直接读原生文件）。
+本阶段没有改变 generation 的任何内容，升版号只会让既有库做一次无意义的重建。
+
+### 7.2 阶段 5 顺带修掉的一个缺口：路由计划只挪了叶子
+
+阶段 3／4 把读写都切到两端字段之后，**路由计划这条路径漏了行的那一端**：
+`ApplyRouteMutationPlan` 的 MERGE／SPLIT 把行从一批叶子挪到另一个叶子时，
+只写了叶子的 `RowID`，没有更新行自己的 `route_leaf_ids`。
+两端就此分家，此后每次 `route_paths` 都读到过期的那一半。
+
+§5.3 把「两端在同一次写入的同一个事务里落盘」列为这个有意重复的**前提**，
+所以这不是可以缓一缓的瑕疵——前提不成立，重复就退化成了两个各自漂移的结构。
+修法是让计划把行的新版本一起算出来（`rowsAfterMoves`），
+与叶子在同一次提交里落盘，并带一条 history 记录说明它为什么变。
 
 ## 8. 待定
 

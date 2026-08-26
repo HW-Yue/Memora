@@ -21,7 +21,7 @@ import (
 //
 // "Which leaves is this Row hanging under" is needed on three live paths — the
 // route_paths of every SELECT, leaf cleanup on delete, and SPLIT/MERGE
-// remounting. Today it is answered by scanning Membership objects.
+// remounting. It used to be answered by scanning Membership objects.
 //
 // It does not need answering: the write order already knows. A Row is written
 // after its RowID has been mounted on the leaves, so RouteLeafIDs is in hand at
