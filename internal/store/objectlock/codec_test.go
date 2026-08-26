@@ -10,27 +10,25 @@ import (
 
 func TestKeyCanonicalCodecGoldenAndCollisionCorpus(t *testing.T) {
 	row, _ := RowKey("db", "tbl", "row")
-	schema, _ := SchemaKey("db", "tbl")
-	route, _ := RouteKey("db", "node")
 	tests := []struct {
 		key  Key
 		want []byte
 	}{
-		{row, []byte{1, 0, 2, 'd', 'b', 0, 3, 't', 'b', 'l', 0, 3, 'r', 'o', 'w'}},
-		{schema, []byte{2, 0, 2, 'd', 'b', 0, 3, 't', 'b', 'l'}},
-		{route, []byte{3, 0, 2, 'd', 'b', 0, 4, 'n', 'o', 'd', 'e'}},
+		{row, []byte{0, 2, 'd', 'b', 0, 3, 't', 'b', 'l', 0, 3, 'r', 'o', 'w'}},
 	}
 	for _, test := range tests {
 		if got := test.key.canonical(); !bytes.Equal(got, test.want) {
 			t.Fatalf("canonical(%s) = %v, want %v", test.key, got, test.want)
 		}
 	}
+	// Length-prefixed components, so a separator appearing inside one of them
+	// cannot make two different keys encode the same.
 	components := []string{"a", "aa", "a/b", "a\x00b", "数据库", "route:one"}
 	seen := make(map[string]Key)
 	for _, databaseID := range components {
-		for _, objectID := range components {
-			for _, constructor := range []func(string, string) (Key, error){SchemaKey, RouteKey} {
-				key, err := constructor(databaseID, objectID)
+		for _, tableID := range components {
+			for _, rowID := range components {
+				key, err := RowKey(databaseID, tableID, rowID)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -55,10 +53,10 @@ func TestManagerMatchesSeededBatchReferenceModel(t *testing.T) {
 	}
 	keys := make([]Key, 0, 60)
 	for number := 0; number < 20; number++ {
-		row, _ := RowKey("db", "table", string(rune('a'+number)))
-		schema, _ := SchemaKey("db", string(rune('a'+number)))
-		route, _ := RouteKey("db", string(rune('a'+number)))
-		keys = append(keys, row, schema, route)
+		for _, tableID := range []string{"table", "other", "third"} {
+			key, _ := RowKey("db", tableID, string(rune('a'+number)))
+			keys = append(keys, key)
+		}
 	}
 	holders := make(map[Key]int)
 	random := rand.New(rand.NewSource(104))

@@ -19,45 +19,31 @@ const (
 	maxBatchKeys      = 1000
 )
 
-type Kind uint8
-
-const (
-	KindRow Kind = iota + 1
-	KindSchema
-	KindRoute
-)
-
 var (
 	ErrInvalid  = errors.New("exact-object write lock request is invalid")
 	ErrConflict = errors.New("exact-object write lock conflicts")
 )
 
+// Key names one Row. Nothing else takes an exact-object lock.
+//
+// The lock used to be three-tiered — Row, schema object, Route node — but only
+// the Row tier ever had a caller. The other two were deleted rather than wired
+// up, because writes are serialised: an exact-object lock buys one thing over
+// that serialisation, failing fast when two requests want the same object, and
+// that is worth having on the hot Row path and not on schema or Route
+// mutations. Those are rare, structural, and already guarded by EXPECTED
+// REVISION, which reports a conflict more precisely than a lock error can.
 type Key struct {
-	kind       Kind
 	databaseID string
 	tableID    string
-	objectID   string
+	rowID      string
 }
 
 func RowKey(databaseID, tableID, rowID string) (Key, error) {
-	return newKey(KindRow, databaseID, tableID, rowID)
-}
-
-func SchemaKey(databaseID, schemaObjectID string) (Key, error) {
-	return newKey(KindSchema, databaseID, "", schemaObjectID)
-}
-
-func RouteKey(databaseID, routeNodeID string) (Key, error) {
-	return newKey(KindRoute, databaseID, "", routeNodeID)
-}
-
-func newKey(kind Kind, databaseID, tableID, objectID string) (Key, error) {
-	if kind < KindRow || kind > KindRoute || !validComponent(databaseID) ||
-		!validComponent(objectID) || (kind == KindRow && !validComponent(tableID)) ||
-		(kind != KindRow && tableID != "") {
+	if !validComponent(databaseID) || !validComponent(tableID) || !validComponent(rowID) {
 		return Key{}, fmt.Errorf("%w: logical object key", ErrInvalid)
 	}
-	return Key{kind: kind, databaseID: databaseID, tableID: tableID, objectID: objectID}, nil
+	return Key{databaseID: databaseID, tableID: tableID, rowID: rowID}, nil
 }
 
 func validComponent(value string) bool {
@@ -65,57 +51,27 @@ func validComponent(value string) bool {
 		utf8.ValidString(value)
 }
 
-func (key Key) Kind() Kind { return key.kind }
-
 func (key Key) DatabaseID() string { return key.databaseID }
 
 func (key Key) TableID() string { return key.tableID }
 
-func (key Key) ObjectID() string { return key.objectID }
-
-func (kind Kind) String() string {
-	switch kind {
-	case KindRow:
-		return "row"
-	case KindSchema:
-		return "schema"
-	case KindRoute:
-		return "route"
-	default:
-		return "invalid"
-	}
-}
+func (key Key) RowID() string { return key.rowID }
 
 func (key Key) String() string {
-	switch key.kind {
-	case KindRow:
-		return fmt.Sprintf("row(%q,%q,%q)", key.databaseID, key.tableID, key.objectID)
-	case KindSchema:
-		return fmt.Sprintf("schema(%q,%q)", key.databaseID, key.objectID)
-	case KindRoute:
-		return fmt.Sprintf("route(%q,%q)", key.databaseID, key.objectID)
-	default:
-		return "invalid-object-lock-key"
-	}
+	return fmt.Sprintf("row(%q,%q,%q)", key.databaseID, key.tableID, key.rowID)
 }
 
 func (key Key) valid() bool {
-	_, err := newKey(key.kind, key.databaseID, key.tableID, key.objectID)
+	_, err := RowKey(key.databaseID, key.tableID, key.rowID)
 	return err == nil
 }
 
 func (key Key) canonical() []byte {
-	size := 1 + 2 + len(key.databaseID) + 2 + len(key.objectID)
-	if key.kind == KindRow {
-		size += 2 + len(key.tableID)
-	}
-	result := make([]byte, 1, size)
-	result[0] = byte(key.kind)
+	size := 2 + len(key.databaseID) + 2 + len(key.tableID) + 2 + len(key.rowID)
+	result := make([]byte, 0, size)
 	result = appendComponent(result, key.databaseID)
-	if key.kind == KindRow {
-		result = appendComponent(result, key.tableID)
-	}
-	return appendComponent(result, key.objectID)
+	result = appendComponent(result, key.tableID)
+	return appendComponent(result, key.rowID)
 }
 
 func appendComponent(target []byte, value string) []byte {

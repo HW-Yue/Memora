@@ -51,22 +51,22 @@ func TestBatchConflictAddsNoNewLocksAndKeepsEarlierGuardLocks(t *testing.T) {
 	second := begin(t, manager, 2)
 	third := begin(t, manager, 3)
 	blockedRow := rowKey(t, "row_blocked")
-	blockedSchema, _ := objectlock.SchemaKey("db_work", "tbl_notes")
-	freeRoute, _ := objectlock.RouteKey("db_work", "route_free")
+	blockedSecond := rowKey(t, "row_blocked_second")
+	free := rowKey(t, "row_free")
 	prior := rowKey(t, "row_prior")
-	if err := first.TryAcquire(context.Background(), blockedSchema, blockedRow); err != nil {
+	if err := first.TryAcquire(context.Background(), blockedSecond, blockedRow); err != nil {
 		t.Fatal(err)
 	}
 	if err := second.TryAcquire(context.Background(), prior); err != nil {
 		t.Fatal(err)
 	}
-	err := second.TryAcquire(context.Background(), freeRoute, blockedSchema, blockedRow)
+	err := second.TryAcquire(context.Background(), free, blockedSecond, blockedRow)
 	var conflict *objectlock.ConflictError
 	if !errors.As(err, &conflict) || conflict.Blocked != blockedRow {
 		t.Fatalf("batch conflict = %#v, %v; want blocked Row", conflict, err)
 	}
-	if err := third.TryAcquire(context.Background(), freeRoute); err != nil {
-		t.Fatalf("failed batch leaked free Route lock: %v", err)
+	if err := third.TryAcquire(context.Background(), free); err != nil {
+		t.Fatalf("failed batch leaked the free Row lock: %v", err)
 	}
 	if err := third.TryAcquire(context.Background(), prior); !errors.Is(err, objectlock.ErrConflict) {
 		t.Fatalf("failed batch dropped earlier guard lock: %v", err)
@@ -101,18 +101,21 @@ func TestGuardReentryDeduplicationCloseAndOwnerReuse(t *testing.T) {
 	}
 }
 
-func TestIndependentKindsAndObjectsDoNotConflict(t *testing.T) {
+// TestIndependentObjectsDoNotConflict pins that the same object ID under a
+// different Database or Table is a different lock: the key is all three
+// components, not just the last one.
+func TestIndependentObjectsDoNotConflict(t *testing.T) {
 	manager := objectlock.New()
-	rowGuard := begin(t, manager, 1)
-	schemaGuard := begin(t, manager, 2)
-	routeGuard := begin(t, manager, 3)
-	row, _ := objectlock.RowKey("db_work", "tbl_notes", "same_id")
-	schema, _ := objectlock.SchemaKey("db_work", "same_id")
-	route, _ := objectlock.RouteKey("db_work", "same_id")
+	first := begin(t, manager, 1)
+	second := begin(t, manager, 2)
+	third := begin(t, manager, 3)
+	sameID, _ := objectlock.RowKey("db_work", "tbl_notes", "same_id")
+	otherTable, _ := objectlock.RowKey("db_work", "tbl_tasks", "same_id")
+	otherDatabase, _ := objectlock.RowKey("db_other", "tbl_notes", "same_id")
 	for _, request := range []struct {
 		guard *objectlock.Guard
 		key   objectlock.Key
-	}{{rowGuard, row}, {schemaGuard, schema}, {routeGuard, route}} {
+	}{{first, sameID}, {second, otherTable}, {third, otherDatabase}} {
 		if err := request.guard.TryAcquire(context.Background(), request.key); err != nil {
 			t.Fatalf("independent TryAcquire(%s) error = %v", request.key, err)
 		}
@@ -138,11 +141,11 @@ func TestCancelledAndInvalidRequestsAcquireNothing(t *testing.T) {
 	if _, err := objectlock.RowKey(" db", "table", "row"); !errors.Is(err, objectlock.ErrInvalid) {
 		t.Fatalf("whitespace RowKey() error = %v", err)
 	}
-	if _, err := objectlock.RouteKey("db", string([]byte{0xff})); !errors.Is(err, objectlock.ErrInvalid) {
-		t.Fatalf("invalid UTF-8 RouteKey() error = %v", err)
+	if _, err := objectlock.RowKey("db", "table", string([]byte{0xff})); !errors.Is(err, objectlock.ErrInvalid) {
+		t.Fatalf("invalid UTF-8 RowKey() error = %v", err)
 	}
-	if _, err := objectlock.SchemaKey("db", strings.Repeat("x", 2049)); !errors.Is(err, objectlock.ErrInvalid) {
-		t.Fatalf("oversized SchemaKey() error = %v", err)
+	if _, err := objectlock.RowKey("db", "table", strings.Repeat("x", 2049)); !errors.Is(err, objectlock.ErrInvalid) {
+		t.Fatalf("oversized RowKey() error = %v", err)
 	}
 	batch := make([]objectlock.Key, 1001)
 	for index := range batch {
