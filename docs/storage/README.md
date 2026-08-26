@@ -52,6 +52,11 @@
 段**没有容量上限、也不会自动滚**，而 `Roll`／`PublishCheckpoint`／`Reclaim`
 零生产调用方——所以实际上永远只有一个段，无限增长（[已知风险](../development/known-risks.md) 7a）。
 
+**fulltext 是派生索引，不在写入事务里**：写入只写权威数据，fulltext 从提交的
+变更日志追平（追平跟在写入后面立刻跑，但在它的事务之外，所以没有可见滞后）。
+游标存在 fulltext 树自己的第四个 key 前缀里，与文档同事务落盘。
+见[派生索引解耦](./derived-index-catchup-v1.md)。
+
 细节：[WAL Record Stream](./wal-record-stream-v1.md)、
 [Durable Transaction](./wal-durable-transaction-v1.md)、
 [Durable Frontier](./wal-durable-frontier-v1.md)、
