@@ -3,6 +3,7 @@ package nativemutation
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -239,6 +240,9 @@ func (service *Service) reshape(
 			SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence,
 			State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now,
 		}
+		if index := len(targets); index < len(options.TargetRouteLeafIDs) {
+			target.RouteLeafIDs = sortedLeafIDs(options.TargetRouteLeafIDs[index])
+		}
 		targets = append(targets, target)
 		targetChanges = append(targetChanges, RowChange{
 			Row: target, Operation: operation, Metadata: options.Metadata, RecordedAt: now, Initial: true,
@@ -252,6 +256,14 @@ func (service *Service) reshape(
 	if err != nil {
 		return nil, err
 	}
+	// A reshape moves Rows between leaves, and a leaf records the Row it holds,
+	// so the leaves are part of the same commit as the Rows. Without this the
+	// Rows land and the tree still points at the ones they replaced.
+	mounts, err := service.reshapeLeafMounts(sources, targets, routeNodes)
+	if err != nil {
+		return nil, err
+	}
+	routeNodes = mounts
 	relations, err := service.reshapeRelations(operation, sourceSet, targets, options.RelationTargetOrdinals, sequence, now)
 	if err != nil {
 		return nil, err
@@ -373,6 +385,77 @@ func projectTarget(table catalog.Table, value row.Row) row.Row {
 		projected.Values[column.Name] = value.Values[column.ID]
 	}
 	return projected
+}
+
+// reshapeLeafMounts folds the leaf side of a reshape into the Route nodes the
+// commit already carries: sources release the leaves they held, targets take
+// the ones they were given.
+func (service *Service) reshapeLeafMounts(
+	sources, targets []row.Row, planned []router.Node,
+) ([]router.Node, error) {
+	pending := make(map[string]router.Node, len(planned))
+	order := make([]string, 0, len(planned))
+	for _, node := range planned {
+		pending[node.ID] = node
+		order = append(order, node.ID)
+	}
+	apply := func(leafID, rowID string) error {
+		node, staged := pending[leafID]
+		if !staged {
+			current, err := service.routes.Get(leafID)
+			if err != nil {
+				return err
+			}
+			node = current
+			node.Revision++
+			order = append(order, leafID)
+		}
+		node.RowID = rowID
+		pending[leafID] = node
+		return nil
+	}
+	for _, source := range sources {
+		held, err := service.routes.LeavesHoldingRow(source.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, leafID := range held {
+			if err := apply(leafID, ""); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, target := range targets {
+		for _, leafID := range target.RouteLeafIDs {
+			if err := apply(leafID, target.ID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	result := make([]router.Node, 0, len(order))
+	for _, id := range order {
+		result = append(result, pending[id])
+	}
+	return result, nil
+}
+
+// sortedLeafIDs normalises a leaf list so an encoded Row is a function of which
+// leaves hold it, not of the order they were named in.
+func sortedLeafIDs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func (service *Service) reshapeMemberships(

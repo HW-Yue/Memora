@@ -34,9 +34,11 @@ func TestApprovedRoutePlanCommitsRoutesMembershipsAndChangeAtomically(t *testing
 	proposal := routemutationplan.Proposal{
 		Version: routemutationplan.ProposalVersion, ID: "proposal_merge", Operation: routemutationplan.OperationMerge,
 		Actor: "agent:test", SourceEventID: "event:route-review", Reason: "merge equivalent Row aliases",
+		// Read the revisions rather than assuming 1: mounting a Row advances the
+		// leaf it lands on, because the leaf records which Row it holds.
 		Sources: []routemutationplan.SourceRef{
-			{RouteID: "route_leaf", ExpectedRevision: 1},
-			{RouteID: alias.ID, ExpectedRevision: 1},
+			{RouteID: "route_leaf", ExpectedRevision: currentRouteRevision(t, routes, "route_leaf")},
+			{RouteID: alias.ID, ExpectedRevision: currentRouteRevision(t, routes, alias.ID)},
 		},
 		Targets: []routemutationplan.TargetProposal{{Key: "canonical", Name: "canonical", Purpose: "Canonical Row locator"}},
 	}
@@ -94,7 +96,9 @@ func TestRoutePlanRequiresExactApprovalAndFreshSnapshotWithoutPartialWrites(t *t
 		routemutationplan.Proposal{
 			Version: routemutationplan.ProposalVersion, ID: "proposal_move", Operation: routemutationplan.OperationMove,
 			Actor: "agent:test", SourceEventID: "event:move", Reason: "move",
-			Sources: []routemutationplan.SourceRef{{RouteID: "route_leaf", ExpectedRevision: 1}}, TargetParentID: "route_root",
+			Sources: []routemutationplan.SourceRef{{
+				RouteID: "route_leaf", ExpectedRevision: currentRouteRevision(t, routes, "route_leaf"),
+			}}, TargetParentID: "route_root",
 		})
 	if err == nil {
 		t.Fatal("fixture MOVE should reject same parent")
@@ -108,7 +112,9 @@ func TestRoutePlanRequiresExactApprovalAndFreshSnapshotWithoutPartialWrites(t *t
 		routemutationplan.Proposal{
 			Version: routemutationplan.ProposalVersion, ID: "proposal_move_valid", Operation: routemutationplan.OperationMove,
 			Actor: "agent:test", SourceEventID: "event:move-valid", Reason: "move",
-			Sources:        []routemutationplan.SourceRef{{RouteID: "route_leaf", ExpectedRevision: 1}},
+			Sources: []routemutationplan.SourceRef{{
+				RouteID: "route_leaf", ExpectedRevision: currentRouteRevision(t, routes, "route_leaf"),
+			}},
 			TargetParentID: target.ID,
 		})
 	if err != nil {
@@ -153,4 +159,15 @@ func approvedRoutePlanContext(plan routemutationplan.Plan) context.Context {
 		Approval: &security.Approval{Version: security.ApprovalVersion, Action: security.ActionApplyRouteMutation,
 			SubjectSHA256: strings.TrimPrefix(plan.Hash, "sha256:"), Confirmed: true},
 	})
+}
+
+// currentRouteRevision reads a Route's revision now, instead of assuming the
+// one it had when it was created.
+func currentRouteRevision(t *testing.T, routes *nativerouter.Repository, routeID string) uint64 {
+	t.Helper()
+	node, err := routes.Get(routeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return node.Revision
 }

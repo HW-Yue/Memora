@@ -34,12 +34,19 @@ func archiveFixture(t *testing.T) (*nativestore.File, *Repository, router.Node, 
 
 func archiveNode(t *testing.T, file *nativestore.File, repository *Repository, node router.Node) router.Node {
 	t.Helper()
+	// Re-read rather than trusting the node the caller is holding: mounting a
+	// Row advances the leaf, so a node captured before the mount is already a
+	// revision behind. Every client editing a Route has to do this now.
+	latest, err := repository.Get(node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	transaction, err := file.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	archived := node
-	archived.Revision, archived.Deleted = node.Revision+1, true
+	archived := latest
+	archived.Revision, archived.Deleted = latest.Revision+1, true
 	if err := repository.StageNode(transaction, archived); err != nil {
 		t.Fatal(err)
 	}

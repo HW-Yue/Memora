@@ -1429,7 +1429,32 @@ func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor s
 		return nil, router.ReadPage{}, err
 	}
 	defer release()
-	return nativerouter.New(service.repository.file).OpenPage(leafID, cursor, limit)
+	// The leaf names the Row it holds, so this is a field read instead of the
+	// scan over every Membership object it used to be. A leaf holds at most one
+	// Row by construction now — the field cannot name two — so the old
+	// "multiple Rows in one leaf" refusal has nothing left to detect.
+	routes := nativerouter.New(service.repository.file)
+	leaf, err := routes.LeafForOpen(leafID, limit)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	locators := make([]router.Locator, 0, 1)
+	if leaf.RowID != "" {
+		value, readErr := service.repository.Read(leaf.RowID)
+		if readErr != nil && !errors.Is(readErr, nativestore.ErrNotFound) {
+			return nil, router.ReadPage{}, readErr
+		}
+		// A leaf naming a Row that is gone locates nothing. The unmount and the
+		// delete land in one transaction, so this is belt and braces rather
+		// than an expected state.
+		if readErr == nil {
+			locators = append(locators, router.Locator{
+				DatabaseID: value.DatabaseID, TableID: value.TableID,
+				RowID: value.ID, Revision: value.Revision,
+			})
+		}
+	}
+	return router.PaginateLocators("leaf:"+leafID, cursor, limit, locators)
 }
 
 func (service *Service) MembershipsForRow(ctx context.Context, databaseID, tableID, rowID string) ([]router.Membership, error) {

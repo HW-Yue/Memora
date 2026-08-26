@@ -115,24 +115,31 @@ func (service *Service) revalidateRoutePlan(plan routemutationplan.Plan) (map[st
 	return current, nil
 }
 
+// routeLocators resolves what a leaf currently locates.
+//
+// It reads the leaf's own RowID field and then that Row, which is the same
+// source the planner captured its guard from. Reading one source here and
+// another there is how a guard starts reporting conflicts that are only a
+// disagreement between two views of the same fact.
 func (service *Service) routeLocators(leafID string) ([]router.Locator, error) {
-	values, cursor := []router.Locator{}, ""
-	for pages := 0; pages < 100; pages++ {
-		page, receipt, err := service.routes.OpenPage(leafID, cursor, 1000)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, page...)
-		if receipt.NextCursor == "" {
-			sort.Slice(values, func(i, j int) bool { return values[i].RowID < values[j].RowID })
-			return values, nil
-		}
-		if receipt.NextCursor == cursor {
-			break
-		}
-		cursor = receipt.NextCursor
+	leaf, err := service.routes.Get(leafID)
+	if err != nil {
+		return nil, err
 	}
-	return nil, routePlanError(result.CodeConstraint, "Route locator verification exceeded its page budget")
+	if leaf.RowID == "" {
+		return []router.Locator{}, nil
+	}
+	value, err := service.rows.Read(leaf.RowID)
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return []router.Locator{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return []router.Locator{{
+		DatabaseID: value.DatabaseID, TableID: value.TableID,
+		RowID: value.ID, Revision: value.Revision,
+	}}, nil
 }
 
 func (service *Service) materializeRoutePlan(
@@ -200,7 +207,8 @@ func (service *Service) materializeRoutePlan(
 			changes = append(changes, node)
 			continue
 		}
-		if !exists || (node.ParentID == before.ParentID && node.Path == before.Path && node.Deleted == before.Deleted) {
+		if !exists || (node.ParentID == before.ParentID && node.Path == before.Path &&
+			node.Deleted == before.Deleted && node.RowID == before.RowID) {
 			continue
 		}
 		if !guarded[id] {
@@ -248,6 +256,12 @@ func (service *Service) materializeMembershipMoves(
 			membership.MembershipRevision++
 			membership.Deleted = true
 			changes = append(changes, membership)
+			// The leaf records the Row it holds, so emptying a source leaf is a
+			// change to the leaf itself, not only to a Membership beside it.
+			if source, ok := desired[sourceID]; ok && source.RowID == move.RowID {
+				source.RowID = ""
+				desired[sourceID] = source
+			}
 		}
 		target, ok := desired[move.ToLeafID]
 		if !ok || target.Deleted || target.Kind != router.KindLeaf || target.DatabaseID != plan.Scope.DatabaseID || target.TableID != plan.Scope.TableID {
@@ -263,6 +277,10 @@ func (service *Service) materializeMembershipMoves(
 			membership.MembershipRevision = byLeaf[move.ToLeafID].MembershipRevision + 1
 		}
 		changes = append(changes, membership)
+		// And the target leaf records that it now holds the Row. Both sides are
+		// written by the same commit as the rest of the plan.
+		target.RowID = move.RowID
+		desired[move.ToLeafID] = target
 	}
 	return changes, nil
 }

@@ -146,7 +146,31 @@ func (repository *Repository) Attach(leafID string, locator router.Locator, memb
 	if err := repository.file.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload); err != nil {
 		return err
 	}
-	return repository.file.Put(nativestore.ObjectKindRouteRowMembership, schemaVersion, rowMembershipRecordID(value), payload)
+	if err := repository.file.Put(nativestore.ObjectKindRouteRowMembership, schemaVersion, rowMembershipRecordID(value), payload); err != nil {
+		return err
+	}
+	// The leaf records its Row too. Attach predates that field and is on its way
+	// out, but while it still exists it has to keep both sources equal: a mount
+	// only one of them knows about is invisible to every read that has switched
+	// over. See docs/storage/leaf-rowid-v1.md.
+	leaf, err := repository.Get(leafID)
+	if err != nil {
+		return err
+	}
+	if leaf.RowID == locator.RowID {
+		return nil
+	}
+	leaf.RowID = locator.RowID
+	leaf.Revision++
+	transaction, err := repository.file.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := repository.StageNode(transaction, leaf); err != nil {
+		return err
+	}
+	return transaction.Commit()
 }
 
 func (repository *Repository) StageMembership(transaction *nativestore.Transaction, value router.Membership) error {
@@ -390,6 +414,26 @@ func (repository *Repository) OpenPage(leafID, cursor string, limit int) ([]rout
 // before deleting it. Normal Router reads must use OpenPage.
 func (repository *Repository) InspectLeafPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
 	return repository.openPage(leafID, cursor, limit, false, true)
+}
+
+// LeafForOpen validates a leaf for an OPEN read and returns it.
+//
+// The validation stays here so OPEN keeps reporting the same refusals it always
+// has, while the locator itself is assembled by the caller: a locator carries
+// the Row's revision, which lives with the Row, not with the leaf. Putting the
+// revision on the leaf would make every Row update rewrite its leaf.
+func (repository *Repository) LeafForOpen(leafID string, limit int) (router.Node, error) {
+	leaf, err := repository.Get(leafID)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if leaf.Kind != router.KindLeaf || limit < 1 || limit > 1000 {
+		return router.Node{}, fmt.Errorf("%w: OPEN requires a leaf and valid limit", ErrInvalid)
+	}
+	if leaf.Deleted {
+		return router.Node{}, fmt.Errorf("%w: Route leaf is deleted", ErrInvalid)
+	}
+	return leaf, nil
 }
 
 func (repository *Repository) openPage(
