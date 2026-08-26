@@ -99,15 +99,13 @@ func (service *Service) OpenActive(ctx context.Context, databaseID string) (*Gen
 	if !found {
 		return nil, Marker{}, ErrUnavailable
 	}
-	generation, manifestDigest, err := openGenerationAt(
-		generationPath(service.root, databaseID, marker.GenerationID), databaseID, marker.GenerationID,
-	)
-	if err != nil || manifestDigest != marker.ManifestSHA256 {
-		if err != nil {
-			return nil, Marker{}, err
-		}
-		return nil, Marker{}, corrupt("active marker manifest digest mismatch")
+	generation, err := service.generationFor(marker, databaseID)
+	if err != nil {
+		return nil, Marker{}, err
 	}
+	// The source digest is still recomputed every time: it is what detects a
+	// Generation that has fallen behind the Routes it was built from, and that
+	// can change without the marker changing.
 	_, sourceDigest, err := service.currentSource(ctx, databaseID)
 	if err != nil {
 		return nil, Marker{}, err
@@ -116,6 +114,28 @@ func (service *Service) OpenActive(ctx context.Context, databaseID string) (*Gen
 		return nil, Marker{}, ErrStale
 	}
 	return generation, marker, nil
+}
+
+// generationFor returns the Generation a marker names, reading it from disk
+// only when the cached one is for a different marker.
+func (service *Service) generationFor(marker Marker, databaseID string) (*Generation, error) {
+	if cached, ok := service.opened[databaseID]; ok && cached.marker == marker {
+		return cached.generation, nil
+	}
+	generation, manifestDigest, err := openGenerationAt(
+		generationPath(service.root, databaseID, marker.GenerationID), databaseID, marker.GenerationID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if manifestDigest != marker.ManifestSHA256 {
+		return nil, corrupt("active marker manifest digest mismatch")
+	}
+	if service.opened == nil {
+		service.opened = make(map[string]openedGeneration, 1)
+	}
+	service.opened[databaseID] = openedGeneration{marker: marker, generation: generation}
+	return generation, nil
 }
 
 func (service *Service) Reclaim(ctx context.Context, databaseID string, retain []string) ([]string, error) {

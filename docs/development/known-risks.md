@@ -174,15 +174,27 @@ Database Package 有 7 份产品文档，读文档会以为能用。
 **功能保留**（2026-08-22 裁定），属接线缺失。前置：`dbpackage`／`wikiexport`
 现在依赖 legacy service 层，接线要么一并迁移、要么先解耦。
 
-### 7d. 向量检索没有生产发布方
+### 7d. 向量检索没有生产发布方 —— **已裁定：记为未启用**
 
 `routevector.Service.Publish`（`service.go:27`）只有测试调用；生产只在
 `daemon/lifecycle.go:218` 构造服务并经 `OpenActive` 只读。
-无发布方 ⇒ 无 generation ⇒ `USING VECTOR` 实际返回 `PredictorUnavailable`。
+无发布方 ⇒ 无 generation ⇒ `USING VECTOR` 返回 `PredictorUnavailable`。
 
-同时 `Generation.vectors`（`routevector/model.go:125`）把一个 generation 的全部
-route 向量装进内存，`OpenActive` 每次查询重新加载并重新校验，无缓存。
-方向已裁定保留，见[候选预测器只给路径](../query/predictor-path-only-v1.md)。
+**裁定（S3）：这就是当前的正确形态，记为「未启用」而不是补一个发布方。**
+
+理由是发布方不是接线问题，是产品问题：它需要一个 embedding 提供方，
+以及「什么时候重算、算哪些节点、失败怎么办」这一整套决策。
+在这些定下来之前造一个发布方，等于先造出一个要维护的结构去满足一条
+「代码不该没有调用方」的洁癖。而 `PredictorUnavailable` **本来就是准确的
+对外表述**——预测器确实不可用，导航照常走逐层读，没有静默降级。
+
+**开启条件**：先定 embedding 提供方与重算策略，再接 `Publish`。
+方向另见[候选预测器只给路径](../query/predictor-path-only-v1.md)。
+
+**同一条里的第二个问题已修**：`Generation.vectors` 过去每次查询都重新加载
+并重新校验整个 generation 的全部 route 向量。已发布的 generation 不可变、
+由 manifest 摘要命名，所以按 marker 缓存即可——没有失效逻辑要写，
+只有一个摘要要比。源摘要仍每次重算，那是发现 generation 落后于 Route 的手段。
 
 ### 7e. `SELECT ... AS OF` 曾能读回已删除 Row 的完整内容 —— **已修复**
 

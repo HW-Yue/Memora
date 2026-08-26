@@ -130,6 +130,18 @@ type Service struct {
 	source RouteSource
 	fault  func(FaultPoint) error
 	mu     sync.Mutex
+	// opened caches the Generation each Database is currently serving.
+	//
+	// A published Generation is immutable and identified by its manifest
+	// digest, so a cache entry is either the right one or plainly not — there
+	// is nothing to invalidate, only a digest to compare. Without it every
+	// query re-read and re-verified every Route vector in the Generation.
+	opened map[string]openedGeneration
+}
+
+type openedGeneration struct {
+	marker     Marker
+	generation *Generation
 }
 
 func (generation *Generation) Manifest() Manifest {

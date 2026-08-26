@@ -428,3 +428,46 @@ func containsString(values []string, target string) bool {
 	}
 	return false
 }
+
+// TestOpenActiveReusesTheOpenedGenerationUntilItIsRepublished pins the cache
+// behind OpenActive. Every query used to re-read and re-verify every Route
+// vector in the Generation; a published Generation is immutable and named by
+// its manifest digest, so there is nothing to invalidate — only a marker to
+// compare.
+func TestOpenActiveReusesTheOpenedGenerationUntilItIsRepublished(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	source := &fakeRouteSource{snapshots: [][]router.Node{testRoutes(), testRoutes(), testRoutes()}}
+	service, err := New(t.TempDir(), source, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := service.Publish(ctx, testRequest(t, "gen_first", 0, testRoutes())); err != nil {
+		t.Fatal(err)
+	}
+	first, _, err := service.OpenActive(ctx, "db_work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := service.OpenActive(ctx, "db_work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("OpenActive re-read the Generation instead of reusing it")
+	}
+
+	if _, _, err := service.Publish(ctx, testRequest(t, "gen_second", 1, testRoutes())); err != nil {
+		t.Fatal(err)
+	}
+	republished, marker, err := service.OpenActive(ctx, "db_work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if republished == first {
+		t.Fatal("OpenActive served the superseded Generation")
+	}
+	if marker.GenerationID != "gen_second" || republished.Manifest().GenerationID != "gen_second" {
+		t.Fatalf("republished generation = %#v, marker = %#v", republished.Manifest(), marker)
+	}
+}

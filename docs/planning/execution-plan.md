@@ -200,10 +200,16 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 它们稀少、结构性，且已有 `EXPECTED REVISION` 这道更精确的乐观并发闸。
 `SchemaKey`／`RouteKey`／`Kind` 枚举一并删除，`Key` 收敛为三段。
 
-### S3. 向量检索发布方
+### S3. 向量检索发布方 ✅
 
-依据风险 7d。接上生产发布方，或明确记为「未启用」。
-一并处理 `Generation.vectors` 每次查询重新全量加载的问题（审计 §2.3）。
+**已裁定：记为「未启用」。** 发布方不是接线问题而是产品问题——
+它需要 embedding 提供方与一整套重算策略。在那之前造一个发布方，
+是先造结构去满足洁癖。`PredictorUnavailable` 本来就是准确的对外表述。
+开启条件与理由见[已知风险](../development/known-risks.md) 7d。
+
+`Generation.vectors` 每次查询全量重载的问题**已修**：按 marker 缓存已打开的
+generation。已发布的 generation 不可变且由 manifest 摘要命名，
+所以没有失效逻辑要写，只有一个摘要要比。
 
 ### S4. CI 增加 Linux runner ✅
 
