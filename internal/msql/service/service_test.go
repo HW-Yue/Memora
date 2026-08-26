@@ -442,3 +442,32 @@ func (blocking *blockingCatalog) release() {
 		close(blocking.unblock)
 	}
 }
+
+// TestOpenSessionIsBounded pins the cap on the session registry. Sessions are
+// created on demand by ID and removed only by an explicit close, so an
+// unbounded registry is a memory leak any caller can trigger by inventing IDs.
+func TestOpenSessionIsBounded(t *testing.T) {
+	t.Parallel()
+
+	service := msqlservice.New(context.Background(), msqlservice.Config{MaxSessions: 2})
+	t.Cleanup(func() { _ = service.Close() })
+	for _, id := range []string{"first", "second"} {
+		if _, err := service.OpenSession(id); err != nil {
+			t.Fatalf("OpenSession(%s) = %v", id, err)
+		}
+	}
+	if _, err := service.OpenSession("third"); !errors.Is(err, msqlservice.ErrSessionLimit) {
+		t.Fatalf("OpenSession over the cap = %v, want ErrSessionLimit", err)
+	}
+	// An already-open session is still reachable: the cap refuses new ones, it
+	// does not make the service unusable.
+	if _, err := service.OpenSession("first"); err != nil {
+		t.Fatalf("OpenSession(existing) = %v", err)
+	}
+	if err := service.CloseSession("first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.OpenSession("third"); err != nil {
+		t.Fatalf("OpenSession after a close = %v", err)
+	}
+}

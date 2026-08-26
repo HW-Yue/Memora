@@ -102,7 +102,10 @@ func AttachRuntime(
 	}
 	controlPage, err := store.Read(treecontrol.PageID)
 	if errors.Is(err, page.ErrNotFound) {
-		controlPage = treecontrol.EncodeBootstrap(config.SpaceID)
+		controlPage, err = treecontrol.EncodeBootstrap(config.SpaceID)
+		if err != nil {
+			return nil, fmt.Errorf("encode bootstrap Tree control: %w", err)
+		}
 		if err := store.Write(controlPage); err != nil {
 			return nil, fmt.Errorf("write bootstrap Tree control: %w", err)
 		}

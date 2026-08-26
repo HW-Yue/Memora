@@ -275,6 +275,17 @@ func (authority *Authority) NextChangeSequence(ctx context.Context) (uint64, err
 	return nativechange.New(authority.file).NextSequence(0)
 }
 
+// ListCommittedChanges reads the committed change log.
+//
+// Reading it can require a write: the change index catches up lazily, and
+// catching up advances a cursor in the index Tree. So the write lock is taken
+// only when there is catch-up to do — checked first under the read lock, which
+// is two high-water reads. A reader that finds the index current serves the
+// whole page without ever serialising against writers.
+//
+// The check is racy by design: another writer may append between the check and
+// the lock. Catch-up is idempotent and the next reader picks it up, so the cost
+// of losing that race is one stale page, not a wrong answer.
 func (authority *Authority) ListCommittedChanges(
 	ctx context.Context,
 	databaseID string,
@@ -284,18 +295,26 @@ func (authority *Authority) ListCommittedChanges(
 	if authority == nil || ctx == nil || limit < 1 || limit > 256 {
 		return nil, 0, false, fmt.Errorf("%w: committed change list", ErrInvalid)
 	}
-	release, err := authority.BeginWrite(ctx)
+	current, err := authority.changeIndexIsCurrent(ctx)
 	if err != nil {
 		return nil, 0, false, err
 	}
-	defer release()
-	authority.mu.Lock()
-	defer authority.mu.Unlock()
-	if err := authority.openLocked(ctx); err != nil {
-		return nil, 0, false, err
-	}
-	if err := authority.changes.reconcile(ctx, false); err != nil {
-		return nil, 0, false, err
+	if current {
+		defer authority.mu.RUnlock()
+	} else {
+		release, err := authority.BeginWrite(ctx)
+		if err != nil {
+			return nil, 0, false, err
+		}
+		defer release()
+		authority.mu.Lock()
+		defer authority.mu.Unlock()
+		if err := authority.openLocked(ctx); err != nil {
+			return nil, 0, false, err
+		}
+		if err := authority.changes.reconcile(ctx, false); err != nil {
+			return nil, 0, false, err
+		}
 	}
 	highWater, err := authority.changes.index.HighWater()
 	if err != nil {
@@ -318,18 +337,28 @@ func (authority *Authority) GetCommittedChange(
 	if authority == nil || ctx == nil || transactionID == "" {
 		return change.Envelope{}, fmt.Errorf("%w: committed change lookup", ErrInvalid)
 	}
-	release, err := authority.BeginWrite(ctx)
+	// Same reasoning as ListCommittedChanges: the write lock only when the
+	// index actually has catching up to do.
+	current, err := authority.changeIndexIsCurrent(ctx)
 	if err != nil {
 		return change.Envelope{}, err
 	}
-	defer release()
-	authority.mu.Lock()
-	defer authority.mu.Unlock()
-	if err := authority.openLocked(ctx); err != nil {
-		return change.Envelope{}, err
-	}
-	if err := authority.changes.reconcile(ctx, false); err != nil {
-		return change.Envelope{}, err
+	if current {
+		defer authority.mu.RUnlock()
+	} else {
+		release, err := authority.BeginWrite(ctx)
+		if err != nil {
+			return change.Envelope{}, err
+		}
+		defer release()
+		authority.mu.Lock()
+		defer authority.mu.Unlock()
+		if err := authority.openLocked(ctx); err != nil {
+			return change.Envelope{}, err
+		}
+		if err := authority.changes.reconcile(ctx, false); err != nil {
+			return change.Envelope{}, err
+		}
 	}
 	value, err := authority.changes.get(transactionID)
 	if err != nil {
@@ -780,6 +809,22 @@ func changedDatabaseIDs(current, next []catalog.Database) ([]string, bool) {
 	}
 	sort.Strings(changed)
 	return changed, true
+}
+
+// changeIndexIsCurrent reports whether the committed change index needs no
+// catch-up. It returns holding the read lock when the answer is yes, so the
+// caller can serve the read straight away; on no (or on error) no lock is held
+// and the caller takes the write path.
+func (authority *Authority) changeIndexIsCurrent(ctx context.Context) (bool, error) {
+	if err := authority.lockRead(ctx); err != nil {
+		return false, err
+	}
+	behind, err := authority.changes.behind()
+	if err != nil || behind {
+		authority.mu.RUnlock()
+		return false, err
+	}
+	return true, nil
 }
 
 func (authority *Authority) lockRead(ctx context.Context) error {

@@ -45,7 +45,10 @@ func TestControlCodecGoldenAndRoundTrip(t *testing.T) {
 }
 
 func TestBootstrapControlRoundTrip(t *testing.T) {
-	value := EncodeBootstrap(7)
+	value, err := EncodeBootstrap(7)
+	if err != nil {
+		t.Fatal(err)
+	}
 	decoded, err := Decode(value, 7)
 	if err != nil || decoded != Bootstrap(7) {
 		t.Fatalf("Decode(bootstrap) = %#v, %v", decoded, err)

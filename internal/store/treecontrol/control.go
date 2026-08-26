@@ -38,12 +38,14 @@ func Bootstrap(spaceID uint64) State {
 	}
 }
 
-func EncodeBootstrap(spaceID uint64) page.Page {
-	value, err := Encode(Bootstrap(spaceID))
-	if err != nil {
-		panic(err)
-	}
-	return value
+// EncodeBootstrap encodes the control page of a brand-new Tree.
+//
+// It returns an error rather than panicking on one. The encoding of a
+// Bootstrap state cannot fail today — that is why this used to panic — but a
+// production panic is not a claim a caller can check, and "no panics outside
+// tests" is only an invariant if it holds without exceptions to remember.
+func EncodeBootstrap(spaceID uint64) (page.Page, error) {
+	return Encode(Bootstrap(spaceID))
 }
 
 func Encode(value State) (page.Page, error) {

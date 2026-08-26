@@ -24,9 +24,9 @@ func Parse(source string) (*ast.Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	if parser.matchKind(lexer.KindSemicolon) {
-		// F12 will turn the remaining token stream into a statement list.
-	}
+	// A single statement may end with a semicolon; it is consumed and dropped.
+	// A list of statements is ParseBatch's business, not this function's.
+	_ = parser.matchKind(lexer.KindSemicolon)
 	if !parser.checkKind(lexer.KindEOF) {
 		return nil, parser.unexpected("end of statement")
 	}

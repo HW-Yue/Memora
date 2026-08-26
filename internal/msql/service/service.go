@@ -18,6 +18,7 @@ import (
 var (
 	ErrInvalidSession = errors.New("MSQL session ID is invalid")
 	ErrServiceClosed  = errors.New("MSQL service is closed")
+	ErrSessionLimit   = errors.New("MSQL service has too many open sessions")
 	ErrSessionClosed  = errors.New("MSQL session is closed")
 )
 
@@ -32,7 +33,16 @@ type Config struct {
 	Wiki         executor.WikiExporter
 	Assimilation executor.AssimilationCommitter
 	Transactions executor.TransactionFactory
+
+	// MaxSessions caps how many sessions may be open at once. Sessions are
+	// created on demand by ID and only ever removed by an explicit close, so
+	// without a cap a caller that invents an ID per request grows the registry
+	// without bound. Zero selects DefaultMaxSessions.
+	MaxSessions int
 }
+
+// DefaultMaxSessions bounds the session registry when a Config does not.
+const DefaultMaxSessions = 1024
 
 // Service owns the session registry for one Memora instance.
 type Service struct {
@@ -75,6 +85,13 @@ func (service *Service) OpenSession(id string) (*Session, error) {
 	}
 	if session := service.sessions[id]; session != nil {
 		return session, nil
+	}
+	limit := service.config.MaxSessions
+	if limit <= 0 {
+		limit = DefaultMaxSessions
+	}
+	if len(service.sessions) >= limit {
+		return nil, fmt.Errorf("%w: %d of %d in use", ErrSessionLimit, len(service.sessions), limit)
 	}
 	session := newSession(service.context, id, service.config)
 	service.sessions[id] = session

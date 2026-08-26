@@ -374,7 +374,11 @@ func TestRuntimeNewPageConflictIsRejectedBeforeWAL(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = manager.Close() }()
-	if err := manager.Write(treecontrol.EncodeBootstrap(17)); err != nil {
+	bootstrap, err := treecontrol.EncodeBootstrap(17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Write(bootstrap); err != nil {
 		t.Fatal(err)
 	}
 	collision := commitNodePage(t, 17, 1, 2, btree.KindLeaf)

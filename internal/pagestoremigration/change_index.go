@@ -266,6 +266,28 @@ func collectChangeLocators(
 	return result, nil
 }
 
+// behind reports whether the index has committed changes still to catch up on.
+//
+// It is the cheap half of reconcile — two high-water reads, no writes — so a
+// reader can find out whether it needs the write lock at all before taking it.
+func (tree *authorityChangeTree) behind() (bool, error) {
+	if tree == nil || tree.index == nil || tree.source == nil {
+		return false, fmt.Errorf("%w: committed change reconcile", ErrInvalid)
+	}
+	next, err := tree.source.NextSequence(0)
+	if err != nil {
+		return false, fmt.Errorf("%w: inspect committed change source: %v", ErrTargetCorrupt, err)
+	}
+	indexed, err := tree.index.HighWater()
+	if err != nil {
+		return false, fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
+	}
+	if indexed > next-1 {
+		return false, fmt.Errorf("%w: committed change index leads immutable source", ErrTargetCorrupt)
+	}
+	return indexed < next-1, nil
+}
+
 func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting bool) error {
 	if tree == nil || tree.index == nil || tree.source == nil || ctx == nil {
 		return fmt.Errorf("%w: committed change reconcile", ErrInvalid)

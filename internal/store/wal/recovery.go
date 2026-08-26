@@ -91,7 +91,11 @@ func recoverTransactions(
 		report.SkippedRecords += skipped
 		for _, key := range bootstrapPageKeys(staged) {
 			state := staged[key]
-			if err := state.store.Write(treecontrol.EncodeBootstrap(key.spaceID)); err != nil {
+			bootstrap, err := treecontrol.EncodeBootstrap(key.spaceID)
+			if err != nil {
+				return report, fmt.Errorf("encode bootstrap Tree control: %w", err)
+			}
+			if err := state.store.Write(bootstrap); err != nil {
 				return report, fmt.Errorf(
 					"bootstrap transaction %d Tree control %d: %w",
 					transaction.Receipt.TransactionID,
