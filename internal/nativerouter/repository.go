@@ -689,6 +689,13 @@ func encodeNode(value router.Node) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Appended after Synopsis rather than added to the fixed text array, for
+	// the same reason Synopsis itself was: widening the array would make every
+	// Route written before today fail to decode. The reader guards on offset.
+	encoded, err = appendText(encoded, value.RowID)
+	if err != nil {
+		return nil, err
+	}
 	return encoded, nil
 }
 
@@ -719,10 +726,18 @@ func decodeNode(payload []byte) (router.Node, error) {
 	if input.offset < len(payload) {
 		synopsis, err = input.text()
 	}
+	// A record written before leaves carried a RowID simply ends here.
+	rowID := ""
+	if err == nil && input.offset < len(payload) {
+		rowID, err = input.text()
+	}
 	if err != nil || input.offset != len(payload) {
 		return router.Node{}, ErrCorrupt
 	}
-	return router.Node{Version: router.Version, ID: texts[0], DatabaseID: texts[1], TableID: texts[2], ParentID: texts[3], Name: texts[4], Aliases: aliases, Path: texts[5], Kind: kind, Purpose: texts[7], Synopsis: synopsis, Revision: revision, Deleted: deleted == 1}, nil
+	if rowID != "" && kind != router.KindLeaf {
+		return router.Node{}, ErrCorrupt
+	}
+	return router.Node{Version: router.Version, ID: texts[0], DatabaseID: texts[1], TableID: texts[2], ParentID: texts[3], Name: texts[4], Aliases: aliases, Path: texts[5], Kind: kind, Purpose: texts[7], Synopsis: synopsis, RowID: rowID, Revision: revision, Deleted: deleted == 1}, nil
 }
 
 func validateSynopsis(value string) error {

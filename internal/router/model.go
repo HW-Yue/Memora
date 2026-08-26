@@ -29,8 +29,17 @@ type Node struct {
 	Kind       Kind     `json:"kind"`
 	Purpose    string   `json:"purpose"`
 	Synopsis   string   `json:"synopsis,omitempty"`
-	Revision   uint64   `json:"revision"`
-	Deleted    bool     `json:"deleted"`
+	// RowID is the Row hanging under this leaf, empty when the leaf holds none.
+	// It is always empty on a root or branch: only a leaf carries data.
+	//
+	// This replaces the separate Membership object. One field on the node says
+	// what a whole object kind, its validation surface and three classes of
+	// semantic-health problem used to say between them — and a field cannot go
+	// stale against the node it lives on, which is what removes those problems
+	// rather than detecting them. See docs/storage/leaf-rowid-v1.md.
+	RowID    string `json:"row_id,omitempty"`
+	Revision uint64 `json:"revision"`
+	Deleted  bool   `json:"deleted"`
 }
 
 type Locator struct {
