@@ -41,6 +41,14 @@ type Row struct {
 	// explicitly instead. Restored Rows therefore have no link and resolve their
 	// attribution from the History the snapshot brought with it.
 	ChangeSequence uint64 `json:"-"`
+	// RouteLeafIDs are the semantic-tree leaves this Row hangs under.
+	//
+	// It is stored rather than looked up because the write order already knows
+	// it: a RowID is mounted on its leaves before the Row itself is written, so
+	// the list is in hand at the moment the Row is encoded. Answering a
+	// write-time-known question with a separate structure is the structure that
+	// can go stale. See docs/storage/leaf-rowid-v1.md §5.
+	RouteLeafIDs []string `json:"route_leaf_ids,omitempty"`
 }
 
 type WriteOptions struct {

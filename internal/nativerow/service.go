@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -152,7 +153,7 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	if err != nil {
 		return row.Row{}, err
 	}
-	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, ChangeSequence: changeSequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now}
+	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, ChangeSequence: changeSequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now, RouteLeafIDs: sortedRouteLeafIDs(options.RouteLeafIDs)}
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
 		return row.Row{}, err
@@ -363,12 +364,6 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 		return err
 	}
 	defer func() { _ = transaction.Rollback() }()
-	if err := service.repository.StageRevision(transaction, value); err != nil {
-		return revisionError(err)
-	}
-	if err := service.repository.StageHistory(transaction, value, operation, metadata, value.UpdatedAt); err != nil {
-		return err
-	}
 	routes := nativerouter.New(service.repository.file)
 	current, err := routes.MembershipsIncludingDeleted(value.ID)
 	if err != nil {
@@ -381,6 +376,15 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 				desired = append(desired, membership.LeafID)
 			}
 		}
+	}
+	// Resolved before the revision is staged, because the revision now carries
+	// it: the leaf list is part of the Row, not a fact about it kept elsewhere.
+	value.RouteLeafIDs = sortedRouteLeafIDs(desired)
+	if err := service.repository.StageRevision(transaction, value); err != nil {
+		return revisionError(err)
+	}
+	if err := service.repository.StageHistory(transaction, value, operation, metadata, value.UpdatedAt); err != nil {
+		return err
 	}
 	wanted := map[string]bool{}
 	changedMemberships := make([]router.Membership, 0)
@@ -422,6 +426,29 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 		return service.authority.PublishRows(ctx, []row.Row{value}, transaction.Commit)
 	}
 	return transaction.Commit()
+}
+
+// sortedRouteLeafIDs normalises the leaf list a Row stores.
+//
+// Sorted and deduplicated so the encoded Row is a function of which leaves it
+// hangs under, not of the order the caller happened to name them. Two identical
+// mounts must produce identical bytes, or every digest and parity check over a
+// Row starts reporting differences that are not differences.
+func sortedRouteLeafIDs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func containsRoute(values []string, target string) bool {

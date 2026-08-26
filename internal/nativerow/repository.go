@@ -18,6 +18,10 @@ import (
 
 const recordSchemaVersion = 1
 
+// maximumRouteLeafIDs bounds the leaf list a single Row may carry, so a corrupt
+// count cannot make the decoder allocate without limit.
+const maximumRouteLeafIDs = 10000
+
 var (
 	ErrCorrupt = errors.New("native row record is corrupt")
 	// ErrNoBody marks a clustered leaf written before leaves carried Row bodies.
@@ -542,8 +546,12 @@ type encoder struct{ bytes []byte }
 const (
 	flagPreviousLocation uint16 = 1 << 0
 	flagChangeSequence   uint16 = 1 << 1
-	knownFlags                  = flagPreviousLocation | flagChangeSequence
-	chainFooterSize             = 8 + 4 + 4
+	// flagRouteLeafIDs marks a record that carries the semantic-tree leaves the
+	// Row hangs under. A record written before the field simply does not set
+	// it and reads back with no leaves.
+	flagRouteLeafIDs uint16 = 1 << 2
+	knownFlags              = flagPreviousLocation | flagChangeSequence | flagRouteLeafIDs
+	chainFooterSize         = 8 + 4 + 4
 )
 
 func encode(value row.Row, table catalog.Table) ([]byte, error) {
@@ -551,6 +559,9 @@ func encode(value row.Row, table catalog.Table) ([]byte, error) {
 	flags := uint16(0)
 	if value.ChangeSequence != 0 {
 		flags |= flagChangeSequence
+	}
+	if len(value.RouteLeafIDs) != 0 {
+		flags |= flagRouteLeafIDs
 	}
 	output.u16(recordSchemaVersion)
 	output.u16(flags)
@@ -577,6 +588,14 @@ func encode(value row.Row, table catalog.Table) ([]byte, error) {
 	}
 	if flags&flagChangeSequence != 0 {
 		output.u64(value.ChangeSequence)
+	}
+	if flags&flagRouteLeafIDs != 0 {
+		output.u32(uint32(len(value.RouteLeafIDs)))
+		for _, leafID := range value.RouteLeafIDs {
+			if err := output.text(leafID); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return output.bytes, nil
 }
@@ -703,6 +722,20 @@ func decode(payload []byte) (row.Row, error) {
 	if flags&flagChangeSequence != 0 {
 		if value.ChangeSequence, err = input.u64(); err != nil {
 			return row.Row{}, err
+		}
+	}
+	if flags&flagRouteLeafIDs != 0 {
+		count, err := input.u32()
+		if err != nil || count > maximumRouteLeafIDs {
+			return row.Row{}, fmt.Errorf("%w: invalid Route leaf count", ErrCorrupt)
+		}
+		value.RouteLeafIDs = make([]string, 0, count)
+		for index := uint32(0); index < count; index++ {
+			leafID, err := input.text()
+			if err != nil {
+				return row.Row{}, err
+			}
+			value.RouteLeafIDs = append(value.RouteLeafIDs, leafID)
 		}
 	}
 	// Nothing writes the chain pointer any more, but records already on disk
