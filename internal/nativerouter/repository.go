@@ -202,28 +202,35 @@ func (repository *Repository) StagePlannedRevision(transaction *nativestore.Tran
 	return transaction.Put(nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(value.ID, value.Revision), payload)
 }
 
+// Get resolves a Route node to its latest revision.
+//
+// Revisions are numbered from 1 with no gaps — StageNode only accepts
+// latest+1, and nodes() verifies the sequence — so the latest one is found by
+// probing forward from revision 1 until a record is missing. That is a bounded
+// number of point reads. Enumerating every Route record instead, which is what
+// this used to do, made one node read cost a sweep of the whole database: every
+// SELECT resolves one node per leaf per Row, so a result page turned into as
+// many full scans as it had rows. See internal/nativerouter/no_scan_test.go.
 func (repository *Repository) Get(id string) (router.Node, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindRoute)
-	if err != nil {
-		return router.Node{}, err
+	if id == "" {
+		return router.Node{}, nativestore.ErrNotFound
 	}
 	var latest router.Node
 	found := false
-	for _, recordID := range ids {
-		if recordID != id && !strings.HasPrefix(recordID, id+"@") {
-			continue
-		}
+	for revision := uint64(1); ; revision++ {
+		recordID := nodeRecordID(id, revision)
 		payload, err := repository.file.Get(nativestore.ObjectKindRoute, recordID)
+		if errors.Is(err, nativestore.ErrNotFound) {
+			break
+		}
 		if err != nil {
 			return router.Node{}, err
 		}
-		value, err := decodeNode(payload)
-		if err != nil || value.ID != id || nodeRecordID(value.ID, value.Revision) != recordID {
+		value, decodeErr := decodeNode(payload)
+		if decodeErr != nil || value.ID != id || value.Revision != revision {
 			return router.Node{}, fmt.Errorf("%w: route identity mismatch", ErrCorrupt)
 		}
-		if !found || value.Revision > latest.Revision {
-			latest, found = value, true
-		}
+		latest, found = value, true
 	}
 	if !found {
 		return router.Node{}, nativestore.ErrNotFound
