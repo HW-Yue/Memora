@@ -126,9 +126,19 @@ func TestShortTextAgentWritesOneRoutedRowThroughRealMSQLAndReadsItBack(t *testin
 		persisted[0].Values["body"] != "A complete routed semantic module." {
 		t.Fatalf("persisted = %#v, %v", persisted, err)
 	}
-	memberships, err := rows.RouterMemberships(ctx, persisted[0])
-	if err != nil || len(memberships) != 1 || memberships[0].LeafID != leaf.ID {
-		t.Fatalf("memberships = %#v, %v", memberships, err)
+	// The leaf records the Row it holds; that is the whole mount.
+	nodes, err := rows.ListRouterNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := []string{}
+	for _, node := range nodes {
+		if !node.Deleted && node.RowID == persisted[0].ID {
+			held = append(held, node.ID)
+		}
+	}
+	if len(held) != 1 || held[0] != leaf.ID {
+		t.Fatalf("leaves holding the Row = %#v", held)
 	}
 }
 

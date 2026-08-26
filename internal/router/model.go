@@ -49,13 +49,6 @@ type Locator struct {
 	Revision   uint64 `json:"revision"`
 }
 
-type Membership struct {
-	LeafID             string `json:"leaf_id"`
-	MembershipRevision uint64 `json:"membership_revision,omitempty"`
-	Deleted            bool   `json:"deleted,omitempty"`
-	Locator
-}
-
 type stringIndex struct {
 	Version string   `json:"version"`
 	Values  []string `json:"values"`

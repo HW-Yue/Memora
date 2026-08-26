@@ -73,12 +73,11 @@ func (service *Service) Report(ctx context.Context) (Report, error) {
 			}
 		}
 	}
-	routeIssues, routeTruncated, err := scanRoutes(ctx, service.source, tablesByID)
+	routeIssues, err := scanRoutes(ctx, service.source, tablesByID)
 	if err != nil {
 		return Report{}, err
 	}
 	issues = append(issues, routeIssues...)
-	truncated = truncated || routeTruncated
 	sortIssues(issues)
 	if len(issues) > maximumIssues {
 		issues, truncated = issues[:maximumIssues], true

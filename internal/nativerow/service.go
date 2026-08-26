@@ -1404,20 +1404,6 @@ func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor s
 	return service.leafLocators(leaf, cursor, limit)
 }
 
-func (service *Service) InspectRouterLeafPage(ctx context.Context, leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
-	release, err := service.beginRouteRead(ctx)
-	if err != nil {
-		return nil, router.ReadPage{}, err
-	}
-	defer release()
-	routes := nativerouter.New(service.repository.file)
-	leaf, err := routes.LeafForInspect(leafID, limit)
-	if err != nil {
-		return nil, router.ReadPage{}, err
-	}
-	return service.leafLocators(leaf, cursor, limit)
-}
-
 // leafLocators resolves what a leaf locates.
 //
 // The leaf names the Row it holds, so this is a field read instead of the scan

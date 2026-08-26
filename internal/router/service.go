@@ -285,72 +285,119 @@ func (service *Service) repathDescendants(
 	return nil
 }
 
-func (service *Service) ReplaceMembershipsIn(
+// MountRowIn makes leafIDs the complete set of leaves holding this Row.
+//
+// There is no Membership object to replace any more: the leaves themselves
+// record which Row they hold, so a mount is an edit to the leaves that take the
+// Row and the ones that release it. See docs/storage/leaf-rowid-v1.md.
+func (service *Service) MountRowIn(
 	ctx context.Context,
 	tx store.Tx,
 	locator Locator,
 	leafIDs []string,
-) ([]Membership, error) {
+) error {
 	if err := validateLocator(locator); err != nil {
-		return nil, err
+		return err
 	}
 	leafIDs = uniqueSorted(leafIDs)
 	for _, leafID := range leafIDs {
 		leaf, err := getNodeAny(ctx, tx, leafID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if leaf.Kind != KindLeaf || leaf.DatabaseID != locator.DatabaseID {
-			return nil, routerError(result.CodeConstraint, "Router membership target must be a leaf in the same Database")
+			return routerError(result.CodeConstraint, "Router membership target must be a leaf in the same Database")
 		}
 		if leaf.Deleted {
-			return nil, routerError(result.CodeConstraint, "Router leaf is deleted")
+			return routerError(result.CodeConstraint, "Router leaf is deleted")
 		}
 	}
 	reverseKey := locatorKey(locator)
 	oldLeafIDs, err := loadStrings(ctx, tx, reverseBucket, reverseKey)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if len(oldLeafIDs) > 0 {
 		oldLocators, err := service.locatorFromReverse(ctx, tx, oldLeafIDs[0], locator)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if oldLocators.Revision > locator.Revision {
-			return nil, routerError(result.CodeRevisionConflict, "Router membership revision is stale")
+			return routerError(result.CodeRevisionConflict, "Router membership revision is stale")
 		}
 	}
 	for _, leafID := range leafIDs {
 		locators, err := loadLocators(ctx, tx, leafID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		for _, existing := range locators {
 			if !sameRow(existing, locator) {
-				return nil, routerError(result.CodeConstraint, "Router leaf already locates another Row; create a distinct semantic leaf")
+				return routerError(result.CodeConstraint, "Router leaf already locates another Row; create a distinct semantic leaf")
 			}
 		}
 	}
 	for _, leafID := range oldLeafIDs {
 		if err := removeLeafLocator(ctx, tx, leafID, locator); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, leafID := range leafIDs {
 		locators, err := loadLocators(ctx, tx, leafID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		locators = append(locators, locator)
 		if err := saveLocators(ctx, tx, leafID, locators); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if err := saveStrings(ctx, tx, reverseBucket, reverseKey, leafIDs); err != nil {
-		return nil, err
+		return err
 	}
-	return memberships(locator, leafIDs), nil
+	// The leaves carry the mount on their own record too, the way the native
+	// Router does, so a node read from either implementation says the same
+	// thing about which Row it holds.
+	released := make([]string, 0, len(oldLeafIDs))
+	for _, leafID := range oldLeafIDs {
+		if !containsString(leafIDs, leafID) {
+			released = append(released, leafID)
+		}
+	}
+	for _, leafID := range released {
+		if err := service.setLeafRowIn(ctx, tx, leafID, ""); err != nil {
+			return err
+		}
+	}
+	for _, leafID := range leafIDs {
+		if err := service.setLeafRowIn(ctx, tx, leafID, locator.RowID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setLeafRowIn points one leaf at a Row, or at nothing when rowID is empty.
+func (service *Service) setLeafRowIn(ctx context.Context, tx store.Tx, leafID, rowID string) error {
+	leaf, err := getNodeAny(ctx, tx, leafID)
+	if err != nil {
+		return err
+	}
+	if leaf.RowID == rowID {
+		return nil
+	}
+	leaf.RowID = rowID
+	leaf.Revision++
+	return putNode(ctx, tx, leaf)
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (service *Service) locatorFromReverse(
@@ -550,54 +597,6 @@ func (service *Service) ListLeafCursorPageIn(
 		return nil, ReadPage{}, routerError(result.CodeConstraint, "Router leaf locates multiple Rows and requires semantic reshape")
 	}
 	return PaginateLocators("leaf:"+leafID, cursor, limit, locators)
-}
-
-func (service *Service) MembershipsForRow(
-	ctx context.Context,
-	databaseID, tableID, rowID string,
-) ([]Membership, error) {
-	locator := Locator{DatabaseID: databaseID, TableID: tableID, RowID: rowID, Revision: 1}
-	if err := validateLocator(locator); err != nil {
-		return nil, err
-	}
-	tx, err := service.store.Begin(ctx, store.ReadOnly)
-	if err != nil {
-		return nil, stableError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	return service.MembershipsForRowIn(ctx, tx, databaseID, tableID, rowID)
-}
-
-func (service *Service) MembershipsForRowIn(
-	ctx context.Context,
-	tx store.Tx,
-	databaseID, tableID, rowID string,
-) ([]Membership, error) {
-	locator := Locator{DatabaseID: databaseID, TableID: tableID, RowID: rowID, Revision: 1}
-	if err := validateLocator(locator); err != nil {
-		return nil, err
-	}
-	leafIDs, err := loadStrings(ctx, tx, reverseBucket, locatorKey(locator))
-	if err != nil || len(leafIDs) == 0 {
-		return []Membership{}, err
-	}
-	current, err := service.locatorFromReverse(ctx, tx, leafIDs[0], locator)
-	if err != nil {
-		return nil, err
-	}
-	// A membership record survives its leaf untouched; the leaf's state, not the
-	// membership's, decides whether it is visible.
-	live := make([]string, 0, len(leafIDs))
-	for _, leafID := range leafIDs {
-		leaf, err := getNodeAny(ctx, tx, leafID)
-		if err != nil {
-			return nil, err
-		}
-		if !leaf.Deleted {
-			live = append(live, leafID)
-		}
-	}
-	return memberships(current, live), nil
 }
 
 func (service *Service) ListChildren(
@@ -898,14 +897,6 @@ func decodeJSON(encoded []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.UseNumber()
 	return decoder.Decode(target)
-}
-
-func memberships(locator Locator, leafIDs []string) []Membership {
-	values := make([]Membership, len(leafIDs))
-	for index, leafID := range leafIDs {
-		values[index] = Membership{LeafID: leafID, Locator: locator}
-	}
-	return values
 }
 
 func uniqueSorted(values []string) []string {

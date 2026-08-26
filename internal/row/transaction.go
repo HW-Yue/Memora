@@ -158,7 +158,7 @@ func (transaction *Transaction) Insert(
 	if err := saveIndex(ctx, transaction.tx, table.ID, index); err != nil {
 		return Row{}, stableError(err)
 	}
-	if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
+	if err := transaction.mountRouterLeaves(ctx, stored, options.RouteLeafIDs); err != nil {
 		return Row{}, err
 	}
 	if err := transaction.appendHistory(ctx, stored, history.OperationInsert, options.Metadata); err != nil {
@@ -211,7 +211,7 @@ func (transaction *Transaction) Update(
 		return Row{}, stableError(err)
 	}
 	if options.RouteLeafIDs != nil {
-		if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
+		if err := transaction.mountRouterLeaves(ctx, stored, options.RouteLeafIDs); err != nil {
 			return Row{}, err
 		}
 	}
@@ -262,7 +262,7 @@ func (transaction *Transaction) Delete(
 	if err := transaction.invalidateRelations(ctx, relationEndpoint(stored), commitSequence); err != nil {
 		return Row{}, err
 	}
-	if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
+	if err := transaction.unmountRouterLeaves(ctx, stored); err != nil {
 		return Row{}, err
 	}
 	if err := putStored(ctx, transaction.tx, stored); err != nil {

@@ -215,7 +215,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 | 3 | 读路径切到叶子字段 + 行字段 | `OPEN ROUTE`／`route_paths`／`SHOW ROUTES` 逐字一致，且不再读 kind 9／13 |
 | 4 | 写路径停写 membership；变更日志改发 `route_node` | 新事务不产生 kind 9／13 记录；旧 envelope 仍可解码 |
 | 5 | 退役 kind 9／13、删 `Attach`／`ValidateMembershipChanges` | 新写入拒绝这两个 kind；带旧记录的库照常打开、逐字可读 |
-| 6 | 删除三类健康项与 `internal/router` 的死 membership 代码 | 见下 |
+| 6 | 删除三类健康项与 `internal/router` 的 membership 代码 | 报告里再无这三项；`orphan_membership` 改读叶子字段仍能发现 |
 | 7 | trace 改为顺 `ParentID` 实时算，删掉 `Node.Path` 与 `repathDescendants` | RENAME 一个分支只写一个节点（今天要写整棵子树）；`route_paths` 与 `SHOW ROUTES` 逐字一致 |
 
 阶段 7 **有一道前置量测**：先测真实语义树深度与 `route_paths` 的读代价。

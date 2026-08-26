@@ -29,16 +29,16 @@ func deleteFixture(t *testing.T) (context.Context, *router.Service, store.Tx, ro
 	branch := mustCreateNode(t, ctx, service, tx, root.ID, "branch", router.KindBranch)
 	leaf := mustCreateNode(t, ctx, service, tx, branch.ID, "leaf", router.KindLeaf)
 	locator := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_01", Revision: 1}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, locator, []string{leaf.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, locator, []string{leaf.ID}); err != nil {
 		t.Fatal(err)
 	}
 	return ctx, service, tx, branch, leaf, locator
 }
 
-func TestDeletingASubtreeLeavesMembershipRecordsIntact(t *testing.T) {
+func TestDeletingASubtreeLeavesTheMountRecordIntact(t *testing.T) {
 	t.Parallel()
 
-	ctx, service, tx, branch, leaf, locator := deleteFixture(t)
+	ctx, service, tx, branch, leaf, _ := deleteFixture(t)
 	if err := service.DeleteNodeIn(ctx, tx, branch.ID, branch.Revision); err != nil {
 		t.Fatal(err)
 	}
@@ -49,22 +49,14 @@ func TestDeletingASubtreeLeavesMembershipRecordsIntact(t *testing.T) {
 	if _, err := service.ListLeafIn(ctx, tx, leaf.ID, 10); err == nil {
 		t.Fatal("expected opening a deleted leaf to fail")
 	}
-	found, err := service.MembershipsForRowIn(ctx, tx, locator.DatabaseID, locator.TableID, locator.RowID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(found) != 0 {
-		t.Fatalf("memberships under a deleted leaf must be hidden, got %#v", found)
-	}
-
-	// Deleting is lossless in the structural sense — the membership records are
-	// untouched on disk — but it is final: nothing brings the node back.
+	// Deleting is lossless in the structural sense — the mount is untouched on
+	// disk — but it is final: nothing brings the node back.
 	all, err := service.ListLeafIncludingDeletedIn(ctx, tx, leaf.ID, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(all) != 1 || all[0].RowID != "row_01" {
-		t.Fatalf("deleting a leaf must not corrupt its membership records, got %#v", all)
+		t.Fatalf("deleting a leaf must not corrupt what it holds, got %#v", all)
 	}
 }
 

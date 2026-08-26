@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/HW-Yue/Memora/internal/router"
-	"github.com/HW-Yue/Memora/internal/store"
 )
 
 func (transaction *Transaction) CreateRouterRoot(
@@ -284,52 +283,7 @@ func (transaction *Transaction) ListRouterLeafPage(
 	return locators, page, stableError(err)
 }
 
-func (service *Service) RouterMemberships(
-	ctx context.Context,
-	value Row,
-) ([]router.Membership, error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	tx, err := service.store.Begin(ctx, store.ReadOnly)
-	if err != nil {
-		return nil, stableError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	memberships, err := service.routes.MembershipsForRowIn(
-		ctx, tx, value.DatabaseID, value.TableID, value.ID,
-	)
-	return memberships, stableError(err)
-}
-
-func (service *Service) MembershipsForRow(
-	ctx context.Context,
-	databaseID, tableID, rowID string,
-) ([]router.Membership, error) {
-	memberships, err := service.routes.MembershipsForRow(ctx, databaseID, tableID, rowID)
-	return memberships, stableError(err)
-}
-
-func (transaction *Transaction) RouterMemberships(
-	ctx context.Context,
-	value Row,
-) ([]router.Membership, error) {
-	memberships, err := transaction.service.routes.MembershipsForRowIn(
-		ctx, transaction.tx, value.DatabaseID, value.TableID, value.ID,
-	)
-	return memberships, stableError(err)
-}
-
-func (transaction *Transaction) MembershipsForRow(
-	ctx context.Context,
-	databaseID, tableID, rowID string,
-) ([]router.Membership, error) {
-	memberships, err := transaction.service.routes.MembershipsForRowIn(
-		ctx, transaction.tx, databaseID, tableID, rowID,
-	)
-	return memberships, stableError(err)
-}
-
-func (transaction *Transaction) replaceRouterMemberships(
+func (transaction *Transaction) mountRouterLeaves(
 	ctx context.Context,
 	stored storedRow,
 	leafIDs []string,
@@ -337,17 +291,17 @@ func (transaction *Transaction) replaceRouterMemberships(
 	if leafIDs == nil {
 		return nil
 	}
-	_, err := transaction.service.routes.ReplaceMembershipsIn(
+	err := transaction.service.routes.MountRowIn(
 		ctx, transaction.tx, routerLocator(stored), leafIDs,
 	)
 	return stableError(err)
 }
 
-func (transaction *Transaction) invalidateRouterMemberships(
+func (transaction *Transaction) unmountRouterLeaves(
 	ctx context.Context,
 	stored storedRow,
 ) error {
-	_, err := transaction.service.routes.ReplaceMembershipsIn(
+	err := transaction.service.routes.MountRowIn(
 		ctx, transaction.tx, routerLocator(stored), []string{},
 	)
 	return stableError(err)

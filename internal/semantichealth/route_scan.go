@@ -10,32 +10,26 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
-const (
-	maximumLocatorScan = 10_000
-	locatorPageSize    = 1000
-)
-
 type healthTableState struct {
-	database       catalog.Database
-	table          catalog.Table
-	rows           map[string]row.Row
-	rowsComplete   bool
-	routesComplete bool
-	routedRows     map[string]bool
+	database     catalog.Database
+	table        catalog.Table
+	rows         map[string]row.Row
+	rowsComplete bool
+	routedRows   map[string]bool
 }
 
 func scanRoutes(
 	ctx context.Context,
 	source Source,
 	tables map[string]*healthTableState,
-) ([]Issue, bool, error) {
+) ([]Issue, error) {
 	nodes, err := source.ListRouterNodes(ctx)
 	if err != nil {
-		return nil, false, healthError(result.CodeInternal, "list Router nodes: %v", err)
+		return nil, healthError(result.CodeInternal, "list Router nodes: %v", err)
 	}
 	fanout, err := branchFanout(ctx, source)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	nodes = cloneAndSortNodes(nodes)
 	byID, children, tableNodes := map[string]router.Node{}, map[string][]router.Node{}, map[string][]router.Node{}
@@ -47,7 +41,6 @@ func scanRoutes(
 	issues := []Issue{}
 	for tableID, state := range tables {
 		state.routedRows = map[string]bool{}
-		state.routesComplete = true
 		roots := []string{}
 		for _, node := range tableNodes[tableID] {
 			if node.Kind == router.KindRoot && node.ParentID == "" {
@@ -89,54 +82,30 @@ func scanRoutes(
 	}
 	issues = append(issues, siblingAmbiguityIssues(nodes, children, tables)...)
 
-	remaining, truncated := maximumLocatorScan, false
+	// What a leaf holds is a field on the leaf. There is no locator set to page
+	// through and no scan budget to run out of, so the three problems that
+	// budget used to surface — two Rows in one leaf, a locator whose scope
+	// disagrees with its leaf, a locator revision that fell behind the Row —
+	// have no state left to be in. See docs/storage/leaf-rowid-v1.md §5.
 	for _, node := range nodes {
-		if node.Kind != router.KindLeaf {
+		if node.Kind != router.KindLeaf || node.RowID == "" {
 			continue
 		}
 		state := tables[node.TableID]
 		if state == nil {
 			continue
 		}
-		locators, complete, err := scanLeaf(ctx, source, node.ID, &remaining)
-		if err != nil {
-			return nil, false, healthError(result.CodeInternal, "scan Route leaf %s: %v", node.ID, err)
-		}
-		if !complete {
-			state.routesComplete, truncated = false, true
-		}
-		if len(locators) > 1 {
-			objects := make([]string, 0, len(locators)+1)
-			objects = append(objects, node.ID)
-			for _, locator := range locators {
-				objects = append(objects, locator.RowID)
+		if _, found := state.rows[node.RowID]; !found {
+			if state.rowsComplete {
+				issues = append(issues, nodeIssue(state, node, KindOrphanMembership,
+					"review_membership", []string{node.ID, node.RowID}, node.RowID, 1))
 			}
-			issues = append(issues, nodeIssue(state, node, KindMultiRowLeaf,
-				"review_route_reshape", objects, "", len(locators)))
+			continue
 		}
-		for _, locator := range locators {
-			if locator.DatabaseID != node.DatabaseID || locator.TableID != node.TableID {
-				issues = append(issues, nodeIssue(state, node, KindInvalidMembershipScope,
-					"review_membership", []string{node.ID, locator.RowID}, locator.RowID, 1))
-				continue
-			}
-			current, found := state.rows[locator.RowID]
-			if !found {
-				if state.rowsComplete {
-					issues = append(issues, nodeIssue(state, node, KindOrphanMembership,
-						"review_membership", []string{node.ID, locator.RowID}, locator.RowID, 1))
-				}
-				continue
-			}
-			state.routedRows[locator.RowID] = true
-			if locator.Revision != current.Revision {
-				issues = append(issues, nodeIssue(state, node, KindStaleMembership,
-					"review_membership", []string{node.ID, locator.RowID}, locator.RowID, 1))
-			}
-		}
+		state.routedRows[node.RowID] = true
 	}
 	for _, state := range tables {
-		if !state.rowsComplete || !state.routesComplete {
+		if !state.rowsComplete {
 			continue
 		}
 		rowIDs := make([]string, 0, len(state.rows))
@@ -151,42 +120,7 @@ func scanRoutes(
 			}
 		}
 	}
-	return issues, truncated, nil
-}
-
-func scanLeaf(ctx context.Context, source Source, leafID string, remaining *int) ([]router.Locator, bool, error) {
-	locators, cursor, seen := []router.Locator{}, "", map[string]bool{}
-	for {
-		if *remaining == 0 {
-			return locators, false, nil
-		}
-		limit := min(locatorPageSize, *remaining)
-		var page []router.Locator
-		var receipt router.ReadPage
-		var err error
-		if inspector, ok := source.(interface {
-			InspectRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
-		}); ok {
-			page, receipt, err = inspector.InspectRouterLeafPage(ctx, leafID, cursor, limit)
-		} else {
-			page, receipt, err = source.ListRouterLeafPage(ctx, leafID, cursor, limit)
-		}
-		if err != nil {
-			return nil, false, err
-		}
-		if len(page) > limit {
-			return nil, false, healthError(result.CodeInternal, "leaf page exceeded requested limit")
-		}
-		locators = append(locators, page...)
-		*remaining -= len(page)
-		if receipt.NextCursor == "" {
-			return locators, true, nil
-		}
-		if seen[receipt.NextCursor] || receipt.NextCursor == cursor {
-			return nil, false, healthError(result.CodeInternal, "leaf cursor did not advance")
-		}
-		seen[receipt.NextCursor], cursor = true, receipt.NextCursor
-	}
+	return issues, nil
 }
 
 func siblingAmbiguityIssues(

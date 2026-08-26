@@ -35,12 +35,9 @@ func TestHealthReportIsDeterministicAndNeverAutoMutatesSemanticIssues(t *testing
 		},
 		nodes: []router.Node{
 			{Version: router.Version, ID: "route_root", DatabaseID: "db_work", TableID: "tbl_notes", Kind: router.KindRoot, Name: "root", Purpose: "Notes", Revision: 1},
-			{Version: router.Version, ID: "route_leaf", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_root", Kind: router.KindLeaf, Name: "notes", Purpose: "Notes", Revision: 1},
+			{Version: router.Version, ID: "route_leaf_a", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_root", Kind: router.KindLeaf, Name: "notes-a", Purpose: "Notes", Revision: 2, RowID: "row_a"},
+			{Version: router.Version, ID: "route_leaf_b", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_root", Kind: router.KindLeaf, Name: "notes-b", Purpose: "Notes", Revision: 2, RowID: "row_b"},
 		},
-		locators: map[string][]router.Locator{"route_leaf": {
-			{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_a", Revision: 1},
-			{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_b", Revision: 1},
-		}},
 	}
 	service := semantichealth.New(source, database)
 	first, err := service.Report(context.Background())
@@ -51,7 +48,7 @@ func TestHealthReportIsDeterministicAndNeverAutoMutatesSemanticIssues(t *testing
 	if err != nil || !reflect.DeepEqual(first, second) {
 		t.Fatalf("reports differ: %#v %#v, %v", first, second, err)
 	}
-	if first.Status != "attention" || first.IssueCount != 4 || first.AutoFixCount != 0 || first.Hash == "" {
+	if first.Status != "attention" || first.IssueCount != 3 || first.AutoFixCount != 0 || first.Hash == "" {
 		t.Fatalf("report = %#v", first)
 	}
 	for _, issue := range first.Issues {
@@ -66,7 +63,6 @@ type fakeSource struct {
 	rows      []row.Row
 	more      bool
 	nodes     []router.Node
-	locators  map[string][]router.Locator
 }
 
 func (source *fakeSource) ShowDatabases(context.Context) ([]catalog.Database, error) {
@@ -79,13 +75,4 @@ func (source *fakeSource) ListPage(context.Context, string, string, int) ([]row.
 
 func (source *fakeSource) ListRouterNodes(context.Context) ([]router.Node, error) {
 	return append([]router.Node{}, source.nodes...), nil
-}
-
-func (source *fakeSource) ListRouterLeafPage(
-	_ context.Context, leafID, cursor string, _ int,
-) ([]router.Locator, router.ReadPage, error) {
-	if cursor != "" {
-		return []router.Locator{}, router.ReadPage{}, nil
-	}
-	return append([]router.Locator{}, source.locators[leafID]...), router.ReadPage{}, nil
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
-func TestMutationOptionsCarryCompleteRouterMembershipSnapshot(t *testing.T) {
+func TestMutationOptionsCarryCompleteRouterMountSnapshot(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -40,17 +40,15 @@ func TestMutationOptionsCarryCompleteRouterMembershipSnapshot(t *testing.T) {
 	})
 	assertStatuses(t, envelope, result.StatusSucceeded, result.StatusSucceeded)
 
-	persisted, err := rows.Get(ctx, "work", "notes", "row_first")
-	if err != nil {
+	if _, err := rows.Get(ctx, "work", "notes", "row_first"); err != nil {
 		t.Fatal(err)
 	}
-	memberships, err := rows.RouterMemberships(ctx, persisted)
-	if err != nil || len(memberships) != 0 {
-		t.Fatalf("explicit empty Router snapshot = %#v, %v", memberships, err)
+	if held := mountedLeaves(t, ctx, rows, "row_first"); len(held) != 0 {
+		t.Fatalf("explicit empty Router snapshot = %#v", held)
 	}
 }
 
-func TestRouterMembershipsRollBackWithExplicitBatch(t *testing.T) {
+func TestRouterMountsRollBackWithExplicitBatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -87,11 +85,8 @@ func TestRouterMembershipsRollBackWithExplicitBatch(t *testing.T) {
 	if err != nil || len(persisted) != 0 {
 		t.Fatalf("rows after rollback = %#v, %v", persisted, err)
 	}
-	memberships, err := rows.RouterMemberships(ctx, row.Row{
-		ID: "row_first", DatabaseID: "db_database", TableID: "tbl_table",
-	})
-	if err != nil || len(memberships) != 0 {
-		t.Fatalf("Router memberships after rollback = %#v, %v", memberships, err)
+	if held := mountedLeaves(t, ctx, rows, "row_first"); len(held) != 0 {
+		t.Fatalf("Router mounts after rollback = %#v", held)
 	}
 }
 
@@ -120,4 +115,20 @@ func createRouteLeaf(
 		t.Fatal(err)
 	}
 	return leaf
+}
+
+// mountedLeaves reports which leaves currently hold a Row, read from the leaves.
+func mountedLeaves(t *testing.T, ctx context.Context, rows *row.Service, rowID string) []string {
+	t.Helper()
+	nodes, err := rows.ListRouterNodes(ctx)
+	if err != nil {
+		t.Fatalf("ListRouterNodes() = %v", err)
+	}
+	held := []string{}
+	for _, node := range nodes {
+		if !node.Deleted && node.RowID == rowID {
+			held = append(held, node.ID)
+		}
+	}
+	return held
 }

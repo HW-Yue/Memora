@@ -295,25 +295,6 @@ func (repository *Repository) ShowUnderPage(parentID, cursor string, limit int) 
 	return router.PaginateNodes("parent:"+parentID, cursor, limit, children)
 }
 
-// LeafForOpen validates a leaf for an OPEN read and returns it.
-//
-// The validation stays here so OPEN keeps reporting the same refusals it always
-// has, while the locator itself is assembled by the caller: a locator carries
-// the Row's revision, which lives with the Row, not with the leaf. Putting the
-// revision on the leaf would make every Row update rewrite its leaf.
-// LeafForInspect is the maintenance-only variant of LeafForOpen: it accepts a
-// deleted leaf, so a caller can check what a tombstoned leaf still holds.
-func (repository *Repository) LeafForInspect(leafID string, limit int) (router.Node, error) {
-	leaf, err := repository.Get(leafID)
-	if err != nil {
-		return router.Node{}, err
-	}
-	if leaf.Kind != router.KindLeaf || limit < 1 || limit > 1000 {
-		return router.Node{}, fmt.Errorf("%w: OPEN requires a leaf and valid limit", ErrInvalid)
-	}
-	return leaf, nil
-}
-
 func (repository *Repository) LeafForOpen(leafID string, limit int) (router.Node, error) {
 	leaf, err := repository.Get(leafID)
 	if err != nil {

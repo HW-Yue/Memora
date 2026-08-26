@@ -120,10 +120,12 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
   （Row 加 `route_leaf_ids`）、`internal/nativerouter/repository.go`（编解码）、
   以及约 310 处 membership 引用散在 21 个非测试文件
 - **RED**：证明 `router.Node` 上没有能放 RowID 的字段，叶子→行必须另查一处
-- **完成**：membership 两个 object kind（9／13）退场；`ObjectKindMax` 下调；
-  变更日志 `route_membership` entry 并入 `route_node`；三类语义健康问题
+- **完成**：membership 两个 object kind（9／13）**退役**（编号不回收、
+  `ObjectKindMax` 不下调，理由见规格 §7.1）；变更日志 `route_membership` entry
+  并入 `route_node`；三类语义健康问题
   （`stale_membership`／`invalid_membership_scope`／`multi_row_leaf`）**结构性消失**
-- **对外可见的能力减少**：语义健康少三项，**须在发布说明中点名**
+- **对外可见的能力减少**：语义健康少三项，外加 Route revision 会被数据写入推高；
+  两条都已记入[待发布的对外可见变化](../development/release-notes-pending.md)
 - **可单独排的子项**：阶段 7（删 `Node.Path`、trace 改实时算）有一道
   **前置量测**——先测真实树深度与 `route_paths` 读代价，再决定彻底删还是降级为
   可过期建议值

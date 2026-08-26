@@ -31,7 +31,6 @@ func TestRouteHealthFindsOnlyDeterministicStructuralDebtAndIsOrderIndependent(t 
 			{ID: "row_current", DatabaseID: "db_work", TableID: "tbl_notes", Revision: 3, State: row.StateLive, Values: map[string]any{"body": "do-not-leak-secret"}},
 			{ID: "row_unrouted", DatabaseID: "db_work", TableID: "tbl_notes", Revision: 1, State: row.StateLive, Values: map[string]any{"body": "private"}},
 		},
-		locators: map[string][]router.Locator{},
 	}
 	source.nodes = append(source.nodes, router.Node{Version: router.Version, ID: "route_root", DatabaseID: "db_work", TableID: "tbl_notes", Kind: router.KindRoot, Name: "root", Purpose: "Root", Revision: 1})
 	source.nodes = append(source.nodes, router.Node{Version: router.Version, ID: "route_branch", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_root", Kind: router.KindBranch, Name: "branch", Purpose: "Branch", Revision: 1})
@@ -49,12 +48,10 @@ func TestRouteHealthFindsOnlyDeterministicStructuralDebtAndIsOrderIndependent(t 
 	source.nodes = append(source.nodes, router.Node{Version: router.Version, ID: "route_broken",
 		DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_missing",
 		Kind: router.KindLeaf, Name: "broken", Purpose: "Broken", Revision: 1})
-	source.locators["route_leaf_a"] = []router.Locator{
-		{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_current", Revision: 2},
-		{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_missing", Revision: 1},
-	}
-	source.locators["route_leaf_b"] = []router.Locator{{DatabaseID: "db_other", TableID: "tbl_other", RowID: "row_current", Revision: 3}}
-	source.locators["route_leaf_c"] = []router.Locator{{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_missing", Revision: 1}}
+	// A leaf holds one Row, named on the leaf itself. row_missing is the orphan
+	// mount: the leaf still names a Row that is not there.
+	mountOnLeaf(source, "route_leaf_a", "row_current")
+	mountOnLeaf(source, "route_leaf_c", "row_missing")
 
 	service := semantichealth.New(source, database)
 	first, err := service.Report(context.Background())
@@ -62,11 +59,11 @@ func TestRouteHealthFindsOnlyDeterministicStructuralDebtAndIsOrderIndependent(t 
 		t.Fatal(err)
 	}
 	wantKinds := map[semantichealth.Kind]bool{
-		semantichealth.KindRouteCapacity: false, semantichealth.KindMultiRowLeaf: false,
+		semantichealth.KindRouteCapacity:         false,
 		semantichealth.KindAmbiguousSiblings:     false,
-		semantichealth.KindInvalidRouteStructure: false, semantichealth.KindUnroutedRow: false,
-		semantichealth.KindOrphanMembership: false, semantichealth.KindStaleMembership: false,
-		semantichealth.KindInvalidMembershipScope: false,
+		semantichealth.KindInvalidRouteStructure: false,
+		semantichealth.KindUnroutedRow:           false,
+		semantichealth.KindOrphanMembership:      false,
 	}
 	for _, issue := range first.Issues {
 		if _, ok := wantKinds[issue.Kind]; ok {
@@ -109,8 +106,8 @@ func TestTruncatedRowsSuppressAbsenceBasedMembershipFindings(t *testing.T) {
 			{Version: router.Version, ID: "route_root", DatabaseID: "db_work", TableID: "tbl_notes", Kind: router.KindRoot, Name: "root", Purpose: "Root", Revision: 1},
 			{Version: router.Version, ID: "route_leaf", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_root", Kind: router.KindLeaf, Name: "leaf", Purpose: "Leaf", Revision: 1},
 		},
-		locators: map[string][]router.Locator{"route_leaf": {{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_outside_page", Revision: 1}}},
 	}
+	mountOnLeaf(source, "route_leaf", "row_outside_page")
 	report, err := semantichealth.New(source, database).Report(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -123,4 +120,59 @@ func TestTruncatedRowsSuppressAbsenceBasedMembershipFindings(t *testing.T) {
 			t.Fatalf("truncated scan emitted absence-based issue: %#v", issue)
 		}
 	}
+}
+
+// TestOrphanMountIsFoundOnTheLeafField is E3 stage 6's gate.
+//
+// The three Membership problem kinds are gone because a leaf field cannot get
+// into those states. orphan_membership is not one of them: a leaf can still
+// name a Row that no longer exists, and the scan has to keep finding it — now
+// by reading the leaf's own RowID rather than a Membership object.
+func TestOrphanMountIsFoundOnTheLeafField(t *testing.T) {
+	t.Parallel()
+
+	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "orphan-health.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	table := catalog.Table{ID: "tbl_notes", DatabaseID: "db_work", Name: "notes", Purpose: "Notes", RowSemantics: "One note", SchemaVersion: 1}
+	source := &fakeSource{
+		databases: []catalog.Database{{ID: "db_work", Name: "work", Purpose: "Work", Scope: "Private", Tables: []catalog.Table{table}}},
+		rows: []row.Row{
+			{ID: "row_present", DatabaseID: "db_work", TableID: "tbl_notes", Revision: 4, State: row.StateLive},
+		},
+		nodes: []router.Node{
+			{Version: router.Version, ID: "route_root", DatabaseID: "db_work", TableID: "tbl_notes", Kind: router.KindRoot, Name: "root", Purpose: "Root", Revision: 1},
+			{Version: router.Version, ID: "route_held", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_root", Kind: router.KindLeaf, Name: "held", Purpose: "Held", Revision: 2, RowID: "row_present"},
+			{Version: router.Version, ID: "route_orphan", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_root", Kind: router.KindLeaf, Name: "orphan", Purpose: "Orphan", Revision: 2, RowID: "row_gone"},
+		},
+	}
+	report, err := semantichealth.New(source, database).Report(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	orphans := []semantichealth.Issue{}
+	for _, issue := range report.Issues {
+		switch issue.Kind {
+		case semantichealth.KindOrphanMembership:
+			orphans = append(orphans, issue)
+		case semantichealth.KindUnroutedRow:
+			t.Fatalf("a Row held by a leaf must count as routed: %#v", issue)
+		}
+	}
+	if len(orphans) != 1 || orphans[0].RowID != "row_gone" {
+		t.Fatalf("orphan mount findings = %#v", orphans)
+	}
+}
+
+// mountOnLeaf points one of the fake source's leaves at a Row.
+func mountOnLeaf(source *fakeSource, leafID, rowID string) {
+	for index := range source.nodes {
+		if source.nodes[index].ID == leafID {
+			source.nodes[index].RowID = rowID
+			return
+		}
+	}
+	panic("unknown leaf " + leafID)
 }

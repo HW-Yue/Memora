@@ -12,7 +12,7 @@ import (
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
-func TestRouterBuildsMultiBranchTreeAndMaintainsMultiLeafReverseMembership(t *testing.T) {
+func TestRouterBuildsMultiBranchTreeAndMountsOneRowInSeveralLeaves(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -36,7 +36,7 @@ func TestRouterBuildsMultiBranchTreeAndMaintainsMultiLeafReverseMembership(t *te
 	row := router.Locator{
 		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_note", Revision: 1,
 	}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, row, []string{storage.ID, msql.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, row, []string{storage.ID, msql.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -47,10 +47,13 @@ func TestRouterBuildsMultiBranchTreeAndMaintainsMultiLeafReverseMembership(t *te
 		t.Fatalf("ResolvePath(root) = %#v, %v", resolvedRoot, err)
 	}
 
-	memberships, err := service.MembershipsForRow(ctx, row.DatabaseID, row.TableID, row.RowID)
-	if err != nil || len(memberships) != 2 ||
-		memberships[0].LeafID != msql.ID || memberships[1].LeafID != storage.ID {
-		t.Fatalf("reverse memberships = %#v, %v", memberships, err)
+	// Both leaves record the Row they hold, which is where the reverse lookup
+	// reads from now.
+	for _, leafID := range []string{storage.ID, msql.ID} {
+		leaf, getErr := service.Get(ctx, leafID)
+		if getErr != nil || leaf.RowID != row.RowID {
+			t.Fatalf("mounted leaf %s = %#v, %v", leafID, leaf, getErr)
+		}
 	}
 	storageRows, err := service.ListLeaf(ctx, storage.ID, 10)
 	if err != nil || len(storageRows) != 1 || storageRows[0] != row {
@@ -101,11 +104,11 @@ func TestRouterLeafRejectsSecondActiveRow(t *testing.T) {
 	primary := mustCreateNode(t, ctx, service, tx, root.ID, "primary", router.KindLeaf)
 	alias := mustCreateNode(t, ctx, service, tx, root.ID, "alias", router.KindLeaf)
 	first := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 1}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{primary.ID, alias.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, first, []string{primary.ID, alias.ID}); err != nil {
 		t.Fatal(err)
 	}
 	second := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_second", Revision: 1}
-	_, err = service.ReplaceMembershipsIn(ctx, tx, second, []string{primary.ID})
+	err = service.MountRowIn(ctx, tx, second, []string{primary.ID})
 	assertCode(t, err, result.CodeConstraint)
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
@@ -166,23 +169,29 @@ func TestRouterSupportsExplicitMoveDeleteAndTransactionRollback(t *testing.T) {
 	right := mustCreateNode(t, ctx, service, tx, root.ID, "right", router.KindLeaf)
 	first := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 1}
 	second := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_second", Revision: 1}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{combined.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, first, []string{combined.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, second, []string{right.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, second, []string{right.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{left.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, first, []string{left.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, second, []string{right.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, second, []string{right.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.DeleteNodeIn(ctx, tx, combined.ID, 1); err != nil {
+	// Read the revision instead of assuming 1: taking a Row and later releasing
+	// it are both edits to the leaf. See docs/storage/leaf-rowid-v1.md §6.1.
+	current, err := service.GetIn(ctx, tx, combined.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DeleteNodeIn(ctx, tx, combined.ID, current.Revision); err != nil {
 		t.Fatal(err)
 	}
 	moved := mustCreateNode(t, ctx, service, tx, root.ID, "moved", router.KindLeaf)
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{moved.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, first, []string{moved.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -195,7 +204,7 @@ func TestRouterSupportsExplicitMoveDeleteAndTransactionRollback(t *testing.T) {
 
 	tx = mustBegin(t, ctx, databaseStore)
 	rolled := mustCreateNode(t, ctx, service, tx, root.ID, "rolled", router.KindLeaf)
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, first, []string{rolled.ID}); err != nil {
+	if err := service.MountRowIn(ctx, tx, first, []string{rolled.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Rollback(); err != nil {
@@ -238,12 +247,12 @@ func TestRouterEnforcesSingleRowLeafAndProvidesStableChildCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx = mustBegin(t, ctx, databaseStore)
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, router.Locator{
+	if err := service.MountRowIn(ctx, tx, router.Locator{
 		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 1,
 	}, []string{a.ID}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.ReplaceMembershipsIn(ctx, tx, router.Locator{
+	err = service.MountRowIn(ctx, tx, router.Locator{
 		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_second", Revision: 1,
 	}, []string{a.ID})
 	assertCode(t, err, result.CodeConstraint)
@@ -272,7 +281,7 @@ func TestRouterEnforcesSingleRowLeafAndProvidesStableChildCursor(t *testing.T) {
 	if _, err := service.RenameIn(ctx, tx, b.ID, "c", 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ReplaceMembershipsIn(ctx, tx, router.Locator{
+	if err := service.MountRowIn(ctx, tx, router.Locator{
 		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_first", Revision: 2,
 	}, []string{a.ID}); err != nil {
 		t.Fatal(err)

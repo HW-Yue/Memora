@@ -85,12 +85,12 @@ func TestDeletedLeafIsNotOpenable(t *testing.T) {
 	if _, err := repository.LeafForOpen(leaf.ID, 10); err == nil {
 		t.Fatal("expected OPEN on a deleted leaf to fail")
 	}
-	inspected, err := repository.LeafForInspect(leaf.ID, 10)
+	tombstoned, err := repository.Get(leaf.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inspected.RowID != "row_01" {
-		t.Fatalf("deleting a leaf must not erase the Row it held, got %#v", inspected)
+	if tombstoned.RowID != "row_01" {
+		t.Fatalf("deleting a leaf must not erase the Row it held, got %#v", tombstoned)
 	}
 }
 
@@ -120,9 +120,9 @@ func TestDeletedLeafStopsHoldingItsRow(t *testing.T) {
 	if len(held) != 0 {
 		t.Fatalf("a deleted leaf must not hold a Row, got %#v", held)
 	}
-	inspected, err := repository.LeafForInspect(leaf.ID, 10)
-	if err != nil || inspected.RowID != "row_01" {
-		t.Fatalf("the leaf record must survive the delete, got %#v, %v", inspected, err)
+	tombstoned, err := repository.Get(leaf.ID)
+	if err != nil || tombstoned.RowID != "row_01" {
+		t.Fatalf("the leaf record must survive the delete, got %#v, %v", tombstoned, err)
 	}
 }
 

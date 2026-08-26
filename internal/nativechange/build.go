@@ -81,22 +81,6 @@ func RouteNodeEntry(value router.Node, operation change.Operation) change.Entry 
 	}
 }
 
-func MembershipEntry(value router.Membership) change.Entry {
-	operation := change.OperationUpdate
-	if value.MembershipRevision == 1 {
-		operation = change.OperationInsert
-	} else if value.Deleted {
-		operation = change.OperationDelete
-	}
-	return change.Entry{
-		ObjectKind: change.ObjectRouteMembership, DatabaseID: value.DatabaseID,
-		TableID: value.TableID, ObjectID: value.LeafID + "@" + value.RowID,
-		Operation: operation, BeforeRevision: value.MembershipRevision - 1,
-		AfterRevision:    value.MembershipRevision,
-		RelatedObjectIDs: uniqueIDs([]string{value.LeafID, value.RowID}),
-	}
-}
-
 func changeOperation(operation history.Operation) change.Operation {
 	switch operation {
 	case history.OperationInsert:

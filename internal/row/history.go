@@ -206,11 +206,11 @@ func (transaction *Transaction) Restore(
 		return Row{}, stableError(err)
 	}
 	if stored.State == StateDeleted {
-		if err := transaction.invalidateRouterMemberships(ctx, stored); err != nil {
+		if err := transaction.unmountRouterLeaves(ctx, stored); err != nil {
 			return Row{}, err
 		}
 	} else if options.RouteLeafIDs != nil {
-		if err := transaction.replaceRouterMemberships(ctx, stored, options.RouteLeafIDs); err != nil {
+		if err := transaction.mountRouterLeaves(ctx, stored, options.RouteLeafIDs); err != nil {
 			return Row{}, err
 		}
 	}

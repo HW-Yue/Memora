@@ -19,17 +19,14 @@ const (
 type Kind string
 
 const (
-	KindDuplicateRow           Kind = "duplicate_row"
-	KindSynonymousColumns      Kind = "synonymous_columns"
-	KindStaleDescription       Kind = "stale_description"
-	KindRouteCapacity          Kind = "route_capacity"
-	KindMultiRowLeaf           Kind = "multi_row_leaf"
-	KindAmbiguousSiblings      Kind = "ambiguous_siblings"
-	KindInvalidRouteStructure  Kind = "invalid_route_structure"
-	KindUnroutedRow            Kind = "unrouted_row"
-	KindOrphanMembership       Kind = "orphan_membership"
-	KindStaleMembership        Kind = "stale_membership"
-	KindInvalidMembershipScope Kind = "invalid_membership_scope"
+	KindDuplicateRow          Kind = "duplicate_row"
+	KindSynonymousColumns     Kind = "synonymous_columns"
+	KindStaleDescription      Kind = "stale_description"
+	KindRouteCapacity         Kind = "route_capacity"
+	KindAmbiguousSiblings     Kind = "ambiguous_siblings"
+	KindInvalidRouteStructure Kind = "invalid_route_structure"
+	KindUnroutedRow           Kind = "unrouted_row"
+	KindOrphanMembership      Kind = "orphan_membership"
 )
 
 type Severity string
@@ -100,7 +97,6 @@ type Source interface {
 	ShowDatabases(context.Context) ([]catalog.Database, error)
 	ListPage(context.Context, string, string, int) ([]row.Row, bool, error)
 	ListRouterNodes(context.Context) ([]router.Node, error)
-	ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
 }
 
 // FanoutSource lets a backend report the Database's structural Route branch

@@ -196,6 +196,7 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [下一次 DeepSeek 评测启动问题](./development/evaluation-next-run.md) — 只从环境变量读取 key 的 F215 smoke 命令；
 - [已知风险](./development/known-risks.md) — 已确认但未被 Feature 文档记录的问题；
 - [旧代码清理边界](./development/legacy-code-boundary.md)
+- [待发布的对外可见变化](./development/release-notes-pending.md) — 发版时搬进 release notes 的素材；
 - [签名发布制品](./development/macos-signed-release-artifacts-v2.md)
 - [干净机器验收](./development/clean-machine-acceptance-v1.md)
 

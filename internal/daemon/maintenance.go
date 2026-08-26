@@ -79,7 +79,6 @@ type daemonHealthSource struct {
 	}
 	routes interface {
 		ListRouterNodes(context.Context) ([]router.Node, error)
-		ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
 	}
 	fanout interface {
 		CurrentBranchFanout(context.Context) (int, error)
@@ -92,7 +91,6 @@ func handlerHealthSource(handler *databaseHandler) (*daemonHealthSource, bool) {
 	})
 	routes, routesOK := handler.rows.(interface {
 		ListRouterNodes(context.Context) ([]router.Node, error)
-		ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)
 	})
 	fanout, _ := handler.rows.(interface {
 		CurrentBranchFanout(context.Context) (int, error)
@@ -118,9 +116,4 @@ func (source *daemonHealthSource) ListPage(ctx context.Context, database, table 
 }
 func (source *daemonHealthSource) ListRouterNodes(ctx context.Context) ([]router.Node, error) {
 	return source.routes.ListRouterNodes(ctx)
-}
-func (source *daemonHealthSource) ListRouterLeafPage(
-	ctx context.Context, leafID, cursor string, limit int,
-) ([]router.Locator, router.ReadPage, error) {
-	return source.routes.ListRouterLeafPage(ctx, leafID, cursor, limit)
 }

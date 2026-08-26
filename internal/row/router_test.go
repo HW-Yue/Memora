@@ -3,6 +3,7 @@ package row_test
 import (
 	"context"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -11,7 +12,7 @@ import (
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 )
 
-func TestRowWritesAtomicallyMaintainMultiLeafRouterMemberships(t *testing.T) {
+func TestRowWritesAtomicallyMaintainMultiLeafRouterMounts(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -59,7 +60,7 @@ func TestRowWritesAtomicallyMaintainMultiLeafRouterMemberships(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	assertRouteMemberships(t, ctx, service, inserted, first.ID, second.ID)
+	assertMountedLeaves(t, ctx, service, inserted, first.ID, second.ID)
 
 	updated, err := service.Update(ctx, "work", "notes", inserted.ID, map[string]any{
 		"title": "Moved",
@@ -70,7 +71,7 @@ func TestRowWritesAtomicallyMaintainMultiLeafRouterMemberships(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRouteMemberships(t, ctx, service, updated, second.ID)
+	assertMountedLeaves(t, ctx, service, updated, second.ID)
 
 	transaction, err := service.BeginTransaction(ctx)
 	if err != nil {
@@ -84,14 +85,17 @@ func TestRowWritesAtomicallyMaintainMultiLeafRouterMemberships(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if memberships, err := transaction.RouterMemberships(ctx, updated); err != nil ||
-		len(memberships) != 1 || memberships[0].LeafID != first.ID {
-		t.Fatalf("read-own Router membership = %#v, %v", memberships, err)
+	nodes, err := transaction.ListRouterNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held := leavesHolding(nodes, updated.ID); len(held) != 1 || held[0] != first.ID {
+		t.Fatalf("read-own mount = %#v", held)
 	}
 	if err := transaction.Rollback(); err != nil {
 		t.Fatal(err)
 	}
-	assertRouteMemberships(t, ctx, service, updated, second.ID)
+	assertMountedLeaves(t, ctx, service, updated, second.ID)
 
 	deleted, err := service.Delete(ctx, "work", "notes", inserted.ID, row.WriteOptions{
 		ExpectedSchemaVersion: 1, ExpectedRevision: updated.Revision,
@@ -99,10 +103,12 @@ func TestRowWritesAtomicallyMaintainMultiLeafRouterMemberships(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRouteMemberships(t, ctx, service, deleted)
+	assertMountedLeaves(t, ctx, service, deleted)
 }
 
-func assertRouteMemberships(
+// assertMountedLeaves checks which leaves hold a Row by reading the leaves
+// themselves — the only place the mount lives now.
+func assertMountedLeaves(
 	t *testing.T,
 	ctx context.Context,
 	service *row.Service,
@@ -110,15 +116,30 @@ func assertRouteMemberships(
 	leafIDs ...string,
 ) {
 	t.Helper()
-	memberships, err := service.RouterMemberships(ctx, value)
-	if err != nil || len(memberships) != len(leafIDs) {
-		t.Fatalf("RouterMemberships() = %#v, %v", memberships, err)
+	nodes, err := service.ListRouterNodes(ctx)
+	if err != nil {
+		t.Fatalf("ListRouterNodes() = %v", err)
+	}
+	held := leavesHolding(nodes, value.ID)
+	if len(held) != len(leafIDs) {
+		t.Fatalf("leaves holding %s = %#v, want %#v", value.ID, held, leafIDs)
 	}
 	for index, leafID := range leafIDs {
-		if memberships[index].LeafID != leafID || memberships[index].Revision != value.Revision {
-			t.Fatalf("membership %d = %#v, want %s rev %d", index, memberships[index], leafID, value.Revision)
+		if held[index] != leafID {
+			t.Fatalf("leaf %d = %s, want %s", index, held[index], leafID)
 		}
 	}
+}
+
+func leavesHolding(nodes []router.Node, rowID string) []string {
+	held := []string{}
+	for _, node := range nodes {
+		if !node.Deleted && node.RowID == rowID {
+			held = append(held, node.ID)
+		}
+	}
+	sort.Strings(held)
+	return held
 }
 
 type routeIDSource struct {
