@@ -26,7 +26,7 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	}
 	if flags.NArg() != 0 || !absolute(*canonicalDir) || !absolute(*codexPath) ||
 		!absolute(*claudePath) || !absolute(*evidencePath) || !absolute(*outputPath) {
-		fmt.Fprintln(stderr, "build-ai-story-gate: all five artifact paths must be absolute and normalized")
+		_, _ = fmt.Fprintln(stderr, "build-ai-story-gate: all five artifact paths must be absolute and normalized")
 		return 2
 	}
 	contract, contractDigest, err := hostcontract.Load(filepath.Join(*canonicalDir, "host-contract.json"))
@@ -59,7 +59,7 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	if err := storygate.WriteAIReportAtomic(*outputPath, report); err != nil {
 		return fail(stderr, err)
 	}
-	fmt.Fprintf(stdout, "AI Story Gate passed: journeys=%d output=%s hash=%s\n",
+	_, _ = fmt.Fprintf(stdout, "AI Story Gate passed: journeys=%d output=%s hash=%s\n",
 		len(report.Journeys), *outputPath, report.Hash)
 	return 0
 }
@@ -69,6 +69,6 @@ func absolute(value string) bool {
 }
 
 func fail(stderr io.Writer, err error) int {
-	fmt.Fprintln(stderr, "build-ai-story-gate:", err)
+	_, _ = fmt.Fprintln(stderr, "build-ai-story-gate:", err)
 	return 1
 }

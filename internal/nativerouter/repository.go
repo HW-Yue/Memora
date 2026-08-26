@@ -238,22 +238,6 @@ func (repository *Repository) Get(id string) (router.Node, error) {
 	return latest, nil
 }
 
-func sameNodeContent(left, right router.Node) bool {
-	if left.Version != right.Version || left.ID != right.ID || left.DatabaseID != right.DatabaseID ||
-		left.TableID != right.TableID || left.ParentID != right.ParentID || left.Name != right.Name ||
-		left.Path != right.Path || left.Kind != right.Kind || left.Purpose != right.Purpose ||
-		left.Synopsis != right.Synopsis || left.Revision != right.Revision || left.Deleted != right.Deleted ||
-		len(left.Aliases) != len(right.Aliases) {
-		return false
-	}
-	for index := range left.Aliases {
-		if left.Aliases[index] != right.Aliases[index] {
-			return false
-		}
-	}
-	return true
-}
-
 func (repository *Repository) Roots(tableID string) []router.Node {
 	nodes, _ := repository.nodes()
 	result := make([]router.Node, 0, 1)

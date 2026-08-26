@@ -92,7 +92,7 @@ func openFrontierControls(directory string) ([2]segmentFile, frontierState, erro
 		path := frontierPath(directory, slot)
 		file, err := os.OpenFile(path, os.O_RDWR, 0)
 		if err != nil {
-			closeFrontierFiles(files)
+			_ = closeFrontierFiles(files)
 			if errors.Is(err, os.ErrNotExist) {
 				return [2]segmentFile{}, frontierState{}, fmt.Errorf(
 					"%w: durable frontier controls are missing", ErrUnsupportedVersion,
@@ -103,16 +103,16 @@ func openFrontierControls(directory string) ([2]segmentFile, frontierState, erro
 		files[slot] = file
 		info, err := file.Stat()
 		if err != nil {
-			closeFrontierFiles(files)
+			_ = closeFrontierFiles(files)
 			return [2]segmentFile{}, frontierState{}, fmt.Errorf("stat durable frontier slot %d: %w", slot, err)
 		}
 		if !info.Mode().IsRegular() || info.Size() != frontierFileSize {
-			closeFrontierFiles(files)
+			_ = closeFrontierFiles(files)
 			return [2]segmentFile{}, frontierState{}, fmt.Errorf("%w: durable frontier slot %d size", ErrCorrupt, slot)
 		}
 		encoded := make([]byte, frontierFileSize)
 		if err := readFullAt(file, encoded, 0); err != nil {
-			closeFrontierFiles(files)
+			_ = closeFrontierFiles(files)
 			return [2]segmentFile{}, frontierState{}, fmt.Errorf("read durable frontier slot %d: %w", slot, err)
 		}
 		values[slot], decodeErrors[slot] = decodeFrontier(encoded)
@@ -120,7 +120,7 @@ func openFrontierControls(directory string) ([2]segmentFile, frontierState, erro
 
 	valid0, valid1 := decodeErrors[0] == nil, decodeErrors[1] == nil
 	if !valid0 && !valid1 {
-		closeFrontierFiles(files)
+		_ = closeFrontierFiles(files)
 		if errors.Is(decodeErrors[0], ErrUnsupportedVersion) ||
 			errors.Is(decodeErrors[1], ErrUnsupportedVersion) {
 			return [2]segmentFile{}, frontierState{}, fmt.Errorf("%w: durable frontier slots", ErrUnsupportedVersion)
@@ -132,7 +132,7 @@ func openFrontierControls(directory string) ([2]segmentFile, frontierState, erro
 		selected = 1
 	}
 	if valid0 && valid1 && values[0].Generation == values[1].Generation && values[0] != values[1] {
-		closeFrontierFiles(files)
+		_ = closeFrontierFiles(files)
 		return [2]segmentFile{}, frontierState{}, fmt.Errorf("%w: conflicting durable frontier generation", ErrCorrupt)
 	}
 	return files, frontierState{FrontierInfo: values[selected], slot: selected}, nil

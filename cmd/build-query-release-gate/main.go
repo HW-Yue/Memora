@@ -32,7 +32,7 @@ func run(arguments []string, stdout, stderr io.Writer, dependencies commandDepen
 	}
 	if flags.NArg() != 0 || len(scorecards) != 3 || len(evaluations) != 3 ||
 		!absoluteNormalized(*output) || !allAbsoluteNormalized(scorecards) || !allAbsoluteNormalized(evaluations) {
-		fmt.Fprintln(stderr, "build-query-release-gate: exactly three absolute normalized scorecards and evaluations plus one absolute output are required")
+		_, _ = fmt.Fprintln(stderr, "build-query-release-gate: exactly three absolute normalized scorecards and evaluations plus one absolute output are required")
 		return 2
 	}
 	if dependencies.load == nil || dependencies.build == nil || dependencies.publish == nil {
@@ -58,7 +58,7 @@ func run(arguments []string, stdout, stderr io.Writer, dependencies commandDepen
 	if defaultArm == "" {
 		defaultArm = "-"
 	}
-	fmt.Fprintf(stdout, "Query release gate: status=%s default_arm=%s output=%s report=%s\n",
+	_, _ = fmt.Fprintf(stdout, "Query release gate: status=%s default_arm=%s output=%s report=%s\n",
 		report.Status, defaultArm, *output, report.Hash)
 	if report.Status != answerrelease.StatusPassed {
 		return 1
@@ -73,7 +73,7 @@ func productionDependencies() commandDependencies {
 }
 
 func commandFailure(stderr io.Writer, message string) int {
-	fmt.Fprintln(stderr, "build-query-release-gate:", message)
+	_, _ = fmt.Fprintln(stderr, "build-query-release-gate:", message)
 	return 1
 }
 

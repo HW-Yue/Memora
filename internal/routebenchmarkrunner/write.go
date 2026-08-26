@@ -48,7 +48,7 @@ func WriteAtomic(path string, report Report) error {
 	if err != nil {
 		return runnerError(result.CodeInternal, "open report directory: %v", err)
 	}
-	defer directoryHandle.Close()
+	defer func() { _ = directoryHandle.Close() }()
 	if err := directoryHandle.Sync(); err != nil {
 		return runnerError(result.CodeInternal, "sync report directory: %v", err)
 	}

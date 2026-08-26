@@ -27,7 +27,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	}
 	if flags.NArg() != 0 || !absoluteNormalized(*corpusPath) || !absoluteNormalized(*canonicalDir) ||
 		!absoluteNormalized(*driversPath) || !absoluteNormalized(*outputPath) {
-		fmt.Fprintln(stderr, "run-route-benchmark: corpus, canonical-skill, drivers, and output must be absolute normalized paths")
+		_, _ = fmt.Fprintln(stderr, "run-route-benchmark: corpus, canonical-skill, drivers, and output must be absolute normalized paths")
 		return 2
 	}
 	corpus, err := routebenchmark.Load(*corpusPath)
@@ -67,7 +67,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	if err := routebenchmarkrunner.WriteAtomic(*outputPath, report); err != nil {
 		return fail(stderr, err)
 	}
-	fmt.Fprintf(stdout, "Route benchmark completed: runs=%d failures=%d report=%s hash=%s\n",
+	_, _ = fmt.Fprintf(stdout, "Route benchmark completed: runs=%d failures=%d report=%s hash=%s\n",
 		report.Counts.Runs, len(report.Failures), *outputPath, report.Hash)
 	return 0
 }
@@ -77,6 +77,6 @@ func absoluteNormalized(value string) bool {
 }
 
 func fail(stderr io.Writer, err error) int {
-	fmt.Fprintln(stderr, "run-route-benchmark:", err)
+	_, _ = fmt.Fprintln(stderr, "run-route-benchmark:", err)
 	return 1
 }

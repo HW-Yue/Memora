@@ -95,7 +95,7 @@ func Restore(ctx context.Context, backupRoot, target string, options Options) (R
 	if err != nil {
 		return RestoreReceipt{}, err
 	}
-	defer os.RemoveAll(staging)
+	defer func() { _ = os.RemoveAll(staging) }()
 	if err := os.Chmod(staging, 0o700); err != nil {
 		return RestoreReceipt{}, err
 	}
@@ -160,7 +160,7 @@ func Create(ctx context.Context, source, destination string, options Options) (R
 	if err != nil {
 		return Receipt{}, err
 	}
-	defer os.RemoveAll(staging)
+	defer func() { _ = os.RemoveAll(staging) }()
 	if err := os.Chmod(staging, 0o700); err != nil {
 		return Receipt{}, err
 	}
@@ -353,7 +353,7 @@ func copyFile(source, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer input.Close()
+	defer func() { _ = input.Close() }()
 	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -373,7 +373,7 @@ func fileHash(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
@@ -456,7 +456,3 @@ func fault(options Options, point string) error {
 	}
 	return nil
 }
-
-type systemClock struct{}
-
-func (systemClock) Now() time.Time { return time.Now() }

@@ -34,16 +34,16 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		return 2
 	}
 	if flags.NArg() != 0 || len(inputs) == 0 || !absolute(*jsonPath) || *htmlPath != "" && !absolute(*htmlPath) {
-		fmt.Fprintln(stderr, "build-agent-metrics-report: input and json require absolute normalized paths; html is optional")
+		_, _ = fmt.Fprintln(stderr, "build-agent-metrics-report: input and json require absolute normalized paths; html is optional")
 		return 2
 	}
 	if *htmlPath == *jsonPath {
-		fmt.Fprintln(stderr, "build-agent-metrics-report: json and html outputs must be different")
+		_, _ = fmt.Fprintln(stderr, "build-agent-metrics-report: json and html outputs must be different")
 		return 2
 	}
 	for _, path := range inputs {
 		if !absolute(path) {
-			fmt.Fprintln(stderr, "build-agent-metrics-report: every input path must be absolute and normalized")
+			_, _ = fmt.Fprintln(stderr, "build-agent-metrics-report: every input path must be absolute and normalized")
 			return 2
 		}
 	}
@@ -85,11 +85,11 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 			return fail(stderr, fmt.Errorf("write %s: %w", *htmlPath, err))
 		}
 	}
-	fmt.Fprintf(stdout, "Agent metrics report: envelopes=%d events=%d json=%s", report.EnvelopeCount, report.EventCount, *jsonPath)
+	_, _ = fmt.Fprintf(stdout, "Agent metrics report: envelopes=%d events=%d json=%s", report.EnvelopeCount, report.EventCount, *jsonPath)
 	if *htmlPath != "" {
-		fmt.Fprintf(stdout, " html=%s", *htmlPath)
+		_, _ = fmt.Fprintf(stdout, " html=%s", *htmlPath)
 	}
-	fmt.Fprintln(stdout)
+	_, _ = fmt.Fprintln(stdout)
 	return 0
 }
 
@@ -121,6 +121,6 @@ func writeAtomic(path string, data []byte) error {
 }
 
 func fail(stderr io.Writer, err error) int {
-	fmt.Fprintln(stderr, "build-agent-metrics-report:", err)
+	_, _ = fmt.Fprintln(stderr, "build-agent-metrics-report:", err)
 	return 1
 }

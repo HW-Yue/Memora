@@ -33,7 +33,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		return 2
 	}
 	if flags.NArg() != 0 || !absoluteNormalized(*registryPath) || !absoluteNormalized(*root) {
-		fmt.Fprintln(stderr, "prepare-evaluation-data: registry and root must be absolute normalized paths")
+		_, _ = fmt.Fprintln(stderr, "prepare-evaluation-data: registry and root must be absolute normalized paths")
 		return 2
 	}
 	registry, digest, err := evaldata.LoadRegistry(*registryPath)
@@ -46,7 +46,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		VerifyOnly: *verifyOnly,
 		Progress: func(progress evaldata.Progress) {
 			if progress.State == "verified" || progress.State == "fetching" {
-				fmt.Fprintf(stdout, "dataset=%s path=%s state=%s bytes=%d\n", progress.DatasetID, progress.Path, progress.State, progress.Bytes)
+				_, _ = fmt.Fprintf(stdout, "dataset=%s path=%s state=%s bytes=%d\n", progress.DatasetID, progress.Path, progress.State, progress.Bytes)
 			}
 		},
 	})
@@ -57,7 +57,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	if *verifyOnly {
 		verb = "verified"
 	}
-	fmt.Fprintf(stdout, "External evaluation data %s: datasets=%d root=%s\n", verb, len(receipt.Datasets), *root)
+	_, _ = fmt.Fprintf(stdout, "External evaluation data %s: datasets=%d root=%s\n", verb, len(receipt.Datasets), *root)
 	return 0
 }
 
@@ -66,6 +66,6 @@ func absoluteNormalized(path string) bool {
 }
 
 func fail(stderr io.Writer, err error) int {
-	fmt.Fprintln(stderr, "prepare-evaluation-data:", err)
+	_, _ = fmt.Fprintln(stderr, "prepare-evaluation-data:", err)
 	return 1
 }

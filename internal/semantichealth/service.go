@@ -313,13 +313,6 @@ func stringBoolean(value bool) string {
 	return "false"
 }
 
-func choose(value, fallback string) string {
-	if value != "" {
-		return value
-	}
-	return fallback
-}
-
 func bounded(value string, maximum int) bool {
 	value = strings.TrimSpace(value)
 	return value != "" && len([]rune(value)) <= maximum
@@ -331,9 +324,4 @@ func validDigest(value string) bool {
 	}
 	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
 	return err == nil
-}
-
-func hasCode(err error, code result.Code) bool {
-	stable, ok := err.(interface{ StableCode() string })
-	return ok && result.Code(stable.StableCode()) == code
 }

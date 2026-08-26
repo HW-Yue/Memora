@@ -60,14 +60,14 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		*maxProviderCalls > 16 || *maxToolCalls > 16 ||
 		(*maxProviderCalls != 0 && *maxToolCalls >= *maxProviderCalls) ||
 		*checkpointPath != "" && !absoluteNormalized(*checkpointPath) {
-		fmt.Fprintln(stderr, "run-answer-benchmark: manifest/output-dir must be absolute normalized paths and run/provider/model/secret-env/arm/prompt-id/code-revision must be set")
+		_, _ = fmt.Fprintln(stderr, "run-answer-benchmark: manifest/output-dir must be absolute normalized paths and run/provider/model/secret-env/arm/prompt-id/code-revision must be set")
 		return 2
 	}
 	if _, err := os.Lstat(*outputDirectory); err == nil {
-		fmt.Fprintln(stderr, "run-answer-benchmark:", answerbenchmark.ErrOutputExists)
+		_, _ = fmt.Fprintln(stderr, "run-answer-benchmark:", answerbenchmark.ErrOutputExists)
 		return 1
 	} else if !errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintln(stderr, "run-answer-benchmark: inspect output:", err)
+		_, _ = fmt.Fprintln(stderr, "run-answer-benchmark: inspect output:", err)
 		return 1
 	}
 	manifest, err := answercorpus.LoadManifest(*manifestPath)
@@ -103,7 +103,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 			succeeded++
 		}
 	}
-	fmt.Fprintf(stdout, "Answer benchmark completed: cases=%d succeeded=%d failed=%d output=%s scorecard=%s\n",
+	_, _ = fmt.Fprintf(stdout, "Answer benchmark completed: cases=%d succeeded=%d failed=%d output=%s scorecard=%s\n",
 		len(public.Cases), succeeded, len(public.Cases)-succeeded, *outputDirectory, public.Hash)
 	return 0
 }
@@ -183,6 +183,6 @@ func absoluteNormalized(value string) bool {
 }
 
 func fail(stderr io.Writer, err error) int {
-	fmt.Fprintln(stderr, "run-answer-benchmark:", err)
+	_, _ = fmt.Fprintln(stderr, "run-answer-benchmark:", err)
 	return 1
 }

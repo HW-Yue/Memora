@@ -65,7 +65,7 @@ func (evaluator *ProcessEvaluator) Evaluate(ctx context.Context, input Input) (O
 	if err != nil {
 		return Output{}, ErrProcessEvaluation
 	}
-	defer os.RemoveAll(directory)
+	defer func() { _ = os.RemoveAll(directory) }()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		return Output{}, ErrProcessEvaluation
 	}

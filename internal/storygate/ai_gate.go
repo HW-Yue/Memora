@@ -274,7 +274,7 @@ func WriteAIReportAtomic(path string, report AIReport) error {
 		return fmt.Errorf("create AI story report staging: %w", err)
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if err := temporary.Chmod(0o600); err != nil {
 		_ = temporary.Close()
 		return err
@@ -297,7 +297,7 @@ func WriteAIReportAtomic(path string, report AIReport) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	return directory.Sync()
 }
 

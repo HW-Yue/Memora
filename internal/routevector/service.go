@@ -219,13 +219,13 @@ func (service *Service) installGeneration(
 	if err != nil {
 		return err
 	}
-	defer vectorFile.Close()
+	defer func() { _ = vectorFile.Close() }()
 	manifestFile, err := writeFile(filepath.Join(staging, manifestFileName), manifestBytes)
 	if err != nil {
 		_ = vectorFile.Close()
 		return err
 	}
-	defer manifestFile.Close()
+	defer func() { _ = manifestFile.Close() }()
 	if err := service.inject(FaultBeforeStageSync); err != nil {
 		_ = vectorFile.Close()
 		_ = manifestFile.Close()
@@ -371,6 +371,6 @@ func syncDirectory(path string) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	return directory.Sync()
 }

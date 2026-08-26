@@ -165,7 +165,7 @@ func decodeAuthorityMarker(databaseDirectory string) (authorityMarker, error) {
 	if err != nil {
 		return authorityMarker{}, fmt.Errorf("%w: open authority marker: %v", ErrTargetCorrupt, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxAuthorityMarkerBytes {
 		return authorityMarker{}, fmt.Errorf("%w: authority marker type or size", ErrTargetCorrupt)

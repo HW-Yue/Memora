@@ -79,8 +79,7 @@ func TestApplySchemaChangeMSQLRequiresHashBoundApprovalAndReturnsReceipt(t *test
 	}
 	defer store.Close()
 	dictionary := catalog.New(store, catalog.Options{IDs: &idSource{values: []string{"database", "table", "title"}}})
-	database, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{Name: "work", Purpose: "Work", Scope: "Private"})
-	if err != nil {
+	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{Name: "work", Purpose: "Work", Scope: "Private"}); err != nil {
 		t.Fatal(err)
 	}
 	table, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{Name: "notes", Purpose: "Notes",
@@ -88,7 +87,7 @@ func TestApplySchemaChangeMSQLRequiresHashBoundApprovalAndReturnsReceipt(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	database, err = dictionary.DescribeDatabase(ctx, "work")
+	database, err := dictionary.DescribeDatabase(ctx, "work")
 	if err != nil {
 		t.Fatal(err)
 	}

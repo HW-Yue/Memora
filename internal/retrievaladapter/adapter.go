@@ -84,7 +84,7 @@ func readMIRACLTopics(path, group string) ([]retrievalscore.Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	queries := make([]retrievalscore.Query, 0)
 	seen := map[string]struct{}{}
 	scanner := bufio.NewScanner(file)
@@ -116,7 +116,7 @@ func readQrels(path string, header bool) ([]retrievalscore.Qrel, map[string]bool
 	if err != nil {
 		return nil, nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	qrels := make([]retrievalscore.Qrel, 0)
 	positive := map[string]bool{}
 	pairs := map[string]struct{}{}
@@ -159,7 +159,7 @@ func readMTRAGQueries(path, group string, positive map[string]bool) ([]retrieval
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	queries := make([]retrievalscore.Query, 0)
 	seen := map[string]struct{}{}
 	scanner := bufio.NewScanner(file)

@@ -916,25 +916,6 @@ func uniqueSorted(values []string) []string {
 	return resultValues
 }
 
-func removeString(values []string, target string) []string {
-	filtered := values[:0]
-	for _, value := range values {
-		if value != target {
-			filtered = append(filtered, value)
-		}
-	}
-	return filtered
-}
-
-func appendUnique(values []string, value string) []string {
-	for _, existing := range values {
-		if existing == value {
-			return values
-		}
-	}
-	return append(values, value)
-}
-
 func sameRow(left, right Locator) bool {
 	return left.DatabaseID == right.DatabaseID && left.TableID == right.TableID &&
 		left.RowID == right.RowID

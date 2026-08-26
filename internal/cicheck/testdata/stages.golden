@@ -1,5 +1,6 @@
 format
 vet
+lint
 unit
 race
 integration

@@ -201,7 +201,7 @@ func readManifest(directory string) (generationManifest, error) {
 	if err != nil {
 		return generationManifest{}, fmt.Errorf("%w: open manifest: %v", ErrTargetCorrupt, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxManifestBytes {
 		return generationManifest{}, fmt.Errorf("%w: manifest file size or type", ErrTargetCorrupt)
@@ -433,6 +433,6 @@ func syncGenerationDirectory(path string) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	return directory.Sync()
 }

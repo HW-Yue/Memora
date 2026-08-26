@@ -27,11 +27,11 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		return 2
 	}
 	if flags.NArg() != 0 || (*kind != "miracl-zh" && *kind != "mtrag") || !absoluteNormalized(*root) || !absoluteNormalized(*output) {
-		fmt.Fprintln(stderr, "normalize-retrieval-suite: kind, root and output are required; paths must be absolute normalized")
+		_, _ = fmt.Fprintln(stderr, "normalize-retrieval-suite: kind, root and output are required; paths must be absolute normalized")
 		return 2
 	}
 	if _, err := os.Lstat(*output); err == nil {
-		fmt.Fprintln(stderr, "normalize-retrieval-suite: output already exists")
+		_, _ = fmt.Fprintln(stderr, "normalize-retrieval-suite: output already exists")
 		return 2
 	} else if !os.IsNotExist(err) {
 		return fail(stderr, err)
@@ -52,7 +52,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	if err := writeAtomic(*output, encoded); err != nil {
 		return fail(stderr, err)
 	}
-	fmt.Fprintf(stdout, "Retrieval suite normalized: suite=%s queries=%d qrels=%d output=%s\n", suite.SuiteID, len(suite.Queries), len(suite.Qrels), *output)
+	_, _ = fmt.Fprintf(stdout, "Retrieval suite normalized: suite=%s queries=%d qrels=%d output=%s\n", suite.SuiteID, len(suite.Queries), len(suite.Qrels), *output)
 	return 0
 }
 
@@ -76,13 +76,13 @@ func writeAtomic(path string, encoded []byte) error {
 		return err
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if _, err := temporary.Write(encoded); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Sync(); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Close(); err != nil {
@@ -92,6 +92,6 @@ func writeAtomic(path string, encoded []byte) error {
 }
 
 func fail(stderr io.Writer, err error) int {
-	fmt.Fprintln(stderr, "normalize-retrieval-suite:", err)
+	_, _ = fmt.Fprintln(stderr, "normalize-retrieval-suite:", err)
 	return 1
 }

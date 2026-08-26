@@ -488,15 +488,6 @@ func sortedRouteLeafIDs(values []string) []string {
 	return result
 }
 
-func containsRoute(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
 func stageRowChange(
 	transaction *nativestore.Transaction,
 	changeSequence uint64,

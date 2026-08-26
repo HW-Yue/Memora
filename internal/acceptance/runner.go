@@ -569,12 +569,12 @@ func extractSkillBundle(
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	gzipReader, err := gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 	reader := tar.NewReader(gzipReader)
 	header, err := reader.Next()
 	if err != nil ||

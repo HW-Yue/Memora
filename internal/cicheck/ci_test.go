@@ -73,7 +73,11 @@ func TestGitHubWorkflowContract(t *testing.T) {
 		"pull_request:",
 		"push:",
 		"contents: read",
-		"runs-on: macos-latest",
+		// Both platforms, not one: the storage layer is full of file-system
+		// behaviour that differs between macOS and Linux.
+		"macos-latest",
+		"ubuntu-latest",
+		"runs-on: ${{ matrix.os }}",
 		"actions/checkout@v6",
 		"actions/setup-go@v6",
 		"go-version-file: go.mod",

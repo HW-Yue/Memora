@@ -217,7 +217,7 @@ func fetchAttempt(ctx context.Context, client *http.Client, partial string, arti
 	if err != nil {
 		return false, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	flags := os.O_CREATE | os.O_WRONLY
 	switch response.StatusCode {
 	case http.StatusOK:
@@ -256,7 +256,7 @@ func verifyArtifact(path string, artifact Artifact) error {
 	if err != nil {
 		return fmt.Errorf("open artifact %s: %w", artifact.Path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		return errors.New("artifact is not a regular file")
@@ -382,13 +382,13 @@ func writeReceipt(path string, receipt Receipt) error {
 		return err
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if _, err := temporary.Write(encoded); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Sync(); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Close(); err != nil {

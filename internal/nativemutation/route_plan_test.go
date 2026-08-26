@@ -101,7 +101,7 @@ func TestRoutePlanRequiresExactApprovalAndFreshSnapshotWithoutPartialWrites(t *t
 	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{})
 	base := nativerow.NewService(rows, dictionary, nativerow.ServiceOptions{})
 	service := NewService(base, dictionary, rows, routes, New(file, rows, routes))
-	plan, err := routemutationplan.Build(context.Background(), service,
+	_, err := routemutationplan.Build(context.Background(), service,
 		routemutationplan.Scope{DatabaseID: "db_work", Database: "work", TableID: "tbl_notes", Table: "notes"},
 		routemutationplan.Proposal{
 			Version: routemutationplan.ProposalVersion, ID: "proposal_move", Operation: routemutationplan.OperationMove,
@@ -117,7 +117,7 @@ func TestRoutePlanRequiresExactApprovalAndFreshSnapshotWithoutPartialWrites(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err = routemutationplan.Build(context.Background(), service,
+	plan, err := routemutationplan.Build(context.Background(), service,
 		routemutationplan.Scope{DatabaseID: "db_work", Database: "work", TableID: "tbl_notes", Table: "notes"},
 		routemutationplan.Proposal{
 			Version: routemutationplan.ProposalVersion, ID: "proposal_move_valid", Operation: routemutationplan.OperationMove,

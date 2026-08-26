@@ -949,7 +949,7 @@ func pdfDecodeStream(object pdfObject, config PDFAdapterConfig) ([]byte, error) 
 	if err != nil {
 		return nil, ErrPDFInvalid
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	decoded, err := io.ReadAll(io.LimitReader(reader, int64(config.MaxDecompressedBytes)+1))
 	if err != nil {
 		return nil, ErrPDFInvalid

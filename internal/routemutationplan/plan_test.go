@@ -265,21 +265,6 @@ func distinctRowMergeFixture() *fakeSource {
 	return value
 }
 
-func oversizedMergeFixture() *fakeSource {
-	value := mergeFixture("route_root")
-	for index := 0; index < 101; index++ {
-		leafID := "route_a"
-		if index >= 51 {
-			leafID = "route_b"
-		}
-		value.locators[leafID] = append(value.locators[leafID], router.Locator{
-			DatabaseID: "db_work", TableID: "tbl_notes",
-			RowID: "row_" + string(rune(0x1000+index)), Revision: 1,
-		})
-	}
-	return value
-}
-
 func moveFixture() *fakeSource {
 	return &fakeSource{nodes: []router.Node{
 		{Version: router.Version, ID: "route_root", DatabaseID: "db_work", TableID: "tbl_notes", Kind: router.KindRoot, Name: "root", Path: "/", Purpose: "Root", Revision: 1},

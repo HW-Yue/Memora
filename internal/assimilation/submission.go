@@ -132,10 +132,7 @@ func (processor *Processor) Submit(
 	}
 	base.Status = SubmissionCommitted
 	for _, fact := range submission.KeyFacts {
-		base.KeyFacts = append(base.KeyFacts, KeyFactReceipt{
-			ID: fact.ID, ModuleID: fact.ModuleID, Field: fact.Field,
-			ValueDigest: fact.ValueDigest, Anchor: fact.Anchor,
-		})
+		base.KeyFacts = append(base.KeyFacts, KeyFactReceipt(fact))
 	}
 	if err := processor.completeSubmission(ctx, submission.SubmissionID, digest, base); err != nil {
 		return SourceReceipt{}, err

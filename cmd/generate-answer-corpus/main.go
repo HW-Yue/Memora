@@ -54,7 +54,7 @@ func writeAtomic(directory, name string, encoded []byte) error {
 		return fmt.Errorf("create %s staging file: %w", name, err)
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if err := temporary.Chmod(0o644); err != nil {
 		_ = temporary.Close()
 		return fmt.Errorf("set %s permissions: %w", name, err)
@@ -81,7 +81,7 @@ func syncDirectory(path string) error {
 	if err != nil {
 		return fmt.Errorf("open answer corpus directory: %w", err)
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	if err := directory.Sync(); err != nil {
 		return fmt.Errorf("sync answer corpus directory: %w", err)
 	}

@@ -38,17 +38,17 @@ func run(_ context.Context, arguments []string, stdout, stderr io.Writer) int {
 	}
 	if flags.NArg() != 0 || !absolute(*corpusPath) || !absolute(*canonicalDir) ||
 		!absolute(*outputPath) || len(sourcePaths) == 0 {
-		fmt.Fprintln(stderr, "build-route-capability-report: corpus, canonical-skill, source, and output require absolute normalized paths")
+		_, _ = fmt.Fprintln(stderr, "build-route-capability-report: corpus, canonical-skill, source, and output require absolute normalized paths")
 		return 2
 	}
 	for _, path := range sourcePaths {
 		if !absolute(path) {
-			fmt.Fprintln(stderr, "build-route-capability-report: every source path must be absolute and normalized")
+			_, _ = fmt.Fprintln(stderr, "build-route-capability-report: every source path must be absolute and normalized")
 			return 2
 		}
 	}
 	if *pricePath != "" && !absolute(*pricePath) {
-		fmt.Fprintln(stderr, "build-route-capability-report: price-card path must be absolute and normalized")
+		_, _ = fmt.Fprintln(stderr, "build-route-capability-report: price-card path must be absolute and normalized")
 		return 2
 	}
 	corpus, err := routebenchmark.Load(*corpusPath)
@@ -85,7 +85,7 @@ func run(_ context.Context, arguments []string, stdout, stderr io.Writer) int {
 	if err := routecapability.WriteAtomic(*outputPath, report); err != nil {
 		return fail(stderr, err)
 	}
-	fmt.Fprintf(stdout, "Route capability report: default=%s buckets=%d output=%s hash=%s\n",
+	_, _ = fmt.Fprintf(stdout, "Route capability report: default=%s buckets=%d output=%s hash=%s\n",
 		report.Decision.DefaultArm, len(report.Buckets), *outputPath, report.Hash)
 	return 0
 }
@@ -95,6 +95,6 @@ func absolute(value string) bool {
 }
 
 func fail(stderr io.Writer, err error) int {
-	fmt.Fprintln(stderr, "build-route-capability-report:", err)
+	_, _ = fmt.Fprintln(stderr, "build-route-capability-report:", err)
 	return 1
 }

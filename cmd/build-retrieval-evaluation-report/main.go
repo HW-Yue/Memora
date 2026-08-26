@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -35,17 +34,17 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 		return 2
 	}
 	if flags.NArg() != 0 || !absoluteNormalized(*suitePath) || !absoluteNormalized(*outputPath) || !validK(*k) || *baseline == "" || len(runPaths) == 0 {
-		fmt.Fprintln(stderr, "build-retrieval-evaluation-report: suite/output/run/baseline required; paths must be absolute normalized and k must be positive")
+		_, _ = fmt.Fprintln(stderr, "build-retrieval-evaluation-report: suite/output/run/baseline required; paths must be absolute normalized and k must be positive")
 		return 2
 	}
 	for _, path := range runPaths {
 		if !absoluteNormalized(path) {
-			fmt.Fprintln(stderr, "build-retrieval-evaluation-report: every run path must be absolute and normalized")
+			_, _ = fmt.Fprintln(stderr, "build-retrieval-evaluation-report: every run path must be absolute and normalized")
 			return 2
 		}
 	}
 	if _, err := os.Lstat(*outputPath); err == nil {
-		fmt.Fprintln(stderr, "build-retrieval-evaluation-report: output already exists")
+		_, _ = fmt.Fprintln(stderr, "build-retrieval-evaluation-report: output already exists")
 		return 2
 	} else if !os.IsNotExist(err) {
 		return fail(stderr, err)
@@ -78,7 +77,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) int 
 	if err := writeAtomic(*outputPath, encoded); err != nil {
 		return fail(stderr, err)
 	}
-	fmt.Fprintf(stdout, "Retrieval evaluation report: suite=%s runs=%d k=%d output=%s\n", suite.SuiteID, len(runs), *k, *outputPath)
+	_, _ = fmt.Fprintf(stdout, "Retrieval evaluation report: suite=%s runs=%d k=%d output=%s\n", suite.SuiteID, len(runs), *k, *outputPath)
 	return 0
 }
 
@@ -97,13 +96,13 @@ func writeAtomic(path string, encoded []byte) error {
 		return err
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if _, err := temporary.Write(encoded); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Sync(); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Close(); err != nil {
@@ -112,15 +111,7 @@ func writeAtomic(path string, encoded []byte) error {
 	return os.Rename(temporaryPath, path)
 }
 
-func writeJSON(path string, value any) error {
-	encoded, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(encoded, '\n'), 0o644)
-}
-
 func fail(stderr io.Writer, err error) int {
-	fmt.Fprintln(stderr, "build-retrieval-evaluation-report:", err)
+	_, _ = fmt.Fprintln(stderr, "build-retrieval-evaluation-report:", err)
 	return 1
 }

@@ -240,12 +240,12 @@ func readDiagnosticsArchive(name string) (Diagnostics, error) {
 	if err != nil {
 		return Diagnostics{}, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	gzipReader, err := gzip.NewReader(file)
 	if err != nil {
 		return Diagnostics{}, errors.New("acceptance diagnostics gzip stream is invalid")
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 	tarReader := tar.NewReader(gzipReader)
 	header, err := tarReader.Next()
 	if err != nil ||
@@ -272,7 +272,7 @@ func readStrictJSON[T any](name string, maximum int64) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	encoded, err := io.ReadAll(io.LimitReader(file, maximum+1))
 	if err != nil || int64(len(encoded)) > maximum {
 		return zero, errors.New("JSON file exceeds its size budget")
@@ -307,7 +307,7 @@ func hashFile(name string) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	size, err := io.Copy(hash, file)
 	if err != nil {

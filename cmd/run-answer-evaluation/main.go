@@ -58,14 +58,14 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, depe
 	if flags.NArg() != 0 || !allAbsoluteNormalized(paths) || !validAPIBaseURL(*apiBaseURL) ||
 		!validSetting(*judgeModel) || !validEnvironmentName(*secretName) || *timeout <= 0 ||
 		reservedEnvironmentName(*secretName) || !validPassedEnvironment(passEnvironment, *secretName) {
-		fmt.Fprintln(stderr, "run-answer-evaluation: all artifact/evaluator/output paths must be absolute normalized paths; API URL, judge model, secret env and timeout must be valid")
+		_, _ = fmt.Fprintln(stderr, "run-answer-evaluation: all artifact/evaluator/output paths must be absolute normalized paths; API URL, judge model, secret env and timeout must be valid")
 		return 2
 	}
 	if _, err := os.Lstat(*outputPath); err == nil {
-		fmt.Fprintln(stderr, "run-answer-evaluation:", answerevaluation.ErrReportOutputExists)
+		_, _ = fmt.Fprintln(stderr, "run-answer-evaluation:", answerevaluation.ErrReportOutputExists)
 		return 1
 	} else if !errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintln(stderr, "run-answer-evaluation: cannot inspect output")
+		_, _ = fmt.Fprintln(stderr, "run-answer-evaluation: cannot inspect output")
 		return 1
 	}
 	if dependencies.lookupEnvironment == nil {
@@ -119,7 +119,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, depe
 	if err := dependencies.publish(*outputPath, report); err != nil {
 		return commandFailure(stderr, err.Error())
 	}
-	fmt.Fprintf(stdout, "Answer evaluation completed: cases=%d scored=%d runner_failed=%d evaluator_failed=%d output=%s report=%s\n",
+	_, _ = fmt.Fprintf(stdout, "Answer evaluation completed: cases=%d scored=%d runner_failed=%d evaluator_failed=%d output=%s report=%s\n",
 		report.Counts.Cases, report.Counts.Scored, report.Counts.RunnerFailed,
 		report.Counts.EvaluatorFailed, *outputPath, report.Hash)
 	return 0
@@ -215,6 +215,6 @@ func asciiEnvironmentStart(value byte) bool {
 }
 
 func commandFailure(stderr io.Writer, message string) int {
-	fmt.Fprintln(stderr, "run-answer-evaluation:", message)
+	_, _ = fmt.Fprintln(stderr, "run-answer-evaluation:", message)
 	return 1
 }

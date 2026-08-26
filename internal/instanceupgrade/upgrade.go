@@ -830,7 +830,7 @@ func copyFile(source, destination string, mode os.FileMode) (string, int64, erro
 	if err != nil {
 		return "", 0, err
 	}
-	defer input.Close()
+	defer func() { _ = input.Close() }()
 	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 	if err != nil {
 		return "", 0, err
@@ -872,7 +872,7 @@ func hashFile(name string) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	size, err := io.Copy(hash, file)
 	if err != nil {
@@ -886,7 +886,7 @@ func syncDirectory(name string) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	return directory.Sync()
 }
 

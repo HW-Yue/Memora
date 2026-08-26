@@ -15,8 +15,16 @@ concurrency:
 
 jobs:
   test:
-    name: macOS tests
-    runs-on: macos-latest
+    # Both platforms run the same seven gates. macOS is where development
+    # happens; Linux is where anyone else's machine and every container is, and
+    # the storage layer is full of file-system behaviour that differs between
+    # them.
+    name: ${{ matrix.os }} tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
     timeout-minutes: 20
     steps:
       - name: Check out repository

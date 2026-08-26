@@ -41,7 +41,7 @@ func (service *Service) Record(ctx context.Context, draft Draft) (Trace, error) 
 	if err != nil {
 		return Trace{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if locator, err := tx.Get(ctx, idBucket, draft.TraceID); err == nil {
 		key := string(locator)
 		sequence, parseErr := parseBodyKey(key)
@@ -112,7 +112,7 @@ func (service *Service) Get(ctx context.Context, traceID, databaseID string) (Tr
 	if err != nil {
 		return Trace{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	locator, err := tx.Get(ctx, idBucket, traceID)
 	if errors.Is(err, store.ErrNotFound) {
 		return Trace{}, ErrNotFound
@@ -150,7 +150,7 @@ func (service *Service) List(
 	if err != nil {
 		return nil, Snapshot{}, false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	state, err := readState(ctx, tx)
 	if err != nil {
 		return nil, Snapshot{}, false, err
@@ -203,7 +203,7 @@ func (service *Service) PruneExpired(ctx context.Context, now time.Time) (uint64
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	state, err := readState(ctx, tx)
 	if err != nil {
 		return 0, err

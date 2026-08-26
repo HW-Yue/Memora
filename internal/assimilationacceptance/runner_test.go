@@ -436,8 +436,7 @@ func frozenAcceptanceEPUB(t *testing.T) []byte {
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
 	write := func(name, body string, method uint16) {
-		header := &zip.FileHeader{Name: name, Method: method}
-		header.SetModTime(time.Unix(0, 0).UTC())
+		header := &zip.FileHeader{Name: name, Method: method, Modified: time.Unix(0, 0).UTC()}
 		entry, err := writer.CreateHeader(header)
 		if err != nil {
 			t.Fatal(err)

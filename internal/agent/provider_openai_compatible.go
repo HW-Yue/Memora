@@ -174,7 +174,7 @@ func (provider *OpenAICompatibleProvider) Complete(
 		}
 		return ProviderResponse{}, ErrProviderTransport
 	}
-	defer httpResponse.Body.Close()
+	defer func() { _ = httpResponse.Body.Close() }()
 	responseBody, err := io.ReadAll(io.LimitReader(httpResponse.Body, provider.maxResponseBytes+1))
 	if err != nil {
 		return ProviderResponse{}, ErrProviderTransport

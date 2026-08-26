@@ -32,7 +32,7 @@ func LoadRegistry(path string) (Registry, string, error) {
 	if err != nil {
 		return Registry{}, "", fmt.Errorf("open registry: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	encoded, err := io.ReadAll(io.LimitReader(file, maxRegistryBytes+1))
 	if err != nil {
 		return Registry{}, "", fmt.Errorf("read registry: %w", err)

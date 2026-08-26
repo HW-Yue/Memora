@@ -135,13 +135,13 @@ func SaveCheckpoint(path string, checkpoint Checkpoint) error {
 		return err
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if _, err := temporary.Write(encoded); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Sync(); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Close(); err != nil {
@@ -158,7 +158,7 @@ func LoadCheckpoint(path string) (Checkpoint, error) {
 	if err != nil {
 		return Checkpoint{}, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	encoded, err := io.ReadAll(io.LimitReader(file, (64<<20)+1))
 	if err != nil || len(encoded) == 0 || len(encoded) > 64<<20 {
 		return Checkpoint{}, ErrInvalidCheckpoint

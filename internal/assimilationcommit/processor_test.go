@@ -261,7 +261,7 @@ func committedEnvelope(request protocolmsql.Request) protocolmsql.Envelope {
 		kind := "INSERT"
 		affected := uint64(1)
 		revision, sequence := uint64(1), uint64(9)
-		var revisionPointer, sequencePointer *uint64 = &revision, &sequence
+		revisionPointer, sequencePointer := &revision, &sequence
 		if len(request.Statements) > 1 && (index == 0 || index == len(request.Statements)-1) {
 			kind, affected, revisionPointer, sequencePointer = map[bool]string{true: "BEGIN", false: "COMMIT"}[index == 0], 0, nil, nil
 		}

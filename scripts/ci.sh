@@ -8,7 +8,10 @@ cd "$repository_root"
 
 go_command=${MEMORA_CI_GO:-go}
 gofmt_command=${MEMORA_CI_GOFMT:-gofmt}
-stages=(format vet unit race integration e2e cross-build)
+staticcheck_version=v0.8.1
+errcheck_version=v1.20.0
+ineffassign_version=v0.1.0
+stages=(format vet lint unit race integration e2e cross-build)
 
 usage() {
   printf 'usage: scripts/ci.sh [--list | --stage <name>]\n' >&2
@@ -31,6 +34,24 @@ run_stage() {
       ;;
     vet)
       "$go_command" vet ./...
+      ;;
+    lint)
+      # Three checkers, pinned by version so a release of one cannot turn a
+      # green branch red on its own. There is no baseline or exemption file:
+      # every finding was fixed when the stage was introduced, so anything this
+      # reports is new.
+      #
+      # staticcheck's style group is off. ST1005 in particular wants
+      # lower-case error strings, and this product's errors are user-facing
+      # text naming domain objects — "Row", "Tree", "Page index generation".
+      # That is a deliberate departure from the Go convention, not an oversight.
+      "$go_command" run honnef.co/go/tools/cmd/staticcheck@"$staticcheck_version" \
+        -checks 'all,-ST1000,-ST1003,-ST1005,-ST1020,-ST1021,-ST1022' ./...
+      # Tests are excluded from errcheck: a test that ignores an error fails
+      # loudly on the next assertion anyway, and t.Cleanup closures would
+      # otherwise need wrapping for no gain.
+      "$go_command" run github.com/kisielk/errcheck@"$errcheck_version" -ignoretests ./...
+      "$go_command" run github.com/gordonklaus/ineffassign@"$ineffassign_version" ./...
       ;;
     unit)
       "$go_command" test ./...

@@ -425,10 +425,6 @@ func (engine *Engine) resolveRouterNode(
 	return node, nil
 }
 
-func (engine *Engine) authorizeRouterID(ctx context.Context, routeID string) error {
-	return engine.authorizeRouterIDAtLevel(ctx, security.LevelRead, routeID)
-}
-
 func (engine *Engine) authorizeRouterIDAtLevel(ctx context.Context, level security.RiskLevel, routeID string) error {
 	return engine.authorizeRouterNodeAtLevel(ctx, level, routeID, engine.rows.GetRouterNode)
 }

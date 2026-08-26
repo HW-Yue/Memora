@@ -295,6 +295,9 @@ func TestQuerySessionRejectsInvalidConstructionAndRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The nil Context is the point of this case: Start has to refuse one rather
+	// than dereference it.
+	//lint:ignore SA1012 the guard against a nil Context is what is under test
 	if _, err := session.Start(nil, "question"); !errors.Is(err, agent.ErrInvalidQuerySessionRequest) {
 		t.Fatalf("nil context error = %v", err)
 	}

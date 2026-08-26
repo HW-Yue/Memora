@@ -274,7 +274,7 @@ func TestQueryAgentEnforcesToolResultAnswerAndStepBudgets(t *testing.T) {
 		budget := agent.DefaultQueryBudget()
 		budget.ToolArgumentsUTF8Bytes = 256
 		arguments := queryArguments(t, "SELECT '"+strings.Repeat("x", 300)+"' FROM work.notes LIMIT 1", map[string]any{})
-		result, err, msql, provider := queryOneToolFailure(t, budget, arguments, protocolmsql.Envelope{}, nil)
+		result, msql, provider, err := queryOneToolFailure(t, budget, arguments, protocolmsql.Envelope{}, nil)
 		if !errors.Is(err, agent.ErrQueryBudget) || len(msql.Calls()) != 1 || len(provider.requests) != 1 {
 			t.Fatalf("Query() = %#v, %v calls=%d/%d", result, err, len(msql.Calls()), len(provider.requests))
 		}
@@ -289,7 +289,7 @@ func TestQueryAgentEnforcesToolResultAnswerAndStepBudgets(t *testing.T) {
 			Columns: []protocolmsql.Column{}, Rows: []protocolmsql.Row{{"body": strings.Repeat("x", 600)}},
 			Warnings: []protocolmsql.Notice{},
 		})
-		result, err, msql, provider := queryOneToolFailure(
+		result, msql, provider, err := queryOneToolFailure(
 			t, budget, queryArguments(t, source, map[string]any{}), envelope, nil,
 		)
 		if !errors.Is(err, agent.ErrQueryBudget) || len(msql.Calls()) != 2 || len(provider.requests) != 1 ||
@@ -301,7 +301,7 @@ func TestQueryAgentEnforcesToolResultAnswerAndStepBudgets(t *testing.T) {
 	t.Run("final answer", func(t *testing.T) {
 		budget := agent.DefaultQueryBudget()
 		budget.AnswerUTF8Bytes = 4
-		result, err, _, provider := querySuccessfulToolThenFinal(t, budget,
+		result, _, provider, err := querySuccessfulToolThenFinal(t, budget,
 			queryProviderResponse(agent.ProviderFinishStop, agent.ProviderMessage{
 				Role: agent.ProviderRoleAssistant, Content: "answer exceeds four bytes",
 			}),
@@ -312,7 +312,7 @@ func TestQueryAgentEnforcesToolResultAnswerAndStepBudgets(t *testing.T) {
 	})
 
 	t.Run("length finish", func(t *testing.T) {
-		result, err, _, provider := querySuccessfulToolThenFinal(t, agent.DefaultQueryBudget(),
+		result, _, provider, err := querySuccessfulToolThenFinal(t, agent.DefaultQueryBudget(),
 			queryProviderResponse(agent.ProviderFinishLength, agent.ProviderMessage{
 				Role: agent.ProviderRoleAssistant, Content: "partial",
 			}),
@@ -391,7 +391,7 @@ func TestQueryAgentDoesNotRetryProviderMSQLOrCancellation(t *testing.T) {
 
 	t.Run("MSQL", func(t *testing.T) {
 		wantErr := errors.New("MSQL unavailable with row body")
-		result, err, msql, provider := queryOneToolFailure(
+		result, msql, provider, err := queryOneToolFailure(
 			t, agent.DefaultQueryBudget(),
 			queryArguments(t, "SELECT body FROM work.notes LIMIT 1", map[string]any{}),
 			protocolmsql.Envelope{}, wantErr,
@@ -406,7 +406,7 @@ func TestQueryAgentDoesNotRetryProviderMSQLOrCancellation(t *testing.T) {
 	})
 
 	t.Run("cancellation", func(t *testing.T) {
-		result, err, msql, provider := queryOneToolFailure(
+		result, msql, provider, err := queryOneToolFailure(
 			t, agent.DefaultQueryBudget(),
 			queryArguments(t, "SELECT body FROM work.notes LIMIT 1", map[string]any{}),
 			protocolmsql.Envelope{}, context.Canceled,
@@ -456,7 +456,7 @@ func queryOneToolFailure(
 	arguments json.RawMessage,
 	envelope protocolmsql.Envelope,
 	msqlErr error,
-) (agent.QueryResult, error, *agenttest.ScriptedMSQL, *recordingQueryProvider) {
+) (agent.QueryResult, *agenttest.ScriptedMSQL, *recordingQueryProvider, error) {
 	t.Helper()
 	question := "question"
 	authorization := queryAuthorization(protocolmsql.LevelRead)
@@ -483,14 +483,14 @@ func queryOneToolFailure(
 	result, err := newQueryAgent(t, msql, provider).Query(context.Background(), queryRequest(
 		"run-one-tool", "session-one-tool", question, authorization, bootstrapBudget, budget,
 	))
-	return result, err, msql, provider
+	return result, msql, provider, err
 }
 
 func querySuccessfulToolThenFinal(
 	t *testing.T,
 	budget agent.QueryBudget,
 	final agent.ProviderResponse,
-) (agent.QueryResult, error, *agenttest.ScriptedMSQL, *recordingQueryProvider) {
+) (agent.QueryResult, *agenttest.ScriptedMSQL, *recordingQueryProvider, error) {
 	t.Helper()
 	question := "question"
 	authorization := queryAuthorization(protocolmsql.LevelRead)
@@ -521,7 +521,7 @@ func querySuccessfulToolThenFinal(
 	result, err := newQueryAgent(t, msql, provider).Query(context.Background(), queryRequest(
 		"run-final", "session-final", question, authorization, bootstrapBudget, budget,
 	))
-	return result, err, msql, provider
+	return result, msql, provider, err
 }
 
 func queryRequest(

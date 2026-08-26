@@ -88,10 +88,7 @@ func buildBundle(options BuildOptions, outputDirectory string) (BundleManifest, 
 }
 
 func collectBundleSources(root string) ([]bundleSource, error) {
-	var names []string
-	for _, name := range []string{"COMMERCIAL-LICENSE.md", "LICENSE", "README.md"} {
-		names = append(names, name)
-	}
+	names := []string{"COMMERCIAL-LICENSE.md", "LICENSE", "README.md"}
 	for _, directory := range []string{
 		"adapters/claude-code",
 		"adapters/codex",
@@ -231,12 +228,12 @@ func verifyBundle(
 	if err != nil {
 		return BundleManifest{}, fmt.Errorf("open Skill bundle: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	gzipReader, err := gzip.NewReader(file)
 	if err != nil {
 		return BundleManifest{}, errors.New("Skill bundle gzip stream is invalid")
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 	reproducibleTime := time.Unix(releaseManifest.SourceDateEpoch, 0).UTC()
 	if !gzipReader.Header.ModTime.Equal(reproducibleTime) ||
 		gzipReader.Header.Name != "" ||
@@ -392,7 +389,7 @@ func hashFile(name string) (string, int64, error) {
 	if err != nil {
 		return "", 0, fmt.Errorf("open publication file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	size, err := io.Copy(hash, file)
 	if err != nil {

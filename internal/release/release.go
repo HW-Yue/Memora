@@ -384,12 +384,12 @@ func verifyArchive(path, arch string, manifest Manifest) error {
 	if err != nil {
 		return fmt.Errorf("open release archive: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	gzipReader, err := gzip.NewReader(file)
 	if err != nil {
 		return errors.New("release archive gzip stream is invalid")
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 	reproducibleTime := time.Unix(manifest.SourceDateEpoch, 0).UTC()
 	if !gzipReader.Header.ModTime.Equal(reproducibleTime) ||
 		gzipReader.Header.Name != "" ||
@@ -644,7 +644,7 @@ func hashFile(path string) (string, int64, error) {
 	if err != nil {
 		return "", 0, fmt.Errorf("open release file for hashing: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	size, err := io.Copy(hash, file)
 	if err != nil {
@@ -666,7 +666,7 @@ func validateMachOBytes(value []byte, arch string) error {
 	if err != nil {
 		return errors.New("release binary is not a valid Mach-O executable")
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	want := macho.CpuArm64
 	if arch == "amd64" {
 		want = macho.CpuAmd64
