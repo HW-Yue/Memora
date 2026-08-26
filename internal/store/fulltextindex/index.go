@@ -220,54 +220,73 @@ type planned struct {
 // planReplaceBatchLocked builds the mutation plan for a ReplaceBatch. The
 // caller holds the write lock.
 func (index *Index) planReplaceBatchLocked(prepared []preparedDocument) (planned, error) {
+	operations, digest, added, removed, err := index.batchOperationsLocked(prepared)
+	if err != nil {
+		return planned{}, err
+	}
+	if len(operations) == 0 {
+		return planned{digest: digest}, nil
+	}
+	plan, err := index.plan(index.runtime.State(), sortedOperations(operations))
+	if err != nil {
+		return planned{}, err
+	}
+	return planned{plan: plan, digest: digest, added: added, removed: removed, changed: true}, nil
+}
+
+// batchOperationsLocked turns a prepared batch into the Tree operations that
+// bring the index in line with it. The caller holds the write lock.
+func (index *Index) batchOperationsLocked(
+	prepared []preparedDocument,
+) (map[string]operation, string, int, int, error) {
 	state := index.runtime.State()
 	searcher, err := index.searcher(state)
 	if err != nil {
-		return planned{}, err
+		return nil, "", 0, 0, err
 	}
 	operations := make(map[string]operation)
 	added, removed := 0, 0
 	for _, next := range prepared {
 		current, found, err := lookupObject(searcher, next.objectKey)
 		if err != nil {
-			return planned{}, err
+			return nil, "", 0, 0, err
 		}
 		currentPostings := make(map[postingIdentity]fulltext.Posting)
 		if !found {
 			if next.compiled.Revision != 1 {
-				return planned{}, fmt.Errorf("%w: first incremental revision must be 1", ErrConflict)
+				return nil, "", 0, 0, fmt.Errorf("%w: first incremental revision must be 1", ErrConflict)
 			}
 			orphaned, err := scanPrefix(searcher, mustOwnerPrefix(next.object.kind, next.object.objectID))
 			if err != nil {
-				return planned{}, err
+				return nil, "", 0, 0, err
 			}
 			if len(orphaned) != 0 {
-				return planned{}, fmt.Errorf("%w: owner entries exist without object", ErrCorrupt)
+				return nil, "", 0, 0, fmt.Errorf("%w: owner entries exist without object", ErrCorrupt)
 			}
 		} else {
 			if current.databaseID != next.object.databaseID || current.tableID != next.object.tableID {
-				return planned{}, fmt.Errorf("%w: object identity changed scope", ErrConflict)
+				return nil, "", 0, 0, fmt.Errorf("%w: object identity changed scope", ErrConflict)
 			}
 			currentPostings, err = loadOwnedPostings(searcher, current)
 			if err != nil {
-				return planned{}, err
+				return nil, "", 0, 0, err
 			}
 			if next.compiled.Revision == current.revision {
 				if next.compiled.Digest != current.digest {
-					return planned{}, fmt.Errorf("%w: revision has different content", ErrConflict)
+					return nil, "", 0, 0, fmt.Errorf("%w: revision has different content", ErrConflict)
 				}
 				if !samePostingMaps(currentPostings, next.postings) {
-					return planned{}, fmt.Errorf("%w: replay postings disagree with object digest", ErrCorrupt)
+					return nil, "", 0, 0, fmt.Errorf("%w: replay postings disagree with object digest", ErrCorrupt)
 				}
 				continue
 			}
 			if current.revision == ^uint64(0) || next.compiled.Revision != current.revision+1 {
-				return planned{}, fmt.Errorf("%w: revision must advance by one", ErrConflict)
+				return nil, "", 0, 0, fmt.Errorf("%w: revision must advance by one", ErrConflict)
 			}
 		}
 
 		if err := addOperation(operations, operation{key: next.objectKey, value: next.objectValue}); err != nil {
-			return planned{}, err
+			return nil, "", 0, 0, err
 		}
 		for identity, posting := range currentPostings {
 			if _, retained := next.postings[identity]; retained {
@@ -275,22 +294,22 @@ func (index *Index) planReplaceBatchLocked(prepared []preparedDocument) (planned
 			}
 			ownerKey, err := encodeOwnerKey(posting)
 			if err != nil {
-				return planned{}, err
+				return nil, "", 0, 0, err
 			}
 			postingKey, err := encodePostingKey(posting)
 			if err != nil {
-				return planned{}, err
+				return nil, "", 0, 0, err
 			}
 			if err := addOperation(operations, operation{key: ownerKey, delete: true}); err != nil {
-				return planned{}, err
+				return nil, "", 0, 0, err
 			}
 			if err := addOperation(operations, operation{key: postingKey, delete: true}); err != nil {
-				return planned{}, err
+				return nil, "", 0, 0, err
 			}
 		}
 		for _, posting := range next.postings {
 			if err := addPostingOperations(operations, posting); err != nil {
-				return planned{}, err
+				return nil, "", 0, 0, err
 			}
 		}
 		documentAdded, documentRemoved := postingDifference(currentPostings, next.postings)
@@ -301,10 +320,104 @@ func (index *Index) planReplaceBatchLocked(prepared []preparedDocument) (planned
 	if len(prepared) == 1 {
 		digest = prepared[0].compiled.Digest
 	}
+	return operations, digest, added, removed, nil
+}
+
+// Cursor reports how far through the committed change log this derived index
+// has been brought. Zero means it has never caught up.
+//
+// The value lives in this Tree, written in the same transaction as the
+// documents it describes, so it cannot outrun or lag what it claims to
+// describe — a cursor kept beside the index would start lying the first time a
+// crash landed between the two writes, and a lying cursor makes catch-up skip
+// the gap silently.
+func (index *Index) Cursor() (uint64, error) {
+	if index == nil || index.runtime == nil {
+		return 0, fmt.Errorf("%w: cursor read", ErrInvalid)
+	}
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	return index.cursorLocked()
+}
+
+func (index *Index) cursorLocked() (uint64, error) {
+	searcher, err := index.searcher(index.runtime.State())
+	if err != nil || searcher == nil {
+		return 0, err
+	}
+	encoded, err := searcher.Get(cursorKey())
+	if errors.Is(err, btree.ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, classifyTreeError(err)
+	}
+	return decodeCursorValue(encoded)
+}
+
+// AdvanceThrough applies a catch-up round: the documents projected from the
+// change log, and the cursor that says how far those changes reached, in one
+// transaction.
+//
+// documents may be empty — a batch of changes that touches nothing indexable
+// still has to move the cursor, or catch-up would reconsider it forever.
+func (index *Index) AdvanceThrough(
+	transactionID uint64, documents []fulltext.Document, cursor uint64,
+) (Receipt, error) {
+	if index == nil || index.runtime == nil || transactionID == 0 || cursor == 0 {
+		return Receipt{}, fmt.Errorf("%w: AdvanceThrough request", ErrInvalid)
+	}
+	prepared, err := prepareBatch(documents, "AdvanceThrough")
+	if err != nil {
+		return Receipt{}, err
+	}
+
+	index.mu.Lock()
+	defer index.mu.Unlock()
+	result, err := index.planAdvanceLocked(prepared, cursor)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if !result.changed {
+		return Receipt{Replay: true, Digest: result.digest, State: index.runtime.State()}, nil
+	}
+	committed, err := index.runtime.Commit(transactionID, result.plan)
+	if err != nil {
+		return Receipt{}, err
+	}
+	return Receipt{
+		Changed: true, Digest: result.digest, Added: result.added, Removed: result.removed,
+		State: committed.State, WAL: committed.WAL,
+	}, nil
+}
+
+// planAdvanceLocked builds the plan for a catch-up round: the document
+// operations plus the cursor write.
+func (index *Index) planAdvanceLocked(prepared []preparedDocument, cursor uint64) (planned, error) {
+	current, err := index.cursorLocked()
+	if err != nil {
+		return planned{}, err
+	}
+	if cursor < current {
+		return planned{}, fmt.Errorf("%w: cursor moves backwards", ErrConflict)
+	}
+	operations, digest, added, removed, err := index.batchOperationsLocked(prepared)
+	if err != nil {
+		return planned{}, err
+	}
+	if cursor > current {
+		value, err := encodeCursorValue(cursor)
+		if err != nil {
+			return planned{}, err
+		}
+		if err := addOperation(operations, operation{key: cursorKey(), value: value}); err != nil {
+			return planned{}, err
+		}
+	}
 	if len(operations) == 0 {
 		return planned{digest: digest}, nil
 	}
-	plan, err := index.plan(state, sortedOperations(operations))
+	plan, err := index.plan(index.runtime.State(), sortedOperations(operations))
 	if err != nil {
 		return planned{}, err
 	}
@@ -708,6 +821,14 @@ func validateOwnerMirror(searcher *btree.Searcher, owner ownerRecord, encoded []
 	return nil
 }
 
+func validateMetadataEntry(key, value []byte) error {
+	if !bytes.Equal(key, cursorKey()) {
+		return fmt.Errorf("%w: unknown metadata key", ErrCorrupt)
+	}
+	_, err := decodeCursorValue(value)
+	return err
+}
+
 func validateAllRecords(searcher *btree.Searcher, expectedPostings int) error {
 	entries, err := scanAll(searcher)
 	if err != nil {
@@ -751,6 +872,13 @@ func validateAllRecords(searcher *btree.Searcher, expectedPostings int) error {
 				return err
 			}
 			postings++
+		case keyKindMetadata:
+			// The index's own bookkeeping. It is validated for shape but takes
+			// no part in the owner/posting cardinality check below — it
+			// describes the index rather than anything indexed.
+			if err := validateMetadataEntry(entry.Key, entry.Value); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("%w: unknown physical key kind", ErrCorrupt)
 		}

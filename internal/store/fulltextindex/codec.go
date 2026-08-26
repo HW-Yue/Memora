@@ -13,19 +13,31 @@ import (
 )
 
 const (
-	keyVersion       = byte(1)
-	keyKindObject    = byte(1)
-	keyKindOwner     = byte(2)
-	keyKindPosting   = byte(3)
+	keyVersion     = byte(1)
+	keyKindObject  = byte(1)
+	keyKindOwner   = byte(2)
+	keyKindPosting = byte(3)
+	// keyKindMetadata holds the index's own bookkeeping rather than anything a
+	// caller stored. It lives in this Tree, and not beside it, so that a
+	// bookkeeping value and the documents it describes are written in one
+	// transaction and can never disagree. It is a separate key kind rather than
+	// a sixth fulltext.ObjectKind precisely so that Objects and AllPostings —
+	// which scan keyKindObject and keyKindPosting — never see it.
+	keyKindMetadata = byte(4)
+	// metadataCursor names the one metadata entry that exists today: how far
+	// through the committed change log this derived index has been brought.
+	metadataCursor   = byte(1)
 	codecVersion     = uint16(1)
 	maximumComponent = 2048
 	objectHeaderSize = 32
 	postingValueSize = 32
+	cursorValueSize  = 24
 )
 
 var (
 	objectMagic  = [8]byte{'M', 'E', 'M', 'F', 'T', 'O', '0', '1'}
 	postingMagic = [8]byte{'M', 'E', 'M', 'F', 'T', 'P', '0', '1'}
+	cursorMagic  = [8]byte{'M', 'E', 'M', 'F', 'T', 'C', '0', '1'}
 )
 
 type objectRecord struct {
@@ -267,6 +279,35 @@ func decodePostingValue(encoded []byte) (uint64, uint64, error) {
 		return 0, 0, fmt.Errorf("%w: posting value payload", ErrCorrupt)
 	}
 	return revision, frequency, nil
+}
+
+// cursorKey is the single fixed key the catch-up cursor lives under.
+func cursorKey() []byte {
+	return []byte{keyVersion, keyKindMetadata, metadataCursor}
+}
+
+func encodeCursorValue(sequence uint64) ([]byte, error) {
+	if sequence == 0 {
+		return nil, fmt.Errorf("%w: cursor value", ErrInvalid)
+	}
+	result := make([]byte, cursorValueSize)
+	copy(result[:8], cursorMagic[:])
+	binary.LittleEndian.PutUint16(result[8:10], codecVersion)
+	binary.LittleEndian.PutUint64(result[16:24], sequence)
+	return result, nil
+}
+
+func decodeCursorValue(encoded []byte) (uint64, error) {
+	if len(encoded) != cursorValueSize || !bytes.Equal(encoded[:8], cursorMagic[:]) ||
+		binary.LittleEndian.Uint16(encoded[8:10]) != codecVersion ||
+		binary.LittleEndian.Uint16(encoded[10:12]) != 0 || binary.LittleEndian.Uint32(encoded[12:16]) != 0 {
+		return 0, fmt.Errorf("%w: cursor value header", ErrCorrupt)
+	}
+	sequence := binary.LittleEndian.Uint64(encoded[16:24])
+	if sequence == 0 {
+		return 0, fmt.Errorf("%w: cursor value payload", ErrCorrupt)
+	}
+	return sequence, nil
 }
 
 func appendComponent(target []byte, value string, allowEmpty bool) []byte {
