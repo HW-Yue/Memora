@@ -253,9 +253,11 @@ func (index *Index) batchOperationsLocked(
 		}
 		currentPostings := make(map[postingIdentity]fulltext.Posting)
 		if !found {
-			if next.compiled.Revision != 1 {
-				return nil, "", 0, 0, fmt.Errorf("%w: first incremental revision must be 1", ErrConflict)
-			}
+			// Any first revision is acceptable. This index is derived and
+			// catches up from the change log, so the first document it sees for
+			// an object may already be several revisions old — created and
+			// updated before catch-up next ran. Demanding revision 1 here would
+			// turn an ordinary lag into corruption.
 			orphaned, err := scanPrefix(searcher, mustOwnerPrefix(next.object.kind, next.object.objectID))
 			if err != nil {
 				return nil, "", 0, 0, err
@@ -280,8 +282,17 @@ func (index *Index) batchOperationsLocked(
 				}
 				continue
 			}
-			if current.revision == ^uint64(0) || next.compiled.Revision != current.revision+1 {
-				return nil, "", 0, 0, fmt.Errorf("%w: revision must advance by one", ErrConflict)
+			// Advance, not advance-by-one. The strict rule belonged to the era
+			// when the writer pushed every revision inline, where a gap meant
+			// the writer had skipped one. A follower legitimately jumps: three
+			// updates between two catch-up rounds produce one document at the
+			// final revision. Keeping the strict rule would wedge catch-up
+			// permanently the first time a round failed and writes continued —
+			// every later round would span the gap and be refused. Skipping is
+			// impossible by construction anyway: the cursor only moves past
+			// what was applied.
+			if next.compiled.Revision < current.revision {
+				return nil, "", 0, 0, fmt.Errorf("%w: revision must advance", ErrConflict)
 			}
 		}
 

@@ -23,17 +23,26 @@ import (
 	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/changeindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/objectlock"
+	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
 )
 
 var ErrAuthorityPoisoned = errors.New("Page Store authority requires reopen recovery")
 
-var errFulltextRebuildRequired = errors.New("Fulltext generation requires COW rebuild")
+// errGenerationRebuildRequired marks a reconcile that cannot bring the
+// generation forward in place.
+//
+// Every Tree in a generation is derived from the authoritative native store, so
+// a Tree that has drifted beyond what an incremental reconcile can apply is not
+// corruption — it is a follower too far behind to step. Rebuilding by COW is
+// the general answer, and it keeps the old generation as a rollback point.
+var errGenerationRebuildRequired = errors.New("generation requires COW rebuild")
 
 type authorityPhase string
 
@@ -47,6 +56,10 @@ const (
 	phaseRowCurrentPublished      authorityPhase = "row-current-published"
 	phaseRouteBodyCommitted       authorityPhase = "route-body-committed"
 	phaseRouteFulltextPublished   authorityPhase = "route-fulltext-published"
+	// phaseFulltextCatchUp is a seam for failing a catch-up round. A failed
+	// round followed by more writes is the case that used to wedge the index
+	// permanently, so it needs to be reachable from a test.
+	phaseFulltextCatchUp authorityPhase = "fulltext-catch-up"
 )
 
 // Authority owns one activated live generation. The native File remains the
@@ -153,15 +166,20 @@ func OpenAuthority(
 		locks:     objectlock.New(),
 	}
 	authority.writeGate <- struct{}{}
-	reconcileErr := authority.reconcile(ctx)
-	if reconcileErr != nil && !errors.Is(reconcileErr, errFulltextRebuildRequired) {
-		return nil, errors.Join(reconcileErr, generation.Close(), changeTree.Close())
+	// A generation missing a Tree, or holding one redo log per Tree, has to be
+	// rebuilt whatever its contents say — the second cannot publish atomically
+	// across Trees. Decide that BEFORE reconciling: the COW upgrade's value is
+	// that it leaves the old generation untouched as a rollback point, and
+	// reconciling one that is about to be discarded writes to it for nothing.
+	replace := authority.generation.fulltext == nil || authority.generation.log == nil
+	if !replace {
+		reconcileErr := authority.reconcile(ctx)
+		if reconcileErr != nil && !errors.Is(reconcileErr, errGenerationRebuildRequired) {
+			return nil, errors.Join(reconcileErr, generation.Close(), changeTree.Close())
+		}
+		replace = reconcileErr != nil
 	}
-	// A generation with one redo log per Tree cannot publish atomically across
-	// Trees, so it is upgraded on sight rather than written to. The COW rebuild
-	// produces a v4 generation with one shared log; the old one is left intact.
-	if reconcileErr != nil || authority.generation.fulltext == nil ||
-		authority.generation.log == nil {
+	if replace {
 		if _, err := authority.ReplaceGeneration(ctx); err != nil {
 			return nil, errors.Join(err, authority.Close())
 		}
@@ -845,16 +863,37 @@ func (authority *Authority) reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := authority.replaceCatalog(plan); err != nil {
+	for _, step := range []func(Plan) error{
+		authority.replaceCatalog,
+		authority.appendVersions,
+		authority.reconcileFulltext,
+		authority.advanceCurrent,
+	} {
+		if err := step(plan); err != nil {
+			return rebuildOnConflict(err)
+		}
+	}
+	return nil
+}
+
+// rebuildOnConflict turns a Tree's "that transition does not follow from what I
+// hold" into the signal to rebuild the generation.
+//
+// A conflict here is not a damaged Tree. It means the generation drifted
+// further from the authoritative store than a step-by-step reconcile can cover
+// — a Row updated twice while this generation was not the Authority, say. The
+// data to rebuild from is all still there.
+func rebuildOnConflict(err error) error {
+	if err == nil || errors.Is(err, errGenerationRebuildRequired) {
 		return err
 	}
-	if err := authority.appendVersions(plan); err != nil {
-		return err
+	if errors.Is(err, currentrowindex.ErrConflict) ||
+		errors.Is(err, rowversionindex.ErrConflict) ||
+		errors.Is(err, catalogindex.ErrConflict) ||
+		errors.Is(err, fulltextindex.ErrConflict) {
+		return fmt.Errorf("%w: %v", errGenerationRebuildRequired, err)
 	}
-	if err := authority.reconcileFulltext(plan); err != nil {
-		return err
-	}
-	return authority.advanceCurrent(plan)
+	return err
 }
 
 func (authority *Authority) replaceCatalog(plan Plan) error {
@@ -937,7 +976,7 @@ func (authority *Authority) reconcileFulltext(plan Plan) error {
 		_, err = authority.generation.fulltext.AdvanceThrough(id, documents, cursor)
 	}
 	if errors.Is(err, fulltextindex.ErrConflict) {
-		return fmt.Errorf("%w: %v", errFulltextRebuildRequired, err)
+		return fmt.Errorf("%w: %v", errGenerationRebuildRequired, err)
 	}
 	return err
 }

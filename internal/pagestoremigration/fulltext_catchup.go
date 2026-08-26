@@ -64,6 +64,12 @@ func (authority *Authority) fulltextRangeLocked() (uint64, bool, error) {
 //
 // The caller must hold the Authority write lock.
 func (authority *Authority) catchUpFulltextLocked(ctx context.Context) error {
+	err := authority.runCatchUpLocked(ctx)
+	authority.fulltextCatchUpErr = err
+	return err
+}
+
+func (authority *Authority) runCatchUpLocked(ctx context.Context) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -258,11 +264,11 @@ func (authority *Authority) currentRowBodies(
 // trigger retries; the worst case is one read paying for the catch-up this
 // round did not manage.
 func (authority *Authority) catchUpFulltextAfterWrite(ctx context.Context) {
-	if err := authority.catchUpFulltextLocked(ctx); err != nil {
+	if err := authority.checkpointPhase(phaseFulltextCatchUp); err != nil {
 		authority.fulltextCatchUpErr = err
 		return
 	}
-	authority.fulltextCatchUpErr = nil
+	_ = authority.catchUpFulltextLocked(ctx)
 }
 
 // FulltextCatchUpError reports the last failed Fulltext catch-up, or nil. A

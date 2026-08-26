@@ -2,6 +2,7 @@ package pagestoremigration
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -103,5 +104,75 @@ func TestFulltextCatchesUpWithTheChangeLog(t *testing.T) {
 	advanced, err := authority.generation.fulltext.Cursor()
 	if err != nil || advanced <= cursor {
 		t.Fatalf("Cursor() after more writes = %d, %v; want it past %d", advanced, err, cursor)
+	}
+}
+
+// TestFulltextCatchUpSurvivesAFailedRound is the regression for the way a
+// derived index can wedge itself.
+//
+// A catch-up round fails; writes carry on. The next round now spans several
+// revisions of the same Row, and projects one document at the final revision.
+// While the index demanded revisions advance by exactly one — the rule that
+// made sense when the writer pushed each one inline — that document was
+// refused, and every later round was refused for the same reason. One transient
+// failure and the index never caught up again.
+func TestFulltextCatchUpSurvivesAFailedRound(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	_, rows, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+
+	inserted, err := rows.Insert(ctx, "work", "notes", map[string]any{
+		"title": "wedge original",
+	}, row.WriteOptions{ExpectedSchemaVersion: table.SchemaVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRowPosting(t, authority, "original", inserted.ID, 1)
+	stalled, err := authority.generation.fulltext.Cursor()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	injected := errors.New("injected catch-up fault")
+	authority.checkpoint = func(phase authorityPhase) error {
+		if phase == phaseFulltextCatchUp {
+			return injected
+		}
+		return nil
+	}
+	revision := inserted.Revision
+	for _, title := range []string{"wedge second", "wedge third"} {
+		updated, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{
+			"title": title,
+		}, row.WriteOptions{
+			ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: revision,
+		})
+		if err != nil {
+			t.Fatalf("update %q: %v", title, err)
+		}
+		revision = updated.Revision
+	}
+	// The writes succeeded even though the derived index could not keep up.
+	// That is the point of the decoupling.
+	if authority.FulltextCatchUpError() == nil {
+		t.Fatal("a failed catch-up left no trace")
+	}
+	if cursor, err := authority.generation.fulltext.Cursor(); err != nil || cursor != stalled {
+		t.Fatalf("Cursor() while stalled = %d, %v; want %d", cursor, err, stalled)
+	}
+
+	authority.checkpoint = nil
+	if err := authority.EnsureFulltextCurrent(ctx); err != nil {
+		t.Fatalf("catch-up after the stall: %v", err)
+	}
+	if err := authority.FulltextCatchUpError(); err != nil {
+		t.Fatalf("catch-up still failing: %v", err)
+	}
+	// Two revisions in one round, and the stale terms are gone.
+	assertRowPosting(t, authority, "third", inserted.ID, 3)
+	assertNoRowPosting(t, authority, "original")
+	assertNoRowPosting(t, authority, "second")
+	if behind, err := authority.FulltextBehind(ctx); err != nil || behind {
+		t.Fatalf("FulltextBehind() after recovery = %v, %v", behind, err)
 	}
 }

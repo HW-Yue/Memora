@@ -114,7 +114,18 @@ func TestV2AuthorityIncrementallyReconcilesRouteAndDeletedTombstone(t *testing.T
 	t.Fatalf("Route tombstone is missing; root=%s", root.ID)
 }
 
-func TestV2AuthorityUsesCOWForMissingRouteRevisionGap(t *testing.T) {
+// TestAuthorityAbsorbsARouteFirstSeenAtALaterRevision.
+//
+// The generation holds no Route documents at all while the Router's leaf is
+// already at revision 2. The Fulltext index used to demand that the first
+// document it ever saw for an object be revision 1, so this looked like
+// corruption and forced a whole-generation COW rebuild.
+//
+// It is not corruption. The index is derived and follows the change log, so
+// meeting an object for the first time several revisions in is ordinary lag —
+// index it where it is. Rebuilding a generation to absorb one late Route is the
+// heavy machinery an ordinary update covers.
+func TestAuthorityAbsorbsARouteFirstSeenAtALaterRevision(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
@@ -143,18 +154,10 @@ func TestV2AuthorityUsesCOWForMissingRouteRevisionGap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if reopened.marker.Epoch != 1 || reopened.marker.Generation == GenerationDirectory {
-		t.Fatalf("Route revision gap did not COW: %+v", reopened.marker)
+	if reopened.marker.Epoch != 0 || reopened.marker.Generation != GenerationDirectory {
+		t.Fatalf("a late Route forced a rebuild: %+v", reopened.marker)
 	}
 	assertCatalogPosting(t, reopened.Generation(), "recovered", fulltext.KindRoute, leaf.ID, 2)
-	old, err := openLiveGeneration(filepath.Join(directory, GenerationDirectory))
-	if err != nil {
-		t.Fatalf("old v2 generation was not preserved: %v", err)
-	}
-	defer old.Close()
-	if postings, err := old.Fulltext().Postings("architecture"); err != nil || len(postings) != 0 {
-		t.Fatalf("old v2 generation changed = %#v, %v", postings, err)
-	}
 }
 
 func createDirectRouteFixture(

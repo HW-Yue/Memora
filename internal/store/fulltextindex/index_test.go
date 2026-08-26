@@ -96,8 +96,14 @@ func TestPersistentIndexReplacementIsAtomicRevisionedAndIdempotent(t *testing.T)
 	if got, err := index.AllPostings(); err != nil || len(got) != 0 {
 		t.Fatalf("postings after delete = %#v, %v", got, err)
 	}
-	if _, err := index.Replace(6, document("row_1", 5, "skipped")); !errors.Is(err, ErrConflict) {
-		t.Fatalf("skipped Replace() error = %v", err)
+	// A forward jump is legitimate: this index follows the change log, so a
+	// lagged round then several writes produce one document at the final
+	// revision. Going backwards is still refused.
+	if _, err := index.Replace(6, document("row_1", 5, "skipped")); err != nil {
+		t.Fatalf("forward jump Replace() error = %v", err)
+	}
+	if _, err := index.Replace(7, document("row_1", 4, "backwards")); !errors.Is(err, ErrConflict) {
+		t.Fatalf("backwards Replace() error = %v, want ErrConflict", err)
 	}
 }
 
@@ -167,7 +173,9 @@ func TestPersistentIndexInvalidBatchLeavesEveryObjectUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	first.Revision, first.Fields = 2, []fulltext.Field{{ID: "col_text", Values: []fulltext.Value{fulltext.TextValue("first new")}}}
-	second.Revision = 3
+	// Re-stating a revision with different content is the invalid case: the
+	// revision claims nothing changed while the content says otherwise.
+	second.Fields = []fulltext.Field{{ID: "col_text", Values: []fulltext.Value{fulltext.TextValue("second rewritten")}}}
 	if _, err := index.ReplaceBatch(2, []fulltext.Document{first, second}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("invalid ReplaceBatch() error = %v", err)
 	}
