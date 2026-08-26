@@ -40,10 +40,16 @@ type PDFAdapterConfig struct {
 	MaxTextBytes         uint64
 }
 
+// DefaultPDFAdapterConfig bounds a parse to what the parser can actually do.
+//
+// The file bound is lower than the other two formats' because the PDF adapter
+// reads the whole file into memory before parsing it (readPDFSource), so the
+// file size is itself resident before any IR node exists. See
+// DefaultEPUBAdapterConfig for the ratio these numbers come from.
 func DefaultPDFAdapterConfig() PDFAdapterConfig {
 	return PDFAdapterConfig{
-		MaxFileBytes: 128 << 20, MaxObjects: 100_000, MaxPages: 10_000,
-		MaxPageTreeDepth: 64, MaxStreamBytes: 64 << 20, MaxDecompressedBytes: 512 << 20,
+		MaxFileBytes: 32 << 20, MaxObjects: 100_000, MaxPages: 10_000,
+		MaxPageTreeDepth: 64, MaxStreamBytes: 32 << 20, MaxDecompressedBytes: 64 << 20,
 		MaxContentTokens: 2_000_000, MaxTextBytes: 64 << 20,
 	}
 }

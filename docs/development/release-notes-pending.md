@@ -40,6 +40,25 @@ Membership 对象与它两端漂移出来的状态，那个对象已经不存在
 消费健康报告的客户端如果按 `kind` 硬编码分支，需要删掉这三个分支；
 按 `kind` 白名单过滤的不受影响。
 
+### 文档解析的字节上界下调
+
+**能力缩减。** 三个解析器的默认字节上界与实测能力对齐：
+
+| 配置 | 原值 | 新值 |
+|---|---|---|
+| `DefaultEPUBAdapterConfig.MaxTotalUncompressedBytes` | 512 MiB | 64 MiB |
+| `DefaultDOCXAdapterConfig.MaxTotalUncompressedBytes` | 512 MiB | 64 MiB |
+| `DefaultPDFAdapterConfig.MaxFileBytes` | 128 MiB | 32 MiB |
+| `DefaultPDFAdapterConfig.MaxDecompressedBytes` | 512 MiB | 64 MiB |
+| `DefaultPDFAdapterConfig.MaxStreamBytes` | 64 MiB | 32 MiB |
+
+原上界**允许**能打爆进程的输入：按峰值堆 ≈ 正文 7 倍推算，
+一个刚好卡在 512 MiB 上界的文档要 3.5 GB 堆。
+一个拦不住它存在来拦的东西的上界，不是上界。
+
+典型文档正文 1–5 MiB，不受影响。上传超过新上界的文档会被拒绝，
+调用方可以自己传更大的 config 覆盖默认值。
+
 ## 关联
 
 - [叶子直挂 RowID](../storage/leaf-rowid-v1.md)

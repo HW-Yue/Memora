@@ -30,10 +30,19 @@ type EPUBAdapterConfig struct {
 	MaxXMLDepth               uint64
 }
 
+// DefaultEPUBAdapterConfig bounds a parse to what the parser can actually do.
+//
+// Peak heap measures at roughly seven times the body it is parsing, so a 64 MiB
+// bound is about 450 MiB of heap — large, but survivable. The bound used to be
+// 512 MiB, which allowed an input needing some 3.5 GB: a limit that admits what
+// it exists to refuse is not a limit. Typical documents are 1–5 MiB of body, so
+// this constrains nothing anyone actually uploads.
+//
+// The ratio is pinned by TestDocumentParsePeakHeapStaysWithinItsBudget.
 func DefaultEPUBAdapterConfig() EPUBAdapterConfig {
 	return EPUBAdapterConfig{
 		MaxEntries: 10_000, MaxEntryUncompressedBytes: 64 << 20,
-		MaxTotalUncompressedBytes: 512 << 20, MaxXMLTokens: 2_000_000, MaxXMLDepth: 128,
+		MaxTotalUncompressedBytes: 64 << 20, MaxXMLTokens: 2_000_000, MaxXMLDepth: 128,
 	}
 }
 

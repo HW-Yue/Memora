@@ -232,10 +232,17 @@ Linux 侧的全套八道门已在容器里实测通过（本仓库的开发容�
 - 存量修法：`defer x.Close()` 一律改成 `defer func() { _ = x.Close() }()`，
   与仓库本来就在用的写法统一；另外真修了四处 `defer tx.Rollback()`。
 
-### S6. 文档解析内存回归门
+### S6. 文档解析内存回归门 ✅
 
-把「峰值堆 ≈ 正文 7 倍」写成回归测试（EPUB/DOCX/PDF 各一），
-并把三个配置上界下调到与实测能力一致。依据风险 4、5。
+- **EPUB／DOCX**：`TestDocumentParsePeakHeapStaysWithinItsBudget` 量的是
+  **解析后仍持有的活堆／正文字节**，实测 2.4–2.7，闸设在 12。
+  刻意换了指标：风险 4 记的 7 倍是**峰值**堆（含解析途中churn），
+  活堆是同一性质里便宜且稳定的那一半，测试能测准；
+- **PDF**：`TestPDFRefusesAnOversizedFileBeforeReadingIt`。PDF 适配器
+  **先把整个文件读进内存**再解析，所以对这个格式文件上界就是内存上界，
+  而它只有在读之前检查才算上界。比例量测在两页的 fixture 上说明不了什么；
+- 三个配置上界已下调（512 MiB → 64 MiB 等），记入
+  [待发布的对外可见变化](../development/release-notes-pending.md)。
 
 ### S7. 读路径与 Session 边界 ✅
 

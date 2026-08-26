@@ -33,10 +33,12 @@ type DOCXAdapterConfig struct {
 	MaxXMLDepth               uint64
 }
 
+// DefaultDOCXAdapterConfig bounds a parse to what the parser can actually do.
+// See DefaultEPUBAdapterConfig for why 64 MiB and not 512.
 func DefaultDOCXAdapterConfig() DOCXAdapterConfig {
 	return DOCXAdapterConfig{
 		MaxEntries: 10_000, MaxEntryUncompressedBytes: 64 << 20,
-		MaxTotalUncompressedBytes: 512 << 20, MaxXMLTokens: 2_000_000, MaxXMLDepth: 128,
+		MaxTotalUncompressedBytes: 64 << 20, MaxXMLTokens: 2_000_000, MaxXMLDepth: 128,
 	}
 }
 
