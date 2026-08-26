@@ -53,12 +53,12 @@ func (service *Service) ApplyRouteMutationPlan(
 	if err != nil {
 		return routemutationplan.Receipt{}, err
 	}
-	routes, created, memberships, updated, deleted, err := service.materializeRoutePlan(plan, current)
+	routes, created, updated, deleted, err := service.materializeRoutePlan(plan, current)
 	if err != nil {
 		return routemutationplan.Receipt{}, err
 	}
 	sequence, err := service.commit.CommitRoutePlan(RoutePlanCommit{
-		Routes: routes, Created: created, Memberships: memberships, CommittedAt: time.Now().UTC(),
+		Routes: routes, Created: created, CommittedAt: time.Now().UTC(),
 		Metadata: change.Metadata{Actor: plan.Actor, Source: plan.SourceEventID, Reason: plan.Reason},
 	})
 	if err != nil {
@@ -68,7 +68,7 @@ func (service *Service) ApplyRouteMutationPlan(
 		Version: routemutationplan.ReceiptVersion, PlanID: plan.PlanID, PlanHash: plan.Hash,
 		Operation: plan.Operation, Status: "committed", ChangeSequence: sequence,
 		CreatedNodes: len(created), UpdatedNodes: updated, DeletedNodes: deleted,
-		MembershipRevisions: len(memberships), Verified: true,
+		Verified: true,
 	}, nil
 }
 
@@ -144,7 +144,7 @@ func (service *Service) routeLocators(leafID string) ([]router.Locator, error) {
 
 func (service *Service) materializeRoutePlan(
 	plan routemutationplan.Plan, current map[string]router.Node,
-) ([]router.Node, map[string]bool, []router.Membership, int, int, error) {
+) ([]router.Node, map[string]bool, int, int, error) {
 	desired := make(map[string]router.Node, len(current)+len(plan.Creates))
 	for id, node := range current {
 		desired[id] = node
@@ -152,10 +152,10 @@ func (service *Service) materializeRoutePlan(
 	created := map[string]bool{}
 	for _, value := range plan.Creates {
 		if _, exists := desired[value.RouteID]; exists {
-			return nil, nil, nil, 0, 0, routePlanError(result.CodeRevisionConflict, "planned Route %q already exists", value.RouteID)
+			return nil, nil, 0, 0, routePlanError(result.CodeRevisionConflict, "planned Route %q already exists", value.RouteID)
 		}
 		if _, err := service.routes.Get(value.RouteID); err == nil || !errors.Is(err, nativestore.ErrNotFound) {
-			return nil, nil, nil, 0, 0, routePlanError(result.CodeRevisionConflict, "planned Route %q identity is unavailable", value.RouteID)
+			return nil, nil, 0, 0, routePlanError(result.CodeRevisionConflict, "planned Route %q identity is unavailable", value.RouteID)
 		}
 		desired[value.RouteID] = router.Node{
 			Version: router.Version, ID: value.RouteID, DatabaseID: plan.Scope.DatabaseID, TableID: plan.Scope.TableID,
@@ -171,10 +171,10 @@ func (service *Service) materializeRoutePlan(
 	for _, value := range plan.Moves {
 		node, ok := desired[value.RouteID]
 		if !ok || node.ParentID != value.FromParentID {
-			return nil, nil, nil, 0, 0, routePlanError(result.CodeRevisionConflict, "Route %q parent changed after planning", value.RouteID)
+			return nil, nil, 0, 0, routePlanError(result.CodeRevisionConflict, "Route %q parent changed after planning", value.RouteID)
 		}
 		if parent, ok := desired[value.ToParentID]; !ok || parent.Deleted || parent.Kind == router.KindLeaf {
-			return nil, nil, nil, 0, 0, routePlanError(result.CodeConstraint, "Route %q target parent is invalid", value.RouteID)
+			return nil, nil, 0, 0, routePlanError(result.CodeConstraint, "Route %q target parent is invalid", value.RouteID)
 		}
 		node.ParentID = value.ToParentID
 		desired[value.RouteID] = node
@@ -182,20 +182,20 @@ func (service *Service) materializeRoutePlan(
 	for _, value := range plan.Deletes {
 		node, ok := desired[value.RouteID]
 		if !ok || node.Revision != value.Revision {
-			return nil, nil, nil, 0, 0, routePlanError(result.CodeRevisionConflict, "Route %q delete guard changed", value.RouteID)
+			return nil, nil, 0, 0, routePlanError(result.CodeRevisionConflict, "Route %q delete guard changed", value.RouteID)
 		}
 		node.Deleted = true
 		desired[value.RouteID] = node
 	}
 	if err := validateDesiredTree(plan.Scope, desired); err != nil {
-		return nil, nil, nil, 0, 0, err
+		return nil, nil, 0, 0, err
 	}
 	if err := assignDesiredPaths(plan.Scope, desired); err != nil {
-		return nil, nil, nil, 0, 0, err
+		return nil, nil, 0, 0, err
 	}
-	memberships, err := service.materializeMembershipMoves(plan, desired)
+	err := service.applyMembershipMoves(plan, desired)
 	if err != nil {
-		return nil, nil, nil, 0, 0, err
+		return nil, nil, 0, 0, err
 	}
 	changes, updated, deleted := make([]router.Node, 0), 0, 0
 	for id, node := range desired {
@@ -212,7 +212,7 @@ func (service *Service) materializeRoutePlan(
 			continue
 		}
 		if !guarded[id] {
-			return nil, nil, nil, 0, 0, routePlanError(result.CodeValidation, "Route %q changed without a node guard", id)
+			return nil, nil, 0, 0, routePlanError(result.CodeValidation, "Route %q changed without a node guard", id)
 		}
 		node.Revision = before.Revision + 1
 		changes = append(changes, node)
@@ -223,66 +223,47 @@ func (service *Service) materializeRoutePlan(
 		}
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].ID < changes[j].ID })
-	sort.Slice(memberships, func(i, j int) bool {
-		if memberships[i].LeafID == memberships[j].LeafID {
-			return memberships[i].RowID < memberships[j].RowID
-		}
-		return memberships[i].LeafID < memberships[j].LeafID
-	})
 	if len(created) != plan.Impact.CreatedNodes || deleted != plan.Impact.DeletedNodes {
-		return nil, nil, nil, 0, 0, routePlanError(result.CodeInternal, "Route plan action coverage is incomplete")
+		return nil, nil, 0, 0, routePlanError(result.CodeInternal, "Route plan action coverage is incomplete")
 	}
-	return changes, created, memberships, updated, deleted, nil
+	return changes, created, updated, deleted, nil
 }
 
-func (service *Service) materializeMembershipMoves(
+// applyMembershipMoves moves Rows between leaves by editing the leaves.
+//
+// The plan still calls these "membership moves" because that is what the wire
+// format names them, but there is no Membership object left to move: one leaf
+// releases the Row it held and another takes it, both as node changes carried
+// by this plan's own commit.
+func (service *Service) applyMembershipMoves(
 	plan routemutationplan.Plan, desired map[string]router.Node,
-) ([]router.Membership, error) {
-	changes := make([]router.Membership, 0, plan.Impact.MovedMemberships+len(plan.MembershipMoves))
+) error {
 	for _, move := range plan.MembershipMoves {
-		all, err := service.routes.MembershipsIncludingDeleted(move.RowID)
-		if err != nil {
-			return nil, err
-		}
-		byLeaf := map[string]router.Membership{}
-		for _, value := range all {
-			byLeaf[value.LeafID] = value
-		}
 		for _, sourceID := range move.FromLeafIDs {
-			membership, ok := byLeaf[sourceID]
-			if !ok || membership.Deleted || membership.Revision != move.Revision {
-				return nil, routePlanError(result.CodeRevisionConflict, "Row %q membership changed after planning", move.RowID)
+			source, ok := desired[sourceID]
+			// The guard is now the leaf itself: it must still hold the Row the
+			// plan expects to move. A leaf that changed hands since planning
+			// fails here rather than silently moving someone else's Row.
+			if !ok || source.RowID != move.RowID {
+				return routePlanError(result.CodeRevisionConflict,
+					"Row %q is no longer in Route leaf %q", move.RowID, sourceID)
 			}
-			membership.MembershipRevision++
-			membership.Deleted = true
-			changes = append(changes, membership)
-			// The leaf records the Row it holds, so emptying a source leaf is a
-			// change to the leaf itself, not only to a Membership beside it.
-			if source, ok := desired[sourceID]; ok && source.RowID == move.RowID {
-				source.RowID = ""
-				desired[sourceID] = source
-			}
+			source.RowID = ""
+			desired[sourceID] = source
 		}
 		target, ok := desired[move.ToLeafID]
-		if !ok || target.Deleted || target.Kind != router.KindLeaf || target.DatabaseID != plan.Scope.DatabaseID || target.TableID != plan.Scope.TableID {
-			return nil, routePlanError(result.CodeConstraint, "Row %q target leaf is invalid", move.RowID)
+		if !ok || target.Deleted || target.Kind != router.KindLeaf ||
+			target.DatabaseID != plan.Scope.DatabaseID || target.TableID != plan.Scope.TableID {
+			return routePlanError(result.CodeConstraint, "Row %q target leaf is invalid", move.RowID)
 		}
-		membership, exists := byLeaf[move.ToLeafID]
-		if exists && !membership.Deleted {
-			return nil, routePlanError(result.CodeConstraint, "Row %q is already in target leaf", move.RowID)
+		if target.RowID != "" && target.RowID != move.RowID {
+			return routePlanError(result.CodeConstraint,
+				"Route leaf %q already locates Row %q", move.ToLeafID, target.RowID)
 		}
-		membership = router.Membership{LeafID: move.ToLeafID, MembershipRevision: 1,
-			Locator: router.Locator{DatabaseID: plan.Scope.DatabaseID, TableID: plan.Scope.TableID, RowID: move.RowID, Revision: move.Revision}}
-		if exists {
-			membership.MembershipRevision = byLeaf[move.ToLeafID].MembershipRevision + 1
-		}
-		changes = append(changes, membership)
-		// And the target leaf records that it now holds the Row. Both sides are
-		// written by the same commit as the rest of the plan.
 		target.RowID = move.RowID
 		desired[move.ToLeafID] = target
 	}
-	return changes, nil
+	return nil
 }
 
 func validateDesiredTree(scope routemutationplan.Scope, nodes map[string]router.Node) error {

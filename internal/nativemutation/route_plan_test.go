@@ -17,7 +17,7 @@ import (
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
-func TestApprovedRoutePlanCommitsRoutesMembershipsAndChangeAtomically(t *testing.T) {
+func TestApprovedRoutePlanCommitsRoutesMountsAndChangeAtomically(t *testing.T) {
 	path, file, rows, routes, _, _, _ := mutationFixture(t)
 	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{})
 	base := nativerow.NewService(rows, dictionary, nativerow.ServiceOptions{})
@@ -26,11 +26,7 @@ func TestApprovedRoutePlanCommitsRoutesMembershipsAndChangeAtomically(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := routes.Attach(alias.ID, router.Locator{
-		DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_source", Revision: 1,
-	}, 1); err != nil {
-		t.Fatal(err)
-	}
+	mountLeaf(t, file, routes, alias.ID, "row_source")
 	proposal := routemutationplan.Proposal{
 		Version: routemutationplan.ProposalVersion, ID: "proposal_merge", Operation: routemutationplan.OperationMerge,
 		Actor: "agent:test", SourceEventID: "event:route-review", Reason: "merge equivalent Row aliases",
@@ -50,22 +46,21 @@ func TestApprovedRoutePlanCommitsRoutesMembershipsAndChangeAtomically(t *testing
 	ctx := approvedRoutePlanContext(plan)
 	receipt, err := service.ApplyRouteMutationPlan(ctx, "work", "notes", plan)
 	if err != nil || !receipt.Verified || receipt.Status != "committed" || receipt.ChangeSequence == 0 ||
-		receipt.CreatedNodes != 1 || receipt.DeletedNodes != 2 || receipt.MembershipRevisions != 3 {
+		receipt.CreatedNodes != 1 || receipt.DeletedNodes != 2 {
 		t.Fatalf("ApplyRouteMutationPlan() = %#v, %v", receipt, err)
 	}
 	if _, err := routes.Get("route_leaf"); err != nil {
 		t.Fatal(err)
 	}
 	for _, create := range plan.Creates {
-		locators, _, err := routes.Open(create.RouteID, 10)
-		if err != nil || len(locators) != 1 {
-			t.Fatalf("target %s locators = %#v, %v", create.RouteID, locators, err)
+		locators := openLeaf(t, routes, rows, create.RouteID)
+		if len(locators) != 1 {
+			t.Fatalf("target %s locators = %#v", create.RouteID, locators)
 		}
 	}
 	changes, more, err := nativechange.New(file).ListAfter(0, 10)
 	if err != nil || more || len(changes) != 1 ||
-		countEntries(changes[0], change.ObjectRouteNode) != 3 ||
-		countEntries(changes[0], change.ObjectRouteMembership) != 3 {
+		countEntries(changes[0], change.ObjectRouteNode) != 3 {
 		t.Fatalf("Route plan Change Log = %#v, %v, %v", changes, more, err)
 	}
 	if err := file.Close(); err != nil {
@@ -76,11 +71,11 @@ func TestApprovedRoutePlanCommitsRoutesMembershipsAndChangeAtomically(t *testing
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = reopened.Close() })
-	reopenedRoutes := nativerouter.New(reopened)
+	reopenedRoutes, reopenedRows := nativerouter.New(reopened), nativerow.New(reopened)
 	for _, create := range plan.Creates {
-		locators, _, err := reopenedRoutes.Open(create.RouteID, 10)
-		if err != nil || len(locators) != 1 {
-			t.Fatalf("reopened target %s locators = %#v, %v", create.RouteID, locators, err)
+		locators := openLeaf(t, reopenedRoutes, reopenedRows, create.RouteID)
+		if len(locators) != 1 {
+			t.Fatalf("reopened target %s locators = %#v", create.RouteID, locators)
 		}
 	}
 }

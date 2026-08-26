@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
@@ -131,65 +130,6 @@ func (repository *Repository) prepareChild(
 	return value, nil
 }
 
-func (repository *Repository) Attach(leafID string, locator router.Locator, membershipRevision uint64) error {
-	value := router.Membership{LeafID: leafID, MembershipRevision: membershipRevision, Locator: locator}
-	if err := repository.validateMembership(value); err != nil {
-		return err
-	}
-	if err := repository.ValidateMembershipChanges([]router.Membership{value}); err != nil {
-		return err
-	}
-	payload, err := encodeMembership(value)
-	if err != nil {
-		return err
-	}
-	if err := repository.file.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload); err != nil {
-		return err
-	}
-	if err := repository.file.Put(nativestore.ObjectKindRouteRowMembership, schemaVersion, rowMembershipRecordID(value), payload); err != nil {
-		return err
-	}
-	// The leaf records its Row too. Attach predates that field and is on its way
-	// out, but while it still exists it has to keep both sources equal: a mount
-	// only one of them knows about is invisible to every read that has switched
-	// over. See docs/storage/leaf-rowid-v1.md.
-	leaf, err := repository.Get(leafID)
-	if err != nil {
-		return err
-	}
-	if leaf.RowID == locator.RowID {
-		return nil
-	}
-	leaf.RowID = locator.RowID
-	leaf.Revision++
-	transaction, err := repository.file.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = transaction.Rollback() }()
-	if err := repository.StageNode(transaction, leaf); err != nil {
-		return err
-	}
-	return transaction.Commit()
-}
-
-func (repository *Repository) StageMembership(transaction *nativestore.Transaction, value router.Membership) error {
-	if transaction == nil {
-		return fmt.Errorf("%w: transaction is required", ErrInvalid)
-	}
-	if err := repository.validateMembership(value); err != nil {
-		return err
-	}
-	payload, err := encodeMembership(value)
-	if err != nil {
-		return err
-	}
-	if err := transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload); err != nil {
-		return err
-	}
-	return transaction.Put(nativestore.ObjectKindRouteRowMembership, schemaVersion, rowMembershipRecordID(value), payload)
-}
-
 func (repository *Repository) StageNode(transaction *nativestore.Transaction, value router.Node) error {
 	if transaction == nil {
 		return fmt.Errorf("%w: transaction is required", ErrInvalid)
@@ -260,51 +200,6 @@ func (repository *Repository) StagePlannedRevision(transaction *nativestore.Tran
 		return err
 	}
 	return transaction.Put(nativestore.ObjectKindRoute, schemaVersion, nodeRecordID(value.ID, value.Revision), payload)
-}
-
-// StagePlannedMembership validates the immutable locator shape while allowing
-// its target leaf to be a Route created in the same transaction.
-func (repository *Repository) StagePlannedMembership(transaction *nativestore.Transaction, value router.Membership) error {
-	if transaction == nil || value.LeafID == "" || value.DatabaseID == "" || value.TableID == "" ||
-		value.RowID == "" || value.Revision == 0 || value.MembershipRevision == 0 {
-		return fmt.Errorf("%w: invalid planned membership", ErrInvalid)
-	}
-	payload, err := encodeMembership(value)
-	if err != nil {
-		return err
-	}
-	if err := transaction.Put(nativestore.ObjectKindRouteMembership, schemaVersion, membershipRecordID(value), payload); err != nil {
-		return err
-	}
-	return transaction.Put(nativestore.ObjectKindRouteRowMembership, schemaVersion, rowMembershipRecordID(value), payload)
-}
-
-func (repository *Repository) validateMembership(value router.Membership) error {
-	leafID, locator, membershipRevision := value.LeafID, value.Locator, value.MembershipRevision
-	leaf, err := repository.Get(leafID)
-	if err != nil {
-		return err
-	}
-	if leaf.Kind != router.KindLeaf || locator.DatabaseID != leaf.DatabaseID || locator.TableID != leaf.TableID || locator.RowID == "" || locator.Revision == 0 || membershipRevision == 0 {
-		return fmt.Errorf("%w: invalid leaf membership", ErrInvalid)
-	}
-	return nil
-}
-
-func membershipRecordID(value router.Membership) string {
-	id := value.LeafID + "@" + value.RowID
-	if value.MembershipRevision > 1 {
-		id += fmt.Sprintf("@%020d", value.MembershipRevision)
-	}
-	return id
-}
-
-func rowMembershipRecordID(value router.Membership) string {
-	id := value.RowID + "@" + value.LeafID
-	if value.MembershipRevision > 1 {
-		id += fmt.Sprintf("@%020d", value.MembershipRevision)
-	}
-	return id
 }
 
 func (repository *Repository) Get(id string) (router.Node, error) {
@@ -400,28 +295,25 @@ func (repository *Repository) ShowUnderPage(parentID, cursor string, limit int) 
 	return router.PaginateNodes("parent:"+parentID, cursor, limit, children)
 }
 
-func (repository *Repository) Open(leafID string, limit int) ([]router.Locator, bool, error) {
-	locators, page, err := repository.OpenPage(leafID, "", limit)
-	return locators, page.NextCursor != "", err
-}
-
-func (repository *Repository) OpenPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
-	return repository.openPage(leafID, cursor, limit, true, false)
-}
-
-// InspectLeafPage is a maintenance-only read used to diagnose and monotonically
-// repair legacy multi-Row leaves, and to check whether a leaf still holds Rows
-// before deleting it. Normal Router reads must use OpenPage.
-func (repository *Repository) InspectLeafPage(leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
-	return repository.openPage(leafID, cursor, limit, false, true)
-}
-
 // LeafForOpen validates a leaf for an OPEN read and returns it.
 //
 // The validation stays here so OPEN keeps reporting the same refusals it always
 // has, while the locator itself is assembled by the caller: a locator carries
 // the Row's revision, which lives with the Row, not with the leaf. Putting the
 // revision on the leaf would make every Row update rewrite its leaf.
+// LeafForInspect is the maintenance-only variant of LeafForOpen: it accepts a
+// deleted leaf, so a caller can check what a tombstoned leaf still holds.
+func (repository *Repository) LeafForInspect(leafID string, limit int) (router.Node, error) {
+	leaf, err := repository.Get(leafID)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if leaf.Kind != router.KindLeaf || limit < 1 || limit > 1000 {
+		return router.Node{}, fmt.Errorf("%w: OPEN requires a leaf and valid limit", ErrInvalid)
+	}
+	return leaf, nil
+}
+
 func (repository *Repository) LeafForOpen(leafID string, limit int) (router.Node, error) {
 	leaf, err := repository.Get(leafID)
 	if err != nil {
@@ -434,156 +326,6 @@ func (repository *Repository) LeafForOpen(leafID string, limit int) (router.Node
 		return router.Node{}, fmt.Errorf("%w: Route leaf is deleted", ErrInvalid)
 	}
 	return leaf, nil
-}
-
-func (repository *Repository) openPage(
-	leafID, cursor string,
-	limit int,
-	enforceSingleRow, includeDeletedLeaf bool,
-) ([]router.Locator, router.ReadPage, error) {
-	leaf, err := repository.Get(leafID)
-	if err != nil {
-		return nil, router.ReadPage{}, err
-	}
-	if leaf.Kind != router.KindLeaf || limit < 1 || limit > 1000 {
-		return nil, router.ReadPage{}, fmt.Errorf("%w: OPEN requires a leaf and valid limit", ErrInvalid)
-	}
-	if leaf.Deleted && !includeDeletedLeaf {
-		return nil, router.ReadPage{}, fmt.Errorf("%w: Route leaf is deleted", ErrInvalid)
-	}
-	memberships, err := repository.memberships()
-	if err != nil {
-		return nil, router.ReadPage{}, err
-	}
-	locators := make([]router.Locator, 0)
-	for _, membership := range memberships {
-		if membership.LeafID == leafID {
-			locators = append(locators, membership.Locator)
-		}
-	}
-	if enforceSingleRow && len(locators) > 1 {
-		return nil, router.ReadPage{}, &router.Error{
-			Code:    result.CodeConstraint,
-			Message: "Router leaf locates multiple Rows and requires semantic reshape",
-		}
-	}
-	sort.Slice(locators, func(left, right int) bool { return locators[left].RowID < locators[right].RowID })
-	return router.PaginateLocators("leaf:"+leafID, cursor, limit, locators)
-}
-
-// ValidateMembershipChanges checks the touched leaves in the final live state.
-// A Row may remain in multiple leaves, but a healthy leaf locates at most one
-// live Row. A legacy invalid leaf may only decrease its occupant count, which
-// permits bounded repair without allowing new ambiguity. Callers must invoke it
-// before staging an atomic write set.
-func (repository *Repository) ValidateMembershipChanges(changes []router.Membership) error {
-	current, err := repository.latestMemberships(false)
-	if err != nil {
-		return err
-	}
-	latestChanges := make(map[string]router.Membership, len(changes))
-	touchedLeaves := make(map[string]bool, len(changes))
-	for _, membership := range changes {
-		key := membershipKey(membership)
-		touchedLeaves[membership.LeafID] = true
-		if existing, ok := latestChanges[key]; !ok || membership.MembershipRevision > existing.MembershipRevision {
-			latestChanges[key] = membership
-		}
-	}
-	currentByLeaf := make(map[string]map[string]router.Membership, len(touchedLeaves))
-	for leafID := range touchedLeaves {
-		currentByLeaf[leafID] = map[string]router.Membership{}
-	}
-	for _, membership := range current {
-		if touchedLeaves[membership.LeafID] {
-			currentByLeaf[membership.LeafID][membership.RowID] = membership
-		}
-	}
-	finalByLeaf := make(map[string]map[string]router.Membership, len(currentByLeaf))
-	for leafID, occupants := range currentByLeaf {
-		finalByLeaf[leafID] = make(map[string]router.Membership, len(occupants))
-		for rowID, membership := range occupants {
-			finalByLeaf[leafID][rowID] = membership
-		}
-	}
-	for _, membership := range latestChanges {
-		if membership.Deleted {
-			delete(finalByLeaf[membership.LeafID], membership.RowID)
-		} else {
-			finalByLeaf[membership.LeafID][membership.RowID] = membership
-		}
-	}
-	for leafID, occupants := range finalByLeaf {
-		currentCount, finalCount := len(currentByLeaf[leafID]), len(occupants)
-		if finalCount > 1 && !(currentCount > 1 && finalCount < currentCount) {
-			return &router.Error{
-				Code:    result.CodeConstraint,
-				Message: "Router leaf already locates another Row; create a distinct semantic leaf",
-			}
-		}
-	}
-	return nil
-}
-
-func membershipKey(value router.Membership) string {
-	return value.LeafID + "\x00" + value.RowID
-}
-
-func (repository *Repository) Memberships(rowID string) ([]router.Membership, error) {
-	return repository.membershipsForRow(rowID, false)
-}
-
-func (repository *Repository) MembershipsIncludingDeleted(rowID string) ([]router.Membership, error) {
-	return repository.membershipsForRow(rowID, true)
-}
-
-func (repository *Repository) membershipsForRow(rowID string, includeDeleted bool) ([]router.Membership, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindRouteRowMembership)
-	if err != nil {
-		return nil, err
-	}
-	prefix := rowID + "@"
-	latest := make(map[string]router.Membership)
-	for _, id := range ids {
-		if !strings.HasPrefix(id, prefix) {
-			continue
-		}
-		payload, err := repository.file.Get(nativestore.ObjectKindRouteRowMembership, id)
-		if err != nil {
-			return nil, err
-		}
-		value, err := decodeMembership(payload)
-		if err != nil {
-			return nil, err
-		}
-		key := value.LeafID + "\x00" + value.RowID
-		current, ok := latest[key]
-		if !ok || value.MembershipRevision > current.MembershipRevision {
-			latest[key] = value
-		}
-	}
-	archivedLeaves := map[string]bool{}
-	if !includeDeleted {
-		nodes, err := repository.nodes()
-		if err != nil {
-			return nil, err
-		}
-		for _, node := range nodes {
-			if node.Deleted {
-				archivedLeaves[node.ID] = true
-			}
-		}
-	}
-	result := make([]router.Membership, 0, len(latest))
-	for _, value := range latest {
-		// A membership record survives its leaf untouched; it is the leaf's
-		// state, not the membership's, that decides whether it is visible.
-		if includeDeleted || (!value.Deleted && !archivedLeaves[value.LeafID]) {
-			result = append(result, value)
-		}
-	}
-	sort.Slice(result, func(left, right int) bool { return result[left].LeafID < result[right].LeafID })
-	return result, nil
 }
 
 func (repository *Repository) putNode(value router.Node) error {
@@ -676,40 +418,6 @@ func (repository *Repository) Nodes() ([]router.Node, error) {
 	return live, nil
 }
 
-func (repository *Repository) memberships() ([]router.Membership, error) {
-	return repository.latestMemberships(false)
-}
-
-func (repository *Repository) latestMemberships(includeDeleted bool) ([]router.Membership, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindRouteMembership)
-	if err != nil {
-		return nil, err
-	}
-	latest := make(map[string]router.Membership)
-	for _, id := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindRouteMembership, id)
-		if err != nil {
-			return nil, err
-		}
-		value, err := decodeMembership(payload)
-		if err != nil {
-			return nil, err
-		}
-		key := value.LeafID + "\x00" + value.RowID
-		current, ok := latest[key]
-		if !ok || value.MembershipRevision > current.MembershipRevision {
-			latest[key] = value
-		}
-	}
-	result := make([]router.Membership, 0, len(latest))
-	for _, value := range latest {
-		if includeDeleted || !value.Deleted {
-			result = append(result, value)
-		}
-	}
-	return result, nil
-}
-
 func encodeNode(value router.Node) ([]byte, error) {
 	texts := []string{value.ID, value.DatabaseID, value.TableID, value.ParentID, value.Name, value.Path, string(value.Kind), value.Purpose}
 	encoded, err := encodeTexts(texts)
@@ -789,42 +497,6 @@ func validateSynopsis(value string) error {
 		return fmt.Errorf("%w: Route synopsis exceeds 1000 characters", ErrInvalid)
 	}
 	return nil
-}
-
-func encodeMembership(value router.Membership) ([]byte, error) {
-	encoded, err := encodeTexts([]string{value.LeafID, value.DatabaseID, value.TableID, value.RowID})
-	if err != nil {
-		return nil, err
-	}
-	encoded = binary.LittleEndian.AppendUint64(encoded, value.Revision)
-	encoded = binary.LittleEndian.AppendUint64(encoded, value.MembershipRevision)
-	if value.Deleted {
-		encoded = append(encoded, 1)
-	} else {
-		encoded = append(encoded, 0)
-	}
-	return encoded, nil
-}
-
-func decodeMembership(payload []byte) (router.Membership, error) {
-	input := decoder{bytes: payload}
-	texts, err := input.texts(4)
-	if err != nil {
-		return router.Membership{}, err
-	}
-	rowRevision, err := input.u64()
-	if err != nil {
-		return router.Membership{}, err
-	}
-	membershipRevision, err := input.u64()
-	if err != nil {
-		return router.Membership{}, err
-	}
-	deleted, err := input.byte()
-	if err != nil || deleted > 1 || input.offset != len(payload) || rowRevision == 0 || membershipRevision == 0 {
-		return router.Membership{}, ErrCorrupt
-	}
-	return router.Membership{LeafID: texts[0], MembershipRevision: membershipRevision, Deleted: deleted == 1, Locator: router.Locator{DatabaseID: texts[1], TableID: texts[2], RowID: texts[3], Revision: rowRevision}}, nil
 }
 
 func encodeTexts(values []string) ([]byte, error) {

@@ -1386,8 +1386,9 @@ func (service *Service) ListRouterChildrenPage(ctx context.Context, parentID, cu
 	defer release()
 	return nativerouter.New(service.repository.file).ShowUnderPage(parentID, cursor, limit)
 }
-func (service *Service) ListRouterLeaf(_ context.Context, leafID string, limit int) ([]router.Locator, bool, error) {
-	return nativerouter.New(service.repository.file).Open(leafID, limit)
+func (service *Service) ListRouterLeaf(ctx context.Context, leafID string, limit int) ([]router.Locator, bool, error) {
+	locators, page, err := service.ListRouterLeafPage(ctx, leafID, "", limit)
+	return locators, page.NextCursor != "", err
 }
 func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
 	release, err := service.beginRouteRead(ctx)
@@ -1395,15 +1396,37 @@ func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor s
 		return nil, router.ReadPage{}, err
 	}
 	defer release()
-	// The leaf names the Row it holds, so this is a field read instead of the
-	// scan over every Membership object it used to be. A leaf holds at most one
-	// Row by construction now — the field cannot name two — so the old
-	// "multiple Rows in one leaf" refusal has nothing left to detect.
 	routes := nativerouter.New(service.repository.file)
 	leaf, err := routes.LeafForOpen(leafID, limit)
 	if err != nil {
 		return nil, router.ReadPage{}, err
 	}
+	return service.leafLocators(leaf, cursor, limit)
+}
+
+func (service *Service) InspectRouterLeafPage(ctx context.Context, leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
+	release, err := service.beginRouteRead(ctx)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	defer release()
+	routes := nativerouter.New(service.repository.file)
+	leaf, err := routes.LeafForInspect(leafID, limit)
+	if err != nil {
+		return nil, router.ReadPage{}, err
+	}
+	return service.leafLocators(leaf, cursor, limit)
+}
+
+// leafLocators resolves what a leaf locates.
+//
+// The leaf names the Row it holds, so this is a field read instead of the scan
+// over every Membership object it used to be. A leaf holds at most one Row by
+// construction now — the field cannot name two — so the old "multiple Rows in
+// one leaf" refusal has nothing left to detect.
+func (service *Service) leafLocators(
+	leaf router.Node, cursor string, limit int,
+) ([]router.Locator, router.ReadPage, error) {
 	locators := make([]router.Locator, 0, 1)
 	if leaf.RowID != "" {
 		value, readErr := service.repository.Read(leaf.RowID)
@@ -1420,35 +1443,7 @@ func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor s
 			})
 		}
 	}
-	return router.PaginateLocators("leaf:"+leafID, cursor, limit, locators)
-}
-
-func (service *Service) MembershipsForRow(ctx context.Context, databaseID, tableID, rowID string) ([]router.Membership, error) {
-	release, err := service.beginRouteRead(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer release()
-	memberships, err := nativerouter.New(service.repository.file).Memberships(rowID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]router.Membership, 0, len(memberships))
-	for _, membership := range memberships {
-		if membership.DatabaseID == databaseID && membership.TableID == tableID {
-			result = append(result, membership)
-		}
-	}
-	return result, nil
-}
-
-func (service *Service) InspectRouterLeafPage(ctx context.Context, leafID, cursor string, limit int) ([]router.Locator, router.ReadPage, error) {
-	release, err := service.beginRouteRead(ctx)
-	if err != nil {
-		return nil, router.ReadPage{}, err
-	}
-	defer release()
-	return nativerouter.New(service.repository.file).InspectLeafPage(leafID, cursor, limit)
+	return router.PaginateLocators("leaf:"+leaf.ID, cursor, limit, locators)
 }
 
 func findRoutePath(routes *nativerouter.Repository, parentID, path string) (router.Node, bool) {

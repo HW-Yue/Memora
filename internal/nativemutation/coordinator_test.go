@@ -22,8 +22,8 @@ import (
 func TestCrossObjectMutationPublishesAtomicallyAfterReopen(t *testing.T) {
 	t.Parallel()
 
-	path, file, rows, routes, current, edge, membership := mutationFixture(t)
-	plan := revisedPlan(current, edge, membership)
+	path, file, rows, routes, current, edge, leafID := mutationFixture(t)
+	plan := revisedPlan(current, edge)
 	if err := New(file, rows, routes).Commit(plan); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -52,19 +52,22 @@ func TestCrossObjectMutationPublishesAtomicallyAfterReopen(t *testing.T) {
 	if err != nil || deleted.Revision != 2 || deleted.State != relation.StateDeleted {
 		t.Fatalf("deleted Relation = %#v, %v", deleted, err)
 	}
-	locators, truncated, err := routes.Open(membership.LeafID, 10)
-	if err != nil || truncated || len(locators) != 1 || locators[0].Revision != 2 {
-		t.Fatalf("Open() = %#v, %v, %v", locators, truncated, err)
+	locators := openLeaf(t, routes, rows, leafID)
+	if len(locators) != 1 || locators[0].Revision != 2 {
+		t.Fatalf("leaf locators = %#v", locators)
 	}
-	memberships, err := routes.Memberships(current.ID)
-	if err != nil || len(memberships) != 1 || memberships[0].MembershipRevision != 2 {
-		t.Fatalf("Memberships() = %#v, %v", memberships, err)
+	// Both ends of the mount survive the reopen, and they agree.
+	leaf, err := routes.Get(leafID)
+	if err != nil || leaf.RowID != current.ID {
+		t.Fatalf("mounted leaf = %#v, %v", leaf, err)
+	}
+	if len(latest.RouteLeafIDs) != 1 || latest.RouteLeafIDs[0] != leafID {
+		t.Fatalf("Row leaf list = %#v", latest.RouteLeafIDs)
 	}
 	changes, more, err := nativechange.New(reopened).ListAfter(0, 10)
-	if err != nil || more || len(changes) != 1 || len(changes[0].Entries) != 3 ||
+	if err != nil || more || len(changes) != 1 || len(changes[0].Entries) != 2 ||
 		countEntries(changes[0], change.ObjectRow) != 1 ||
-		countEntries(changes[0], change.ObjectRelation) != 1 ||
-		countEntries(changes[0], change.ObjectRouteMembership) != 1 {
+		countEntries(changes[0], change.ObjectRelation) != 1 {
 		t.Fatalf("cross-object change envelope = %+v, %v, %v", changes, more, err)
 	}
 }
@@ -72,10 +75,17 @@ func TestCrossObjectMutationPublishesAtomicallyAfterReopen(t *testing.T) {
 func TestCrossObjectMutationFailureLeavesNoPartialObjects(t *testing.T) {
 	t.Parallel()
 
-	_, file, rows, routes, current, edge, membership := mutationFixture(t)
+	_, file, rows, routes, current, edge, leafID := mutationFixture(t)
 	t.Cleanup(func() { _ = file.Close() })
-	plan := revisedPlan(current, edge, membership)
-	plan.Memberships[0].MembershipRevision = 1 // duplicates the current physical membership.
+	plan := revisedPlan(current, edge)
+	// Fail on the last thing the transaction stages — the Route node — so the
+	// Row, its history and the Relation are all already staged when it breaks.
+	stale, err := routes.Get(leafID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.Synopsis = "conflicting rewrite of a revision that already exists"
+	plan.Routes = []router.Node{stale}
 	if err := New(file, rows, routes).Commit(plan); err == nil {
 		t.Fatal("Commit() unexpectedly succeeded")
 	}
@@ -91,9 +101,9 @@ func TestCrossObjectMutationFailureLeavesNoPartialObjects(t *testing.T) {
 	if err != nil || live.Revision != 1 || live.State != relation.StateLive {
 		t.Fatalf("Relation after rollback = %#v, %v", live, err)
 	}
-	locators, _, err := routes.Open(membership.LeafID, 10)
-	if err != nil || len(locators) != 1 || locators[0].Revision != 1 {
-		t.Fatalf("membership after rollback = %#v, %v", locators, err)
+	locators := openLeaf(t, routes, rows, leafID)
+	if len(locators) != 1 || locators[0].Revision != 1 {
+		t.Fatalf("mount after rollback = %#v", locators)
 	}
 	changes, more, err := nativechange.New(file).ListAfter(0, 10)
 	if err != nil || more || len(changes) != 0 {
@@ -138,7 +148,10 @@ func countEntries(envelope change.Envelope, kind change.ObjectKind) int {
 	return count
 }
 
-func mutationFixture(t *testing.T) (string, *nativestore.File, *nativerow.Repository, *nativerouter.Repository, row.Row, relation.Relation, router.Membership) {
+// mutationFixture builds a database holding one Row mounted in one Route leaf.
+// The mount lives on both ends — the leaf names the Row, the Row names the leaf
+// — which is what replaced the Membership object.
+func mutationFixture(t *testing.T) (string, *nativestore.File, *nativerow.Repository, *nativerouter.Repository, row.Row, relation.Relation, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "database.memora")
 	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
@@ -152,8 +165,17 @@ func mutationFixture(t *testing.T) (string, *nativestore.File, *nativerow.Reposi
 	if err := nativecatalog.New(file).Write([]catalog.Database{database}); err != nil {
 		t.Fatal(err)
 	}
+	routes := nativerouter.New(file)
+	root, err := routes.CreateRoot("route_root", database.ID, table.ID, "Root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := routes.CreateChild("route_leaf", root.ID, "decisions", router.KindLeaf, "Decision rows")
+	if err != nil {
+		t.Fatal(err)
+	}
 	rows := nativerow.New(file)
-	current := row.Row{ID: "row_source", DatabaseID: database.ID, TableID: table.ID, SchemaVersion: 1, Revision: 1, State: row.StateLive, Values: map[string]any{column.ID: "initial"}, CreatedAt: now, UpdatedAt: now}
+	current := row.Row{ID: "row_source", DatabaseID: database.ID, TableID: table.ID, SchemaVersion: 1, Revision: 1, State: row.StateLive, Values: map[string]any{column.ID: "initial"}, CreatedAt: now, UpdatedAt: now, RouteLeafIDs: []string{leaf.ID}}
 	target := row.Row{ID: "row_target", DatabaseID: database.ID, TableID: table.ID, SchemaVersion: 1, Revision: 1, State: row.StateLive, Values: map[string]any{column.ID: "target"}, CreatedAt: now, UpdatedAt: now}
 	for _, value := range []row.Row{current, target} {
 		if err := rows.Write(value); err != nil {
@@ -167,23 +189,34 @@ func mutationFixture(t *testing.T) (string, *nativestore.File, *nativerow.Reposi
 	if err := rows.PutRelation(edge); err != nil {
 		t.Fatal(err)
 	}
-	routes := nativerouter.New(file)
-	root, err := routes.CreateRoot("route_root", database.ID, table.ID, "Root")
-	if err != nil {
-		t.Fatal(err)
-	}
-	leaf, err := routes.CreateChild("route_leaf", root.ID, "decisions", router.KindLeaf, "Decision rows")
-	if err != nil {
-		t.Fatal(err)
-	}
-	membership := router.Membership{LeafID: leaf.ID, MembershipRevision: 1, Locator: router.Locator{DatabaseID: database.ID, TableID: table.ID, RowID: current.ID, Revision: 1}}
-	if err := routes.Attach(leaf.ID, membership.Locator, membership.MembershipRevision); err != nil {
-		t.Fatal(err)
-	}
-	return path, file, rows, routes, current, edge, membership
+	mountLeaf(t, file, routes, leaf.ID, current.ID)
+	return path, file, rows, routes, current, edge, leaf.ID
 }
 
-func revisedPlan(current row.Row, edge relation.Relation, membership router.Membership) Plan {
+// mountLeaf points a Route leaf at a Row. The Row side of the mount is set by
+// whoever wrote the Row; this only moves the leaf.
+func mountLeaf(t *testing.T, file *nativestore.File, routes *nativerouter.Repository, leafID, rowID string) {
+	t.Helper()
+	leaf, err := routes.Get(leafID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf.RowID = rowID
+	leaf.Revision++
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := routes.StageNode(transaction, leaf); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func revisedPlan(current row.Row, edge relation.Relation) Plan {
 	updated := current
 	updated.Revision = 2
 	updated.UpdatedAt = current.UpdatedAt.Add(time.Minute)
@@ -192,7 +225,29 @@ func revisedPlan(current row.Row, edge relation.Relation, membership router.Memb
 	deletedEdge.Revision = 2
 	deletedEdge.State = relation.StateDeleted
 	deletedEdge.UpdatedAt = updated.UpdatedAt
-	membership.MembershipRevision = 2
-	membership.Revision = 2
-	return Plan{Row: updated, Operation: history.OperationUpdate, Metadata: row.WriteMetadata{Actor: "agent:test", Source: "feedback", Reason: "correct"}, RecordedAt: updated.UpdatedAt, Relations: []relation.Relation{deletedEdge}, Memberships: []router.Membership{membership}}
+	return Plan{Row: updated, Operation: history.OperationUpdate, Metadata: row.WriteMetadata{Actor: "agent:test", Source: "feedback", Reason: "correct"}, RecordedAt: updated.UpdatedAt, Relations: []relation.Relation{deletedEdge}}
+}
+
+// openLeaf reports what a leaf locates now, the way a read does: the leaf names
+// the Row it holds, and the Row itself carries the revision.
+func openLeaf(t *testing.T, routes *nativerouter.Repository, rows *nativerow.Repository, leafID string) []router.Locator {
+	t.Helper()
+	leaf, err := routes.Get(leafID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leaf.RowID == "" {
+		return nil
+	}
+	value, err := rows.Read(leaf.RowID)
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []router.Locator{{
+		DatabaseID: value.DatabaseID, TableID: value.TableID,
+		RowID: value.ID, Revision: value.Revision,
+	}}
 }

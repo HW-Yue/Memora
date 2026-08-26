@@ -67,7 +67,6 @@ func (transaction *Transaction) Commit() error {
 	if len(transaction.plan.Changes) == 0 && len(transaction.plan.Relations) == 0 {
 		return nil
 	}
-	transaction.plan.Memberships = append([]router.Membership(nil), transaction.plan.Memberships...)
 	if err := transaction.service.commit.Commit(transaction.plan); err != nil {
 		return err
 	}
@@ -434,9 +433,6 @@ func (transaction *Transaction) ListRouterChildrenPage(context.Context, string, 
 func (transaction *Transaction) ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error) {
 	return nil, router.ReadPage{}, transactionFailure(result.CodeUnsupported, "Route reads are not supported inside an explicit transaction", nil)
 }
-func (transaction *Transaction) MembershipsForRow(context.Context, string, string, string) ([]router.Membership, error) {
-	return nil, transactionFailure(result.CodeUnsupported, "Route reads are not supported inside an explicit transaction", nil)
-}
 
 func (transaction *Transaction) mutationTarget(ctx context.Context, database, table, id string, options row.WriteOptions) (catalog.Table, row.Row, error) {
 	definition, err := transaction.DescribeTable(ctx, database, table)
@@ -511,7 +507,7 @@ func (transaction *Transaction) addRowChange(ctx context.Context, table catalog.
 	if err := validateTransactionValues(table, value.Values); err != nil {
 		return err
 	}
-	routes, err := transaction.membershipChanges(value, desiredRoutes)
+	routes, err := transaction.leafMountChanges(value, desiredRoutes)
 	if err != nil {
 		return err
 	}
@@ -519,46 +515,62 @@ func (transaction *Transaction) addRowChange(ctx context.Context, table catalog.
 	transaction.plan.Changes = append(transaction.plan.Changes, RowChange{
 		Row: value, Operation: operation, Metadata: metadata, RecordedAt: value.UpdatedAt, Initial: initial,
 	})
-	transaction.plan.Memberships = append(transaction.plan.Memberships, routes...)
+	transaction.plan.Routes = append(transaction.plan.Routes, routes...)
 	return nil
 }
 
-func (transaction *Transaction) membershipChanges(value row.Row, desired []string) ([]router.Membership, error) {
-	current, err := transaction.service.routes.MembershipsIncludingDeleted(value.ID)
+// leafMountChanges works out which leaves change hands when a Row's mount set
+// becomes desired, and returns them as Route node updates.
+//
+// nil desired means "keep the current mounts", which the leaves themselves now
+// answer; an empty slice still means "unmount everywhere".
+func (transaction *Transaction) leafMountChanges(value row.Row, desired []string) ([]router.Node, error) {
+	held, err := transaction.service.routes.LeavesHoldingRow(value.ID)
 	if err != nil {
 		return nil, err
 	}
 	if desired == nil {
-		desired = make([]string, 0, len(current))
-		for _, membership := range current {
-			if !membership.Deleted {
-				desired = append(desired, membership.LeafID)
-			}
-		}
+		desired = held
 	}
 	wanted := make(map[string]bool, len(desired))
 	for _, leaf := range desired {
 		if wanted[leaf] {
-			return nil, fmt.Errorf("duplicate Route membership %q", leaf)
+			return nil, fmt.Errorf("duplicate Route leaf %q", leaf)
 		}
 		wanted[leaf] = true
 	}
-	changes := make([]router.Membership, 0, len(current)+len(wanted))
-	for _, membership := range current {
-		keep := wanted[membership.LeafID]
-		if keep {
-			delete(wanted, membership.LeafID)
-		} else if membership.Deleted {
+	touched := map[string]bool{}
+	for _, leafID := range held {
+		touched[leafID] = true
+	}
+	for leafID := range wanted {
+		touched[leafID] = true
+	}
+	ordered := make([]string, 0, len(touched))
+	for leafID := range touched {
+		ordered = append(ordered, leafID)
+	}
+	sort.Strings(ordered)
+	changes := make([]router.Node, 0, len(ordered))
+	for _, leafID := range ordered {
+		node, err := transaction.service.routes.Get(leafID)
+		if err != nil {
+			return nil, err
+		}
+		target := ""
+		if wanted[leafID] {
+			target = value.ID
+		}
+		// One leaf locates at most one Row, and a field cannot hold two.
+		if target != "" && node.RowID != "" && node.RowID != target {
+			return nil, fmt.Errorf("Route leaf %q already locates Row %q", leafID, node.RowID)
+		}
+		if node.RowID == target {
 			continue
 		}
-		membership.MembershipRevision++
-		membership.Revision = value.Revision
-		membership.Deleted = !keep
-		changes = append(changes, membership)
-	}
-	for leaf := range wanted {
-		changes = append(changes, router.Membership{LeafID: leaf, MembershipRevision: 1,
-			Locator: router.Locator{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID, Revision: value.Revision}})
+		node.RowID = target
+		node.Revision++
+		changes = append(changes, node)
 	}
 	return changes, nil
 }

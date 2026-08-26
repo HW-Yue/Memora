@@ -248,10 +248,6 @@ func (service *Service) reshape(
 			Row: target, Operation: operation, Metadata: options.Metadata, RecordedAt: now, Initial: true,
 		})
 	}
-	memberships, err := service.reshapeMemberships(sources, targets, options.TargetRouteLeafIDs)
-	if err != nil {
-		return nil, err
-	}
 	routeNodes, err := service.reshapeRouteNodes(options.RouteUpdates)
 	if err != nil {
 		return nil, err
@@ -270,7 +266,7 @@ func (service *Service) reshape(
 	}
 	plan := ReshapePlan{
 		Sources: Plan{
-			Changes: changes, Relations: relations, Routes: routeNodes, Memberships: memberships,
+			Changes: changes, Relations: relations, Routes: routeNodes,
 		},
 		Targets: targetChanges,
 	}
@@ -410,6 +406,14 @@ func (service *Service) reshapeLeafMounts(
 			node.Revision++
 			order = append(order, leafID)
 		}
+		// A leaf holds one Row. Sources release their leaves before targets
+		// take theirs, so anything still sitting here is a Row this reshape is
+		// not superseding — including a target that was already given this same
+		// leaf, which is how a SPLIT into one leaf is refused.
+		if rowID != "" && node.RowID != "" && node.RowID != rowID {
+			return reshapeError(result.CodeConstraint,
+				"Route leaf %q already locates Row %q", leafID, node.RowID)
+		}
 		node.RowID = rowID
 		pending[leafID] = node
 		return nil
@@ -456,45 +460,6 @@ func sortedLeafIDs(values []string) []string {
 	}
 	sort.Strings(result)
 	return result
-}
-
-func (service *Service) reshapeMemberships(
-	sources, targets []row.Row,
-	targetLeafIDs [][]string,
-) ([]router.Membership, error) {
-	resultMemberships := make([]router.Membership, 0)
-	for _, source := range sources {
-		current, err := service.routes.MembershipsIncludingDeleted(source.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, membership := range current {
-			if membership.Deleted {
-				continue
-			}
-			membership.MembershipRevision++
-			membership.Revision = source.Revision
-			membership.Deleted = true
-			resultMemberships = append(resultMemberships, membership)
-		}
-	}
-	for index, target := range targets {
-		seen := map[string]bool{}
-		for _, leafID := range targetLeafIDs[index] {
-			if seen[leafID] {
-				return nil, reshapeError(result.CodeValidation, "target Route snapshot contains duplicate leaf %q", leafID)
-			}
-			seen[leafID] = true
-			resultMemberships = append(resultMemberships, router.Membership{
-				LeafID: leafID, MembershipRevision: 1,
-				Locator: router.Locator{
-					DatabaseID: target.DatabaseID, TableID: target.TableID,
-					RowID: target.ID, Revision: target.Revision,
-				},
-			})
-		}
-	}
-	return resultMemberships, nil
 }
 
 func (service *Service) reshapeRelations(

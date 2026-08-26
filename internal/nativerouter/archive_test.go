@@ -25,11 +25,31 @@ func archiveFixture(t *testing.T) (*nativestore.File, *Repository, router.Node, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	locator := router.Locator{DatabaseID: "db_work", TableID: "tbl_notes", RowID: "row_01", Revision: 3}
-	if err := repository.Attach(leaf.ID, locator, 1); err != nil {
+	mountRow(t, file, repository, leaf.ID, "row_01")
+	return file, repository, root, leaf
+}
+
+// mountRow points a leaf at a Row. Only the leaf side of the mount lives here;
+// the Row side is a field on the Row, which this package cannot reach.
+func mountRow(t *testing.T, file *nativestore.File, repository *Repository, leafID, rowID string) {
+	t.Helper()
+	leaf, err := repository.Get(leafID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return file, repository, root, leaf
+	leaf.RowID = rowID
+	leaf.Revision++
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := repository.StageNode(transaction, leaf); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func archiveNode(t *testing.T, file *nativestore.File, repository *Repository, node router.Node) router.Node {
@@ -62,15 +82,15 @@ func TestDeletedLeafIsNotOpenable(t *testing.T) {
 	file, repository, _, leaf := archiveFixture(t)
 	archiveNode(t, file, repository, leaf)
 
-	if _, _, err := repository.OpenPage(leaf.ID, "", 10); err == nil {
+	if _, err := repository.LeafForOpen(leaf.ID, 10); err == nil {
 		t.Fatal("expected OPEN on a deleted leaf to fail")
 	}
-	locators, _, err := repository.InspectLeafPage(leaf.ID, "", 10)
+	inspected, err := repository.LeafForInspect(leaf.ID, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(locators) != 1 || locators[0].RowID != "row_01" {
-		t.Fatalf("deleting a leaf must not corrupt its membership records, got %#v", locators)
+	if inspected.RowID != "row_01" {
+		t.Fatalf("deleting a leaf must not erase the Row it held, got %#v", inspected)
 	}
 }
 
@@ -85,25 +105,24 @@ func TestDeletedRootLeavesTheRootListing(t *testing.T) {
 	}
 }
 
-func TestDeletedLeafLeavesRowMemberships(t *testing.T) {
+func TestDeletedLeafStopsHoldingItsRow(t *testing.T) {
 	t.Parallel()
 
 	file, repository, _, leaf := archiveFixture(t)
 	archiveNode(t, file, repository, leaf)
 
-	memberships, err := repository.Memberships("row_01")
+	// The tombstoned leaf still records which Row it held — the record is
+	// untouched — but it no longer counts as holding it.
+	held, err := repository.LeavesHoldingRow("row_01")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(memberships) != 0 {
-		t.Fatalf("membership pointing at a deleted leaf must be hidden, got %#v", memberships)
+	if len(held) != 0 {
+		t.Fatalf("a deleted leaf must not hold a Row, got %#v", held)
 	}
-	all, err := repository.MembershipsIncludingDeleted("row_01")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(all) != 1 {
-		t.Fatalf("membership record must survive the delete, got %#v", all)
+	inspected, err := repository.LeafForInspect(leaf.ID, 10)
+	if err != nil || inspected.RowID != "row_01" {
+		t.Fatalf("the leaf record must survive the delete, got %#v, %v", inspected, err)
 	}
 }
 

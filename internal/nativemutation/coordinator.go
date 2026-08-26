@@ -17,14 +17,13 @@ import (
 )
 
 type Plan struct {
-	Row         row.Row
-	Operation   history.Operation
-	Metadata    row.WriteMetadata
-	RecordedAt  time.Time
-	Changes     []RowChange
-	Relations   []relation.Relation
-	Routes      []router.Node
-	Memberships []router.Membership
+	Row        row.Row
+	Operation  history.Operation
+	Metadata   row.WriteMetadata
+	RecordedAt time.Time
+	Changes    []RowChange
+	Relations  []relation.Relation
+	Routes     []router.Node
 }
 
 type RowChange struct {
@@ -38,7 +37,6 @@ type RowChange struct {
 type RoutePlanCommit struct {
 	Routes      []router.Node
 	Created     map[string]bool
-	Memberships []router.Membership
 	Metadata    change.Metadata
 	CommittedAt time.Time
 }
@@ -95,9 +93,6 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 	if err != nil {
 		return err
 	}
-	if err := coordinator.router.ValidateMembershipChanges(plan.Memberships); err != nil {
-		return err
-	}
 	transaction, err := coordinator.file.Begin()
 	if err != nil {
 		return err
@@ -131,12 +126,7 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 			return err
 		}
 	}
-	for _, value := range plan.Memberships {
-		if err := coordinator.router.StageMembership(transaction, value); err != nil {
-			return err
-		}
-	}
-	envelope, err := mutationEnvelope(changeSequence, changes, plan.Relations, plan.Routes, plan.Memberships)
+	envelope, err := mutationEnvelope(changeSequence, changes, plan.Relations, plan.Routes)
 	if err != nil {
 		return err
 	}
@@ -155,14 +145,11 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 
 func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, error) {
 	if coordinator == nil || coordinator.file == nil || coordinator.router == nil ||
-		len(plan.Routes)+len(plan.Memberships) == 0 {
+		len(plan.Routes) == 0 {
 		return 0, fmt.Errorf("native Route plan commit is incomplete")
 	}
 	sequence, err := coordinator.changeSequence()
 	if err != nil {
-		return 0, err
-	}
-	if err := coordinator.router.ValidateMembershipChanges(plan.Memberships); err != nil {
 		return 0, err
 	}
 	transaction, err := coordinator.file.Begin()
@@ -170,7 +157,7 @@ func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, e
 		return 0, err
 	}
 	defer func() { _ = transaction.Rollback() }()
-	entries := make([]change.Entry, 0, len(plan.Routes)+len(plan.Memberships))
+	entries := make([]change.Entry, 0, len(plan.Routes))
 	for _, value := range plan.Routes {
 		operation := change.OperationUpdate
 		if plan.Created[value.ID] {
@@ -186,12 +173,6 @@ func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, e
 			return 0, err
 		}
 		entries = append(entries, nativechange.RouteNodeEntry(value, operation))
-	}
-	for _, value := range plan.Memberships {
-		if err := coordinator.router.StagePlannedMembership(transaction, value); err != nil {
-			return 0, err
-		}
-		entries = append(entries, nativechange.MembershipEntry(value))
 	}
 	committedAt := plan.CommittedAt.UTC()
 	if committedAt.IsZero() {
@@ -256,9 +237,8 @@ func mutationEnvelope(
 	changes []RowChange,
 	relations []relation.Relation,
 	routes []router.Node,
-	memberships []router.Membership,
 ) (change.Envelope, error) {
-	entries := make([]change.Entry, 0, len(changes)+len(relations)+len(routes)+len(memberships))
+	entries := make([]change.Entry, 0, len(changes)+len(relations)+len(routes))
 	relatedRows := make([]string, 0, len(changes))
 	committedAt := time.Time{}
 	metadata := change.Metadata{}
@@ -288,9 +268,6 @@ func mutationEnvelope(
 			operation = change.OperationDelete
 		}
 		entries = append(entries, nativechange.RouteNodeEntry(value, operation))
-	}
-	for _, value := range memberships {
-		entries = append(entries, nativechange.MembershipEntry(value))
 	}
 	if committedAt.IsZero() {
 		committedAt = time.Now().UTC()
