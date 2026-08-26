@@ -164,7 +164,11 @@ type Generation struct {
 	current  *currentrowindex.Index
 	versions *rowversionindex.Index
 	fulltext *fulltextindex.Index
-	closed   bool
+	// tables holds the per-Table Trees, keyed by Table ID. The four fixed Trees
+	// above are named fields because there is exactly one of each; these follow
+	// the Catalog and so cannot be. See docs/storage/per-table-tree-v1.md §2.
+	tables map[string]*generationTree
+	closed bool
 }
 
 func OpenGeneration(directory string) (*Generation, error) {
@@ -229,7 +233,15 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 		case "fulltext":
 			generation.fulltext, err = fulltextindex.Open(tree.runtime)
 		default:
-			err = ErrTargetCorrupt
+			tableID, isTable := tableTreeTableID(specification.Kind)
+			if !isTable {
+				err = ErrTargetCorrupt
+				break
+			}
+			if generation.tables == nil {
+				generation.tables = make(map[string]*generationTree)
+			}
+			generation.tables[tableID] = tree
 		}
 		if err != nil {
 			return nil, fmt.Errorf("%w: open %s Index: %v", ErrTargetCorrupt, specification.Kind, err)

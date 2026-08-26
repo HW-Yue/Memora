@@ -91,20 +91,41 @@ var treeWALExpectedTrees = []treeManifest{
 
 var legacyExpectedTrees = append([]treeManifest(nil), treeWALExpectedTrees[:3]...)
 
+// validate checks a manifest's Tree set: a fixed prefix that every generation
+// of this version has, then any number of per-Table Trees.
+//
+// The tail is open-ended because the number of Trees follows the number of
+// Tables (docs/storage/per-table-tree-v1.md §2). Open-ended is not unchecked —
+// a per-Table Tree's space and page file both derive from its Table ID, so a
+// Tree claiming any other identity is refused.
 func (manifest generationManifest) validate() error {
 	expected, validVersion := manifestTreeSpecifications(manifest.Version, manifest.PlanVersion)
 	if !validVersion ||
 		!canonicalSHA256(manifest.PlanDigest) || !canonicalSHA256(manifest.SourceFingerprint) ||
 		!canonicalSHA256(manifest.ContentDigest) || !canonicalSHA256(manifest.Digest) ||
-		len(manifest.Trees) != len(expected) {
+		len(manifest.Trees) < len(expected) {
 		return ErrTargetCorrupt
 	}
+	// Only a shared-log generation may carry per-Table Trees. Older layouts gave
+	// every Tree its own log directory and were never taught to grow.
+	if len(manifest.Trees) > len(expected) && !manifest.sharedLog() {
+		return ErrTargetCorrupt
+	}
+	spaces := make(map[uint64]bool, len(manifest.Trees))
+	files := make(map[string]bool, len(manifest.Trees))
 	for index, tree := range manifest.Trees {
-		expectedTree := expected[index]
 		state := tree.State.runtimeState(tree.SpaceID)
-		if tree.Kind != expectedTree.Kind || tree.SpaceID != expectedTree.SpaceID ||
-			tree.PageFile != expectedTree.PageFile || tree.WALDirectory != expectedTree.WALDirectory ||
-			state.RootPageID == 0 {
+		if state.RootPageID == 0 || spaces[tree.SpaceID] || files[tree.PageFile] {
+			return ErrTargetCorrupt
+		}
+		spaces[tree.SpaceID], files[tree.PageFile] = true, true
+		if index < len(expected) {
+			expectedTree := expected[index]
+			if tree.Kind != expectedTree.Kind || tree.SpaceID != expectedTree.SpaceID ||
+				tree.PageFile != expectedTree.PageFile || tree.WALDirectory != expectedTree.WALDirectory {
+				return ErrTargetCorrupt
+			}
+		} else if !validTableTree(tree) {
 			return ErrTargetCorrupt
 		}
 		if _, err := treecontrol.Encode(state); err != nil {
