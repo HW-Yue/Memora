@@ -77,7 +77,12 @@ func TestAuthorityPublishesMultipleRowsInOneFulltextTransaction(t *testing.T) {
 			Revision: 1, CommitSequence: 1, State: row.StateLive,
 			Values: map[string]any{columnID: "beta shared"}, CreatedAt: written, UpdatedAt: written},
 	}
-	before := fulltextTreeRevision(t, authority)
+	// The Fulltext Tree is no longer part of a publication's transaction — it
+	// is derived and catches up from the committed change log — so the batching
+	// property is measured on the authoritative Trees here. That a batch
+	// reaches Fulltext in one transaction is covered by the coordinator tests,
+	// which drive a write that actually records a change.
+	before := treeRevision(t, authority, "versions")
 	committed := false
 	if err := authority.PublishRows(ctx, values, func() error {
 		committed = true
@@ -85,12 +90,13 @@ func TestAuthorityPublishesMultipleRowsInOneFulltextTransaction(t *testing.T) {
 	}); err != nil || !committed {
 		t.Fatalf("PublishRows(batch) committed=%v error=%v", committed, err)
 	}
-	if after := fulltextTreeRevision(t, authority); after != before+1 {
-		t.Fatalf("Fulltext batch revision = %d, want %d", after, before+1)
+	if after := treeRevision(t, authority, "versions"); after != before+1 {
+		t.Fatalf("Row version batch revision = %d, want %d", after, before+1)
 	}
-	postings, err := authority.Generation().Fulltext().Postings("shared")
-	if err != nil || len(postings) != 2 || postings[0].ObjectID == postings[1].ObjectID {
-		t.Fatalf("batch postings = %#v, %v", postings, err)
+	for _, value := range values {
+		if _, err := authority.generation.versions.ByRevision(value.ID, 1); err != nil {
+			t.Fatalf("batch Row %s missing from the version Tree: %v", value.ID, err)
+		}
 	}
 }
 
@@ -280,9 +286,13 @@ func assertNoRowPosting(t *testing.T, authority *Authority, term string) {
 }
 
 func fulltextTreeRevision(t *testing.T, authority *Authority) uint64 {
+	return treeRevision(t, authority, "fulltext")
+}
+
+func treeRevision(t *testing.T, authority *Authority, kind string) uint64 {
 	t.Helper()
 	for _, tree := range authority.generation.trees {
-		if tree.manifest.Kind == "fulltext" {
+		if tree.manifest.Kind == kind {
 			return tree.runtime.State().Revision
 		}
 	}

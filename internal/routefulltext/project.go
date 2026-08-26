@@ -83,6 +83,27 @@ func project(nodes []router.Node) ([]fulltext.Document, error) {
 	return documents, nil
 }
 
+// TombstoneFor builds the deleted-Route document from the parts a committed
+// change entry carries.
+//
+// It exists because the Router hands out live nodes only, so a catch-up driven
+// by the change log has no node to project a deletion from — the change log
+// itself is the evidence that the Route is gone.
+func TombstoneFor(databaseID, tableID, objectID string, revision uint64) (fulltext.Document, error) {
+	if revision == 0 || revision == math.MaxUint64 {
+		return fulltext.Document{}, fmt.Errorf("%w: tombstone revision", ErrInvalid)
+	}
+	document := fulltext.Document{
+		Version: fulltext.DocumentVersion, Kind: fulltext.KindRoute,
+		DatabaseID: databaseID, TableID: tableID, ObjectID: objectID,
+		Revision: revision, State: fulltext.StateDeleted, Complete: true,
+	}
+	if _, err := fulltext.Compile(document); err != nil {
+		return fulltext.Document{}, fmt.Errorf("%w: tombstone: %v", ErrInvalid, err)
+	}
+	return document, nil
+}
+
 func Tombstone(object fulltext.Object) (fulltext.Document, error) {
 	if object.Kind != fulltext.KindRoute || object.State != fulltext.StateLive ||
 		object.Revision == 0 || object.Revision == math.MaxUint64 {

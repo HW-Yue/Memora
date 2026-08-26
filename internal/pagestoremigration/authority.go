@@ -73,6 +73,10 @@ type Authority struct {
 	// never blocks a write — the write it followed was already committed — but
 	// it must not vanish either, so RedoMaintenanceError exposes it.
 	redoMaintenanceErr error
+	// fulltextCatchUpErr holds the last failed Fulltext catch-up. Like the redo
+	// maintenance error it never blocks a write, and the read-time trigger
+	// retries, but it must not vanish silently.
+	fulltextCatchUpErr error
 	closed             bool
 	writeGate          chan struct{}
 	locks              *objectlock.Manager
@@ -440,15 +444,16 @@ func (authority *Authority) PublishMutation(
 	if err != nil {
 		return err
 	}
-	rowDocuments, err := projectRowDocuments(databases, rows)
-	if err != nil {
+	// Projected, then discarded. The Fulltext index is derived and catches up
+	// from the change log, so nothing here writes it — but a Row that cannot be
+	// projected at all is a Row the caller should not be allowed to commit, and
+	// finding that out after the commit would only leave a mess to reconcile.
+	if _, err := projectRowDocuments(databases, rows); err != nil {
 		return err
 	}
-	routeDocuments, err := projectRouteChangeDocuments(databases, routes)
-	if err != nil {
+	if _, err := projectRouteChangeDocuments(databases, routes); err != nil {
 		return err
 	}
-	documents := append(rowDocuments, routeDocuments...)
 	if err := commit(); err != nil {
 		return err
 	}
@@ -489,9 +494,6 @@ func (authority *Authority) PublishMutation(
 					return err
 				}
 			}
-			if err := authority.generation.fulltext.StageReplaceBatch(group, documents); err != nil {
-				return err
-			}
 			if len(rows) != 0 {
 				return authority.generation.current.StageApply(group, current)
 			}
@@ -517,6 +519,7 @@ func (authority *Authority) PublishMutation(
 	if err != nil {
 		return authority.poisonPublication("Row/Route body", affected, err)
 	}
+	authority.catchUpFulltextAfterWrite(ctx)
 	authority.maintainRedoLog()
 	return nil
 }
@@ -615,8 +618,9 @@ func (authority *Authority) PublishCatalog(
 	if err := authority.writableLocked(ctx, affected...); err != nil {
 		return err
 	}
-	documents, err := catalogTransitionDocuments(current, databases)
-	if err != nil {
+	// Preflight only, as above: the transition has to be projectable before it
+	// is committed, but the Fulltext index picks it up from the change log.
+	if _, err := catalogTransitionDocuments(current, databases); err != nil {
 		return err
 	}
 	if err := commit(); err != nil {
@@ -630,13 +634,7 @@ func (authority *Authority) PublishCatalog(
 	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
 		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {
-			if err := authority.generation.catalog.StageReplace(group, databases); err != nil {
-				return err
-			}
-			if len(documents) == 0 {
-				return nil
-			}
-			return authority.generation.fulltext.StageReplaceBatch(group, documents)
+			return authority.generation.catalog.StageReplace(group, databases)
 		})
 	}
 	if err == nil {
@@ -648,6 +646,7 @@ func (authority *Authority) PublishCatalog(
 	if err != nil {
 		return authority.poisonPublication("Catalog body", affected, err)
 	}
+	authority.catchUpFulltextAfterWrite(ctx)
 	authority.maintainRedoLog()
 	return nil
 }
@@ -915,14 +914,28 @@ func (authority *Authority) reconcileFulltext(plan Plan) error {
 		}
 		documents = append(documents, tombstone)
 	}
-	if len(documents) == 0 {
+	// The open-time pass is a full reconcile against the authoritative source,
+	// which is what catches drift a change-log replay cannot see — an object
+	// live in the index but gone from the source leaves no change entry behind
+	// once its log has been reclaimed. Recording the cursor at the same time is
+	// what makes every later catch-up incremental instead of another full pass.
+	next, err := authority.changes.source.NextSequence(0)
+	if err != nil {
+		return fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
+	}
+	cursor := next - 1
+	if len(documents) == 0 && cursor == 0 {
 		return nil
 	}
-	id, err := authority.nextTransactionID("fulltext")
+	id, err := authority.nextGroupTransactionID()
 	if err != nil {
 		return err
 	}
-	_, err = authority.generation.fulltext.ReplaceBatch(id, documents)
+	if cursor == 0 {
+		_, err = authority.generation.fulltext.ReplaceBatch(id, documents)
+	} else {
+		_, err = authority.generation.fulltext.AdvanceThrough(id, documents, cursor)
+	}
 	if errors.Is(err, fulltextindex.ErrConflict) {
 		return fmt.Errorf("%w: %v", errFulltextRebuildRequired, err)
 	}

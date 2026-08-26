@@ -13,9 +13,13 @@ import (
 // TestCrossTreePublicationIsAtomicUnderFault is E0 stage 2's gate, and the
 // central piece of evidence for the shared redo log.
 //
-// One Row Update writes three Trees — versions, fulltext, current. Each Tree
-// used to own a WAL, so that was three independent commits, and a fault landing
-// between them left the three Trees describing different Rows.
+// One Row Update writes the two authoritative Trees — versions and current.
+// Each Tree used to own a WAL, so that was independent commits, and a fault
+// landing between them left the Trees describing different Rows.
+//
+// The Fulltext Tree used to be in this set and no longer is: it is a derived
+// index that catches up from the committed change log, outside the write's
+// transaction. Asserting it here would be asserting the coupling E2 removed.
 //
 // The generation is opened directly rather than through OpenAuthority on
 // purpose: OpenAuthority runs a reconcile pass that repairs the divergence from
@@ -65,31 +69,29 @@ func TestCrossTreePublicationIsAtomicUnderFault(t *testing.T) {
 			versionsHas := versionsErr == nil
 			locator, currentErr := generation.CurrentRows().Lookup(table.ID, inserted.ID)
 			currentHas := currentErr == nil && locator.Revision == 2
-			postings, err := generation.Fulltext().Postings("revised")
-			if err != nil {
-				t.Fatal(err)
-			}
-			fulltextHas := len(postings) == 1 && postings[0].Revision == 2
 
-			// All three or none. Which one is not the point — a publication is
+			// Both or neither. Which one is not the point — a publication is
 			// allowed to be lost by a fault, but it is not allowed to be half
 			// applied.
-			if versionsHas != currentHas || versionsHas != fulltextHas {
+			if versionsHas != currentHas {
 				t.Fatalf(
-					"Trees disagree after a fault at %s: versions=%v fulltext=%v current=%v",
-					phase, versionsHas, fulltextHas, currentHas,
+					"Trees disagree after a fault at %s: versions=%v current=%v",
+					phase, versionsHas, currentHas,
 				)
 			}
 		})
 	}
 }
 
-// TestCatalogPublicationIsAtomicUnderFault is the Catalog half of stage 2.
+// TestCatalogPublicationSurvivesAFaultWithoutTearing.
 //
-// Creating a Table writes the Catalog Tree and the Fulltext Tree. Those were
-// two commits as well, with the same tearing window, so they are now one
-// transaction for the same reason.
-func TestCatalogPublicationIsAtomicUnderFault(t *testing.T) {
+// Creating a Table used to write the Catalog Tree and the Fulltext Tree, in two
+// commits with a tearing window between them. E0 stage 2 made them one
+// transaction; E2 then took the Fulltext Tree out of the write path entirely,
+// so the publication now writes one Tree and there is no cross-Tree window left
+// to tear in. What remains worth pinning is that a fault leaves the Catalog
+// Tree in one state or the other, never half a Table.
+func TestCatalogPublicationSurvivesAFaultWithoutTearing(t *testing.T) {
 	for _, phase := range []authorityPhase{phaseCatalogPublished, phaseCatalogFulltextPublished} {
 		t.Run(string(phase), func(t *testing.T) {
 			ctx := context.Background()
@@ -118,30 +120,23 @@ func TestCatalogPublicationIsAtomicUnderFault(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// Raw generation again: OpenAuthority's reconcile would repair the
-			// divergence before it could be observed.
 			generation, err := openLiveGeneration(filepath.Join(directory, GenerationDirectory))
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer generation.Close()
 
-			catalogHas := false
-			if created.ID != "" {
-				if _, err := generation.Catalog().TableByID(created.ID); err == nil {
-					catalogHas = true
-				}
+			if created.ID == "" {
+				return
 			}
-			postings, err := generation.Fulltext().Postings("journal")
+			table, err := generation.Catalog().TableByID(created.ID)
 			if err != nil {
-				t.Fatal(err)
+				// Losing the publication to a fault is allowed.
+				return
 			}
-			fulltextHas := len(postings) != 0
-			if catalogHas != fulltextHas {
-				t.Fatalf(
-					"Trees disagree after a fault at %s: catalog=%v fulltext=%v",
-					phase, catalogHas, fulltextHas,
-				)
+			// Having it means having all of it.
+			if table.ID != created.ID || table.DatabaseID == "" {
+				t.Fatalf("Catalog Tree holds a torn Table: %#v", table)
 			}
 		})
 	}
