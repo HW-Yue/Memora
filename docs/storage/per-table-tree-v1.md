@@ -129,7 +129,8 @@ history 变成表是这条契约最容易被漏掉的地方。
 
 ## 5.5 硬前置：共享 buffer pool
 
-**这一条不做，本文的迁移不能开工。**
+**已完成（E3.5）。** 本节以下描述的是改造前的状态，保留作为背景；
+落地形态见节末的「已落地」。
 
 现状与 InnoDB 不同：InnoDB 一个 buffer pool 服务所有表空间，
 而这里**每棵树一个 pool**——`buffer.New` 全仓只有一个调用点
@@ -154,9 +155,25 @@ if key.SpaceID != config.SpaceID { return page.Page{}, ...ErrInvalid }
 缺的是把 loader 从「写死单个 space」改成「按 key 路由到对应 page manager」，
 以及容量从"每树一份"改为一份总量。
 
+### 已落地
+
+- `buffer.Router` 同时实现 `Loader` 与 `PageWriter`，按 `SpaceID` 分派。
+  刷脏页不需要额外上下文：**页头自己带 `SpaceID`**（`page.Header.SpaceID`），
+  writer 直接按它找文件；
+- `RuntimeConfig` 加 `Pool` 字段。给了就用共享的，不给就自建——
+  单棵树的调用方（changeindex、各处测试）一行不用改；
+- generation 打开时建**一个** Router 与**一个** pool，把每棵树的 page manager
+  注册进去，再逐棵 `AttachRuntime`。容量因此是一份总量；
+- 闸门：`TestGenerationUsesOneSharedBufferPool` 断言所有树拿到的是**同一个**
+  pool 指针，并且常驻帧数不超过那一份预算。
+
+**change index 那棵树仍自带一个 pool**，这是有意的：它一棵、固定、
+不随表数增长，与本节要防的「正比于表数」无关。它自带独立的 redo log，
+折进 generation 的 pool 需要先合并日志，收益不抵改动。
+
 ## 6. 与其他迁移的关系
 
-- **硬前置：共享 buffer pool**（见 §5.5）——不做则内存随表数增长；
+- **硬前置：共享 buffer pool**（见 §5.5）——**已完成**，内存不再随表数增长；
 - **前置：派生索引解耦。** fulltext 目前在 `PublishMutation` 里与三棵树同批发布
   （`pagestoremigration/authority.go:485`），一次 INSERT 跨两个无原子性的事务域。
   先把它改成变更日志驱动的重放（模板见 `change_index.go:269`

@@ -132,7 +132,7 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
   删 `Path` 的原定收益（RENAME 只写一个节点）不成立：全文／向量／词法三个
   派生索引也物化了同一条路径
 
-### E3.5. 共享 buffer pool
+### E3.5. 共享 buffer pool ✅
 
 - **前置**：无。但**是 E4／E5 的硬前置**
 - **依据**：[每表一棵树](../storage/per-table-tree-v1.md) §5.5
@@ -143,9 +143,10 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
   （每表业务树 + history 树）。10 张表 160 MiB，100 张表 1.6 GB——
   「常驻内存有上界」这条准则会被直接推翻
 - **RED**：证明开 N 棵树就有 N 个 pool、常驻内存随树数线性增长
-- **完成**：一个 pool 服务所有树；容量是一份总量而不是每树一份。
-  `buffer.Key{SpaceID, PageID}` 本来就带 `SpaceID`，Page Table 已能区分——
-  缺的是 loader 按 key 路由到对应 page manager
+- **已完成**：`buffer.Router` 按 `SpaceID` 分派 loader 与 writer；
+  generation 开一个 pool 服务所有树，容量是一份总量。
+  `RuntimeConfig.Pool` 给了就用共享的、不给就自建，单树调用方不受影响。
+  change index 那棵树仍自带 pool——它一棵、固定、不随表数增长
 
 ### E4. 每表一棵独立 B+ 树 + RowID 按表递增
 
