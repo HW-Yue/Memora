@@ -166,23 +166,11 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 		return row.Row{}, err
 	}
 	routes := nativerouter.New(service.repository.file)
-	memberships := make([]router.Membership, 0, len(options.RouteLeafIDs))
-	for _, leafID := range options.RouteLeafIDs {
-		membership := router.Membership{LeafID: leafID, MembershipRevision: 1, Locator: router.Locator{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID, Revision: value.Revision}}
-		memberships = append(memberships, membership)
-	}
-	if err := routes.ValidateMembershipChanges(memberships); err != nil {
+	mounted, err := stageLeafMounts(transaction, routes, value, value.RouteLeafIDs)
+	if err != nil {
 		return row.Row{}, err
 	}
-	for _, membership := range memberships {
-		if err := routes.StageMembership(transaction, membership); err != nil {
-			return row.Row{}, err
-		}
-	}
-	if err := stageLeafMounts(transaction, routes, value, value.RouteLeafIDs); err != nil {
-		return row.Row{}, err
-	}
-	if err := stageRowChange(transaction, changeSequence, value, history.OperationInsert, options.Metadata, memberships); err != nil {
+	if err := stageRowChange(transaction, changeSequence, value, history.OperationInsert, options.Metadata, mounted); err != nil {
 		return row.Row{}, err
 	}
 	commit := transaction.Commit
@@ -368,16 +356,12 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 	}
 	defer func() { _ = transaction.Rollback() }()
 	routes := nativerouter.New(service.repository.file)
-	current, err := routes.MembershipsIncludingDeleted(value.ID)
-	if err != nil {
-		return err
-	}
 	if desired == nil {
-		desired = make([]string, 0, len(current))
-		for _, membership := range current {
-			if !membership.Deleted {
-				desired = append(desired, membership.LeafID)
-			}
+		// nil means "keep the current mounts", which the leaves themselves now
+		// answer. An empty slice still means "unmount everywhere".
+		desired, err = routes.LeavesHoldingRow(value.ID)
+		if err != nil {
+			return err
 		}
 	}
 	// Resolved before the revision is staged, because the revision now carries
@@ -389,43 +373,18 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 	if err := service.repository.StageHistory(transaction, value, operation, metadata, value.UpdatedAt); err != nil {
 		return err
 	}
-	wanted := map[string]bool{}
-	changedMemberships := make([]router.Membership, 0)
+	seen := map[string]bool{}
 	for _, leafID := range desired {
-		if wanted[leafID] {
-			return fmt.Errorf("duplicate Route membership %q", leafID)
+		if seen[leafID] {
+			return fmt.Errorf("duplicate Route leaf %q", leafID)
 		}
-		wanted[leafID] = true
+		seen[leafID] = true
 	}
-	for _, membership := range current {
-		desiredMembership := containsRoute(desired, membership.LeafID)
-		if desiredMembership {
-			delete(wanted, membership.LeafID)
-		} else if membership.Deleted {
-			continue
-		}
-		membership.MembershipRevision++
-		membership.Revision = value.Revision
-		membership.Deleted = !desiredMembership
-		if err := routes.StageMembership(transaction, membership); err != nil {
-			return err
-		}
-		changedMemberships = append(changedMemberships, membership)
-	}
-	for leafID := range wanted {
-		membership := router.Membership{LeafID: leafID, MembershipRevision: 1, Locator: router.Locator{DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID, Revision: value.Revision}}
-		if err := routes.StageMembership(transaction, membership); err != nil {
-			return err
-		}
-		changedMemberships = append(changedMemberships, membership)
-	}
-	if err := routes.ValidateMembershipChanges(changedMemberships); err != nil {
+	mounted, err := stageLeafMounts(transaction, routes, value, value.RouteLeafIDs)
+	if err != nil {
 		return err
 	}
-	if err := stageLeafMounts(transaction, routes, value, value.RouteLeafIDs); err != nil {
-		return err
-	}
-	if err := stageRowChange(transaction, changeSequence, value, operation, metadata, changedMemberships); err != nil {
+	if err := stageRowChange(transaction, changeSequence, value, operation, metadata, mounted); err != nil {
 		return err
 	}
 	if service.authority != nil {
@@ -452,14 +411,14 @@ func stageLeafMounts(
 	routes *nativerouter.Repository,
 	value row.Row,
 	desired []string,
-) error {
+) ([]router.Node, error) {
 	mounted := map[string]bool{}
 	for _, leafID := range desired {
 		mounted[leafID] = true
 	}
 	previous, err := routes.LeavesHoldingRow(value.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	touched := map[string]bool{}
 	for _, leafID := range previous {
@@ -468,14 +427,22 @@ func stageLeafMounts(
 	for leafID := range mounted {
 		touched[leafID] = true
 	}
+	changed := make([]router.Node, 0, len(touched))
 	for _, leafID := range sortedRouteLeafIDs(keysOf(touched)) {
 		node, err := routes.Get(leafID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		wanted := ""
 		if mounted[leafID] {
 			wanted = value.ID
+		}
+		// A leaf locates at most one Row. The field cannot hold two, so this is
+		// the whole of the invariant now — refusing the write rather than
+		// detecting an ambiguous leaf afterwards.
+		if wanted != "" && node.RowID != "" && node.RowID != wanted {
+			return nil, serviceFailure(result.CodeConstraint,
+				fmt.Sprintf("Route leaf %q already locates Row %q", leafID, node.RowID), nil)
 		}
 		if node.RowID == wanted {
 			continue
@@ -483,10 +450,11 @@ func stageLeafMounts(
 		node.RowID = wanted
 		node.Revision++
 		if err := routes.StageNode(transaction, node); err != nil {
-			return err
+			return nil, err
 		}
+		changed = append(changed, node)
 	}
-	return nil
+	return changed, nil
 }
 
 func keysOf(values map[string]bool) []string {
@@ -535,13 +503,17 @@ func stageRowChange(
 	value row.Row,
 	operation history.Operation,
 	metadata row.WriteMetadata,
-	memberships []router.Membership,
+	mounted []router.Node,
 ) error {
-	entries := make([]change.Entry, 0, 1+len(memberships))
-	related := make([]string, 0, len(memberships))
-	for _, membership := range memberships {
-		related = append(related, membership.LeafID)
-		entries = append(entries, nativechange.MembershipEntry(membership))
+	// The leaves the write touched are reported as Route node changes, because
+	// that is what they now are: the mount lives on the node. A change log
+	// reader learns the same fact from a route_node entry that it used to learn
+	// from a route_membership one.
+	entries := make([]change.Entry, 0, 1+len(mounted))
+	related := make([]string, 0, len(mounted))
+	for _, node := range mounted {
+		related = append(related, node.ID)
+		entries = append(entries, nativechange.RouteNodeEntry(node, change.OperationUpdate))
 	}
 	entries = append(entries, nativechange.RowEntry(value, operation, related...))
 	envelope, err := change.NewEnvelope(
@@ -1270,18 +1242,12 @@ func (service *Service) DeleteRouterNode(ctx context.Context, id string, expecte
 	// node is cheap to rebuild and carries no content of its own, but a Row it
 	// still points at would be left unreachable by navigation — move the Rows to
 	// another leaf before deleting this one.
-	if current.Kind == router.KindLeaf {
-		locators, _, err := routes.InspectLeafPage(id, "", 1000)
-		if err != nil {
-			return 0, err
-		}
-		if len(locators) > 0 {
-			return 0, serviceFailure(
-				result.CodeConstraint,
-				fmt.Sprintf("Route leaf still holds %d Row(s); move them to another leaf first", len(locators)),
-				nil,
-			)
-		}
+	if current.Kind == router.KindLeaf && current.RowID != "" {
+		return 0, serviceFailure(
+			result.CodeConstraint,
+			fmt.Sprintf("Route leaf still holds Row %q; move it to another leaf first", current.RowID),
+			nil,
+		)
 	}
 	current.Revision, current.Deleted = current.Revision+1, true
 	committed, err := service.commitRouteNodeChange(ctx, change.OperationDelete, "delete Route node", func(transaction *nativestore.Transaction) (router.Node, error) {

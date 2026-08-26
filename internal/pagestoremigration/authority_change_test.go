@@ -119,10 +119,14 @@ func TestAuthorityLogicalMutationsPublishCompleteOrderedChangeEnvelopes(t *testi
 		countChangeKind(changes[1], change.ObjectColumn) != 1 {
 		t.Fatalf("CREATE TABLE envelope = %+v", changes[1])
 	}
+	// Mounting a Row on a leaf is a change to the leaf, so the envelope carries
+	// a route_node entry where it used to carry a route_membership one. The
+	// reader learns the same fact: this Row now hangs under that leaf.
 	if changes[4].Actor != "agent:test" ||
 		countChangeKind(changes[4], change.ObjectRow) != 1 ||
-		countChangeKind(changes[4], change.ObjectRouteMembership) != 1 {
-		t.Fatalf("Row + membership envelope = %+v", changes[4])
+		countChangeKind(changes[4], change.ObjectRouteNode) != 1 ||
+		countChangeKind(changes[4], change.ObjectRouteMembership) != 0 {
+		t.Fatalf("Row + mount envelope = %+v", changes[4])
 	}
 	if countChangeKind(changes[6], change.ObjectRelation) != 1 ||
 		countChangeKind(changes[8], change.ObjectConfiguration) != 1 {

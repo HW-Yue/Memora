@@ -12,6 +12,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
+	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
@@ -88,13 +89,14 @@ func TestRowWithoutRouteLeafIDsStillDecodes(t *testing.T) {
 	}
 }
 
-// TestRowLeafListAgreesWithMemberships is the parity gate for the dual write.
+// TestRowAndLeafAgreeOnTheMount replaces the dual-write parity gate.
 //
-// Two sources now answer "which leaves is this Row under": the Membership
-// objects that have always answered it, and the Row's own field. While both
-// exist they must agree exactly — that is what makes the read switch in the
-// next stage a no-op rather than a change of answer.
-func TestRowLeafListAgreesWithMemberships(t *testing.T) {
+// Memberships are gone, so there is no second source to compare against. What
+// still has to hold is that the two halves of the mount agree with each other:
+// the Row names the leaves, and each of those leaves names the Row back. They
+// are written in one transaction, so a disagreement means the write path put
+// them out of step.
+func TestRowAndLeafAgreeOnTheMount(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -129,18 +131,18 @@ func TestRowLeafListAgreesWithMemberships(t *testing.T) {
 			ExpectedSchemaVersion: 1, MaxAffectedRows: 1,
 			RouteLeafIDs: []string{"route_beta", "route_alpha"},
 		})
-	assertLeafParity(t, file, rows, ctx, "row_mounted", []string{"route_alpha", "route_beta"})
+	assertMountAgrees(t, file, rows, ctx, "row_mounted", []string{"route_alpha", "route_beta"})
 
-	// A remount has to move both sources together, including the leaf dropped.
+	// A remount has to move both halves together, including the leaf dropped.
 	executeMSQL(t, ctx, engine, "UPDATE work.notes SET title = 'remounted' WHERE row_id = 'row_mounted'",
 		executor.Parameters{}, executor.MutationOptions{
 			ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
 			RouteLeafIDs: []string{"route_gamma", "route_alpha"},
 		})
-	assertLeafParity(t, file, rows, ctx, "row_mounted", []string{"route_alpha", "route_gamma"})
+	assertMountAgrees(t, file, rows, ctx, "row_mounted", []string{"route_alpha", "route_gamma"})
 }
 
-func assertLeafParity(
+func assertMountAgrees(
 	t *testing.T, file *nativestore.File, rows *Service, ctx context.Context,
 	rowID string, want []string,
 ) {
@@ -152,19 +154,13 @@ func assertLeafParity(
 	if strings.Join(stored.RouteLeafIDs, ",") != strings.Join(want, ",") {
 		t.Fatalf("Row leaf list = %#v, want %#v", stored.RouteLeafIDs, want)
 	}
-	memberships, err := nativerouter.New(file).MembershipsIncludingDeleted(rowID)
+	holding, err := nativerouter.New(file).LeavesHoldingRow(rowID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	live := make([]string, 0, len(memberships))
-	for _, membership := range memberships {
-		if !membership.Deleted {
-			live = append(live, membership.LeafID)
-		}
-	}
-	sort.Strings(live)
-	if strings.Join(live, ",") != strings.Join(want, ",") {
-		t.Fatalf("Membership leaf list = %#v, want %#v", live, want)
+	sort.Strings(holding)
+	if strings.Join(holding, ",") != strings.Join(want, ",") {
+		t.Fatalf("leaves naming the Row = %#v, want %#v", holding, want)
 	}
 }
 
@@ -233,14 +229,13 @@ func assertLeafHolds(t *testing.T, routes *nativerouter.Repository, leafID, want
 	}
 }
 
-// TestOpenRouteReadsTheLeafFieldNotMemberships is E3 stage 3's gate for the
-// leaf-to-Row direction.
+// TestOpenRouteReadsTheLeafField pins where OPEN gets its answer.
 //
-// Both sources still exist and the write path keeps them equal, so a test that
-// only checks the answer cannot tell which one produced it. This one makes them
-// disagree on purpose: the leaf is emptied while the Membership still names the
-// Row. Whichever source OPEN ROUTE trusts is the one it reads.
-func TestOpenRouteReadsTheLeafFieldNotMemberships(t *testing.T) {
+// Nothing writes Membership objects any more, so the earlier version of this
+// test — make the two sources disagree and see which one wins — has no second
+// source left to disagree with. What it still proves is that emptying the leaf
+// field empties the OPEN result, which is the whole of the read path now.
+func TestOpenRouteReadsTheLeafField(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -270,11 +265,9 @@ func TestOpenRouteReadsTheLeafFieldNotMemberships(t *testing.T) {
 
 	locators, _, err := rows.ListRouterLeafPage(ctx, "route_only", "", 10)
 	if err != nil || len(locators) != 1 || locators[0].RowID != "row_held" || locators[0].Revision != 1 {
-		t.Fatalf("OPEN before the divergence = %#v, %v", locators, err)
+		t.Fatalf("OPEN on a mounted leaf = %#v, %v", locators, err)
 	}
 
-	// Empty the leaf behind the write path's back. The Membership records are
-	// untouched and still say the Row is here.
 	routes := nativerouter.New(file)
 	leaf, err := routes.Get("route_only")
 	if err != nil {
@@ -292,16 +285,57 @@ func TestOpenRouteReadsTheLeafFieldNotMemberships(t *testing.T) {
 	if err := transaction.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	memberships, err := routes.Memberships("row_held")
-	if err != nil || len(memberships) != 1 {
-		t.Fatalf("the Membership should still name the Row: %#v, %v", memberships, err)
-	}
 
 	locators, _, err = rows.ListRouterLeafPage(ctx, "route_only", "", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(locators) != 0 {
-		t.Fatalf("OPEN still reads Memberships: %#v", locators)
+		t.Fatalf("OPEN on an emptied leaf = %#v", locators)
 	}
+}
+
+// TestMountingAnOccupiedLeafIsRefused is where the single-Row invariant lives
+// now.
+//
+// It used to be checked by counting live Memberships per leaf, which could only
+// notice an ambiguous leaf after one had been created. A field holds one value,
+// so the second Row is refused at the write instead.
+func TestMountingAnOccupiedLeafIsRefused(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	now := time.Date(2026, 8, 26, 8, 0, 0, 0, time.UTC)
+	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{
+		IDs: &testIDs{values: []string{"database", "table", "title"}}, Clock: testClock{value: now},
+	})
+	rows := NewService(New(file), dictionary, ServiceOptions{
+		IDs:   &testIDs{values: []string{"root", "only", "first", "second"}},
+		Clock: testClock{value: now},
+	})
+	engine := executor.New(dictionary, rows)
+	executeMSQL(t, ctx, engine, "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title')", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Notes Router'", executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1})
+	executeMSQL(t, ctx, engine, "CREATE ROUTE UNDER 'route_root' NAME 'only' KIND 'leaf' PURPOSE 'The one leaf'",
+		executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1})
+	executeMSQL(t, ctx, engine, "INSERT INTO work.notes (title) VALUES ('first')",
+		executor.Parameters{}, executor.MutationOptions{
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{"route_only"},
+		})
+
+	_, err = runMSQL(ctx, engine, "INSERT INTO work.notes (title) VALUES ('second')",
+		executor.Parameters{}, executor.MutationOptions{
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{"route_only"},
+		})
+	if !hasCode(err, string(result.CodeConstraint)) {
+		t.Fatalf("second Row into an occupied leaf = %v, want a constraint refusal", err)
+	}
+	// The refusal leaves the first Row exactly where it was.
+	assertLeafHolds(t, nativerouter.New(file), "route_only", "row_first")
 }

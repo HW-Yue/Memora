@@ -166,7 +166,7 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 			continue
 		}
 		projected := projectRow(candidate, projections)
-		projected["route_paths"] = engine.routePathsForRow(ctx, table.DatabaseID, table.ID, candidate.ID)
+		projected["route_paths"] = engine.routePathsForRow(ctx, candidate)
 		output.Rows = append(output.Rows, projected)
 		if len(output.Rows) == int(limit) {
 			return output, nil
@@ -352,15 +352,16 @@ func projectRow(current datarow.Row, projections []projection) result.Row {
 	return projected
 }
 
-func (engine *Engine) routePathsForRow(ctx context.Context, databaseID, tableID, rowID string) []string {
-	memberships, err := engine.rows.MembershipsForRow(ctx, databaseID, tableID, rowID)
-	if err != nil {
-		return []string{}
-	}
-	paths := make([]string, 0, len(memberships))
-	for _, membership := range memberships {
-		node, nodeErr := engine.rows.GetRouterNode(ctx, membership.LeafID)
-		if nodeErr != nil || node.Path == "" {
+// routePathsForRow turns the leaves a Row hangs under into their tree paths.
+//
+// The Row carries its own leaf list, so there is no lookup to answer "where
+// does this Row live" — the write path knew it and stored it. What is left is
+// resolving each leaf to its path, which the Router owns.
+func (engine *Engine) routePathsForRow(ctx context.Context, value datarow.Row) []string {
+	paths := make([]string, 0, len(value.RouteLeafIDs))
+	for _, leafID := range value.RouteLeafIDs {
+		node, err := engine.rows.GetRouterNode(ctx, leafID)
+		if err != nil || node.Path == "" {
 			continue
 		}
 		paths = append(paths, node.Path)
