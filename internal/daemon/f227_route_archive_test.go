@@ -20,7 +20,9 @@ func TestDeletingARouteLeafRequiresItToBeEmpty(t *testing.T) {
 	ok, message := run(t, dataDir, "DELETE ROUTE :leaf",
 		[]executor.StatementInput{{
 			Parameters: executor.Parameters{Named: map[string]any{"leaf": leaf}},
-			Mutation:   executor.MutationOptions{MaxAffectedRows: 1, ExpectedRevision: 1},
+			Mutation: executor.MutationOptions{
+				MaxAffectedRows: 1, ExpectedRevision: routeRevision(t, dataDir, leaf),
+			},
 		}},
 	)
 	if ok {
@@ -47,7 +49,9 @@ func TestDeletingARouteLeafRequiresItToBeEmpty(t *testing.T) {
 	if ok, message := run(t, dataDir, "DELETE ROUTE :leaf",
 		[]executor.StatementInput{{
 			Parameters: executor.Parameters{Named: map[string]any{"leaf": leaf}},
-			Mutation:   executor.MutationOptions{MaxAffectedRows: 1, ExpectedRevision: 1},
+			Mutation: executor.MutationOptions{
+				MaxAffectedRows: 1, ExpectedRevision: routeRevision(t, dataDir, leaf),
+			},
 		}},
 	); !ok {
 		t.Fatalf("deleting an emptied leaf must succeed: %s", message)
@@ -69,6 +73,30 @@ func createLeaf(t *testing.T, dataDir, parentID, name string) string {
 	return id
 }
 
+// routeRevision reads a Route's current revision.
+//
+// Tests quote it rather than assuming 1, because a leaf's revision now advances
+// when a Row mounts on or leaves it: the leaf records which Row it holds, so
+// that IS a change to the node. A client editing a Route after a write landed
+// under it has to re-read the revision the same way.
+func routeRevision(t *testing.T, dataDir, routeID string) uint64 {
+	t.Helper()
+	described := executeTraceMSQL(t, dataDir, "DESCRIBE ROUTE :route",
+		[]executor.StatementInput{{Parameters: executor.Parameters{Named: map[string]any{"route": routeID}}}},
+	)
+	switch revision := described.Results[0].Rows[0]["revision"].(type) {
+	case uint64:
+		return revision
+	case int64:
+		return uint64(revision)
+	case float64:
+		return uint64(revision)
+	default:
+		t.Fatalf("Route %s revision has type %T", routeID, revision)
+		return 0
+	}
+}
+
 func leafParent(t *testing.T, dataDir, leafID string) string {
 	t.Helper()
 	described := executeTraceMSQL(t, dataDir, "DESCRIBE ROUTE :route",
@@ -87,7 +115,9 @@ func TestDeletingARouteIsFinal(t *testing.T) {
 	if ok, message := run(t, dataDir, "DELETE ROUTE :leaf",
 		[]executor.StatementInput{{
 			Parameters: executor.Parameters{Named: map[string]any{"leaf": empty}},
-			Mutation:   executor.MutationOptions{MaxAffectedRows: 1, ExpectedRevision: 1},
+			Mutation: executor.MutationOptions{
+				MaxAffectedRows: 1, ExpectedRevision: routeRevision(t, dataDir, empty),
+			},
 		}},
 	); !ok {
 		t.Fatalf("DELETE ROUTE failed: %s", message)

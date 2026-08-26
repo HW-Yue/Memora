@@ -179,6 +179,9 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 			return row.Row{}, err
 		}
 	}
+	if err := stageLeafMounts(transaction, routes, value, value.RouteLeafIDs); err != nil {
+		return row.Row{}, err
+	}
 	if err := stageRowChange(transaction, changeSequence, value, history.OperationInsert, options.Metadata, memberships); err != nil {
 		return row.Row{}, err
 	}
@@ -419,6 +422,9 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 	if err := routes.ValidateMembershipChanges(changedMemberships); err != nil {
 		return err
 	}
+	if err := stageLeafMounts(transaction, routes, value, value.RouteLeafIDs); err != nil {
+		return err
+	}
 	if err := stageRowChange(transaction, changeSequence, value, operation, metadata, changedMemberships); err != nil {
 		return err
 	}
@@ -426,6 +432,69 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 		return service.authority.PublishRows(ctx, []row.Row{value}, transaction.Commit)
 	}
 	return transaction.Commit()
+}
+
+// stageLeafMounts writes the leaf side of the mount: each leaf names the Row
+// hanging under it, and a leaf the Row has left stops naming it.
+//
+// The Row already stores its leaves, so this is the same fact recorded twice —
+// a deliberate exception to "one fact, one place", made safe by both sides
+// landing in the SAME transaction. What it buys is that both directions are
+// answered by a field on an object that already exists, with no third structure
+// and no lookup. See docs/storage/leaf-rowid-v1.md §5.3.
+//
+// Mounting advances the leaf's revision. The record store keys a node by its
+// revision and refuses a rewrite at the same one, so there is no way to change
+// what a leaf holds without a new revision — and a leaf that now holds a
+// different Row genuinely is a different leaf.
+func stageLeafMounts(
+	transaction *nativestore.Transaction,
+	routes *nativerouter.Repository,
+	value row.Row,
+	desired []string,
+) error {
+	mounted := map[string]bool{}
+	for _, leafID := range desired {
+		mounted[leafID] = true
+	}
+	previous, err := routes.LeavesHoldingRow(value.ID)
+	if err != nil {
+		return err
+	}
+	touched := map[string]bool{}
+	for _, leafID := range previous {
+		touched[leafID] = true
+	}
+	for leafID := range mounted {
+		touched[leafID] = true
+	}
+	for _, leafID := range sortedRouteLeafIDs(keysOf(touched)) {
+		node, err := routes.Get(leafID)
+		if err != nil {
+			return err
+		}
+		wanted := ""
+		if mounted[leafID] {
+			wanted = value.ID
+		}
+		if node.RowID == wanted {
+			continue
+		}
+		node.RowID = wanted
+		node.Revision++
+		if err := routes.StageNode(transaction, node); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func keysOf(values map[string]bool) []string {
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	return result
 }
 
 // sortedRouteLeafIDs normalises the leaf list a Row stores.

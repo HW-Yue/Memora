@@ -175,8 +175,34 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 | SELECT 的 `route_paths` | **行为不变**，换数据来源 | 无感知 |
 | `RouteLeafIDs` 三态（`nil`=保持／`[]`=清空／非空=替换） | 语义保留，落地方式变 | 无感知；wire 面 `protocol/msql/protocol.go:83-100` 不动 |
 | `OPEN ROUTE` | 行为不变，少一次查找 | 无感知 |
+| **Route 的 revision** | **挂行／摘行会推高叶子的 revision** | **有感知，见下** |
 | 变更日志少一种 entry kind | `change.ObjectRouteMembership`（`change/model.go:38`）不再产生，改由 `route_node` 表达 | **已发布格式**：旧 envelope 必须继续解码；`Validate` 的 kind 白名单（同文件 184／216 行）保留该值 |
 | 语义健康少 3 类问题项 | 见 §3.1 | **能力减少**，需在发布说明中点名 |
+
+### 6.1 一个原文漏掉的可见变化：Route revision 会被数据写入推高
+
+**原文这张表写了「无感知」，不成立。** 实现时才发现：
+
+节点记录按 revision 作键（`nativerouter/repository.go` 的 `nodeRecordID`），
+`StageNode` 要求 `Revision == latest.Revision+1`——**同 revision 重写在结构上
+不可能**。叶子记下它持有的 Row，那就是对节点的一次修改，必然带来新 revision。
+
+于是 `ALTER ROUTE` / `DELETE ROUTE` 的 `EXPECTED REVISION` 会被一次数据写入
+打断：你按 revision 1 读了叶子，有行挂了上去，你的编辑就撞版本冲突。
+`TestDeletingARouteLeafRequiresItToBeEmpty` 第一次就是这样红的——本该报
+「叶子里还有行」，实际报的是版本冲突。
+
+**接受这个后果，不做例外**，理由三条：
+
+1. 要不推高 revision，就得给节点第二个版本计数器——那正是本设计要删掉的
+   `MembershipRevision`，换个名字重新引进来等于白做；
+2. `Node.Revision` 的含义就是「这条节点记录变了」。**一个现在持有 Row 的叶子
+   确实和之前不一样了**，告诉并发编辑者这件事是对的，不是噪声；
+3. [F169](../planning/f169-single-row-route-leaf.md) 保证一个叶子至多挂一行，
+   所以这是叶子一生中至多发生两次的事，不是每次写入都抖。
+
+**客户端契约**：编辑一个叶子前重新读它的 revision，不要沿用创建时那个。
+这条要进发布说明，和三类语义健康项一起。
 
 ## 7. 分阶段与验证门
 

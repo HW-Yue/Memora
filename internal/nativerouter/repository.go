@@ -873,3 +873,27 @@ func (input *decoder) u64() (uint64, error) {
 	}
 	return binary.LittleEndian.Uint64(value), nil
 }
+
+// LeavesHoldingRow returns the live leaves that currently name this Row.
+//
+// It scans the Route nodes, which are metadata-sized — the semantic tree is
+// bounded by how a person organises their knowledge, not by how much of it they
+// have. The unbounded direction, Row to leaves, is answered by a field on the
+// Row itself and never scans.
+func (repository *Repository) LeavesHoldingRow(rowID string) ([]string, error) {
+	if rowID == "" {
+		return nil, nil
+	}
+	nodes, err := repository.nodes()
+	if err != nil {
+		return nil, err
+	}
+	var result []string
+	for _, node := range nodes {
+		if !node.Deleted && node.RowID == rowID {
+			result = append(result, node.ID)
+		}
+	}
+	sort.Strings(result)
+	return result, nil
+}

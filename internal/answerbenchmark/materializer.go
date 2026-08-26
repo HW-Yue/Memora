@@ -425,9 +425,17 @@ func (state *materializationState) verifyTable(
 		}
 		describedRoute, err := oneRow(value)
 		wantAliases := append([]string{route.Name}, route.Aliases...)
-		if err != nil || !mappingMatches(mapping, describedRoute, "route_id", "revision") ||
+		// The revision may have moved on since the Route was created: a leaf
+		// records the Row hanging under it, so materializing this fixture's
+		// Rows advances the leaves they mount on. What must not move is the
+		// Route's identity or its semantic surface, which is what this check is
+		// for. See docs/storage/leaf-rowid-v1.md §5.3.
+		if err != nil || !mappingIdentityMatches(mapping, describedRoute, "route_id") ||
 			!equalTextList(describedRoute["aliases"], wantAliases) {
 			return fmt.Errorf("%w: Route verification failed", ErrMaterialization)
+		}
+		if revision, ok := uintValue(describedRoute["revision"]); !ok || revision < mapping.Revision {
+			return fmt.Errorf("%w: Route revision went backwards", ErrMaterialization)
 		}
 	}
 	for _, fixtureRow := range table.Rows {

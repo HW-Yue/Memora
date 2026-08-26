@@ -167,3 +167,68 @@ func assertLeafParity(
 		t.Fatalf("Membership leaf list = %#v, want %#v", live, want)
 	}
 }
+
+// TestLeafNamesTheRowItHolds is the other direction of the mount.
+//
+// The Row stores its leaves; each leaf stores its Row. Both land in the same
+// transaction, which is what makes storing the fact twice safe — and what
+// separates this from Membership, an independent object with its own revision
+// and tombstone that could drift from both ends.
+func TestLeafNamesTheRowItHolds(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	now := time.Date(2026, 8, 26, 8, 0, 0, 0, time.UTC)
+	dictionary := nativecatalog.NewService(nativecatalog.New(file), nativecatalog.ServiceOptions{
+		IDs: &testIDs{values: []string{"database", "table", "title"}}, Clock: testClock{value: now},
+	})
+	rows := NewService(New(file), dictionary, ServiceOptions{
+		IDs:   &testIDs{values: []string{"root", "here", "there", "held"}},
+		Clock: testClock{value: now},
+	})
+	engine := executor.New(dictionary, rows)
+	executeMSQL(t, ctx, engine, "CREATE DATABASE work PURPOSE 'Work' SCOPE 'Projects'", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One note' (title TEXT(40) NOT NULL PURPOSE 'Title')", executor.Parameters{}, executor.MutationOptions{})
+	executeMSQL(t, ctx, engine, "CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Notes Router'", executor.Parameters{}, executor.MutationOptions{MaxAffectedRows: 1})
+	for _, name := range []string{"here", "there"} {
+		executeMSQL(t, ctx, engine,
+			"CREATE ROUTE UNDER 'route_root' NAME :name KIND 'leaf' PURPOSE :purpose",
+			executor.Parameters{Named: map[string]any{"name": name, "purpose": name + " locator"}},
+			executor.MutationOptions{MaxAffectedRows: 1})
+	}
+	routes := nativerouter.New(file)
+
+	executeMSQL(t, ctx, engine, "INSERT INTO work.notes (title) VALUES ('held')",
+		executor.Parameters{}, executor.MutationOptions{
+			ExpectedSchemaVersion: 1, MaxAffectedRows: 1, RouteLeafIDs: []string{"route_here"},
+		})
+	assertLeafHolds(t, routes, "route_here", "row_held")
+	assertLeafHolds(t, routes, "route_there", "")
+
+	// Moving the Row has to clear the leaf it left, not only fill the new one.
+	// A leaf still naming a Row that moved away is precisely the stale pointer
+	// Membership could produce and this design is meant to make impossible.
+	executeMSQL(t, ctx, engine, "UPDATE work.notes SET title = 'moved' WHERE row_id = 'row_held'",
+		executor.Parameters{}, executor.MutationOptions{
+			ExpectedSchemaVersion: 1, ExpectedRevision: 1, MaxAffectedRows: 1,
+			RouteLeafIDs: []string{"route_there"},
+		})
+	assertLeafHolds(t, routes, "route_here", "")
+	assertLeafHolds(t, routes, "route_there", "row_held")
+}
+
+func assertLeafHolds(t *testing.T, routes *nativerouter.Repository, leafID, want string) {
+	t.Helper()
+	node, err := routes.Get(leafID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.RowID != want {
+		t.Fatalf("leaf %s holds %q, want %q", leafID, node.RowID, want)
+	}
+}
