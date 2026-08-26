@@ -1,7 +1,10 @@
 package pagestoremigration
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -59,3 +62,49 @@ func TestGenerationAcceptsAPerTableTree(t *testing.T) {
 }
 
 const zeroDigest = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// TestCreatingATableCreatesItsTree is the other half of E4 stage 1: the Tree
+// set does not just tolerate a per-Table Tree, it grows one when a Table is
+// created, and the growth survives a reopen.
+func TestCreatingATableCreatesItsTree(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+
+	if !authority.generation.TableTree(table.ID) {
+		t.Fatalf("Table %q has no Tree", table.ID)
+	}
+	specification := tableTreeManifest(table.ID)
+	generationDirectory := filepath.Join(directory, GenerationDirectory)
+	if _, err := os.Stat(filepath.Join(generationDirectory, specification.PageFile)); err != nil {
+		t.Fatalf("Table Tree page file: %v", err)
+	}
+
+	// The manifest is what makes the Tree part of the generation rather than a
+	// stray file the next open would reject.
+	manifest, err := readManifest(generationDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tree := range manifest.Trees {
+		if tree.Kind == tableTreeKind(table.ID) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("manifest Trees = %#v, want one for %q", manifest.Trees, table.ID)
+	}
+	if err := manifest.validate(); err != nil {
+		t.Fatalf("rewritten manifest must validate: %v", err)
+	}
+
+	reopened, err := openLiveGeneration(generationDirectory)
+	if err != nil {
+		t.Fatalf("reopen generation: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if !reopened.TableTree(table.ID) {
+		t.Fatalf("reopened generation lost the Tree for %q", table.ID)
+	}
+}

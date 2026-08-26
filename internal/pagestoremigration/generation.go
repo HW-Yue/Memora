@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/store/buffer"
@@ -168,7 +169,156 @@ type Generation struct {
 	// above are named fields because there is exactly one of each; these follow
 	// the Catalog and so cannot be. See docs/storage/per-table-tree-v1.md §2.
 	tables map[string]*generationTree
+	// router and pool are the generation's one buffer pool and the SpaceID
+	// routing behind it. A Tree added after open registers with them rather
+	// than building a pool of its own.
+	router *buffer.Router
+	pool   *buffer.Pool
 	closed bool
+}
+
+// EnsureTableTrees opens a Tree for every Table it is given, creating the ones
+// that do not exist yet, and records them in the manifest.
+//
+// A Table's Tree is created when the Table is, so the two never disagree about
+// which Tables exist. Creating it is idempotent: an existing Tree is left
+// exactly as it is, which is what makes calling this after every Catalog
+// publication safe.
+func (generation *Generation) EnsureTableTrees(tableIDs []string) error {
+	if generation == nil {
+		return fmt.Errorf("%w: generation", ErrInvalid)
+	}
+	generation.mu.Lock()
+	defer generation.mu.Unlock()
+	if generation.closed {
+		return fmt.Errorf("%w: generation is closed", ErrInvalid)
+	}
+	// Only a shared-log generation can grow: a per-Tree-log layout would need a
+	// new log directory per Table, and those layouts are upgraded to v4 on open
+	// rather than extended.
+	if generation.log == nil || generation.pool == nil || generation.router == nil {
+		return fmt.Errorf("%w: generation cannot grow Trees", ErrInvalid)
+	}
+	missing := make([]string, 0, len(tableIDs))
+	seen := make(map[string]bool, len(tableIDs))
+	for _, tableID := range tableIDs {
+		if tableID == "" || seen[tableID] || generation.tables[tableID] != nil {
+			continue
+		}
+		seen[tableID] = true
+		missing = append(missing, tableID)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	opened := make([]*generationTree, 0, len(missing))
+	defer func() {
+		// Anything opened before a failure is closed here; the caller sees the
+		// generation exactly as it was.
+		if len(opened) == 0 {
+			return
+		}
+		for index := len(opened) - 1; index >= 0; index-- {
+			_ = closeGenerationTree(opened[index], false)
+		}
+	}()
+	for _, tableID := range missing {
+		specification := tableTreeManifest(tableID)
+		path := filepath.Join(generation.directory, specification.PageFile)
+		manager, err := page.Open(path, specification.SpaceID)
+		if errors.Is(err, os.ErrNotExist) {
+			// First time this Table is seen: its page file does not exist yet.
+			manager, err = page.Create(path, specification.SpaceID)
+		}
+		if err != nil {
+			return fmt.Errorf("%w: open Table %q Pages: %v", ErrTargetCorrupt, tableID, err)
+		}
+		if err := generation.router.Register(specification.SpaceID, manager); err != nil {
+			_ = manager.Close()
+			return fmt.Errorf("%w: register Table %q Pages: %v", ErrTargetCorrupt, tableID, err)
+		}
+		runtime, err := treecommit.AttachRuntime(generation.log, manager, treecommit.RuntimeConfig{
+			SpaceID: specification.SpaceID, Pool: generation.pool,
+		})
+		if err != nil {
+			_ = manager.Close()
+			return fmt.Errorf("%w: attach Table %q Tree: %v", ErrTargetCorrupt, tableID, err)
+		}
+		// A Tree is born with an empty B+ root rather than no root at all.
+		// "Created but rootless" would be a second empty state for every reader
+		// to know about, and the manifest's own invariant is that a Tree has a
+		// root.
+		if runtime.State().RootPageID == 0 {
+			transactionID, frontierErr := generation.nextTransactionIDLocked()
+			if frontierErr != nil {
+				_ = manager.Close()
+				return frontierErr
+			}
+			index, openErr := currentrowindex.Open(runtime)
+			if openErr != nil {
+				_ = manager.Close()
+				return fmt.Errorf("%w: open Table %q Index: %v", ErrTargetCorrupt, tableID, openErr)
+			}
+			if _, err := index.Bootstrap(transactionID, nil); err != nil {
+				_ = manager.Close()
+				return fmt.Errorf("%w: bootstrap Table %q Tree: %v", ErrTargetCorrupt, tableID, err)
+			}
+		}
+		specification.State = treeStateFromRuntime(runtime.State())
+		opened = append(opened, &generationTree{
+			manifest: specification, set: generation.log, manager: manager, runtime: runtime,
+		})
+	}
+	manifest := generation.manifest
+	manifest.Trees = append(append([]treeManifest(nil), manifest.Trees...), func() []treeManifest {
+		added := make([]treeManifest, 0, len(opened))
+		for _, tree := range opened {
+			added = append(added, tree.manifest)
+		}
+		return added
+	}()...)
+	if err := rewriteManifest(generation.directory, manifest); err != nil {
+		return err
+	}
+	// The manifest is the record of which Trees exist, so it lands before the
+	// Trees are published in memory: a crash between the two reopens a
+	// generation whose manifest already lists them, and opening them again is
+	// what EnsureTableTrees does anyway.
+	generation.manifest = manifest
+	if generation.tables == nil {
+		generation.tables = make(map[string]*generationTree, len(opened))
+	}
+	for index, tableID := range missing {
+		generation.tables[tableID] = opened[index]
+		generation.trees = append(generation.trees, opened[index])
+	}
+	opened = nil
+	return nil
+}
+
+// nextTransactionIDLocked picks the next WAL transaction ID on the shared log.
+// Every Tree commits into that one log, so the ID space is the log's, not any
+// one Tree's.
+func (generation *Generation) nextTransactionIDLocked() (uint64, error) {
+	frontier, err := generation.log.DurableFrontier()
+	if err != nil {
+		return 0, fmt.Errorf("%w: read redo frontier: %v", ErrTargetCorrupt, err)
+	}
+	if frontier.LastTransactionID == math.MaxUint64 {
+		return 0, fmt.Errorf("%w: redo transaction IDs are exhausted", ErrTargetCorrupt)
+	}
+	return frontier.LastTransactionID + 1, nil
+}
+
+// TableTree reports whether a Table has a Tree in this generation.
+func (generation *Generation) TableTree(tableID string) bool {
+	if generation == nil {
+		return false
+	}
+	generation.mu.Lock()
+	defer generation.mu.Unlock()
+	return generation.tables[tableID] != nil
 }
 
 func OpenGeneration(directory string) (*Generation, error) {
@@ -209,11 +359,11 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 			_ = generation.Close()
 		}
 	}()
-	trees, shared, err := openGenerationTrees(directory, manifest, openGenerationFrames)
+	trees, shared, router, pool, err := openGenerationTrees(directory, manifest, openGenerationFrames)
 	if err != nil {
 		return nil, err
 	}
-	generation.log = shared
+	generation.log, generation.router, generation.pool = shared, router, pool
 	for _, tree := range trees {
 		specification := tree.manifest
 		generation.trees = append(generation.trees, tree)
@@ -271,7 +421,7 @@ func openGenerationTrees(
 	directory string,
 	manifest generationManifest,
 	capacity uint64,
-) ([]*generationTree, *wal.SegmentSet, error) {
+) ([]*generationTree, *wal.SegmentSet, *buffer.Router, *buffer.Pool, error) {
 	if manifest.sharedLog() {
 		return openSharedLogTrees(directory, manifest, capacity)
 	}
@@ -282,11 +432,11 @@ func openGenerationTrees(
 			for index := len(trees) - 1; index >= 0; index-- {
 				_ = closeGenerationTree(trees[index], true)
 			}
-			return nil, nil, fmt.Errorf("%w: open %s Tree: %v", ErrTargetCorrupt, specification.Kind, err)
+			return nil, nil, nil, nil, fmt.Errorf("%w: open %s Tree: %v", ErrTargetCorrupt, specification.Kind, err)
 		}
 		trees = append(trees, tree)
 	}
-	return trees, nil, nil
+	return trees, nil, nil, nil, nil
 }
 
 // openSharedLogTrees opens the generation's one redo log, then every Tree over
@@ -302,10 +452,10 @@ func openSharedLogTrees(
 	directory string,
 	manifest generationManifest,
 	capacity uint64,
-) (result []*generationTree, resultLog *wal.SegmentSet, resultErr error) {
+) (result []*generationTree, resultLog *wal.SegmentSet, resultRouter *buffer.Router, resultPool *buffer.Pool, resultErr error) {
 	log, err := wal.OpenSegmentSet(filepath.Join(directory, sharedWALDirectory), 0)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: open shared redo log: %v", ErrTargetCorrupt, err)
+		return nil, nil, nil, nil, fmt.Errorf("%w: open shared redo log: %v", ErrTargetCorrupt, err)
 	}
 	managers := make([]*page.Manager, 0, len(manifest.Trees))
 	defer func() {
@@ -321,13 +471,13 @@ func openSharedLogTrees(
 	for _, specification := range manifest.Trees {
 		manager, err := page.Open(filepath.Join(directory, specification.PageFile), specification.SpaceID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%w: open %s Pages: %v", ErrTargetCorrupt, specification.Kind, err)
+			return nil, nil, nil, nil, fmt.Errorf("%w: open %s Pages: %v", ErrTargetCorrupt, specification.Kind, err)
 		}
 		managers = append(managers, manager)
 		spaces[specification.SpaceID] = manager
 	}
 	if _, err := wal.RecoverSegmentSet(log, spaces); err != nil {
-		return nil, nil, fmt.Errorf("%w: recover shared redo log: %v", ErrTargetCorrupt, err)
+		return nil, nil, nil, nil, fmt.Errorf("%w: recover shared redo log: %v", ErrTargetCorrupt, err)
 	}
 	// One buffer pool for the whole generation, routed by SpaceID. Capacity is
 	// a single budget rather than one per Tree, which is what keeps resident
@@ -336,7 +486,7 @@ func openSharedLogTrees(
 	router := buffer.NewRouter()
 	for index, specification := range manifest.Trees {
 		if err := router.Register(specification.SpaceID, managers[index]); err != nil {
-			return nil, nil, fmt.Errorf("%w: register %s Pages: %v", ErrTargetCorrupt, specification.Kind, err)
+			return nil, nil, nil, nil, fmt.Errorf("%w: register %s Pages: %v", ErrTargetCorrupt, specification.Kind, err)
 		}
 	}
 	pool, err := buffer.New(router, buffer.Config{
@@ -344,7 +494,7 @@ func openSharedLogTrees(
 		Writer: router, Durability: log,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: open generation buffer pool: %v", ErrTargetCorrupt, err)
+		return nil, nil, nil, nil, fmt.Errorf("%w: open generation buffer pool: %v", ErrTargetCorrupt, err)
 	}
 	trees := make([]*generationTree, 0, len(manifest.Trees))
 	for index, specification := range manifest.Trees {
@@ -352,13 +502,13 @@ func openSharedLogTrees(
 		config.Pool = pool
 		runtime, err := treecommit.AttachRuntime(log, managers[index], config)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%w: attach %s Tree: %v", ErrTargetCorrupt, specification.Kind, err)
+			return nil, nil, nil, nil, fmt.Errorf("%w: attach %s Tree: %v", ErrTargetCorrupt, specification.Kind, err)
 		}
 		trees = append(trees, &generationTree{
 			manifest: specification, set: log, manager: managers[index], runtime: runtime,
 		})
 	}
-	return trees, log, nil
+	return trees, log, router, pool, nil
 }
 
 // openTreeWALTree opens one Tree of a pre-v4 generation, which owns its log.

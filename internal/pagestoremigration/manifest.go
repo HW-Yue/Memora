@@ -233,6 +233,56 @@ func requireJSONEOF(decoder *json.Decoder) error {
 	return err
 }
 
+// rewriteManifest replaces a live generation's manifest.
+//
+// writeManifest creates the manifest of a generation that did not exist a
+// moment ago and refuses to overwrite; this one is for a generation already in
+// use, which grows a Tree whenever a Table is created. The replacement is
+// atomic — a full temporary file, synced, then renamed over the old one — so a
+// crash leaves either the previous manifest or the new one, never a half-written
+// file that would read as a corrupt generation.
+func rewriteManifest(directory string, manifest generationManifest) error {
+	digest, err := manifestDigest(manifest)
+	if err != nil {
+		return err
+	}
+	manifest.Digest = digest
+	if err := manifest.validate(); err != nil {
+		return err
+	}
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	encoded = append(encoded, '\n')
+	temporary := filepath.Join(directory, manifestFileName+".next")
+	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("create replacement generation manifest: %w", err)
+	}
+	removeOnError := true
+	defer func() {
+		if removeOnError {
+			_ = file.Close()
+			_ = os.Remove(temporary)
+		}
+	}()
+	if _, err := file.Write(encoded); err != nil {
+		return fmt.Errorf("write replacement generation manifest: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync replacement generation manifest: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close replacement generation manifest: %w", err)
+	}
+	if err := os.Rename(temporary, filepath.Join(directory, manifestFileName)); err != nil {
+		return fmt.Errorf("replace generation manifest: %w", err)
+	}
+	removeOnError = false
+	return syncGenerationDirectory(directory)
+}
+
 func writeManifest(directory string, manifest generationManifest) error {
 	digest, err := manifestDigest(manifest)
 	if err != nil {

@@ -664,9 +664,30 @@ func (authority *Authority) PublishCatalog(
 	if err != nil {
 		return authority.poisonPublication("Catalog body", affected, err)
 	}
+	// A Table's Tree is created with the Table. Doing it after the Catalog is
+	// published means the Tree set is derived from a Catalog that is already
+	// durable, so a crash here leaves a Table whose Tree is merely missing —
+	// and the next publication creates it — rather than a Tree belonging to a
+	// Table that never existed.
+	if err := authority.generation.EnsureTableTrees(catalogTableIDs(databases)); err != nil {
+		return authority.poisonPublication("Catalog Table Trees", affected, err)
+	}
 	authority.catchUpFulltextAfterWrite(ctx)
 	authority.maintainRedoLog()
 	return nil
+}
+
+// catalogTableIDs lists every Table in a Catalog snapshot, archived ones
+// included: an archived Table is still readable, so its Tree still has to be
+// there.
+func catalogTableIDs(databases []catalog.Database) []string {
+	tableIDs := make([]string, 0, len(databases))
+	for _, database := range databases {
+		for _, table := range database.Tables {
+			tableIDs = append(tableIDs, table.ID)
+		}
+	}
+	return tableIDs
 }
 
 func (authority *Authority) checkpointPhase(phase authorityPhase) error {

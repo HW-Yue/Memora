@@ -143,9 +143,15 @@ func TestSharedRedoLogRecoversEveryTreeOnReopen(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		// The four fixed Trees plus one per Table. The count follows the
+		// Catalog now, so it is read from the manifest rather than hardcoded.
+		manifest, err := readManifest(generationDirectory)
+		if err != nil {
+			t.Fatal(err)
+		}
 		pages := generationPageBytes(t, generationDirectory)
-		if len(pages) != 4 {
-			t.Fatalf("reopen %d Page files = %d, want 4", attempt, len(pages))
+		if len(pages) != len(manifest.Trees) || len(pages) < len(expectedTrees) {
+			t.Fatalf("reopen %d Page files = %d, want %d", attempt, len(pages), len(manifest.Trees))
 		}
 		if attempt == 1 {
 			recoveredPages = pages
