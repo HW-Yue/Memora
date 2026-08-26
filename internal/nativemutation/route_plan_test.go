@@ -26,7 +26,7 @@ func TestApprovedRoutePlanCommitsRoutesMountsAndChangeAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mountLeaf(t, file, routes, alias.ID, "row_source")
+	mountRowInLeaf(t, file, rows, routes, alias.ID, "row_source")
 	proposal := routemutationplan.Proposal{
 		Version: routemutationplan.ProposalVersion, ID: "proposal_merge", Operation: routemutationplan.OperationMerge,
 		Actor: "agent:test", SourceEventID: "event:route-review", Reason: "merge equivalent Row aliases",
@@ -57,6 +57,21 @@ func TestApprovedRoutePlanCommitsRoutesMountsAndChangeAtomically(t *testing.T) {
 		if len(locators) != 1 {
 			t.Fatalf("target %s locators = %#v", create.RouteID, locators)
 		}
+	}
+	// The Row must come out of the plan naming the leaf it now hangs under.
+	// The leaf and the Row are two ends of one mount; a plan that moves the Row
+	// and leaves the Row's own list pointing at leaves it left has torn them
+	// apart, and every route_paths read after it is wrong.
+	moved, err := rows.Read("row_source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := routes.LeavesHoldingRow("row_source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 1 || len(moved.RouteLeafIDs) != 1 || moved.RouteLeafIDs[0] != held[0] {
+		t.Fatalf("Row leaf list = %#v, leaves holding it = %#v", moved.RouteLeafIDs, held)
 	}
 	changes, more, err := nativechange.New(file).ListAfter(0, 10)
 	if err != nil || more || len(changes) != 1 ||

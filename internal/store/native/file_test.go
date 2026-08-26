@@ -255,3 +255,49 @@ func FuzzDecodeRecordHeader(f *testing.F) {
 		_, _ = decodeRecordHeader(encoded)
 	})
 }
+
+// TestRetiredObjectKindsAreRefusedButStillReadable pins both halves of retiring
+// an object kind: nothing may write one again, and a database that already
+// holds one keeps opening and reading it. Reclaiming the number instead would
+// make those existing bytes decode as a different object.
+func TestRetiredObjectKindsAreRefusedButStillReadable(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "retired.memora")
+	file, err := Create(path, FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []ObjectKind{objectKindRetiredRouteMembership, objectKindRetiredRouteRowMembership} {
+		if err := file.Put(kind, 1, "route_leaf@row_01", []byte("legacy")); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("Put(kind %d) error = %v", kind, err)
+		}
+		transaction, beginErr := file.Begin()
+		if beginErr != nil {
+			t.Fatal(beginErr)
+		}
+		if err := transaction.Put(kind, 1, "route_leaf@row_01", []byte("legacy")); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("Transaction.Put(kind %d) error = %v", kind, err)
+		}
+		_ = transaction.Rollback()
+	}
+
+	// Write one the way a database from before the retirement holds it, below
+	// the validating write API.
+	if _, err := file.appendRecord(objectKindRetiredRouteMembership, 1, "route_leaf@row_01", []byte("legacy")); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("a database holding a retired kind must still open: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	payload, err := reopened.Get(objectKindRetiredRouteMembership, "route_leaf@row_01")
+	if err != nil || string(payload) != "legacy" {
+		t.Fatalf("Get(retired) = %q, %v", payload, err)
+	}
+}

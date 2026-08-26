@@ -35,9 +35,14 @@ type RowChange struct {
 }
 
 type RoutePlanCommit struct {
-	Routes      []router.Node
+	Routes []router.Node
+	// Rows carries the Row side of any mount this plan moves. A leaf names the
+	// Row it holds and the Row names its leaves; both ends move together or the
+	// two disagree.
+	Rows        []row.Row
 	Created     map[string]bool
 	Metadata    change.Metadata
+	RowMetadata row.WriteMetadata
 	CommittedAt time.Time
 }
 
@@ -145,7 +150,7 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 
 func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, error) {
 	if coordinator == nil || coordinator.file == nil || coordinator.router == nil ||
-		len(plan.Routes) == 0 {
+		coordinator.rows == nil || len(plan.Routes) == 0 {
 		return 0, fmt.Errorf("native Route plan commit is incomplete")
 	}
 	sequence, err := coordinator.changeSequence()
@@ -178,6 +183,22 @@ func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, e
 	if committedAt.IsZero() {
 		committedAt = time.Now().UTC()
 	}
+	// The Row side of every mount this plan moved. It is a revision like any
+	// other, with a history record explaining it, because "which leaves hold
+	// this Row" is part of the Row.
+	for _, value := range plan.Rows {
+		value.ChangeSequence = sequence
+		value.UpdatedAt = committedAt
+		if err := coordinator.rows.StageRevision(transaction, value); err != nil {
+			return 0, err
+		}
+		if err := coordinator.rows.StageHistory(
+			transaction, value, history.OperationUpdate, plan.RowMetadata, committedAt,
+		); err != nil {
+			return 0, err
+		}
+		entries = append(entries, nativechange.RowEntry(value, history.OperationUpdate))
+	}
 	envelope, err := change.NewEnvelope(sequence, committedAt, plan.Metadata, entries)
 	if err != nil {
 		return 0, err
@@ -186,9 +207,9 @@ func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, e
 		return 0, err
 	}
 	commit := transaction.Commit
-	if coordinator.pages != nil && len(plan.Routes) != 0 {
+	if coordinator.pages != nil {
 		commit = func() error {
-			return coordinator.pages.PublishMutation(context.Background(), nil, plan.Routes, transaction.Commit)
+			return coordinator.pages.PublishMutation(context.Background(), plan.Rows, plan.Routes, transaction.Commit)
 		}
 	}
 	if err := commit(); err != nil {

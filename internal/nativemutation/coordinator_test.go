@@ -3,6 +3,7 @@ package nativemutation
 import (
 	"errors"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -250,4 +251,41 @@ func openLeaf(t *testing.T, routes *nativerouter.Repository, rows *nativerow.Rep
 		DatabaseID: value.DatabaseID, TableID: value.TableID,
 		RowID: value.ID, Revision: value.Revision,
 	}}
+}
+
+// mountRowInLeaf mounts a Row in a leaf on both ends: the leaf names the Row,
+// the Row names the leaf. Leaving either end out is the divergence the two
+// fields exist to avoid.
+func mountRowInLeaf(
+	t *testing.T,
+	file *nativestore.File,
+	rows *nativerow.Repository,
+	routes *nativerouter.Repository,
+	leafID, rowID string,
+) {
+	t.Helper()
+	mountLeaf(t, file, routes, leafID, rowID)
+	value, err := rows.Read(rowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, existing := range value.RouteLeafIDs {
+		if existing == leafID {
+			return
+		}
+	}
+	value.RouteLeafIDs = append(append([]string(nil), value.RouteLeafIDs...), leafID)
+	sort.Strings(value.RouteLeafIDs)
+	value.Revision++
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if err := rows.StageRevision(transaction, value); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }

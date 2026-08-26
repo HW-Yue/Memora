@@ -46,23 +46,37 @@ const (
 type ObjectKind uint16
 
 const (
-	ObjectKindOpaque             ObjectKind = 1
-	ObjectKindDatabase           ObjectKind = 2
-	ObjectKindTable              ObjectKind = 3
-	ObjectKindColumn             ObjectKind = 4
-	ObjectKindRow                ObjectKind = 5
-	ObjectKindHistory            ObjectKind = 6
-	ObjectKindRelation           ObjectKind = 7
-	ObjectKindRoute              ObjectKind = 8
-	ObjectKindRouteMembership    ObjectKind = 9
-	ObjectKindSnapshotMeta       ObjectKind = 10
-	ObjectKindConfiguration      ObjectKind = 11
-	ObjectKindCommittedChange    ObjectKind = 12
-	ObjectKindRouteRowMembership ObjectKind = 13
+	ObjectKindOpaque          ObjectKind = 1
+	ObjectKindDatabase        ObjectKind = 2
+	ObjectKindTable           ObjectKind = 3
+	ObjectKindColumn          ObjectKind = 4
+	ObjectKindRow             ObjectKind = 5
+	ObjectKindHistory         ObjectKind = 6
+	ObjectKindRelation        ObjectKind = 7
+	ObjectKindRoute           ObjectKind = 8
+	ObjectKindSnapshotMeta    ObjectKind = 10
+	ObjectKindConfiguration   ObjectKind = 11
+	ObjectKindCommittedChange ObjectKind = 12
+
+	// 9 and 13 were the two Membership objects — leaf-to-Row and Row-to-leaf.
+	// A Route leaf now records the Row it holds in a field on the leaf itself,
+	// so nothing writes or reads these any more. See
+	// docs/storage/leaf-rowid-v1.md.
+	//
+	// The numbers stay retired rather than reclaimed: databases written before
+	// the switch still carry these records, and reusing a number would make
+	// those bytes decode as something else. New writes are refused; old records
+	// are inert.
+	objectKindRetiredRouteMembership    ObjectKind = 9
+	objectKindRetiredRouteRowMembership ObjectKind = 13
 
 	// ObjectKindMax is the largest persisted object kind. Discovery and
 	// migration sweeps enumerate [ObjectKindDatabase, ObjectKindMax].
-	ObjectKindMax ObjectKind = ObjectKindRouteRowMembership
+	//
+	// It stays at 13 even though 13 is retired: an existing database may hold
+	// records of that kind, and a sweep that stopped at 12 would report them as
+	// an unsupported kind and refuse to migrate a database that is merely old.
+	ObjectKindMax ObjectKind = objectKindRetiredRouteRowMembership
 )
 
 const (
@@ -758,6 +772,9 @@ func decodeRecordHeader(encoded []byte) (recordHeader, error) {
 func validateRecord(kind ObjectKind, schemaVersion uint32, id string, payloadLength int) error {
 	if kind == 0 || schemaVersion == 0 || id == "" || !utf8.ValidString(id) {
 		return fmt.Errorf("%w: kind, schema version, and UTF-8 ID are required", ErrInvalidArgument)
+	}
+	if kind == objectKindRetiredRouteMembership || kind == objectKindRetiredRouteRowMembership {
+		return fmt.Errorf("%w: object kind %d is retired", ErrInvalidArgument, kind)
 	}
 	if len(id) > maxIDLength || payloadLength < 0 || payloadLength > maxPayloadLength {
 		return fmt.Errorf("%w: record exceeds size limit", ErrInvalidArgument)
