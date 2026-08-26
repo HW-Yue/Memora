@@ -219,8 +219,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 | 7 | trace 改为顺 `ParentID` 实时算，删掉 `Node.Path` 与 `repathDescendants` | RENAME 一个分支只写一个节点（今天要写整棵子树）；`route_paths` 与 `SHOW ROUTES` 逐字一致 |
 
 阶段 7 **有一道前置量测**：先测真实语义树深度与 `route_paths` 的读代价。
-量完再决定是彻底删 `Path`，还是把它降级为可过期的建议值（见 §5.2 的退路）。
-这一阶段独立于 1–6，可以单独排。
+量测已做完，结论与原设想不同，见 §7.3。
 
 阶段 6 受[旧代码清理边界](../development/legacy-code-boundary.md)的删除规则约束：
 删除前必须证明目标不在 `cmd/...` 生产依赖图中，并先增加「旧路径不得重新出现」的 RED。
@@ -256,6 +255,56 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 所以这不是可以缓一缓的瑕疵——前提不成立，重复就退化成了两个各自漂移的结构。
 修法是让计划把行的新版本一起算出来（`rowsAfterMoves`），
 与叶子在同一次提交里落盘，并带一条 history 记录说明它为什么变。
+
+### 7.3 阶段 7 的量测结论：不删 `Node.Path`
+
+量测代码在 `internal/nativerouter/path_cost_test.go`，树形取自
+[路由评测语料](../development/route-benchmark-corpus-v1.md)：depth ≤ 6、
+fanout ≤ 12（F223）。量出三件事，其中两件推翻了原设想。
+
+**一、真正的瓶颈不是 `Path`，是节点点查。**
+
+`nativerouter.Get` 过去用 `file.IDs` 枚举**整库所有记录**去找目标节点的最新
+revision。每条 SELECT 的每行每叶子都走一次，一页结果就是一页全库扫描。
+
+| 树 | 节点数 | 读存下来的 `Path` | 顺 `ParentID` 算 trace |
+|---|---|---|---|
+| depth 4 fanout 4（修前） | 341 | 48.7 µs | 239 µs |
+| depth 4 fanout 6（修前） | 1555 | 247 µs | 1320 µs |
+| depth 4 fanout 4（修后） | 341 | 0.93 µs | 6.1 µs |
+| depth 4 fanout 6（修后） | 1555 | 1.03 µs | 7.2 µs |
+
+修法是有界点探：revision 从 1 起连号无洞，从 1 往上点查探到缺号即止。
+修完读代价**不再随树长**，实时算 trace 也从"不可接受"变成 6–7 µs。
+这条已经落地，并按仓库既有的 `Enumerations()` 惯例加了两条 RED。
+
+**二、删掉 `Path` 并不能消掉 RENAME 的整棵子树重写。**
+
+原设想的收益是「RENAME 退化成改一个节点」。不成立：`Path` **不是唯一一份
+物化的 trace**。同一条路径还被物化在三个派生结构里——
+[Route 倒排生成](../planning/f173b1-route-posting-generation.md)的全文索引
+把它当作可检索字段（`routefulltext/project.go` 的 `textField("path", …)`）、
+向量面（`routevector/surface.go`）、词法检索（`routelexical/search.go`）。
+
+今天这三处之所以不过期，**恰恰是因为 RENAME 重写了每个子孙节点**，
+发布时把它们整批重投影。把 `Path` 从节点上删掉，重写不会消失，
+只会从节点记录挪进三个派生索引——那边重投影更贵，而且要先决定
+「路径还要不要可检索」这个对外能力问题。
+
+**三、`Path` 还兼着一份反向索引的键。**
+
+`internal/router` 的 `putPath` 维护 path → 节点 ID 的桶，
+`nativerow` 的 `findRoutePath` 按 path 找节点。trace 实时算只给
+「节点 → 路径」，给不出反方向。
+
+**结论：不删 `Node.Path`，也不降级为建议值。** 一个没人信的建议值比两者都糟。
+保留它，但用一条测试把它**钉成纯缓存**：
+`TestTraceFromParentsMatchesTheStoredPath` 断言存下来的 `Path`
+与顺 `ParentID` 算出来的逐字相等——`ParentID` 是事实，`Path` 是它的物化。
+哪天真要删，前提是先回答「路径要不要可检索」，并给出 path → 节点的替代反查。
+
+**这一阶段就此收尾**：量测做了，结论是不做原定改动，真正值钱的那条
+（点查不再扫全库）已经单独落地。
 
 ## 8. 待定
 

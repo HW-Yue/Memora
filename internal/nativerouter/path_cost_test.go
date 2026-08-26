@@ -73,6 +73,13 @@ func traceFromParents(repository *Repository, leafID string) (string, error) {
 	return "/" + strings.Join(names, "/"), nil
 }
 
+// TestTraceFromParentsMatchesTheStoredPath pins Node.Path as a pure cache:
+// ParentID is the fact, Path is its materialisation, and the two never
+// disagree. E3 stage 7 considered deleting Path and computing the trace
+// instead; the measurement said no (docs/storage/leaf-rowid-v1.md §7.3), so
+// this test is what keeps the option open — the day the three derived indexes
+// stop materialising the path too, Path can go without an archaeology dig to
+// prove it was derivable.
 func TestTraceFromParentsMatchesTheStoredPath(t *testing.T) {
 	t.Parallel()
 

@@ -126,9 +126,11 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
   （`stale_membership`／`invalid_membership_scope`／`multi_row_leaf`）**结构性消失**
 - **对外可见的能力减少**：语义健康少三项，外加 Route revision 会被数据写入推高；
   两条都已记入[待发布的对外可见变化](../development/release-notes-pending.md)
-- **可单独排的子项**：阶段 7（删 `Node.Path`、trace 改实时算）有一道
-  **前置量测**——先测真实树深度与 `route_paths` 读代价，再决定彻底删还是降级为
-  可过期建议值
+- **阶段 7 的结论：不删 `Node.Path`**（量测见规格 §7.3）。量测顺带挖出真正的
+  瓶颈——`nativerouter.Get` 枚举整库找最新 revision，一页 SELECT 结果就是一页
+  全库扫描；改成有界点探后 1555 节点的树从 247 µs 降到 1.03 µs 且不再随树长。
+  删 `Path` 的原定收益（RENAME 只写一个节点）不成立：全文／向量／词法三个
+  派生索引也物化了同一条路径
 
 ### E3.5. 共享 buffer pool
 
