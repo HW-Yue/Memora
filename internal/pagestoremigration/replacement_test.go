@@ -207,7 +207,7 @@ func TestReplacementMatchesCompleteReferencePlan(t *testing.T) {
 		t.Fatalf("replacement/reference verification = %v", err)
 	}
 	for _, locator := range plan.CurrentRows {
-		if got, err := generation.CurrentRows().Lookup(locator.TableID, locator.RowID); err != nil || got != locator {
+		if got, err := generation.CurrentRowsFor(locator.TableID).Lookup(locator.RowID); err != nil || got != locator {
 			t.Fatalf("current locator %s = %+v, %v", locator.RowID, got, err)
 		}
 	}

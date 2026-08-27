@@ -18,7 +18,6 @@ func TestPageReturnsOrderedCurrentLocatorsAndStates(t *testing.T) {
 		tableLocator("tbl_notes", "row_c"),
 		tableLocator("tbl_notes", "row_a"),
 		tableLocator("tbl_notes", "row_bb"),
-		tableLocator("tbl_other", "row_a"),
 	}
 	updates := make([]Update, 0, len(initial))
 	for _, value := range initial {
@@ -47,7 +46,7 @@ func TestPageReturnsOrderedCurrentLocatorsAndStates(t *testing.T) {
 	var got []Locator
 	after := ""
 	for {
-		page, err := index.Page("tbl_notes", after, 2)
+		page, err := index.Page(after, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,10 +69,6 @@ func TestPageReturnsOrderedCurrentLocatorsAndStates(t *testing.T) {
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("paged locators = %+v, want %+v", got, want)
 	}
-	other, err := index.Page("tbl_other", "", 10)
-	if err != nil || len(other.Locators) != 1 || other.Locators[0].TableID != "tbl_other" {
-		t.Fatalf("other Table Page = %+v, %v", other, err)
-	}
 }
 
 func TestPageAfterMissingRowStartsAtItsSortPosition(t *testing.T) {
@@ -84,7 +79,7 @@ func TestPageAfterMissingRowStartsAtItsSortPosition(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	page, err := index.Page("tbl_notes", "row_b", 10)
+	page, err := index.Page("row_b", 10)
 	if err != nil || len(page.Locators) != 1 || page.Locators[0].RowID != "row_c" {
 		t.Fatalf("Page(after missing) = %+v, %v", page, err)
 	}
@@ -93,14 +88,11 @@ func TestPageAfterMissingRowStartsAtItsSortPosition(t *testing.T) {
 func TestPageValidatesBoundsAndEmptyTable(t *testing.T) {
 	_, _, _, index := newTestIndex(t)
 	for _, limit := range []uint64{0, 1001} {
-		if _, err := index.Page("tbl_notes", "", limit); !errors.Is(err, ErrInvalid) {
+		if _, err := index.Page("", limit); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("Page(limit %d) error = %v", limit, err)
 		}
 	}
-	if _, err := index.Page("", "", 1); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("Page(empty Table) error = %v", err)
-	}
-	page, err := index.Page("tbl_notes", "", 10)
+	page, err := index.Page("", 10)
 	if err != nil || len(page.Locators) != 0 || page.HasMore || page.NextAfterRowID != "" {
 		t.Fatalf("empty Page = %+v, %v", page, err)
 	}
@@ -126,7 +118,7 @@ func TestLargeTablePaginationMatchesReferenceOrderWithoutDuplicates(t *testing.T
 	got := make([]Locator, 0, len(want))
 	after := ""
 	for {
-		page, err := index.Page("tbl_notes", after, 17)
+		page, err := index.Page(after, 17)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -168,7 +160,7 @@ func TestPageSurvivesCrashBeforeFlushAndReopen(t *testing.T) {
 	}
 	reopenedSet, reopenedManager, _, reopened := openTestIndex(t, walPath, pagePath, true)
 	defer func() { _ = reopenedSet.Close(); _ = reopenedManager.Close() }()
-	page, err := reopened.Page("tbl_notes", "", 1)
+	page, err := reopened.Page("", 1)
 	if err != nil || len(page.Locators) != 1 || !page.HasMore || page.NextAfterRowID == "" {
 		t.Fatalf("reopened Page = %+v, %v", page, err)
 	}
@@ -214,7 +206,7 @@ func TestPageRejectsKeyLocatorMismatchWithoutFallback(t *testing.T) {
 	}
 	reopenedSet, reopenedManager, _, reopened := openTestIndex(t, walPath, pagePath, true)
 	defer func() { _ = reopenedSet.Close(); _ = reopenedManager.Close() }()
-	if _, err := reopened.Page(value.TableID, "", 10); !errors.Is(err, ErrCorrupt) {
+	if _, err := reopened.Page("", 10); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("corrupt Page error = %v", err)
 	}
 }

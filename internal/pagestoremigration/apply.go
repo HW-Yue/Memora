@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"sync"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -197,10 +198,28 @@ func (applier *Applier) build(
 		}
 		specification.State = treeStateFromRuntime(state)
 		manifest.Trees[index] = specification
-		phase := []applyPhase{phaseCatalogBuilt, phaseCurrentBuilt, phaseVersionsBuilt, phaseFulltextBuilt}[index]
+		phase := []applyPhase{phaseCatalogBuilt, phaseVersionsBuilt, phaseFulltextBuilt}[index]
 		if err := applier.checkpoint(ctx, phase); err != nil {
 			return generationManifest{}, err
 		}
+	}
+	// One Tree per Table, holding that Table's current Rows. The Table list
+	// comes from the Catalog rather than from the Rows, so a Table with no Rows
+	// still gets its Tree and the Tree set matches the Catalog exactly.
+	for _, tableID := range planTableIDs(plan) {
+		if err := ctx.Err(); err != nil {
+			return generationManifest{}, err
+		}
+		specification := tableTreeManifest(tableID)
+		state, err := buildTree(staging, specification, capacity, plan, log)
+		if err != nil {
+			return generationManifest{}, fmt.Errorf("build Table %q migration Tree: %w", tableID, err)
+		}
+		specification.State = treeStateFromRuntime(state)
+		manifest.Trees = append(manifest.Trees, specification)
+	}
+	if err := applier.checkpoint(ctx, phaseCurrentBuilt); err != nil {
+		return generationManifest{}, err
 	}
 	// The log has to be closed before the content digest is taken: its Segment
 	// files are part of the generation's bytes, and OpenGeneration recomputes
@@ -307,14 +326,7 @@ func buildTree(
 		if err != nil {
 			return treecontrol.State{}, err
 		}
-	case "current":
-		index, err := currentrowindex.Open(runtime)
-		if err == nil {
-			_, err = index.Bootstrap(transactionID, plan.CurrentRows)
-		}
-		if err != nil {
-			return treecontrol.State{}, err
-		}
+
 	case "versions":
 		index, err := rowversionindex.Open(runtime)
 		if err == nil {
@@ -335,8 +347,29 @@ func buildTree(
 		if err != nil {
 			return treecontrol.State{}, err
 		}
+	case "current":
+		// Pre-v5's shared current Row Tree, keyed by (Table, Row). Nothing
+		// builds one any more; the case survives so the upgrade tests can
+		// construct the old layout and prove a database in it still opens.
+		index, err := currentrowindex.Open(runtime)
+		if err == nil {
+			_, err = index.Bootstrap(transactionID, plan.CurrentRows)
+		}
+		if err != nil {
+			return treecontrol.State{}, err
+		}
 	default:
-		return treecontrol.State{}, ErrInvalid
+		tableID, isTable := tableTreeTableID(specification.Kind)
+		if !isTable {
+			return treecontrol.State{}, ErrInvalid
+		}
+		index, err := currentrowindex.Open(runtime)
+		if err == nil {
+			_, err = index.Bootstrap(transactionID, tableCurrentLocators(plan, tableID))
+		}
+		if err != nil {
+			return treecontrol.State{}, err
+		}
 	}
 	report, err := runtime.FlushDirty(math.MaxUint64)
 	if err != nil || report.Remaining != 0 {
@@ -346,6 +379,30 @@ func buildTree(
 		return treecontrol.State{}, err
 	}
 	return runtime.State(), nil
+}
+
+// planTableIDs lists every Table the Catalog names, in a stable order so two
+// builds of the same plan produce the same Tree order and the same manifest.
+func planTableIDs(plan Plan) []string {
+	tableIDs := make([]string, 0)
+	for _, database := range plan.Catalog {
+		for _, table := range database.Tables {
+			tableIDs = append(tableIDs, table.ID)
+		}
+	}
+	sort.Strings(tableIDs)
+	return tableIDs
+}
+
+// tableCurrentLocators picks out the current Rows belonging to one Table.
+func tableCurrentLocators(plan Plan, tableID string) []currentrowindex.Locator {
+	locators := make([]currentrowindex.Locator, 0)
+	for _, locator := range plan.CurrentRows {
+		if locator.TableID == tableID {
+			locators = append(locators, locator)
+		}
+	}
+	return locators
 }
 
 func migrationCapacity(plan Plan) (uint64, error) {
@@ -390,7 +447,7 @@ func migrationCapacity(plan Plan) (uint64, error) {
 }
 
 func verifyGenerationPlan(ctx context.Context, generation *Generation, plan Plan) error {
-	if generation == nil || generation.catalog == nil || generation.current == nil ||
+	if generation == nil || generation.catalog == nil ||
 		generation.versions == nil || generation.fulltext == nil {
 		return ErrTargetCorrupt
 	}
@@ -400,7 +457,7 @@ func verifyGenerationPlan(ctx context.Context, generation *Generation, plan Plan
 	if err := verifyCatalog(ctx, generation.catalog, plan.Catalog); err != nil {
 		return err
 	}
-	if err := verifyCurrentRows(ctx, generation.current, plan); err != nil {
+	if err := verifyCurrentRows(ctx, generation, plan); err != nil {
 		return err
 	}
 	if err := verifyRowVersions(ctx, generation.versions, plan); err != nil {
@@ -621,41 +678,50 @@ func verifyCatalog(ctx context.Context, index *catalogindex.Index, databases []c
 	return nil
 }
 
-func verifyCurrentRows(ctx context.Context, index *currentrowindex.Index, plan Plan) error {
+// verifyCurrentRows checks every Table's Tree against the plan it was built
+// from, and checks the split itself: a Table's Tree must contain that Table's
+// Rows and nothing else.
+func verifyCurrentRows(ctx context.Context, generation *Generation, plan Plan) error {
 	expected := make(map[string]map[string]currentrowindex.Locator)
 	for _, locator := range plan.CurrentRows {
 		if _, exists := expected[locator.TableID]; !exists {
 			expected[locator.TableID] = make(map[string]currentrowindex.Locator)
 		}
 		expected[locator.TableID][locator.RowID] = locator
-		if got, err := index.Lookup(locator.TableID, locator.RowID); err != nil || got != locator {
-			return fmt.Errorf("%w: current Row %q", ErrTargetCorrupt, locator.RowID)
-		}
 	}
 	seen := 0
-	for _, database := range plan.Catalog {
-		for _, table := range database.Tables {
-			after := ""
-			for {
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				page, err := index.Page(table.ID, after, 1000)
-				if err != nil {
-					return fmt.Errorf("%w: current Table %q cursor", ErrTargetCorrupt, table.ID)
-				}
-				for _, locator := range page.Locators {
-					want, exists := expected[table.ID][locator.RowID]
-					if !exists || locator != want {
-						return fmt.Errorf("%w: unexpected current Row %q", ErrTargetCorrupt, locator.RowID)
-					}
-					seen++
-				}
-				if !page.HasMore {
-					break
-				}
-				after = page.NextAfterRowID
+	for _, tableID := range planTableIDs(plan) {
+		index := generation.CurrentRowsFor(tableID)
+		if index == nil {
+			return fmt.Errorf("%w: Table %q has no Tree", ErrTargetCorrupt, tableID)
+		}
+		for rowID, locator := range expected[tableID] {
+			if got, err := index.Lookup(rowID); err != nil || got != locator {
+				return fmt.Errorf("%w: current Row %q", ErrTargetCorrupt, rowID)
 			}
+		}
+		after := ""
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			page, err := index.Page(after, 1000)
+			if err != nil {
+				return fmt.Errorf("%w: current Table %q cursor", ErrTargetCorrupt, tableID)
+			}
+			for _, locator := range page.Locators {
+				// Reading another Table's Row here would mean the Trees are not
+				// actually separate, which is the whole property of the split.
+				want, exists := expected[tableID][locator.RowID]
+				if !exists || locator != want || locator.TableID != tableID {
+					return fmt.Errorf("%w: unexpected current Row %q", ErrTargetCorrupt, locator.RowID)
+				}
+				seen++
+			}
+			if !page.HasMore {
+				break
+			}
+			after = page.NextAfterRowID
 		}
 	}
 	if seen != len(plan.CurrentRows) {

@@ -175,7 +175,7 @@ func (authority *Authority) replaceGeneration(
 		return ReplacementReceipt{}, err
 	}
 	rowReader, err := nativerow.NewIndexedReader(
-		nativerow.New(authority.file), catalogReader, live.current, live.versions,
+		nativerow.New(authority.file), catalogReader, tableCurrentRows{generation: live}, live.versions,
 	)
 	if err != nil {
 		return ReplacementReceipt{}, err

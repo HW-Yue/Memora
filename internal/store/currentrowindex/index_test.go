@@ -25,7 +25,7 @@ func TestBootstrapAcceptsFinalLocatorsAndCreatesAnEmptyAuthority(t *testing.T) {
 		t.Fatalf("Bootstrap(final) = %+v, %v", receipt, err)
 	}
 	assertLookup(t, final, func() (Locator, error) {
-		return index.Lookup(final.TableID, final.RowID)
+		return index.Lookup(final.RowID)
 	})
 	if _, err := index.Bootstrap(2, []Locator{final}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("Bootstrap(non-empty) error = %v", err)
@@ -38,7 +38,7 @@ func TestBootstrapAcceptsFinalLocatorsAndCreatesAnEmptyAuthority(t *testing.T) {
 	}
 }
 
-func TestLookupTracksCurrentRevisionStateAndScope(t *testing.T) {
+func TestLookupTracksCurrentRevisionAndState(t *testing.T) {
 	_, _, _, index := newTestIndex(t)
 	live := locator("row_one", 1, 1, row.StateLive)
 	receipt, err := index.Apply(1, []Update{{Locator: live}})
@@ -46,12 +46,8 @@ func TestLookupTracksCurrentRevisionStateAndScope(t *testing.T) {
 		t.Fatalf("Apply(insert) = %+v, %v", receipt, err)
 	}
 	assertLookup(t, live, func() (Locator, error) {
-		return index.Lookup(live.TableID, live.RowID)
+		return index.Lookup(live.RowID)
 	})
-	if _, err := index.Lookup("tbl_other", live.RowID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("wrong-scope lookup error = %v", err)
-	}
-
 	deleted := live
 	deleted.Revision = 2
 	deleted.CommitSequence = 2
@@ -62,7 +58,7 @@ func TestLookupTracksCurrentRevisionStateAndScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertLookup(t, deleted, func() (Locator, error) {
-		return index.Lookup(deleted.TableID, deleted.RowID)
+		return index.Lookup(deleted.RowID)
 	})
 
 	superseded := deleted
@@ -75,9 +71,9 @@ func TestLookupTracksCurrentRevisionStateAndScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertLookup(t, superseded, func() (Locator, error) {
-		return index.Lookup(superseded.TableID, superseded.RowID)
+		return index.Lookup(superseded.RowID)
 	})
-	if _, err := index.Lookup(live.TableID, "row_missing"); !errors.Is(err, ErrNotFound) {
+	if _, err := index.Lookup("row_missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing lookup error = %v", err)
 	}
 }
@@ -103,8 +99,8 @@ func TestApplyRejectsStaleBatchBeforeWALAndPreservesAllRows(t *testing.T) {
 	if err != nil || len(transactions) != 1 {
 		t.Fatalf("transactions after stale batch = %d, %v", len(transactions), err)
 	}
-	assertLookup(t, one, func() (Locator, error) { return index.Lookup(one.TableID, one.RowID) })
-	assertLookup(t, two, func() (Locator, error) { return index.Lookup(two.TableID, two.RowID) })
+	assertLookup(t, one, func() (Locator, error) { return index.Lookup(one.RowID) })
+	assertLookup(t, two, func() (Locator, error) { return index.Lookup(two.RowID) })
 }
 
 func TestApplyRejectsDuplicateAndInvalidTransition(t *testing.T) {
@@ -168,7 +164,7 @@ func TestLegacyZeroCommitSequenceCanBeIndexedButNextRevisionMustAdvance(t *testi
 		t.Fatalf("Apply(legacy) error = %v", err)
 	}
 	assertLookup(t, legacy, func() (Locator, error) {
-		return index.Lookup(legacy.TableID, legacy.RowID)
+		return index.Lookup(legacy.RowID)
 	})
 	invalid := legacy
 	invalid.Revision = 2
@@ -185,7 +181,7 @@ func TestLegacyZeroCommitSequenceCanBeIndexedButNextRevisionMustAdvance(t *testi
 		t.Fatalf("Apply(first sequenced revision) error = %v", err)
 	}
 	assertLookup(t, next, func() (Locator, error) {
-		return index.Lookup(next.TableID, next.RowID)
+		return index.Lookup(next.RowID)
 	})
 }
 
@@ -228,7 +224,7 @@ func TestLargeCurrentIndexMatchesReferenceModelAndSplits(t *testing.T) {
 	for id, want := range model {
 		id, want := id, want
 		assertLookup(t, want, func() (Locator, error) {
-			return index.Lookup(want.TableID, id)
+			return index.Lookup(id)
 		})
 	}
 }
@@ -297,7 +293,7 @@ func TestCrashBeforeFlushReopensCurrentIndex(t *testing.T) {
 		t.Fatalf("reopened state = %+v, want %+v", reopenedRuntime.State(), committed)
 	}
 	assertLookup(t, value, func() (Locator, error) {
-		return reopened.Lookup(value.TableID, value.RowID)
+		return reopened.Lookup(value.RowID)
 	})
 }
 
@@ -333,7 +329,7 @@ func TestLookupRejectsCorruptTreeWithoutFallback(t *testing.T) {
 	}
 	reopenedSet, reopenedManager, _, reopened := openTestIndex(t, walPath, pagePath, true)
 	defer func() { _ = reopenedSet.Close(); _ = reopenedManager.Close() }()
-	if _, err := reopened.Lookup(value.TableID, value.RowID); !errors.Is(err, ErrCorrupt) {
+	if _, err := reopened.Lookup(value.RowID); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("corrupt lookup error = %v", err)
 	}
 }

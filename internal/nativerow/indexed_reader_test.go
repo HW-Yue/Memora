@@ -62,7 +62,7 @@ func TestIndexedPointGetRejectsLocatorMismatchWithoutLegacyFallback(t *testing.T
 		t.Fatal(err)
 	}
 	badVersions := &mismatchingVersionLookup{delegate: fixture.versions}
-	points, err := NewIndexedReader(New(fixture.file), catalogReader, fixture.current, badVersions)
+	points, err := NewIndexedReader(New(fixture.file), catalogReader, oneTableRows{index: fixture.current}, badVersions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func executeIndexedPointRequest(
 	if err != nil {
 		t.Fatal(err)
 	}
-	points, err := NewIndexedReader(New(fixture.file), catalogReader, fixture.current, fixture.versions)
+	points, err := NewIndexedReader(New(fixture.file), catalogReader, oneTableRows{index: fixture.current}, fixture.versions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,4 +441,19 @@ func assertEnvelopeJSONEqual(t *testing.T, got, want result.Envelope) {
 	if string(gotJSON) != string(wantJSON) {
 		t.Fatalf("envelope JSON mismatch\n got: %s\nwant: %s", gotJSON, wantJSON)
 	}
+}
+
+// oneTableRows adapts a single Table's current Row Index to the reader's
+// CurrentLookup, which names a Table because production routes on it. This
+// fixture has one Table, so the name picks the only Index there is.
+type oneTableRows struct {
+	index *currentrowindex.Index
+}
+
+func (rows oneTableRows) Lookup(_, rowID string) (currentrowindex.Locator, error) {
+	return rows.index.Lookup(rowID)
+}
+
+func (rows oneTableRows) Page(_, afterRowID string, limit uint64) (currentrowindex.CursorPage, error) {
+	return rows.index.Page(afterRowID, limit)
 }

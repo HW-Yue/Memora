@@ -6,6 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 )
 
 // TestGenerationAcceptsAPerTableTree is E4 stage 1's gate.
@@ -106,5 +110,75 @@ func TestCreatingATableCreatesItsTree(t *testing.T) {
 	t.Cleanup(func() { _ = reopened.Close() })
 	if !reopened.TableTree(table.ID) {
 		t.Fatalf("reopened generation lost the Tree for %q", table.ID)
+	}
+}
+
+// TestScanningOneTableNeverReachesAnother is E4 stage 2's gate.
+//
+// Every Table's current Rows used to sit in one Tree keyed by (Table, Row), so
+// "scan a Table" meant "walk the whole index and match a prefix" — the Table
+// was a filter, not a partition. A Table now has a Tree, and the key inside it
+// is the Row ID alone.
+//
+// See docs/storage/per-table-tree-v1.md §2.
+func TestScanningOneTableNeverReachesAnother(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	dictionary, rows, notes, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	tasks, err := dictionary.CreateTable(ctx, "work", catalog.TableDefinition{
+		Name: "tasks", Purpose: "Tasks", RowSemantics: "One task",
+		Columns: []catalog.ColumnDefinition{{Name: "title", Type: "TEXT", Purpose: "Title"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteRow, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "a note"}, row.WriteOptions{
+		ExpectedSchemaVersion: notes.SchemaVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskRow, err := rows.Insert(ctx, "work", "tasks", map[string]any{"title": "a task"}, row.WriteOptions{
+		ExpectedSchemaVersion: tasks.SchemaVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	generation := authority.generation
+	for _, want := range []struct {
+		tableID string
+		rowID   string
+		other   string
+	}{
+		{tableID: notes.ID, rowID: noteRow.ID, other: taskRow.ID},
+		{tableID: tasks.ID, rowID: taskRow.ID, other: noteRow.ID},
+	} {
+		index := generation.CurrentRowsFor(want.tableID)
+		if index == nil {
+			t.Fatalf("Table %q has no Tree", want.tableID)
+		}
+		page, err := index.Page("", 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Locators) != 1 || page.Locators[0].RowID != want.rowID ||
+			page.Locators[0].TableID != want.tableID {
+			t.Fatalf("Table %q scan = %#v, want only %q", want.tableID, page.Locators, want.rowID)
+		}
+		// The decisive half: the other Table's Row is not merely filtered out
+		// of the scan, it is not in this Tree at all.
+		if _, err := index.Lookup(want.other); !errors.Is(err, currentrowindex.ErrNotFound) {
+			t.Fatalf("Table %q found %q, error = %v", want.tableID, want.other, err)
+		}
+	}
+
+	// And the reader routing on top of them agrees.
+	reader := tableCurrentRows{generation: generation}
+	if _, err := reader.Lookup(notes.ID, taskRow.ID); !errors.Is(err, currentrowindex.ErrNotFound) {
+		t.Fatalf("cross-Table lookup through the reader = %v", err)
+	}
+	if locator, err := reader.Lookup(tasks.ID, taskRow.ID); err != nil || locator.RowID != taskRow.ID {
+		t.Fatalf("same-Table lookup through the reader = %#v, %v", locator, err)
 	}
 }

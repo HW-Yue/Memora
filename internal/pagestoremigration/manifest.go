@@ -20,7 +20,8 @@ import (
 
 const (
 	GenerationDirectory      = "page-index-v1"
-	generationVersion        = "memora.page-index-generation/v4"
+	generationVersion        = "memora.page-index-generation/v5"
+	sharedCurrentVersion     = "memora.page-index-generation/v4"
 	treeWALGenerationVersion = "memora.page-index-generation/v3"
 	rowGenerationVersion     = "memora.page-index-generation/v2"
 	legacyGenerationVersion  = "memora.page-index-generation/v1"
@@ -70,9 +71,22 @@ type generationManifest struct {
 	Digest            string         `json:"digest"`
 }
 
-// expectedTrees describes a v4 generation. No Tree names a WAL directory
-// because they all share sharedWALDirectory.
+// expectedTrees describes the fixed part of a v5 generation. No Tree names a
+// WAL directory because they all share sharedWALDirectory.
+//
+// There is no "current" Tree: a Table's current Rows live in that Table's own
+// Tree, which is why the fixed list is three and the rest follow the Catalog.
+// See docs/storage/per-table-tree-v1.md §2.
 var expectedTrees = []treeManifest{
+	{Kind: "catalog", SpaceID: catalogSpaceID, PageFile: "catalog.pages"},
+	{Kind: "versions", SpaceID: versionSpaceID, PageFile: "versions.pages"},
+	{Kind: "fulltext", SpaceID: fulltextSpaceID, PageFile: "fulltext.pages"},
+}
+
+// sharedCurrentExpectedTrees describes v4, which kept every Table's current
+// Rows in one Tree keyed by (Table, Row). Kept so an existing database still
+// opens; the Authority then COW-rebuilds it to v5.
+var sharedCurrentExpectedTrees = []treeManifest{
 	{Kind: "catalog", SpaceID: catalogSpaceID, PageFile: "catalog.pages"},
 	{Kind: "current", SpaceID: currentSpaceID, PageFile: "current.pages"},
 	{Kind: "versions", SpaceID: versionSpaceID, PageFile: "versions.pages"},
@@ -143,6 +157,8 @@ func manifestTreeSpecifications(version, planVersion string) ([]treeManifest, bo
 	switch {
 	case version == generationVersion && planVersion == PlanVersion:
 		return expectedTrees, true
+	case version == sharedCurrentVersion && planVersion == PlanVersion:
+		return sharedCurrentExpectedTrees, true
 	case version == treeWALGenerationVersion && planVersion == PlanVersion:
 		return treeWALExpectedTrees, true
 	case version == rowGenerationVersion && planVersion == rowPlanVersion:
@@ -163,8 +179,15 @@ func treeStateFromRuntime(state treecontrol.State) treeStateManifest {
 
 // sharedLog reports whether every Tree in the generation commits into one redo
 // log. Only v4 does; older generations keep one log per Tree.
-func (manifest generationManifest) sharedLog() bool {
+// perTableRows reports whether a generation keeps each Table's current Rows in
+// that Table's own Tree. Only v5 does; v4 kept them all in one Tree keyed by
+// (Table, Row), and is rebuilt on open.
+func (manifest generationManifest) perTableRows() bool {
 	return manifest.Version == generationVersion
+}
+
+func (manifest generationManifest) sharedLog() bool {
+	return manifest.Version == generationVersion || manifest.Version == sharedCurrentVersion
 }
 
 func (state treeStateManifest) runtimeState(spaceID uint64) treecontrol.State {

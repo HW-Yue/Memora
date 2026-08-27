@@ -67,7 +67,7 @@ func TestCrossTreePublicationIsAtomicUnderFault(t *testing.T) {
 
 			_, versionsErr := generation.RowVersions().ByRevision(inserted.ID, 2)
 			versionsHas := versionsErr == nil
-			locator, currentErr := generation.CurrentRows().Lookup(table.ID, inserted.ID)
+			locator, currentErr := generation.CurrentRowsFor(table.ID).Lookup(inserted.ID)
 			currentHas := currentErr == nil && locator.Revision == 2
 
 			// Both or neither. Which one is not the point — a publication is

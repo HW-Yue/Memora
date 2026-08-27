@@ -12,29 +12,29 @@ type CursorPage struct {
 	NextAfterRowID string
 }
 
+// Page walks this Tree's current Rows in Row ID order.
+//
+// The Tree holds exactly one Table, so the scan is bounded by the key prefix
+// every entry shares rather than by a Table prefix that had to be matched
+// against. That is the whole point of the split: a scan of one Table cannot
+// reach another Table's entries because they are not in this Tree.
 func (index *Index) Page(
-	tableID, afterRowID string,
+	afterRowID string,
 	limit uint64,
 ) (CursorPage, error) {
 	if index == nil || index.runtime == nil || limit == 0 || limit > 1000 {
 		return CursorPage{}, fmt.Errorf("%w: Page request", ErrInvalid)
 	}
-	start, err := tablePrefix(tableID)
-	if err != nil {
-		return CursorPage{}, err
-	}
+	prefix := indexPrefix()
+	start := prefix
 	if afterRowID != "" {
-		start, err = encodeKey(tableID, afterRowID)
+		encoded, err := encodeKey(afterRowID)
 		if err != nil {
 			return CursorPage{}, err
 		}
 		// A complete current Row key has no suffix. Appending one zero byte is
 		// therefore the first possible position strictly after that key.
-		start = append(start, 0)
-	}
-	prefix, err := tablePrefix(tableID)
-	if err != nil {
-		return CursorPage{}, err
+		start = append(encoded, 0)
 	}
 	end, err := prefixSuccessor(prefix)
 	if err != nil {
@@ -69,7 +69,7 @@ func (index *Index) Page(
 		HasMore:  hasMore,
 	}
 	for _, entry := range batch.Entries[:count] {
-		keyTableID, keyRowID, err := decodeKey(entry.Key)
+		keyRowID, err := decodeKey(entry.Key)
 		if err != nil {
 			return CursorPage{}, err
 		}
@@ -77,9 +77,7 @@ func (index *Index) Page(
 		if err != nil {
 			return CursorPage{}, err
 		}
-		if keyTableID != tableID ||
-			locator.TableID != keyTableID ||
-			locator.RowID != keyRowID {
+		if locator.RowID != keyRowID {
 			return CursorPage{}, fmt.Errorf("%w: cursor key/locator scope", ErrCorrupt)
 		}
 		result.Locators = append(result.Locators, locator)

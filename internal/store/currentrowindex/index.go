@@ -146,11 +146,11 @@ func (index *Index) planApplyLocked(prepared []preparedUpdate) (btree.MutationPl
 	return plan, true, nil
 }
 
-func (index *Index) Lookup(tableID, rowID string) (Locator, error) {
+func (index *Index) Lookup(rowID string) (Locator, error) {
 	if index == nil || index.runtime == nil {
 		return Locator{}, fmt.Errorf("%w: lookup Index", ErrInvalid)
 	}
-	key, err := encodeKey(tableID, rowID)
+	key, err := encodeKey(rowID)
 	if err != nil {
 		return Locator{}, err
 	}
@@ -175,7 +175,7 @@ func (index *Index) Lookup(tableID, rowID string) (Locator, error) {
 	if err != nil {
 		return Locator{}, err
 	}
-	if locator.TableID != tableID || locator.RowID != rowID {
+	if locator.RowID != rowID {
 		return Locator{}, fmt.Errorf("%w: locator does not match key scope", ErrCorrupt)
 	}
 	return locator, nil
@@ -185,7 +185,7 @@ func prepareUpdates(updates []Update) ([]preparedUpdate, error) {
 	result := make([]preparedUpdate, 0, len(updates))
 	seen := make(map[string]struct{}, len(updates))
 	for _, update := range updates {
-		key, err := encodeKey(update.Locator.TableID, update.Locator.RowID)
+		key, err := encodeKey(update.Locator.RowID)
 		if err != nil {
 			return nil, err
 		}

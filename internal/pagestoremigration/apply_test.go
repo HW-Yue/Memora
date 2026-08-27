@@ -15,7 +15,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/pagestoremigration"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
-	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
@@ -68,7 +67,7 @@ func TestApplierPublishesReopenableFourTreeGenerationWithoutChangingNativeBodies
 	if err != nil || database.ID != plan.Catalog[0].ID {
 		t.Fatalf("Catalog Database = %+v, %v", database, err)
 	}
-	current, err := generation.CurrentRows().Lookup(second.TableID, second.ID)
+	current, err := generation.CurrentRowsFor(second.TableID).Lookup(second.ID)
 	if err != nil || current.Revision != second.Revision {
 		t.Fatalf("Current Row = %+v, %v", current, err)
 	}
@@ -117,8 +116,13 @@ func TestEmptyGenerationAndRepeatedApplyAreValidAndIdempotent(t *testing.T) {
 	if _, err := generation.Catalog().DatabaseByID("db_missing"); !errors.Is(err, catalogindex.ErrNotFound) {
 		t.Fatalf("empty Catalog lookup error = %v", err)
 	}
-	if _, err := generation.CurrentRows().Lookup("tbl_missing", "row_missing"); !errors.Is(err, currentrowindex.ErrNotFound) {
-		t.Fatalf("empty Current lookup error = %v", err)
+	// A Table with no Tree locates nothing rather than failing: that is the
+	// state of a Catalog entry nothing has ever written to.
+	if index := generation.CurrentRowsFor("tbl_missing"); index != nil {
+		t.Fatalf("a Table with no Tree returned an Index: %#v", index)
+	}
+	if _, err := generation.CurrentRowsFor("tbl_missing").Lookup("row_missing"); err == nil {
+		t.Fatal("looking a Row up in a Table with no Tree must fail")
 	}
 }
 
@@ -179,7 +183,7 @@ func TestLargeGenerationMatchesEveryPlannedLocatorAfterReopen(t *testing.T) {
 	}
 	defer generation.Close()
 	for _, want := range plan.CurrentRows {
-		got, err := generation.CurrentRows().Lookup(want.TableID, want.RowID)
+		got, err := generation.CurrentRowsFor(want.TableID).Lookup(want.RowID)
 		if err != nil || got != want {
 			t.Fatalf("current %q = %+v, %v; want %+v", want.RowID, got, err, want)
 		}

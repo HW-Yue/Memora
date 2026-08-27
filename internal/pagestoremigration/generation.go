@@ -162,13 +162,15 @@ type Generation struct {
 	log      *wal.SegmentSet
 	trees    []*generationTree
 	catalog  *catalogindex.Index
-	current  *currentrowindex.Index
 	versions *rowversionindex.Index
 	fulltext *fulltextindex.Index
 	// tables holds the per-Table Trees, keyed by Table ID. The four fixed Trees
 	// above are named fields because there is exactly one of each; these follow
 	// the Catalog and so cannot be. See docs/storage/per-table-tree-v1.md §2.
 	tables map[string]*generationTree
+	// tableRows is the current Row Index of each Table's Tree, opened once when
+	// the Tree is.
+	tableRows map[string]*currentrowindex.Index
 	// router and pool are the generation's one buffer pool and the SpaceID
 	// routing behind it. A Tree added after open registers with them rather
 	// than building a pool of its own.
@@ -289,9 +291,17 @@ func (generation *Generation) EnsureTableTrees(tableIDs []string) error {
 	if generation.tables == nil {
 		generation.tables = make(map[string]*generationTree, len(opened))
 	}
-	for index, tableID := range missing {
-		generation.tables[tableID] = opened[index]
-		generation.trees = append(generation.trees, opened[index])
+	if generation.tableRows == nil {
+		generation.tableRows = make(map[string]*currentrowindex.Index, len(opened))
+	}
+	for position, tableID := range missing {
+		rows, err := currentrowindex.Open(opened[position].runtime)
+		if err != nil {
+			return fmt.Errorf("%w: open Table %q Index: %v", ErrTargetCorrupt, tableID, err)
+		}
+		generation.tables[tableID] = opened[position]
+		generation.tableRows[tableID] = rows
+		generation.trees = append(generation.trees, opened[position])
 	}
 	opened = nil
 	return nil
@@ -309,6 +319,17 @@ func (generation *Generation) nextTransactionIDLocked() (uint64, error) {
 		return 0, fmt.Errorf("%w: redo transaction IDs are exhausted", ErrTargetCorrupt)
 	}
 	return frontier.LastTransactionID + 1, nil
+}
+
+// CurrentRowsFor returns a Table's current Row Index, or nil when the Table has
+// no Tree in this generation.
+func (generation *Generation) CurrentRowsFor(tableID string) *currentrowindex.Index {
+	if generation == nil {
+		return nil
+	}
+	generation.mu.Lock()
+	defer generation.mu.Unlock()
+	return generation.tableRows[tableID]
 }
 
 // TableTree reports whether a Table has a Tree in this generation.
@@ -376,12 +397,15 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 		switch specification.Kind {
 		case "catalog":
 			generation.catalog, err = catalogindex.Open(tree.runtime)
-		case "current":
-			generation.current, err = currentrowindex.Open(tree.runtime)
 		case "versions":
 			generation.versions, err = rowversionindex.Open(tree.runtime)
 		case "fulltext":
 			generation.fulltext, err = fulltextindex.Open(tree.runtime)
+		case "current":
+			// A pre-v5 generation's shared current Row Tree. It is opened as a
+			// Tree — its pages have to be recovered like any other — but no
+			// Index is built over it: the Authority replaces the generation on
+			// open, and reads are served from the new one.
 		default:
 			tableID, isTable := tableTreeTableID(specification.Kind)
 			if !isTable {
@@ -390,8 +414,14 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 			}
 			if generation.tables == nil {
 				generation.tables = make(map[string]*generationTree)
+				generation.tableRows = make(map[string]*currentrowindex.Index)
 			}
-			generation.tables[tableID] = tree
+			index, openErr := currentrowindex.Open(tree.runtime)
+			if openErr != nil {
+				err = openErr
+				break
+			}
+			generation.tables[tableID], generation.tableRows[tableID] = tree, index
 		}
 		if err != nil {
 			return nil, fmt.Errorf("%w: open %s Index: %v", ErrTargetCorrupt, specification.Kind, err)
@@ -542,13 +572,6 @@ func (generation *Generation) Catalog() *catalogindex.Index {
 		return nil
 	}
 	return generation.catalog
-}
-
-func (generation *Generation) CurrentRows() *currentrowindex.Index {
-	if generation == nil {
-		return nil
-	}
-	return generation.current
 }
 
 func (generation *Generation) RowVersions() *rowversionindex.Index {

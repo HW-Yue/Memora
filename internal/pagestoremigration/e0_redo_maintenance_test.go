@@ -99,7 +99,7 @@ func TestRedoLogRollsCheckpointsAndReclaims(t *testing.T) {
 	}
 	defer reopened.Close()
 	for rowID := range written {
-		locator, err := reopened.generation.current.Lookup(table.ID, rowID)
+		locator, err := reopened.generation.CurrentRowsFor(table.ID).Lookup(rowID)
 		if err != nil {
 			t.Fatalf("reopened Lookup(%s): %v", rowID, err)
 		}

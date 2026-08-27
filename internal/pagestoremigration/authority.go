@@ -148,7 +148,7 @@ func OpenAuthority(
 		return nil, err
 	}
 	rowReader, err := nativerow.NewIndexedReader(
-		nativerow.New(file), catalogReader, generation.current, generation.versions,
+		nativerow.New(file), catalogReader, tableCurrentRows{generation: generation}, generation.versions,
 	)
 	if err != nil {
 		_ = generation.Close()
@@ -166,12 +166,15 @@ func OpenAuthority(
 		locks:     objectlock.New(),
 	}
 	authority.writeGate <- struct{}{}
-	// A generation missing a Tree, or holding one redo log per Tree, has to be
-	// rebuilt whatever its contents say — the second cannot publish atomically
-	// across Trees. Decide that BEFORE reconciling: the COW upgrade's value is
-	// that it leaves the old generation untouched as a rollback point, and
-	// reconciling one that is about to be discarded writes to it for nothing.
-	replace := authority.generation.fulltext == nil || authority.generation.log == nil
+	// A generation missing a Tree, holding one redo log per Tree, or keeping
+	// every Table's current Rows in one shared Tree has to be rebuilt whatever
+	// its contents say — the second cannot publish atomically across Trees, and
+	// the third is the layout v5 replaced. Decide that BEFORE reconciling: the
+	// COW upgrade's value is that it leaves the old generation untouched as a
+	// rollback point, and reconciling one that is about to be discarded writes
+	// to it for nothing.
+	replace := authority.generation.fulltext == nil || authority.generation.log == nil ||
+		!authority.generation.manifest.perTableRows()
 	if !replace {
 		reconcileErr := authority.reconcile(ctx)
 		if reconcileErr != nil && !errors.Is(reconcileErr, errGenerationRebuildRequired) {
@@ -518,9 +521,12 @@ func (authority *Authority) PublishMutation(
 	if err != nil {
 		return err
 	}
-	current := make([]currentrowindex.Update, 0, len(rows))
+	// Grouped by Table, because a Table's current Rows live in that Table's own
+	// Tree. A publication touching several Tables therefore stages into several
+	// Trees — still one WAL transaction, which is what makes it atomic.
+	current := make(map[string][]currentrowindex.Update, 1)
 	for _, value := range rows {
-		current = append(current, currentrowindex.Update{
+		current[value.TableID] = append(current[value.TableID], currentrowindex.Update{
 			ExpectedRevision: value.Revision - 1,
 			Locator: currentrowindex.Locator{
 				DatabaseID: value.DatabaseID, TableID: value.TableID, RowID: value.ID,
@@ -541,8 +547,16 @@ func (authority *Authority) PublishMutation(
 					return err
 				}
 			}
-			if len(rows) != 0 {
-				return authority.generation.current.StageApply(group, current)
+			// Stage in Table order so a group's member Trees are always
+			// enrolled in the same order, whatever order the Rows arrived in.
+			for _, tableID := range sortedKeys(current) {
+				index := authority.generation.CurrentRowsFor(tableID)
+				if index == nil {
+					return fmt.Errorf("%w: Table %q has no Tree", ErrInvalid, tableID)
+				}
+				if err := index.StageApply(group, current[tableID]); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -1097,11 +1111,16 @@ func catalogObjectKey(kind fulltext.ObjectKind, objectID string) string {
 }
 
 func (authority *Authority) advanceCurrent(plan Plan) error {
-	updates := make([]currentrowindex.Update, 0, len(plan.CurrentRows))
+	updates := make(map[string][]currentrowindex.Update, 1)
 	for _, locator := range plan.CurrentRows {
-		current, err := authority.generation.current.Lookup(locator.TableID, locator.RowID)
+		index := authority.generation.CurrentRowsFor(locator.TableID)
+		if index == nil {
+			return fmt.Errorf("%w: Table %q has no Tree", ErrInvalid, locator.TableID)
+		}
+		current, err := index.Lookup(locator.RowID)
 		if errors.Is(err, currentrowindex.ErrNotFound) {
-			updates = append(updates, currentrowindex.Update{Locator: locator})
+			updates[locator.TableID] = append(updates[locator.TableID],
+				currentrowindex.Update{Locator: locator})
 			continue
 		}
 		if err != nil {
@@ -1110,19 +1129,33 @@ func (authority *Authority) advanceCurrent(plan Plan) error {
 		if current == locator {
 			continue
 		}
-		updates = append(updates, currentrowindex.Update{
+		updates[locator.TableID] = append(updates[locator.TableID], currentrowindex.Update{
 			ExpectedRevision: current.Revision, Locator: locator,
 		})
 	}
-	if len(updates) == 0 {
-		return nil
+	for _, tableID := range sortedKeys(updates) {
+		// Every Tree commits into the one shared log, so the ID space is the
+		// log's rather than any one Tree's.
+		id, err := authority.nextGroupTransactionID()
+		if err != nil {
+			return err
+		}
+		if _, err := authority.generation.CurrentRowsFor(tableID).Apply(id, updates[tableID]); err != nil {
+			return err
+		}
 	}
-	id, err := authority.nextTransactionID("current")
-	if err != nil {
-		return err
+	return nil
+}
+
+// sortedKeys returns a map's keys in a stable order, so a batch of Trees is
+// always enrolled the same way regardless of map iteration order.
+func sortedKeys[V any](values map[string]V) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
 	}
-	_, err = authority.generation.current.Apply(id, updates)
-	return err
+	sort.Strings(keys)
+	return keys
 }
 
 // nextGroupTransactionID allocates one transaction ID for a publication that

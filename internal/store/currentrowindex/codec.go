@@ -39,39 +39,33 @@ type Locator struct {
 	State          row.State
 }
 
-func encodeKey(tableID, rowID string) ([]byte, error) {
-	components := []string{tableID, rowID}
-	size := 2
-	for _, component := range components {
-		if !validComponent(component) {
-			return nil, fmt.Errorf("%w: key component", ErrInvalid)
-		}
-		size += 2 + len(component)
+// encodeKey builds a current Row key.
+//
+// The key is the Row ID alone. It used to carry the Table ID in front of it,
+// back when every Table's current Rows lived in one Tree and the Table was a
+// prefix to filter on. A Table now has a Tree of its own, so which Table a Row
+// belongs to is answered by which Tree the key is in — repeating it in every
+// key would be the same fact stored twice.
+// See docs/storage/per-table-tree-v1.md §2.
+func encodeKey(rowID string) ([]byte, error) {
+	if !validComponent(rowID) {
+		return nil, fmt.Errorf("%w: key component", ErrInvalid)
 	}
+	size := 4 + len(rowID)
 	if size > maxKeyBytes {
 		return nil, fmt.Errorf("%w: key size", ErrInvalid)
 	}
 	result := make([]byte, size)
 	result[0], result[1] = keyVersion, keyKindCurrentRow
-	offset := 2
-	for _, component := range components {
-		binary.BigEndian.PutUint16(result[offset:offset+2], uint16(len(component)))
-		offset += 2
-		copy(result[offset:], component)
-		offset += len(component)
-	}
+	binary.BigEndian.PutUint16(result[2:4], uint16(len(rowID)))
+	copy(result[4:], rowID)
 	return result, nil
 }
 
-func tablePrefix(tableID string) ([]byte, error) {
-	if !validComponent(tableID) {
-		return nil, fmt.Errorf("%w: Table key component", ErrInvalid)
-	}
-	result := make([]byte, 4+len(tableID))
-	result[0], result[1] = keyVersion, keyKindCurrentRow
-	binary.BigEndian.PutUint16(result[2:4], uint16(len(tableID)))
-	copy(result[4:], tableID)
-	return result, nil
+// indexPrefix is the prefix every current Row key in a Tree shares. A scan
+// bounded by it covers exactly one Table, because the Tree holds exactly one.
+func indexPrefix() []byte {
+	return []byte{keyVersion, keyKindCurrentRow}
 }
 
 // RowOrderKey exposes the stable within-Table ordering component used by the
@@ -86,36 +80,24 @@ func RowOrderKey(rowID string) ([]byte, error) {
 	return result, nil
 }
 
-func decodeKey(encoded []byte) (string, string, error) {
-	if len(encoded) < 8 ||
+func decodeKey(encoded []byte) (string, error) {
+	if len(encoded) < 5 ||
 		encoded[0] != keyVersion ||
 		encoded[1] != keyKindCurrentRow {
-		return "", "", fmt.Errorf("%w: current Row key header", ErrCorrupt)
+		return "", fmt.Errorf("%w: current Row key header", ErrCorrupt)
 	}
-	offset := 2
-	components := [2]string{}
-	for index := range components {
-		if offset+2 > len(encoded) {
-			return "", "", fmt.Errorf("%w: current Row key length", ErrCorrupt)
-		}
-		length := int(binary.BigEndian.Uint16(encoded[offset : offset+2]))
-		offset += 2
-		if length == 0 || length > maxComponentBytes || offset+length > len(encoded) {
-			return "", "", fmt.Errorf("%w: current Row key component", ErrCorrupt)
-		}
-		value := encoded[offset : offset+length]
-		if !utf8.Valid(value) {
-			return "", "", fmt.Errorf("%w: current Row key UTF-8", ErrCorrupt)
-		}
-		components[index] = string(value)
-		offset += length
+	length := int(binary.BigEndian.Uint16(encoded[2:4]))
+	if length == 0 || length > maxComponentBytes || 4+length != len(encoded) {
+		return "", fmt.Errorf("%w: current Row key component", ErrCorrupt)
 	}
-	if offset != len(encoded) ||
-		!validComponent(components[0]) ||
-		!validComponent(components[1]) {
-		return "", "", fmt.Errorf("%w: current Row key shape", ErrCorrupt)
+	value := encoded[4:]
+	if !utf8.Valid(value) {
+		return "", fmt.Errorf("%w: current Row key UTF-8", ErrCorrupt)
 	}
-	return components[0], components[1], nil
+	if !validComponent(string(value)) {
+		return "", fmt.Errorf("%w: current Row key shape", ErrCorrupt)
+	}
+	return string(value), nil
 }
 
 func prefixSuccessor(prefix []byte) ([]byte, error) {
