@@ -12,6 +12,9 @@ staticcheck_version=v0.7.0
 errcheck_version=v1.20.0
 ineffassign_version=v0.1.0
 stages=(format vet lint unit race integration e2e cross-build)
+# The platforms this project ships on. vet and lint sweep each one so that a
+# file behind a //go:build tag cannot hide from either.
+supported_platforms=(linux darwin)
 
 usage() {
   printf 'usage: scripts/ci.sh [--list | --stage <name>]\n' >&2
@@ -33,7 +36,14 @@ run_stage() {
       fi
       ;;
     vet)
-      "$go_command" vet ./...
+      # Once per supported platform, not once for whichever machine happens to
+      # run the stage. A file behind //go:build darwin is invisible to a Linux
+      # sweep, so a host-only vet reports a clean tree while the macOS job
+      # fails on code the sweep never compiled.
+      for goos in "${supported_platforms[@]}"; do
+        printf 'ci: vet GOOS=%s\n' "$goos"
+        GOOS="$goos" "$go_command" vet ./...
+      done
       ;;
     lint)
       # Three checkers, pinned by version so a release of one cannot turn a
@@ -41,25 +51,59 @@ run_stage() {
       # every finding was fixed when the stage was introduced, so anything this
       # reports is new.
       #
-      # The toolchain is pinned to the version go.mod targets, and pinned the
-      # same way here as the workflow pins it (GOTOOLCHAIN: local). Without
-      # this, `go run` on a developer machine quietly downloads whatever newer
-      # toolchain a tool asks for and the stage passes locally while failing in
-      # CI, which is exactly how this stage shipped broken the first time.
-      module_go=$("$go_command" list -m -f '{{.GoVersion}}')
-      export GOTOOLCHAIN="go${module_go}"
+      # The toolchain is pinned to the version go.mod targets, so a checker
+      # that needs a newer one fails here the same way it fails under the
+      # GOTOOLCHAIN=local that actions/setup-go puts in CI's environment.
+      # Without this, `go run` on a developer machine quietly downloads
+      # whatever newer toolchain a tool asks for and the stage passes locally
+      # while failing in CI, which is how this stage shipped broken once.
+      #
+      # It is set per command and deliberately not exported: every stage runs
+      # in this one shell, so an export reaches `go test` too, and overriding
+      # CI's GOTOOLCHAIN=local there let a test's subprocess download a
+      # toolchain and take a path it must never take. That is how this pin
+      # shipped broken the second time.
+      lint_toolchain="go$("$go_command" list -m -f '{{.GoVersion}}')"
       #
       # staticcheck's style group is off. ST1005 in particular wants
       # lower-case error strings, and this product's errors are user-facing
       # text naming domain objects — "Row", "Tree", "Page index generation".
       # That is a deliberate departure from the Go convention, not an oversight.
-      "$go_command" run honnef.co/go/tools/cmd/staticcheck@"$staticcheck_version" \
-        -checks 'all,-ST1000,-ST1003,-ST1005,-ST1020,-ST1021,-ST1022' ./...
-      # Tests are excluded from errcheck: a test that ignores an error fails
-      # loudly on the next assertion anyway, and t.Cleanup closures would
-      # otherwise need wrapping for no gain.
-      "$go_command" run github.com/kisielk/errcheck@"$errcheck_version" -ignoretests ./...
-      "$go_command" run github.com/gordonklaus/ineffassign@"$ineffassign_version" ./...
+      #
+      # The three tools are installed once, for the machine running the stage,
+      # and then invoked once per supported platform. GOOS has to reach the
+      # analysis without reaching the build of the tool itself: `go run` under
+      # GOOS=darwin cross-compiles the checker and the stage dies with "exec
+      # format error", while the installed binaries read GOOS from the
+      # environment when they load the packages to analyse.
+      #
+      # A subshell, so the temp directory is removed on the way out whether the
+      # stage passes or fails. A RETURN trap would outlive this function — traps
+      # are shell-wide — and an EXIT trap would be overwritten by cross-build's.
+      (
+      lint_tool_dir=$(mktemp -d)
+      trap 'rm -rf -- "$lint_tool_dir"' EXIT
+      GOBIN="$lint_tool_dir" GOTOOLCHAIN="$lint_toolchain" "$go_command" install \
+        honnef.co/go/tools/cmd/staticcheck@"$staticcheck_version"
+      GOBIN="$lint_tool_dir" GOTOOLCHAIN="$lint_toolchain" "$go_command" install \
+        github.com/kisielk/errcheck@"$errcheck_version"
+      GOBIN="$lint_tool_dir" GOTOOLCHAIN="$lint_toolchain" "$go_command" install \
+        github.com/gordonklaus/ineffassign@"$ineffassign_version"
+      # Once per supported platform, not once for whichever machine happens to
+      # run the stage: a file behind //go:build darwin is invisible to a Linux
+      # sweep, and that is how two _darwin.go findings reached CI after a local
+      # run reported the tree clean.
+      for goos in "${supported_platforms[@]}"; do
+        printf 'ci: lint GOOS=%s\n' "$goos"
+        GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/staticcheck" \
+          -checks 'all,-ST1000,-ST1003,-ST1005,-ST1020,-ST1021,-ST1022' ./...
+        # Tests are excluded from errcheck: a test that ignores an error fails
+        # loudly on the next assertion anyway, and t.Cleanup closures would
+        # otherwise need wrapping for no gain.
+        GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/errcheck" -ignoretests ./...
+        GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/ineffassign" ./...
+      done
+      )
       ;;
     unit)
       "$go_command" test ./...

@@ -14,7 +14,7 @@ func syncDirectory(path string) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	if err := directory.Sync(); err != nil {
 		if errors.Is(err, unix.EOPNOTSUPP) || errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EINVAL) {
 			return nil

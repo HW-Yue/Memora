@@ -192,9 +192,39 @@ cp "$FAKE_SOURCE_BINARY" "$out"
 chmod 755 "$out"
 `)
 	writeExecutable(t, filepath.Join(value.tools, "spctl"), "#!/bin/sh\nexit 1\n")
+	linkUtilities(t, value.tools)
 	value.sourceBinary = filepath.Join(root, "source-memora")
 	writeExecutable(t, value.sourceBinary, fakeMemora("0.1.0"))
 	return value
+}
+
+// The fixture's PATH is its own tools directory and nothing else, so the real
+// utilities install.sh needs are linked into it. Half of what these tests
+// assert is about a program being *absent*: the source-fallback case deletes
+// the fake go to check that the installer reports Go is not installed, and
+// that is only true if the machine underneath cannot supply one. Leaving
+// /usr/bin on the PATH made it depend on the runner — GitHub's Linux image
+// ships a go, so the installer found it, built the real module, and the
+// assertion failed on a difference between runners rather than in the code.
+//
+// curl, go and spctl are deliberately not in this list: those three are the
+// fakes, and linking the real ones would let a test reach the network.
+var fixtureUtilities = []string{
+	"awk", "chmod", "cp", "grep", "gzip", "head", "mkdir", "mktemp",
+	"mv", "rm", "sed", "shasum", "sort", "tar", "tr", "uname",
+}
+
+func linkUtilities(t *testing.T, tools string) {
+	t.Helper()
+	for _, name := range fixtureUtilities {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatalf("fixture utility %q is not on this machine: %v", name, err)
+		}
+		if err := os.Symlink(path, filepath.Join(tools, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func (fixture *fixture) release(version string, badChecksum bool) {
@@ -257,7 +287,7 @@ func (fixture *fixture) run(arguments ...string) commandResult {
 	args = append(args, arguments...)
 	command := exec.Command("/bin/sh", args...)
 	command.Env = append(os.Environ(),
-		"PATH="+fixture.tools+":/usr/bin:/bin",
+		"PATH="+fixture.tools,
 		"MEMORA_RELEASE_BASE=https://example.invalid/releases/download",
 		"FAKE_RELEASE_DIR="+fixture.releaseDir,
 		"FAKE_DOWNLOAD_LOG="+fixture.downloadLog,
