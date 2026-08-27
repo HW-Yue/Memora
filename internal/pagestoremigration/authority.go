@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,6 +24,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/rowid"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/changeindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
@@ -188,6 +190,39 @@ func OpenAuthority(
 		}
 	}
 	return authority, nil
+}
+
+// NextRowID allocates the next Row ID number for a Table.
+//
+// It reads the Table's durable counter and returns the number after it. The
+// advance is not written here: it lands with the Row that took the number, in
+// PublishMutation's single commit. A write that then fails burns the number —
+// a gap in the sequence, never a repeat, which is the property that matters.
+//
+// Callers hold the write lock, so no two allocations can see the same counter.
+func (authority *Authority) NextRowID(ctx context.Context, databaseID, tableID string) (string, error) {
+	if authority == nil || ctx == nil || tableID == "" {
+		return "", fmt.Errorf("%w: Row ID allocation", ErrInvalid)
+	}
+	if err := authority.lockRead(ctx); err != nil {
+		return "", err
+	}
+	defer authority.mu.RUnlock()
+	if err := authority.writableLocked(ctx, databaseID); err != nil {
+		return "", err
+	}
+	index := authority.generation.CurrentRowsFor(tableID)
+	if index == nil {
+		return "", fmt.Errorf("%w: Table %q has no Tree", ErrInvalid, tableID)
+	}
+	counter, err := index.RowIDCounter()
+	if err != nil {
+		return "", err
+	}
+	if counter == math.MaxUint64 {
+		return "", fmt.Errorf("%w: Table %q Row IDs are exhausted", ErrTargetCorrupt, tableID)
+	}
+	return rowid.Format(tableSpaceID(tableID), counter+1)
 }
 
 func (authority *Authority) BeginRowWrite(
@@ -554,7 +589,15 @@ func (authority *Authority) PublishMutation(
 				if index == nil {
 					return fmt.Errorf("%w: Table %q has no Tree", ErrInvalid, tableID)
 				}
-				if err := index.StageApply(group, current[tableID]); err != nil {
+				// The counter moves with the Rows that took the numbers, so an
+				// allocated ID becomes durable exactly when its Row does.
+				rowIDs := make([]string, 0, len(current[tableID]))
+				for _, update := range current[tableID] {
+					rowIDs = append(rowIDs, update.Locator.RowID)
+				}
+				if err := index.StageApplyWithRowIDCounter(
+					group, current[tableID], rowid.HighWater(rowIDs),
+				); err != nil {
 					return err
 				}
 			}

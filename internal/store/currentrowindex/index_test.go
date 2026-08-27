@@ -20,19 +20,19 @@ const testSpaceID = uint64(51)
 func TestBootstrapAcceptsFinalLocatorsAndCreatesAnEmptyAuthority(t *testing.T) {
 	_, _, runtime, index := newTestIndex(t)
 	final := locator("row_one", 7, 11, row.StateDeleted)
-	receipt, err := index.Bootstrap(1, []Locator{final})
+	receipt, err := index.Bootstrap(1, []Locator{final}, 0)
 	if err != nil || !receipt.Changed || runtime.State().RootPageID == 0 {
 		t.Fatalf("Bootstrap(final) = %+v, %v", receipt, err)
 	}
 	assertLookup(t, final, func() (Locator, error) {
 		return index.Lookup(final.RowID)
 	})
-	if _, err := index.Bootstrap(2, []Locator{final}); !errors.Is(err, ErrConflict) {
+	if _, err := index.Bootstrap(2, []Locator{final}, 0); !errors.Is(err, ErrConflict) {
 		t.Fatalf("Bootstrap(non-empty) error = %v", err)
 	}
 
 	_, _, emptyRuntime, empty := newTestIndex(t)
-	receipt, err = empty.Bootstrap(1, nil)
+	receipt, err = empty.Bootstrap(1, nil, 0)
 	if err != nil || !receipt.Changed || emptyRuntime.State().RootPageID == 0 {
 		t.Fatalf("Bootstrap(empty) = %+v, %v", receipt, err)
 	}

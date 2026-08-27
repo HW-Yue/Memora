@@ -19,6 +19,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowfulltext"
+	"github.com/HW-Yue/Memora/internal/rowid"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
@@ -353,7 +354,7 @@ func buildTree(
 		// construct the old layout and prove a database in it still opens.
 		index, err := currentrowindex.Open(runtime)
 		if err == nil {
-			_, err = index.Bootstrap(transactionID, plan.CurrentRows)
+			_, err = index.Bootstrap(transactionID, plan.CurrentRows, 0)
 		}
 		if err != nil {
 			return treecontrol.State{}, err
@@ -363,9 +364,16 @@ func buildTree(
 		if !isTable {
 			return treecontrol.State{}, ErrInvalid
 		}
+		locators := tableCurrentLocators(plan, tableID)
 		index, err := currentrowindex.Open(runtime)
 		if err == nil {
-			_, err = index.Bootstrap(transactionID, tableCurrentLocators(plan, tableID))
+			// Seed the counter from the Rows this Table already holds, so a
+			// rebuild never hands out an ID one of them is using.
+			rowIDs := make([]string, 0, len(locators))
+			for _, locator := range locators {
+				rowIDs = append(rowIDs, locator.RowID)
+			}
+			_, err = index.Bootstrap(transactionID, locators, rowid.HighWater(rowIDs))
 		}
 		if err != nil {
 			return treecontrol.State{}, err

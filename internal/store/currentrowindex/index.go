@@ -49,7 +49,15 @@ func Open(runtime *treecommit.Runtime) (*Index, error) {
 // Bootstrap creates a complete Current Row authority from final locators.
 // Unlike Apply, it deliberately does not replay intermediate Row transitions;
 // the durable Tree must still be empty.
-func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt, error) {
+// Bootstrap creates a Table's Tree from its final locators.
+//
+// rowIDCounter seeds the Table's Row ID counter. A rebuild has to carry it
+// forward: starting again from zero would hand out IDs the rebuilt Rows are
+// already using. The caller computes it because the shape of a Row ID is the
+// Row layer's business, not this index's.
+func (index *Index) Bootstrap(
+	transactionID uint64, locators []Locator, rowIDCounter uint64,
+) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 {
 		return Receipt{}, fmt.Errorf("%w: Bootstrap request", ErrInvalid)
 	}
@@ -68,7 +76,7 @@ func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt
 	if state.RootPageID != 0 {
 		return Receipt{}, fmt.Errorf("%w: Current Row authority is not empty", ErrConflict)
 	}
-	plan, err := planBootstrap(state, prepared)
+	plan, err := planBootstrap(state, prepared, rowIDCounter)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -80,6 +88,21 @@ func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt
 }
 
 func (index *Index) Apply(transactionID uint64, updates []Update) (Receipt, error) {
+	return index.ApplyWithRowIDCounter(transactionID, updates, 0)
+}
+
+// ApplyWithRowIDCounter is Apply plus an advance of the Table's Row ID counter.
+//
+// The two are one commit because they are one fact: an allocated ID is only
+// allocated if the Row that took it is durable.
+//
+// rowIDCounter is a floor. Callers pass the highest number among the Rows they
+// are writing; the counter moves up to it and never down, so a write to an
+// older Row leaves it alone. Zero means the same thing as any value already
+// reached: nothing to do.
+func (index *Index) ApplyWithRowIDCounter(
+	transactionID uint64, updates []Update, rowIDCounter uint64,
+) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 || len(updates) == 0 {
 		return Receipt{}, fmt.Errorf("%w: Apply request", ErrInvalid)
 	}
@@ -90,7 +113,7 @@ func (index *Index) Apply(transactionID uint64, updates []Update) (Receipt, erro
 
 	index.mu.Lock()
 	defer index.mu.Unlock()
-	plan, changed, err := index.planApplyLocked(prepared)
+	plan, changed, err := index.planApplyLocked(prepared, rowIDCounter)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -111,6 +134,14 @@ func (index *Index) Apply(transactionID uint64, updates []Update) (Receipt, erro
 // the group owns releasing it. An Apply with nothing to do adds no member and
 // releases immediately.
 func (index *Index) StageApply(group *treecommit.Group, updates []Update) error {
+	return index.StageApplyWithRowIDCounter(group, updates, 0)
+}
+
+// StageApplyWithRowIDCounter is StageApply plus an advance of the Table's Row
+// ID counter, in the same group commit. See ApplyWithRowIDCounter.
+func (index *Index) StageApplyWithRowIDCounter(
+	group *treecommit.Group, updates []Update, rowIDCounter uint64,
+) error {
 	if index == nil || index.runtime == nil || group == nil || len(updates) == 0 {
 		return fmt.Errorf("%w: Apply request", ErrInvalid)
 	}
@@ -119,7 +150,7 @@ func (index *Index) StageApply(group *treecommit.Group, updates []Update) error 
 		return err
 	}
 	index.mu.Lock()
-	plan, changed, err := index.planApplyLocked(prepared)
+	plan, changed, err := index.planApplyLocked(prepared, rowIDCounter)
 	if err != nil || !changed {
 		index.mu.Unlock()
 		return err
@@ -130,20 +161,68 @@ func (index *Index) StageApply(group *treecommit.Group, updates []Update) error 
 
 // planApplyLocked builds the mutation plan for an Apply. The caller holds the
 // write lock; changed is false when the updates are already in the Tree.
-func (index *Index) planApplyLocked(prepared []preparedUpdate) (btree.MutationPlan, bool, error) {
+func (index *Index) planApplyLocked(
+	prepared []preparedUpdate, rowIDCounter uint64,
+) (btree.MutationPlan, bool, error) {
 	state := index.runtime.State()
 	active, err := index.validateTransitions(state, prepared)
 	if err != nil {
 		return btree.MutationPlan{}, false, err
 	}
-	if len(active) == 0 {
+	if len(active) == 0 && rowIDCounter == 0 {
 		return btree.MutationPlan{}, false, nil
 	}
-	plan, err := index.plan(state, active)
+	if rowIDCounter != 0 {
+		stored, err := index.rowIDCounterLocked(state)
+		if err != nil {
+			return btree.MutationPlan{}, false, err
+		}
+		// The argument is a floor, not an assignment: callers pass the highest
+		// number among the Rows they are writing, and a write to an old Row is
+		// a low number that must leave the counter where it is. Anything at or
+		// below the stored value is therefore nothing to do — the counter only
+		// ever moves up.
+		if rowIDCounter <= stored {
+			rowIDCounter = 0
+		}
+	}
+	if len(active) == 0 && rowIDCounter == 0 {
+		return btree.MutationPlan{}, false, nil
+	}
+	plan, err := index.plan(state, active, rowIDCounter)
 	if err != nil {
 		return btree.MutationPlan{}, false, err
 	}
 	return plan, true, nil
+}
+
+// RowIDCounter reports the highest Row ID number this Table has handed out.
+// Zero means none: the next insert takes 1.
+func (index *Index) RowIDCounter() (uint64, error) {
+	if index == nil || index.runtime == nil {
+		return 0, fmt.Errorf("%w: lookup Index", ErrInvalid)
+	}
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	return index.rowIDCounterLocked(index.runtime.State())
+}
+
+func (index *Index) rowIDCounterLocked(state treecontrol.State) (uint64, error) {
+	if state.RootPageID == 0 {
+		return 0, nil
+	}
+	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+	if err != nil {
+		return 0, err
+	}
+	encoded, err := searcher.Get(rowIDCounterKey())
+	if errors.Is(err, btree.ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, classifyTreeError(err)
+	}
+	return decodeRowIDCounter(encoded)
 }
 
 func (index *Index) Lookup(rowID string) (Locator, error) {
@@ -279,9 +358,10 @@ func lookupWithSearcher(searcher *btree.Searcher, key []byte) (Locator, bool, er
 func (index *Index) plan(
 	state treecontrol.State,
 	updates []preparedUpdate,
+	rowIDCounter uint64,
 ) (btree.MutationPlan, error) {
 	if state.RootPageID == 0 {
-		return planBootstrap(state, updates)
+		return planBootstrap(state, updates, rowIDCounter)
 	}
 	planner, err := btree.NewMutationPlanner(
 		state.SpaceID, state.Generation, state.RootPageID, state.NextPageID, index.runtime,
@@ -289,6 +369,11 @@ func (index *Index) plan(
 	)
 	if err != nil {
 		return btree.MutationPlan{}, err
+	}
+	if rowIDCounter != 0 {
+		if err := planner.Upsert(rowIDCounterKey(), encodeRowIDCounter(rowIDCounter)); err != nil {
+			return btree.MutationPlan{}, classifyTreeError(err)
+		}
 	}
 	for _, update := range updates {
 		if err := planner.Upsert(update.key, update.value); err != nil {
@@ -301,6 +386,7 @@ func (index *Index) plan(
 func planBootstrap(
 	state treecontrol.State,
 	updates []preparedUpdate,
+	rowIDCounter uint64,
 ) (btree.MutationPlan, error) {
 	rootID := treecontrol.FirstDataPageID
 	root, err := btree.Encode(page.Header{
@@ -321,6 +407,11 @@ func planBootstrap(
 	)
 	if err != nil {
 		return btree.MutationPlan{}, err
+	}
+	if rowIDCounter != 0 {
+		if err := planner.Upsert(rowIDCounterKey(), encodeRowIDCounter(rowIDCounter)); err != nil {
+			return btree.MutationPlan{}, err
+		}
 	}
 	for _, update := range updates {
 		if err := planner.Upsert(update.key, update.value); err != nil {

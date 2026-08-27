@@ -21,6 +21,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/rowid"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/google/uuid"
 )
@@ -45,6 +46,7 @@ type PageAuthority interface {
 	BeginWrite(context.Context) (func(), error)
 	BeginRowWrite(context.Context, string, string, []string) (func(), error)
 	NextChangeSequence(context.Context) (uint64, error)
+	NextRowID(context.Context, string, string) (string, error)
 	Capture(context.Context) (uint64, error)
 	Get(context.Context, catalog.Table, string, uint64) (row.Row, error)
 	CurrentIncludingDeleted(context.Context, catalog.Table, string) (row.Row, error)
@@ -121,6 +123,28 @@ func (service *Service) GetCommittedChange(
 	return authority.GetCommittedChange(ctx, transactionID, databaseID)
 }
 
+// nextRowID allocates a Row ID from the Table's own counter.
+//
+// The fallback matters and is not a second scheme by accident: the counter
+// lives in the Table's Tree, which only exists behind a page Authority. A
+// Service built without one is a test configuration with no Trees at all, and
+// it gets an unnumbered ID that the counter will never collide with — Number
+// refuses to read one. See docs/storage/per-table-tree-v1.md §3.
+func (service *Service) nextRowID(ctx context.Context, table catalog.Table) (string, error) {
+	if service.authority != nil {
+		id, err := service.authority.NextRowID(ctx, table.DatabaseID, table.ID)
+		if err != nil {
+			return "", fmt.Errorf("allocate RowID: %w", err)
+		}
+		return id, nil
+	}
+	id, err := service.ids.Next()
+	if err != nil || strings.TrimSpace(id) == "" {
+		return "", fmt.Errorf("allocate RowID: %w", err)
+	}
+	return rowid.Prefix + id, nil
+}
+
 func (service *Service) Insert(ctx context.Context, databaseName, tableName string, values map[string]any, options row.WriteOptions) (row.Row, error) {
 	release, err := service.BeginAuthorityWrite(ctx)
 	if err != nil {
@@ -138,9 +162,9 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	if err != nil {
 		return row.Row{}, err
 	}
-	id, err := service.ids.Next()
-	if err != nil || strings.TrimSpace(id) == "" {
-		return row.Row{}, fmt.Errorf("allocate RowID: %w", err)
+	id, err := service.nextRowID(ctx, table)
+	if err != nil {
+		return row.Row{}, err
 	}
 	now := service.clock.Now().UTC()
 	sequence, err := service.NextCommitSequence(ctx)
@@ -153,7 +177,7 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	if err != nil {
 		return row.Row{}, err
 	}
-	value := row.Row{ID: "row_" + id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, ChangeSequence: changeSequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now, RouteLeafIDs: sortedRouteLeafIDs(options.RouteLeafIDs)}
+	value := row.Row{ID: id, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: sequence, ChangeSequence: changeSequence, State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now, RouteLeafIDs: sortedRouteLeafIDs(options.RouteLeafIDs)}
 	transaction, err := service.repository.file.Begin()
 	if err != nil {
 		return row.Row{}, err

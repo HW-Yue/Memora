@@ -262,7 +262,7 @@ func (generation *Generation) EnsureTableTrees(tableIDs []string) error {
 				_ = manager.Close()
 				return fmt.Errorf("%w: open Table %q Index: %v", ErrTargetCorrupt, tableID, openErr)
 			}
-			if _, err := index.Bootstrap(transactionID, nil); err != nil {
+			if _, err := index.Bootstrap(transactionID, nil, 0); err != nil {
 				_ = manager.Close()
 				return fmt.Errorf("%w: bootstrap Table %q Tree: %v", ErrTargetCorrupt, tableID, err)
 			}

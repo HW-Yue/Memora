@@ -14,10 +14,15 @@ import (
 const (
 	keyVersion        = byte(1)
 	keyKindCurrentRow = byte(1)
-	locatorVersion    = uint16(1)
-	locatorHeaderSize = 48
-	maxComponentBytes = 2048
-	maxKeyBytes       = 6144
+	// keyKindRowIDCounter holds the Table's Row ID counter, so allocating an ID
+	// and writing the Row it names land in the same commit. A counter kept
+	// anywhere else could disagree with the Rows it numbered.
+	// See docs/storage/per-table-tree-v1.md §3.1.
+	keyKindRowIDCounter = byte(2)
+	locatorVersion      = uint16(1)
+	locatorHeaderSize   = 48
+	maxComponentBytes   = 2048
+	maxKeyBytes         = 6144
 )
 
 var (
@@ -63,9 +68,28 @@ func encodeKey(rowID string) ([]byte, error) {
 }
 
 // indexPrefix is the prefix every current Row key in a Tree shares. A scan
-// bounded by it covers exactly one Table, because the Tree holds exactly one.
+// bounded by it covers exactly one Table, because the Tree holds exactly one —
+// and it excludes the reserved keys, which sort under a different kind byte.
 func indexPrefix() []byte {
 	return []byte{keyVersion, keyKindCurrentRow}
+}
+
+// rowIDCounterKey is the reserved key holding this Table's Row ID counter.
+func rowIDCounterKey() []byte {
+	return []byte{keyVersion, keyKindRowIDCounter}
+}
+
+func encodeRowIDCounter(value uint64) []byte {
+	encoded := make([]byte, 8)
+	binary.BigEndian.PutUint64(encoded, value)
+	return encoded
+}
+
+func decodeRowIDCounter(encoded []byte) (uint64, error) {
+	if len(encoded) != 8 {
+		return 0, fmt.Errorf("%w: Row ID counter", ErrCorrupt)
+	}
+	return binary.BigEndian.Uint64(encoded), nil
 }
 
 // RowOrderKey exposes the stable within-Table ordering component used by the
