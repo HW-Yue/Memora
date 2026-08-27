@@ -8,7 +8,7 @@ cd "$repository_root"
 
 go_command=${MEMORA_CI_GO:-go}
 gofmt_command=${MEMORA_CI_GOFMT:-gofmt}
-staticcheck_version=v0.8.1
+staticcheck_version=v0.7.0
 errcheck_version=v1.20.0
 ineffassign_version=v0.1.0
 stages=(format vet lint unit race integration e2e cross-build)
@@ -40,6 +40,14 @@ run_stage() {
       # green branch red on its own. There is no baseline or exemption file:
       # every finding was fixed when the stage was introduced, so anything this
       # reports is new.
+      #
+      # The toolchain is pinned to the version go.mod targets, and pinned the
+      # same way here as the workflow pins it (GOTOOLCHAIN: local). Without
+      # this, `go run` on a developer machine quietly downloads whatever newer
+      # toolchain a tool asks for and the stage passes locally while failing in
+      # CI, which is exactly how this stage shipped broken the first time.
+      module_go=$("$go_command" list -m -f '{{.GoVersion}}')
+      export GOTOOLCHAIN="go${module_go}"
       #
       # staticcheck's style group is off. ST1005 in particular wants
       # lower-case error strings, and this product's errors are user-facing
