@@ -109,9 +109,10 @@ var legacyExpectedTrees = append([]treeManifest(nil), treeWALExpectedTrees[:3]..
 // of this version has, then any number of per-Table Trees.
 //
 // The tail is open-ended because the number of Trees follows the number of
-// Tables (docs/storage/per-table-tree-v1.md §2). Open-ended is not unchecked —
-// a per-Table Tree's space and page file both derive from its Table ID, so a
-// Tree claiming any other identity is refused.
+// Tables (docs/storage/per-table-tree-v1.md §2) — two per Table, the clustered
+// Tree and the history Tree. Open-ended is not unchecked: a per-Table Tree's
+// space and page file both derive from its Table ID, so a Tree claiming any
+// other identity is refused, and no two Trees may share a space or a page file.
 func (manifest generationManifest) validate() error {
 	expected, validVersion := manifestTreeSpecifications(manifest.Version, manifest.PlanVersion)
 	if !validVersion ||
@@ -139,7 +140,7 @@ func (manifest generationManifest) validate() error {
 				tree.PageFile != expectedTree.PageFile || tree.WALDirectory != expectedTree.WALDirectory {
 				return ErrTargetCorrupt
 			}
-		} else if !validTableTree(tree) {
+		} else if !validTableTree(tree) && !validHistoryTree(tree) {
 			return ErrTargetCorrupt
 		}
 		if _, err := treecontrol.Encode(state); err != nil {

@@ -71,3 +71,60 @@ func validTableTree(tree treeManifest) bool {
 	return tree.SpaceID == expected.SpaceID && tree.PageFile == expected.PageFile &&
 		tree.WALDirectory == ""
 }
+
+// A Table has two derived Trees: the clustered Tree holding its current Rows,
+// and the history Tree holding every revision of those Rows keyed
+// (row_id, sequence). They are separate Trees rather than two key ranges of one
+// because history is a Table in its own right — `notes` and `notes_history` —
+// and because a scan of current Rows must not walk past revisions it will
+// discard. See docs/storage/per-table-tree-v1.md §2 and §4.
+const historyTreeKindPrefix = "history:"
+
+func historyTreeKind(tableID string) string { return historyTreeKindPrefix + tableID }
+
+// historyTreeTableID returns the Table a history Tree kind names, and whether
+// the kind names one at all.
+func historyTreeTableID(kind string) (string, bool) {
+	if !strings.HasPrefix(kind, historyTreeKindPrefix) {
+		return "", false
+	}
+	tableID := strings.TrimPrefix(kind, historyTreeKindPrefix)
+	if tableID == "" {
+		return "", false
+	}
+	return tableID, true
+}
+
+// historySpaceID derives a Table's history space from its ID, the same way
+// tableSpaceID does and with a different domain prefix — so one Table's two
+// Trees can never be handed the same space, which the shared buffer pool keys
+// its frames by.
+func historySpaceID(tableID string) uint64 {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte("memora.table-history-space/v1\x00"))
+	_, _ = hash.Write([]byte(tableID))
+	return hash.Sum64() | tableSpaceBit
+}
+
+func historyTreePageFile(spaceID uint64) string {
+	return fmt.Sprintf("history_%016x.pages", spaceID)
+}
+
+func historyTreeManifest(tableID string) treeManifest {
+	spaceID := historySpaceID(tableID)
+	return treeManifest{
+		Kind: historyTreeKind(tableID), SpaceID: spaceID, PageFile: historyTreePageFile(spaceID),
+	}
+}
+
+// validHistoryTree reports whether a Tree specification is a well-formed
+// per-Table history Tree: every field has to follow from the Table it names.
+func validHistoryTree(tree treeManifest) bool {
+	tableID, ok := historyTreeTableID(tree.Kind)
+	if !ok {
+		return false
+	}
+	expected := historyTreeManifest(tableID)
+	return tree.SpaceID == expected.SpaceID && tree.PageFile == expected.PageFile &&
+		tree.WALDirectory == ""
+}

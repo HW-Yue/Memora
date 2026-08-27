@@ -207,17 +207,21 @@ func (applier *Applier) build(
 	// One Tree per Table, holding that Table's current Rows. The Table list
 	// comes from the Catalog rather than from the Rows, so a Table with no Rows
 	// still gets its Tree and the Tree set matches the Catalog exactly.
+	// Two Trees per Table: its current Rows, and its history. The Table list
+	// comes from the Catalog rather than from the Rows, so a Table with no Rows
+	// still gets both Trees and the Tree set matches the Catalog exactly.
 	for _, tableID := range planTableIDs(plan) {
 		if err := ctx.Err(); err != nil {
 			return generationManifest{}, err
 		}
-		specification := tableTreeManifest(tableID)
-		state, err := buildTree(staging, specification, capacity, plan, log)
-		if err != nil {
-			return generationManifest{}, fmt.Errorf("build Table %q migration Tree: %w", tableID, err)
+		for _, specification := range []treeManifest{tableTreeManifest(tableID), historyTreeManifest(tableID)} {
+			state, err := buildTree(staging, specification, capacity, plan, log)
+			if err != nil {
+				return generationManifest{}, fmt.Errorf("build Table %q migration %s Tree: %w", tableID, specification.Kind, err)
+			}
+			specification.State = treeStateFromRuntime(state)
+			manifest.Trees = append(manifest.Trees, specification)
 		}
-		specification.State = treeStateFromRuntime(state)
-		manifest.Trees = append(manifest.Trees, specification)
 	}
 	if err := applier.checkpoint(ctx, phaseCurrentBuilt); err != nil {
 		return generationManifest{}, err
@@ -360,20 +364,30 @@ func buildTree(
 			return treecontrol.State{}, err
 		}
 	default:
-		tableID, isTable := tableTreeTableID(specification.Kind)
-		if !isTable {
+		if tableID, isTable := tableTreeTableID(specification.Kind); isTable {
+			locators := tableCurrentLocators(plan, tableID)
+			index, err := currentrowindex.Open(runtime)
+			if err == nil {
+				// Seed the counter from the Rows this Table already holds, so a
+				// rebuild never hands out an ID one of them is using.
+				rowIDs := make([]string, 0, len(locators))
+				for _, locator := range locators {
+					rowIDs = append(rowIDs, locator.RowID)
+				}
+				_, err = index.Bootstrap(transactionID, locators, rowid.HighWater(rowIDs))
+			}
+			if err != nil {
+				return treecontrol.State{}, err
+			}
+			break
+		}
+		tableID, isHistory := historyTreeTableID(specification.Kind)
+		if !isHistory {
 			return treecontrol.State{}, ErrInvalid
 		}
-		locators := tableCurrentLocators(plan, tableID)
-		index, err := currentrowindex.Open(runtime)
+		index, err := rowversionindex.Open(runtime)
 		if err == nil {
-			// Seed the counter from the Rows this Table already holds, so a
-			// rebuild never hands out an ID one of them is using.
-			rowIDs := make([]string, 0, len(locators))
-			for _, locator := range locators {
-				rowIDs = append(rowIDs, locator.RowID)
-			}
-			_, err = index.Bootstrap(transactionID, locators, rowid.HighWater(rowIDs))
+			_, err = index.Bootstrap(transactionID, tableRowVersions(plan, tableID))
 		}
 		if err != nil {
 			return treecontrol.State{}, err
@@ -403,6 +417,19 @@ func planTableIDs(plan Plan) []string {
 }
 
 // tableCurrentLocators picks out the current Rows belonging to one Table.
+// tableRowVersions is every revision the plan holds for one Table, which is
+// what that Table's history Tree is seeded with. The shared "versions" Tree is
+// seeded with all of them; these are the same Locators partitioned by Table.
+func tableRowVersions(plan Plan, tableID string) []rowversionindex.Locator {
+	locators := make([]rowversionindex.Locator, 0)
+	for _, locator := range plan.RowVersions {
+		if locator.TableID == tableID {
+			locators = append(locators, locator)
+		}
+	}
+	return locators
+}
+
 func tableCurrentLocators(plan Plan, tableID string) []currentrowindex.Locator {
 	locators := make([]currentrowindex.Locator, 0)
 	for _, locator := range plan.CurrentRows {

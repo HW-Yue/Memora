@@ -171,6 +171,11 @@ type Generation struct {
 	// tableRows is the current Row Index of each Table's Tree, opened once when
 	// the Tree is.
 	tableRows map[string]*currentrowindex.Index
+	// histories holds each Table's history Tree and the Index over it. A Table
+	// has two Trees: its current Rows and every revision of them.
+	// See docs/storage/per-table-tree-v1.md §4.
+	histories     map[string]*generationTree
+	tableVersions map[string]*rowversionindex.Index
 	// router and pool are the generation's one buffer pool and the SpaceID
 	// routing behind it. A Tree added after open registers with them rather
 	// than building a pool of its own.
@@ -225,52 +230,34 @@ func (generation *Generation) EnsureTableTrees(tableIDs []string) error {
 			_ = closeGenerationTree(opened[index], false)
 		}
 	}()
+	// Two Trees per Table, in a fixed order: the clustered Tree then its
+	// history Tree. The order is what lets the publication below pair each
+	// Table with the two Trees it just opened.
 	for _, tableID := range missing {
-		specification := tableTreeManifest(tableID)
-		path := filepath.Join(generation.directory, specification.PageFile)
-		manager, err := page.Open(path, specification.SpaceID)
-		if errors.Is(err, os.ErrNotExist) {
-			// First time this Table is seen: its page file does not exist yet.
-			manager, err = page.Create(path, specification.SpaceID)
-		}
-		if err != nil {
-			return fmt.Errorf("%w: open Table %q Pages: %v", ErrTargetCorrupt, tableID, err)
-		}
-		if err := generation.router.Register(specification.SpaceID, manager); err != nil {
-			_ = manager.Close()
-			return fmt.Errorf("%w: register Table %q Pages: %v", ErrTargetCorrupt, tableID, err)
-		}
-		runtime, err := treecommit.AttachRuntime(generation.log, manager, treecommit.RuntimeConfig{
-			SpaceID: specification.SpaceID, Pool: generation.pool,
-		})
-		if err != nil {
-			_ = manager.Close()
-			return fmt.Errorf("%w: attach Table %q Tree: %v", ErrTargetCorrupt, tableID, err)
-		}
-		// A Tree is born with an empty B+ root rather than no root at all.
-		// "Created but rootless" would be a second empty state for every reader
-		// to know about, and the manifest's own invariant is that a Tree has a
-		// root.
-		if runtime.State().RootPageID == 0 {
-			transactionID, frontierErr := generation.nextTransactionIDLocked()
-			if frontierErr != nil {
-				_ = manager.Close()
-				return frontierErr
-			}
+		rows, err := generation.openDerivedTreeLocked(tableTreeManifest(tableID), func(runtime *treecommit.Runtime, transactionID uint64) error {
 			index, openErr := currentrowindex.Open(runtime)
 			if openErr != nil {
-				_ = manager.Close()
-				return fmt.Errorf("%w: open Table %q Index: %v", ErrTargetCorrupt, tableID, openErr)
+				return openErr
 			}
-			if _, err := index.Bootstrap(transactionID, nil, 0); err != nil {
-				_ = manager.Close()
-				return fmt.Errorf("%w: bootstrap Table %q Tree: %v", ErrTargetCorrupt, tableID, err)
-			}
-		}
-		specification.State = treeStateFromRuntime(runtime.State())
-		opened = append(opened, &generationTree{
-			manifest: specification, set: generation.log, manager: manager, runtime: runtime,
+			_, err := index.Bootstrap(transactionID, nil, 0)
+			return err
 		})
+		if err != nil {
+			return fmt.Errorf("%w: Table %q Tree: %v", ErrTargetCorrupt, tableID, err)
+		}
+		opened = append(opened, rows)
+		history, err := generation.openDerivedTreeLocked(historyTreeManifest(tableID), func(runtime *treecommit.Runtime, transactionID uint64) error {
+			index, openErr := rowversionindex.Open(runtime)
+			if openErr != nil {
+				return openErr
+			}
+			_, err := index.Bootstrap(transactionID, nil)
+			return err
+		})
+		if err != nil {
+			return fmt.Errorf("%w: Table %q history Tree: %v", ErrTargetCorrupt, tableID, err)
+		}
+		opened = append(opened, history)
 	}
 	manifest := generation.manifest
 	manifest.Trees = append(append([]treeManifest(nil), manifest.Trees...), func() []treeManifest {
@@ -289,22 +276,76 @@ func (generation *Generation) EnsureTableTrees(tableIDs []string) error {
 	// what EnsureTableTrees does anyway.
 	generation.manifest = manifest
 	if generation.tables == nil {
-		generation.tables = make(map[string]*generationTree, len(opened))
+		generation.tables = make(map[string]*generationTree, len(missing))
+		generation.tableRows = make(map[string]*currentrowindex.Index, len(missing))
 	}
-	if generation.tableRows == nil {
-		generation.tableRows = make(map[string]*currentrowindex.Index, len(opened))
+	if generation.histories == nil {
+		generation.histories = make(map[string]*generationTree, len(missing))
+		generation.tableVersions = make(map[string]*rowversionindex.Index, len(missing))
 	}
 	for position, tableID := range missing {
-		rows, err := currentrowindex.Open(opened[position].runtime)
+		rowsTree, historyTree := opened[2*position], opened[2*position+1]
+		rows, err := currentrowindex.Open(rowsTree.runtime)
 		if err != nil {
 			return fmt.Errorf("%w: open Table %q Index: %v", ErrTargetCorrupt, tableID, err)
 		}
-		generation.tables[tableID] = opened[position]
-		generation.tableRows[tableID] = rows
-		generation.trees = append(generation.trees, opened[position])
+		versions, err := rowversionindex.Open(historyTree.runtime)
+		if err != nil {
+			return fmt.Errorf("%w: open Table %q history Index: %v", ErrTargetCorrupt, tableID, err)
+		}
+		generation.tables[tableID], generation.tableRows[tableID] = rowsTree, rows
+		generation.histories[tableID], generation.tableVersions[tableID] = historyTree, versions
+		generation.trees = append(generation.trees, rowsTree, historyTree)
 	}
 	opened = nil
 	return nil
+}
+
+// openDerivedTreeLocked opens one derived Tree's page file, registers it with
+// the generation's router and attaches it to the shared redo log.
+//
+// A Tree is born with an empty B+ root rather than no root at all: "created but
+// rootless" would be a second empty state for every reader to know about, and
+// the manifest's own invariant is that a Tree has a root. bootstrap plants that
+// root, and differs per Tree because the key space does.
+func (generation *Generation) openDerivedTreeLocked(
+	specification treeManifest, bootstrap func(*treecommit.Runtime, uint64) error,
+) (*generationTree, error) {
+	path := filepath.Join(generation.directory, specification.PageFile)
+	manager, err := page.Open(path, specification.SpaceID)
+	if errors.Is(err, os.ErrNotExist) {
+		// First time this Tree is seen: its page file does not exist yet.
+		manager, err = page.Create(path, specification.SpaceID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open Pages: %w", err)
+	}
+	if err := generation.router.Register(specification.SpaceID, manager); err != nil {
+		_ = manager.Close()
+		return nil, fmt.Errorf("register Pages: %w", err)
+	}
+	runtime, err := treecommit.AttachRuntime(generation.log, manager, treecommit.RuntimeConfig{
+		SpaceID: specification.SpaceID, Pool: generation.pool,
+	})
+	if err != nil {
+		_ = manager.Close()
+		return nil, fmt.Errorf("attach Tree: %w", err)
+	}
+	if runtime.State().RootPageID == 0 {
+		transactionID, frontierErr := generation.nextTransactionIDLocked()
+		if frontierErr != nil {
+			_ = manager.Close()
+			return nil, frontierErr
+		}
+		if err := bootstrap(runtime, transactionID); err != nil {
+			_ = manager.Close()
+			return nil, fmt.Errorf("bootstrap Tree: %w", err)
+		}
+	}
+	specification.State = treeStateFromRuntime(runtime.State())
+	return &generationTree{
+		manifest: specification, set: generation.log, manager: manager, runtime: runtime,
+	}, nil
 }
 
 // nextTransactionIDLocked picks the next WAL transaction ID on the shared log.
@@ -340,6 +381,27 @@ func (generation *Generation) TableTree(tableID string) bool {
 	generation.mu.Lock()
 	defer generation.mu.Unlock()
 	return generation.tables[tableID] != nil
+}
+
+// HistoryTree reports whether a Table has a history Tree in this generation.
+func (generation *Generation) HistoryTree(tableID string) bool {
+	if generation == nil {
+		return false
+	}
+	generation.mu.Lock()
+	defer generation.mu.Unlock()
+	return generation.histories[tableID] != nil
+}
+
+// HistoryFor returns a Table's history Index — every revision of that Table's
+// Rows, keyed (Row, revision) — or nil when the Table has no history Tree.
+func (generation *Generation) HistoryFor(tableID string) *rowversionindex.Index {
+	if generation == nil {
+		return nil
+	}
+	generation.mu.Lock()
+	defer generation.mu.Unlock()
+	return generation.tableVersions[tableID]
 }
 
 func OpenGeneration(directory string) (*Generation, error) {
@@ -407,21 +469,34 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 			// Index is built over it: the Authority replaces the generation on
 			// open, and reads are served from the new one.
 		default:
-			tableID, isTable := tableTreeTableID(specification.Kind)
-			if !isTable {
+			if tableID, isTable := tableTreeTableID(specification.Kind); isTable {
+				if generation.tables == nil {
+					generation.tables = make(map[string]*generationTree)
+					generation.tableRows = make(map[string]*currentrowindex.Index)
+				}
+				index, openErr := currentrowindex.Open(tree.runtime)
+				if openErr != nil {
+					err = openErr
+					break
+				}
+				generation.tables[tableID], generation.tableRows[tableID] = tree, index
+				break
+			}
+			tableID, isHistory := historyTreeTableID(specification.Kind)
+			if !isHistory {
 				err = ErrTargetCorrupt
 				break
 			}
-			if generation.tables == nil {
-				generation.tables = make(map[string]*generationTree)
-				generation.tableRows = make(map[string]*currentrowindex.Index)
+			if generation.histories == nil {
+				generation.histories = make(map[string]*generationTree)
+				generation.tableVersions = make(map[string]*rowversionindex.Index)
 			}
-			index, openErr := currentrowindex.Open(tree.runtime)
+			index, openErr := rowversionindex.Open(tree.runtime)
 			if openErr != nil {
 				err = openErr
 				break
 			}
-			generation.tables[tableID], generation.tableRows[tableID] = tree, index
+			generation.histories[tableID], generation.tableVersions[tableID] = tree, index
 		}
 		if err != nil {
 			return nil, fmt.Errorf("%w: open %s Index: %v", ErrTargetCorrupt, specification.Kind, err)
