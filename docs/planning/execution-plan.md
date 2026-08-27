@@ -148,22 +148,25 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
   `RuntimeConfig.Pool` 给了就用共享的、不给就自建，单树调用方不受影响。
   change index 那棵树仍自带 pool——它一棵、固定、不随表数增长
 
-### E4. 每表一棵独立 B+ 树 + RowID 按表递增
+### E4. 每表一棵独立 B+ 树 + RowID 按表递增 ✅
 
 - **前置**：E2、**E3.5**
 - **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 1–3
-- **改动**：`internal/pagestoremigration/{generation,manifest}.go`（动态树集合）、
-  `internal/store/currentrowindex/`（键收缩为 `row_id`）、
-  `IDSource` 签名加表标识并收敛 8 处重复定义
-- **RED**：证明扫一张表会读到其他表的条目；证明 `IDSource.Next()` 不接受表参数
-- **完成**：每张业务表一棵聚簇树；表树内保留键做 RowID 计数器
-  （范式照搬 `rowversionindex.HighWater`）；同表连续插入拿到连续 ID，重开不回退
-- **待决**：RowID 变为**表内唯一**后，跨表引用必须带表标识——
-  `SHOW CHANGES` 的 `ObjectID`、`change.Entry.RelatedObjectIDs` 要逐一核对
+- **已完成**：generation 升 v5，固定树三棵 + 每表一棵；聚簇键收缩为 `row_id`；
+  表树里一个保留键做 RowID 计数器，与拿号的行同一次提交落盘
+- **两处订正**（见规格 §5.6）：
+  1. **RowID 保持全局唯一**，号段前带表的 space。原生存储按裸 RowID 给行记录
+     做键，两张表都从 1 起会撞车——RED 抓到的。改那个记录身份是对真相之源
+     文件的迁移，原生文件没有 COW 重建路径，得单独出设计；
+  2. 计数器参数是**下界**不是赋值，否则改老行的写入全被拒
+- **没做**：`IDSource` 的 8 处重复定义没有收敛。它们服务的是不同对象
+  （catalog／relation／router／row 各自的 ID），只有 row 那一个需要表参数；
+  把 8 个同名接口并成一个是审计里「同一个小接口抄很多遍」的独立条目，
+  不该塞进本项
 
 ### E5. history 独立成表
 
-- **前置**：E4（同一套机制，**分开做等于写两遍**）
+- **前置**：E4 ✅（同一套机制，**分开做等于写两遍**）
 - **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 4–6
 - **改动**：新增每表 history 树；`internal/row/model.go` 加 `history_id`；
   `internal/nativerow/history.go` 读写切换
