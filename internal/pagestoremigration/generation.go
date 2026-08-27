@@ -206,19 +206,35 @@ func (generation *Generation) EnsureTableTrees(tableIDs []string) error {
 	if generation.log == nil || generation.pool == nil || generation.router == nil {
 		return fmt.Errorf("%w: generation cannot grow Trees", ErrInvalid)
 	}
-	missing := make([]string, 0, len(tableIDs))
+	// Completeness is decided per Tree, not per Table. A generation written
+	// before history became a Table has the clustered Tree and no history Tree;
+	// deciding by the Table would skip it forever and every publication into it
+	// would fail for want of a Tree that never grows.
+	missing := make([]missingTree, 0, 2*len(tableIDs))
 	seen := make(map[string]bool, len(tableIDs))
 	for _, tableID := range tableIDs {
-		if tableID == "" || seen[tableID] || generation.tables[tableID] != nil {
+		if tableID == "" || seen[tableID] {
 			continue
 		}
 		seen[tableID] = true
-		missing = append(missing, tableID)
+		if generation.tables[tableID] == nil {
+			missing = append(missing, missingTree{tableID: tableID})
+		}
+		if generation.histories[tableID] == nil {
+			missing = append(missing, missingTree{tableID: tableID, history: true})
+		}
 	}
 	if len(missing) == 0 {
 		return nil
 	}
-	sort.Strings(missing)
+	// Sorted so two runs over the same Catalog produce the same Tree order, and
+	// so a Table's two Trees stay adjacent.
+	sort.Slice(missing, func(left, right int) bool {
+		if missing[left].tableID != missing[right].tableID {
+			return missing[left].tableID < missing[right].tableID
+		}
+		return !missing[left].history
+	})
 	opened := make([]*generationTree, 0, len(missing))
 	defer func() {
 		// Anything opened before a failure is closed here; the caller sees the
@@ -230,34 +246,12 @@ func (generation *Generation) EnsureTableTrees(tableIDs []string) error {
 			_ = closeGenerationTree(opened[index], false)
 		}
 	}()
-	// Two Trees per Table, in a fixed order: the clustered Tree then its
-	// history Tree. The order is what lets the publication below pair each
-	// Table with the two Trees it just opened.
-	for _, tableID := range missing {
-		rows, err := generation.openDerivedTreeLocked(tableTreeManifest(tableID), func(runtime *treecommit.Runtime, transactionID uint64) error {
-			index, openErr := currentrowindex.Open(runtime)
-			if openErr != nil {
-				return openErr
-			}
-			_, err := index.Bootstrap(transactionID, nil, 0)
-			return err
-		})
+	for _, want := range missing {
+		tree, err := generation.openDerivedTreeLocked(want.manifest(), want.bootstrap)
 		if err != nil {
-			return fmt.Errorf("%w: Table %q Tree: %v", ErrTargetCorrupt, tableID, err)
+			return fmt.Errorf("%w: Table %q %s Tree: %v", ErrTargetCorrupt, want.tableID, want.name(), err)
 		}
-		opened = append(opened, rows)
-		history, err := generation.openDerivedTreeLocked(historyTreeManifest(tableID), func(runtime *treecommit.Runtime, transactionID uint64) error {
-			index, openErr := rowversionindex.Open(runtime)
-			if openErr != nil {
-				return openErr
-			}
-			_, err := index.Bootstrap(transactionID, nil)
-			return err
-		})
-		if err != nil {
-			return fmt.Errorf("%w: Table %q history Tree: %v", ErrTargetCorrupt, tableID, err)
-		}
-		opened = append(opened, history)
+		opened = append(opened, tree)
 	}
 	manifest := generation.manifest
 	manifest.Trees = append(append([]treeManifest(nil), manifest.Trees...), func() []treeManifest {
@@ -283,22 +277,64 @@ func (generation *Generation) EnsureTableTrees(tableIDs []string) error {
 		generation.histories = make(map[string]*generationTree, len(missing))
 		generation.tableVersions = make(map[string]*rowversionindex.Index, len(missing))
 	}
-	for position, tableID := range missing {
-		rowsTree, historyTree := opened[2*position], opened[2*position+1]
-		rows, err := currentrowindex.Open(rowsTree.runtime)
-		if err != nil {
-			return fmt.Errorf("%w: open Table %q Index: %v", ErrTargetCorrupt, tableID, err)
+	for position, want := range missing {
+		tree := opened[position]
+		if want.history {
+			index, err := rowversionindex.Open(tree.runtime)
+			if err != nil {
+				return fmt.Errorf("%w: open Table %q history Index: %v", ErrTargetCorrupt, want.tableID, err)
+			}
+			generation.histories[want.tableID], generation.tableVersions[want.tableID] = tree, index
+		} else {
+			index, err := currentrowindex.Open(tree.runtime)
+			if err != nil {
+				return fmt.Errorf("%w: open Table %q Index: %v", ErrTargetCorrupt, want.tableID, err)
+			}
+			generation.tables[want.tableID], generation.tableRows[want.tableID] = tree, index
 		}
-		versions, err := rowversionindex.Open(historyTree.runtime)
-		if err != nil {
-			return fmt.Errorf("%w: open Table %q history Index: %v", ErrTargetCorrupt, tableID, err)
-		}
-		generation.tables[tableID], generation.tableRows[tableID] = rowsTree, rows
-		generation.histories[tableID], generation.tableVersions[tableID] = historyTree, versions
-		generation.trees = append(generation.trees, rowsTree, historyTree)
+		generation.trees = append(generation.trees, tree)
 	}
 	opened = nil
 	return nil
+}
+
+// missingTree names one derived Tree a Table is expected to have and does not.
+// The two differ only in their key space, so everything about opening them is
+// shared and only the manifest and the bootstrap are per kind.
+type missingTree struct {
+	tableID string
+	history bool
+}
+
+func (want missingTree) name() string {
+	if want.history {
+		return "history"
+	}
+	return "clustered"
+}
+
+func (want missingTree) manifest() treeManifest {
+	if want.history {
+		return historyTreeManifest(want.tableID)
+	}
+	return tableTreeManifest(want.tableID)
+}
+
+func (want missingTree) bootstrap(runtime *treecommit.Runtime, transactionID uint64) error {
+	if want.history {
+		index, err := rowversionindex.Open(runtime)
+		if err != nil {
+			return err
+		}
+		_, err = index.Bootstrap(transactionID, nil)
+		return err
+	}
+	index, err := currentrowindex.Open(runtime)
+	if err != nil {
+		return err
+	}
+	_, err = index.Bootstrap(transactionID, nil, 0)
+	return err
 }
 
 // openDerivedTreeLocked opens one derived Tree's page file, registers it with

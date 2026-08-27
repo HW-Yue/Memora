@@ -556,10 +556,15 @@ func (authority *Authority) PublishMutation(
 	if err != nil {
 		return err
 	}
-	// Grouped by Table, because a Table's current Rows live in that Table's own
-	// Tree. A publication touching several Tables therefore stages into several
-	// Trees — still one WAL transaction, which is what makes it atomic.
+	// Grouped by Table, because a Table's current Rows and its history both live
+	// in Trees of that Table's own. A publication touching several Tables
+	// therefore stages into several Trees — still one WAL transaction, which is
+	// what makes it atomic.
 	current := make(map[string][]currentrowindex.Update, 1)
+	tableVersions := make(map[string][]rowversionindex.Locator, 1)
+	for _, locator := range versions {
+		tableVersions[locator.TableID] = append(tableVersions[locator.TableID], locator)
+	}
 	for _, value := range rows {
 		current[value.TableID] = append(current[value.TableID], currentrowindex.Update{
 			ExpectedRevision: value.Revision - 1,
@@ -579,6 +584,20 @@ func (authority *Authority) PublishMutation(
 		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {
 			if len(rows) != 0 {
 				if err := authority.generation.versions.StageAppend(group, versions); err != nil {
+					return err
+				}
+			}
+			// The same revisions again, into the Table's own history Tree.
+			// Both are written until the read path moves over (stage 5); the
+			// shared Tree is what still answers AS OF today, and writing only
+			// one of them would make the switch a change of answer rather than
+			// an equivalent replacement.
+			for _, tableID := range sortedKeys(tableVersions) {
+				index := authority.generation.HistoryFor(tableID)
+				if index == nil {
+					return fmt.Errorf("%w: Table %q has no history Tree", ErrInvalid, tableID)
+				}
+				if err := index.StageAppend(group, tableVersions[tableID]); err != nil {
 					return err
 				}
 			}
@@ -1036,8 +1055,38 @@ func (authority *Authority) appendVersions(plan Plan) error {
 	if err != nil {
 		return err
 	}
-	_, err = authority.generation.versions.Append(id, plan.RowVersions)
-	return err
+	if _, err := authority.generation.versions.Append(id, plan.RowVersions); err != nil {
+		return err
+	}
+	return authority.appendTableVersions(plan)
+}
+
+// appendTableVersions catches each Table's history Tree up to the same
+// revisions the shared Tree just took. Reconcile reads the native store, which
+// is the source both Trees are derived from, so a Table Tree that missed a
+// publication is filled in here rather than left to drift.
+func (authority *Authority) appendTableVersions(plan Plan) error {
+	grouped := make(map[string][]rowversionindex.Locator, 1)
+	for _, locator := range plan.RowVersions {
+		grouped[locator.TableID] = append(grouped[locator.TableID], locator)
+	}
+	for _, tableID := range sortedKeys(grouped) {
+		index := authority.generation.HistoryFor(tableID)
+		if index == nil {
+			// A Table named by a revision but absent from the Catalog has no
+			// Tree to hold it. Reconcile publishes the Catalog first, so this
+			// is a Row whose Table is gone, not one whose Tree is late.
+			continue
+		}
+		id, err := authority.nextGroupTransactionID()
+		if err != nil {
+			return err
+		}
+		if _, err := index.Append(id, grouped[tableID]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (authority *Authority) reconcileFulltext(plan Plan) error {
