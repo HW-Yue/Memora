@@ -186,9 +186,6 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	if err := service.repository.StageSnapshotRow(transaction, value, table); err != nil {
 		return row.Row{}, err
 	}
-	if err := service.repository.StageHistory(transaction, value, history.OperationInsert, options.Metadata, now); err != nil {
-		return row.Row{}, err
-	}
 	routes := nativerouter.New(service.repository.file)
 	mounted, err := stageLeafMounts(transaction, routes, value, value.RouteLeafIDs)
 	if err != nil {
@@ -393,9 +390,6 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 	value.RouteLeafIDs = sortedRouteLeafIDs(desired)
 	if err := service.repository.StageRevision(transaction, value); err != nil {
 		return revisionError(err)
-	}
-	if err := service.repository.StageHistory(transaction, value, operation, metadata, value.UpdatedAt); err != nil {
-		return err
 	}
 	seen := map[string]bool{}
 	for _, leafID := range desired {

@@ -164,19 +164,26 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
   把 8 个同名接口并成一个是审计里「同一个小接口抄很多遍」的独立条目，
   不该塞进本项
 
-### E5. history 独立成表
+### E5. history 独立成表（阶段 4–5 ✅，阶段 6 阻塞）
 
 - **前置**：E4 ✅（同一套机制，**分开做等于写两遍**）
-- **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 4–6
-- **改动**：新增每表 history 树；`internal/row/model.go` 加 `history_id`；
-  `internal/nativerow/history.go` 读写切换
-- **RED**：证明 history 是扁平 object kind、读一行历史不是范围扫
-- **完成**：键 `(row_id, 序号)`；读完整历史一次范围扫；`ObjectKindHistory` 删除；
-  **已删除 Row 的 `(row_id, *)` 区段一并不可达**
-- **一并裁定**：`Row.ChangeSequence`（`48ef5b6`）的去留——它是已废弃路线的遗留
+- **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 4–6，
+  落地形态与裁定见该文 §5.7
+- **已完成**：每表一棵 history 树（键 `(row_id, revision)`，
+  读完整历史一次范围扫）；行版本按表与共享 `versions` 树在同一 WAL 事务里
+  双写；四条普通写入路径不再产生 `ObjectKindHistory` 记录，归属改从变更日志读，
+  `SHOW HISTORY` 逐字不变
+- **裁定一**：**不加 `Row.history_id`**——history 键里的序号就是行自己的
+  `Revision`，加上它是把同一个事实存两遍，而且会漂移
+- **裁定二**：history 树就是按表开一个 `rowversionindex` 实例，不另造一套
+- **阻塞中**：`ObjectKindHistory` **不能删**。还剩一个生产写入方——
+  `internal/nativesnapshot` 的 RESTORE：它重放的快照 history 记录带归属但
+  不带变更序号，被还原的行 `ChangeSequence == 0`，归属无处可取。
+  这是产品裁定不是机械改动，两个选项与倾向见规格 §5.7
+- **待裁定**：`Row.ChangeSequence`（`48ef5b6`）的去留——它现在是归属join
+  的唯一钥匙，**不能按原计划回退**，与上面那条一起定
 - **回归**：本项起每阶段重跑「已删除 Row 从任何面都拿不到」
-  （`internal/daemon/f227_row_relation_archive_test.go`）——
-  history 变成表是这条契约最容易漏的地方
+  （`internal/daemon/f227_row_relation_archive_test.go`）——已跑，全绿
 
 ### E6. 三份日志与恢复
 

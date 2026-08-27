@@ -108,8 +108,22 @@ func TestAuthorityLogicalMutationsPublishCompleteOrderedChangeEnvelopes(t *testi
 			if entry.ObjectKind != change.ObjectRow {
 				continue
 			}
-			if _, err := file.Get(nativestore.ObjectKindHistory, entry.HistoryLocator); err != nil {
-				t.Fatalf("History locator %q = %v", entry.HistoryLocator, err)
+			// The locator names a revision, and the Table's history Tree is
+			// where revisions live. It used to be asserted by reading a
+			// per-Row History record; nothing writes one any more (E5 stage
+			// 5), and asserting against it would pin the storage this stage
+			// removed rather than the contract the entry carries.
+			if entry.HistoryLocator != nativerow.HistoryRecordID(entry.ObjectID, entry.AfterRevision) {
+				t.Fatalf("History locator %q does not name revision %d of %q",
+					entry.HistoryLocator, entry.AfterRevision, entry.ObjectID)
+			}
+			history := authority.generation.HistoryFor(entry.TableID)
+			if history == nil {
+				t.Fatalf("Table %q has no history Tree", entry.TableID)
+			}
+			if _, err := history.ByRevision(entry.ObjectID, entry.AfterRevision); err != nil {
+				t.Fatalf("history Tree is missing revision %d of %q: %v",
+					entry.AfterRevision, entry.ObjectID, err)
 			}
 		}
 	}

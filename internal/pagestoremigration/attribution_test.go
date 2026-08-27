@@ -3,6 +3,10 @@ package pagestoremigration
 import (
 	"context"
 	"testing"
+
+	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/nativerow"
+	"github.com/HW-Yue/Memora/internal/row"
 )
 
 // TestEveryRevisionResolvesAttributionThroughItsEnvelope is the guard against a
@@ -45,6 +49,10 @@ func TestEveryRevisionResolvesAttributionThroughItsEnvelope(t *testing.T) {
 // TestRevisionWithoutAChangeSequenceFallsBack pins the other half of the
 // contract: a revision written before the link existed still reports its
 // attribution, from the per-Row History record those Databases hold.
+//
+// The record is written by the test rather than left behind by the write path.
+// Nothing writes one any more (E5 stage 5), so relying on the writer to produce
+// the fixture would test today's writer instead of yesterday's Database.
 func TestRevisionWithoutAChangeSequenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	_, file, authority := newAuthorityFixture(t)
@@ -56,6 +64,13 @@ func TestRevisionWithoutAChangeSequenceFallsBack(t *testing.T) {
 	}
 	legacy := versions[0]
 	legacy.ChangeSequence = 0
+	if err := nativerow.New(file).AppendHistory(
+		legacy, history.OperationInsert,
+		row.WriteMetadata{Actor: "person:archivist", Source: "restore", Reason: "an older Database"},
+		legacy.UpdatedAt,
+	); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := authority.attribute(legacy); ok {
 		t.Fatal("a revision with no change sequence must not claim to resolve an envelope")
 	}

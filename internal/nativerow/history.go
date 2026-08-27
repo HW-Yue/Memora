@@ -9,6 +9,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
@@ -110,11 +111,11 @@ func (repository *Repository) historyWalk(
 		if value.Revision != revision {
 			return nil, fmt.Errorf("%w: revision record %d identifies revision %d", ErrCorrupt, revision, value.Revision)
 		}
-		item, err := repository.historyMetadataFor(rowID, revision)
+		record, err := repository.attributionFor(value)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, historyRecord(item, value))
+		result = append(result, record)
 		if limit > 0 && len(result) == limit {
 			break
 		}
@@ -166,6 +167,33 @@ func historyRecord(item historyMetadata, value row.Row) history.Record {
 		SourceContentHash: item.sourceContentHash, Reason: item.reason,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, RecordedAt: item.recordedAt,
 	}
+}
+
+// attributionFor resolves who wrote one revision and why.
+//
+// Attribution belongs to the transaction, not to the revision: a write touching
+// many Rows has one actor and one reason, recorded once in the Change Log. The
+// revision carries the change sequence that names it, so the lookup is a point
+// read on the envelope.
+//
+// A revision whose change sequence is zero predates that link. Those fall back
+// to the per-Row History record, which is the only reason that record kind is
+// still read — nothing writes a new one. See docs/storage/per-table-tree-v1.md
+// §4.
+func (repository *Repository) attributionFor(value row.Row) (history.Record, error) {
+	if value.ChangeSequence != 0 {
+		envelope, err := nativechange.New(repository.file).Get(value.ChangeSequence)
+		if err == nil {
+			if record, ok := HistoryRecordFromEnvelope(value, envelope); ok {
+				return record, nil
+			}
+		}
+	}
+	item, err := repository.historyMetadataFor(value.ID, value.Revision)
+	if err != nil {
+		return history.Record{}, err
+	}
+	return historyRecord(item, value), nil
 }
 
 func (repository *Repository) historyMetadataFor(rowID string, revision uint64) (historyMetadata, error) {

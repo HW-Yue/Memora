@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/row"
+	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/wal"
 )
@@ -284,5 +286,68 @@ func buildPreHistoryGeneration(t *testing.T, directory string, plan Plan) {
 	}
 	if err := writeAuthorityMarker(directory, marker); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestWritesNoLongerProduceHistoryRecords is E5 stage 5's gate.
+//
+// A Row's history has two halves: the revisions, which live in the Table's
+// history Tree, and the attribution, which belongs to the transaction that
+// wrote them and lives once per transaction in the Change Log. The per-Row
+// History record (nativestore.ObjectKindHistory) duplicated the second half
+// once per revision, and nothing reads it any more except as a fallback for
+// revisions written before the Change Log carried attribution.
+//
+// So new writes stop producing it. Old records stay readable — a Database that
+// holds them still answers SHOW HISTORY from them, which is what the fallback
+// is for.
+//
+// The gate is the pair: no new record, and the answer does not change.
+func TestWritesNoLongerProduceHistoryRecords(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	_, rows, notes, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+
+	before, err := file.IDs(nativestore.ObjectKindHistory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	note, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "first"}, row.WriteOptions{
+		ExpectedSchemaVersion: notes.SchemaVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rows.Update(ctx, "work", "notes", note.ID, map[string]any{"title": "second"}, row.WriteOptions{
+		ExpectedSchemaVersion: notes.SchemaVersion, ExpectedRevision: note.Revision,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := file.IDs(nativestore.ObjectKindHistory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("two writes produced %d new History records", len(after)-len(before))
+	}
+
+	// And the answer is unchanged: both revisions, newest first, each carrying
+	// the attribution of the transaction that wrote it.
+	records, err := authority.History(ctx, notes, note.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("SHOW HISTORY = %#v, want 2 revisions", records)
+	}
+	for index, record := range records {
+		wantRevision := uint64(2 - index)
+		if record.Revision != wantRevision || record.RowID != note.ID ||
+			record.Actor == "" || record.Reason == "" {
+			t.Fatalf("revision %d = %#v", index, record)
+		}
+	}
+	if records[0].Operation != history.OperationUpdate || records[1].Operation != history.OperationInsert {
+		t.Fatalf("operations = %q / %q", records[0].Operation, records[1].Operation)
 	}
 }

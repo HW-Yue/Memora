@@ -117,9 +117,6 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 		if err != nil {
 			return err
 		}
-		if err := coordinator.rows.StageHistory(transaction, change.Row, change.Operation, change.Metadata, change.RecordedAt); err != nil {
-			return err
-		}
 	}
 	for _, value := range plan.Relations {
 		if err := coordinator.rows.StageRelation(transaction, value); err != nil {
@@ -190,11 +187,6 @@ func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, e
 		value.ChangeSequence = sequence
 		value.UpdatedAt = committedAt
 		if err := coordinator.rows.StageRevision(transaction, value); err != nil {
-			return 0, err
-		}
-		if err := coordinator.rows.StageHistory(
-			transaction, value, history.OperationUpdate, plan.RowMetadata, committedAt,
-		); err != nil {
 			return 0, err
 		}
 		entries = append(entries, nativechange.RowEntry(value, history.OperationUpdate))
