@@ -54,10 +54,14 @@ func TestNativeDaemonLexicalLocationsReturnCurrentAuthorizedPositionsAndReopen(t
 	old := lexicalF174(t, dataDir, "oldtoken", "", 64, workAuthorization)
 	rowLocation := locationF174(t, old.Results[0].Rows, "row", mutableRowID)
 	// The location names the Row and where it lives, and nothing about how
-	// well it matched. A Row's tree path waits on the Row-to-leaf lookup — see
-	// docs/query/predictor-path-only-v1.md stage 4.
+	// well it matched. This Row hangs under no leaf, so it has no place in the
+	// tree and carries no paths — the field is absent rather than empty, and a
+	// routed Row's paths are pinned by TestLexicalLocationsCarryRowAndColumnPaths.
 	if rowLocation["database_id"] != workID || rowLocation["table_id"] == nil {
 		t.Fatalf("Row lexical location = %#v", rowLocation)
+	}
+	if _, exists := rowLocation["paths"]; exists {
+		t.Fatalf("an unrouted Row carries paths: %#v", rowLocation)
 	}
 	for _, gone := range []string{
 		"revision", "matched_term_count", "matched_field_count", "frequency", "matched_field_ids",

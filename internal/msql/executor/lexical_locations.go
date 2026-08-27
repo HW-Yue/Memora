@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/fulltext"
@@ -51,11 +52,11 @@ func (engine *Engine) showLexicalLocations(
 			return Output{}, executeError(result.CodeValidation, "lexical location cursor must not be empty")
 		}
 	}
-	databaseIDs, tableIDs, err := engine.visibleLexicalScope(ctx)
+	scope, err := engine.visibleLexicalScope(ctx)
 	if err != nil {
 		return Output{}, err
 	}
-	request := lexicallocation.Request{Query: query, DatabaseIDs: databaseIDs, TableIDs: tableIDs,
+	request := lexicallocation.Request{Query: query, DatabaseIDs: scope.databaseIDs, TableIDs: scope.tableIDs,
 		Cursor: cursor, Limit: limit, ByteLimit: byteLimit}
 	if err := lexicallocation.Validate(request); err != nil {
 		return Output{}, executeError(result.CodeValidation, err.Error())
@@ -98,8 +99,23 @@ func (engine *Engine) showLexicalLocations(
 		if location.TableID != "" {
 			value["table_id"] = location.TableID
 		}
-		if path, exists := semanticPathFor(paths, location); exists {
-			value["path"] = path
+		switch location.Kind {
+		case fulltext.KindRow:
+			// A Row hangs under any number of leaves, so its answer is a list.
+			// The field is absent rather than empty when it hangs nowhere: an
+			// unrouted Row has no place in the tree, and saying so with an
+			// empty list would read as "the root".
+			if found := engine.rowPaths(ctx, scope, paths, location); len(found) != 0 {
+				value["paths"] = found
+			}
+		case fulltext.KindColumn:
+			if path, exists := columnPath(scope, paths, location); exists {
+				value["path"] = path
+			}
+		default:
+			if path, exists := semanticPathFor(paths, location); exists {
+				value["path"] = path
+			}
 		}
 		rows = append(rows, value)
 	}
@@ -109,38 +125,55 @@ func (engine *Engine) showLexicalLocations(
 		Truncated: page.Truncated, NextCursor: page.NextCursor}, nil
 }
 
+// lexicalScope is what a lexical search may touch, plus the names a hit has to
+// be resolved through. It is read in one pass because every part of it comes
+// from the same Catalog walk: reading it twice would let the two halves
+// disagree about which Tables exist.
+type lexicalScope struct {
+	databaseIDs []string
+	tableIDs    []string
+	// databaseNames and tables let a location's IDs be turned back into the
+	// names a Row read takes, and a column ID into the column's name.
+	databaseNames map[string]string
+	tables        map[string]catalog.Table
+}
+
 // visibleLexicalScope returns the Databases and Tables a lexical search may
 // touch. The Table scope is not redundant with the Database scope: archiving a
 // Table leaves its postings in the index, so without an explicit Table
 // allow-list an archived Table's Rows keep matching SHOW LEXICAL LOCATIONS.
-func (engine *Engine) visibleLexicalScope(ctx context.Context) ([]string, []string, error) {
+func (engine *Engine) visibleLexicalScope(ctx context.Context) (lexicalScope, error) {
 	if engine == nil || engine.candidateCatalog == nil {
-		return nil, nil, executeError(result.CodeUnsupported, "lexical location query requires a complete Catalog service")
+		return lexicalScope{}, executeError(result.CodeUnsupported, "lexical location query requires a complete Catalog service")
 	}
 	databases, err := engine.candidateCatalog.ShowDatabases(ctx)
 	if err != nil {
-		return nil, nil, normalizeError(err)
+		return lexicalScope{}, normalizeError(err)
 	}
 	authorization, scoped := security.AuthorizationFrom(ctx)
-	databaseIDs := make([]string, 0, len(databases))
-	tableIDs := []string{}
+	scope := lexicalScope{
+		databaseIDs: make([]string, 0, len(databases)), tableIDs: []string{},
+		databaseNames: map[string]string{}, tables: map[string]catalog.Table{},
+	}
 	for _, database := range databases {
 		if scoped && !security.AllowsAnyDatabase(authorization,
 			append([]string{database.ID, database.Name}, database.Aliases...)...) {
 			continue
 		}
-		databaseIDs = append(databaseIDs, database.ID)
+		scope.databaseIDs = append(scope.databaseIDs, database.ID)
+		scope.databaseNames[database.ID] = database.Name
 		tables, err := engine.candidateCatalog.ShowTables(ctx, database.ID)
 		if err != nil {
-			return nil, nil, normalizeError(err)
+			return lexicalScope{}, normalizeError(err)
 		}
 		for _, table := range tables {
-			tableIDs = append(tableIDs, table.ID)
+			scope.tableIDs = append(scope.tableIDs, table.ID)
+			scope.tables[table.ID] = table
 		}
 	}
-	sort.Strings(databaseIDs)
-	sort.Strings(tableIDs)
-	return databaseIDs, tableIDs, nil
+	sort.Strings(scope.databaseIDs)
+	sort.Strings(scope.tableIDs)
+	return scope, nil
 }
 
 // semanticPathIndex maps what a lexical hit names to where it sits in the tree.
@@ -182,12 +215,9 @@ func (engine *Engine) semanticPaths(ctx context.Context) (semanticPathIndex, err
 	return index, nil
 }
 
-// semanticPathFor resolves one location's path.
-//
-// A Row's path is the path of every leaf it hangs under, which needs the
-// Row-to-leaf lookup that does not exist yet — see docs/storage/leaf-rowid-v1.md.
-// Until it does, a Row hit carries its identity and no path rather than a
-// guessed one. A Column's path waits on the same work.
+// semanticPathFor resolves the path of a location that names a node of the tree
+// directly. Rows and Columns are resolved by rowPaths and columnPath, which
+// have to reach past the Router to answer.
 func semanticPathFor(index semanticPathIndex, location lexicallocation.Location) (string, bool) {
 	switch location.Kind {
 	case fulltext.KindRoute:
@@ -199,4 +229,67 @@ func semanticPathFor(index semanticPathIndex, location lexicallocation.Location)
 	default:
 		return "", false
 	}
+}
+
+// rowPaths is where in the tree a Row sits: the path of every leaf holding it.
+//
+// The Row stores its own leaves (docs/storage/leaf-rowid-v1.md), so this is a
+// point read and a map lookup per leaf, never a search for who points at it.
+// The paths themselves still come from the Router — it is the only place a path
+// is spelled, and recomputing one here would drift at the next RENAME.
+//
+// A Row that cannot be read right now yields no paths rather than an error.
+// This listing is a hint about where to navigate, and a Row deleted between the
+// index read and this one has no place in the tree; failing the whole page over
+// it would turn a stale hint into a broken query.
+func (engine *Engine) rowPaths(
+	ctx context.Context, scope lexicalScope, index semanticPathIndex, location lexicallocation.Location,
+) []string {
+	if engine == nil || engine.rows == nil {
+		return nil
+	}
+	table, known := scope.tables[location.TableID]
+	databaseName, named := scope.databaseNames[location.DatabaseID]
+	if !known || !named {
+		return nil
+	}
+	value, err := engine.rows.Get(ctx, databaseName, table.Name, location.ObjectID)
+	if err != nil {
+		return nil
+	}
+	paths := make([]string, 0, len(value.RouteLeafIDs))
+	seen := make(map[string]bool, len(value.RouteLeafIDs))
+	for _, leafID := range value.RouteLeafIDs {
+		path, exists := index.byRouteID[leafID]
+		if !exists || seen[path] {
+			continue
+		}
+		seen[path] = true
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// columnPath is a Column's place: its Table's semantic root, then the column's
+// own name. A Column is not a node of the Router, so its path is composed —
+// but only its last segment is composed here, and the part that could drift
+// still comes from the Router.
+func columnPath(
+	scope lexicalScope, index semanticPathIndex, location lexicallocation.Location,
+) (string, bool) {
+	root, exists := index.byTableID[location.TableID]
+	if !exists {
+		return "", false
+	}
+	table, known := scope.tables[location.TableID]
+	if !known {
+		return "", false
+	}
+	for _, column := range table.Columns {
+		if column.ID == location.ObjectID {
+			return strings.TrimSuffix(root, "/") + "/" + column.Name, true
+		}
+	}
+	return "", false
 }
