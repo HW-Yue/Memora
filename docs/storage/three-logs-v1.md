@@ -113,7 +113,7 @@ undo 日志是为**会把未提交数据写到盘上**的引擎准备的（steal
 | 阶段 | 内容 | 独立可验证的性质 |
 |---|---|---|
 | 1 ✅ | binlog 成为一份真的顺序日志，每次提交追加一条 | 一个空实例重放 binlog 后，Catalog／Row／history 与原库**逐字一致** |
-| 2 | redolog 加 `prepare`／`commit`，binlog 写成功后才 commit | 崩在 prepare 之后、binlog 之前 → 该事务未提交；崩在 commit 之后 → 已提交 |
+| 2 ✅ | 两阶段与 binlog 对齐（**核实后不需要新增标记**） | 崩在 prepare 之后、binlog 之前 → 该事务未提交；崩在 commit 之后 → 已提交 |
 | 3 | ~~change log 成为 undo 依据~~ | **已裁定：不做**，理由见 §4——未提交数据从不落盘，没有东西可 undo |
 | 4 | 恢复改为只读 binlog；记录文件退为点查存储 | 删掉 generation 与派生索引后，只凭 binlog 重建出逐字一致的库 |
 
@@ -154,6 +154,40 @@ COMMIT 记录之前**——一个钩子覆盖全部九处，而且构造上不�
 `AttachBinlog` 不给就照旧提交——所有现有调用方一行不用改。
 把实例的 `binlog/` 目录接上去、并让恢复改读它，是阶段 4 的事；
 在那之前先让日志本身被证明能重建，再谈依赖它。
+
+## 5.2 阶段 2：标记已经存在，redo WAL 不参与
+
+### 不需要新增标记
+
+规格 §1 记的「redolog 没有独立的 prepare 阶段」指的是 `internal/store/wal`。
+但**两阶段协议要落在哪里**，取决于 binlog 的写入点在哪里——
+而它在记录文件的成帧里（§5.1）。记录文件的 `scan` 早就是两阶段：
+
+- `objectKindTransactionBegin` 是 prepare；
+- 之间的记录先攒在 `pending` 里，**不发布**；
+- `objectKindTransactionCommit` 且摘要对得上，才把它们并进 `f.records`；
+- 文件以一个没有配对 COMMIT 的 BEGIN 结尾时，`recoveryOffset` 指向它，
+  那截尾巴不算数。
+
+所以阶段 2 不是「加标记」，是**核实这条性质在 binlog 插进去之后仍然成立**，
+并把它钉住。两个门分别测两侧的窗口：
+
+- **帧没写成 → 事务不可见**，重开之后也不可见（记录已经在文件里，
+  在最后一个提交标记之后，扫描必须把它们留在那儿）；
+  且那个 ID **还能再用**——一次失败的写入不该永久占掉一个名字；
+- **帧写成了、提交标记没写 → 仍然不可见**。日志多留一帧是**安全的那一侧**，
+  也正是把 binlog 排在前面的理由；两者不一致时，**记录文件说了算**。
+
+### 裁定：redo WAL 不参与这个协议
+
+redo WAL 提交的是 **generation 那几棵派生树**，而派生树与记录文件不一致时
+本来就会被重建（开机 reconcile，必要时整个 COW）。把它拉进恢复协议，
+等于让一个可重建的结构参与判定「什么算已提交」——与
+[架构原则](../product/architecture-principles.md)「派生索引可重建」相反。
+
+它自己那份原子性（一次跨树提交 = 一次 WAL 事务）仍然需要，也已经有了
+（见[共享循环 redo log](./shared-circular-redo-v1.md) §2.1）。
+**两件事，不要合成一件。**
 
 **跨阶段的逐字一致基线**：切换前后比对 `SELECT`、`SHOW HISTORY`、
 `AS OF REVISION`／`AS OF COMMIT_SEQUENCE`、`OPEN ROUTE`、`SHOW CHANGES`、
