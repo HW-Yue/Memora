@@ -30,23 +30,24 @@ type historyMetadata struct {
 	recordedAt        time.Time
 }
 
+// AppendHistory writes a per-Row History record — the retired storage for a
+// revision's attribution.
+//
+// Nothing in production calls it. Attribution now lives once per transaction in
+// the Change Log, and every write path, RESTORE included, records it there. The
+// function survives because the contract "a Database written before that still
+// reports its attribution" has to stay testable, and the only way to build such
+// a Database is to write one of these records. Retiring the object kind outright
+// (as kinds 9 and 13 were) would make that contract impossible to test from
+// outside internal/store/native, and an untestable contract is one that breaks.
+//
+// See docs/storage/per-table-tree-v1.md §5.8.
 func (repository *Repository) AppendHistory(value row.Row, operation history.Operation, metadata row.WriteMetadata, recordedAt time.Time) error {
 	payload, err := historyPayload(value, operation, metadata, recordedAt)
 	if err != nil {
 		return err
 	}
 	return repository.file.Put(nativestore.ObjectKindHistory, historySchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
-}
-
-func (repository *Repository) StageHistory(transaction *nativestore.Transaction, value row.Row, operation history.Operation, metadata row.WriteMetadata, recordedAt time.Time) error {
-	if transaction == nil {
-		return fmt.Errorf("%w: transaction is required", ErrInvalid)
-	}
-	payload, err := historyPayload(value, operation, metadata, recordedAt)
-	if err != nil {
-		return err
-	}
-	return transaction.Put(nativestore.ObjectKindHistory, historySchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
 }
 
 func historyPayload(value row.Row, operation history.Operation, metadata row.WriteMetadata, recordedAt time.Time) ([]byte, error) {

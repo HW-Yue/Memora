@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/logical"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativeconfig"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/relation"
@@ -204,23 +206,36 @@ func (service *NativeService) Import(encoded []byte) error {
 	if err := service.catalog.StageSnapshot(transaction, catalogValue.Databases); err != nil {
 		return err
 	}
-	for id, versions := range rowVersions {
+	// Restored revisions are stamped with a change sequence and their
+	// attribution goes into the Change Log, the one place attribution lives.
+	// The snapshot's own commit sequences are not reused for this: a commit
+	// sequence and a change sequence are different numbering spaces, and
+	// borrowing one for the other would collide with the sequences ordinary
+	// writes go on to allocate.
+	changeSequence, err := nativechange.New(service.file).NextSequence(0)
+	if err != nil {
+		return err
+	}
+	for _, id := range sortedRowIDs(rowVersions) {
+		versions := rowVersions[id]
 		table := tables[current[id].TableID]
 		for _, record := range versions {
 			value, err := rowFromHistory(record, table)
 			if err != nil {
 				return err
 			}
+			value.ChangeSequence = changeSequence
 			if err := service.rows.StageSnapshotRow(transaction, value, table); err != nil {
 				return err
 			}
-			if err := service.rows.StageHistory(transaction, value, record.Operation, row.WriteMetadata{
-				Actor: record.Actor, Source: record.Source, SourceKind: record.SourceKind,
-				SourceReceiptID: record.SourceReceiptID, SourceLocator: record.SourceLocator,
-				SourceContentHash: record.SourceContentHash, Reason: record.Reason,
-			}, record.RecordedAt); err != nil {
+			envelope, err := restoredEnvelope(changeSequence, value, record)
+			if err != nil {
 				return err
 			}
+			if err := nativechange.Stage(transaction, envelope); err != nil {
+				return err
+			}
+			changeSequence++
 		}
 		latestHistory, err := rowFromHistory(versions[len(versions)-1], table)
 		if err != nil {
@@ -298,6 +313,39 @@ func (service *NativeService) requireEmpty() error {
 		}
 	}
 	return nil
+}
+
+// restoredEnvelope is the Change Log entry for one replayed revision: the
+// snapshot recorded who wrote it and why, and this is where that now lives.
+//
+// One envelope per revision rather than one per restore, because the
+// attribution the snapshot carries is per revision — collapsing them would
+// report one actor for writes that had many, which is a different history from
+// the one being restored.
+func restoredEnvelope(
+	sequence uint64, value row.Row, record history.Record,
+) (change.Envelope, error) {
+	committedAt := record.RecordedAt.UTC()
+	if committedAt.IsZero() {
+		committedAt = value.UpdatedAt.UTC()
+	}
+	return change.NewEnvelope(sequence, committedAt, nativechange.RowMetadata(row.WriteMetadata{
+		Actor: record.Actor, Source: record.Source, SourceKind: record.SourceKind,
+		SourceReceiptID: record.SourceReceiptID, SourceLocator: record.SourceLocator,
+		SourceContentHash: record.SourceContentHash, Reason: record.Reason,
+	}), []change.Entry{nativechange.RowEntry(value, record.Operation)})
+}
+
+// sortedRowIDs fixes the order revisions are replayed in, so two restores of
+// the same snapshot allocate the same change sequences and produce the same
+// bytes. Map order would make a restore non-reproducible.
+func sortedRowIDs(versions map[string][]history.Record) []string {
+	ids := make([]string, 0, len(versions))
+	for id := range versions {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func decodeNativeRow(raw []byte, tables map[string]catalog.Table) (row.Row, error) {

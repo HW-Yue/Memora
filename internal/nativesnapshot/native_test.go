@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/nativechange"
+	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/nativesnapshot"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/snapshot"
@@ -91,4 +93,76 @@ func stableCode(err error) string {
 		return stable.StableCode()
 	}
 	return ""
+}
+
+// TestImportRecordsAttributionInTheChangeLogNotAHistoryRecord is E5 stage 6's
+// gate.
+//
+// Attribution belongs to the transaction that wrote a revision and lives once
+// per transaction in the Change Log. Ordinary writes stopped duplicating it
+// into a per-Row History record in stage 5; RESTORE was the last writer, and it
+// wrote one because the revisions it replays carry attribution but no change
+// sequence — so there was nowhere else for it to go.
+//
+// There is now: RESTORE records the attribution it is replaying as Change Log
+// envelopes and stamps each restored Row with the sequence that names its own.
+// So every revision in the Database, however it got there, answers "who wrote
+// this and why" the same way.
+func TestImportRecordsAttributionInTheChangeLogNotAHistoryRecord(t *testing.T) {
+	t.Parallel()
+
+	fixture, err := os.ReadFile(filepath.Join("..", "snapshot", "testdata", "logical-snapshot-v0.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "database.memora")
+	file, err := nativestore.Create(path, nativestore.FileKindDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	if err := nativesnapshot.NewNative(file).Import(fixture); err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	histories, err := file.IDs(nativestore.ObjectKindHistory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(histories) != 0 {
+		t.Fatalf("Import wrote %d History records; nothing writes that kind any more", len(histories))
+	}
+
+	// Every restored revision names an envelope, and the envelope carries the
+	// attribution the snapshot recorded.
+	rows := nativerow.New(file)
+	values, err := rows.AllRows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) == 0 {
+		t.Fatal("fixture restored no Rows")
+	}
+	changes := nativechange.New(file)
+	for _, value := range values {
+		if value.ChangeSequence == 0 {
+			t.Fatalf("restored Row %q revision %d carries no change sequence, so its attribution has no home",
+				value.ID, value.Revision)
+		}
+		envelope, err := changes.Get(value.ChangeSequence)
+		if err != nil {
+			t.Fatalf("Row %q change sequence %d: %v", value.ID, value.ChangeSequence, err)
+		}
+		if envelope.Actor == "" || envelope.Reason == "" {
+			t.Fatalf("Row %q envelope carries empty attribution: %#v", value.ID, envelope)
+		}
+		named := false
+		for _, entry := range envelope.Entries {
+			named = named || (entry.ObjectID == value.ID && entry.AfterRevision == value.Revision)
+		}
+		if !named {
+			t.Fatalf("envelope %d does not name revision %d of %q",
+				value.ChangeSequence, value.Revision, value.ID)
+		}
+	}
 }

@@ -1,6 +1,7 @@
 package rowversionindex
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,18 +10,22 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
-func versioned(id string, revision, sequence uint64, body, history string) Locator {
+func versioned(id string, revision, sequence uint64, body string) Locator {
 	value := locator(id, revision, sequence, row.StateLive)
-	value.Body, value.History = body, history
+	value.Body = body
 	return value
 }
 
-// TestOneLeafCarriesBothTheRowAndItsHistory pins that a revision is one thing on
-// disk. The key (rowID, revision) is the same key History was stored under in the
-// record log, so keeping them apart bought a second lookup and nothing else.
-func TestOneLeafCarriesBothTheRowAndItsHistory(t *testing.T) {
+// TestTheClusteredLeafCarriesTheRow pins that reaching a revision's leaf is
+// reaching its data — the key (rowID, revision) is the clustered index.
+//
+// The leaf used to carry the revision's attribution beside the Row. Nothing ever
+// read it: attribution belongs to the transaction and is resolved from the
+// Change Log by change sequence, so the copy here was bytes in every leaf
+// answering a question nobody asked it. See docs/storage/per-table-tree-v1.md §5.8.
+func TestTheClusteredLeafCarriesTheRow(t *testing.T) {
 	_, _, _, index := newTestIndex(t)
-	value := versioned("row_one", 1, 10, "the row", "insert by agent")
+	value := versioned("row_one", 1, 10, "the row")
 	if _, err := index.Append(1, []Locator{value}); err != nil {
 		t.Fatal(err)
 	}
@@ -34,12 +39,12 @@ func TestOneLeafCarriesBothTheRowAndItsHistory(t *testing.T) {
 	}
 }
 
-// TestSecondaryKeysCarryNeitherBodyNorHistory pins that a revision's content is
-// stored once. The commit and identity keys point at the revision; copying the
-// content under each of them would multiply the file size by the number of keys.
-func TestSecondaryKeysCarryNeitherBodyNorHistory(t *testing.T) {
+// TestSecondaryKeysCarryNoBody pins that a revision's content is stored once.
+// The commit and identity keys point at the revision; copying the content under
+// each of them would multiply the file size by the number of keys.
+func TestSecondaryKeysCarryNoBody(t *testing.T) {
 	_, _, _, index := newTestIndex(t)
-	value := versioned("row_one", 1, 10, strings.Repeat("body", 64), strings.Repeat("meta", 64))
+	value := versioned("row_one", 1, 10, strings.Repeat("body", 64))
 	if _, err := index.Append(1, []Locator{value}); err != nil {
 		t.Fatal(err)
 	}
@@ -48,9 +53,8 @@ func TestSecondaryKeysCarryNeitherBodyNorHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if byCommit.Body != "" || byCommit.History != "" {
-		t.Fatalf("secondary key copied content: %d body bytes, %d history bytes",
-			len(byCommit.Body), len(byCommit.History))
+	if byCommit.Body != "" {
+		t.Fatalf("secondary key copied content: %d body bytes", len(byCommit.Body))
 	}
 }
 
@@ -62,10 +66,10 @@ func TestRevisionsPageWalksOneRowNewestFirst(t *testing.T) {
 	values := make([]Locator, 0, 40)
 	for revision := uint64(1); revision <= 40; revision++ {
 		values = append(values, versioned("row_one", revision, revision,
-			fmt.Sprintf("body %d", revision), fmt.Sprintf("history %d", revision)))
+			fmt.Sprintf("body %d", revision)))
 	}
 	// A second Row interleaves in key order and must never appear in the walk.
-	values = append(values, versioned("row_other", 1, 1, "other body", "other history"))
+	values = append(values, versioned("row_other", 1, 1, "other body"))
 	if _, err := index.Append(1, values); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +112,7 @@ func TestRevisionsPageStopsEarlyForASmallPage(t *testing.T) {
 	values := make([]Locator, 0, 40)
 	for revision := uint64(1); revision <= 40; revision++ {
 		values = append(values, versioned("row_one", revision, revision,
-			fmt.Sprintf("body %d", revision), fmt.Sprintf("history %d", revision)))
+			fmt.Sprintf("body %d", revision)))
 	}
 	if _, err := index.Append(1, values); err != nil {
 		t.Fatal(err)
@@ -125,7 +129,7 @@ func TestRevisionsPageStopsEarlyForASmallPage(t *testing.T) {
 		if page.Locators[position].Revision != want {
 			t.Fatalf("position %d = revision %d, want %d", position, page.Locators[position].Revision, want)
 		}
-		if page.Locators[position].Body == "" || page.Locators[position].History == "" {
+		if page.Locators[position].Body == "" {
 			t.Fatalf("position %d lost its content: %+v", position, page.Locators[position])
 		}
 	}
@@ -138,7 +142,7 @@ func TestRevisionsPageStopsEarlyForASmallPage(t *testing.T) {
 // revisions walks cleanly — callers distinguish "no history" from "broken".
 func TestRevisionsPageOnAnUnknownRowIsEmptyNotAnError(t *testing.T) {
 	_, _, _, index := newTestIndex(t)
-	if _, err := index.Append(1, []Locator{versioned("row_one", 1, 10, "body", "history")}); err != nil {
+	if _, err := index.Append(1, []Locator{versioned("row_one", 1, 10, "body")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -151,5 +155,45 @@ func TestRevisionsPageOnAnUnknownRowIsEmptyNotAnError(t *testing.T) {
 	}
 	if _, err := index.RevisionsPage("", 0, 10); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("RevisionsPage(no Row) error = %v, want ErrInvalid", err)
+	}
+}
+
+// TestALeafWrittenWithHistoryBytesStillDecodes is the compatibility gate for
+// dropping the leaf's attribution copy.
+//
+// The history length keeps its slot in the fixed header and is now always
+// written as zero, so a leaf written before this change still declares a
+// non-zero length and still has those bytes on disk. The decoder counts them and
+// skips them. That is what makes this a field going quiet rather than a format
+// change: no generation version bump, no rebuild, and databases written by every
+// earlier version open unchanged.
+//
+// The old bytes are built here rather than taken from a fixture, so the test
+// reads a leaf no current code can produce — which is exactly the case at risk.
+func TestALeafWrittenWithHistoryBytesStillDecodes(t *testing.T) {
+	t.Parallel()
+
+	value := versioned("row_one", 3, 30, "the row")
+	encoded, err := encodeLocator(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := "insert by agent:test"
+	legacy := append(append([]byte(nil), encoded...), metadata...)
+	binary.LittleEndian.PutUint16(legacy[46:48], uint16(len(metadata)))
+
+	decoded, err := decodeLocator(legacy)
+	if err != nil {
+		t.Fatalf("a leaf carrying history bytes must still decode: %v", err)
+	}
+	if decoded != value {
+		t.Fatalf("decoded = %+v, want %+v", decoded, value)
+	}
+	// And the length still has to be honest: a declared length the bytes do not
+	// back is corruption, not something to tolerate.
+	truncated := append([]byte(nil), encoded...)
+	binary.LittleEndian.PutUint16(truncated[46:48], uint16(len(metadata)))
+	if _, err := decodeLocator(truncated); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("a history length with no bytes behind it = %v, want ErrCorrupt", err)
 	}
 }

@@ -552,7 +552,7 @@ func (authority *Authority) PublishMutation(
 			return authority.poisonPublication("Row/Route body", affected, err)
 		}
 	}
-	versions, err := clusteredVersions(recordFileHistory(authority.file), databases, rows)
+	versions, err := clusteredVersions(databases, rows)
 	if err != nil {
 		return err
 	}

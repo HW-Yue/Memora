@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
-	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 )
@@ -30,20 +29,6 @@ func EncodeBody(value row.Row, table catalog.Table) ([]byte, error) {
 // find its history without being told where it is.
 func HistoryRecordID(rowID string, revision uint64) string {
 	return revisionRecordID(rowID, revision)
-}
-
-// DecodeHistoryMetadata turns the bytes a clustered leaf carries back into the
-// history fields of a Record. The Row itself supplies everything else, so this
-// fills in only what the metadata knows: who wrote the revision, why, and when.
-func DecodeHistoryMetadata(encoded []byte, value row.Row) (history.Record, error) {
-	item, err := decodeHistory(encoded)
-	if err != nil {
-		return history.Record{}, err
-	}
-	if item.rowID != value.ID || item.revision != value.Revision {
-		return history.Record{}, fmt.Errorf("%w: history metadata identifies another revision", ErrCorrupt)
-	}
-	return historyRecord(item, value), nil
 }
 
 // RowFromLocator decodes the Row a clustered leaf carries and checks it against

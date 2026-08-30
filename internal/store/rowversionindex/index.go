@@ -437,7 +437,7 @@ func prepareLocators(locators []Locator) ([]preparedLocator, error) {
 			return nil, err
 		}
 		secondary := locator
-		secondary.Body, secondary.History = "", ""
+		secondary.Body = ""
 		value, err := encodeLocator(secondary)
 		if err != nil {
 			return nil, err

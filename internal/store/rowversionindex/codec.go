@@ -66,11 +66,6 @@ type Locator struct {
 	// rewrites invalid UTF-8 in a string to U+FFFD, so letting it reach JSON
 	// would silently corrupt the Row and destabilise any digest taken over it.
 	Body string `json:"-"`
-	// History is the revision's history metadata — who wrote it, why, and when.
-	// It shares the leaf with Body because it shares the key: (rowID, revision)
-	// identifies both, so storing them apart bought a second lookup and nothing
-	// else. It follows the same rules as Body: clustered key only, never JSON.
-	History string `json:"-"`
 }
 
 func revisionKey(rowID string, revision uint64) ([]byte, error) {
@@ -171,7 +166,7 @@ func encodeLocator(value Locator) ([]byte, error) {
 		return nil, err
 	}
 	size := locatorHeaderSize + len(value.DatabaseID) + len(value.TableID) +
-		len(value.RowID) + len(value.Body) + len(value.History)
+		len(value.RowID) + len(value.Body)
 	result := make([]byte, size)
 	copy(result[:8], locatorMagic[:])
 	binary.LittleEndian.PutUint16(result[8:10], locatorVersion)
@@ -185,10 +180,16 @@ func encodeLocator(value Locator) ([]byte, error) {
 	binary.LittleEndian.PutUint16(result[40:42], uint16(len(value.DatabaseID)))
 	binary.LittleEndian.PutUint16(result[42:44], uint16(len(value.TableID)))
 	binary.LittleEndian.PutUint16(result[44:46], uint16(len(value.RowID)))
-	binary.LittleEndian.PutUint16(result[46:48], uint16(len(value.History)))
+	// The history length stays in the header and is always written as zero.
+	// Attribution belongs to the transaction and lives in the Change Log; this
+	// leaf used to carry a copy that nothing ever read. Writing zero rather
+	// than removing the field keeps leaves written before this readable — the
+	// decoder still skips whatever length they declare — so no generation
+	// version bump and no rebuild. See docs/storage/per-table-tree-v1.md §5.8.
+	binary.LittleEndian.PutUint16(result[46:48], 0)
 	offset := locatorHeaderSize
 	for _, component := range []string{
-		value.DatabaseID, value.TableID, value.RowID, value.Body, value.History,
+		value.DatabaseID, value.TableID, value.RowID, value.Body,
 	} {
 		copy(result[offset:], component)
 		offset += len(component)
@@ -232,11 +233,12 @@ func decodeLocator(encoded []byte) (Locator, error) {
 		components[index] = string(value)
 		offset += length
 	}
-	// Body and History are opaque bytes — encoded records, not text — so they are
-	// taken verbatim rather than validated as UTF-8 like the identity components.
+	// Body is opaque bytes — an encoded record, not text — so it is taken
+	// verbatim rather than validated as UTF-8 like the identity components.
 	body := string(encoded[offset : offset+bodyLength])
-	offset += bodyLength
-	historyMetadata := string(encoded[offset : offset+historyLength])
+	// The trailing history metadata is counted but not read. A leaf written
+	// before attribution moved to the Change Log still declares its length, and
+	// skipping it is what keeps those leaves readable without a rebuild.
 	state, err := decodeState(binary.LittleEndian.Uint16(encoded[10:12]))
 	if err != nil {
 		return Locator{}, err
@@ -250,7 +252,6 @@ func decodeLocator(encoded []byte) (Locator, error) {
 		CommitSequence: binary.LittleEndian.Uint64(encoded[32:40]),
 		State:          state,
 		Body:           body,
-		History:        historyMetadata,
 	}
 	if err := validateLocator(result, ErrCorrupt); err != nil {
 		return Locator{}, err
@@ -273,12 +274,6 @@ func validateLocator(value Locator, class error) error {
 		return fmt.Errorf(
 			"%w: Row %q revision %d encodes to %d bytes, over the %d byte record limit",
 			class, value.RowID, value.Revision, len(value.Body), maxBodyBytes,
-		)
-	}
-	if len(value.History) > maxHistoryBytes {
-		return fmt.Errorf(
-			"%w: Row %q revision %d has %d bytes of history metadata, over the %d byte limit",
-			class, value.RowID, value.Revision, len(value.History), maxHistoryBytes,
 		)
 	}
 	if _, err := encodeState(value.State, class); err != nil {
