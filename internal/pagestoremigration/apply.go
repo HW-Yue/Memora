@@ -179,7 +179,7 @@ func (applier *Applier) build(
 	// One redo log for the whole generation, created before any Tree: every
 	// Tree commits into it, so a write spanning several Trees is one WAL
 	// transaction. See docs/storage/shared-circular-redo-v1.md.
-	log, err := wal.CreateSegmentSet(filepath.Join(staging, sharedWALDirectory), 0)
+	log, err := wal.CreateSegmentSetWithCapacity(filepath.Join(staging, sharedWALDirectory), 0, walRingBytes)
 	if err != nil {
 		return generationManifest{}, fmt.Errorf("create generation redo log: %w", err)
 	}

@@ -122,6 +122,14 @@ F220 Stage 1 因此采用保守全丢，绕开该依赖。
 > 成功写入之后跑一轮——活跃段超过 4 MiB 就 `Roll` → `PublishCheckpoint` →
 > `Reclaim`；生产 barrier 是 `redoBarrier`。门是
 > `TestRedoLogRollsCheckpointsAndReclaims`，量的是**磁盘字节不随写入次数增长**。
+>
+> **2026-08-27 补上后一半（E0 阶段 5）**：上面那道修复只在 checkpoint 推得动时
+> 有界，而 checkpoint 要刷脏页，刷不动尾指针就不动——**一条策略推不动时会静默
+> 失效的界不是界**。现在日志有硬容量（`wal.ErrRingFull`）：在用区间
+> （checkpoint 恢复 LSN → 写指针）不许超过环，超了就报错而不是覆盖，
+> 因为覆盖的是**页文件里还没有的改动**。写之前先跑一轮 relief 争取腾空间，
+> 腾不出来才背压。change index 那套独立日志一并上环。
+>
 > 下面是修复前的原文。
 
 `internal/store/wal/` 的 `SegmentSet.Roll`（`segment_set.go:397`）、

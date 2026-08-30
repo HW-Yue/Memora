@@ -174,3 +174,77 @@ func TestRedoMaintenanceTreatsNoWorkAsSuccess(t *testing.T) {
 		t.Fatalf("RedoMaintenanceError() = %v, want nil", authority.RedoMaintenanceError())
 	}
 }
+
+// TestRedoRingBoundsTheLogUnderContinuousWrites is E0 stage 5's production gate.
+//
+// Stage 4 bounds the log while the checkpoint can advance. The ring bounds it
+// full stop: the in-use span may not exceed the ring, and the relief round runs
+// before a publication rather than after it, so an ordinary write never meets
+// the cap.
+//
+// What is measured is bytes on disk across a long run against the configured
+// ring, not "a checkpoint happened" — a bound that only holds when a policy
+// keeps up is not a bound.
+//
+// The ring and the roll threshold are both lowered so a handful of writes
+// exercises the mechanism; what is under test is the mechanism, not the
+// constants.
+func TestRedoRingBoundsTheLogUnderContinuousWrites(t *testing.T) {
+	restoreRoll, restoreRing := walSegmentRollBytes, walRingBytes
+	walSegmentRollBytes, walRingBytes = 32<<10, 256<<10
+	t.Cleanup(func() { walSegmentRollBytes, walRingBytes = restoreRoll, restoreRing })
+
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, rows, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	logDirectory := filepath.Join(directory, GenerationDirectory, sharedWALDirectory)
+
+	titles := make(map[string]struct{})
+	for index := 0; index < 60; index++ {
+		title := fmt.Sprintf("ring subject %03d", index)
+		inserted, err := rows.Insert(ctx, "work", "notes", map[string]any{
+			"title": title,
+		}, row.WriteOptions{ExpectedSchemaVersion: table.SchemaVersion})
+		if err != nil {
+			// A refusal here would mean the relief round could not free space.
+			// That is the back-pressure working, but under an ordinary write
+			// load it means the ring is mis-sized, so it fails the gate.
+			t.Fatalf("insert %d: %v", index, err)
+		}
+		titles[inserted.ID] = struct{}{}
+		if bytes := directoryBytes(t, logDirectory); bytes > int64(walRingBytes)*2 {
+			t.Fatalf("after %d writes the log is %d bytes for a %d byte ring",
+				index+1, bytes, walRingBytes)
+		}
+	}
+	if authority.redoMaintenanceErr != nil {
+		t.Fatalf("redo maintenance failed: %v", authority.redoMaintenanceErr)
+	}
+
+	// Deleting log space is irreversible, so the gate that matters most is that
+	// everything written still reads back after a reopen.
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenAuthority(ctx, file, directory)
+	if err != nil {
+		t.Fatalf("reopen after ring maintenance: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	for rowID := range titles {
+		locator, err := reopened.generation.CurrentRowsFor(table.ID).Lookup(rowID)
+		if err != nil {
+			t.Fatalf("Row %q after reopen: %v", rowID, err)
+		}
+		if locator.State != row.StateLive {
+			t.Fatalf("Row %q state after reopen = %v, want live", rowID, locator.State)
+		}
+	}
+	// The revisions too, not only the current Rows: a reclaimed Segment that
+	// took an unflushed change would show up here first.
+	for rowID := range titles {
+		if _, err := reopened.generation.HistoryFor(table.ID).ByRevision(rowID, 1); err != nil {
+			t.Fatalf("Row %q revision 1 after reopen: %v", rowID, err)
+		}
+	}
+}

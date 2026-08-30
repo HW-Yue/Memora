@@ -33,6 +33,20 @@ const openGenerationFrames = uint64(512)
 // It is a var only so tests can lower it; nothing configures it at runtime.
 var walSegmentRollBytes = uint64(4 << 20)
 
+// walRingBytes is the hard cap on the redo log's in-use span.
+//
+// Maintenance already bounds the log while the checkpoint can advance. It
+// cannot always — a checkpoint needs the dirty Pages flushed, and a flush that
+// fails stops the tail — and before the ring nothing noticed: the log just kept
+// growing. A bound a policy can quietly fail to enforce is not a bound.
+//
+// 16 MiB is four roll thresholds, so an ordinary write never approaches it and
+// only a genuinely stuck checkpoint does. Reaching it is a loud error rather
+// than a silent overwrite; see wal.ErrRingFull.
+//
+// A var for the same reason as the threshold above: tests lower it.
+var walRingBytes = uint64(16 << 20)
+
 // flushTarget is one Tree's contribution to a durability barrier.
 type flushTarget struct {
 	kind    string
@@ -97,6 +111,40 @@ func maintainRedoLog(log *wal.SegmentSet, barrier redoBarrier) error {
 	if err != nil || !due {
 		return err
 	}
+	return runRedoMaintenance(log, barrier)
+}
+
+// relieveRedoRing runs a maintenance round when the ring has no room left,
+// before the write rather than after it.
+//
+// The ordinary round is driven by the roll threshold and runs after a
+// publication; that keeps the log small but is not what stops it overflowing.
+// This is: a full ring means the next commit is refused, and the one thing that
+// can free space is a checkpoint moving the tail. So the last chance to avoid
+// back-pressure is taken here, and if it does not work the commit fails loudly.
+//
+// See docs/storage/shared-circular-redo-v1.md §3.
+func relieveRedoRing(log *wal.SegmentSet, barrier redoBarrier) error {
+	if log == nil {
+		return nil
+	}
+	capacity := log.RingBytes()
+	if capacity == 0 {
+		return nil
+	}
+	inUse, err := log.InUseBytes()
+	if err != nil {
+		return fmt.Errorf("read redo ring usage: %w", err)
+	}
+	if inUse < capacity {
+		return nil
+	}
+	return runRedoMaintenance(log, barrier)
+}
+
+// runRedoMaintenance is one round: roll, checkpoint, reclaim. The three benign
+// sentinels mean "nothing to do" and are swallowed; anything else is reported.
+func runRedoMaintenance(log *wal.SegmentSet, barrier redoBarrier) error {
 	if _, err := log.Roll(); err != nil {
 		if errors.Is(err, wal.ErrEmptySegment) {
 			return nil
@@ -137,13 +185,28 @@ func (generation *Generation) maintainRedoLog() error {
 	if generation == nil || generation.log == nil {
 		return nil
 	}
+	return maintainRedoLog(generation.log, generation.redoBarrier())
+}
+
+// relieveRedoRing frees ring space before a publication when the ring is
+// already full. The caller must hold the Authority write lock.
+func (generation *Generation) relieveRedoRing() error {
+	if generation == nil || generation.log == nil {
+		return nil
+	}
+	return relieveRedoRing(generation.log, generation.redoBarrier())
+}
+
+// redoBarrier is every Tree in this generation, which is what a checkpoint has
+// to flush before the log's tail may move past their changes.
+func (generation *Generation) redoBarrier() redoBarrier {
 	targets := make([]flushTarget, 0, len(generation.trees))
 	for _, tree := range generation.trees {
 		targets = append(targets, flushTarget{
 			kind: tree.manifest.Kind, runtime: tree.runtime, manager: tree.manager,
 		})
 	}
-	return maintainRedoLog(generation.log, redoBarrier{targets: targets})
+	return redoBarrier{targets: targets}
 }
 
 type generationTree struct {
@@ -594,7 +657,7 @@ func openSharedLogTrees(
 	manifest generationManifest,
 	capacity uint64,
 ) (result []*generationTree, resultLog *wal.SegmentSet, resultRouter *buffer.Router, resultPool *buffer.Pool, resultErr error) {
-	log, err := wal.OpenSegmentSet(filepath.Join(directory, sharedWALDirectory), 0)
+	log, err := wal.OpenSegmentSetWithCapacity(filepath.Join(directory, sharedWALDirectory), 0, walRingBytes)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("%w: open shared redo log: %v", ErrTargetCorrupt, err)
 	}

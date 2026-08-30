@@ -579,6 +579,14 @@ func (authority *Authority) PublishMutation(
 	// fulltext and current Trees were committed one after another, and a fault
 	// between them left them describing different Rows — see
 	// docs/storage/shared-circular-redo-v1.md §2.1.
+	// Last chance to free ring space before the commit. A full ring refuses the
+	// write (wal.ErrRingFull) rather than overwriting changes no Page file
+	// holds yet, and only a checkpoint can move the tail. A failure here is not
+	// reported on its own: the commit below is the authoritative outcome, and
+	// it either succeeds or reports the back-pressure itself.
+	if err := authority.generation.relieveRedoRing(); err != nil {
+		authority.redoMaintenanceErr = err
+	}
 	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
 		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {
@@ -754,6 +762,14 @@ func (authority *Authority) PublishCatalog(
 	}
 	// One WAL transaction for the Catalog Tree and the Fulltext Tree, for the
 	// same reason as a Row publication: two commits could tear between them.
+	// Last chance to free ring space before the commit. A full ring refuses the
+	// write (wal.ErrRingFull) rather than overwriting changes no Page file
+	// holds yet, and only a checkpoint can move the tail. A failure here is not
+	// reported on its own: the commit below is the authoritative outcome, and
+	// it either succeeds or reports the back-pressure itself.
+	if err := authority.generation.relieveRedoRing(); err != nil {
+		authority.redoMaintenanceErr = err
+	}
 	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
 		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {

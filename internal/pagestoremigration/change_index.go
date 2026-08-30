@@ -129,7 +129,7 @@ func buildAuthorityChangeTreeWithOperations(
 	if err != nil {
 		return err
 	}
-	set, err := wal.CreateSegmentSet(filepath.Join(staging, changeWALDirectory), 0)
+	set, err := wal.CreateSegmentSetWithCapacity(filepath.Join(staging, changeWALDirectory), 0, walRingBytes)
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ func buildAuthorityChangeTreeWithOperations(
 }
 
 func openChangeTree(directory string, file *nativestore.File) (*authorityChangeTree, error) {
-	set, err := wal.OpenSegmentSet(filepath.Join(directory, changeWALDirectory), 0)
+	set, err := wal.OpenSegmentSetWithCapacity(filepath.Join(directory, changeWALDirectory), 0, walRingBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -332,6 +332,11 @@ func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting b
 			}
 			locators = append(locators, locatorForEnvelope(envelope))
 		}
+		// The change index has its own log, so it has its own ring and its
+		// own last chance to free space before the append meets it.
+		if err := tree.relieveRedoRing(); err != nil {
+			return err
+		}
 		transactionID, err := tree.nextTransactionID()
 		if err == nil {
 			_, err = tree.index.Append(transactionID, locators)
@@ -355,13 +360,29 @@ func (tree *authorityChangeTree) maintainRedoLog() error {
 	if tree == nil || tree.set == nil {
 		return nil
 	}
-	err := maintainRedoLog(tree.set, redoBarrier{targets: []flushTarget{{
-		kind: "changes", runtime: tree.runtime, manager: tree.manager,
-	}}})
+	err := maintainRedoLog(tree.set, tree.redoBarrier())
 	if err != nil {
 		return fmt.Errorf("%w: committed change index redo log: %v", ErrTargetCorrupt, err)
 	}
 	return nil
+}
+
+// relieveRedoRing frees ring space before an append when the change index's
+// ring is already full, for the same reason the generation does it.
+func (tree *authorityChangeTree) relieveRedoRing() error {
+	if tree == nil || tree.set == nil {
+		return nil
+	}
+	if err := relieveRedoRing(tree.set, tree.redoBarrier()); err != nil {
+		return fmt.Errorf("%w: committed change index redo ring: %v", ErrTargetCorrupt, err)
+	}
+	return nil
+}
+
+func (tree *authorityChangeTree) redoBarrier() redoBarrier {
+	return redoBarrier{targets: []flushTarget{{
+		kind: "changes", runtime: tree.runtime, manager: tree.manager,
+	}}}
 }
 
 func (tree *authorityChangeTree) nextTransactionID() (uint64, error) {

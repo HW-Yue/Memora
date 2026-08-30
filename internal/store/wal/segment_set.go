@@ -50,6 +50,9 @@ type SegmentSet struct {
 	reclaimedTransactionHighWater uint64
 	frontierFiles                 [2]segmentFile
 	frontier                      frontierState
+	// ringBytes caps the in-use span of the log. Zero means unbounded, which
+	// is what a caller that has not opted in gets. See ring.go.
+	ringBytes uint64
 }
 
 func CreateSegmentSet(directory string, startLSN uint64) (*SegmentSet, error) {
@@ -369,6 +372,16 @@ func (set *SegmentSet) CommitTransaction(
 	}
 	if transactionID != 0 && transactionID <= set.reclaimedTransactionHighWater {
 		return CommittedTransaction{}, ErrDuplicateTransaction
+	}
+	// Before the write, not after: the span between the checkpoint and the
+	// write pointer is the only copy of changes no Page file holds yet, and
+	// writing past the ring would mean discarding it.
+	room, err := set.ringHasRoomLocked()
+	if err != nil {
+		return CommittedTransaction{}, err
+	}
+	if !room {
+		return CommittedTransaction{}, ErrRingFull
 	}
 	transaction, err := set.writer.CommitTransaction(transactionID, records)
 	if err != nil {
