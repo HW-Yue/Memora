@@ -49,8 +49,11 @@
 `parseTreeMetadata`）。旧的每树一套日志的 generation 开机即 COW 升级。
 进度与剩余阶段见[共享循环 redo log](./shared-circular-redo-v1.md)。
 
-段**没有容量上限、也不会自动滚**，而 `Roll`／`PublishCheckpoint`／`Reclaim`
-零生产调用方——所以实际上永远只有一个段，无限增长（[已知风险](../development/known-risks.md) 7a）。
+**日志有硬容量。** `maintainRedoLog` 每次成功写入后跑一轮
+（`Roll` → `PublishCheckpoint` → `Reclaim`），而在用区间
+（checkpoint 恢复 LSN → 写指针）不许超过环：超了报 `wal.ErrRingFull` 背压，
+**不覆盖**——那段字节是页文件里还没有的改动的唯一副本。
+[已知风险](../development/known-risks.md) 7a 随之关闭。
 
 **fulltext 是派生索引，不在写入事务里**：写入只写权威数据，fulltext 从提交的
 变更日志追平（追平跟在写入后面立刻跑，但在它的事务之外，所以没有可见滞后）。
@@ -263,45 +266,50 @@ Change Log 叫做 "Binlog"，而写入形态里 change log / redolog / binlog �
 ## 11. 已知偏差
 
 现役实现与[写入形态](../product/write-model.md)的差距，按该规范的四个结构性要求分组。
-**尚未排期**——写入形态于 2026-08-22 确立，实施计划待定。
+**A、B、C 三组已清空**（E3／E4／E5），D 组的规格已编写、实施排在
+[执行计划](../planning/execution-plan.md) E6。
 
-### A. 每张表一棵独立 B+ 树（写入形态 §1）
+### A. 每张表一棵独立 B+ 树（写入形态 §1）✅
 
-1. **全实例共用一棵 current 树 + 一棵 versions 树**，靠键里嵌 `table_id` 区分
-   （`currentrowindex/codec.go:42` 的 `encodeKey(tableID, rowID)`）。表不是物理分区，
-   而是一个过滤谓词；扫一张表要扫过所有表的条目；
-2. **正文在 versions 树而不是聚簇叶子**。读一个当前行要降两次树，
-   第二次降的是按版本建键、随历史增长的大树；
-3. **RowID 是全局 UUID**（`nativerow/service.go:1355` 的 `uuidSource`），
-   规范要求**按表递增**；`IDSource.Next()` 连表参数都不接受，改造要动接口签名。
+**已完成（E4）**，迁移设计见[每表一棵树](./per-table-tree-v1.md)阶段 1–3。
 
-### B. history 独立成表（写入形态 §1／§7）
+每张业务表一棵聚簇树，键收缩为 `row_id`——哪张表由「在哪棵树里」回答；
+RowID 按表递增，计数器是表树里的一个保留键，与拿号的行同一次提交落盘。
+一处订正：RowID **保持全局唯一**（号段前带表的 space），因为原生存储按裸
+RowID 给行记录做键，改那个身份是对真相之源文件的迁移，需要单独出设计。
 
-4. **`ObjectKindHistory` 是扁平记录**，不是每业务表一张 B+ 树表，
-   也没有 `(row_id, 序号)` 复合键，读不了范围扫；
-5. **业务行没有 `history_id` 字段**。`48ef5b6` 加的是 `Row.ChangeSequence`
-   （指向 Change Log 事务），方向与规范相反，去留待定。
+### B. history 独立成表（写入形态 §1／§7）✅
 
-### C. 语义索引叶子直接挂 RowID（写入形态 §2）
+**已完成（E5）**，见[每表一棵树](./per-table-tree-v1.md)阶段 4–6。
 
-迁移设计已单独成文：[叶子直挂 RowID](./leaf-rowid-v1.md)——
-membership 的职责拆解、每项新归宿、对外可见面变更与分阶段顺序。
+每张业务表配一棵 history 树，读一行完整历史是一次范围扫。
+两处与原设计不同：**不加 `Row.history_id`**（键里的序号就是行自己的
+`Revision`，加上它是同一事实存两遍且会漂移）；`Row.ChangeSequence`
+**保留并升格**为归属 join 的唯一钥匙，而不是按原计划回退。
 
-6. **Membership 是独立关系**（`router/model.go:43`），native 侧是两个 object kind
-   （9 正向、13 反向，`store/native/file.go:56-65`）；`router.Node` 上没有任何能放
-   RowID 的字段。约 310 处引用散在 32 个文件里；
-7. **Route／Relation／Config 仅有内存表**：`objectindex` 已建好但没有调用方，
-   这些对象目前只能全库枚举。
+### C. 语义索引叶子直接挂 RowID（写入形态 §2）✅
+
+**已完成（E3）**，迁移设计见[叶子直挂 RowID](./leaf-rowid-v1.md)。
+
+叶子带 `RowID` 字段、行带 `route_leaf_ids`，双向挂载在同一事务里落盘；
+membership 两个 object kind（9／13）退役，三类语义健康问题结构性消失。
+阶段 7 的结论是**不删 `Node.Path`**（量测见该文 §7.3）。
 
 ### D. 三份日志各司其职（写入形态 §3／§5／§6）
 
-8. **binlog 与 change log 混装在同一个文件**。`database.memora` 事实上已在扮演
-   binlog（append-only、BEGIN/COMMIT 成帧、所有二级结构从它重建），
-   但 change envelope（`ObjectKindCommittedChange`）也塞在同一个记录流里；
+**规格已编写**：[三份日志](./three-logs-v1.md)（4 阶段）。以下是待做的差距。
+
+8. **binlog 不存在**。`redo/`、`undo/`、`binlog/` 三个目录每个实例都建、
+   **从来没人往里写**（`instance/instance.go:39-41`）；真正在用的 redo WAL
+   住在 generation 目录里，与那个 `redo/` 无关。
+   今天扮演恢复依据的是记录文件 `database.memora`；
 9. **redolog 没有独立的 prepare 阶段**。当前只有单个 commit record + digest
-   （`store/wal/transaction.go`），规范要求 `prepare` → binlog 写成功 → `commit`；
-10. **change log 目前不参与回滚**。规范给它的职责是事务 undo 依据，
-    现在它只做归属／审计，`Rollback()` 只是丢弃未提交的内存缓冲。
+   （`store/wal/transaction.go`），规范要求 `prepare` → binlog 写成功 → `commit`。
+   注意顺序：两阶段标记的用途是判断「binlog 写完没有」，
+   **没有 binlog 时它无事可判**，所以 binlog 必须先做；
+10. **change log 目前不参与回滚，而且缺前像**。它今天记的是「改成了什么」
+    （`AfterRevision`），没有「原来是什么」——所以 undo 能力是要**造**的，
+    不是接线接出来的。
 
 ### E. 与规范无关的既有欠账
 
