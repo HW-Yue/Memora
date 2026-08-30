@@ -95,6 +95,9 @@ type File struct {
 	// O(all records ever written), so a read path that takes one does not scale
 	// with the data. Tests assert this stays at zero for point reads.
 	enumerations atomic.Uint64
+	// binlog receives one frame per committed transaction, or is nil when this
+	// file commits without one. See AttachBinlog.
+	binlog BinlogSink
 }
 
 type recordKey struct {
@@ -364,6 +367,15 @@ func (transaction *Transaction) Commit() error {
 	if err := transaction.file.file.Sync(); err != nil {
 		return fmt.Errorf("sync native transaction records: %w", err)
 	}
+	// The binlog goes in before the commit record, which is the point this
+	// transaction becomes committed. A crash between them leaves a transaction
+	// that the binlog can replay but that nothing claims was committed — the
+	// safe side. The reverse order would allow the opposite: committed, and
+	// missing from the log that is supposed to be able to rebuild it.
+	// See docs/storage/three-logs-v1.md §2.
+	if err := transaction.file.appendBinlog(transaction); err != nil {
+		return err
+	}
 	if _, err := transaction.file.appendRecord(objectKindTransactionCommit, 1, transaction.id, digest.Sum(nil)); err != nil {
 		return err
 	}
@@ -387,6 +399,49 @@ func (transaction *Transaction) Location(kind ObjectKind, id string) (Location, 
 	}
 	location, ok := transaction.locations[recordKey{kind: kind, id: id}]
 	return location, ok
+}
+
+// BinlogSink receives one frame per committed transaction. It is an interface
+// so the record store does not depend on the log's package: the store owns the
+// commit point, and the log is what that point is reported to.
+type BinlogSink interface {
+	Append(transactionID string, records []BinlogRecord) error
+}
+
+// BinlogRecord is one object a transaction wrote, in this store's encoding.
+type BinlogRecord struct {
+	Kind          uint16
+	SchemaVersion uint32
+	ID            string
+	Payload       []byte
+}
+
+// AttachBinlog directs this file's commits at a log. A file with no log
+// attached commits exactly as it always did — which is what every caller that
+// has not opted in still gets.
+func (f *File) AttachBinlog(sink BinlogSink) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.binlog = sink
+}
+
+// appendBinlog reports one transaction to the log. The caller holds the file
+// lock and has already synced the records.
+func (f *File) appendBinlog(transaction *Transaction) error {
+	if f.binlog == nil {
+		return nil
+	}
+	records := make([]BinlogRecord, 0, len(transaction.records))
+	for _, record := range transaction.records {
+		records = append(records, BinlogRecord{
+			Kind: uint16(record.kind), SchemaVersion: record.schema,
+			ID: record.id, Payload: record.payload,
+		})
+	}
+	if err := f.binlog.Append(transaction.id, records); err != nil {
+		return fmt.Errorf("append transaction to binlog: %w", err)
+	}
+	return nil
 }
 
 func deterministicTransactionID(records []bufferedRecord) string {

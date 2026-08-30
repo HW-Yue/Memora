@@ -201,6 +201,14 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 
 - **前置**：E4 ✅、E5 ✅
 - **规格**：[三份日志](../storage/three-logs-v1.md)（4 阶段，2026-08-30 编写）
+- **进度**：阶段 1（binlog 独立成日志）**已完成**——挂在记录存储的提交点上
+  （`Transaction.Commit` 的记录 sync 之后、COMMIT 记录之前），一个钩子覆盖
+  九处封套写入方，构造上不可能与记录文件不一致。阶段 3 **已裁定不做**（见下）。
+  剩阶段 2、4
+- **阶段 1 的发现**：两阶段标记在记录文件里**已经存在**——
+  `objectKindTransactionBegin` 是 prepare、`objectKindTransactionCommit`
+  是 commit，中间那段正是写 binlog 的位置。所以阶段 2 大概率不是「加标记」，
+  而是把 redo WAL 的提交与这两个已有标记对齐
 - **范围**：binlog 独立成日志且为唯一恢复依据；redo WAL 加
   `prepare`/`commit` 两阶段标记；change log 收窄为事务回滚 undo 依据
 - **为什么最后**：风险最高（动恢复），且 binlog 应当记录定型后的结构
