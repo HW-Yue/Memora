@@ -318,9 +318,13 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
 不在此重复。
 
 11. **`File.records` 常驻表仍在**，`Open()` 仍逐条 CRC 扫完整个文件；
-    这是与数据量相关的唯一无上界常驻结构（见第 7 节）；
+    这是与数据量相关的唯一无上界常驻结构（见第 7 节）。
+    **2026-08-31 升级为违反[架构原则](../product/architecture-principles.md)
+    第四条**（命中判据 3：没有容量、没有淘汰，却是唯一的索引），
+    已排为执行计划队头 E7，迁移设计见[物理索引](./physical-index-v1.md)；
 12. **Catalog／Change 树只存逻辑 Locator**，正文仍在记录文件；
-    `nativerow.table()` 每读一条记录就重读一遍整个 Catalog；
+    `nativerow.table()` 每读一条记录就重读一遍整个 Catalog。
+    随 11 一起解决（物理索引阶段 4）；
 13. **Overflow Page 未实现**：单条编码记录超过 8 KiB 硬失败，不跨页拆分；
 14. **`routevector.Generation.vectors`** 把全部 Route 向量常驻内存
     （`internal/routevector/model.go:125`），随语义索引规模增长，尚未评估。
