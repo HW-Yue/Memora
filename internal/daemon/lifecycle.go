@@ -172,6 +172,12 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		return err
 	}
 	nativeFile := migration.File
+	// One defer rather than a close beside each of the record store's, and
+	// deliberately after them: every path out of here closes the store first,
+	// and the log has to outlive the last write it records.
+	if migration.Binlog != nil {
+		defer func() { _ = migration.Binlog.Close() }()
+	}
 	authority, err := pagestoremigration.OpenAuthority(
 		ctx, nativeFile, filepath.Join(dataDir, "databases"),
 	)
