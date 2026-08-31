@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
@@ -357,13 +358,13 @@ func buildTree(
 			return treecontrol.State{}, err
 		}
 	case "objects":
-		// Seeded with the Plan's current Routes, and nothing else yet: the rest
-		// of the objects follow in stage 3.
+		// Seeded with the Plan's current Routes and its whole Catalog. The rest
+		// of the object families follow in stage 3.
 		// See docs/storage/physical-index-v1.md §4.
 		index, err := objectindex.Open(runtime)
 		if err == nil {
 			var records []objectindex.Record
-			records, err = routeObjectRecords(plan.CurrentRoutes)
+			records, err = generationObjectRecords(plan)
 			if err == nil {
 				_, err = index.Bootstrap(transactionID, records)
 			}
@@ -803,6 +804,22 @@ func routeObjectRecords(routes []router.Node) ([]objectindex.Record, error) {
 		})
 	}
 	return records, nil
+}
+
+// generationObjectRecords is everything the objects Tree is born holding.
+//
+// It is the one place a build says what belongs in that Tree, so a rebuilt
+// generation and a written one cannot end up holding different families.
+func generationObjectRecords(plan Plan) ([]objectindex.Record, error) {
+	records, err := routeObjectRecords(plan.CurrentRoutes)
+	if err != nil {
+		return nil, err
+	}
+	catalogRecords, err := nativecatalog.ObjectRecords(plan.Catalog)
+	if err != nil {
+		return nil, err
+	}
+	return append(records, catalogRecords...), nil
 }
 
 // routeObjectUpdates turns published Route revisions into objects Tree updates.

@@ -30,9 +30,9 @@ func TestGenerationV3SeedIncludesCatalogRouteAndRowDocuments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Version != "memora.page-index-generation/v6" ||
+	if manifest.Version != "memora.page-index-generation/v7" ||
 		manifest.PlanVersion != "memora.page-index-migration-plan/v3" {
-		t.Fatalf("generation v6 manifest = %#v", manifest)
+		t.Fatalf("generation v7 manifest = %#v", manifest)
 	}
 	generation, err := OpenGeneration(receipt.Directory)
 	if err != nil {

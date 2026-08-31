@@ -170,7 +170,7 @@ func (authority *Authority) replaceGeneration(
 			result = errors.Join(result, live.Close())
 		}
 	}()
-	catalogReader, err := nativecatalog.NewIndexedReader(nativecatalog.New(authority.file), live.catalog)
+	catalogReader, err := nativecatalog.NewIndexedReader(live.catalog, live)
 	if err != nil {
 		return ReplacementReceipt{}, err
 	}

@@ -9,6 +9,8 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
+	nativestore "github.com/HW-Yue/Memora/internal/store/native"
+	"github.com/HW-Yue/Memora/internal/store/objectindex"
 )
 
 type LookupIndex interface {
@@ -25,23 +27,103 @@ type EnumerationIndex interface {
 }
 
 // IndexedReader resolves one Table schema without rebuilding the full Catalog.
+//
+// Both halves are on disk: the Catalog Tree turns a name or an ID into a
+// Locator, and the objects Tree turns that Locator into the object's bytes.
+// Neither hop goes back to the record log's in-memory record table.
+// It holds no handle on the record log, and that is the point rather than an
+// omission: with nothing to reach it with, no read can quietly fall back to the
+// record table this replaced.
 type IndexedReader struct {
-	repository *Repository
-	index      LookupIndex
+	index   LookupIndex
+	objects ObjectSource
 }
 
-func NewIndexedReader(repository *Repository, index LookupIndex) (*IndexedReader, error) {
-	if repository == nil || repository.file == nil || index == nil {
-		return nil, fmt.Errorf("%w: Catalog repository and lookup index are required", ErrInvalid)
+func NewIndexedReader(index LookupIndex, objects ObjectSource) (*IndexedReader, error) {
+	if index == nil || objects == nil {
+		return nil, fmt.Errorf("%w: Catalog lookup index and objects Tree are required", ErrInvalid)
 	}
-	return &IndexedReader{repository: repository, index: index}, nil
+	return &IndexedReader{index: index, objects: objects}, nil
+}
+
+// body reads one Catalog object out of the objects Tree.
+func (reader *IndexedReader) body(
+	kind uint16, id string, revision uint64,
+) (objectindex.Record, error) {
+	index := reader.objects.CatalogObjects()
+	if index == nil {
+		return objectindex.Record{}, fmt.Errorf("%w: objects Tree", ErrInvalid)
+	}
+	stored, err := index.Lookup(kind, id)
+	if errors.Is(err, objectindex.ErrNotFound) {
+		// The Catalog Tree named an object the objects Tree does not hold. The
+		// two are written in one group commit, so this is not a race — it is a
+		// generation that describes two different Catalogs.
+		return objectindex.Record{}, fmt.Errorf(
+			"%w: Catalog Tree names %q of kind %d, which the objects Tree does not hold",
+			ErrCorrupt, id, kind)
+	}
+	if err != nil {
+		return objectindex.Record{}, err
+	}
+	if stored.Revision != revision {
+		return objectindex.Record{}, fmt.Errorf(
+			"%w: objects Tree holds %q at revision %d, Catalog Tree says revision %d",
+			ErrCorrupt, id, stored.Revision, revision)
+	}
+	return stored, nil
+}
+
+func (reader *IndexedReader) databaseRecord(id string, revision uint64) (databaseRecord, error) {
+	stored, err := reader.body(uint16(nativestore.ObjectKindDatabase), id, revision)
+	if err != nil {
+		return databaseRecord{}, err
+	}
+	record, err := decodeDatabase(stored.Body)
+	if err != nil {
+		return databaseRecord{}, fmt.Errorf("%w: decode database %q revision %d", ErrCorrupt, id, revision)
+	}
+	if record.value.ID != id || record.value.SchemaVersion != revision {
+		return databaseRecord{}, fmt.Errorf("%w: database revision identity mismatch", ErrCorrupt)
+	}
+	return record, nil
+}
+
+func (reader *IndexedReader) tableRecord(id string, revision uint64) (tableRecord, error) {
+	stored, err := reader.body(uint16(nativestore.ObjectKindTable), id, revision)
+	if err != nil {
+		return tableRecord{}, err
+	}
+	record, err := decodeTable(stored.Body)
+	if err != nil {
+		return tableRecord{}, fmt.Errorf("%w: decode table %q revision %d", ErrCorrupt, id, revision)
+	}
+	if record.value.ID != id || record.value.SchemaVersion != revision {
+		return tableRecord{}, fmt.Errorf("%w: table revision identity mismatch", ErrCorrupt)
+	}
+	return record, nil
+}
+
+func (reader *IndexedReader) columnRecord(id string, revision uint64) (columnRecord, error) {
+	stored, err := reader.body(uint16(nativestore.ObjectKindColumn), id, revision)
+	if err != nil {
+		return columnRecord{}, err
+	}
+	record, err := decodeColumn(stored.Body)
+	if err != nil {
+		return columnRecord{}, fmt.Errorf("%w: decode column %q revision %d", ErrCorrupt, id, revision)
+	}
+	if record.value.ID != id || record.value.SchemaVersion != revision {
+		return columnRecord{}, fmt.Errorf("%w: column revision identity mismatch", ErrCorrupt)
+	}
+	return record, nil
 }
 
 func (reader *IndexedReader) DescribeTable(
 	ctx context.Context,
 	databaseName, tableName string,
 ) (catalog.Table, error) {
-	if reader == nil || reader.repository == nil || reader.index == nil {
+	if reader == nil || reader.index == nil || reader.objects == nil {
 		return catalog.Table{}, fmt.Errorf("%w: indexed Catalog reader", ErrInvalid)
 	}
 	if err := ctx.Err(); err != nil {
@@ -54,7 +136,7 @@ func (reader *IndexedReader) DescribeTable(
 		}
 		return catalog.Table{}, err
 	}
-	database, err := reader.repository.readDatabaseRevision(
+	database, err := reader.databaseRecord(
 		databaseLocator.ID, databaseLocator.SchemaRevision,
 	)
 	if err != nil {
@@ -73,17 +155,15 @@ func (reader *IndexedReader) DescribeTable(
 		}
 		return catalog.Table{}, err
 	}
-	tableRecord, err := reader.repository.readTableRevision(
-		tableLocator.ID, tableLocator.SchemaRevision,
-	)
+	stored, err := reader.tableRecord(tableLocator.ID, tableLocator.SchemaRevision)
 	if err != nil {
 		return catalog.Table{}, err
 	}
 	if tableLocator.Kind != catalogindex.KindTable ||
 		tableLocator.DatabaseID != databaseLocator.ID ||
-		tableRecord.value.ID != tableLocator.ID ||
-		tableRecord.value.DatabaseID != databaseLocator.ID ||
-		!matchesSelector(tableName, tableRecord.value.ID, tableRecord.value.Name, tableRecord.value.Aliases) {
+		stored.value.ID != tableLocator.ID ||
+		stored.value.DatabaseID != databaseLocator.ID ||
+		!matchesSelector(tableName, stored.value.ID, stored.value.Name, stored.value.Aliases) {
 		return catalog.Table{}, fmt.Errorf("%w: Table locator and record disagree", ErrCorrupt)
 	}
 
@@ -100,7 +180,7 @@ func (reader *IndexedReader) DescribeTable(
 			locator.TableID != tableLocator.ID {
 			return catalog.Table{}, fmt.Errorf("%w: Column locator scope mismatch", ErrCorrupt)
 		}
-		column, err := reader.repository.readColumnRevision(locator.ID, locator.SchemaRevision)
+		column, err := reader.columnRecord(locator.ID, locator.SchemaRevision)
 		if err != nil {
 			return catalog.Table{}, err
 		}
@@ -118,7 +198,7 @@ func (reader *IndexedReader) DescribeTable(
 		columns = append(columns, column)
 	}
 	sort.Slice(columns, func(left, right int) bool { return columns[left].order < columns[right].order })
-	table := tableRecord.value
+	table := stored.value
 	if table.Aliases == nil {
 		table.Aliases = []string{}
 	}
@@ -148,7 +228,7 @@ func (reader *IndexedReader) tableLocator(databaseID, selector string) (catalogi
 }
 
 func (reader *IndexedReader) Snapshot(ctx context.Context) ([]catalog.Database, error) {
-	if reader == nil || reader.repository == nil || reader.index == nil {
+	if reader == nil || reader.index == nil || reader.objects == nil {
 		return nil, fmt.Errorf("%w: indexed Catalog reader", ErrInvalid)
 	}
 	if err := ctx.Err(); err != nil {
@@ -167,7 +247,7 @@ func (reader *IndexedReader) Snapshot(ctx context.Context) ([]catalog.Database, 
 		if locator.Kind != catalogindex.KindDatabase {
 			return nil, fmt.Errorf("%w: Database enumeration locator", ErrCorrupt)
 		}
-		database, err := reader.repository.readDatabaseRevision(locator.ID, locator.SchemaRevision)
+		database, err := reader.databaseRecord(locator.ID, locator.SchemaRevision)
 		if err != nil {
 			return nil, err
 		}
@@ -182,7 +262,7 @@ func (reader *IndexedReader) Snapshot(ctx context.Context) ([]catalog.Database, 
 			if tableLocator.Kind != catalogindex.KindTable || tableLocator.DatabaseID != locator.ID {
 				return nil, fmt.Errorf("%w: Table enumeration locator", ErrCorrupt)
 			}
-			table, err := reader.repository.readTableRevision(tableLocator.ID, tableLocator.SchemaRevision)
+			table, err := reader.tableRecord(tableLocator.ID, tableLocator.SchemaRevision)
 			if err != nil {
 				return nil, err
 			}
@@ -194,7 +274,7 @@ func (reader *IndexedReader) Snapshot(ctx context.Context) ([]catalog.Database, 
 				return nil, err
 			}
 			for _, columnLocator := range columnLocators {
-				column, err := reader.repository.readColumnRevision(columnLocator.ID, columnLocator.SchemaRevision)
+				column, err := reader.columnRecord(columnLocator.ID, columnLocator.SchemaRevision)
 				if err != nil {
 					return nil, err
 				}

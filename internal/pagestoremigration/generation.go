@@ -490,6 +490,14 @@ func (generation *Generation) TableTree(tableID string) bool {
 
 // Objects returns the clustered Index for objects that keep one record per
 // identity, or nil for a generation written before it existed.
+// CatalogObjects satisfies nativecatalog.ObjectSource. The Catalog reader is
+// bound to one generation and rebuilt when the generation is replaced, so this
+// hands out that generation's Tree rather than whatever the Authority currently
+// holds.
+func (generation *Generation) CatalogObjects() *objectindex.Index {
+	return generation.Objects()
+}
+
 func (generation *Generation) Objects() *objectindex.Index {
 	if generation == nil {
 		return nil

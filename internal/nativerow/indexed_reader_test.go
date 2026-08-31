@@ -17,6 +17,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
+	"github.com/HW-Yue/Memora/internal/store/objectindex"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
@@ -57,7 +58,7 @@ func TestIndexedPointGetRejectsLocatorMismatchWithoutLegacyFallback(t *testing.T
 	ctx := context.Background()
 	fixture := createIndexedPointFixture(t)
 	t.Cleanup(func() { fixture.close(t) })
-	catalogReader, err := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, err := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,11 +115,19 @@ type indexedPointFixture struct {
 	directory                string
 	file                     *nativestore.File
 	catalog                  *catalogindex.Index
+	objects                  *objectindex.Index
 	current                  *currentrowindex.Index
 	versions                 *rowversionindex.Index
 	catalogTree, currentTree *indexedPointTree
-	versionTree              *indexedPointTree
+	versionTree, objectsTree *indexedPointTree
 	closed                   bool
+}
+
+// CatalogObjects satisfies nativecatalog.ObjectSource: the Catalog Tree answers
+// "which object and which revision", the objects Tree answers "what are its
+// bytes". Both are Page files here, as they are in a real generation.
+func (fixture *indexedPointFixture) CatalogObjects() *objectindex.Index {
+	return fixture.objects
 }
 
 type indexedPointTree struct {
@@ -152,6 +161,13 @@ func createIndexedPointFixture(t *testing.T) *indexedPointFixture {
 	}
 	fixture := openIndexedPointFixture(t, directory, file, false)
 	if _, err := fixture.catalog.Replace(1, []catalog.Database{database}); err != nil {
+		t.Fatal(err)
+	}
+	catalogObjects, err := nativecatalog.ObjectRecords([]catalog.Database{database})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.objects.Bootstrap(1, catalogObjects); err != nil {
 		t.Fatal(err)
 	}
 	currentInitial := make([]currentrowindex.Update, 0, len(rows))
@@ -198,6 +214,7 @@ func openIndexedPointFixture(
 	catalogTree := openIndexedPointTree(t, directory, "catalog", 701, reopen)
 	currentTree := openIndexedPointTree(t, directory, "current", 702, reopen)
 	versionTree := openIndexedPointTree(t, directory, "versions", 703, reopen)
+	objectsTree := openIndexedPointTree(t, directory, "objects", 704, reopen)
 	catalogLookup, err := catalogindex.Open(catalogTree.runtime)
 	if err != nil {
 		t.Fatal(err)
@@ -210,10 +227,16 @@ func openIndexedPointFixture(
 	if err != nil {
 		t.Fatal(err)
 	}
+	objectLookup, err := objectindex.Open(objectsTree.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return &indexedPointFixture{
 		directory: directory, file: file,
-		catalog: catalogLookup, current: currentLookup, versions: versionLookup,
-		catalogTree: catalogTree, currentTree: currentTree, versionTree: versionTree,
+		catalog: catalogLookup, objects: objectLookup,
+		current: currentLookup, versions: versionLookup,
+		catalogTree: catalogTree, currentTree: currentTree,
+		versionTree: versionTree, objectsTree: objectsTree,
 	}
 }
 
@@ -265,7 +288,9 @@ func (fixture *indexedPointFixture) close(t *testing.T) {
 		return
 	}
 	fixture.closed = true
-	for _, tree := range []*indexedPointTree{fixture.catalogTree, fixture.currentTree, fixture.versionTree} {
+	for _, tree := range []*indexedPointTree{
+		fixture.catalogTree, fixture.currentTree, fixture.versionTree, fixture.objectsTree,
+	} {
 		if err := tree.set.Close(); err != nil {
 			t.Errorf("close WAL: %v", err)
 		}
@@ -285,7 +310,7 @@ func executeIndexedPointRequest(
 	request executor.BatchRequest,
 ) (result.Envelope, *int) {
 	t.Helper()
-	catalogReader, err := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, err := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	if err != nil {
 		t.Fatal(err)
 	}

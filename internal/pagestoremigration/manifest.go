@@ -20,7 +20,8 @@ import (
 
 const (
 	GenerationDirectory      = "page-index-v1"
-	generationVersion        = "memora.page-index-generation/v6"
+	generationVersion        = "memora.page-index-generation/v7"
+	routeObjectsVersion      = "memora.page-index-generation/v6"
 	perTableTreeVersion      = "memora.page-index-generation/v5"
 	sharedCurrentVersion     = "memora.page-index-generation/v4"
 	treeWALGenerationVersion = "memora.page-index-generation/v3"
@@ -202,19 +203,26 @@ func treeStateFromRuntime(state treecontrol.State) treeStateManifest {
 // that Table's own Tree. v5 and v6 do; v4 kept them all in one Tree keyed by
 // (Table, Row), and is rebuilt on open.
 func (manifest generationManifest) perTableRows() bool {
-	return manifest.Version == generationVersion || manifest.Version == perTableTreeVersion
+	return manifest.Version == generationVersion ||
+		manifest.Version == routeObjectsVersion ||
+		manifest.Version == perTableTreeVersion
 }
 
-// physicalObjectIndex reports whether a generation has the objects Tree. Only
-// v6 does. A v5 database opens read-only and is then COW-rebuilt, because a
-// missing Tree is not the same as a Tree with nothing in it: without it, the
-// objects it holds have no index but the record file's resident map.
+// physicalObjectIndex reports whether a generation's objects Tree holds
+// everything the read path now asks it for.
+//
+// v6 introduced the Tree with the Routes in it; v7 added the Catalog bodies. A
+// generation below v7 opens read-only and is then COW-rebuilt, because a Tree
+// that is missing a family is not the same as one whose family is empty: the
+// reader would find the Catalog Tree naming objects the objects Tree has never
+// heard of, which is the shape of corruption, not of an empty Database.
 func (manifest generationManifest) physicalObjectIndex() bool {
 	return manifest.Version == generationVersion
 }
 
 func (manifest generationManifest) sharedLog() bool {
 	return manifest.Version == generationVersion ||
+		manifest.Version == routeObjectsVersion ||
 		manifest.Version == perTableTreeVersion ||
 		manifest.Version == sharedCurrentVersion
 }

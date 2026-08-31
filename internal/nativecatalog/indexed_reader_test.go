@@ -10,13 +10,17 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
+	"github.com/HW-Yue/Memora/internal/store/objectindex"
+	"github.com/HW-Yue/Memora/internal/store/page"
+	"github.com/HW-Yue/Memora/internal/store/treecommit"
+	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
 func TestIndexedReaderDescribesAliasedTableWithStoredColumnOrder(t *testing.T) {
-	repository, database, closeFile := indexedCatalogFixture(t)
+	database, closeFile := indexedCatalogFixture(t)
 	defer closeFile()
 	lookup := indexedCatalogLookup(database)
-	reader, err := NewIndexedReader(repository, lookup)
+	reader, err := NewIndexedReader(lookup, indexedCatalogObjects(t, []catalog.Database{database}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,12 +36,12 @@ func TestIndexedReaderDescribesAliasedTableWithStoredColumnOrder(t *testing.T) {
 }
 
 func TestIndexedReaderDescribesTableByStableIDs(t *testing.T) {
-	repository, database, closeFile := indexedCatalogFixture(t)
+	database, closeFile := indexedCatalogFixture(t)
 	defer closeFile()
 	lookup := indexedCatalogLookup(database)
 	lookup.databaseNameErr = errors.New("DatabaseByName must not resolve a stable ID")
 	lookup.tableNameErr = errors.New("TableByName must not resolve a stable ID")
-	reader, err := NewIndexedReader(repository, lookup)
+	reader, err := NewIndexedReader(lookup, indexedCatalogObjects(t, []catalog.Database{database}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,11 +56,11 @@ func TestIndexedReaderDescribesTableByStableIDs(t *testing.T) {
 }
 
 func TestIndexedReaderRejectsStableTableIDFromAnotherDatabase(t *testing.T) {
-	repository, database, closeFile := indexedCatalogFixture(t)
+	database, closeFile := indexedCatalogFixture(t)
 	defer closeFile()
 	lookup := indexedCatalogLookup(database)
 	lookup.table.DatabaseID = "db_other"
-	reader, err := NewIndexedReader(repository, lookup)
+	reader, err := NewIndexedReader(lookup, indexedCatalogObjects(t, []catalog.Database{database}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,11 +71,11 @@ func TestIndexedReaderRejectsStableTableIDFromAnotherDatabase(t *testing.T) {
 }
 
 func TestIndexedReaderRejectsLocatorBodyMismatchAndMapsNotFound(t *testing.T) {
-	repository, database, closeFile := indexedCatalogFixture(t)
+	database, closeFile := indexedCatalogFixture(t)
 	defer closeFile()
 	lookup := indexedCatalogLookup(database)
 	lookup.table.SchemaRevision++
-	reader, err := NewIndexedReader(repository, lookup)
+	reader, err := NewIndexedReader(lookup, indexedCatalogObjects(t, []catalog.Database{database}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +85,7 @@ func TestIndexedReaderRejectsLocatorBodyMismatchAndMapsNotFound(t *testing.T) {
 
 	lookup = indexedCatalogLookup(database)
 	lookup.databaseErr = catalogindex.ErrNotFound
-	reader, _ = NewIndexedReader(repository, lookup)
+	reader, _ = NewIndexedReader(lookup, indexedCatalogObjects(t, []catalog.Database{database}))
 	_, err = reader.DescribeTable(context.Background(), "missing", "notes")
 	var catalogErr *catalog.Error
 	if !errors.As(err, &catalogErr) || catalogErr.Code != catalog.CodeNotFound {
@@ -143,7 +147,52 @@ func indexedCatalogLookup(database catalog.Database) *fakeCatalogLookup {
 	}
 }
 
-func indexedCatalogFixture(t *testing.T) (*Repository, catalog.Database, func()) {
+// treeObjects is an ObjectSource over a real objects Tree, seeded the way a
+// generation build seeds one. The bodies under test are the ones a Page file
+// actually holds, not a stand-in.
+type treeObjects struct{ index *objectindex.Index }
+
+func (source treeObjects) CatalogObjects() *objectindex.Index { return source.index }
+
+func indexedCatalogObjects(t *testing.T, databases []catalog.Database) ObjectSource {
+	t.Helper()
+	directory := t.TempDir()
+	const spaceID = uint64(0x4d454d4f424a)
+	set, err := wal.CreateSegmentSet(filepath.Join(directory, "wal"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = set.Close() })
+	manager, err := page.Create(filepath.Join(directory, "objects.pages"), spaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	runtime, _, err := treecommit.OpenRuntime(set, manager, treecommit.RuntimeConfig{
+		SpaceID: spaceID, Capacity: 128, OldFrames: 64,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := objectindex.Open(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := ObjectRecords(databases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.Bootstrap(1, records); err != nil {
+		t.Fatal(err)
+	}
+	return treeObjects{index: index}
+}
+
+// indexedCatalogFixture writes the Catalog to a record log, then hands back only
+// the Catalog itself. The reader under test has no handle on that file — the
+// bodies it reads come from the objects Tree — so the file exists here to prove
+// the encodings agree, not to be read from.
+func indexedCatalogFixture(t *testing.T) (catalog.Database, func()) {
 	t.Helper()
 	file, err := nativestore.Create(filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase)
 	if err != nil {
@@ -168,5 +217,5 @@ func indexedCatalogFixture(t *testing.T) (*Repository, catalog.Database, func())
 		_ = file.Close()
 		t.Fatal(err)
 	}
-	return repository, database, func() { _ = file.Close() }
+	return database, func() { _ = file.Close() }
 }

@@ -18,7 +18,7 @@ func TestIndexedExecutorCapturesOneFreshSnapshotPerAutocommitStatement(t *testin
 	ctx := context.Background()
 	fixture := createIndexedPointFixture(t)
 	t.Cleanup(func() { fixture.close(t) })
-	catalogReader, _ := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, _ := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	points, _ := NewIndexedReader(New(fixture.file), catalogReader, oneTableRows{index: fixture.current}, fixture.versions)
 	calls := 0
 	session := executor.NewBatchSessionWithPointReads(
@@ -51,7 +51,7 @@ func TestReadViewCapturedBetweenCurrentAndVersionPublishSeesOldCommit(t *testing
 	ctx := context.Background()
 	fixture := createIndexedPointFixture(t)
 	t.Cleanup(func() { fixture.close(t) })
-	catalogReader, _ := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, _ := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	points, _ := NewIndexedReader(New(fixture.file), catalogReader, oneTableRows{index: fixture.current}, fixture.versions)
 	table, err := catalogReader.DescribeTable(ctx, "work", "notes")
 	if err != nil {
@@ -100,7 +100,7 @@ func TestReadViewKeepsPointAndCursorVisibilityAcrossLaterCommit(t *testing.T) {
 	ctx := context.Background()
 	fixture := createIndexedPointFixture(t)
 	t.Cleanup(func() { fixture.close(t) })
-	catalogReader, err := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, err := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestReadViewOwnWritesMergeIntoPointAndTablePageThenDiscard(t *testing.T) {
 	ctx := context.Background()
 	fixture := createIndexedPointFixture(t)
 	t.Cleanup(func() { fixture.close(t) })
-	catalogReader, _ := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, _ := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	points, _ := NewIndexedReader(New(fixture.file), catalogReader, oneTableRows{index: fixture.current}, fixture.versions)
 	table, err := catalogReader.DescribeTable(ctx, "work", "notes")
 	if err != nil {
@@ -225,7 +225,7 @@ func TestReadViewOwnWritesMergeIntoPointAndTablePageThenDiscard(t *testing.T) {
 func TestReadViewOverlayHasHardBoundAndAllowsReplacement(t *testing.T) {
 	fixture := createIndexedPointFixture(t)
 	t.Cleanup(func() { fixture.close(t) })
-	catalogReader, _ := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, _ := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	points, _ := NewIndexedReader(New(fixture.file), catalogReader, oneTableRows{index: fixture.current}, fixture.versions)
 	view, err := points.BeginReadView(context.Background())
 	if err != nil {
@@ -258,7 +258,7 @@ func TestReadViewOverlayConcurrentStagePointAndPageIsRaceFree(t *testing.T) {
 	ctx := context.Background()
 	fixture := createIndexedPointFixture(t)
 	t.Cleanup(func() { fixture.close(t) })
-	catalogReader, _ := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, _ := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	points, _ := NewIndexedReader(New(fixture.file), catalogReader, oneTableRows{index: fixture.current}, fixture.versions)
 	table, err := catalogReader.DescribeTable(ctx, "work", "notes")
 	if err != nil {
@@ -320,7 +320,7 @@ func TestReadViewPagesMatchSnapshotReferenceModelAcrossLaterMutations(t *testing
 	ctx := context.Background()
 	fixture := createIndexedPointFixture(t)
 	t.Cleanup(func() { fixture.close(t) })
-	catalogReader, _ := nativecatalog.NewIndexedReader(nativecatalog.New(fixture.file), fixture.catalog)
+	catalogReader, _ := nativecatalog.NewIndexedReader(fixture.catalog, fixture)
 	points, _ := NewIndexedReader(New(fixture.file), catalogReader, oneTableRows{index: fixture.current}, fixture.versions)
 	table, err := catalogReader.DescribeTable(ctx, "work", "notes")
 	if err != nil {

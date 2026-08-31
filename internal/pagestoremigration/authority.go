@@ -20,6 +20,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativechange"
+	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
@@ -145,7 +146,7 @@ func OpenAuthority(
 	if err != nil {
 		return nil, err
 	}
-	catalogReader, err := nativecatalog.NewIndexedReader(nativecatalog.New(file), generation.catalog)
+	catalogReader, err := nativecatalog.NewIndexedReader(generation.catalog, generation)
 	if err != nil {
 		_ = generation.Close()
 		return nil, err
@@ -778,10 +779,28 @@ func (authority *Authority) PublishCatalog(
 	if err := authority.generation.relieveRedoRing(); err != nil {
 		authority.redoMaintenanceErr = err
 	}
+	catalogRecords, err := nativecatalog.ObjectRecords(databases)
+	if err != nil {
+		return authority.poisonPublication("Catalog body", affected, err)
+	}
 	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
 		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {
-			return authority.generation.catalog.StageReplace(group, databases)
+			if err := authority.generation.catalog.StageReplace(group, databases); err != nil {
+				return err
+			}
+			// The bodies go into the objects Tree in the same group as the
+			// Locators that point at them. That is what the reader relies on:
+			// a Locator naming an object the objects Tree does not hold is
+			// corruption, not a race, so the two must never be committed apart.
+			//
+			// A replacement rather than an update, because a Catalog write
+			// hands over the whole set — DROP COLUMN is a real statement, and
+			// an object family that only ever grew would keep bodies nothing
+			// points at any more.
+			return authority.generation.objects.StageReplaceKinds(
+				group, nativecatalog.ObjectKinds, catalogRecords,
+			)
 		})
 	}
 	if err == nil {
@@ -1048,6 +1067,7 @@ func (authority *Authority) reconcile(ctx context.Context) error {
 	}
 	for _, step := range []func(Plan) error{
 		authority.replaceCatalog,
+		authority.reconcileRoutes,
 		authority.appendVersions,
 		authority.reconcileFulltext,
 		authority.advanceCurrent,
@@ -1079,12 +1099,53 @@ func rebuildOnConflict(err error) error {
 	return err
 }
 
+// replaceCatalog brings both halves of the Catalog back to what the record log
+// says: the Locators in the Catalog Tree and the bodies in the objects Tree.
+//
+// Both, in one WAL transaction, because that is the invariant the reader
+// depends on — a Locator naming an object the objects Tree does not hold is
+// corruption, not a race. Reconciling only the Locators is how a publication
+// faulted between its record commit and its Tree commit would come back as a
+// Catalog Tree pointing at bodies that were never written.
 func (authority *Authority) replaceCatalog(plan Plan) error {
+	records, err := nativecatalog.ObjectRecords(plan.Catalog)
+	if err != nil {
+		return err
+	}
 	id, err := authority.nextTransactionID("catalog")
 	if err != nil {
 		return err
 	}
-	_, err = authority.generation.catalog.Replace(id, plan.Catalog)
+	return treecommit.CommitGroupFunc(id, func(group *treecommit.Group) error {
+		if err := authority.generation.catalog.StageReplace(group, plan.Catalog); err != nil {
+			return err
+		}
+		return authority.generation.objects.StageReplaceKinds(
+			group, nativecatalog.ObjectKinds, records,
+		)
+	})
+}
+
+// reconcileRoutes brings the objects Tree's Routes back to what the record log
+// says.
+//
+// A Route publication commits its record first and its Tree second, so a fault
+// between them leaves the Tree one revision behind — the record log is the
+// authority and has moved on. A replacement rather than an update because the
+// Plan carries every current Route: it converges whatever the Tree was left
+// holding, without needing to know how far behind it fell.
+func (authority *Authority) reconcileRoutes(plan Plan) error {
+	records, err := routeObjectRecords(plan.CurrentRoutes)
+	if err != nil {
+		return err
+	}
+	id, err := authority.nextTransactionID("objects")
+	if err != nil {
+		return err
+	}
+	_, err = authority.generation.objects.ReplaceKinds(
+		id, []uint16{nativerouter.ObjectKind}, records,
+	)
 	return err
 }
 

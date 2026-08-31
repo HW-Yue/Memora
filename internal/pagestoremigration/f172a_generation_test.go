@@ -37,10 +37,10 @@ func TestGenerationBuildIncludesDurableFulltextTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Four fixed Trees plus two per Table: its current Rows and its history.
-	if manifest.Version != "memora.page-index-generation/v6" ||
+	if manifest.Version != "memora.page-index-generation/v7" ||
 		manifest.PlanVersion != "memora.page-index-migration-plan/v3" ||
 		len(manifest.Trees) != len(expectedTrees)+2 {
-		t.Fatalf("generation v6 manifest = %#v", manifest)
+		t.Fatalf("generation v7 manifest = %#v", manifest)
 	}
 }
 
