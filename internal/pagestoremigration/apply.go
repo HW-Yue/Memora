@@ -23,6 +23,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
+	"github.com/HW-Yue/Memora/internal/store/objectindex"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
@@ -198,7 +199,9 @@ func (applier *Applier) build(
 		}
 		specification.State = treeStateFromRuntime(state)
 		manifest.Trees[index] = specification
-		phase := []applyPhase{phaseCatalogBuilt, phaseVersionsBuilt, phaseFulltextBuilt}[index]
+		phase := []applyPhase{
+			phaseCatalogBuilt, phaseVersionsBuilt, phaseFulltextBuilt, phaseFulltextBuilt,
+		}[index]
 		if err := applier.checkpoint(ctx, phase); err != nil {
 			return generationManifest{}, err
 		}
@@ -347,6 +350,18 @@ func buildTree(
 			if err == nil {
 				_, err = index.Bootstrap(transactionID, documents)
 			}
+		}
+		if err != nil {
+			return treecontrol.State{}, err
+		}
+	case "objects":
+		// Built empty. Nothing is migrated into it yet — that is stage 2 (Route)
+		// onward — but a Tree is born with a root rather than without one, the
+		// same rule every other Tree follows.
+		// See docs/storage/physical-index-v1.md §4.
+		index, err := objectindex.Open(runtime)
+		if err == nil {
+			_, err = index.Bootstrap(transactionID)
 		}
 		if err != nil {
 			return treecontrol.State{}, err

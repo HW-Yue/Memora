@@ -20,7 +20,8 @@ import (
 
 const (
 	GenerationDirectory      = "page-index-v1"
-	generationVersion        = "memora.page-index-generation/v5"
+	generationVersion        = "memora.page-index-generation/v6"
+	perTableTreeVersion      = "memora.page-index-generation/v5"
 	sharedCurrentVersion     = "memora.page-index-generation/v4"
 	treeWALGenerationVersion = "memora.page-index-generation/v3"
 	rowGenerationVersion     = "memora.page-index-generation/v2"
@@ -34,6 +35,7 @@ const (
 	sharedWALDirectory = "redo.wal"
 
 	catalogSpaceID  = uint64(0x4d454d434154) // MEMCAT
+	objectsSpaceID  = uint64(0x4d454d4f424a) // MEMOBJ
 	currentSpaceID  = uint64(0x4d454d435552) // MEMCUR
 	versionSpaceID  = uint64(0x4d454d564552) // MEMVER
 	fulltextSpaceID = uint64(0x4d454d465458) // MEMFTX
@@ -78,6 +80,20 @@ type generationManifest struct {
 // Tree, which is why the fixed list is three and the rest follow the Catalog.
 // See docs/storage/per-table-tree-v1.md §2.
 var expectedTrees = []treeManifest{
+	{Kind: "catalog", SpaceID: catalogSpaceID, PageFile: "catalog.pages"},
+	{Kind: "versions", SpaceID: versionSpaceID, PageFile: "versions.pages"},
+	{Kind: "fulltext", SpaceID: fulltextSpaceID, PageFile: "fulltext.pages"},
+	// objects holds every object that keeps one record per identity — Route,
+	// Relation, Configuration and the rest. Before it, those were found only
+	// through the record file's process-resident map, which is what
+	// architecture principle four forbids.
+	// See docs/storage/physical-index-v1.md.
+	{Kind: "objects", SpaceID: objectsSpaceID, PageFile: "objects.pages"},
+}
+
+// perTableExpectedTrees describes v5, which had no objects Tree. Kept so an
+// existing database still opens; the Authority then COW-rebuilds it to v6.
+var perTableExpectedTrees = []treeManifest{
 	{Kind: "catalog", SpaceID: catalogSpaceID, PageFile: "catalog.pages"},
 	{Kind: "versions", SpaceID: versionSpaceID, PageFile: "versions.pages"},
 	{Kind: "fulltext", SpaceID: fulltextSpaceID, PageFile: "fulltext.pages"},
@@ -158,6 +174,8 @@ func manifestTreeSpecifications(version, planVersion string) ([]treeManifest, bo
 	switch {
 	case version == generationVersion && planVersion == PlanVersion:
 		return expectedTrees, true
+	case version == perTableTreeVersion && planVersion == PlanVersion:
+		return perTableExpectedTrees, true
 	case version == sharedCurrentVersion && planVersion == PlanVersion:
 		return sharedCurrentExpectedTrees, true
 	case version == treeWALGenerationVersion && planVersion == PlanVersion:
@@ -181,14 +199,24 @@ func treeStateFromRuntime(state treecontrol.State) treeStateManifest {
 // sharedLog reports whether every Tree in the generation commits into one redo
 // log. Only v4 does; older generations keep one log per Tree.
 // perTableRows reports whether a generation keeps each Table's current Rows in
-// that Table's own Tree. Only v5 does; v4 kept them all in one Tree keyed by
+// that Table's own Tree. v5 and v6 do; v4 kept them all in one Tree keyed by
 // (Table, Row), and is rebuilt on open.
 func (manifest generationManifest) perTableRows() bool {
+	return manifest.Version == generationVersion || manifest.Version == perTableTreeVersion
+}
+
+// physicalObjectIndex reports whether a generation has the objects Tree. Only
+// v6 does. A v5 database opens read-only and is then COW-rebuilt, because a
+// missing Tree is not the same as a Tree with nothing in it: without it, the
+// objects it holds have no index but the record file's resident map.
+func (manifest generationManifest) physicalObjectIndex() bool {
 	return manifest.Version == generationVersion
 }
 
 func (manifest generationManifest) sharedLog() bool {
-	return manifest.Version == generationVersion || manifest.Version == sharedCurrentVersion
+	return manifest.Version == generationVersion ||
+		manifest.Version == perTableTreeVersion ||
+		manifest.Version == sharedCurrentVersion
 }
 
 func (state treeStateManifest) runtimeState(spaceID uint64) treecontrol.State {

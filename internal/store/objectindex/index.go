@@ -91,6 +91,37 @@ func (index *Index) Put(transactionID uint64, records []Record) (Receipt, error)
 	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
 }
 
+// Bootstrap plants the empty root.
+//
+// Put cannot do it: it returns early when given no records, so a Tree that has
+// never held anything would have no root at all. A Tree with no root is a
+// second empty state for every reader to know about, and the generation
+// manifest's own invariant is that a Tree has one — so a Tree is born with an
+// empty root instead of without one.
+//
+// It is a no-op on a Tree that already has a root, which is what makes it safe
+// to call on every open.
+func (index *Index) Bootstrap(transactionID uint64) (Receipt, error) {
+	if index == nil || index.runtime == nil || transactionID == 0 {
+		return Receipt{}, fmt.Errorf("%w: Bootstrap request", ErrInvalid)
+	}
+	index.mu.Lock()
+	defer index.mu.Unlock()
+	state := index.runtime.State()
+	if state.RootPageID != 0 {
+		return Receipt{State: state}, nil
+	}
+	plan, err := planBootstrap(state, nil)
+	if err != nil {
+		return Receipt{}, err
+	}
+	committed, err := index.runtime.Commit(transactionID, plan)
+	if err != nil {
+		return Receipt{}, err
+	}
+	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
+}
+
 func (index *Index) Get(kind uint16, id string) ([]byte, error) {
 	if index == nil || index.runtime == nil {
 		return nil, fmt.Errorf("%w: lookup Index", ErrInvalid)
@@ -311,6 +342,12 @@ func planBootstrap(state treecontrol.State, entries []entry) (btree.MutationPlan
 		}
 	}
 	plan := planner.Plan()
+	// With no entries the planner reports nothing to write, but the root page
+	// was still allocated — and an allocation with no change is not a valid
+	// plan. Writing the empty root itself is the change.
+	if len(plan.Changes) == 0 {
+		plan.Changes = []btree.PageChange{{Page: root}}
+	}
 	plan.Allocated = append([]uint64{rootID}, plan.Allocated...)
 	return plan, nil
 }

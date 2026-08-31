@@ -13,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
+	"github.com/HW-Yue/Memora/internal/store/objectindex"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
@@ -227,6 +228,11 @@ type Generation struct {
 	catalog  *catalogindex.Index
 	versions *rowversionindex.Index
 	fulltext *fulltextindex.Index
+	// objects is the clustered store for everything that keeps one record per
+	// identity — Route, Relation, Configuration and the rest. It replaces the
+	// record file's process-resident map as their index.
+	// See docs/storage/physical-index-v1.md.
+	objects *objectindex.Index
 	// tables holds the per-Table Trees, keyed by Table ID. The four fixed Trees
 	// above are named fields because there is exactly one of each; these follow
 	// the Catalog and so cannot be. See docs/storage/per-table-tree-v1.md §2.
@@ -482,6 +488,17 @@ func (generation *Generation) TableTree(tableID string) bool {
 	return generation.tables[tableID] != nil
 }
 
+// Objects returns the clustered Index for objects that keep one record per
+// identity, or nil for a generation written before it existed.
+func (generation *Generation) Objects() *objectindex.Index {
+	if generation == nil {
+		return nil
+	}
+	generation.mu.Lock()
+	defer generation.mu.Unlock()
+	return generation.objects
+}
+
 // HistoryTree reports whether a Table has a history Tree in this generation.
 func (generation *Generation) HistoryTree(tableID string) bool {
 	if generation == nil {
@@ -562,6 +579,8 @@ func openGeneration(directory string, strict bool) (*Generation, error) {
 			generation.versions, err = rowversionindex.Open(tree.runtime)
 		case "fulltext":
 			generation.fulltext, err = fulltextindex.Open(tree.runtime)
+		case "objects":
+			generation.objects, err = objectindex.Open(tree.runtime)
 		case "current":
 			// A pre-v5 generation's shared current Row Tree. It is opened as a
 			// Tree — its pages have to be recovered like any other — but no

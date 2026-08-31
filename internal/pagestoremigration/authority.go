@@ -169,14 +169,17 @@ func OpenAuthority(
 	}
 	authority.writeGate <- struct{}{}
 	// A generation missing a Tree, holding one redo log per Tree, or keeping
-	// every Table's current Rows in one shared Tree has to be rebuilt whatever
-	// its contents say — the second cannot publish atomically across Trees, and
-	// the third is the layout v5 replaced. Decide that BEFORE reconciling: the
+	// every Table's current Rows in one shared Tree, or no objects Tree, has to
+	// be rebuilt whatever its contents say — the second cannot publish
+	// atomically across Trees, the third is the layout v5 replaced, and the
+	// fourth leaves every Route and Relation with no index but the record
+	// file's resident map. Decide that BEFORE reconciling: the
 	// COW upgrade's value is that it leaves the old generation untouched as a
 	// rollback point, and reconciling one that is about to be discarded writes
 	// to it for nothing.
 	replace := authority.generation.fulltext == nil || authority.generation.log == nil ||
-		!authority.generation.manifest.perTableRows()
+		!authority.generation.manifest.perTableRows() ||
+		!authority.generation.manifest.physicalObjectIndex()
 	if !replace {
 		reconcileErr := authority.reconcile(ctx)
 		if reconcileErr != nil && !errors.Is(reconcileErr, errGenerationRebuildRequired) {
