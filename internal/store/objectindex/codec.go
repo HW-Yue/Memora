@@ -18,10 +18,13 @@ var (
 var recordMagic = [8]byte{'M', 'E', 'M', 'O', 'B', 'J', '0', '1'}
 
 const (
-	keyVersion    byte   = 1
-	recordVersion uint16 = 1
+	keyVersion byte = 1
+	// recordVersion 2 added the revision. A Tree written by version 1 is not
+	// read: the objects Tree is derived from the record log and a generation
+	// that carries one is rebuilt rather than upgraded in place.
+	recordVersion uint16 = 2
 
-	recordHeaderSize = 20
+	recordHeaderSize = 28
 	maxIDBytes       = 2048
 	// maxBodyBytes is the per-record budget from the Tablespace design: a Page is
 	// 16 KiB and a leaf holds several entries, so one encoded object targets
@@ -29,13 +32,19 @@ const (
 	maxBodyBytes = 8 << 10
 )
 
-// Record is one stored object: its type, its identity, and its bytes. The bytes
-// are opaque here — every object kind keeps its own codec — so this tree stays
-// the one place that knows how to put an object on a Page and find it again.
+// Record is one stored object: its type, its identity, which revision of it
+// this is, and its bytes. The bytes are opaque here — every object kind keeps
+// its own codec — so this tree stays the one place that knows how to put an
+// object on a Page and find it again.
+//
+// Revision numbers from 1 and is carried in the header rather than left to the
+// body, because the Tree compares revisions on every write and cannot decode a
+// body to do it.
 type Record struct {
-	Kind uint16
-	ID   string
-	Body []byte
+	Kind     uint16
+	ID       string
+	Revision uint64
+	Body     []byte
 }
 
 // recordKey lays the kind before the ID so one kind occupies a contiguous key
@@ -82,6 +91,7 @@ func encodeRecord(value Record) ([]byte, error) {
 	binary.LittleEndian.PutUint16(encoded[10:12], value.Kind)
 	binary.LittleEndian.PutUint32(encoded[12:16], uint32(len(value.ID)))
 	binary.LittleEndian.PutUint32(encoded[16:20], uint32(len(value.Body)))
+	binary.LittleEndian.PutUint64(encoded[20:28], value.Revision)
 	copy(encoded[recordHeaderSize:], value.ID)
 	copy(encoded[recordHeaderSize+len(value.ID):], value.Body)
 	return encoded, nil
@@ -108,8 +118,9 @@ func decodeRecord(encoded []byte) (Record, error) {
 		return Record{}, fmt.Errorf("%w: record ID UTF-8", ErrCorrupt)
 	}
 	value := Record{
-		Kind: kind,
-		ID:   string(id),
+		Kind:     kind,
+		ID:       string(id),
+		Revision: binary.LittleEndian.Uint64(encoded[20:28]),
 		// The body is opaque bytes, so it is taken verbatim rather than validated.
 		Body: append([]byte(nil), encoded[recordHeaderSize+idLength:]...),
 	}
@@ -122,6 +133,9 @@ func decodeRecord(encoded []byte) (Record, error) {
 func validateRecord(value Record, class error) error {
 	if err := validateIdentity(value.Kind, value.ID, class); err != nil {
 		return err
+	}
+	if value.Revision == 0 {
+		return fmt.Errorf("%w: record %q of kind %d has no revision", class, value.ID, value.Kind)
 	}
 	// A leaf entry shares a 16 KiB Page with its neighbours, so one encoded
 	// record is capped well below a full Page. Refusing by name beats splitting

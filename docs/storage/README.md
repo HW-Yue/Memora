@@ -141,17 +141,18 @@
 ## 6. 现有的树
 
 一个 Database 目录下有一个 **generation**（当前格式
-`memora.page-index-generation/v3`，`internal/pagestoremigration/manifest.go:23`），
-含四棵树；Change 树独立于 generation 之外。
+`memora.page-index-generation/v6`，`internal/pagestoremigration/manifest.go:22`），
+含四棵**固定树**（catalog／versions／fulltext／objects）加**每表两棵**
+（current／history）；Change 树独立于 generation 之外。
 
 | 树 | space_id | key | leaf value | 位置 |
 | --- | --- | --- | --- | --- |
 | catalog | `MEMCAT` | 6 种：Database/Table/Column 的 ID 与 name | **逻辑 Locator**，无正文 | `store/catalogindex` |
-| current | `MEMCUR` | `(table_id, row_id)` | **逻辑 Locator**，无正文 | `store/currentrowindex` |
+| current（每表一棵） | 由 `table_id` 派生 | `row_id` | **逻辑 Locator**，无正文 | `store/currentrowindex` |
 | versions | `MEMVER` | 4 种：`revision`／`commit`／`identity`／`legacy` | revision 键带 **Row 正文 + history 元数据**，其余无 | `store/rowversionindex` |
 | fulltext | `MEMFTX` | object／owner／posting | 倒排 posting | `store/fulltextindex` |
 | change | `MEMCHG` | commit sequence | 逻辑 Locator + checksum | `store/changeindex` |
-| **objects** | — | `kind‖id` | **正文** | `store/objectindex`，**已建好、尚未接线** |
+| **objects** | `MEMOBJ` | `kind‖id` | **正文 + revision** | `store/objectindex`，generation v6 起随库建好，**内容待迁入**（[E7](./physical-index-v1.md)） |
 
 `versions` 树按 `(rowID, revision)` 建键，**一个版本一个条目**；
 `revisionKey` 让同一行的版本在叶子里连续排列，当前版本排在最后。

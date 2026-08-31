@@ -43,8 +43,12 @@ type Index struct {
 }
 
 type entry struct {
-	key   []byte
-	value []byte
+	key      []byte
+	value    []byte
+	kind     uint16
+	id       string
+	revision uint64
+	expected uint64
 }
 
 func Open(runtime *treecommit.Runtime) (*Index, error) {
@@ -54,35 +58,53 @@ func Open(runtime *treecommit.Runtime) (*Index, error) {
 	return &Index{runtime: runtime}, nil
 }
 
-// Put publishes records. A record is immutable once published, the same rule the
-// append-only record log enforced by refusing a duplicate record ID: rewriting
-// one with different bytes is a conflict, and re-publishing identical bytes is
-// the no-op that lets a retried publication converge.
+// Update publishes one revision of an object.
+//
+// ExpectedRevision is the revision this update succeeds: 0 for an object the
+// Tree has never held. The Tree is derived from the append-only record log, and
+// a derived structure that silently accepts a revision out of order stops being
+// a copy of what it derives from — so an expectation that disagrees with what
+// is stored is refused rather than applied.
+type Update struct {
+	Record           Record
+	ExpectedRevision uint64
+}
+
+// Put publishes objects at revision 1.
+//
+// It is Apply for the objects that are written once and never revised, which is
+// most of them: an object that exists is a conflict, and re-publishing identical
+// bytes is the no-op that lets a retried publication converge.
 func (index *Index) Put(transactionID uint64, records []Record) (Receipt, error) {
-	if index == nil || index.runtime == nil || transactionID == 0 {
-		return Receipt{}, fmt.Errorf("%w: Put request", ErrInvalid)
+	updates := make([]Update, 0, len(records))
+	for _, value := range records {
+		value.Revision = 1
+		updates = append(updates, Update{Record: value})
 	}
-	if len(records) == 0 {
+	return index.Apply(transactionID, updates)
+}
+
+// Apply publishes revisions, replacing the ones they succeed.
+func (index *Index) Apply(transactionID uint64, updates []Update) (Receipt, error) {
+	if index == nil || index.runtime == nil || transactionID == 0 {
+		return Receipt{}, fmt.Errorf("%w: Apply request", ErrInvalid)
+	}
+	if len(updates) == 0 {
 		return Receipt{}, nil
 	}
-	prepared, err := prepare(records)
+	prepared, err := prepare(updates)
 	if err != nil {
 		return Receipt{}, err
 	}
 
 	index.mu.Lock()
 	defer index.mu.Unlock()
-	state := index.runtime.State()
-	active, err := index.pending(state, prepared)
+	plan, changed, err := index.planApplyLocked(prepared)
 	if err != nil {
 		return Receipt{}, err
 	}
-	if len(active) == 0 {
-		return Receipt{State: state}, nil
-	}
-	plan, err := index.plan(state, active)
-	if err != nil {
-		return Receipt{}, err
+	if !changed {
+		return Receipt{State: index.runtime.State()}, nil
 	}
 	committed, err := index.runtime.Commit(transactionID, plan)
 	if err != nil {
@@ -91,16 +113,53 @@ func (index *Index) Put(transactionID uint64, records []Record) (Receipt, error)
 	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
 }
 
-// Bootstrap plants the empty root.
+// StageApply validates and plans an Apply and enrols the Tree in group, so it
+// can be committed in one WAL transaction together with other Trees. That is
+// what lets an object land in this Tree and a Row land in its own Table's Tree
+// as a single durable fact.
 //
-// Put cannot do it: it returns early when given no records, so a Tree that has
-// never held anything would have no root at all. A Tree with no root is a
-// second empty state for every reader to know about, and the generation
-// manifest's own invariant is that a Tree has one — so a Tree is born with an
-// empty root instead of without one.
-//
-// It is a no-op on a Tree that already has a root, which is what makes it safe
-// to call on every open.
+// On success the Index's write lock is held until the group commit finishes —
+// the group owns releasing it. An Apply with nothing to do adds no member and
+// releases immediately.
+func (index *Index) StageApply(group *treecommit.Group, updates []Update) error {
+	if index == nil || index.runtime == nil || group == nil {
+		return fmt.Errorf("%w: Apply request", ErrInvalid)
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	prepared, err := prepare(updates)
+	if err != nil {
+		return err
+	}
+	index.mu.Lock()
+	plan, changed, err := index.planApplyLocked(prepared)
+	if err != nil || !changed {
+		index.mu.Unlock()
+		return err
+	}
+	group.Add(index.runtime, plan, index.mu.Unlock)
+	return nil
+}
+
+// planApplyLocked builds the mutation plan for an Apply. The caller holds the
+// write lock; changed is false when the revisions are already in the Tree.
+func (index *Index) planApplyLocked(prepared []entry) (btree.MutationPlan, bool, error) {
+	state := index.runtime.State()
+	active, err := index.pending(state, prepared)
+	if err != nil {
+		return btree.MutationPlan{}, false, err
+	}
+	if len(active) == 0 {
+		return btree.MutationPlan{}, false, nil
+	}
+	plan, err := index.plan(state, active)
+	if err != nil {
+		return btree.MutationPlan{}, false, err
+	}
+	return plan, true, nil
+}
+
 func (index *Index) Bootstrap(transactionID uint64) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 {
 		return Receipt{}, fmt.Errorf("%w: Bootstrap request", ErrInvalid)
@@ -123,33 +182,43 @@ func (index *Index) Bootstrap(transactionID uint64) (Receipt, error) {
 }
 
 func (index *Index) Get(kind uint16, id string) ([]byte, error) {
+	value, err := index.Lookup(kind, id)
+	if err != nil {
+		return nil, err
+	}
+	return value.Body, nil
+}
+
+// Lookup resolves (kind, id) to the stored object, revision included. Get is
+// the same descent for callers that only want the bytes.
+func (index *Index) Lookup(kind uint16, id string) (Record, error) {
 	if index == nil || index.runtime == nil {
-		return nil, fmt.Errorf("%w: lookup Index", ErrInvalid)
+		return Record{}, fmt.Errorf("%w: lookup Index", ErrInvalid)
 	}
 	key, err := recordKey(kind, id)
 	if err != nil {
-		return nil, err
+		return Record{}, err
 	}
 	index.mu.RLock()
 	defer index.mu.RUnlock()
 	searcher, err := index.searcher()
-	if err != nil || searcher == nil {
-		if err != nil {
-			return nil, err
-		}
-		return nil, ErrNotFound
+	if err != nil {
+		return Record{}, err
+	}
+	if searcher == nil {
+		return Record{}, ErrNotFound
 	}
 	value, found, err := get(searcher, key)
 	if err != nil {
-		return nil, err
+		return Record{}, err
 	}
 	if !found {
-		return nil, ErrNotFound
+		return Record{}, ErrNotFound
 	}
 	if value.Kind != kind || value.ID != id {
-		return nil, fmt.Errorf("%w: record identity disagrees with its key", ErrCorrupt)
+		return Record{}, fmt.Errorf("%w: record identity disagrees with its key", ErrCorrupt)
 	}
-	return value.Body, nil
+	return value, nil
 }
 
 // Page walks one kind in ID order, starting after afterID. It replaces
@@ -224,10 +293,16 @@ func (index *Index) searcher() (*btree.Searcher, error) {
 	return btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
 }
 
-func prepare(records []Record) ([]entry, error) {
-	prepared := make([]entry, 0, len(records))
-	seen := make(map[string]struct{}, len(records))
-	for _, value := range records {
+func prepare(updates []Update) ([]entry, error) {
+	prepared := make([]entry, 0, len(updates))
+	seen := make(map[string]struct{}, len(updates))
+	for _, update := range updates {
+		value := update.Record
+		if update.ExpectedRevision >= value.Revision {
+			return nil, fmt.Errorf(
+				"%w: record %q of kind %d publishes revision %d after revision %d",
+				ErrInvalid, value.ID, value.Kind, value.Revision, update.ExpectedRevision)
+		}
 		key, err := recordKey(value.Kind, value.ID)
 		if err != nil {
 			return nil, err
@@ -241,7 +316,10 @@ func prepare(records []Record) ([]entry, error) {
 		if err != nil {
 			return nil, err
 		}
-		prepared = append(prepared, entry{key: key, value: encoded})
+		prepared = append(prepared, entry{
+			key: key, value: encoded, kind: value.Kind, id: value.ID,
+			revision: value.Revision, expected: update.ExpectedRevision,
+		})
 	}
 	sort.Slice(prepared, func(left, right int) bool {
 		return bytes.Compare(prepared[left].key, prepared[right].key) < 0
@@ -249,34 +327,60 @@ func prepare(records []Record) ([]entry, error) {
 	return prepared, nil
 }
 
-// pending drops records already stored with identical bytes and refuses any that
-// would rewrite a published record.
+// pending drops revisions already stored with identical bytes and refuses any
+// whose expectation disagrees with what the Tree holds.
 func (index *Index) pending(state treecontrol.State, prepared []entry) ([]entry, error) {
-	if state.RootPageID == 0 {
-		return prepared, nil
-	}
-	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
-	if err != nil {
-		return nil, err
+	var searcher *btree.Searcher
+	if state.RootPageID != 0 {
+		found, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+		if err != nil {
+			return nil, err
+		}
+		searcher = found
 	}
 	active := make([]entry, 0, len(prepared))
 	for _, candidate := range prepared {
-		stored, found, err := get(searcher, candidate.key)
-		if err != nil {
-			return nil, err
+		var (
+			stored Record
+			found  bool
+			err    error
+		)
+		if searcher != nil {
+			stored, found, err = get(searcher, candidate.key)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if !found {
+			if candidate.expected != 0 {
+				return nil, fmt.Errorf(
+					"%w: record %q of kind %d succeeds revision %d, but the Tree holds none",
+					ErrConflict, candidate.id, candidate.kind, candidate.expected)
+			}
 			active = append(active, candidate)
 			continue
 		}
-		existing, err := encodeRecord(stored)
-		if err != nil {
-			return nil, err
+		// A caller cannot always know whether its last attempt landed, so
+		// re-sending the stored revision byte for byte converges instead of
+		// conflicting. Different bytes under the same revision do not: that is
+		// two different objects claiming one revision.
+		if stored.Revision == candidate.revision {
+			existing, err := encodeRecord(stored)
+			if err != nil {
+				return nil, err
+			}
+			if !bytes.Equal(existing, candidate.value) {
+				return nil, fmt.Errorf("%w: record %q of kind %d is already published at revision %d with different bytes",
+					ErrConflict, stored.ID, stored.Kind, stored.Revision)
+			}
+			continue
 		}
-		if !bytes.Equal(existing, candidate.value) {
-			return nil, fmt.Errorf("%w: record %q of kind %d is already published with different bytes",
-				ErrConflict, stored.ID, stored.Kind)
+		if candidate.expected != stored.Revision {
+			return nil, fmt.Errorf(
+				"%w: record %q of kind %d succeeds revision %d, but the Tree holds revision %d",
+				ErrConflict, candidate.id, candidate.kind, candidate.expected, stored.Revision)
 		}
+		active = append(active, candidate)
 	}
 	return active, nil
 }
