@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
@@ -23,6 +24,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
+	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/objectindex"
 	"github.com/HW-Yue/Memora/internal/store/page"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
@@ -355,13 +357,16 @@ func buildTree(
 			return treecontrol.State{}, err
 		}
 	case "objects":
-		// Built empty. Nothing is migrated into it yet — that is stage 2 (Route)
-		// onward — but a Tree is born with a root rather than without one, the
-		// same rule every other Tree follows.
+		// Seeded with the Plan's current Routes, and nothing else yet: the rest
+		// of the objects follow in stage 3.
 		// See docs/storage/physical-index-v1.md §4.
 		index, err := objectindex.Open(runtime)
 		if err == nil {
-			_, err = index.Bootstrap(transactionID)
+			var records []objectindex.Record
+			records, err = routeObjectRecords(plan.CurrentRoutes)
+			if err == nil {
+				_, err = index.Bootstrap(transactionID, records)
+			}
 		}
 		if err != nil {
 			return treecontrol.State{}, err
@@ -773,4 +778,29 @@ func verifyRowVersions(ctx context.Context, index *rowversionindex.Index, plan P
 		}
 	}
 	return nil
+}
+
+// routeObjectKind is the Route's slot in the objects Tree's key space. It is
+// the record log's own object kind, so one Route has one kind wherever it is
+// stored and the two indexes cannot drift into disagreeing about what it is.
+const routeObjectKind = uint16(nativestore.ObjectKindRoute)
+
+// routeObjectRecords encodes Routes for the objects Tree.
+//
+// The body is the record log's own Route encoding, byte for byte. Storing a
+// re-encoding would make the Tree a translation of the authority rather than a
+// copy of it, and would turn every future codec change into two changes that
+// have to agree.
+func routeObjectRecords(routes []router.Node) ([]objectindex.Record, error) {
+	records := make([]objectindex.Record, 0, len(routes))
+	for _, node := range routes {
+		body, err := nativerouter.EncodeNode(node)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, objectindex.Record{
+			Kind: routeObjectKind, ID: node.ID, Revision: node.Revision, Body: body,
+		})
+	}
+	return records, nil
 }

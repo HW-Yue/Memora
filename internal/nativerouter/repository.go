@@ -390,6 +390,15 @@ func (repository *Repository) Nodes() ([]router.Node, error) {
 	return live, nil
 }
 
+// EncodeNode and DecodeNode expose the Route record codec.
+//
+// The objects Tree stores Route bodies verbatim — the same bytes the record log
+// holds — so that the Tree is a copy of the authority rather than a translation
+// of it, and a codec change stays one change instead of two that have to agree.
+func EncodeNode(value router.Node) ([]byte, error) { return encodeNode(value) }
+
+func DecodeNode(payload []byte) (router.Node, error) { return decodeNode(payload) }
+
 func encodeNode(value router.Node) ([]byte, error) {
 	texts := []string{value.ID, value.DatabaseID, value.TableID, value.ParentID, value.Name, value.Path, string(value.Kind), value.Purpose}
 	encoded, err := encodeTexts(texts)

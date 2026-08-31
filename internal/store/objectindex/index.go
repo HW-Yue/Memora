@@ -160,17 +160,36 @@ func (index *Index) planApplyLocked(prepared []entry) (btree.MutationPlan, bool,
 	return plan, true, nil
 }
 
-func (index *Index) Bootstrap(transactionID uint64) (Receipt, error) {
+// Bootstrap plants the root and whatever the Tree is born holding.
+//
+// Apply cannot do it alone: it returns early when given nothing, so a Tree
+// built for a Database with no objects yet would have no root at all. A Tree
+// with no root is a second empty state for every reader to know about, and the
+// generation manifest's own invariant is that a Tree has one — so a Tree is
+// born with an empty root instead of without one.
+//
+// Every record is planted at the revision it carries, expecting nothing before
+// it: a build writes each object's current state once rather than replaying the
+// revisions it passed through.
+func (index *Index) Bootstrap(transactionID uint64, records []Record) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 {
 		return Receipt{}, fmt.Errorf("%w: Bootstrap request", ErrInvalid)
+	}
+	updates := make([]Update, 0, len(records))
+	for _, value := range records {
+		updates = append(updates, Update{Record: value})
+	}
+	prepared, err := prepare(updates)
+	if err != nil {
+		return Receipt{}, err
 	}
 	index.mu.Lock()
 	defer index.mu.Unlock()
 	state := index.runtime.State()
 	if state.RootPageID != 0 {
-		return Receipt{State: state}, nil
+		return Receipt{}, fmt.Errorf("%w: Object Index is not empty", ErrConflict)
 	}
-	plan, err := planBootstrap(state, nil)
+	plan, err := planBootstrap(state, prepared)
 	if err != nil {
 		return Receipt{}, err
 	}

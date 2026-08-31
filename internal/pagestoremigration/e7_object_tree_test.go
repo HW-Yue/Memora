@@ -1,11 +1,13 @@
 package pagestoremigration
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
@@ -69,11 +71,68 @@ func TestGenerationCarriesAnObjectsTree(t *testing.T) {
 	if generation.Objects() == nil {
 		t.Fatal("a reopened generation has no objects Index")
 	}
-	// An empty Tree answers "not found" rather than failing: that is the state
-	// of a Tree nothing has been migrated into yet, which is exactly where this
-	// stage leaves it.
-	if _, err := generation.Objects().Get(uint16(8), "route_missing"); err == nil {
-		t.Fatal("an empty objects Tree must not resolve a Route")
+	if _, err := generation.Objects().Get(routeObjectKind, "route_missing"); err == nil {
+		t.Fatal("the objects Tree resolved a Route that does not exist")
+	}
+}
+
+// TestTheObjectsTreeIsSeededWithEveryCurrentRoute is E7 stage 2's build gate.
+//
+// The generation is derived: it must be reconstructible from the record log
+// alone, so whatever the write path publishes into the objects Tree, a build
+// from a Plan has to produce the same Tree. Route is the first object to move,
+// so this is where that equivalence starts being checked.
+//
+// The bytes stored are the record log's own Route encoding, verbatim. Storing a
+// re-encoding would make the Tree a translation of the authority rather than a
+// copy of it, and every future codec change a two-sided migration.
+func TestTheObjectsTreeIsSeededWithEveryCurrentRoute(t *testing.T) {
+	directory := t.TempDir()
+	reader, plan, _ := faultPlan(t)
+	applier, err := NewApplier(reader, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := applier.Apply(context.Background(), plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation, err := OpenGeneration(receipt.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer generation.Close()
+
+	if len(plan.CurrentRoutes) == 0 {
+		t.Fatal("the fixture Plan carries no Routes")
+	}
+	for _, node := range plan.CurrentRoutes {
+		stored, err := generation.Objects().Lookup(routeObjectKind, node.ID)
+		if err != nil {
+			t.Fatalf("Route %q is not in the objects Tree: %v", node.ID, err)
+		}
+		if stored.Revision != node.Revision {
+			t.Fatalf("Route %q stored at revision %d, want %d",
+				node.ID, stored.Revision, node.Revision)
+		}
+		want, err := nativerouter.EncodeNode(node)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(stored.Body, want) {
+			t.Fatalf("Route %q body in the Tree differs from its record encoding", node.ID)
+		}
+	}
+	// Walking the kind returns exactly the current Routes and nothing else: the
+	// Tree is what answers "every Route" once the read path moves over, so an
+	// extra or a missing entry is a wrong answer, not a slow one.
+	walked, err := generation.Objects().Page(routeObjectKind, "", len(plan.CurrentRoutes)+1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(walked.Records) != len(plan.CurrentRoutes) || walked.Truncated {
+		t.Fatalf("walking Routes returned %d of %d (truncated=%v)",
+			len(walked.Records), len(plan.CurrentRoutes), walked.Truncated)
 	}
 }
 
