@@ -14,14 +14,22 @@ import (
 const (
 	NativeFilename = "database.memora"
 	LegacyFilename = "prototype.sqlite"
-	// BinlogDirname holds the binlog, beside the record file it describes. It
-	// is a directory rather than a file because the log rolls.
+	// BinlogDirname is the instance layout's reserved slot for the binlog,
+	// beside "redo" and "undo" (internal/instance). It is a directory rather
+	// than a file because the log rolls.
+	//
+	// It sits at the instance root, not under "databases", because the log's
+	// whole point is being separable from the record file it describes — a
+	// backup or a replica takes the log and leaves the file behind. Nesting it
+	// under the thing it is meant to outlive would have said the opposite, and
+	// would have left the reserved directory sitting empty next to a second
+	// one with the same name.
 	BinlogDirname = "binlog"
 )
 
-// BinlogDirectory is where a data directory keeps its binlog.
+// BinlogDirectory is where an instance keeps its binlog.
 func BinlogDirectory(dataDir string) string {
-	return filepath.Join(dataDir, "databases", BinlogDirname)
+	return filepath.Join(dataDir, BinlogDirname)
 }
 
 var ErrLegacyMigrationRequired = errors.New("legacy SQLite authority requires the isolated compatibility migrator")
