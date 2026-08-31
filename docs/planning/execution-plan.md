@@ -55,13 +55,18 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 - **`File.records` 干四件事**,四件都要有去处才删得掉:
   ① `(kind,id)`→字节在哪 ② 拒绝重复 ID ③ 枚举某个 kind ④ 恢复时判归属。
   只把读改成按偏移取**只解决了①**
-- **阶段**:1 接上 objects 树 ✅ → 2 **Route 迁入** ✅(核心对象里唯一还完全靠
-  内存表的)→ 3 Relation／Configuration 等迁入 ← **当前** → 4 Catalog 树叶子
-  改存正文 → 5 `scan` 降级为修复路径,`File.records` 删除
-- **进度**:generation 升到 v6、多一棵 objects 树;`objectindex` 支持有版本的
-  更新与组提交;Route 建库时全量种入、发布时与 Row 同一次组提交、读面切到
-  `NewWithObjects`。阶段 2 顺带修出一个既存漏报:`stageLeafMounts` 写的叶子侧
-  Route revision 从来没报给权威(被新的 compare-and-set 抓出来)
+- **阶段**:1 接上 objects 树 ✅ → 2 **Route 迁入** ✅ → 4 **Catalog 正文进
+  objects 树** ✅ → 3 Relation／Configuration 等迁入 ← **当前**
+  → 5 `scan` 降级为修复路径,`File.records` 删除
+- **进度**:generation 升到 v7、多一棵 objects 树;`objectindex` 支持有版本的
+  更新(compare-and-set)、按 kind 整体替换、以及组提交;Route 与 Catalog 正文
+  都已迁入,读面全部切换,`nativecatalog.IndexedReader` 连记录文件句柄都不再持有
+- **阶段 4 与原设计不同**:正文放进 objects 树而不是 catalog 树自己的叶子,
+  理由见[物理索引](../storage/physical-index-v1.md)§4;主要是 catalog 树的
+  `readEntries` 每次写都把整棵树读进内存做 diff,正文塞进去正是要消灭的形状
+- **顺带修出的两个既存漏报**:①`stageLeafMounts` 写的叶子侧 Route revision
+  从来没报给权威;②`reconcile` 重开时只重建 catalog 树,不管 objects 树、
+  也完全没有 Route 那一步。两个都是新的跨树检查抓出来的
 - **阶段 5 不需要跨文件原子**:树里存「我索引到文件哪个偏移了」的游标,
   与树内容同一事务落盘;开库读游标、只扫尾部。
   **这个模式 fulltext 追平游标已经在跑**,照抄

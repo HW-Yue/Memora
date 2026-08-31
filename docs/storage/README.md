@@ -141,18 +141,18 @@
 ## 6. 现有的树
 
 一个 Database 目录下有一个 **generation**（当前格式
-`memora.page-index-generation/v6`，`internal/pagestoremigration/manifest.go:22`），
+`memora.page-index-generation/v7`，`internal/pagestoremigration/manifest.go:22`），
 含四棵**固定树**（catalog／versions／fulltext／objects）加**每表两棵**
 （current／history）；Change 树独立于 generation 之外。
 
 | 树 | space_id | key | leaf value | 位置 |
 | --- | --- | --- | --- | --- |
-| catalog | `MEMCAT` | 6 种：Database/Table/Column 的 ID 与 name | **逻辑 Locator**，无正文 | `store/catalogindex` |
+| catalog | `MEMCAT` | 6 种：Database/Table/Column 的 ID 与 name | **逻辑 Locator**，正文在 objects 树 | `store/catalogindex` |
 | current（每表一棵） | 由 `table_id` 派生 | `row_id` | **逻辑 Locator**，无正文 | `store/currentrowindex` |
 | versions | `MEMVER` | 4 种：`revision`／`commit`／`identity`／`legacy` | revision 键带 **Row 正文 + history 元数据**，其余无 | `store/rowversionindex` |
 | fulltext | `MEMFTX` | object／owner／posting | 倒排 posting | `store/fulltextindex` |
 | change | `MEMCHG` | commit sequence | 逻辑 Locator + checksum | `store/changeindex` |
-| **objects** | `MEMOBJ` | `kind‖id` | **正文 + revision** | `store/objectindex`，generation v6 起随库建好，**当前持有全部 Route**；其余对象待迁入（[E7](./physical-index-v1.md)） |
+| **objects** | `MEMOBJ` | `kind‖id` | **正文 + revision** | `store/objectindex`，**当前持有全部 Route 与全部 Catalog 正文**；Relation 那一族待迁入（[E7](./physical-index-v1.md)） |
 
 `versions` 树按 `(rowID, revision)` 建键，**一个版本一个条目**；
 `revisionKey` 让同一行的版本在叶子里连续排列，当前版本排在最后。
@@ -197,8 +197,10 @@ schemaVersion}`（`file.go:77`）。
 `File.Enumerations()`（`file.go:455`）计数全库扫描（`IDs`／`Records`），
 作为"读路径不得枚举全库"的回归护栏。
 
-**Route 已经不再经过它**（E7 阶段 2）：`nativerouter.NewWithObjects` 走
-objects 树，点查是一次 B+ 树下降，整树遍历是一个 kind 的范围扫。
+**Route 与 Catalog 已经不再经过它**（E7 阶段 2／4）：
+`nativerouter.NewWithObjects` 走 objects 树，点查是一次 B+ 树下降，
+整树遍历是一个 kind 的范围扫；`nativecatalog.IndexedReader` 从 catalog 树拿
+Locator、从 objects 树拿正文，**它连记录文件句柄都不再持有**。
 记录日志仍是权威、仍在追加，变的只是读往哪看。
 
 细节：[原生最小 Store](./native-minimal-store.md)、
@@ -327,12 +329,15 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
     **2026-08-31 升级为违反[架构原则](../product/architecture-principles.md)
     第四条**（命中判据 3：没有容量、没有淘汰，却是唯一的索引），
     已排为执行计划队头 E7，迁移设计见[物理索引](./physical-index-v1.md)。
-    **进度**：阶段 1（objects 树接进 generation）、阶段 2（Route 迁入并切读面）
-    已完成；余下 Relation／Configuration／SnapshotMeta／Opaque、Catalog 正文、
-    以及把 `scan` 降级为修复路径；
-12. **Catalog／Change 树只存逻辑 Locator**，正文仍在记录文件；
-    `nativerow.table()` 每读一条记录就重读一遍整个 Catalog。
-    随 11 一起解决（物理索引阶段 4）；
+    **进度**：阶段 1（objects 树接进 generation）、阶段 2（Route 迁入并切读面）、
+    阶段 4（Catalog 正文进 objects 树）已完成；余下
+    Relation／Configuration／SnapshotMeta／Opaque，以及把 `scan` 降级为修复路径；
+12. **Change 树只存逻辑 Locator**，正文仍在记录文件。
+    Catalog 那一半已于 E7 阶段 4 解决（正文进 objects 树）；
+    Change 树随 11 收尾一起处理。
+    另：`nativecatalog.ApplySchemaChangePlan` 每次改 schema 仍
+    `repository.Read()` 全扫一遍记录文件重建整个 Catalog——写路径上的全扫，
+    与 11 同源，未排期；
 13. **Overflow Page 未实现**：单条编码记录超过 8 KiB 硬失败，不跨页拆分；
 14. **`routevector.Generation.vectors`** 把全部 Route 向量常驻内存
     （`internal/routevector/model.go:125`），随语义索引规模增长，尚未评估。

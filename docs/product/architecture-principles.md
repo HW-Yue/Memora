@@ -167,15 +167,17 @@ schema 定义随表数增长而表数有人管，那是有界的。判据里的�
 | Row（当前 / 历史） | 每表聚簇树 / 每表 history 树 | ✅ 已消除（E4／E5） |
 | 两种 Membership | 对象已整个删除 | ✅ 已消除（E3） |
 | History | 已并进 history 树 | ✅ 已消除（E5） |
-| Database／Table／Column | catalog 树 **+ 内存表** | ⚠️ 树有了，内存表还在 |
+| Database／Table／Column | catalog 树存 Locator + objects 树存正文 | ✅ 已消除（E7 阶段 4） |
 | **Route（语义树）** | **objects 树（叶子存正文）** | ✅ 已消除（E7 阶段 2） |
 | Relation | 仅内存表 | ❌ 未做 |
 | Configuration／SnapshotMeta／Opaque | 仅内存表 | ❌ 未做 |
 
 无界的那一族（Row）已经搬完，这是过去这一轮存储改造的实际收益。
 Route 随后跟上：点查是一次 B+ 树下降，整树遍历是一个 kind 的范围扫，
-`Enumerations()` 在 Route 读面归零。**剩下的是 Relation 与那一族小对象，
-以及 Catalog 的正文**；记录文件本身的 `scan` 要降级为修复路径才算收尾。
+`Enumerations()` 在 Route 读面归零。Catalog 的正文也进了 objects 树，
+读它的 `IndexedReader` 连记录文件句柄都不再持有。
+**剩下的是 Relation 与那一族小对象**；记录文件本身的 `scan`
+要降级为修复路径才算收尾。
 
 ### 一处必须一起解决的循环依赖
 

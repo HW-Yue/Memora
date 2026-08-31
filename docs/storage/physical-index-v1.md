@@ -21,7 +21,7 @@
 |---|---|---|---|---|
 | 1 | **`nativestore.File.records`** | `store/native/file.go` | **历史上写过多少条记录** | 唯一物理索引,无容量无淘汰 |
 | 2 | `routevector.Generation.vectors` | `routevector/model.go:125` | 语义索引规模 | 全部 Route 向量常驻 |
-| 3 | Catalog/Change 树只存逻辑 Locator | 偏差 12 | — | 正文仍回记录文件,间接依赖 #1 |
+| 3 | ~~Catalog 树只存逻辑 Locator~~ | 偏差 12 | — | ✅ 阶段 4 已解决;Change 树仍然是 |
 
 **#1 是主目标**,#3 是它的调用方之一,#2 是独立的一处(向量,不在本文范围,
 单独排)。
@@ -80,8 +80,10 @@ objectindex(每个 kind 一段键空间)
   ├── SnapshotMeta   (kind=10)  ← 现在:仅内存表
   └── Opaque         (kind=1)   ← 现在:仅内存表
 
+  ├── Database／Table／Column (kind=2/3/4)  ← 阶段 4 已迁入
+
 Row  → 每表聚簇树 + 每表 history 树        ✅ 已完成(E4/E5)
-Catalog → catalog 树,**叶子改存正文**       ← 本文阶段 4
+Catalog → catalog 树存 Locator + objects 树存正文   ✅ 阶段 4
 ```
 
 **Row 不并进来。** 它的聚簇索引是每表的树,键是 `row_id`;
@@ -111,7 +113,7 @@ Catalog → catalog 树,**叶子改存正文**       ← 本文阶段 4
 | 1 | 接上 `objectindex`:generation 里开一棵 objects 树,建/开/重建走通 | 既有库开机行为逐字不变;树可从记录文件重建 | ✅ `5c3e1a3` |
 | 2 | **Route 迁进去**,读面切换 | `OPEN ROUTE`／`route_paths` 逐字一致;`Enumerations()` **归零** | ✅ |
 | 3 | Relation／Configuration／SnapshotMeta／Opaque 迁入 | 各自读面逐字一致;`Enumerations()` 保持零 | 队头 |
-| 4 | Catalog 树叶子改存正文 | `DescribeTable` 逐字一致;不再回记录文件取正文 | |
+| 4 | **Catalog 正文进 objects 树** | `DescribeTable` 逐字一致;不再回记录文件取正文 | ✅ |
 | 5 | `File.records` 四个职责全部转出,`scan` 降级为**修复路径** | **开库不再全扫**;崩溃后重开逐字一致 | |
 
 **跨阶段基线**:切换前后比对 `SELECT`、`SHOW HISTORY`、`AS OF`、`OPEN ROUTE`、
@@ -136,6 +138,35 @@ Catalog → catalog 树,**叶子改存正文**       ← 本文阶段 4
 Route revision(叶子记着自己挂着哪一行),但插入与更新两条路径都只调
 `PublishRows(rows, nil)` ——这些 revision 从来没报给权威。之前树里没有 Route
 所以没人发现。是新加的 compare-and-set 抓出来的。
+
+### 阶段 4 为什么不是「catalog 树叶子改存正文」
+
+本文原先写的是把正文放进 catalog 树自己的叶子。**改了**:正文放进 objects 树,
+catalog 树仍然只存 Locator。理由是本文 §2 那条——**能不造就不造**:
+
+- 阶段 1／2 已经把 objectindex 接进 generation 并跑通,`Lookup`／`Bootstrap`／
+  组提交都是现成的。走 catalog 树要改它的值格式(locatorVersion 升版)、
+  加一个正文供给接口、改 `Replace`／`readEntries` 的 diff;
+- catalog 树的 `readEntries` 每次写都把**整棵树读进 map** 来做 diff。
+  正文塞进去就等于每次 Catalog 写都把整个 Catalog 正文读进内存——
+  正是第四条准则要消灭的形状;
+- Catalog、Relation、Configuration 的正文放同一个地方,阶段 3 与阶段 4
+  是同一件事,而不是两套机制。
+
+代价是**按名字查要两次下降**(catalog 树 名字→Locator,objects 树 ID→正文)。
+但改之前那也是两跳,只不过第二跳落在那张常驻 map 上;现在两跳都是页文件里的
+B+ 树下降,都走 buffer pool、都有上界。
+
+阶段 4 的实现要点:
+
+- **objects 树按 kind 整体替换**(`ReplaceKinds`)。Catalog 一次发布交出全部
+  Database／Table／Column,而 `DROP_COLUMN` 是真语句——只增不减的族会攒下
+  没人指向的正文。不动别的 kind,Route(一次改一个)与 Catalog(只整体发布)
+  才能共用一棵树;
+- **两棵树同一次 group commit**。读面把「Locator 指向 objects 树里没有的
+  对象」判为损坏而不是竞态,凭的就是这一点;
+- **`IndexedReader` 不再持有记录文件句柄**——结构性的,不是省略:
+  没有东西可以够到它,任何读都无法悄悄退回那张表。
 
 ### 阶段 2 为什么排在最前
 
