@@ -33,7 +33,6 @@ var (
 )
 
 const (
-	fileName = "binlog-00000000000000000001.log"
 	// frameMagic opens every frame so a truncated tail is told apart from a
 	// frame that starts where one is expected.
 	frameMagic = uint32(0x4d454d42) // MEMB
@@ -61,24 +60,85 @@ type Entry struct {
 // Log is an append-only sequential log. One writer at a time; Append is
 // serialized so a frame is never interleaved with another.
 type Log struct {
-	mu     sync.Mutex
-	file   *os.File
-	closed bool
+	mu        sync.Mutex
+	directory string
+	options   Options
+	// file is the active segment, the only one written to. The rolled ones are
+	// read during replay and are the unit retention drops.
+	file     *os.File
+	sequence uint64
+	written  int64
+	closed   bool
 }
 
-// Open opens or creates the log in the given directory.
-func Open(directory string) (*Log, error) {
+// Open opens or creates the log in the given directory with the default
+// rolling and retention.
+func Open(directory string) (*Log, error) { return OpenWithOptions(directory, Options{}) }
+
+// OpenWithOptions opens or creates the log and applies retention once, on the
+// way in.
+//
+// Retention runs at open rather than on every append: dropping a file is a
+// filesystem operation on the path a write is about to take, and doing it while
+// appending would put it in the way of the write it is meant to make room for.
+// A log that rolls on size and prunes on open converges just as well, because
+// a Database that is being written to is also being opened.
+func OpenWithOptions(directory string, options Options) (*Log, error) {
 	if directory == "" {
 		return nil, fmt.Errorf("%w: binlog directory", ErrInvalid)
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, fmt.Errorf("create binlog directory: %w", err)
 	}
-	file, err := os.OpenFile(filepath.Join(directory, fileName), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600)
+	sequences, err := segments(directory)
+	if err != nil {
+		return nil, err
+	}
+	active := uint64(1)
+	if len(sequences) != 0 {
+		active = sequences[len(sequences)-1]
+	}
+	if err := prune(directory, sequences, active, options.retention()); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(
+		filepath.Join(directory, segmentName(active)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("open binlog: %w", err)
 	}
-	return &Log{file: file}, nil
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("stat binlog: %w", err)
+	}
+	return &Log{
+		directory: directory, options: options, file: file,
+		sequence: active, written: info.Size(),
+	}, nil
+}
+
+// rollLocked closes the active segment and starts the next one.
+//
+// A frame is never split across segments: the roll happens between frames, so
+// every file holds whole transactions and replaying a file is meaningful on its
+// own. That is what makes a segment shippable and what makes it safe to drop.
+func (log *Log) rollLocked() error {
+	if err := log.file.Sync(); err != nil {
+		return fmt.Errorf("sync binlog before roll: %w", err)
+	}
+	if err := log.file.Close(); err != nil {
+		return fmt.Errorf("close binlog before roll: %w", err)
+	}
+	next := log.sequence + 1
+	file, err := os.OpenFile(
+		filepath.Join(log.directory, segmentName(next)), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600,
+	)
+	if err != nil {
+		return fmt.Errorf("open next binlog segment: %w", err)
+	}
+	log.file, log.sequence, log.written = file, next, 0
+	return nil
 }
 
 // Append writes one transaction's frame and syncs it.
@@ -106,12 +166,19 @@ func (log *Log) Append(entry Entry) error {
 	if log.closed {
 		return ErrClosed
 	}
+	// Rolled before the write, not after, so a frame never straddles two files.
+	if log.written > 0 && log.written+int64(len(frame)) > log.options.segmentBytes() {
+		if err := log.rollLocked(); err != nil {
+			return err
+		}
+	}
 	if _, err := log.file.Write(frame); err != nil {
 		return fmt.Errorf("append binlog frame: %w", err)
 	}
 	if err := log.file.Sync(); err != nil {
 		return fmt.Errorf("sync binlog: %w", err)
 	}
+	log.written += int64(len(frame))
 	return nil
 }
 
@@ -130,10 +197,35 @@ func (log *Log) Replay(visit func(Entry) error) error {
 	if log.closed {
 		return ErrClosed
 	}
-	if _, err := log.file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("rewind binlog: %w", err)
+	sequences, err := segments(log.directory)
+	if err != nil {
+		return err
 	}
-	reader := bufio.NewReader(log.file)
+	for _, sequence := range sequences {
+		if err := log.replaySegment(sequence, visit); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// replaySegment reads one file. The active segment is read through its own
+// handle so an in-flight append is not missed; the rest are opened read-only.
+func (log *Log) replaySegment(sequence uint64, visit func(Entry) error) error {
+	var reader *bufio.Reader
+	if sequence == log.sequence {
+		if _, err := log.file.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("rewind binlog: %w", err)
+		}
+		reader = bufio.NewReader(log.file)
+	} else {
+		file, err := os.Open(filepath.Join(log.directory, segmentName(sequence)))
+		if err != nil {
+			return fmt.Errorf("open binlog segment: %w", err)
+		}
+		defer func() { _ = file.Close() }()
+		reader = bufio.NewReader(file)
+	}
 	for {
 		entry, err := decodeEntry(reader)
 		if errors.Is(err, io.EOF) {
