@@ -804,3 +804,23 @@ func routeObjectRecords(routes []router.Node) ([]objectindex.Record, error) {
 	}
 	return records, nil
 }
+
+// routeObjectUpdates turns published Route revisions into objects Tree updates.
+//
+// Each names the revision it succeeds, so a publication that arrives out of
+// order against the Tree is refused rather than applied. The record log has
+// already refused it too — StageNode only accepts latest+1 — which is the point:
+// two independent checks of one rule is how a derived structure stays a copy.
+func routeObjectUpdates(routes []router.Node) ([]objectindex.Update, error) {
+	records, err := routeObjectRecords(routes)
+	if err != nil {
+		return nil, err
+	}
+	updates := make([]objectindex.Update, 0, len(records))
+	for index, value := range records {
+		updates = append(updates, objectindex.Update{
+			Record: value, ExpectedRevision: routes[index].Revision - 1,
+		})
+	}
+	return updates, nil
+}

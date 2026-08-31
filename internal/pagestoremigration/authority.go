@@ -510,12 +510,6 @@ func (authority *Authority) AsOfCommit(
 	return authority.rows.AsOfCommit(ctx, table, rowID, sequence, snapshot)
 }
 
-func (authority *Authority) PublishRows(
-	ctx context.Context, values []row.Row, commit func() error,
-) error {
-	return authority.PublishMutation(ctx, values, nil, commit)
-}
-
 func (authority *Authority) PublishMutation(
 	ctx context.Context, rows []row.Row, routes []router.Node, commit func() error,
 ) error {
@@ -590,9 +584,19 @@ func (authority *Authority) PublishMutation(
 	if err := authority.generation.relieveRedoRing(); err != nil {
 		authority.redoMaintenanceErr = err
 	}
+	routeRecords, err := routeObjectUpdates(routes)
+	if err != nil {
+		return authority.poisonPublication("Row/Route body", affected, err)
+	}
 	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
 		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {
+			// The Routes go into the same group as the Rows, so a Route landing
+			// in the objects Tree and a Row landing in its Table's Tree are one
+			// durable fact rather than two a fault can separate.
+			if err := authority.generation.objects.StageApply(group, routeRecords); err != nil {
+				return err
+			}
 			if len(rows) != 0 {
 				if err := authority.generation.versions.StageAppend(group, versions); err != nil {
 					return err

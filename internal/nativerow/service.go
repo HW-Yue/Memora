@@ -54,7 +54,6 @@ type PageAuthority interface {
 	AsOfRevision(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	History(context.Context, catalog.Table, string) ([]history.Record, error)
-	PublishRows(context.Context, []row.Row, func() error) error
 	PublishMutation(context.Context, []row.Row, []router.Node, func() error) error
 }
 
@@ -196,7 +195,13 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	}
 	commit := transaction.Commit
 	if service.authority != nil {
-		commit = func() error { return service.authority.PublishRows(ctx, []row.Row{value}, transaction.Commit) }
+		// mounted carries the leaf-side Route revisions this write staged. They
+		// go to the Authority with the Row: they are in the same record
+		// transaction, so a publication that reported only the Row would leave
+		// the generation holding Routes the record log has already moved past.
+		commit = func() error {
+			return service.authority.PublishMutation(ctx, []row.Row{value}, mounted, transaction.Commit)
+		}
 	}
 	if err := commit(); err != nil {
 		return row.Row{}, err
@@ -406,7 +411,9 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 		return err
 	}
 	if service.authority != nil {
-		return service.authority.PublishRows(ctx, []row.Row{value}, transaction.Commit)
+		// The leaf-side Route revisions travel with the Row, for the reason
+		// given where a Row is first inserted.
+		return service.authority.PublishMutation(ctx, []row.Row{value}, mounted, transaction.Commit)
 	}
 	return transaction.Commit()
 }

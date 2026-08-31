@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/nativerouter"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
@@ -228,5 +229,62 @@ func buildPreObjectsGeneration(t *testing.T, directory string, plan Plan) {
 	}
 	if err := writeAuthorityMarker(directory, marker); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestAPublishedRouteLandsInTheObjectsTree is E7 stage 2's write gate.
+//
+// A build seeds the Tree from the record log, so a Tree that is only ever built
+// agrees with the log by construction. The write path is where they can drift:
+// if a publication appends the Route record and leaves the Tree behind, the Tree
+// stops being a copy of the authority the moment anything is written — and it is
+// about to become what the read path answers from.
+//
+// The Route goes in the same group commit as the Rows, which is what makes it
+// one durable fact rather than two that a fault can separate.
+func TestAPublishedRouteLandsInTheObjectsTree(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+
+	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "Published route", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRouteInObjectsTree(t, authority, root)
+
+	// A revision has to replace the one it succeeds, not sit beside it: the Tree
+	// is keyed by identity, and the current node is the whole of what it holds.
+	revised := root
+	revised.Revision, revised.Synopsis = root.Revision+1, "revised synopsis"
+	if err := authority.PublishMutation(ctx, nil, []router.Node{revised}, func() error {
+		transaction, err := file.Begin()
+		if err != nil {
+			return err
+		}
+		if err := nativerouter.New(file).StageNode(transaction, revised); err != nil {
+			return err
+		}
+		return transaction.Commit()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertRouteInObjectsTree(t, authority, revised)
+}
+
+func assertRouteInObjectsTree(t *testing.T, authority *Authority, node router.Node) {
+	t.Helper()
+	stored, err := authority.Generation().Objects().Lookup(routeObjectKind, node.ID)
+	if err != nil {
+		t.Fatalf("Route %q revision %d is not in the objects Tree: %v",
+			node.ID, node.Revision, err)
+	}
+	want, err := nativerouter.EncodeNode(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Revision != node.Revision || !bytes.Equal(stored.Body, want) {
+		t.Fatalf("objects Tree holds Route %q at revision %d, want revision %d verbatim",
+			node.ID, stored.Revision, node.Revision)
 	}
 }

@@ -32,16 +32,16 @@ func TestFulltextIsNotInTheWriteTransaction(t *testing.T) {
 	// Trees still advance, and the Fulltext Tree is untouched. That is the
 	// decoupling stated as an observation rather than a promise.
 	written := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
-	if err := authority.PublishRows(ctx, []row.Row{{
+	if err := authority.PublishMutation(ctx, []row.Row{{
 		ID: "row_decoupled", DatabaseID: table.DatabaseID, TableID: table.ID,
 		SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: 1,
 		State: row.StateLive, Values: map[string]any{table.Columns[0].ID: "decoupled"},
 		CreatedAt: written, UpdatedAt: written,
-	}}, func() error {
+	}}, nil, func() error {
 		committed = true
 		return nil
 	}); err != nil || !committed {
-		t.Fatalf("PublishRows() committed=%v error=%v", committed, err)
+		t.Fatalf("PublishMutation() committed=%v error=%v", committed, err)
 	}
 	if after := treeRevision(t, authority, "versions"); after == beforeVersions {
 		t.Fatal("the authoritative Row version Tree did not advance")
