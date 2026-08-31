@@ -11,7 +11,28 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/router"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
+	"github.com/HW-Yue/Memora/internal/store/objectindex"
 )
+
+// ObjectKind is the Route's slot in the objects Tree's key space. It is the
+// record log's own object kind, so one Route has one kind wherever it is stored
+// and the two indexes cannot drift into disagreeing about what it is.
+const ObjectKind = uint16(nativestore.ObjectKindRoute)
+
+// objectWalkBatch is how many Routes one range scan step returns. Big enough
+// that an ordinary semantic tree is one step, small enough that a large one does
+// not arrive in a single allocation.
+const objectWalkBatch = 512
+
+// ObjectSource hands out the objects Tree that currently holds the Routes.
+//
+// It is asked on every read rather than captured once: a COW rebuild replaces
+// the generation, and with it the Tree, while the Database stays open — a
+// Repository holding the old Index would answer from a Tree nothing writes to
+// any more.
+type ObjectSource interface {
+	RouteObjects() *objectindex.Index
+}
 
 const schemaVersion = 1
 
@@ -20,9 +41,38 @@ var (
 	ErrInvalid = errors.New("native Table Router value is invalid")
 )
 
-type Repository struct{ file *nativestore.File }
+type Repository struct {
+	file    *nativestore.File
+	objects ObjectSource
+}
 
+// New reads Routes out of the record log's own record table.
+//
+// It is what a caller that has no generation uses — the migration Reader, which
+// builds the generation from the record log and therefore cannot read through
+// it, and anything working on a file with no Authority attached.
 func New(file *nativestore.File) *Repository { return &Repository{file: file} }
+
+// NewWithObjects reads Routes out of the generation's objects Tree.
+//
+// The record log stays the authority: every write still appends there, and this
+// Repository still stages into it. What moves is where a read looks. Resolving a
+// node becomes one B+Tree descent, and walking the semantic tree becomes a range
+// scan over one kind — bounded by how many Routes exist rather than by how many
+// records the Database has ever written.
+//
+// See docs/storage/physical-index-v1.md §4 stage 2.
+func NewWithObjects(file *nativestore.File, objects ObjectSource) *Repository {
+	return &Repository{file: file, objects: objects}
+}
+
+// index returns the objects Tree to read through, or nil to read the record log.
+func (repository *Repository) index() *objectindex.Index {
+	if repository.objects == nil {
+		return nil
+	}
+	return repository.objects.RouteObjects()
+}
 
 func (repository *Repository) CreateRoot(id, databaseID, tableID, purpose string) (router.Node, error) {
 	return repository.CreateRootWithSynopsis(id, databaseID, tableID, purpose, "")
@@ -215,6 +265,18 @@ func (repository *Repository) Get(id string) (router.Node, error) {
 	if id == "" {
 		return router.Node{}, nativestore.ErrNotFound
 	}
+	if index := repository.index(); index != nil {
+		// One descent. The Tree holds the current revision, so there is nothing
+		// to probe forward through.
+		stored, err := index.Lookup(ObjectKind, id)
+		if errors.Is(err, objectindex.ErrNotFound) {
+			return router.Node{}, nativestore.ErrNotFound
+		}
+		if err != nil {
+			return router.Node{}, err
+		}
+		return decodeStoredNode(stored)
+	}
 	var latest router.Node
 	found := false
 	for revision := uint64(1); ; revision++ {
@@ -328,6 +390,9 @@ func nodeRecordID(id string, revision uint64) string {
 }
 
 func (repository *Repository) nodes() ([]router.Node, error) {
+	if index := repository.index(); index != nil {
+		return walkObjectRoutes(index)
+	}
 	ids, err := repository.file.IDs(nativestore.ObjectKindRoute)
 	if err != nil {
 		return nil, err
@@ -370,6 +435,44 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 		result = append(result, history[len(history)-1])
 	}
 	return result, nil
+}
+
+// walkObjectRoutes reads every current Route out of the objects Tree.
+//
+// The Tree holds one entry per Route — the current revision — so this returns
+// what nodes() reconstructs from the record log by grouping revisions, without
+// reading the superseded ones at all.
+func walkObjectRoutes(index *objectindex.Index) ([]router.Node, error) {
+	result := make([]router.Node, 0)
+	cursor := ""
+	for {
+		walked, err := index.Page(ObjectKind, cursor, objectWalkBatch)
+		if err != nil {
+			return nil, err
+		}
+		for _, stored := range walked.Records {
+			value, err := decodeStoredNode(stored)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, value)
+		}
+		if !walked.Truncated {
+			return result, nil
+		}
+		cursor = walked.NextAfterID
+	}
+}
+
+// decodeStoredNode turns one objects Tree record back into a Route and checks
+// that the node agrees with the entry that carried it. The key and the header
+// say what was stored; the body says what it is. A disagreement is corruption.
+func decodeStoredNode(stored objectindex.Record) (router.Node, error) {
+	value, err := decodeNode(stored.Body)
+	if err != nil || value.ID != stored.ID || value.Revision != stored.Revision {
+		return router.Node{}, fmt.Errorf("%w: route identity mismatch", ErrCorrupt)
+	}
+	return value, nil
 }
 
 // Nodes returns current live semantic nodes in stable ID order. Memberships

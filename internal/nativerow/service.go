@@ -23,6 +23,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowid"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
+	"github.com/HW-Yue/Memora/internal/store/objectindex"
 	"github.com/google/uuid"
 )
 
@@ -55,6 +56,7 @@ type PageAuthority interface {
 	AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	History(context.Context, catalog.Table, string) ([]history.Record, error)
 	PublishMutation(context.Context, []row.Row, []router.Node, func() error) error
+	RouteObjects() *objectindex.Index
 }
 
 type committedChangeAuthority interface {
@@ -185,7 +187,7 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 	if err := service.repository.StageSnapshotRow(transaction, value, table); err != nil {
 		return row.Row{}, err
 	}
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	mounted, err := stageLeafMounts(transaction, routes, value, value.RouteLeafIDs)
 	if err != nil {
 		return row.Row{}, err
@@ -381,7 +383,7 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 		return err
 	}
 	defer func() { _ = transaction.Rollback() }()
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	if desired == nil {
 		// nil means "keep the current mounts", which the leaves themselves now
 		// answer. An empty slice still means "unmount everywhere".
@@ -1064,7 +1066,7 @@ func (service *Service) CreateTableRouterRoot(ctx context.Context, databaseName,
 	if err != nil || strings.TrimSpace(id) == "" {
 		return router.Node{}, fmt.Errorf("allocate RouteID: %w", err)
 	}
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	return service.commitRouteNodeChange(ctx, change.OperationInsert, "create Route root", func(transaction *nativestore.Transaction) (router.Node, error) {
 		return routes.StageRoot(transaction, "route_"+id, table.DatabaseID, table.ID, purpose, synopsis)
 	})
@@ -1078,7 +1080,7 @@ func (service *Service) ListTableRouterRootsPage(ctx context.Context, databaseID
 		return nil, router.ReadPage{}, err
 	}
 	defer release()
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	roots := routes.Roots(tableID)
 	if len(roots) == 0 {
 		return router.PaginateNodes("table-root:"+databaseID+":"+tableID, cursor, limit, []router.Node{})
@@ -1102,7 +1104,7 @@ func (service *Service) CreateRouterNode(ctx context.Context, parentID string, d
 	if err != nil {
 		return router.Node{}, err
 	}
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	return service.commitRouteNodeChange(ctx, change.OperationInsert, "create Route node", func(transaction *nativestore.Transaction) (router.Node, error) {
 		return routes.StageChild(
 			transaction, "route_"+id, parentID, definition.Name,
@@ -1139,7 +1141,7 @@ func (service *Service) RenameRouterNode(ctx context.Context, id, name string, e
 		return router.Node{}, err
 	}
 	defer release()
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	current, err := routes.Get(id)
 	if err != nil {
 		return router.Node{}, err
@@ -1192,7 +1194,7 @@ func (service *Service) UpdateRouterSynopsis(ctx context.Context, id, synopsis s
 		return router.Node{}, err
 	}
 	defer release()
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	current, err := routes.Get(id)
 	if err != nil {
 		return router.Node{}, err
@@ -1212,7 +1214,7 @@ func (service *Service) UpdateRouterAliases(ctx context.Context, id string, alia
 		return router.Node{}, err
 	}
 	defer release()
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	current, err := routes.Get(id)
 	if err != nil {
 		return router.Node{}, err
@@ -1235,7 +1237,7 @@ func (service *Service) DeleteRouterNode(ctx context.Context, id string, expecte
 		return 0, err
 	}
 	defer release()
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	current, err := routes.Get(id)
 	if err != nil {
 		return 0, err
@@ -1343,7 +1345,7 @@ func (service *Service) commitRouteNodeChanges(
 }
 
 func (service *Service) GetRouterNode(_ context.Context, id string) (router.Node, error) {
-	value, err := nativerouter.New(service.repository.file).Get(id)
+	value, err := service.routes().Get(id)
 	if errors.Is(err, nativestore.ErrNotFound) {
 		return router.Node{}, serviceFailure(result.CodeNotFound, "Router node was not found", err)
 	}
@@ -1362,14 +1364,14 @@ func (service *Service) ListRouterNodes(ctx context.Context) ([]router.Node, err
 		return nil, err
 	}
 	defer release()
-	nodes, err := nativerouter.New(service.repository.file).Nodes()
+	nodes, err := service.routes().Nodes()
 	if err != nil {
 		return nil, serviceFailure(result.CodeInternal, "Route candidate source could not be read", err)
 	}
 	return nodes, nil
 }
 func (service *Service) ResolveRouterPath(_ context.Context, databaseID, path string) (router.Node, error) {
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	databases, err := nativecatalog.New(service.repository.file).Read()
 	if err != nil {
 		return router.Node{}, err
@@ -1392,7 +1394,7 @@ func (service *Service) ResolveRouterPath(_ context.Context, databaseID, path st
 	return router.Node{}, serviceFailure(result.CodeNotFound, "Router path was not found", nativestore.ErrNotFound)
 }
 func (service *Service) ListRouterChildren(_ context.Context, parentID, cursor string, limit int) ([]router.Node, string, error) {
-	return nativerouter.New(service.repository.file).ShowUnder(parentID, cursor, limit)
+	return service.routes().ShowUnder(parentID, cursor, limit)
 }
 func (service *Service) ListRouterChildrenPage(ctx context.Context, parentID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
 	release, err := service.beginRouteRead(ctx)
@@ -1400,7 +1402,7 @@ func (service *Service) ListRouterChildrenPage(ctx context.Context, parentID, cu
 		return nil, router.ReadPage{}, err
 	}
 	defer release()
-	return nativerouter.New(service.repository.file).ShowUnderPage(parentID, cursor, limit)
+	return service.routes().ShowUnderPage(parentID, cursor, limit)
 }
 func (service *Service) ListRouterLeaf(ctx context.Context, leafID string, limit int) ([]router.Locator, bool, error) {
 	locators, page, err := service.ListRouterLeafPage(ctx, leafID, "", limit)
@@ -1412,7 +1414,7 @@ func (service *Service) ListRouterLeafPage(ctx context.Context, leafID, cursor s
 		return nil, router.ReadPage{}, err
 	}
 	defer release()
-	routes := nativerouter.New(service.repository.file)
+	routes := service.routes()
 	leaf, err := routes.LeafForOpen(leafID, limit)
 	if err != nil {
 		return nil, router.ReadPage{}, err
@@ -1469,3 +1471,15 @@ func (uuidSource) Next() (string, error) { return uuid.NewString(), nil }
 type systemClock struct{}
 
 func (systemClock) Now() time.Time { return time.Now() }
+
+// routes reads Routes through the generation's objects Tree when there is an
+// Authority, and through the record log when there is not.
+//
+// The source is resolved on every call because a COW rebuild replaces the
+// generation while the Database stays open — see nativerouter.ObjectSource.
+func (service *Service) routes() *nativerouter.Repository {
+	if service.authority == nil {
+		return nativerouter.New(service.repository.file)
+	}
+	return nativerouter.NewWithObjects(service.repository.file, service.authority)
+}

@@ -55,9 +55,13 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 - **`File.records` 干四件事**,四件都要有去处才删得掉:
   ① `(kind,id)`→字节在哪 ② 拒绝重复 ID ③ 枚举某个 kind ④ 恢复时判归属。
   只把读改成按偏移取**只解决了①**
-- **阶段**:1 接上 objects 树 → 2 **Route 迁入**(核心对象里唯一还完全靠内存表的)
-  → 3 Relation／Configuration 等迁入 → 4 Catalog 树叶子改存正文
-  → 5 `scan` 降级为修复路径,`File.records` 删除
+- **阶段**:1 接上 objects 树 ✅ → 2 **Route 迁入** ✅(核心对象里唯一还完全靠
+  内存表的)→ 3 Relation／Configuration 等迁入 ← **当前** → 4 Catalog 树叶子
+  改存正文 → 5 `scan` 降级为修复路径,`File.records` 删除
+- **进度**:generation 升到 v6、多一棵 objects 树;`objectindex` 支持有版本的
+  更新与组提交;Route 建库时全量种入、发布时与 Row 同一次组提交、读面切到
+  `NewWithObjects`。阶段 2 顺带修出一个既存漏报:`stageLeafMounts` 写的叶子侧
+  Route revision 从来没报给权威(被新的 compare-and-set 抓出来)
 - **阶段 5 不需要跨文件原子**:树里存「我索引到文件哪个偏移了」的游标,
   与树内容同一事务落盘;开库读游标、只扫尾部。
   **这个模式 fulltext 追平游标已经在跑**,照抄

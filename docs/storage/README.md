@@ -152,7 +152,7 @@
 | versions | `MEMVER` | 4 种：`revision`／`commit`／`identity`／`legacy` | revision 键带 **Row 正文 + history 元数据**，其余无 | `store/rowversionindex` |
 | fulltext | `MEMFTX` | object／owner／posting | 倒排 posting | `store/fulltextindex` |
 | change | `MEMCHG` | commit sequence | 逻辑 Locator + checksum | `store/changeindex` |
-| **objects** | `MEMOBJ` | `kind‖id` | **正文 + revision** | `store/objectindex`，generation v6 起随库建好，**内容待迁入**（[E7](./physical-index-v1.md)） |
+| **objects** | `MEMOBJ` | `kind‖id` | **正文 + revision** | `store/objectindex`，generation v6 起随库建好，**当前持有全部 Route**；其余对象待迁入（[E7](./physical-index-v1.md)） |
 
 `versions` 树按 `(rowID, revision)` 建键，**一个版本一个条目**；
 `revisionKey` 让同一行的版本在叶子里连续排列，当前版本排在最后。
@@ -196,6 +196,10 @@ schemaVersion}`（`file.go:77`）。
 
 `File.Enumerations()`（`file.go:455`）计数全库扫描（`IDs`／`Records`），
 作为"读路径不得枚举全库"的回归护栏。
+
+**Route 已经不再经过它**（E7 阶段 2）：`nativerouter.NewWithObjects` 走
+objects 树，点查是一次 B+ 树下降，整树遍历是一个 kind 的范围扫。
+记录日志仍是权威、仍在追加，变的只是读往哪看。
 
 细节：[原生最小 Store](./native-minimal-store.md)、
 [Exact Object Write Lock](./exact-object-write-lock-v1.md)
@@ -322,7 +326,10 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
     这是与数据量相关的唯一无上界常驻结构（见第 7 节）。
     **2026-08-31 升级为违反[架构原则](../product/architecture-principles.md)
     第四条**（命中判据 3：没有容量、没有淘汰，却是唯一的索引），
-    已排为执行计划队头 E7，迁移设计见[物理索引](./physical-index-v1.md)；
+    已排为执行计划队头 E7，迁移设计见[物理索引](./physical-index-v1.md)。
+    **进度**：阶段 1（objects 树接进 generation）、阶段 2（Route 迁入并切读面）
+    已完成；余下 Relation／Configuration／SnapshotMeta／Opaque、Catalog 正文、
+    以及把 `scan` 降级为修复路径；
 12. **Catalog／Change 树只存逻辑 Locator**，正文仍在记录文件；
     `nativerow.table()` 每读一条记录就重读一遍整个 Catalog。
     随 11 一起解决（物理索引阶段 4）；

@@ -30,6 +30,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
 	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
+	"github.com/HW-Yue/Memora/internal/store/objectindex"
 	"github.com/HW-Yue/Memora/internal/store/objectlock"
 	"github.com/HW-Yue/Memora/internal/store/rowversionindex"
 	"github.com/HW-Yue/Memora/internal/store/treecommit"
@@ -1009,6 +1010,23 @@ func activateAuthority(
 		return err
 	}
 	return writeAuthorityMarker(databaseDirectory, marker)
+}
+
+// RouteObjects hands out the objects Tree the current generation holds.
+//
+// It is resolved on every call rather than handed out once: a COW rebuild
+// replaces the generation, and a caller holding the old Tree would answer from
+// one nothing writes to any more.
+func (authority *Authority) RouteObjects() *objectindex.Index {
+	if authority == nil {
+		return nil
+	}
+	authority.mu.RLock()
+	defer authority.mu.RUnlock()
+	if authority.generation == nil {
+		return nil
+	}
+	return authority.generation.objects
 }
 
 func (authority *Authority) Generation() *Generation {

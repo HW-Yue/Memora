@@ -106,19 +106,36 @@ Catalog → catalog 树,**叶子改存正文**       ← 本文阶段 4
 每阶段一条独立可验证的性质。**恢复是全程风险最高的部分**——
 阶段 5 动的是权威结构的索引,改错了是静默的数据丢失。
 
-| 阶段 | 内容 | 独立可验证的性质 |
-|---|---|---|
-| 1 | 接上 `objectindex`:generation 里开一棵 objects 树,建/开/重建走通 | 既有库开机行为逐字不变;树可从记录文件重建 |
-| 2 | **Route 迁进去**,读面切换 | `OPEN ROUTE`／`route_paths` 逐字一致;`Enumerations()` **归零** |
-| 3 | Relation／Configuration／SnapshotMeta／Opaque 迁入 | 各自读面逐字一致;`Enumerations()` 保持零 |
-| 4 | Catalog 树叶子改存正文 | `DescribeTable` 逐字一致;不再回记录文件取正文 |
-| 5 | `File.records` 四个职责全部转出,`scan` 降级为**修复路径** | **开库不再全扫**;崩溃后重开逐字一致 |
+| 阶段 | 内容 | 独立可验证的性质 | 状态 |
+|---|---|---|---|
+| 1 | 接上 `objectindex`:generation 里开一棵 objects 树,建/开/重建走通 | 既有库开机行为逐字不变;树可从记录文件重建 | ✅ `5c3e1a3` |
+| 2 | **Route 迁进去**,读面切换 | `OPEN ROUTE`／`route_paths` 逐字一致;`Enumerations()` **归零** | ✅ |
+| 3 | Relation／Configuration／SnapshotMeta／Opaque 迁入 | 各自读面逐字一致;`Enumerations()` 保持零 | 队头 |
+| 4 | Catalog 树叶子改存正文 | `DescribeTable` 逐字一致;不再回记录文件取正文 | |
+| 5 | `File.records` 四个职责全部转出,`scan` 降级为**修复路径** | **开库不再全扫**;崩溃后重开逐字一致 | |
 
 **跨阶段基线**:切换前后比对 `SELECT`、`SHOW HISTORY`、`AS OF`、`OPEN ROUTE`、
 `SHOW CHANGES`、Catalog Atlas 与逻辑快照哈希。
 
 **每阶段都要重跑**「已删除 Row 从任何面都拿不到」
 (`internal/daemon/f227_row_relation_archive_test.go`)。
+
+### 阶段 2 做完之后的实际形状
+
+- **写**:记录日志仍是权威,每次写照旧追加;`PublishMutation` 把同一批 Route
+  编成 `objectindex.Update`(各自声明接在哪个 revision 后面),**与 Row 的每表树
+  进同一个 group** ——落树与落行是一个持久事实;
+- **读**:`nativerouter.NewWithObjects` 走对象树。点查是一次 B+ 树下降
+  (不再从 revision 1 往上探),整树遍历是**一个 kind 的范围扫**
+  (不再 `file.IDs` 全扫);`New(file)` 保留给没有 generation 的调用方——
+  迁移 Reader 正是从记录日志建树的那个,它不能反过来读树;
+- **树的来源按次解析**(`ObjectSource`),不是开机拿一次:COW 重建会换掉整个
+  generation,握着旧树的调用方会从一棵没人再写的树上取答案。
+
+**顺带修出的既存漏报**:`stageLeafMounts` 在同一个记录事务里写叶子侧的
+Route revision(叶子记着自己挂着哪一行),但插入与更新两条路径都只调
+`PublishRows(rows, nil)` ——这些 revision 从来没报给权威。之前树里没有 Route
+所以没人发现。是新加的 compare-and-set 抓出来的。
 
 ### 阶段 2 为什么排在最前
 

@@ -202,7 +202,9 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		nativecatalog.New(nativeFile), nativecatalog.ServiceOptions{Authority: authority},
 	)
 	rowRepository := nativerow.New(nativeFile)
-	routeRepository := nativerouter.New(nativeFile)
+	// Routes read through the generation's objects Tree; writes still append to
+	// the record log, which stays the authority.
+	routeRepository := nativerouter.NewWithObjects(nativeFile, authority)
 	configuration, err := nativeconfig.New(nativeFile)
 	if err != nil {
 		_ = authority.Close()
