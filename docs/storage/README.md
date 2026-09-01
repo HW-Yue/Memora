@@ -141,7 +141,7 @@
 ## 6. 现有的树
 
 一个 Database 目录下有一个 **generation**（当前格式
-`memora.page-index-generation/v7`，`internal/pagestoremigration/manifest.go:22`），
+`memora.page-index-generation/v8`，`internal/pagestoremigration/manifest.go:22`），
 含四棵**固定树**（catalog／versions／fulltext／objects）加**每表两棵**
 （current／history）；Change 树独立于 generation 之外。
 
@@ -152,7 +152,7 @@
 | versions | `MEMVER` | 4 种：`revision`／`commit`／`identity`／`legacy` | revision 键带 **Row 正文 + history 元数据**，其余无 | `store/rowversionindex` |
 | fulltext | `MEMFTX` | object／owner／posting | 倒排 posting | `store/fulltextindex` |
 | change | `MEMCHG` | commit sequence | 逻辑 Locator + checksum | `store/changeindex` |
-| **objects** | `MEMOBJ` | `kind‖id` | **正文 + revision** | `store/objectindex`，**当前持有全部 Route 与全部 Catalog 正文**；Relation 那一族待迁入（[E7](./physical-index-v1.md)） |
+| **objects** | `MEMOBJ` | `kind‖id` | **正文 + revision** | `store/objectindex`，**持有全部 Route、Relation 与 Catalog 正文**；余 Configuration／SnapshotMeta／Opaque（[E7](./physical-index-v1.md)） |
 
 `versions` 树按 `(rowID, revision)` 建键，**一个版本一个条目**；
 `revisionKey` 让同一行的版本在叶子里连续排列，当前版本排在最后。
@@ -197,10 +197,12 @@ schemaVersion}`（`file.go:77`）。
 `File.Enumerations()`（`file.go:455`）计数全库扫描（`IDs`／`Records`），
 作为"读路径不得枚举全库"的回归护栏。
 
-**写路径上每次写都跑的全扫已经清零**：commit 变更序号从 change 树的
-high-water 往前探（不再列举全部历史变更并逐条解码），fulltext 追平改走 Trees
-（不再重建整个 Catalog 与全部 Route）。剩下的活路径全扫见
-[物理索引](./physical-index-v1.md)「全表扫描清点」——四处，全部收敛到阶段 3。
+**开库之后的活路径上已经不再有全扫**。门是
+`TestALiveWorkloadNeverSweepsTheRecordFile`：四次写加九个读面，`Enumerations()`
+增量为零。开库本身仍然全读，而且应该全读——generation 是派生的，从记录日志把
+它建出来正是全读的用途。剩下的 `IDs()` 调用点全部不在活路径上（无 generation
+时的回退、重建路径、快照导出、零调用方），逐条核对见
+[物理索引](./physical-index-v1.md)「全表扫描清点」。
 
 **Route 与 Catalog 已经不再经过它**（E7 阶段 2／4）：
 `nativerouter.NewWithObjects` 走 objects 树，点查是一次 B+ 树下降，
@@ -334,9 +336,9 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
     **2026-08-31 升级为违反[架构原则](../product/architecture-principles.md)
     第四条**（命中判据 3：没有容量、没有淘汰，却是唯一的索引），
     已排为执行计划队头 E7，迁移设计见[物理索引](./physical-index-v1.md)。
-    **进度**：阶段 1（objects 树接进 generation）、阶段 2（Route 迁入并切读面）、
-    阶段 4（Catalog 正文进 objects 树）已完成；余下
-    Relation／Configuration／SnapshotMeta／Opaque，以及把 `scan` 降级为修复路径；
+    **进度**：阶段 1～4 已完成（objects 树接线、Route、Relation、Catalog 正文，
+    加上 Configuration 改顺链读）。**开库之后不再有全扫**；余下的是把开库时的
+    `scan` 本身降级为修复路径（阶段 5），那才是这一条真正关闭的时候；
 12. **Change 树只存逻辑 Locator**，正文仍在记录文件。
     Catalog 那一半已于 E7 阶段 4 解决（正文进 objects 树）；
     Change 树随 11 收尾一起处理。

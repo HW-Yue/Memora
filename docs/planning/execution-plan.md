@@ -55,20 +55,22 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 - **`File.records` 干四件事**,四件都要有去处才删得掉:
   ① `(kind,id)`→字节在哪 ② 拒绝重复 ID ③ 枚举某个 kind ④ 恢复时判归属。
   只把读改成按偏移取**只解决了①**
-- **阶段**:1 接上 objects 树 ✅ → 2 **Route 迁入** ✅ → 4 **Catalog 正文进
-  objects 树** ✅ → 3 Relation／Configuration 等迁入 ← **当前**
-  → 5 `scan` 降级为修复路径,`File.records` 删除
+- **阶段**:1 接上 objects 树 ✅ → 2 Route 迁入 ✅ → 4 Catalog 正文进 objects 树 ✅
+  → 3 Relation 迁入、Configuration 改顺链读 ✅
+  → 5 `scan` 降级为修复路径,`File.records` 删除 ← **当前**
 - **进度**:generation 升到 v7、多一棵 objects 树;`objectindex` 支持有版本的
   更新(compare-and-set)、按 kind 整体替换、以及组提交;Route 与 Catalog 正文
   都已迁入,读面全部切换,`nativecatalog.IndexedReader` 连记录文件句柄都不再持有
 - **阶段 4 与原设计不同**:正文放进 objects 树而不是 catalog 树自己的叶子,
   理由见[物理索引](../storage/physical-index-v1.md)§4;主要是 catalog 树的
   `readEntries` 每次写都把整棵树读进内存做 diff,正文塞进去正是要消灭的形状
-- **写路径全扫**：`nativechange.NextSequence`（每次写列举全部历史变更并逐条
-  解码）、fulltext 追平重建整个 Catalog 与全部 Route、Catalog 写面两处，
-  已全部消除并加门（`Enumerations()` 增量为零）。**剩下四处全在阶段 3**，
-  其中 `NextCommitSequence` 是唯一还在每次写都跑的，逐条清点见
+- **开库之后的活路径上已无全扫**。门是 `TestALiveWorkloadNeverSweepsTheRecordFile`：
+  四次写加九个读面，`Enumerations()` 增量为零。剩下的 `IDs()` 调用点全部不在
+  活路径上（无 generation 时的回退、重建路径、快照导出、零调用方），逐条核对见
   [物理索引](../storage/physical-index-v1.md)「全表扫描清点」
+- **commit 序号已改为持久分配器**：原先每次写要扫两遍全库取最大值。
+  现在是 versions 树的 high-water，Relation 通过 commit floor 一起算进去；
+  分配失败烧掉一个号是可接受的（要求连续的是 change 序号，另一个分配器）
 - **顺带修出的两个既存漏报**:①`stageLeafMounts` 写的叶子侧 Route revision
   从来没报给权威;②`reconcile` 重开时只重建 catalog 树,不管 objects 树、
   也完全没有 Route 那一步。两个都是新的跨树检查抓出来的

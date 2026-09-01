@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -111,35 +110,37 @@ func (service *Service) History() ([]Revision, error) {
 	return service.history()
 }
 
+// history walks the revision chain forward from 1.
+//
+// Revisions are numbered from 1 with no gaps — the chain check below has always
+// enforced that — so the whole history is found by point-reading revision 1, 2,
+// 3 … until one is missing. That is exactly as many reads as there are
+// revisions.
+//
+// It used to list every Configuration record in the Database and keep the ones
+// whose ID started with this key. That cost a full sweep, and it grew with every
+// other kind of configuration the Database had ever held, not with this one.
 func (service *Service) history() ([]Revision, error) {
-	ids, err := service.file.IDs(nativestore.ObjectKindConfiguration)
-	if err != nil {
-		return nil, err
-	}
-	values := make([]Revision, 0, len(ids))
-	for _, id := range ids {
-		if !strings.HasPrefix(id, QueryBudgetsKey+"_r") {
-			continue
+	values := make([]Revision, 0)
+	for revision := uint64(1); ; revision++ {
+		payload, err := service.file.Get(
+			nativestore.ObjectKindConfiguration,
+			fmt.Sprintf("%s_r%020d", QueryBudgetsKey, revision),
+		)
+		if errors.Is(err, nativestore.ErrNotFound) {
+			return values, nil
 		}
-		payload, err := service.file.Get(nativestore.ObjectKindConfiguration, id)
 		if err != nil {
 			return nil, err
 		}
 		var value Revision
 		if err := json.Unmarshal(payload, &value); err != nil ||
 			value.Version != Version || value.Key != QueryBudgetsKey ||
-			value.Revision == 0 || validateBudgets(value.Budgets) != nil {
+			value.Revision != revision || validateBudgets(value.Budgets) != nil {
 			return nil, configError(result.CodeInternal, "native query budget configuration is corrupt")
 		}
 		values = append(values, value)
 	}
-	sort.Slice(values, func(left, right int) bool { return values[left].Revision < values[right].Revision })
-	for index := range values {
-		if values[index].Revision != uint64(index+1) {
-			return nil, configError(result.CodeInternal, "native query budget revision chain is incomplete")
-		}
-	}
-	return values, nil
 }
 
 func (service *Service) Update(budgets QueryBudgets, expected uint64, actor, reason string) (Revision, error) {

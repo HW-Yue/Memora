@@ -169,15 +169,19 @@ schema 定义随表数增长而表数有人管，那是有界的。判据里的�
 | History | 已并进 history 树 | ✅ 已消除（E5） |
 | Database／Table／Column | catalog 树存 Locator + objects 树存正文 | ✅ 已消除（E7 阶段 4） |
 | **Route（语义树）** | **objects 树（叶子存正文）** | ✅ 已消除（E7 阶段 2） |
-| Relation | 仅内存表 | ❌ 未做 |
-| Configuration／SnapshotMeta／Opaque | 仅内存表 | ❌ 未做 |
+| Relation | objects 树（叶子存正文） | ✅ 已消除（E7 阶段 3） |
+| Configuration | 记录文件，但按 revision 链顺读 | ✅ 不再全扫 |
+| SnapshotMeta／Opaque | 仅内存表 | ⚠️ 无活路径读者 |
 
 无界的那一族（Row）已经搬完，这是过去这一轮存储改造的实际收益。
-Route 随后跟上：点查是一次 B+ 树下降，整树遍历是一个 kind 的范围扫，
-`Enumerations()` 在 Route 读面归零。Catalog 的正文也进了 objects 树，
-读它的 `IndexedReader` 连记录文件句柄都不再持有。
-**剩下的是 Relation 与那一族小对象**；记录文件本身的 `scan`
-要降级为修复路径才算收尾。
+Route、Relation、Catalog 正文随后都进了 objects 树，Configuration 改成顺着
+revision 链点读。**开库之后的活路径上已经没有全扫了**——门是
+`TestALiveWorkloadNeverSweepsTheRecordFile`：四次写加九个读面，
+`Enumerations()` 增量为零。
+
+**还差最后一步**：开库时 `scan()` 仍然逐条读完整个文件建起那张表。它是记录
+文件唯一的物理索引，要给记录文件自己一个持久索引、把 `scan` 降级为修复路径，
+这一条才真正关闭（见[物理索引](../storage/physical-index-v1.md)阶段 5）。
 
 ### 一处必须一起解决的循环依赖
 

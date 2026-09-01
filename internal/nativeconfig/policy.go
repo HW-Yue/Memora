@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -83,35 +82,29 @@ func (service *Service) PolicyHistory() ([]PolicyRevision, error) {
 	return service.policyHistory()
 }
 
+// policyHistory walks the revision chain forward from 1, for the reason given
+// on history: revisions are dense, so the chain finds itself.
 func (service *Service) policyHistory() ([]PolicyRevision, error) {
-	ids, err := service.file.IDs(nativestore.ObjectKindConfiguration)
-	if err != nil {
-		return nil, err
-	}
-	values := make([]PolicyRevision, 0, len(ids))
-	for _, id := range ids {
-		if !strings.HasPrefix(id, RoutePolicyKey+"_r") {
-			continue
+	values := make([]PolicyRevision, 0)
+	for revision := uint64(1); ; revision++ {
+		payload, err := service.file.Get(
+			nativestore.ObjectKindConfiguration,
+			fmt.Sprintf("%s_r%020d", RoutePolicyKey, revision),
+		)
+		if errors.Is(err, nativestore.ErrNotFound) {
+			return values, nil
 		}
-		payload, err := service.file.Get(nativestore.ObjectKindConfiguration, id)
 		if err != nil {
 			return nil, err
 		}
 		var value PolicyRevision
 		if err := json.Unmarshal(payload, &value); err != nil ||
 			value.Version != Version || value.Key != RoutePolicyKey ||
-			value.Revision == 0 || validateRoutePolicy(value.Policy) != nil {
+			value.Revision != revision || validateRoutePolicy(value.Policy) != nil {
 			return nil, configError(result.CodeInternal, "native Route policy configuration is corrupt")
 		}
 		values = append(values, value)
 	}
-	sort.Slice(values, func(left, right int) bool { return values[left].Revision < values[right].Revision })
-	for index := range values {
-		if values[index].Revision != uint64(index+1) {
-			return nil, configError(result.CodeInternal, "native Route policy revision chain is incomplete")
-		}
-	}
-	return values, nil
 }
 
 func (service *Service) UpdatePolicy(policy RoutePolicy, expected uint64, actor, reason string) (PolicyRevision, error) {

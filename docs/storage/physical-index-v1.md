@@ -112,9 +112,9 @@ Catalog → catalog 树存 Locator + objects 树存正文   ✅ 阶段 4
 |---|---|---|---|
 | 1 | 接上 `objectindex`:generation 里开一棵 objects 树,建/开/重建走通 | 既有库开机行为逐字不变;树可从记录文件重建 | ✅ `5c3e1a3` |
 | 2 | **Route 迁进去**,读面切换 | `OPEN ROUTE`／`route_paths` 逐字一致;`Enumerations()` **归零** | ✅ |
-| 3 | Relation／Configuration／SnapshotMeta／Opaque 迁入 | 各自读面逐字一致;`Enumerations()` 保持零 | 队头 |
+| 3 | Relation 迁入;Configuration 改顺链读 | 各自读面逐字一致;`Enumerations()` 保持零 | ✅ |
 | 4 | **Catalog 正文进 objects 树** | `DescribeTable` 逐字一致;不再回记录文件取正文 | ✅ |
-| 5 | `File.records` 四个职责全部转出,`scan` 降级为**修复路径** | **开库不再全扫**;崩溃后重开逐字一致 | |
+| 5 | `File.records` 四个职责全部转出,`scan` 降级为**修复路径** | **开库不再全扫**;崩溃后重开逐字一致 | 队头 |
 
 **跨阶段基线**:切换前后比对 `SELECT`、`SHOW HISTORY`、`AS OF`、`OPEN ROUTE`、
 `SHOW CHANGES`、Catalog Atlas 与逻辑快照哈希。
@@ -181,66 +181,67 @@ Route 是**核心对象里唯一还完全靠内存表的**,而且两条路都在
 
 ### 全表扫描清点(2026-09-01,逐条指到代码)
 
-准则第四条要求「查的时候按需去文件里取」。下面是**全库中仍会 `file.IDs()`
-全扫的每一处**,按是否在活路径上分开。`File.Enumerations()` 计的就是这些。
+准则第四条要求「查的时候按需去文件里取」。**开库之后的活路径上已经清零**,
+门是 `TestALiveWorkloadNeverSweepsTheRecordFile`:四次写(插入／更新／建关系)
+加九个读面(点查／列表／AS OF／SHOW HISTORY／关系点查与列举／SHOW UNDER／
+DescribeTable／Catalog 快照),`Enumerations()` 增量为零。
 
-**已消除**(本轮):
+**开库本身仍然全读,而且应该全读**:generation 是派生的,从记录日志把它建
+出来正是全读的用途。变的是「开完之后再也不扫」。
+
+已消除:
 
 | 位置 | 触发频率 | 换成了什么 |
 |---|---|---|
 | `nativerouter.nodes()` | 每次遍历语义树 | objects 树按 kind 范围扫 |
 | `nativecatalog.Read()`(读面) | 每次 `DescribeTable` | catalog 树 + objects 树 |
-| `nativecatalog.Read()`(写面) | 每次改 schema | `authority.SnapshotCatalog` |
+| `nativecatalog.Read()`(写面) | 每次改 schema | `SnapshotCatalog` |
 | `nativecatalog.stageVersion` | **每写一个对象一遍** | 调用方交出上次发布的 Catalog |
 | `nativechange.NextSequence` | **每次写** | 从 change 树 high-water 往前探 |
 | fulltext 追平的 Catalog／Route 重建 | **每次写** | Trees |
+| `nativerow.NextCommitSequence` | **每次写(两遍)** | versions 树的持久分配器 |
+| `nativerow.table()` | **每次 Row 读写** | `Authority.TableByIdentity`(无锁) |
+| `nativerow.GetRelation` | 每次关系点查 | objects 树一次下降 |
+| `nativerow.ListRelations` | 每次关系列举 | 范围扫(原先是**平方级**:扫一遍收 ID,再逐 ID 各扫一遍) |
+| `nativeconfig.history`／`policyHistory` | 每次读配置 | revision 链从 1 顺着点读 |
 
-**仍在活路径上**(全部收敛到阶段 3 这一件事):
+**剩下的 `file.IDs()` 调用点,全部不在活路径上**(逐条核过):
 
-| 位置 | 触发频率 | 挡在哪 |
-|---|---|---|
-| `nativerow.NextCommitSequence` → `AllRows` + `AllRelationVersions` | **每次写** | commit 序号目前是「扫出来的最大值」,要改成**树里的持久分配器** |
-| `nativerow.GetRelation`／`ListRelations` | 每次 Relation 读写 | Relation 未迁入 objects 树 |
-| `nativeconfig.history`／`policy` | 每次读配置 | Configuration 未迁入 |
-| `nativekv` Opaque | 视调用方 | Opaque 未迁入 |
+- **无 generation 时的回退**:`nativerouter.nodes()`、`nativerow.GetRelation`／
+  `ListRelations`／`List`／`ReadAsOfCommit`、`nativecatalog.Read()` ——
+  只在 `objects == nil`／`authority == nil` 时走,那正是没有树可读的情形;
+- **重建路径本身**:`pagestoremigration.Reader.Build` 及其下的
+  `AllRowVersions`／`CurrentRelations`／`Catalog`;
+- **快照导出**:`nativesnapshot`,它要产出的就是全库;
+- **零生产调用方**:`nativechange.ListAfter`(change 树已接管)、
+  `store/nativekv`(整个包只有测试在用)。
 
-**合法的全读**(它们要产出的就是全库,不是索引查找):
+### commit 序号:从「扫出来的最大值」改成持久分配器 ✅
 
-- `pagestoremigration.Reader.Build` 及其下的 `nativecatalog.Read`／
-  `AllRowVersions`／`nativerouter.New(file).nodes()` ——**这是重建路径本身**;
-- `nativesnapshot` 导出;
-- `nativechange.ListAfter` ——零生产调用方(change 树已接管)。
+`NextCommitSequence` 原先是 `max(全部 Row 的 commit, 全部 Relation 的 commit)+1`
+——**每次写扫两遍全库**。它挡在一个具体的地方:`rowversionindex.HighWater()`
+只给出 Row 那半边,而 Relation 也从同一个序号空间取号,却**完全不经过权威**。
 
-### commit 序号:从「扫出来的最大值」改成持久分配器
+做法(与 Row ID 计数器同形):versions 树的 high-water 标记就是分配器;
+每次发布把它推过自己写的一切,Relation 通过 **commit floor** 一起算进去;
+建库时从 Plan 的 Relation 种下(否则 COW 重建会丢掉只有 Relation 用过的号段)。
+**分配失败会烧掉一个号**——commit 序号只用于 `AS OF` 定位与排序,不要求连续
+(要求连续的是 change 序号,那是另一个分配器,不受影响)。
 
-`NextCommitSequence` 现在是 `max(全部 Row 的 commit, 全部 Relation 的 commit) + 1`
-——**每次写都要扫两遍全库**。这是剩下的一条里唯一在每次写都跑的。
-
-要点在于它不能只靠 Row 那棵树:`rowversionindex.HighWater()` 已经给出 Row 那半边,
-但 Relation 也从同一个序号空间取号,而 **Relation 目前完全不经过权威**
-(`commitRelationChange` 直接写记录文件,generation 一无所知)。
-
-方案(与 Row ID 计数器同形,`currentrowindex.StageApplyWithRowIDCounter` 是先例):
-
-1. versions 树加一个 commit 序号计数器键;
-2. 计数器在**已有的那次组提交里**推进,不额外加 fsync——所以每次发布都要
-   报告它用掉的序号,**Relation 因此必须走权威**;
-3. Plan 加 `RelationHighWater`,建库时把计数器种到
-   `max(Row 的 commit high-water, Relation 的)` ——否则 COW 重建会丢掉
-   只有 Relation 用过的号段;
-4. 分配失败会烧掉一个号(留下空洞)。**这是可以接受的**:commit 序号只用于
-   `AS OF` 定位与排序,没有任何地方要求它连续(change 序号才要求,那是另一个
-   分配器,不受影响)。
-
-做完这一步,Relation 也就顺势进了权威,阶段 3 的迁入随之水到渠成。
-
-### 阶段 3 的一个未决设计问题
+### 还没做:按端点查关系仍是范围扫
 
 `ListRelations(endpoint, outgoing)` 要按**端点**查,而 `objectindex` 只按
-`(kind, id)` 建键。迁进去之后按 ID 点查是一次下降,但按端点列举仍然要走遍
-全部 Relation ——**比现在好(与 Relation 数量相关,不与历史写入次数相关),
-但不是点查**。要真正点查需要一棵按端点建键的二级索引。
-**这一条要单独定,不要在迁移里顺手决定。**
+`(kind, id)` 建键。迁进去之后按 ID 点查是一次下降,但按端点列举要走遍全部
+Relation ——**代价已经从「历史上写过多少条」变成「当前有多少条」,
+但不是点查**。要真点查需要一棵按端点建键的二级索引。
+个人库的关系数量有限,所以没有随之排期;**要做就单独定,不要在迁移里顺手决定。**
+
+### 一个必须记住的坑:一棵树在一次 group 里只能 stage 一次
+
+Route、Relation、Catalog 正文共用 objects 树。同一次 `CommitGroupFunc` 里对它
+调两次 `StageApply` 会**死锁**:第一次把写锁交给了 group,第二次等的正是那把
+锁,而 group 要等这次调用返回才能提交。所以同一次发布里的多个对象族要**合成
+一批**再 stage。方法注释里写死了这条,是 e2e 的 SPLIT 抓出来的。
 
 ### 阶段 5:不需要跨文件原子,只需要一个游标
 
