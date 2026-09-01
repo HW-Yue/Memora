@@ -363,7 +363,7 @@ func TestLargeNativeInventoryMatchesLocatorReferenceModel(t *testing.T) {
 	}
 	defer file.Close()
 	databases, _, _ := migrationValues()
-	if err := nativecatalog.New(file).Write(databases); err != nil {
+	if err := nativecatalog.New(file).Write(nil, databases); err != nil {
 		t.Fatal(err)
 	}
 	table := databases[0].Tables[0]
@@ -469,7 +469,7 @@ func migrationFixtureAt(t *testing.T, path string) (*nativestore.File, row.Row, 
 	}
 	t.Cleanup(func() { _ = file.Close() })
 	databases, first, second := migrationValues()
-	if err := nativecatalog.New(file).Write(databases); err != nil {
+	if err := nativecatalog.New(file).Write(nil, databases); err != nil {
 		t.Fatal(err)
 	}
 	repository := nativerow.New(file)

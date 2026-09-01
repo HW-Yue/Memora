@@ -108,7 +108,7 @@ func TestACatalogPublicationMovesBothTreesTogether(t *testing.T) {
 		target.Columns = append(target.Columns, added)
 	})
 	if err := authority.PublishCatalog(ctx, next, func() error {
-		return nativecatalog.New(file).Write(next)
+		return nativecatalog.New(file).Write(databases, next)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestDroppingACatalogObjectRemovesItsBody(t *testing.T) {
 		target.Columns = append(target.Columns, added)
 	})
 	if err := authority.PublishCatalog(ctx, withColumn, func() error {
-		return nativecatalog.New(file).Write(withColumn)
+		return nativecatalog.New(file).Write(databases, withColumn)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestDroppingACatalogObjectRemovesItsBody(t *testing.T) {
 		target.Columns = target.Columns[:len(target.Columns)-1]
 	})
 	if err := authority.PublishCatalog(ctx, withoutColumn, func() error {
-		return nativecatalog.New(file).Write(withoutColumn)
+		return nativecatalog.New(file).Write(withColumn, withoutColumn)
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -300,11 +300,14 @@ func (service *Service) mutate(ctx context.Context, mutation func(*[]catalog.Dat
 		}
 		defer release()
 	}
-	databases, err := service.repository.Read()
+	databases, err := service.currentCatalog(ctx)
 	if err != nil {
 		return err
 	}
 	before := catalogRevisionMap(databases)
+	// Kept whole, not just as revisions: the write stages only what moved, and
+	// deciding that needs the bytes each object was last published with.
+	previous := cloneCatalog(databases)
 	if err := mutation(&databases); err != nil {
 		return err
 	}
@@ -320,10 +323,47 @@ func (service *Service) mutate(ctx context.Context, mutation func(*[]catalog.Dat
 	}
 	if service.authority != nil {
 		return service.authority.PublishCatalog(ctx, databases, func() error {
-			return service.repository.WriteCommitted(databases, envelope)
+			return service.repository.WriteCommitted(previous, databases, envelope)
 		})
 	}
-	return service.repository.WriteCommitted(databases, envelope)
+	return service.repository.WriteCommitted(previous, databases, envelope)
+}
+
+// currentCatalog reads the Catalog the write is about to move on from.
+//
+// Through the Authority when there is one, which reads it out of the Catalog
+// Tree and the objects Tree — two B+Tree walks, nothing touching the record
+// log. The record-log rebuild stays for a Database with no generation, which is
+// the only case with no Tree to read.
+func (service *Service) currentCatalog(ctx context.Context) ([]catalog.Database, error) {
+	if service.authority != nil {
+		return service.authority.SnapshotCatalog(ctx)
+	}
+	return service.repository.Read()
+}
+
+// cloneCatalog copies deeply enough that a mutation of the copy cannot reach
+// back into the original: the slices are what mutations append to.
+func cloneCatalog(databases []catalog.Database) []catalog.Database {
+	result := make([]catalog.Database, 0, len(databases))
+	for _, database := range databases {
+		next := database
+		next.Aliases = append([]string(nil), database.Aliases...)
+		next.Tables = make([]catalog.Table, 0, len(database.Tables))
+		for _, table := range database.Tables {
+			copied := table
+			copied.Aliases = append([]string(nil), table.Aliases...)
+			copied.Columns = make([]catalog.Column, 0, len(table.Columns))
+			for _, column := range table.Columns {
+				value := column
+				value.Aliases = append([]string(nil), column.Aliases...)
+				copied.Columns = append(copied.Columns, value)
+			}
+			next.Tables = append(next.Tables, copied)
+		}
+		result = append(result, next)
+	}
+	return result
 }
 
 type catalogRevision struct {

@@ -21,7 +21,7 @@ func TestCatalogRoundTripThroughNativeFile(t *testing.T) {
 	}
 	repository := New(file)
 	want := catalogFixture()
-	if err := repository.Write(want); err != nil {
+	if err := repository.Write(nil, want); err != nil {
 		t.Fatalf("Write() error = %v", err)
 	}
 	if err := file.Close(); err != nil {
@@ -53,7 +53,7 @@ func TestCatalogEncodingIsDeterministic(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
-		if err := New(file).Write(fixture); err != nil {
+		if err := New(file).Write(nil, fixture); err != nil {
 			t.Fatalf("Write() error = %v", err)
 		}
 		if err := file.Close(); err != nil {
@@ -121,7 +121,7 @@ func TestCatalogWriteRejectsWrongParent(t *testing.T) {
 	t.Cleanup(func() { _ = file.Close() })
 	fixture := catalogFixture()
 	fixture[0].Tables[0].DatabaseID = "db_other"
-	if err := New(file).Write(fixture); err == nil {
+	if err := New(file).Write(nil, fixture); err == nil {
 		t.Fatal("Write() unexpectedly accepted a table with the wrong parent")
 	}
 }
@@ -136,7 +136,7 @@ func TestCatalogMutationAppendsAndReadsLatestSchemaVersion(t *testing.T) {
 	}
 	repository := New(file)
 	first := catalogFixture()
-	if err := repository.Write(first); err != nil {
+	if err := repository.Write(nil, first); err != nil {
 		t.Fatal(err)
 	}
 	second := catalogFixture()
@@ -144,7 +144,7 @@ func TestCatalogMutationAppendsAndReadsLatestSchemaVersion(t *testing.T) {
 	second[0].UpdatedAt = second[0].UpdatedAt.Add(time.Minute)
 	second[0].Name = "Memora 知识库"
 	second[0].Aliases = append(second[0].Aliases, first[0].Name)
-	if err := repository.Write(second); err != nil {
+	if err := repository.Write(first, second); err != nil {
 		t.Fatalf("Write(updated) error = %v", err)
 	}
 	if err := file.Close(); err != nil {

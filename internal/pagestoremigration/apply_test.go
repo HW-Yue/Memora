@@ -135,7 +135,7 @@ func TestLargeGenerationMatchesEveryPlannedLocatorAfterReopen(t *testing.T) {
 	}
 	defer file.Close()
 	databases, _, _ := migrationValues()
-	if err := nativecatalog.New(file).Write(databases); err != nil {
+	if err := nativecatalog.New(file).Write(nil, databases); err != nil {
 		t.Fatal(err)
 	}
 	repository := nativerow.New(file)

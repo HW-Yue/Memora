@@ -145,7 +145,7 @@ func createIndexedPointFixture(t *testing.T) *indexedPointFixture {
 	}
 	database, rows := indexedPointData()
 	catalogRepository := nativecatalog.New(file)
-	if err := catalogRepository.Write([]catalog.Database{database}); err != nil {
+	if err := catalogRepository.Write(nil, []catalog.Database{database}); err != nil {
 		t.Fatal(err)
 	}
 	rowRepository := New(file)

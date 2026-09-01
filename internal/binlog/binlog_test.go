@@ -206,7 +206,7 @@ func writeFixture(t *testing.T, file *nativestore.File) catalog.Table {
 			}},
 		}},
 	}}
-	if err := nativecatalog.New(file).Write(databases); err != nil {
+	if err := nativecatalog.New(file).Write(nil, databases); err != nil {
 		t.Fatal(err)
 	}
 	table := databases[0].Tables[0]

@@ -315,6 +315,16 @@ func (authority *Authority) NextChangeSequence(ctx context.Context) (uint64, err
 		return 0, err
 	}
 	defer authority.mu.RUnlock()
+	// From the change index Tree's high-water, which is a durable floor: the
+	// probe forward from it is one point read, where sweeping the whole change
+	// log used to make every write cost a pass over every change ever committed.
+	if authority.changes != nil {
+		_, high, err := authority.changes.sourceHighWater()
+		if err != nil {
+			return 0, err
+		}
+		return high + 1, nil
+	}
 	return nativechange.New(authority.file).NextSequence(0)
 }
 

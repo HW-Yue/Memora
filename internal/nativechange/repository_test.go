@@ -152,8 +152,14 @@ func TestRepositoryRejectsCorruptEnvelope(t *testing.T) {
 	if _, err := New(file).Get(1); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("Get(corrupt) error = %v", err)
 	}
-	if _, err := New(file).NextSequence(0); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("NextSequence(corrupt) error = %v", err)
+	// NextSequence no longer decodes what it walks past, on purpose: validating
+	// every envelope was what made allocating a sequence cost a pass over the
+	// whole change log. It reports where the log ends, and a corrupt envelope
+	// there is still a corrupt envelope — caught by Get, which is what the index
+	// reconcile reads every new sequence through.
+	next, err := New(file).NextSequence(0)
+	if err != nil || next != 2 {
+		t.Fatalf("NextSequence(corrupt) = %d, %v; want 2 with no error", next, err)
 	}
 }
 

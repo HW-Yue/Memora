@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -20,23 +19,34 @@ type Repository struct{ file *nativestore.File }
 
 func New(file *nativestore.File) *Repository { return &Repository{file: file} }
 
-func (repository *Repository) Write(databases []catalog.Database) error {
-	return repository.write(databases, nil)
+// Write publishes next, given the Catalog that was published before it.
+//
+// previous is what lets this stage only what changed without reading anything
+// back: it says which revision each object already sits at and what its bytes
+// were. Pass nil for the first Catalog a Database directory ever holds.
+func (repository *Repository) Write(previous, next []catalog.Database) error {
+	return repository.write(previous, next, nil)
 }
 
 func (repository *Repository) WriteCommitted(
-	databases []catalog.Database, envelope change.Envelope,
+	previous, next []catalog.Database, envelope change.Envelope,
 ) error {
-	return repository.write(databases, &envelope)
+	return repository.write(previous, next, &envelope)
 }
 
 func (repository *Repository) write(
-	databases []catalog.Database, envelope *change.Envelope,
+	previous, databases []catalog.Database, envelope *change.Envelope,
 ) error {
 	if repository == nil || repository.file == nil {
 		return fmt.Errorf("%w: native file is required", ErrInvalid)
 	}
 	if err := validateCatalog(databases); err != nil {
+		return err
+	}
+	// Where every object stood after the last publication. This is what replaces
+	// the sweep stageVersion used to do, once per object written.
+	prior, err := catalogPayloads(previous)
+	if err != nil {
 		return err
 	}
 	transaction, err := repository.file.Begin()
@@ -50,7 +60,7 @@ func (repository *Repository) write(
 		if err != nil {
 			return err
 		}
-		staged, err := repository.stageVersion(transaction, nativestore.ObjectKindDatabase, database.ID, database.SchemaVersion, payload)
+		staged, err := repository.stageVersion(transaction, nativestore.ObjectKindDatabase, database.ID, database.SchemaVersion, payload, prior)
 		if err != nil {
 			return fmt.Errorf("write database %q: %w", database.ID, err)
 		}
@@ -60,7 +70,7 @@ func (repository *Repository) write(
 			if err != nil {
 				return err
 			}
-			staged, err = repository.stageVersion(transaction, nativestore.ObjectKindTable, table.ID, table.SchemaVersion, payload)
+			staged, err = repository.stageVersion(transaction, nativestore.ObjectKindTable, table.ID, table.SchemaVersion, payload, prior)
 			if err != nil {
 				return fmt.Errorf("write table %q: %w", table.ID, err)
 			}
@@ -70,7 +80,7 @@ func (repository *Repository) write(
 				if err != nil {
 					return err
 				}
-				staged, err = repository.stageVersion(transaction, nativestore.ObjectKindColumn, column.ID, column.SchemaVersion, payload)
+				staged, err = repository.stageVersion(transaction, nativestore.ObjectKindColumn, column.ID, column.SchemaVersion, payload, prior)
 				if err != nil {
 					return fmt.Errorf("write column %q: %w", column.ID, err)
 				}
@@ -127,57 +137,77 @@ func (repository *Repository) StageSnapshot(transaction *nativestore.Transaction
 	return nil
 }
 
+// catalogPayload is one object as it was last published: which revision, and the
+// exact bytes. Both are needed — the revision decides whether this write is a
+// new one, and the bytes decide whether a write at the same revision is a
+// harmless repeat or a change that forgot to bump its schema version.
+type catalogPayload struct {
+	version uint64
+	payload []byte
+}
+
+func catalogPayloads(databases []catalog.Database) (map[string]catalogPayload, error) {
+	result := make(map[string]catalogPayload)
+	for databaseIndex, database := range databases {
+		payload, err := encodeDatabase(database, uint64(databaseIndex))
+		if err != nil {
+			return nil, err
+		}
+		result[payloadKey(nativestore.ObjectKindDatabase, database.ID)] =
+			catalogPayload{version: database.SchemaVersion, payload: payload}
+		for tableIndex, table := range database.Tables {
+			payload, err := encodeTable(table, uint64(tableIndex))
+			if err != nil {
+				return nil, err
+			}
+			result[payloadKey(nativestore.ObjectKindTable, table.ID)] =
+				catalogPayload{version: table.SchemaVersion, payload: payload}
+			for columnIndex, column := range table.Columns {
+				payload, err := encodeColumn(column, table.ID, uint64(columnIndex))
+				if err != nil {
+					return nil, err
+				}
+				result[payloadKey(nativestore.ObjectKindColumn, column.ID)] =
+					catalogPayload{version: column.SchemaVersion, payload: payload}
+			}
+		}
+	}
+	return result, nil
+}
+
+func payloadKey(kind nativestore.ObjectKind, id string) string {
+	return fmt.Sprintf("%d\x00%s", kind, id)
+}
+
+// stageVersion writes one object, if it moved.
+//
+// prior says where each object stood after the last publication. It used to be
+// discovered by listing every record of that kind and decoding each one — a full
+// sweep of the file per object written, so a Catalog of N objects cost N sweeps.
+// The caller already knows what it published last, so it says so instead.
 func (repository *Repository) stageVersion(
 	transaction *nativestore.Transaction,
 	kind nativestore.ObjectKind,
 	id string,
 	version uint64,
 	payload []byte,
+	prior map[string]catalogPayload,
 ) (bool, error) {
-	ids, err := repository.file.IDs(kind)
-	if err != nil {
-		return false, err
+	existing := prior[payloadKey(kind, id)]
+	if existing.version == version {
+		// Same revision: identical bytes are the repeat that lets a retried
+		// publication converge; different bytes are a change that forgot to say
+		// it was one.
+		if bytes.Equal(existing.payload, payload) {
+			return false, nil
+		}
+		return false, fmt.Errorf("%w: object %q changes without schema version", ErrInvalid, id)
 	}
-	latest := uint64(0)
-	for _, recordID := range ids {
-		if recordID != id && !strings.HasPrefix(recordID, id+"@") {
-			continue
-		}
-		existing, err := repository.file.Get(kind, recordID)
-		if err != nil {
-			return false, err
-		}
-		fields, err := decodeFields(existing)
-		if err != nil {
-			return false, err
-		}
-		logicalID, err := fields.text(1)
-		if err != nil || logicalID != id {
-			continue
-		}
-		fieldID := uint16(10)
-		if kind == nativestore.ObjectKindDatabase {
-			fieldID = 8
-		}
-		existingVersion, err := fields.uint64(fieldID)
-		if err != nil {
-			return false, err
-		}
-		if existingVersion == version {
-			if bytes.Equal(existing, payload) {
-				return false, nil
-			}
-			return false, fmt.Errorf("%w: object %q changes without schema version", ErrInvalid, id)
-		}
-		if existingVersion > latest {
-			latest = existingVersion
-		}
-	}
-	if latest >= version {
+	if existing.version >= version {
 		return false, fmt.Errorf("%w: object %q schema version is stale", ErrInvalid, id)
 	}
 	recordID := id
-	if latest > 0 {
+	if existing.version > 0 {
 		recordID = fmt.Sprintf("%s@%020d", id, version)
 	}
 	if err := transaction.Put(kind, recordSchemaVersion, recordID, payload); err != nil {

@@ -37,10 +37,13 @@ func (service *Service) ApplySchemaChangePlan(
 		}
 		defer release()
 	}
-	databases, err := service.repository.Read()
+	// Through the Trees, not the record log: a schema change used to rebuild the
+	// whole Catalog by sweeping every Catalog record in the file.
+	databases, err := service.currentCatalog(ctx)
 	if err != nil {
 		return catalog.Table{}, 0, err
 	}
+	previous := cloneCatalog(databases)
 	database, table, err := locateTable(databases, databaseName, tableName)
 	if err != nil {
 		return catalog.Table{}, 0, err
@@ -75,7 +78,7 @@ func (service *Service) ApplySchemaChangePlan(
 	if err != nil {
 		return catalog.Table{}, 0, err
 	}
-	commit := func() error { return service.repository.WriteCommitted(databases, envelope) }
+	commit := func() error { return service.repository.WriteCommitted(previous, databases, envelope) }
 	if service.authority != nil {
 		if err := service.authority.PublishCatalog(ctx, databases, commit); err != nil {
 			return catalog.Table{}, 0, err

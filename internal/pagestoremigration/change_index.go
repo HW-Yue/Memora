@@ -270,39 +270,56 @@ func collectChangeLocators(
 //
 // It is the cheap half of reconcile — two high-water reads, no writes — so a
 // reader can find out whether it needs the write lock at all before taking it.
-func (tree *authorityChangeTree) behind() (bool, error) {
+// sourceHighWater is the last commit sequence the record log holds.
+//
+// The Tree's high-water is a durable floor: the index is derived from the log
+// and can never lead it, so the end of the log is found by probing forward from
+// there. Normally that is one point read — the Tree is level with the log except
+// between a write and the catch-up that follows it.
+//
+// The floor being taken is checked, not assumed. An index high-water the log
+// does not hold is the index leading its source, which is corruption; it used to
+// be caught by comparing two numbers after sweeping the whole log, and is now
+// caught by one point read.
+func (tree *authorityChangeTree) sourceHighWater() (indexed, source uint64, err error) {
 	if tree == nil || tree.index == nil || tree.source == nil {
-		return false, fmt.Errorf("%w: committed change reconcile", ErrInvalid)
+		return 0, 0, fmt.Errorf("%w: committed change reconcile", ErrInvalid)
 	}
-	next, err := tree.source.NextSequence(0)
+	indexed, err = tree.index.HighWater()
 	if err != nil {
-		return false, fmt.Errorf("%w: inspect committed change source: %v", ErrTargetCorrupt, err)
+		return 0, 0, fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
 	}
-	indexed, err := tree.index.HighWater()
+	if indexed != 0 {
+		found, err := tree.source.Exists(indexed)
+		if err != nil {
+			return 0, 0, fmt.Errorf("%w: inspect committed change source: %v", ErrTargetCorrupt, err)
+		}
+		if !found {
+			return 0, 0, fmt.Errorf("%w: committed change index leads immutable source", ErrTargetCorrupt)
+		}
+	}
+	next, err := tree.source.NextSequence(indexed)
 	if err != nil {
-		return false, fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
+		return 0, 0, fmt.Errorf("%w: inspect committed change source: %v", ErrTargetCorrupt, err)
 	}
-	if indexed > next-1 {
-		return false, fmt.Errorf("%w: committed change index leads immutable source", ErrTargetCorrupt)
+	return indexed, next - 1, nil
+}
+
+func (tree *authorityChangeTree) behind() (bool, error) {
+	indexed, source, err := tree.sourceHighWater()
+	if err != nil {
+		return false, err
 	}
-	return indexed < next-1, nil
+	return indexed < source, nil
 }
 
 func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting bool) error {
 	if tree == nil || tree.index == nil || tree.source == nil || ctx == nil {
 		return fmt.Errorf("%w: committed change reconcile", ErrInvalid)
 	}
-	next, err := tree.source.NextSequence(0)
+	indexedHighWater, bodyHighWater, err := tree.sourceHighWater()
 	if err != nil {
-		return fmt.Errorf("%w: inspect committed change source: %v", ErrTargetCorrupt, err)
-	}
-	bodyHighWater := next - 1
-	indexedHighWater, err := tree.index.HighWater()
-	if err != nil {
-		return fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
-	}
-	if indexedHighWater > bodyHighWater {
-		return fmt.Errorf("%w: committed change index leads immutable source", ErrTargetCorrupt)
+		return err
 	}
 	if verifyExisting {
 		for after := uint64(0); after < indexedHighWater; {

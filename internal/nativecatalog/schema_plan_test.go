@@ -30,7 +30,7 @@ func TestSchemaPlanPublishFaultLeavesCatalogAndChangeLogUnchanged(t *testing.T) 
 	database := catalog.Database{ID: "db_work", Name: "work", Aliases: []string{}, Purpose: "Work",
 		Scope: "Private", SchemaVersion: 1, CreatedAt: now, UpdatedAt: now, Tables: []catalog.Table{table}}
 	repository := New(file)
-	if err := repository.Write([]catalog.Database{database}); err != nil {
+	if err := repository.Write(nil, []catalog.Database{database}); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := schemachangeplan.Build(context.Background(), nil, database, table, schemachangeplan.Proposal{

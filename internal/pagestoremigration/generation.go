@@ -490,6 +490,12 @@ func (generation *Generation) TableTree(tableID string) bool {
 
 // Objects returns the clustered Index for objects that keep one record per
 // identity, or nil for a generation written before it existed.
+// RouteObjects satisfies nativerouter.ObjectSource for a caller that already
+// holds the Authority lock and so must not take it again to ask the Authority.
+func (generation *Generation) RouteObjects() *objectindex.Index {
+	return generation.Objects()
+}
+
 // CatalogObjects satisfies nativecatalog.ObjectSource. The Catalog reader is
 // bound to one generation and rebuilt when the generation is replaced, so this
 // hands out that generation's Tree rather than whatever the Authority currently

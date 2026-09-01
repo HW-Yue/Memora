@@ -22,7 +22,7 @@ func TestRowRoundTripThroughNativeFile(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 	catalogValue, rowValue := rowFixture()
-	if err := nativecatalog.New(file).Write(catalogValue); err != nil {
+	if err := nativecatalog.New(file).Write(nil, catalogValue); err != nil {
 		t.Fatalf("catalog Write() error = %v", err)
 	}
 	if err := New(file).Write(rowValue); err != nil {
@@ -69,7 +69,7 @@ func TestRowWriteRejectsInvalidValues(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = file.Close() })
 			catalogValue, rowValue := rowFixture()
-			if err := nativecatalog.New(file).Write(catalogValue); err != nil {
+			if err := nativecatalog.New(file).Write(nil, catalogValue); err != nil {
 				t.Fatal(err)
 			}
 			test.mutate(&rowValue)
@@ -105,7 +105,7 @@ func TestLatestRevisionAndTombstoneSurviveReopen(t *testing.T) {
 	}
 	catalogValue, first := rowFixture()
 	repository := New(file)
-	if err := nativecatalog.New(file).Write(catalogValue); err != nil {
+	if err := nativecatalog.New(file).Write(nil, catalogValue); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.Write(first); err != nil {

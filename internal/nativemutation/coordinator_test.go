@@ -163,7 +163,7 @@ func mutationFixture(t *testing.T) (string, *nativestore.File, *nativerow.Reposi
 	column := catalog.Column{ID: "col_title", Name: "title", Type: "TEXT", MaxCharacters: 20, Purpose: "Title", SchemaVersion: 1, CreatedAt: now, UpdatedAt: now}
 	table := catalog.Table{ID: "tbl_notes", DatabaseID: "db_work", Name: "notes", Purpose: "Notes", RowSemantics: "One note", SchemaVersion: 1, CreatedAt: now, UpdatedAt: now, Columns: []catalog.Column{column}}
 	database := catalog.Database{ID: "db_work", Name: "work", Purpose: "Work", Scope: "Projects", SchemaVersion: 1, CreatedAt: now, UpdatedAt: now, Tables: []catalog.Table{table}}
-	if err := nativecatalog.New(file).Write([]catalog.Database{database}); err != nil {
+	if err := nativecatalog.New(file).Write(nil, []catalog.Database{database}); err != nil {
 		t.Fatal(err)
 	}
 	routes := nativerouter.New(file)

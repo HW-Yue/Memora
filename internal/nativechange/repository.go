@@ -88,29 +88,50 @@ func (repository *Repository) ListAfter(after uint64, limit int) ([]change.Envel
 	return values, false, nil
 }
 
+// Exists reports whether the log holds this commit sequence. One point read.
+func (repository *Repository) Exists(sequence uint64) (bool, error) {
+	if repository == nil || repository.file == nil || sequence == 0 {
+		return false, fmt.Errorf("%w: sequence", ErrInvalid)
+	}
+	_, err := repository.file.Get(nativestore.ObjectKindCommittedChange, recordID(sequence))
+	if errors.Is(err, nativestore.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// NextSequence reports the first unused commit sequence above floor.
+//
+// Sequences are handed out one after another with no gaps, so the end of the
+// log is found by probing forward from a floor the caller already knows is
+// taken — the change index Tree's high-water, which is durable and can never
+// lead the log. That is a bounded number of point reads, normally one.
+//
+// It used to list every committed change record and decode each one. Every
+// write takes a sequence, so that made the cost of one write a pass over every
+// change the Database had ever committed — the failure that gets worse the
+// longer the Database is used. Passing floor 0 still works and still costs
+// that, which is why callers with a Tree pass its high-water instead.
 func (repository *Repository) NextSequence(floor uint64) (uint64, error) {
 	if repository == nil || repository.file == nil {
 		return 0, fmt.Errorf("%w: repository", ErrInvalid)
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindCommittedChange)
-	if err != nil {
-		return 0, err
-	}
-	highWater := floor
-	for _, id := range ids {
-		sequence, err := parseRecordID(id)
+	for sequence := floor + 1; sequence != 0; sequence++ {
+		found, err := repository.Exists(sequence)
 		if err != nil {
 			return 0, err
 		}
-		if _, err := repository.Get(sequence); err != nil {
-			return 0, err
+		if !found {
+			return sequence, nil
 		}
-		highWater = max(highWater, sequence)
+		if sequence == math.MaxUint64 {
+			return 0, fmt.Errorf("%w: commit sequence exhausted", ErrCorrupt)
+		}
 	}
-	if highWater == math.MaxUint64 {
-		return 0, fmt.Errorf("%w: commit sequence exhausted", ErrCorrupt)
-	}
-	return highWater + 1, nil
+	return 0, fmt.Errorf("%w: commit sequence exhausted", ErrCorrupt)
 }
 
 func decode(payload []byte, sequence uint64) (change.Envelope, error) {

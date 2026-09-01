@@ -23,7 +23,7 @@ func chainFixture(t *testing.T, revisions int) (*nativestore.File, *Repository, 
 	}
 	t.Cleanup(func() { _ = file.Close() })
 	catalogValue, value := rowFixture()
-	if err := nativecatalog.New(file).Write(catalogValue); err != nil {
+	if err := nativecatalog.New(file).Write(nil, catalogValue); err != nil {
 		t.Fatal(err)
 	}
 	repository := New(file)

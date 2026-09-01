@@ -213,7 +213,7 @@ func indexedCatalogFixture(t *testing.T) (catalog.Database, func()) {
 		}},
 	}
 	repository := New(file)
-	if err := repository.Write([]catalog.Database{database}); err != nil {
+	if err := repository.Write(nil, []catalog.Database{database}); err != nil {
 		_ = file.Close()
 		t.Fatal(err)
 	}

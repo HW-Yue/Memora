@@ -9,6 +9,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/fulltext"
+	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -44,11 +45,10 @@ func (authority *Authority) fulltextRangeLocked() (uint64, bool, error) {
 	if err != nil {
 		return 0, false, fmt.Errorf("%w: Fulltext cursor: %v", ErrTargetCorrupt, err)
 	}
-	next, err := authority.changes.source.NextSequence(0)
+	_, high, err := authority.changes.sourceHighWater()
 	if err != nil {
-		return 0, false, fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
+		return 0, false, err
 	}
-	high := next - 1
 	if cursor > high {
 		return 0, false, fmt.Errorf("%w: Fulltext cursor leads the change log", ErrTargetCorrupt)
 	}
@@ -148,7 +148,10 @@ func (authority *Authority) projectChangeRange(
 func (authority *Authority) projectTouched(
 	ctx context.Context, touched touchedObjects,
 ) ([]fulltext.Document, error) {
-	databases, err := authority.reader.source.Catalog(ctx)
+	// Through the Trees, not the record log. Catch-up follows every write, and
+	// reading the Catalog out of the record log made each one cost a rebuild of
+	// the whole Catalog from a full sweep of the file.
+	databases, err := authority.catalog.Snapshot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w: Catalog for Fulltext catch-up: %v", ErrTargetCorrupt, err)
 	}
@@ -166,7 +169,9 @@ func (authority *Authority) projectTouched(
 	}
 
 	if len(touched.routes) != 0 {
-		nodes, err := authority.reader.source.Routes(ctx)
+		// The objects Tree, for the same reason — and through the generation
+		// rather than the Authority, because the Authority lock is already held.
+		nodes, err := nativerouter.NewWithObjects(authority.file, authority.generation).Nodes()
 		if err != nil {
 			return nil, fmt.Errorf("%w: Routes for Fulltext catch-up: %v", ErrTargetCorrupt, err)
 		}
