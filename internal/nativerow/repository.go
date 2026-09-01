@@ -1,6 +1,7 @@
 package nativerow
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -31,9 +32,30 @@ var (
 	ErrRevisionConflict = errors.New("native row revision conflicts with latest")
 )
 
-type Repository struct{ file *nativestore.File }
+type Repository struct {
+	file    *nativestore.File
+	objects ObjectSource
+}
 
+// New reads Relations out of the record log's own record table.
+//
+// It is what a caller with no generation uses — the migration Reader, which
+// builds the generation from the record log and therefore cannot read through
+// it, and anything working on a file with no Authority attached.
 func New(file *nativestore.File) *Repository { return &Repository{file: file} }
+
+// NewWithObjects reads Relations out of the generation's objects Tree.
+//
+// The record log stays the authority: every write still appends there, and this
+// Repository still stages into it. What moves is where a read looks. Resolving a
+// Relation becomes one B+Tree descent, and listing an endpoint's Relations
+// becomes a range scan over one kind — bounded by how many Relations exist
+// rather than by how many Relation records the Database ever wrote.
+//
+// See docs/storage/physical-index-v1.md §4 stage 3.
+func NewWithObjects(file *nativestore.File, objects ObjectSource) *Repository {
+	return &Repository{file: file, objects: objects}
+}
 
 func (repository *Repository) Write(value row.Row) error {
 	if value.Revision != 1 || value.State != row.StateLive {
@@ -447,9 +469,21 @@ func revisionRecordID(id string, revision uint64) string {
 	return id + "@" + fmt.Sprintf("%020d", revision)
 }
 
+// table resolves the schema a Row is encoded and decoded against.
+//
+// Through the generation's Catalog reader when there is one: two B+Tree
+// descents. The record-log rebuild below is what a caller with no generation
+// falls back to — and what every Row read and write used to pay, a full sweep
+// of the file each time.
+//
+// It takes no context because its callers are encode/decode paths that have
+// none; the lookup is a Page read, not a request.
 func (repository *Repository) table(databaseID, tableID string) (catalog.Table, error) {
 	if repository == nil || repository.file == nil {
 		return catalog.Table{}, fmt.Errorf("%w: native file is required", ErrInvalid)
+	}
+	if repository.objects != nil {
+		return repository.objects.TableByIdentity(context.Background(), databaseID, tableID)
 	}
 	databases, err := nativecatalog.New(repository.file).Read()
 	if err != nil {

@@ -20,7 +20,8 @@ import (
 
 const (
 	GenerationDirectory      = "page-index-v1"
-	generationVersion        = "memora.page-index-generation/v7"
+	generationVersion        = "memora.page-index-generation/v8"
+	catalogObjectsVersion    = "memora.page-index-generation/v7"
 	routeObjectsVersion      = "memora.page-index-generation/v6"
 	perTableTreeVersion      = "memora.page-index-generation/v5"
 	sharedCurrentVersion     = "memora.page-index-generation/v4"
@@ -204,6 +205,7 @@ func treeStateFromRuntime(state treecontrol.State) treeStateManifest {
 // (Table, Row), and is rebuilt on open.
 func (manifest generationManifest) perTableRows() bool {
 	return manifest.Version == generationVersion ||
+		manifest.Version == catalogObjectsVersion ||
 		manifest.Version == routeObjectsVersion ||
 		manifest.Version == perTableTreeVersion
 }
@@ -211,8 +213,8 @@ func (manifest generationManifest) perTableRows() bool {
 // physicalObjectIndex reports whether a generation's objects Tree holds
 // everything the read path now asks it for.
 //
-// v6 introduced the Tree with the Routes in it; v7 added the Catalog bodies. A
-// generation below v7 opens read-only and is then COW-rebuilt, because a Tree
+// v6 introduced the Tree with the Routes in it, v7 added the Catalog bodies and
+// v8 the Relations. A generation below v8 opens read-only and is then COW-rebuilt, because a Tree
 // that is missing a family is not the same as one whose family is empty: the
 // reader would find the Catalog Tree naming objects the objects Tree has never
 // heard of, which is the shape of corruption, not of an empty Database.
@@ -222,6 +224,7 @@ func (manifest generationManifest) physicalObjectIndex() bool {
 
 func (manifest generationManifest) sharedLog() bool {
 	return manifest.Version == generationVersion ||
+		manifest.Version == catalogObjectsVersion ||
 		manifest.Version == routeObjectsVersion ||
 		manifest.Version == perTableTreeVersion ||
 		manifest.Version == sharedCurrentVersion

@@ -42,6 +42,23 @@ func (err *ServiceError) Unwrap() error      { return err.Cause }
 type IDSource interface{ Next() (string, error) }
 type Clock interface{ Now() time.Time }
 
+// Mutation is one publication's payload: everything the record log is about to
+// hold that the generation must hold too.
+//
+// It is a struct rather than a parameter list because it has grown three times —
+// Rows, then Routes, then Relations — and each growth silently changed the
+// meaning of every call site that did not pass the new thing. A field defaults
+// to empty; an argument that does not exist yet cannot.
+type Mutation struct {
+	Rows      []row.Row
+	Routes    []router.Node
+	Relations []relation.Relation
+}
+
+func (mutation Mutation) Empty() bool {
+	return len(mutation.Rows)+len(mutation.Routes)+len(mutation.Relations) == 0
+}
+
 // PageAuthority owns current/version visibility after F107.
 type PageAuthority interface {
 	BeginWrite(context.Context) (func(), error)
@@ -55,7 +72,8 @@ type PageAuthority interface {
 	AsOfRevision(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	History(context.Context, catalog.Table, string) ([]history.Record, error)
-	PublishMutation(context.Context, []row.Row, []router.Node, func() error) error
+	NextCommitSequence(context.Context) (uint64, error)
+	PublishMutation(context.Context, Mutation, func() error) error
 	RouteObjects() *objectindex.Index
 }
 
@@ -202,7 +220,7 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 		// transaction, so a publication that reported only the Row would leave
 		// the generation holding Routes the record log has already moved past.
 		commit = func() error {
-			return service.authority.PublishMutation(ctx, []row.Row{value}, mounted, transaction.Commit)
+			return service.authority.PublishMutation(ctx, Mutation{Rows: []row.Row{value}, Routes: mounted}, transaction.Commit)
 		}
 	}
 	if err := commit(); err != nil {
@@ -415,7 +433,7 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 	if service.authority != nil {
 		// The leaf-side Route revisions travel with the Row, for the reason
 		// given where a Row is first inserted.
-		return service.authority.PublishMutation(ctx, []row.Row{value}, mounted, transaction.Commit)
+		return service.authority.PublishMutation(ctx, Mutation{Rows: []row.Row{value}, Routes: mounted}, transaction.Commit)
 	}
 	return transaction.Commit()
 }
@@ -910,6 +928,14 @@ func (service *Service) commitRelationChange(ctx context.Context, value relation
 	if err := nativechange.Stage(transaction, envelope); err != nil {
 		return err
 	}
+	// Through the Authority, so the Relation lands in the objects Tree with the
+	// record it is written from. Before this a Relation was written straight to
+	// the record log and the generation never heard of it — which is why the
+	// only index it had was the resident record table.
+	if service.authority != nil {
+		return service.authority.PublishMutation(ctx,
+			Mutation{Relations: []relation.Relation{value}}, transaction.Commit)
+	}
 	return transaction.Commit()
 }
 func (service *Service) ListOutgoingRelations(ctx context.Context, endpoint row.RelationEndpoint) ([]relation.Relation, error) {
@@ -977,6 +1003,12 @@ func (service *Service) NextCommitSequence(ctx context.Context) (uint64, error) 
 	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
+	}
+	// From the Authority's allocator when there is one: the versions Tree's
+	// high-water, which every publication advances. Without a generation there
+	// is no Tree, and the record log's own maximum is all there is.
+	if service.authority != nil {
+		return service.authority.NextCommitSequence(ctx)
 	}
 	return service.repository.NextCommitSequence()
 }
@@ -1339,7 +1371,9 @@ func (service *Service) commitRouteNodeChanges(
 	}
 	commit := transaction.Commit
 	if service.authority != nil {
-		commit = func() error { return service.authority.PublishMutation(ctx, nil, values, transaction.Commit) }
+		commit = func() error {
+			return service.authority.PublishMutation(ctx, Mutation{Routes: values}, transaction.Commit)
+		}
 	}
 	return primary, commit()
 }

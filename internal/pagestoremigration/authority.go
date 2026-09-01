@@ -22,6 +22,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
+	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -75,9 +76,12 @@ type Authority struct {
 	marker     authorityMarker
 	generation *Generation
 	reader     *Reader
-	catalog    *nativecatalog.IndexedReader
-	rows       *nativerow.IndexedReader
-	changes    *authorityChangeTree
+	// catalog is swapped, not mutated, when a generation is replaced: readers
+	// that run inside a publication need it without taking the Authority lock,
+	// and taking that lock while the publication holds it is a self-deadlock.
+	catalog atomic.Pointer[nativecatalog.IndexedReader]
+	rows    *nativerow.IndexedReader
+	changes *authorityChangeTree
 	// poisonedAll marks failures whose blast radius really is the whole
 	// Instance: generation replacement and undeterminable Catalog transitions.
 	// poisonedDatabases marks failures confined to named Databases. Reads are
@@ -165,10 +169,11 @@ func OpenAuthority(
 	}
 	authority := &Authority{
 		directory: absolute, file: file, marker: marker, generation: generation,
-		reader: reader, catalog: catalogReader, rows: rowReader, changes: changeTree,
+		reader: reader, rows: rowReader, changes: changeTree,
 		writeGate: make(chan struct{}, 1),
 		locks:     objectlock.New(),
 	}
+	authority.catalog.Store(catalogReader)
 	authority.writeGate <- struct{}{}
 	// A generation missing a Tree, holding one redo log per Tree, or keeping
 	// every Table's current Rows in one shared Tree, or no objects Tree, has to
@@ -297,6 +302,67 @@ func (authority *Authority) BeginWrite(ctx context.Context) (func(), error) {
 	}
 	var once sync.Once
 	return func() { once.Do(func() { authority.writeGate <- struct{}{} }) }, nil
+}
+
+// NextCommitSequence reserves the next point on the snapshot timeline.
+//
+// It comes from the versions Tree's high-water marker, which every publication
+// advances past everything it wrote — Relations included, through the floor.
+// It used to be computed by sweeping every Row and every Relation record in the
+// Database and taking the maximum, on every write.
+//
+// A write that then fails burns the number: the marker only moves forward, and
+// the caller retries with a later one. Nothing requires commit sequences to be
+// dense — they order and locate AS OF reads, and a gap orders exactly as well.
+func (authority *Authority) NextCommitSequence(ctx context.Context) (uint64, error) {
+	if err := authority.lockRead(ctx); err != nil {
+		return 0, err
+	}
+	defer authority.mu.RUnlock()
+	if authority.generation == nil || authority.generation.versions == nil {
+		return 0, fmt.Errorf("%w: commit sequence allocator", ErrInvalid)
+	}
+	high, err := authority.generation.versions.HighWater()
+	if err != nil {
+		return 0, err
+	}
+	return high + 1, nil
+}
+
+// mutationCommitHighWater is the highest commit sequence a publication writes.
+func mutationCommitHighWater(rows []row.Row, relations []relation.Relation) uint64 {
+	var highest uint64
+	for _, value := range rows {
+		if value.CommitSequence > highest {
+			highest = value.CommitSequence
+		}
+	}
+	for _, value := range relations {
+		if value.CommitSequence > highest {
+			highest = value.CommitSequence
+		}
+	}
+	return highest
+}
+
+// TableByIdentity resolves a Table without taking the Authority lock.
+//
+// A Row cannot be encoded or decoded without its schema, so this is reached from
+// inside publications — the Fulltext catch-up runs while the write lock is still
+// held, and asking for the lock again there is a self-deadlock. It is also not
+// needed: the Catalog reader is swapped atomically when a generation is
+// replaced, and what it reads are Trees that carry their own locks.
+func (authority *Authority) TableByIdentity(
+	ctx context.Context, databaseID, tableID string,
+) (catalog.Table, error) {
+	if authority == nil {
+		return catalog.Table{}, fmt.Errorf("%w: Table lookup", ErrInvalid)
+	}
+	reader := authority.catalog.Load()
+	if reader == nil {
+		return catalog.Table{}, fmt.Errorf("%w: Catalog reader", ErrInvalid)
+	}
+	return reader.DescribeTable(ctx, databaseID, tableID)
 }
 
 func (authority *Authority) Capture(ctx context.Context) (uint64, error) {
@@ -523,18 +589,19 @@ func (authority *Authority) AsOfCommit(
 }
 
 func (authority *Authority) PublishMutation(
-	ctx context.Context, rows []row.Row, routes []router.Node, commit func() error,
+	ctx context.Context, mutation nativerow.Mutation, commit func() error,
 ) error {
-	if authority == nil || ctx == nil || len(rows)+len(routes) == 0 || commit == nil {
-		return fmt.Errorf("%w: Row/Route publication", ErrInvalid)
+	if authority == nil || ctx == nil || mutation.Empty() || commit == nil {
+		return fmt.Errorf("%w: Row/Route/Relation publication", ErrInvalid)
 	}
+	rows, routes, relations := mutation.Rows, mutation.Routes, mutation.Relations
 	authority.mu.Lock()
 	defer authority.mu.Unlock()
 	affected := mutationDatabaseIDs(rows, routes)
 	if err := authority.writableLocked(ctx, affected...); err != nil {
 		return err
 	}
-	databases, err := authority.catalog.Snapshot(ctx)
+	databases, err := authority.catalog.Load().Snapshot(ctx)
 	if err != nil {
 		return err
 	}
@@ -596,21 +663,36 @@ func (authority *Authority) PublishMutation(
 	if err := authority.generation.relieveRedoRing(); err != nil {
 		authority.redoMaintenanceErr = err
 	}
-	routeRecords, err := routeObjectUpdates(routes)
+	// Routes and Relations share the objects Tree, so they are staged as one
+	// batch. Two StageApply calls on one Index in one group would deadlock: the
+	// first hands its write lock to the group, and the second waits for a lock
+	// the group cannot release until the commit it is still being built for.
+	objectRecords, err := routeObjectUpdates(routes)
 	if err != nil {
 		return authority.poisonPublication("Row/Route body", affected, err)
 	}
+	relationRecords, err := nativerow.RelationObjectUpdates(relations)
+	if err != nil {
+		return authority.poisonPublication("Row/Route body", affected, err)
+	}
+	objectRecords = append(objectRecords, relationRecords...)
 	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
 		err = treecommit.CommitGroupFunc(transactionID, func(group *treecommit.Group) error {
 			// The Routes go into the same group as the Rows, so a Route landing
 			// in the objects Tree and a Row landing in its Table's Tree are one
 			// durable fact rather than two a fault can separate.
-			if err := authority.generation.objects.StageApply(group, routeRecords); err != nil {
+			if err := authority.generation.objects.StageApply(group, objectRecords); err != nil {
 				return err
 			}
-			if len(rows) != 0 {
-				if err := authority.generation.versions.StageAppend(group, versions); err != nil {
+			// The shared versions Tree carries the commit sequence allocator's
+			// high-water. Relations take their numbers from the same allocator
+			// but are not Row versions, so the floor is what stops a number a
+			// Relation holds from being handed out again.
+			if floor := mutationCommitHighWater(rows, relations); len(rows) != 0 || floor != 0 {
+				if err := authority.generation.versions.StageAppendWithCommitFloor(
+					group, versions, floor,
+				); err != nil {
 					return err
 				}
 			}
@@ -707,7 +789,7 @@ func (authority *Authority) SnapshotCatalog(ctx context.Context) ([]catalog.Data
 		return nil, err
 	}
 	defer authority.mu.RUnlock()
-	return authority.catalog.Snapshot(ctx)
+	return authority.catalog.Load().Snapshot(ctx)
 }
 
 func (authority *Authority) ShowDatabases(ctx context.Context) ([]catalog.Database, error) {
@@ -715,7 +797,7 @@ func (authority *Authority) ShowDatabases(ctx context.Context) ([]catalog.Databa
 		return nil, err
 	}
 	defer authority.mu.RUnlock()
-	return authority.catalog.ShowDatabases(ctx)
+	return authority.catalog.Load().ShowDatabases(ctx)
 }
 
 func (authority *Authority) DescribeDatabase(ctx context.Context, name string) (catalog.Database, error) {
@@ -723,7 +805,7 @@ func (authority *Authority) DescribeDatabase(ctx context.Context, name string) (
 		return catalog.Database{}, err
 	}
 	defer authority.mu.RUnlock()
-	return authority.catalog.DescribeDatabase(ctx, name)
+	return authority.catalog.Load().DescribeDatabase(ctx, name)
 }
 
 func (authority *Authority) ShowTables(ctx context.Context, databaseName string) ([]catalog.Table, error) {
@@ -731,7 +813,7 @@ func (authority *Authority) ShowTables(ctx context.Context, databaseName string)
 		return nil, err
 	}
 	defer authority.mu.RUnlock()
-	return authority.catalog.ShowTables(ctx, databaseName)
+	return authority.catalog.Load().ShowTables(ctx, databaseName)
 }
 
 func (authority *Authority) DescribeTable(
@@ -741,7 +823,7 @@ func (authority *Authority) DescribeTable(
 		return catalog.Table{}, err
 	}
 	defer authority.mu.RUnlock()
-	return authority.catalog.DescribeTable(ctx, databaseName, tableName)
+	return authority.catalog.Load().DescribeTable(ctx, databaseName, tableName)
 }
 
 func (authority *Authority) PublishCatalog(
@@ -755,7 +837,7 @@ func (authority *Authority) PublishCatalog(
 	if err := authority.openLocked(ctx); err != nil {
 		return err
 	}
-	current, err := authority.catalog.Snapshot(ctx)
+	current, err := authority.catalog.Load().Snapshot(ctx)
 	if err != nil {
 		return err
 	}
@@ -1058,6 +1140,20 @@ func (authority *Authority) RouteObjects() *objectindex.Index {
 	return authority.generation.objects
 }
 
+// RelationObjects hands out the objects Tree the current generation holds, for
+// the same reason RouteObjects does: a COW rebuild replaces the generation.
+func (authority *Authority) RelationObjects() *objectindex.Index {
+	if authority == nil {
+		return nil
+	}
+	authority.mu.RLock()
+	defer authority.mu.RUnlock()
+	if authority.generation == nil {
+		return nil
+	}
+	return authority.generation.objects
+}
+
 func (authority *Authority) Generation() *Generation {
 	if authority == nil {
 		return nil
@@ -1078,6 +1174,7 @@ func (authority *Authority) reconcile(ctx context.Context) error {
 	for _, step := range []func(Plan) error{
 		authority.replaceCatalog,
 		authority.reconcileRoutes,
+		authority.reconcileRelations,
 		authority.appendVersions,
 		authority.reconcileFulltext,
 		authority.advanceCurrent,
@@ -1155,6 +1252,24 @@ func (authority *Authority) reconcileRoutes(plan Plan) error {
 	}
 	_, err = authority.generation.objects.ReplaceKinds(
 		id, []uint16{nativerouter.ObjectKind}, records,
+	)
+	return err
+}
+
+// reconcileRelations brings the objects Tree's Relations back to what the record
+// log says, for the same reason reconcileRoutes does: a publication commits its
+// record first and its Tree second.
+func (authority *Authority) reconcileRelations(plan Plan) error {
+	records, err := nativerow.RelationObjectRecords(plan.CurrentRelations)
+	if err != nil {
+		return err
+	}
+	id, err := authority.nextTransactionID("objects")
+	if err != nil {
+		return err
+	}
+	_, err = authority.generation.objects.ReplaceKinds(
+		id, []uint16{nativerow.RelationObjectKind}, records,
 	)
 	return err
 }

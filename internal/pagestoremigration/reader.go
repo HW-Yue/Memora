@@ -14,6 +14,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
+	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -51,6 +52,7 @@ type Plan struct {
 	CurrentRowBodies  []row.Row                 `json:"current_row_bodies"`
 	RowVersions       []rowversionindex.Locator `json:"row_versions"`
 	CurrentRoutes     []router.Node             `json:"current_routes"`
+	CurrentRelations  []relation.Relation       `json:"current_relations"`
 	Digest            string                    `json:"digest"`
 }
 
@@ -64,6 +66,7 @@ type Source interface {
 	Catalog(context.Context) ([]catalog.Database, error)
 	RowVersions(context.Context) ([]row.Row, error)
 	Routes(context.Context) ([]router.Node, error)
+	Relations(context.Context) ([]relation.Relation, error)
 }
 
 type Reader struct{ source Source }
@@ -109,6 +112,10 @@ func (reader *Reader) Build(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	relations, err := reader.source.Relations(ctx)
+	if err != nil {
+		return Plan{}, err
+	}
 	after, err := reader.source.Inventory(ctx)
 	if err != nil {
 		return Plan{}, err
@@ -124,6 +131,10 @@ func (reader *Reader) Build(ctx context.Context) (Plan, error) {
 		return Plan{}, err
 	}
 	planRoutes(&plan, routes)
+	plan.CurrentRelations = append([]relation.Relation(nil), relations...)
+	sort.Slice(plan.CurrentRelations, func(left, right int) bool {
+		return plan.CurrentRelations[left].ID < plan.CurrentRelations[right].ID
+	})
 	if err := validatePlan(plan, false); err != nil {
 		return Plan{}, fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}
@@ -249,6 +260,17 @@ func (source *nativeSource) Routes(ctx context.Context) ([]router.Node, error) {
 		return nil, err
 	}
 	values, err := nativerouter.New(source.file).Nodes()
+	if err != nil {
+		return nil, classifySourceError(err)
+	}
+	return values, ctx.Err()
+}
+
+func (source *nativeSource) Relations(ctx context.Context) ([]relation.Relation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	values, err := nativerow.New(source.file).CurrentRelations()
 	if err != nil {
 		return nil, classifySourceError(err)
 	}
@@ -497,9 +519,11 @@ func planDigest(plan Plan) (string, error) {
 		CurrentRowBodies  []row.Row                 `json:"current_row_bodies"`
 		RowVersions       []rowversionindex.Locator `json:"row_versions"`
 		CurrentRoutes     []router.Node             `json:"current_routes"`
+		CurrentRelations  []relation.Relation       `json:"current_relations"`
 	}{
 		plan.Version, plan.SourceFingerprint, plan.RecordCounts, plan.Catalog,
 		plan.CurrentRows, plan.CurrentRowBodies, plan.RowVersions, plan.CurrentRoutes,
+		plan.CurrentRelations,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

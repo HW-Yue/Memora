@@ -37,7 +37,7 @@ func TestAuthorityLogicalMutationsPublishCompleteOrderedChangeEnvelopes(t *testi
 		t.Fatal(err)
 	}
 	rows := nativerow.NewService(
-		nativerow.New(file), dictionary, nativerow.ServiceOptions{Authority: authority},
+		nativerow.NewWithObjects(file, authority), dictionary, nativerow.ServiceOptions{Authority: authority},
 	)
 	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "Notes Router", "")
 	if err != nil {
@@ -192,7 +192,7 @@ func TestAuthorityConcurrentMutationsSerializeChangeSequence(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := nativerow.NewService(
-		nativerow.New(file), dictionary, nativerow.ServiceOptions{Authority: authority},
+		nativerow.NewWithObjects(file, authority), dictionary, nativerow.ServiceOptions{Authority: authority},
 	)
 	const writers = 16
 	start := make(chan struct{})

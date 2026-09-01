@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
@@ -32,12 +33,12 @@ func TestFulltextIsNotInTheWriteTransaction(t *testing.T) {
 	// Trees still advance, and the Fulltext Tree is untouched. That is the
 	// decoupling stated as an observation rather than a promise.
 	written := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
-	if err := authority.PublishMutation(ctx, []row.Row{{
+	if err := authority.PublishMutation(ctx, nativerow.Mutation{Rows: []row.Row{{
 		ID: "row_decoupled", DatabaseID: table.DatabaseID, TableID: table.ID,
 		SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: 1,
 		State: row.StateLive, Values: map[string]any{table.Columns[0].ID: "decoupled"},
 		CreatedAt: written, UpdatedAt: written,
-	}}, nil, func() error {
+	}}}, func() error {
 		committed = true
 		return nil
 	}); err != nil || !committed {

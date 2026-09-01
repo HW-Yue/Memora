@@ -151,7 +151,7 @@ func (authority *Authority) projectTouched(
 	// Through the Trees, not the record log. Catch-up follows every write, and
 	// reading the Catalog out of the record log made each one cost a rebuild of
 	// the whole Catalog from a full sweep of the file.
-	databases, err := authority.catalog.Snapshot(ctx)
+	databases, err := authority.catalog.Load().Snapshot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w: Catalog for Fulltext catch-up: %v", ErrTargetCorrupt, err)
 	}

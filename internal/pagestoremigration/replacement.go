@@ -219,7 +219,7 @@ func (authority *Authority) replaceGeneration(
 	previousName := authority.marker.Generation
 	authority.marker = marker
 	authority.generation = live
-	authority.catalog = catalogReader
+	authority.catalog.Store(catalogReader)
 	authority.rows = rowReader
 	closeLive = false
 	authority.mu.Unlock()

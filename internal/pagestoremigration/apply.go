@@ -340,7 +340,9 @@ func buildTree(
 	case "versions":
 		index, err := rowversionindex.Open(runtime)
 		if err == nil {
-			_, err = index.Bootstrap(transactionID, plan.RowVersions)
+			// The floor covers the Relations, which take their commit sequences
+			// from the same allocator but are not Row versions.
+			_, err = index.Bootstrap(transactionID, plan.RowVersions, relationCommitHighWater(plan))
 		}
 		if err != nil {
 			return treecontrol.State{}, err
@@ -407,7 +409,9 @@ func buildTree(
 		}
 		index, err := rowversionindex.Open(runtime)
 		if err == nil {
-			_, err = index.Bootstrap(transactionID, tableRowVersions(plan, tableID))
+			// A per-Table history Tree records only its own Rows; the allocator
+			// floor belongs to the one shared versions Tree.
+			_, err = index.Bootstrap(transactionID, tableRowVersions(plan, tableID), 0)
 		}
 		if err != nil {
 			return treecontrol.State{}, err
@@ -819,7 +823,12 @@ func generationObjectRecords(plan Plan) ([]objectindex.Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(records, catalogRecords...), nil
+	records = append(records, catalogRecords...)
+	relationRecords, err := nativerow.RelationObjectRecords(plan.CurrentRelations)
+	if err != nil {
+		return nil, err
+	}
+	return append(records, relationRecords...), nil
 }
 
 // routeObjectUpdates turns published Route revisions into objects Tree updates.
@@ -840,4 +849,17 @@ func routeObjectUpdates(routes []router.Node) ([]objectindex.Update, error) {
 		})
 	}
 	return updates, nil
+}
+
+// relationCommitHighWater is the highest commit sequence the Plan's Relations
+// hold. A Relation is not a Row version, so nothing else in the versions Tree
+// records that its number is taken.
+func relationCommitHighWater(plan Plan) uint64 {
+	var highest uint64
+	for _, value := range plan.CurrentRelations {
+		if value.CommitSequence > highest {
+			highest = value.CommitSequence
+		}
+	}
+	return highest
 }

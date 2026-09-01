@@ -121,6 +121,11 @@ func (index *Index) Apply(transactionID uint64, updates []Update) (Receipt, erro
 // On success the Index's write lock is held until the group commit finishes —
 // the group owns releasing it. An Apply with nothing to do adds no member and
 // releases immediately.
+//
+// Stage this Tree ONCE per group. A second call in the same group deadlocks:
+// it waits for the write lock the first call handed to a group that cannot
+// commit until this call returns. Several object families share this Tree, so
+// batch their updates together rather than staging each family in turn.
 func (index *Index) StageApply(group *treecommit.Group, updates []Update) error {
 	if index == nil || index.runtime == nil || group == nil {
 		return fmt.Errorf("%w: Apply request", ErrInvalid)

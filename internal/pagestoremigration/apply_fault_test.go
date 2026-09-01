@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
@@ -197,6 +198,7 @@ type faultMigrationSource struct {
 	databases []catalog.Database
 	rows      []row.Row
 	routes    []router.Node
+	relations []relation.Relation
 }
 
 func (source *faultMigrationSource) Inventory(context.Context) (SourceState, error) {
@@ -218,6 +220,10 @@ func (source *faultMigrationSource) RowVersions(context.Context) ([]row.Row, err
 
 func (source *faultMigrationSource) Routes(context.Context) ([]router.Node, error) {
 	return append([]router.Node(nil), source.routes...), nil
+}
+
+func (source *faultMigrationSource) Relations(context.Context) ([]relation.Relation, error) {
+	return append([]relation.Relation(nil), source.relations...), nil
 }
 
 func (source *faultMigrationSource) changeFingerprint() {

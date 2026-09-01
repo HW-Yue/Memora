@@ -525,7 +525,7 @@ func authorityValuesWithoutRow(
 		t.Fatal(err)
 	}
 	rows := nativerow.NewService(
-		nativerow.New(file), dictionary, nativerow.ServiceOptions{Authority: authority},
+		nativerow.NewWithObjects(file, authority), dictionary, nativerow.ServiceOptions{Authority: authority},
 	)
 	return dictionary, rows, table, row.Row{}
 }

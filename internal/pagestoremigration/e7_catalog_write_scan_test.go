@@ -6,6 +6,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
+	"github.com/HW-Yue/Memora/internal/row"
 )
 
 // TestASchemaChangeNeverSweepsTheRecordFile is the write-path gate.
@@ -76,5 +77,49 @@ func TestASchemaChangeNeverSweepsTheRecordFile(t *testing.T) {
 	// And the Table that was already there is untouched.
 	if _, err := authority.DescribeTable(ctx, "work", table.Name); err != nil {
 		t.Fatalf("the pre-existing Table after the write: %v", err)
+	}
+}
+
+// TestARowWriteNeverSweepsTheRecordFile is the same gate on the hotter path.
+//
+// Every write takes a commit sequence, and every write is followed by a Fulltext
+// catch-up. Both used to sweep: the sequence by taking the maximum over every Row
+// and every Relation record in the Database, the catch-up by rebuilding the whole
+// Catalog and every Route out of the record log. Row writes are unbounded in
+// number, so this is where the cost compounded fastest.
+func TestARowWriteNeverSweepsTheRecordFile(t *testing.T) {
+	ctx := context.Background()
+	_, file, authority := newAuthorityFixture(t)
+	_, rows, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+
+	// The first Row also mounts a Route leaf, so both write paths are in.
+	if _, err := rows.CreateTableRouterRoot(ctx, "work", table.Name, "Root", ""); err != nil {
+		t.Fatal(err)
+	}
+	before := file.Enumerations()
+	inserted, err := rows.Insert(ctx, "work", table.Name, map[string]any{
+		table.Columns[0].Name: "swept?",
+	}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion,
+		Metadata:              row.WriteMetadata{Actor: "agent:test", Source: "msql", Reason: "insert"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if swept := file.Enumerations() - before; swept != 0 {
+		t.Fatalf("one Row insert swept the record file %d times", swept)
+	}
+
+	before = file.Enumerations()
+	if _, err := rows.Update(ctx, "work", table.Name, inserted.ID, map[string]any{
+		table.Columns[0].Name: "still not swept",
+	}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: inserted.Revision,
+		Metadata: row.WriteMetadata{Actor: "agent:test", Source: "msql", Reason: "update"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if swept := file.Enumerations() - before; swept != 0 {
+		t.Fatalf("one Row update swept the record file %d times", swept)
 	}
 }

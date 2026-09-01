@@ -35,7 +35,7 @@ func TestF205MultiRowPublicationFaultReopensAsOneOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := nativerow.NewService(nativerow.New(file), dictionary, nativerow.ServiceOptions{Authority: authority})
+	rows := nativerow.NewService(nativerow.NewWithObjects(file, authority), dictionary, nativerow.ServiceOptions{Authority: authority})
 	first, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "first"}, row.WriteOptions{ExpectedSchemaVersion: table.SchemaVersion})
 	if err != nil {
 		t.Fatal(err)

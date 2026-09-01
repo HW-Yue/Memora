@@ -58,7 +58,13 @@ func Open(runtime *treecommit.Runtime) (*Index, error) {
 
 // Bootstrap creates the complete immutable Row history and snapshot marker in
 // one empty Tree. Later changes must use Append and its sealed-history rules.
-func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt, error) {
+// commitFloor seeds the snapshot high-water above what the locators themselves
+// reach. A build reads Relations from the record log too, and they took their
+// numbers from the same allocator — without the floor a rebuilt generation would
+// start handing out sequences a Relation already holds.
+func (index *Index) Bootstrap(
+	transactionID uint64, locators []Locator, commitFloor uint64,
+) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 {
 		return Receipt{}, fmt.Errorf("%w: Bootstrap request", ErrInvalid)
 	}
@@ -73,7 +79,7 @@ func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt
 	if state.RootPageID != 0 {
 		return Receipt{}, fmt.Errorf("%w: Row Version authority is not empty", ErrConflict)
 	}
-	active, err := index.validateAppend(state, prepared)
+	active, err := index.validateAppend(state, prepared, commitFloor)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -102,7 +108,7 @@ func (index *Index) Append(transactionID uint64, locators []Locator) (Receipt, e
 
 	index.mu.Lock()
 	defer index.mu.Unlock()
-	plan, changed, err := index.planAppendLocked(prepared)
+	plan, changed, err := index.planAppendLocked(prepared, 0)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -123,7 +129,25 @@ func (index *Index) Append(transactionID uint64, locators []Locator) (Receipt, e
 // the group owns releasing it. An Append whose locators are already present
 // adds no member and releases immediately.
 func (index *Index) StageAppend(group *treecommit.Group, locators []Locator) error {
-	if index == nil || index.runtime == nil || group == nil || len(locators) == 0 {
+	return index.StageAppendWithCommitFloor(group, locators, 0)
+}
+
+// StageAppendWithCommitFloor is StageAppend plus an advance of the snapshot
+// high-water to floor.
+//
+// floor is a commit sequence already consumed by something this Tree does not
+// hold. A Relation takes its number from the same allocator as a Row but is not
+// a Row version, so without the floor the allocator would hand that number out
+// again as soon as no Row had reached it — two different objects claiming one
+// point on the timeline that AS OF reads by.
+//
+// The floor only ever moves the marker forward; a floor at or below what the
+// Tree already records is nothing to do.
+func (index *Index) StageAppendWithCommitFloor(
+	group *treecommit.Group, locators []Locator, floor uint64,
+) error {
+	if index == nil || index.runtime == nil || group == nil ||
+		(len(locators) == 0 && floor == 0) {
 		return fmt.Errorf("%w: Append request", ErrInvalid)
 	}
 	prepared, err := prepareLocators(locators)
@@ -131,7 +155,7 @@ func (index *Index) StageAppend(group *treecommit.Group, locators []Locator) err
 		return err
 	}
 	index.mu.Lock()
-	plan, changed, err := index.planAppendLocked(prepared)
+	plan, changed, err := index.planAppendLocked(prepared, floor)
 	if err != nil || !changed {
 		index.mu.Unlock()
 		return err
@@ -142,9 +166,11 @@ func (index *Index) StageAppend(group *treecommit.Group, locators []Locator) err
 
 // planAppendLocked builds the mutation plan for an Append. The caller holds the
 // write lock; changed is false when every locator is already in the Tree.
-func (index *Index) planAppendLocked(prepared []preparedLocator) (btree.MutationPlan, bool, error) {
+func (index *Index) planAppendLocked(
+	prepared []preparedLocator, commitFloor uint64,
+) (btree.MutationPlan, bool, error) {
 	state := index.runtime.State()
-	active, err := index.validateAppend(state, prepared)
+	active, err := index.validateAppend(state, prepared, commitFloor)
 	if err != nil {
 		return btree.MutationPlan{}, false, err
 	}
@@ -488,6 +514,7 @@ func prepareLocators(locators []Locator) ([]preparedLocator, error) {
 func (index *Index) validateAppend(
 	state treecontrol.State,
 	locators []preparedLocator,
+	commitFloor uint64,
 ) ([]entry, error) {
 	var searcher *btree.Searcher
 	var err error
@@ -508,6 +535,9 @@ func (index *Index) validateAppend(
 		return nil, fmt.Errorf("%w: snapshot high-water is missing", ErrCorrupt)
 	}
 	desiredHighWater := highWater
+	if commitFloor > desiredHighWater {
+		desiredHighWater = commitFloor
+	}
 	for _, prepared := range locators {
 		if prepared.locator.CommitSequence > desiredHighWater {
 			desiredHighWater = prepared.locator.CommitSequence

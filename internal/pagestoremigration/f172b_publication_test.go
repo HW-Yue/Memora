@@ -44,11 +44,11 @@ func TestAuthorityRejectsInvalidRowProjectionBeforeBodyCommit(t *testing.T) {
 	_, file, authority := newAuthorityFixture(t)
 	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
 	committed := false
-	err := authority.PublishMutation(ctx, []row.Row{{
+	err := authority.PublishMutation(ctx, nativerow.Mutation{Rows: []row.Row{{
 		ID: "row_invalid", DatabaseID: table.DatabaseID, TableID: table.ID,
 		SchemaVersion: table.SchemaVersion, Revision: 1, State: row.StateLive,
 		Values: map[string]any{"col_unknown": "not in schema"},
-	}}, nil, func() error {
+	}}}, func() error {
 		committed = true
 		return nil
 	})
@@ -84,7 +84,7 @@ func TestAuthorityPublishesMultipleRowsInOneFulltextTransaction(t *testing.T) {
 	// which drive a write that actually records a change.
 	before := treeRevision(t, authority, "versions")
 	committed := false
-	if err := authority.PublishMutation(ctx, values, nil, func() error {
+	if err := authority.PublishMutation(ctx, nativerow.Mutation{Rows: values}, func() error {
 		committed = true
 		return nil
 	}); err != nil || !committed {

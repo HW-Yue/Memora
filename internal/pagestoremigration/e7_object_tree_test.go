@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/nativerouter"
+	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/store/wal"
 )
@@ -257,7 +258,7 @@ func TestAPublishedRouteLandsInTheObjectsTree(t *testing.T) {
 	// is keyed by identity, and the current node is the whole of what it holds.
 	revised := root
 	revised.Revision, revised.Synopsis = root.Revision+1, "revised synopsis"
-	if err := authority.PublishMutation(ctx, nil, []router.Node{revised}, func() error {
+	if err := authority.PublishMutation(ctx, nativerow.Mutation{Routes: []router.Node{revised}}, func() error {
 		transaction, err := file.Begin()
 		if err != nil {
 			return err

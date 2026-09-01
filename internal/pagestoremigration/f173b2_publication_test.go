@@ -204,10 +204,10 @@ func TestAuthorityRejectsInvalidRouteProjectionBeforeBodyCommit(t *testing.T) {
 	ctx := context.Background()
 	_, _, authority := newAuthorityFixture(t)
 	committed := false
-	err := authority.PublishMutation(ctx, nil, []router.Node{{
+	err := authority.PublishMutation(ctx, nativerow.Mutation{Routes: []router.Node{{
 		Version: router.Version, ID: "route_invalid", DatabaseID: "db_missing", TableID: "tbl_missing",
 		Name: "invalid", Path: "/", Kind: router.KindRoot, Purpose: "Invalid",
-	}}, func() error {
+	}}}, func() error {
 		committed = true
 		return nil
 	})

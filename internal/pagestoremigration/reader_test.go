@@ -17,6 +17,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/pagestoremigration"
+	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
@@ -510,11 +511,12 @@ func migrationValues() ([]catalog.Database, row.Row, row.Row) {
 }
 
 type fakeSource struct {
-	states  []pagestoremigration.SourceState
-	calls   int
-	catalog []catalog.Database
-	rows    []row.Row
-	routes  []router.Node
+	states    []pagestoremigration.SourceState
+	calls     int
+	catalog   []catalog.Database
+	rows      []row.Row
+	routes    []router.Node
+	relations []relation.Relation
 }
 
 func (source *fakeSource) Inventory(context.Context) (pagestoremigration.SourceState, error) {
@@ -533,6 +535,10 @@ func (source *fakeSource) RowVersions(context.Context) ([]row.Row, error) {
 
 func (source *fakeSource) Routes(context.Context) ([]router.Node, error) {
 	return append([]router.Node(nil), source.routes...), nil
+}
+
+func (source *fakeSource) Relations(context.Context) ([]relation.Relation, error) {
+	return append([]relation.Relation(nil), source.relations...), nil
 }
 
 func sourceState(seed byte, rowCount int) pagestoremigration.SourceState {

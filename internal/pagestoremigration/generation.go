@@ -395,7 +395,7 @@ func (want missingTree) bootstrap(runtime *treecommit.Runtime, transactionID uin
 		if err != nil {
 			return err
 		}
-		_, err = index.Bootstrap(transactionID, nil)
+		_, err = index.Bootstrap(transactionID, nil, 0)
 		return err
 	}
 	index, err := currentrowindex.Open(runtime)
@@ -490,6 +490,11 @@ func (generation *Generation) TableTree(tableID string) bool {
 
 // Objects returns the clustered Index for objects that keep one record per
 // identity, or nil for a generation written before it existed.
+// RelationObjects satisfies nativerow.ObjectSource.
+func (generation *Generation) RelationObjects() *objectindex.Index {
+	return generation.Objects()
+}
+
 // RouteObjects satisfies nativerouter.ObjectSource for a caller that already
 // holds the Authority lock and so must not take it again to ask the Authority.
 func (generation *Generation) RouteObjects() *objectindex.Index {
