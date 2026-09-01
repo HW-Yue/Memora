@@ -236,12 +236,28 @@ Relation ——**代价已经从「历史上写过多少条」变成「当前有
 但不是点查**。要真点查需要一棵按端点建键的二级索引。
 个人库的关系数量有限,所以没有随之排期;**要做就单独定,不要在迁移里顺手决定。**
 
-### 一个必须记住的坑:一棵树在一次 group 里只能 stage 一次
+### 一棵树在一次 group 里只能 stage 一次——这条现在是**做不到**,不是「记住」
 
 Route、Relation、Catalog 正文共用 objects 树。同一次 `CommitGroupFunc` 里对它
-调两次 `StageApply` 会**死锁**:第一次把写锁交给了 group,第二次等的正是那把
-锁,而 group 要等这次调用返回才能提交。所以同一次发布里的多个对象族要**合成
-一批**再 stage。方法注释里写死了这条,是 e2e 的 SPLIT 抓出来的。
+调两次 stage 会**死锁**:第一次把写锁交给了 group,第二次等的正是那把锁,
+而 group 要等这次调用返回才能提交。**什么都不超时、什么都不打日志,进程就停了。**
+
+一开始只在方法注释里写了「每个 group 只 stage 一次」。**注释不算数**——
+下一个加 stage 方法的人忘了就又是这个坑。改成结构上进不去:
+
+- `treecommit.Group.Stage(runtime, lock, plan)` 是**唯一**的入组方式,
+  `add` 已改为不导出;
+- 它**先认领(claim)、后加锁**。顺序是关键:一旦 Index 已经卡在自己的互斥量上,
+  就没人还能发现这件事了。重复认领直接返回 `ErrTreeAlreadyStaged`,
+  报在犯错的那一行;
+- 六个 `Stage*` 方法(catalog／current／versions／fulltext／objects×2)全部走它,
+  顺带把重复的加锁/解锁样板去掉了;
+- **另一个 goroutine 把同一棵树 stage 进别的 group 是正常争用**,必须照旧阻塞
+  等第一个 group 提交完。认领是按 group 记的,所以这条路没被动。
+
+门:`TestStagingOneTreeTwiceInOneGroupIsRefusedNotHung`。把认领判断关掉,
+它会挂到自己的 10 秒超时;打开就返回错误。另有两条一起钉住:合成一批 stage
+必须照常原子,以及两个 group 并发 stage 同一棵树必须都成功。
 
 ### 阶段 5:不需要跨文件原子,只需要一个游标
 

@@ -284,14 +284,69 @@ func (runtime *Runtime) Commit(
 type Group struct {
 	members  []GroupMember
 	releases []func()
+	claimed  map[*Runtime]struct{}
 }
 
-// Add enrolls one Tree's planned mutation. release, if not nil, runs after the
-// group commit finishes, in reverse order of Add.
-func (group *Group) Add(runtime *Runtime, plan btree.MutationPlan, release func()) {
-	if group == nil {
-		return
+// ErrTreeAlreadyStaged reports a second attempt to stage one Tree into one
+// group. See Group.Stage.
+var ErrTreeAlreadyStaged = errors.New("Tree is already staged in this commit group")
+
+// Stage enrols one Tree in the group.
+//
+// It claims the Tree, takes the Index's write lock, asks plan for the mutation,
+// and then either adds the member — handing the unlock to the group — or
+// unlocks immediately when there is nothing to write.
+//
+// One Tree can hold several object families: Routes, Relations and the Catalog
+// bodies all live in the objects Tree. Reaching for one stage call per family
+// used to deadlock — the first call hands its write lock to the group, and the
+// second waits for a lock the group cannot release until the collector it is
+// still inside returns. Nothing timed out and nothing logged; the process
+// simply stopped. The families have to be batched into one stage instead.
+//
+// Every Index enrols through here, and the claim happens BEFORE the lock, so
+// that mistake is now a returned error at the offending call site. It has to be
+// before: once an Index has blocked on its own mutex there is nobody left to
+// notice. And enrolment is only reachable from here — there is no exported way
+// to add a member — so this is not a rule an Index has to remember, it is a
+// state the package will not enter.
+//
+// A second goroutine staging the same Tree into a DIFFERENT group is a separate
+// thing: ordinary contention, which blocks on the Index lock and proceeds once
+// the first group commits. Claims are per group, so that case is untouched.
+//
+// plan runs under the write lock and reports the mutation, whether there is one,
+// and any error.
+func (group *Group) Stage(
+	runtime *Runtime,
+	lock sync.Locker,
+	plan func() (btree.MutationPlan, bool, error),
+) error {
+	if group == nil || runtime == nil || lock == nil || plan == nil {
+		return fmt.Errorf("%w: commit group stage request", buffer.ErrInvalid)
 	}
+	if _, taken := group.claimed[runtime]; taken {
+		return fmt.Errorf("%w: batch the families sharing it into one stage",
+			ErrTreeAlreadyStaged)
+	}
+	if group.claimed == nil {
+		group.claimed = make(map[*Runtime]struct{}, 4)
+	}
+	group.claimed[runtime] = struct{}{}
+
+	lock.Lock()
+	mutation, changed, err := plan()
+	if err != nil || !changed {
+		lock.Unlock()
+		return err
+	}
+	group.add(runtime, mutation, lock.Unlock)
+	return nil
+}
+
+// add enrolls one Tree's planned mutation. release runs after the group commit
+// finishes, in reverse order. It is unexported so Stage is the only way in.
+func (group *Group) add(runtime *Runtime, plan btree.MutationPlan, release func()) {
 	group.members = append(group.members, GroupMember{Runtime: runtime, Plan: plan})
 	group.releases = append(group.releases, release)
 }

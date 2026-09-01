@@ -154,14 +154,12 @@ func (index *Index) StageAppendWithCommitFloor(
 	if err != nil {
 		return err
 	}
-	index.mu.Lock()
-	plan, changed, err := index.planAppendLocked(prepared, floor)
-	if err != nil || !changed {
-		index.mu.Unlock()
-		return err
-	}
-	group.Add(index.runtime, plan, index.mu.Unlock)
-	return nil
+	// Through Group.Stage: it claims this Tree before taking the lock, so a
+	// second stage of it in this group is refused instead of waiting for a lock
+	// the group cannot release until this call returns.
+	return group.Stage(index.runtime, &index.mu, func() (btree.MutationPlan, bool, error) {
+		return index.planAppendLocked(prepared, floor)
+	})
 }
 
 // planAppendLocked builds the mutation plan for an Append. The caller holds the
