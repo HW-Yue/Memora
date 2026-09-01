@@ -179,6 +179,69 @@ Route 是**核心对象里唯一还完全靠内存表的**,而且两条路都在
 
 所以它同时命中判据第 2 条(代价与库里有多少东西相关)和第 3 条。
 
+### 全表扫描清点(2026-09-01,逐条指到代码)
+
+准则第四条要求「查的时候按需去文件里取」。下面是**全库中仍会 `file.IDs()`
+全扫的每一处**,按是否在活路径上分开。`File.Enumerations()` 计的就是这些。
+
+**已消除**(本轮):
+
+| 位置 | 触发频率 | 换成了什么 |
+|---|---|---|
+| `nativerouter.nodes()` | 每次遍历语义树 | objects 树按 kind 范围扫 |
+| `nativecatalog.Read()`(读面) | 每次 `DescribeTable` | catalog 树 + objects 树 |
+| `nativecatalog.Read()`(写面) | 每次改 schema | `authority.SnapshotCatalog` |
+| `nativecatalog.stageVersion` | **每写一个对象一遍** | 调用方交出上次发布的 Catalog |
+| `nativechange.NextSequence` | **每次写** | 从 change 树 high-water 往前探 |
+| fulltext 追平的 Catalog／Route 重建 | **每次写** | Trees |
+
+**仍在活路径上**(全部收敛到阶段 3 这一件事):
+
+| 位置 | 触发频率 | 挡在哪 |
+|---|---|---|
+| `nativerow.NextCommitSequence` → `AllRows` + `AllRelationVersions` | **每次写** | commit 序号目前是「扫出来的最大值」,要改成**树里的持久分配器** |
+| `nativerow.GetRelation`／`ListRelations` | 每次 Relation 读写 | Relation 未迁入 objects 树 |
+| `nativeconfig.history`／`policy` | 每次读配置 | Configuration 未迁入 |
+| `nativekv` Opaque | 视调用方 | Opaque 未迁入 |
+
+**合法的全读**(它们要产出的就是全库,不是索引查找):
+
+- `pagestoremigration.Reader.Build` 及其下的 `nativecatalog.Read`／
+  `AllRowVersions`／`nativerouter.New(file).nodes()` ——**这是重建路径本身**;
+- `nativesnapshot` 导出;
+- `nativechange.ListAfter` ——零生产调用方(change 树已接管)。
+
+### commit 序号:从「扫出来的最大值」改成持久分配器
+
+`NextCommitSequence` 现在是 `max(全部 Row 的 commit, 全部 Relation 的 commit) + 1`
+——**每次写都要扫两遍全库**。这是剩下的一条里唯一在每次写都跑的。
+
+要点在于它不能只靠 Row 那棵树:`rowversionindex.HighWater()` 已经给出 Row 那半边,
+但 Relation 也从同一个序号空间取号,而 **Relation 目前完全不经过权威**
+(`commitRelationChange` 直接写记录文件,generation 一无所知)。
+
+方案(与 Row ID 计数器同形,`currentrowindex.StageApplyWithRowIDCounter` 是先例):
+
+1. versions 树加一个 commit 序号计数器键;
+2. 计数器在**已有的那次组提交里**推进,不额外加 fsync——所以每次发布都要
+   报告它用掉的序号,**Relation 因此必须走权威**;
+3. Plan 加 `RelationHighWater`,建库时把计数器种到
+   `max(Row 的 commit high-water, Relation 的)` ——否则 COW 重建会丢掉
+   只有 Relation 用过的号段;
+4. 分配失败会烧掉一个号(留下空洞)。**这是可以接受的**:commit 序号只用于
+   `AS OF` 定位与排序,没有任何地方要求它连续(change 序号才要求,那是另一个
+   分配器,不受影响)。
+
+做完这一步,Relation 也就顺势进了权威,阶段 3 的迁入随之水到渠成。
+
+### 阶段 3 的一个未决设计问题
+
+`ListRelations(endpoint, outgoing)` 要按**端点**查,而 `objectindex` 只按
+`(kind, id)` 建键。迁进去之后按 ID 点查是一次下降,但按端点列举仍然要走遍
+全部 Relation ——**比现在好(与 Relation 数量相关,不与历史写入次数相关),
+但不是点查**。要真正点查需要一棵按端点建键的二级索引。
+**这一条要单独定,不要在迁移里顺手决定。**
+
 ### 阶段 5:不需要跨文件原子,只需要一个游标
 
 这是本设计里唯一一处真正新的机制,而且它有现成的模式。

@@ -64,6 +64,11 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 - **阶段 4 与原设计不同**:正文放进 objects 树而不是 catalog 树自己的叶子,
   理由见[物理索引](../storage/physical-index-v1.md)§4;主要是 catalog 树的
   `readEntries` 每次写都把整棵树读进内存做 diff,正文塞进去正是要消灭的形状
+- **写路径全扫**：`nativechange.NextSequence`（每次写列举全部历史变更并逐条
+  解码）、fulltext 追平重建整个 Catalog 与全部 Route、Catalog 写面两处，
+  已全部消除并加门（`Enumerations()` 增量为零）。**剩下四处全在阶段 3**，
+  其中 `NextCommitSequence` 是唯一还在每次写都跑的，逐条清点见
+  [物理索引](../storage/physical-index-v1.md)「全表扫描清点」
 - **顺带修出的两个既存漏报**:①`stageLeafMounts` 写的叶子侧 Route revision
   从来没报给权威;②`reconcile` 重开时只重建 catalog 树,不管 objects 树、
   也完全没有 Route 那一步。两个都是新的跨树检查抓出来的

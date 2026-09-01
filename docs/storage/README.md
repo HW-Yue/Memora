@@ -197,6 +197,11 @@ schemaVersion}`（`file.go:77`）。
 `File.Enumerations()`（`file.go:455`）计数全库扫描（`IDs`／`Records`），
 作为"读路径不得枚举全库"的回归护栏。
 
+**写路径上每次写都跑的全扫已经清零**：commit 变更序号从 change 树的
+high-water 往前探（不再列举全部历史变更并逐条解码），fulltext 追平改走 Trees
+（不再重建整个 Catalog 与全部 Route）。剩下的活路径全扫见
+[物理索引](./physical-index-v1.md)「全表扫描清点」——四处，全部收敛到阶段 3。
+
 **Route 与 Catalog 已经不再经过它**（E7 阶段 2／4）：
 `nativerouter.NewWithObjects` 走 objects 树，点查是一次 B+ 树下降，
 整树遍历是一个 kind 的范围扫；`nativecatalog.IndexedReader` 从 catalog 树拿
@@ -335,9 +340,8 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
 12. **Change 树只存逻辑 Locator**，正文仍在记录文件。
     Catalog 那一半已于 E7 阶段 4 解决（正文进 objects 树）；
     Change 树随 11 收尾一起处理。
-    另：`nativecatalog.ApplySchemaChangePlan` 每次改 schema 仍
-    `repository.Read()` 全扫一遍记录文件重建整个 Catalog——写路径上的全扫，
-    与 11 同源，未排期；
+    Catalog 写路径的全扫（`ApplySchemaChangePlan` 重建整个 Catalog、
+    `stageVersion` 每写一个对象扫一遍）已于同批消除；
 13. **Overflow Page 未实现**：单条编码记录超过 8 KiB 硬失败，不跨页拆分；
 14. **`routevector.Generation.vectors`** 把全部 Route 向量常驻内存
     （`internal/routevector/model.go:125`），随语义索引规模增长，尚未评估。
