@@ -197,7 +197,11 @@ schemaVersion}`（`file.go:77`）。
 `File.Enumerations()`（`file.go:455`）计数全库扫描（`IDs`／`Records`），
 作为"读路径不得枚举全库"的回归护栏。
 
-**开库之后的活路径上已经不再有全扫**。门是
+**开库之后的活路径上已经不再有全扫**，但**开库本身仍然全扫**——那一条由
+[记录文件的索引与权威](./record-index-and-authority-v1.md)收尾——**路线未定**，
+两条路（非聚簇索引文件 / 聚簇转正）差别不在优劣，在于要不要放弃 compaction。
+
+门是
 `TestALiveWorkloadNeverSweepsTheRecordFile`：四次写加九个读面，`Enumerations()`
 增量为零。开库本身仍然全读，而且应该全读——generation 是派生的，从记录日志把
 它建出来正是全读的用途。剩下的 `IDs()` 调用点全部不在活路径上（无 generation
@@ -335,7 +339,9 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
     这是与数据量相关的唯一无上界常驻结构（见第 7 节）。
     **2026-08-31 升级为违反[架构原则](../product/architecture-principles.md)
     第四条**（命中判据 3：没有容量、没有淘汰，却是唯一的索引），
-    已排为执行计划队头 E7，迁移设计见[物理索引](./physical-index-v1.md)。
+    迁移设计见[物理索引](./physical-index-v1.md)（阶段 1–4 ✅）；
+    阶段 5 路线未定，两条路的对照见
+    **[记录文件的索引与权威](./record-index-and-authority-v1.md)**。
     **进度**：阶段 1～4 已完成（objects 树接线、Route、Relation、Catalog 正文，
     加上 Configuration 改顺链读）。**开库之后不再有全扫**；余下的是把开库时的
     `scan` 本身降级为修复路径（阶段 5），那才是这一条真正关闭的时候；
