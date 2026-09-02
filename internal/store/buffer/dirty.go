@@ -3,6 +3,7 @@ package buffer
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/HW-Yue/Memora/internal/store/page"
 )
@@ -152,10 +153,48 @@ func (pool *Pool) FlushDirtyThrough(limit, durableLSN uint64) (FlushReport, erro
 	}
 	pool.mu.Lock()
 	keys := make([]Key, 0, min(limit, uint64(pool.dirty.Len())))
+	control := make([]bool, 0, cap(keys))
 	for element := pool.dirty.Front(); element != nil && uint64(len(keys)) < limit; element = element.Next() {
-		keys = append(keys, element.Value.(*frame).key)
+		value := element.Value.(*frame)
+		keys = append(keys, value.key)
+		control = append(control, value.value.Header.Type == page.TypeTreeControl)
 	}
 	pool.mu.Unlock()
+	// Which Pages to flush is the dirty order's business — oldest first, so the
+	// log tail can advance. The order they are written in is two rules, and the
+	// dirty order only happens to satisfy one of them:
+	//
+	//   - the Tree control Page goes last, so it never points at data Pages the
+	//     file does not hold yet (TestPublishBatchInstallsCommittedPagesControlLast);
+	//   - data Pages go in ascending Page ID, because a Page file that is still
+	//     growing only accepts the Page after the last one it has seen, and
+	//     refuses one written ahead of a lower Page it has not.
+	//
+	// Selecting by age and writing by that order keeps the same Pages and the
+	// same guarantees; the second rule used to hold by accident, on Trees whose
+	// Page file was fully materialised before any checkpoint ran.
+	order := make([]int, len(keys))
+	for index := range order {
+		order[index] = index
+	}
+	sort.SliceStable(order, func(left, right int) bool {
+		leftIndex, rightIndex := order[left], order[right]
+		if control[leftIndex] != control[rightIndex] {
+			return !control[leftIndex]
+		}
+		if control[leftIndex] {
+			return false
+		}
+		if keys[leftIndex].SpaceID != keys[rightIndex].SpaceID {
+			return keys[leftIndex].SpaceID < keys[rightIndex].SpaceID
+		}
+		return keys[leftIndex].PageID < keys[rightIndex].PageID
+	})
+	ordered := make([]Key, len(keys))
+	for position, index := range order {
+		ordered[position] = keys[index]
+	}
+	keys = ordered
 
 	report := FlushReport{Attempted: uint64(len(keys))}
 	var result error

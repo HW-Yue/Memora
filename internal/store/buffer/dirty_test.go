@@ -2,6 +2,7 @@ package buffer
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -156,7 +157,17 @@ func TestDirtyFrameCannotBeEvictedUntilFlush(t *testing.T) {
 	fetchAndRelease(t, state.pool, b)
 }
 
-func TestFlushDirtyUsesFIFOAndContinuesAfterPartialFailure(t *testing.T) {
+// TestFlushDirtySelectsFIFOWritesInPageOrderAndContinuesAfterPartialFailure
+// pins the two halves of the flush contract, which are not the same order.
+//
+// Which Pages a bounded flush takes is FIFO — oldest dirty first, so the log
+// tail can advance. Page 3 is dirtied last and a limit of two must leave it
+// alone. The order those Pages are written in is ascending Page ID instead: a
+// Page file that is still growing only accepts the Page after the last one it
+// has seen, so writing a higher Page ahead of a lower one it has not seen is
+// refused. Before that was split apart, the write order was FIFO too, and held
+// only on Trees whose Page file was fully materialised before any checkpoint.
+func TestFlushDirtySelectsFIFOWritesInPageOrderAndContinuesAfterPartialFailure(t *testing.T) {
 	state := newDirtyHarness(t, 20, Config{Capacity: 4, OldFrames: 4})
 	handles := map[uint64]*Handle{}
 	for pageID := uint64(1); pageID <= 3; pageID++ {
@@ -176,8 +187,9 @@ func TestFlushDirtyUsesFIFOAndContinuesAfterPartialFailure(t *testing.T) {
 	if report != (FlushReport{Attempted: 2, Flushed: 1, Remaining: 2}) {
 		t.Fatalf("report = %+v", report)
 	}
-	if got := state.writer.attemptIDs(); !equalUint64(got, []uint64{2, 1}) {
-		t.Fatalf("attempt order = %v, want [2 1]", got)
+	// FIFO chose Pages 2 and 1 and left 3 dirty; they are written low to high.
+	if got := state.writer.attemptIDs(); !equalUint64(got, []uint64{1, 2}) {
+		t.Fatalf("attempt order = %v, want [1 2]", got)
 	}
 	state.writer.setFailure(nil, 0)
 	report, err = state.pool.FlushDirty(10)
@@ -384,4 +396,67 @@ func equalUint64(left, right []uint64) bool {
 		}
 	}
 	return true
+}
+
+// growingPageWriter refuses a Page written ahead of the file's end, the way
+// page.Manager does: a file that is still growing accepts the Page after the
+// last one it holds and nothing beyond it.
+type growingPageWriter struct {
+	mu         sync.Mutex
+	nextPageID uint64
+	attempts   []uint64
+}
+
+func (writer *growingPageWriter) Write(value page.Page) error {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	writer.attempts = append(writer.attempts, value.Header.PageID)
+	if value.Header.PageID > writer.nextPageID {
+		return fmt.Errorf(
+			"Page identity is page=%d, next page is %d",
+			value.Header.PageID, writer.nextPageID,
+		)
+	}
+	if value.Header.PageID == writer.nextPageID {
+		writer.nextPageID++
+	}
+	return nil
+}
+
+// TestFlushDirtyGrowsAPageFileThatIsStillBeingExtended is the regression this
+// package's write ordering exists for.
+//
+// A Page file that has not yet been written to its end only accepts the next
+// Page after the ones it holds. Flushing in the order Pages happened to be
+// dirtied writes a higher Page ahead of a lower one the file has not seen, and
+// the write is refused — which surfaced as a checkpoint failing on a Tree whose
+// Page file was still growing. Trees whose files are fully materialised before
+// any checkpoint runs never hit it, which is why it stayed latent.
+func TestFlushDirtyGrowsAPageFileThatIsStillBeingExtended(t *testing.T) {
+	writer := &growingPageWriter{nextPageID: 1}
+	state := newDirtyHarness(t, 20, Config{Capacity: 8, OldFrames: 8})
+	state.pool.config.Writer = writer
+
+	// Dirty them out of order, highest first: allocation and modification do
+	// not arrive in Page order once a Tree splits.
+	for _, pageID := range []uint64{4, 2, 5, 1, 3} {
+		handle := mustFetch(t, state.pool, evictionKey(pageID))
+		if err := handle.Modify(6, func(*page.Page) error { return nil }); err != nil {
+			t.Fatal(err)
+		}
+		if err := handle.Release(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report, err := state.pool.FlushDirty(10)
+	if err != nil {
+		t.Fatalf("FlushDirty() error = %v; every Page must reach a growing file", err)
+	}
+	if report.Remaining != 0 || report.Flushed != 5 {
+		t.Fatalf("report = %+v, want all five flushed", report)
+	}
+	if !equalUint64(writer.attempts, []uint64{1, 2, 3, 4, 5}) {
+		t.Fatalf("write order = %v, want ascending Page IDs", writer.attempts)
+	}
 }

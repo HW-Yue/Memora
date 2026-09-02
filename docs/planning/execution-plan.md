@@ -183,9 +183,38 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
      隔离性是这个快照存在的理由,也是这个改动最可能弄坏的东西,
      所以配了 `TestAnOpenTransactionDoesNotSeeALaterCommit`:
      在提交前开的事务,读改过的键、新增的键、删掉的键,三种都不能串;
-   - **5b. 那张常驻表本身** ← 待。要给这两个 KV 文件盘上的索引。
-     形态未定:或者给它们自己的 B+ 树,或者把 security／hostinput／routetrace
-     搬进主库的树。**先出规格再动手**,不在本轮
+   - **5b. 那张常驻表本身** ← **试过一次,撞墙,已回退**。
+     做法是给 KV 文件自己的 B+ 树(`wal` + `page` + `treecommit` + `objectindex`,
+     就是 `openTreeWALTree` 那三行配方),`values` 整个删掉。
+     **功能上是通的**——隔离、崩溃后按标记只重放尾巴、`store.Store` 契约测试
+     全过,`Begin` 分配降到 96 字节且不随数据量变化。
+     **卡在隔离机制上**:影子分页的树没东西可拷(一次提交 `Retired` 的页
+     下一次就能 `Reused`,`treecommit` 没有读者登记表),所以只能把读写
+     序列化——事务持锁到结束。而 **`store.Tx` 的契约允许调用方把事务握在手里**
+     (`row/transaction.go:21` 就是这么用的),锁的持有时间一旦等于事务生命周期,
+     `TestExecuteHandlerKeepsTransactionPerConnection...` 与 `internal/router`
+     双双卡死 10 分钟。
+     **错在让机制反过来决定契约。** 正确的下一步是先给 `treecommit` 一张
+     读者登记表(LMDB 那种),让旧根在有读者时不被回收,快照才成立;
+     或者先收窄 `store.Tx` 的契约。两者都要先出规格
+
+### E10. 树层的开库全扫 ← **本轮量出来的,之前漏了**
+
+- **发现经过**:做 5b 时给新树量开库代价,发现它随写入历史增长。
+  追下去不是 `nativekv` 的问题,是**引擎里每一棵树都在付的**
+- **`treecommit.OpenRuntime` 每次开树,从头到尾读一遍页文件的每一页**
+  (`scanFreePages`,`runtime.go:177`),只为重建空闲页集合
+- **这订正了一句我写过的话**:存储层文档与本计划都说过「树层开库已经是
+  InnoDB 的形状:只读一页 + 重放 redo + 按需取页」。**那句话是错的**——
+  当时只核了 `page.Open`,没核 `OpenRuntime`
+- **实测**(同样 100 个活键):写 1 遍开库常驻 61 KB,写 50 遍 **976 KB**。
+  加上写时复制让页文件涨得比空闲表还回来得快,所以开库仍随**写入历史**增长
+- **方向**:空闲页集合要**持久化**(InnoDB 的 FSP free list 那种),
+  而不是每次开库扫出来。这是 `treecommit`／`treecontrol` 的格式改动
+- **与 E8 的关系**:E8 管的是记录文件那 1.2 秒,本项管的是树文件那一遍。
+  两者独立,都要做
+
+
 
 **明确不做**:不给记录文件建通用的 `(kind,id)→offset` 盘上索引。那是路 B,
 已否;它的隐含前提是偏移永久有效,等于放弃空间回收。
