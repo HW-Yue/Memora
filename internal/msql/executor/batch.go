@@ -54,7 +54,7 @@ type BatchSession struct {
 }
 
 func NewBatchSession(ctx context.Context, dictionary Catalog, rows Rows) *BatchSession {
-	return NewBatchSessionWithPackages(ctx, dictionary, rows, nil)
+	return newBatchSessionWithPointReads(ctx, dictionary, rows, nil)
 }
 
 func NewBatchSessionWithPointReads(
@@ -83,15 +83,6 @@ func newBatchSessionWithPointReads(
 	}
 }
 
-func NewBatchSessionWithPackages(
-	ctx context.Context,
-	dictionary Catalog,
-	rows Rows,
-	packages PackageManager,
-) *BatchSession {
-	return NewBatchSessionWithManagement(ctx, dictionary, rows, packages, nil)
-}
-
 func NewBatchSessionWithLexicalIndexMaintenance(
 	ctx context.Context,
 	dictionary Catalog,
@@ -109,35 +100,15 @@ func NewBatchSessionWithLexicalIndexMaintenance(
 	}
 }
 
-func NewBatchSessionWithManagement(
-	ctx context.Context,
-	dictionary Catalog,
-	rows Rows,
-	packages PackageManager,
-	wiki WikiExporter,
-) *BatchSession {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	sessionContext, cancel := context.WithCancel(ctx)
-	return &BatchSession{
-		context: sessionContext, cancel: cancel,
-		autocommit: NewWithManagement(dictionary, rows, packages, wiki), rows: rows,
-		transactions: inferredTransactionFactory(rows),
-	}
-}
-
 func NewBatchSessionWithCapabilities(
 	ctx context.Context,
 	dictionary Catalog,
 	rows Rows,
 	points PointReads,
-	packages PackageManager,
-	wiki WikiExporter,
 	assimilation AssimilationCommitter,
 ) *BatchSession {
 	return NewBatchSessionWithCapabilitiesAndTransactions(
-		ctx, dictionary, rows, points, packages, wiki, assimilation,
+		ctx, dictionary, rows, points, assimilation,
 		inferredTransactionFactory(rows),
 	)
 }
@@ -147,8 +118,6 @@ func NewBatchSessionWithCapabilitiesAndTransactions(
 	dictionary Catalog,
 	rows Rows,
 	points PointReads,
-	packages PackageManager,
-	wiki WikiExporter,
 	assimilation AssimilationCommitter,
 	transactions TransactionFactory,
 ) *BatchSession {
@@ -161,7 +130,7 @@ func NewBatchSessionWithCapabilitiesAndTransactions(
 	sessionContext, cancel := context.WithCancel(ctx)
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
-		autocommit: NewWithCapabilities(dictionary, rows, points, packages, wiki, assimilation),
+		autocommit: NewWithCapabilities(dictionary, rows, points, assimilation),
 		rows:       rows, points: points, transactions: transactions,
 	}
 }

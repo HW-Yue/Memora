@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
-	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/lexicallocation"
@@ -17,7 +16,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
-	"github.com/HW-Yue/Memora/internal/wikiexport"
 	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
 
@@ -72,8 +70,6 @@ type Engine struct {
 	candidateCatalog routeCandidateCatalog
 	rows             Rows
 	points           PointReads
-	packages         PackageManager
-	wiki             WikiExporter
 	lexical          LexicalIndexMaintenance
 	lexicalLocations LexicalLocationReader
 	assimilation     AssimilationCommitter
@@ -98,16 +94,6 @@ type LexicalIndexMaintenance interface {
 
 type LexicalLocationReader interface {
 	SearchLexicalLocations(context.Context, lexicallocation.Request) (lexicallocation.Page, error)
-}
-
-type PackageManager interface {
-	Pack(context.Context, string, string) ([]byte, dbpackage.Manifest, error)
-	Open([]byte) (dbpackage.Opened, error)
-	Install(context.Context, []byte, dbpackage.InstallOptions) (dbpackage.InstallReceipt, error)
-}
-
-type WikiExporter interface {
-	Export(context.Context, string, wikiexport.Profile, []string) (wikiexport.Manifest, error)
 }
 
 type AssimilationCommitter interface {
@@ -247,27 +233,15 @@ func NewWithLexicalLocations(
 	return engine
 }
 
-func NewWithPackages(dictionary Catalog, rows Rows, packages PackageManager) *Engine {
-	return NewWithManagement(dictionary, rows, packages, nil)
-}
-
-func NewWithManagement(dictionary Catalog, rows Rows, packages PackageManager, wiki WikiExporter) *Engine {
-	engine := New(dictionary, rows)
-	engine.packages, engine.wiki = packages, wiki
-	return engine
-}
-
 func NewWithCapabilities(
 	dictionary Catalog,
 	rows Rows,
 	points PointReads,
-	packages PackageManager,
-	wiki WikiExporter,
 	assimilation AssimilationCommitter,
 ) *Engine {
 	engine := New(dictionary, rows)
 	engine.points = points
-	engine.packages, engine.wiki, engine.assimilation = packages, wiki, assimilation
+	engine.assimilation = assimilation
 	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
 		engine.lexical = maintenance
 	}

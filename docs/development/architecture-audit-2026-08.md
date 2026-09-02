@@ -58,9 +58,11 @@
 **为什么不清晰**：Database Package 有 7 份产品文档、Wiki 导出有 1 份，
 读文档会以为能用。
 
-**建议动作**：**功能保留**（已裁定），属接线缺失——把 `Packages`/`Wiki`
-接进生产 handler。前置：`dbpackage`／`wikiexport` 现在依赖 legacy service 层
-（见 3.1），接线要么一并迁移，要么先解耦。
+**已执行（2026-09-02）：改判为删。** 原建议「功能保留、把 `Packages`/`Wiki`
+接进生产 handler」是错的——要接的那一头（`dbpackage`／`wikiexport`）只接受
+legacy 的 `store.Store`，唯一注入点本身零可达调用方，「接线」的实际内容是重写。
+两个包整包已删，**语法与 CLI 子命令保留**并固定返回 not implemented，
+产品文档降为设计记录。见[执行计划](../planning/execution-plan.md)清理台账。
 
 ### 1.3 schema 与 route 变更不加对象锁
 
@@ -75,7 +77,7 @@
 （见 `docs/storage/mvcc-undo-redo.md`），若并发写入永不开启则两个 Key 应删；
 若要开，则应补上。**不要维持现状**——留着不用最容易让人误判。
 
-### 1.4 向量检索没有生产发布方
+### 1.4 向量检索没有生产发布方（**已删除整条链**）
 
 **现象**：`USING VECTOR` 实际不可用。
 
@@ -83,21 +85,27 @@
 生产只在 `daemon/lifecycle.go:218` 构造服务，并经 `OpenActive` 只读。
 无发布方 ⇒ 无 generation ⇒ 返回 `PredictorUnavailable`。
 
-**建议动作**：方向已裁定保留。接发布方，或明确记为"未启用"。
-另见 2.3 的常驻内存问题与
-[候选预测器只给路径](../query/predictor-path-only-v1.md)。
+**已执行（2026-09-02）：整条链删除**（`3ff6136`，−2539 行）。
+「记为未启用」那个裁定只对了一半：不造发布方是对的，留着实现是错的——
+`Generation.vectors` 是个不设上界的常驻结构，为一个到不了用户手里的功能服务
+（见 2.3）。`USING VECTOR` 仍解析，返回「vector retrieval is not implemented」。
+重做时方向不变（[候选预测器只给路径](../query/predictor-path-only-v1.md)），
+但必须做成盘上索引。
 
 ### 1.5 三个导出面对已删除 Row 的处理不一致（已裁定接受）
 
 **现象**：同一个"要不要导出已删除 Row"的问题，三处给了两种答案。
 
 **证据**：
-- `wikiexport` **过滤**：`internal/wikiexport/export.go:203`
-  `if stored.State != row.StateLive { continue }`；
+- `wikiexport` **过滤**（`export.go:203` `if stored.State != row.StateLive`）；
 - `nativesnapshot` **不过滤**：`internal/nativesnapshot/native.go:85,89` 走
   `AllRows()`／`AllHistory()`，两者都不按 state 过滤；
-- `dbpackage` **不过滤**：`Service.Pack`（`internal/dbpackage/package.go:117`）
-  经 `snapshot.FilterDatabase`（`:128`）只按 database 过滤，`RowCount` 把墓碑一起数进去。
+- `dbpackage` **不过滤**：`Service.Pack` 经 `snapshot.FilterDatabase`
+  只按 database 过滤，`RowCount` 把墓碑一起数进去。
+
+> **2026-09-02：三个导出面已剩一个。** `wikiexport` 与 `dbpackage` 整包删除，
+> 只有 `nativesnapshot` 还在。不一致因此消失，但**裁定不变**——导出的契约是
+> 可达性而不是物理擦除，将来重建那两个面时按 `nativesnapshot` 的做法即可。
 
 实测：给 e2e 剧本加一个"插入即删除"的 Row 后，`doctor` 的 `Rows` 由 5 变 6、
 `History` 由 12 变 13。
@@ -162,7 +170,9 @@ manager 的树（versions／fulltext／current），加四次 phase checkpoint
 `routevector.Generation.vectors`（`model.go:125`）把一个 generation 的
 **全部** route 向量装进内存，且 `OpenActive` 每次查询重新加载并重新校验，无缓存。
 
-**建议动作**：先测量再改。前置是 1.4（向量根本没跑起来，测不出真实代价）。
+**2026-09-02：向量那一半已随 1.4 整条删除**，不用再测了——
+「先测量再改」在这里是个死循环，因为前置（1.4）永远不会满足。
+`routelexical` 那一半仍在，仍适用「先测量再改」。
 
 ---
 
@@ -185,9 +195,14 @@ manager 的树（versions／fulltext／current），加四次 phase checkpoint
 **为什么不清晰**：读代码时同一个概念有两套实现，且没有任何标记说明哪套在跑。
 
 **建议动作**：删除受[旧代码清理边界](./legacy-code-boundary.md)的规则约束——
-必须先证明不在 `cmd/...` 生产依赖图中并先加 RED。注意它们仍被迁移、package、
-逻辑快照与 native 对拍测试使用，那份文档把它们列为"明确保留"。
-另见 1.2：`dbpackage`／`wikiexport` 的接线与这条互相牵制。
+必须先证明不在 `cmd/...` 生产依赖图中并先加 RED。
+
+**2026-09-02 进展**：`dbpackage`／`wikiexport` 这两个消费方已整包删除，
+1.2 与本条的互相牵制随之解开。剩下的 `catalog.Service`／`row.Service`／
+`snapshot.Service`／`daemon.newDatabaseHandler` **只剩测试夹具这一个用途**——
+39 个测试文件、8201 行。所以剩余工作是一次**测试夹具迁移**，
+不是一次删除；daemon 那 8 个文件迁到 native 栈本身就是覆盖率的改善。
+排期见[执行计划](../planning/execution-plan.md)清理台账。
 
 ### 3.2 同一个小接口抄很多遍
 

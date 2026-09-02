@@ -72,6 +72,10 @@ INSTALL PACKAGE :package TRUSTED;
 包内容通过参数绑定进入执行器。`READ ONLY` 和 `TRUSTED` 是强制安全子句；这些语句只能
 autocommit，显式事务中不直接执行。返回格式见 [Database Package v1](../product/database-package-v1.md)。
 
+> **实现已于 2026-09-02 删除**，语法保留。这三条语句现在固定返回
+> `unsupported`，理由是它们端到端从来没通过（原实现只接受已死的 legacy 栈）。
+> 规格仍以 Database Package v1 为准，需要时按 native 栈重写。
+
 F45 已冻结单向 Wiki 导出：
 
 ```sql
@@ -79,6 +83,8 @@ EXPORT WIKI TO :path PROFILE :profile;
 ```
 
 CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得插值进 MSQL；目标必须是绝对规范化路径。语句只允许 autocommit，不读取或回流 Vault 中的人类编辑。投影、稳定路径、manifest 与增量规则见 [Obsidian Wiki 导出](../export/obsidian-wiki.md)。
+
+> **实现已于 2026-09-02 删除**，语法保留，固定返回 `unsupported`。同上。
 
 F173c 冻结 instance-wide lexical generation 维护语句：
 

@@ -340,7 +340,8 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
     **2026-08-31 升级为违反[架构原则](../product/architecture-principles.md)
     第四条**（命中判据 3：没有容量、没有淘汰，却是唯一的索引），
     迁移设计见[物理索引](./physical-index-v1.md)（阶段 1–4 ✅）；
-    阶段 5 路线未定，两条路的对照见
+    阶段 5 已于 **2026-09-02 裁定走聚簇转正**——页文件 + redo 日志 = 数据库本身，
+    记录文件退出正确性路径，理由（空间回收是能不能做的差别）与代价见
     **[记录文件的索引与权威](./record-index-and-authority-v1.md)**。
     **进度**：阶段 1～4 已完成（objects 树接线、Route、Relation、Catalog 正文，
     加上 Configuration 改顺链读）。**开库之后不再有全扫**；余下的是把开库时的
@@ -351,5 +352,7 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
     Catalog 写路径的全扫（`ApplySchemaChangePlan` 重建整个 Catalog、
     `stageVersion` 每写一个对象扫一遍）已于同批消除；
 13. **Overflow Page 未实现**：单条编码记录超过 8 KiB 硬失败，不跨页拆分；
-14. **`routevector.Generation.vectors`** 把全部 Route 向量常驻内存
-    （`internal/routevector/model.go:125`），随语义索引规模增长，尚未评估。
+14. ~~**`routevector.Generation.vectors`** 把全部 Route 向量常驻内存~~
+    **已关闭（2026-09-02）**：向量检索整条链删除（`3ff6136`）。
+    一个不设上界的常驻结构，为一个到不了用户手里的功能服务，
+    正是第四条准则的靶子；重做时必须做成盘上索引。

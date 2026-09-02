@@ -178,23 +178,35 @@ wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的�
 
 ### 7c. `EXPORT WIKI` / `INSTALL PACKAGE` 能解析、执行必失败 —— **改判为删（2026-09-02）**
 
-词法（`msql/lexer/token.go:54-55`）与解析（`parser.go:1699,1734`）齐全，
-执行时 `executor/package.go:19`、`executor/wiki_export.go:18` 判空后固定返回
-`CodeUnsupported`——生产的 `newNativeDatabaseHandler` 不注入 `Packages`/`Wiki`，
-只有测试用的 `newDatabaseHandler`（`daemon/execute.go:58,86`）注入。
+**原文（保留供追溯）**：词法（`msql/lexer/token.go:54-55`）与解析
+（`parser.go:1699,1734`）齐全，执行时判空后固定返回 `CodeUnsupported`——
+生产的 `newNativeDatabaseHandler` 不注入 `Packages`/`Wiki`，
+只有 `newDatabaseHandler` 注入。
 
 Database Package 有 7 份产品文档，读文档会以为能用。
 
 **2026-08-22 的裁定（功能保留，属接线缺失）作废。** 核实之后，
 `daemon/execute.go:58,69` 这两个注入点**本身从任何 `cmd/` 入口都不可达**，
-`internal/dbpackage`／`internal/wikiexport`／`internal/snapshot` 三个包
-**整包不可达**——它们只接受 legacy 的 `store.Store`，而生产走 native 栈。
+`internal/dbpackage`／`internal/wikiexport` **整包不可达**，
+`snapshot.Service` 亦然（同包的编解码与 `CanonicalHash` 是活的，不能连坐）
+——它们只接受 legacy 的 `store.Store`，而生产走 native 栈。
 CLI 的 `memora export --wiki` 与 package 子命令确实存在，但发的是 MSQL 语句，
 落到生产 handler 上照样返回不支持：**整条链端到端是死的**。
 
 所以「接线」的实际内容是拿 native 栈重写这两个功能。按
-「不用的先删，要的时候重新开发」处理，连同 legacy handler 一起删；
-排期与卡点见[执行计划](../planning/execution-plan.md)清理台账。
+「不用的先删，要的时候重新开发」处理：**`internal/dbpackage` 与
+`internal/wikiexport` 整包已删**，executor／msqlservice／daemon 的接线一并摘掉。
+
+**语法与 CLI 子命令保留**，固定返回 not implemented——与 `USING VECTOR` 同一
+处理。产品文档（[Database Package v1](../product/database-package-v1.md)、
+[Obsidian Wiki 导出](../export/obsidian-wiki.md)）降为设计记录，重写时以它们为规格。
+
+**顺带记一条教训**：CLI 那两个子命令的测试一直是绿的，因为它们打的是
+`dependencies.ExecuteMSQL` 假实现，从没跑过真引擎。上一轮就是看见「有子命令、
+测试还绿」而收的手。**「有调用方」和「能走通」是两件事。**
+
+legacy handler 本身没删——它现在是 8 个 daemon 测试文件的夹具。
+剩余卡点见[执行计划](../planning/execution-plan.md)清理台账。
 
 ### 7d. 向量检索没有生产发布方 —— **已裁定：整条链删除（2026-09-02）**
 

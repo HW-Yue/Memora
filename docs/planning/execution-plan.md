@@ -341,7 +341,7 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 
 ## S 阶段：工程稳态（可并行，不阻塞 E）
 
-### S1. `EXPORT WIKI`／`INSTALL PACKAGE` ← **改判为删**
+### S1. `EXPORT WIKI`／`INSTALL PACKAGE` ← **改判为删，已执行**
 
 原判（风险 7c）是「功能保留，属接线缺失」，把 `Packages`／`Wiki` 注入生产
 handler 即可。**这个判断是错的**，核实如下：
@@ -355,8 +355,10 @@ handler 即可。**这个判断是错的**，核实如下：
   MSQL 语句，落到生产 handler 上返回不支持——**整条链端到端是死的**。
 
 所以「接线」的实际内容是拿 native 栈重写这两个功能，不是注入一个已有实现。
-按「不用的先删，要的时候重新开发」处理：连同 legacy handler 一起删。
-详见下方清理台账。
+按「不用的先删，要的时候重新开发」处理：**`internal/dbpackage` 与
+`internal/wikiexport` 整包已删**（本轮，约 −2200 行），executor／msqlservice／
+daemon 的接线一并摘掉。**语法与 CLI 子命令保留**，固定返回 not implemented。
+产品文档降为设计记录。详见下方清理台账。
 
 ### S2. schema／route 对象锁的去留 ✅
 
@@ -450,27 +452,37 @@ Linux 侧的全套八道门已在容器里实测通过（本仓库的开发容�
 | --- | --- | --- |
 | 向量检索整条链（`routevector`／`routeexact`／executor 与 daemon 接线） | `3ff6136` | −2539 |
 | `dbpackage` 的 fork／merge／upgrade 与 `snapshot` 的 fork／merge | `27f8164` | −1136 |
+| `internal/dbpackage`、`internal/wikiexport` 整包，与 executor／msqlservice／daemon 的接线 | 本轮 | −2200 |
 
 判据都一样：**结构常驻内存或零可达调用方，且服务的功能到不了用户手里。**
 
-### 待删：legacy `store.Store` 那条链
+`PACK DATABASE`／`OPEN PACKAGE`／`INSTALL PACKAGE`／`EXPORT WIKI` 与对应的
+CLI 子命令**语法保留**，固定返回 not implemented——与 `USING VECTOR` 同一处理。
+产品文档降为设计记录，重写时以它们为规格。
+
+**为什么这次敢删，上一轮不敢**：上一轮我看到 `internal/cli` 里有 `runWikiExport`
+与 `runDatabasePackage` 两个真实子命令，就收手了。这轮把链走到底才发现，
+子命令发的是 MSQL 语句，落到生产 handler 上返回不支持——**CLI 测试全绿是因为
+它们打的是 `dependencies.ExecuteMSQL` 假实现**，从没跑过真引擎。
+「有调用方」和「能走通」是两件事，这次的教训记在这里。
+
+### 待删：legacy `store.Store` 那条链的剩余部分
 
 生产走的是 native 栈（`newNativeDatabaseHandler`）。legacy 那条从
-`daemon.newDatabaseHandler` 起、经 `catalog.Service` 到
-`snapshot`／`dbpackage`／`wikiexport` 的链**整条从 `cmd/` 不可达**：
+`daemon.newDatabaseHandler` 起、经 `catalog.Service`、`row.Service` 到
+`snapshot.Service` 的链**整条从 `cmd/` 不可达**，但它现在是一批测试的夹具：
 
-| 包 | 生产行数 | 状态 |
+| 包／符号 | 生产行数 | 卡在哪 |
 | --- | --- | --- |
-| `internal/snapshot` | 1092 | 全包不可达（native 侧对应物是 `nativesnapshot`） |
-| `internal/wikiexport` | 801 | 全包不可达 |
-| `internal/dbpackage` | 499 | 全包不可达 |
-| `internal/catalog/{catalog,columns}.go` | 675 | `catalog.Service` 不可达；**同包的 `model.go` 类型是活的，不能连坐** |
+| `catalog.Service`（`catalog/{catalog,columns}.go`） | 675 | 39 个测试文件、8201 行拿它当夹具；同包 `model.go` 的类型是活的，不能连坐 |
+| `snapshot.Service`（`snapshot/service.go`） | 298 | 同上，legacy handler 的 `export` 用它 |
+| `daemon.newDatabaseHandler` | 30 | 8 个 daemon 测试文件用它建 handler |
 
-**卡在哪里，说清楚**：`catalog.New` 有 **0 个生产调用方**，但有
-**39 个测试文件（8201 行）**拿它当夹具——其中一部分测的是**活代码**
-（`msql/executor`、`daemon`、`row`），只是用了这个已死的夹具。
-所以删 `catalog.Service` = 一次测试夹具迁移，不是一次删除。
-**这是排期问题，不是技术阻塞**——本台账明确记下，不再当成「不能做」。
+**卡点说清楚：这是一次测试夹具迁移，不是一次删除，也不是技术阻塞。**
+其中 daemon 那 8 个文件应该迁到 `daemon.Execute` 或
+`newNativeDatabaseHandler`（`native_transaction_test.go:328` 已有配方）——
+**那本身就是覆盖率的改善**：它们测的是活代码，只是跑在已死的栈上。
+`msql/executor` 的 12 个与 `row` 的 6 个同理。三批都迁完，legacy 链才整条可删。
 
 ### 不是死代码，别混进来
 

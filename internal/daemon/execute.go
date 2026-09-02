@@ -18,7 +18,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/assimilationcommit"
 	"github.com/HW-Yue/Memora/internal/conversation"
-	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/ipc"
@@ -31,7 +30,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 	"github.com/HW-Yue/Memora/internal/snapshot"
 	"github.com/HW-Yue/Memora/internal/store"
-	"github.com/HW-Yue/Memora/internal/wikiexport"
 	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
 
@@ -83,7 +81,6 @@ func newDatabaseHandlerWithSecurity(
 	committer := assimilationcommit.New(database, assimilationcommit.ExecutorFunc(handler.executeAssimilationMSQL))
 	handler.msql = msqlservice.New(ctx, msqlservice.Config{
 		Catalog: dictionary, Rows: rows,
-		Packages: dbpackage.New(database), Wiki: wikiexport.New(database),
 		Assimilation: committer,
 	})
 	return handler

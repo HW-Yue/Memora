@@ -2,14 +2,17 @@
 
 状态：F44 已冻结并实现。
 
-> **已实现，但生产未接线。** `INSTALL PACKAGE` 的语法在词法与解析层齐全
-> （`msql/lexer/token.go:54-55`、`msql/parser/parser.go:1734`），
-> 但执行时 `executor/package.go:19` 判空后固定返回 `CodeUnsupported`——
-> 生产的 `newNativeDatabaseHandler` 不注入 `Packages`，只有测试用的
-> `newDatabaseHandler`（`daemon/execute.go:58,86`）注入。
+> **实现已于 2026-09-02 删除。本文降为设计记录。**
 >
-> **功能保留**（2026-08-22 裁定），属接线缺失而非废弃。
-> 前置：`internal/dbpackage` 现在依赖已死的 legacy service 层，接线要么一并迁移、要么先解耦。
+> `PACK DATABASE`／`OPEN PACKAGE`／`INSTALL PACKAGE` 的语法仍在词法与解析层
+> 齐全，执行时固定返回「database package operations are not implemented」。
+> 删的理由不是这个功能不好，是它**端到端从来没通过**：`internal/dbpackage`
+> 只接受 legacy 的 `store.Store`，唯一注入点是一个零可达调用方的 daemon
+> handler，生产走 native 栈时 `Packages` 恒为 nil。原判「接线缺失」是错的——
+> 要接的那一头本身就是死的，「接线」的实际内容是拿 native 栈重写。
+>
+> **重新开发时以本文为规格**，v1 包格式、签名与撤销语义不变。
+> 裁定见[执行计划](../planning/execution-plan.md)清理台账。
 > 见[已知风险](../development/known-risks.md) §7c 与
 > [架构审计](../development/architecture-audit-2026-08.md) §1.2。
 

@@ -19,7 +19,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/config"
 	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/daemon"
-	"github.com/HW-Yue/Memora/internal/dbpackage"
 	"github.com/HW-Yue/Memora/internal/feedback"
 	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/instance"
@@ -512,7 +511,7 @@ func runDatabasePackage(command string, args []string, stdout, stderr io.Writer,
 				DefaultLevel: security.LevelStructural,
 				Approval: &security.Approval{
 					Version: security.ApprovalVersion, Action: security.ActionInstallPackage,
-					SubjectSHA256: dbpackage.Hash(encoded), Confirmed: true,
+					SubjectSHA256: packageSHA256(encoded), Confirmed: true,
 				},
 			}
 		}
