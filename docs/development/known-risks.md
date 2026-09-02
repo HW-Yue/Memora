@@ -176,7 +176,7 @@ wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的�
 
 `Kind` 枚举随之消失：键只剩一种，`Key` 就是 `(database, table, row)` 三段。
 
-### 7c. `EXPORT WIKI` / `INSTALL PACKAGE` 能解析、执行必失败
+### 7c. `EXPORT WIKI` / `INSTALL PACKAGE` 能解析、执行必失败 —— **改判为删（2026-09-02）**
 
 词法（`msql/lexer/token.go:54-55`）与解析（`parser.go:1699,1734`）齐全，
 执行时 `executor/package.go:19`、`executor/wiki_export.go:18` 判空后固定返回
@@ -184,30 +184,37 @@ wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的�
 只有测试用的 `newDatabaseHandler`（`daemon/execute.go:58,86`）注入。
 
 Database Package 有 7 份产品文档，读文档会以为能用。
-**功能保留**（2026-08-22 裁定），属接线缺失。前置：`dbpackage`／`wikiexport`
-现在依赖 legacy service 层，接线要么一并迁移、要么先解耦。
 
-### 7d. 向量检索没有生产发布方 —— **已裁定：记为未启用**
+**2026-08-22 的裁定（功能保留，属接线缺失）作废。** 核实之后，
+`daemon/execute.go:58,69` 这两个注入点**本身从任何 `cmd/` 入口都不可达**，
+`internal/dbpackage`／`internal/wikiexport`／`internal/snapshot` 三个包
+**整包不可达**——它们只接受 legacy 的 `store.Store`，而生产走 native 栈。
+CLI 的 `memora export --wiki` 与 package 子命令确实存在，但发的是 MSQL 语句，
+落到生产 handler 上照样返回不支持：**整条链端到端是死的**。
 
-`routevector.Service.Publish`（`service.go:27`）只有测试调用；生产只在
-`daemon/lifecycle.go:218` 构造服务并经 `OpenActive` 只读。
-无发布方 ⇒ 无 generation ⇒ `USING VECTOR` 返回 `PredictorUnavailable`。
+所以「接线」的实际内容是拿 native 栈重写这两个功能。按
+「不用的先删，要的时候重新开发」处理，连同 legacy handler 一起删；
+排期与卡点见[执行计划](../planning/execution-plan.md)清理台账。
 
-**裁定（S3）：这就是当前的正确形态，记为「未启用」而不是补一个发布方。**
+### 7d. 向量检索没有生产发布方 —— **已裁定：整条链删除（2026-09-02）**
 
-理由是发布方不是接线问题，是产品问题：它需要一个 embedding 提供方，
-以及「什么时候重算、算哪些节点、失败怎么办」这一整套决策。
-在这些定下来之前造一个发布方，等于先造出一个要维护的结构去满足一条
-「代码不该没有调用方」的洁癖。而 `PredictorUnavailable` **本来就是准确的
-对外表述**——预测器确实不可用，导航照常走逐层读，没有静默降级。
+原裁定（2026-08-22）是「记为未启用」：发布方不是接线问题而是产品问题
+（需要 embedding 提供方与重算策略），在那之前造发布方等于先造结构去满足洁癖。
+那半句仍然对。
 
-**开启条件**：先定 embedding 提供方与重算策略，再接 `Publish`。
+**错的是另一半：留着比删掉更糟。** `routevector.Generation.vectors` 把整个
+generation 的全部 Route 向量常驻内存，没有上界也没有淘汰——一个不设上界的
+常驻结构，为一个到不了用户手里的功能服务，正是
+[架构原则](../product/architecture-principles.md)第四条的靶子。
+
+**已删**（`3ff6136`，−2539 行）：`internal/routevector`、`internal/routeexact`
+与 executor／daemon 的接线。`SHOW ROUTE CANDIDATES ... USING VECTOR` **仍然解析**，
+返回「vector retrieval is not implemented」——语句还在，拒绝理由变准确了。
+`USING LEXICAL` 不受影响。
+
+**重新开发的条件不变**：先定 embedding 提供方与重算策略。
+**并且必须做成盘上索引**（DiskANN／mmap／走 buffer pool），不要再装一次内存。
 方向另见[候选预测器只给路径](../query/predictor-path-only-v1.md)。
-
-**同一条里的第二个问题已修**：`Generation.vectors` 过去每次查询都重新加载
-并重新校验整个 generation 的全部 route 向量。已发布的 generation 不可变、
-由 manifest 摘要命名，所以按 marker 缓存即可——没有失效逻辑要写，
-只有一个摘要要比。源摘要仍每次重算，那是发现 generation 落后于 Route 的手段。
 
 ### 7e. `SELECT ... AS OF` 曾能读回已删除 Row 的完整内容 —— **已修复**
 
