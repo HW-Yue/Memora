@@ -190,7 +190,10 @@ func TestRunPageAuthorityPublishesRowsAndReopens(t *testing.T) {
 			"space": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		}}}},
 	)
-	if vectorFallback == "" || !strings.Contains(vectorFallback, "embedding space") {
+	// Vector retrieval was removed: it had no publisher, so the generation it
+	// searched could never hold anything. The statement still parses and still
+	// says why it cannot answer, which is what keeps the refusal honest.
+	if !strings.Contains(vectorFallback, "vector retrieval is not implemented") {
 		t.Fatalf("daemon vector fallback error = %q", vectorFallback)
 	}
 	inserted := execute(

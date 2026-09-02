@@ -94,7 +94,6 @@ func newNativeDatabaseHandler(
 	dictionary executor.Catalog,
 	rows executor.Rows,
 	points executor.PointReads,
-	routeVectors executor.RouteVectorReader,
 	auxiliary store.Store,
 	securityService *security.Service,
 	traces *routetrace.Service,
@@ -110,7 +109,7 @@ func newNativeDatabaseHandler(
 		transactionFactory = transactions[0]
 	}
 	handler.msql = msqlservice.New(ctx, msqlservice.Config{
-		Catalog: dictionary, Rows: rows, Points: points, RouteVectors: routeVectors,
+		Catalog: dictionary, Rows: rows, Points: points,
 		Assimilation: committer, Transactions: transactionFactory,
 	})
 	return handler

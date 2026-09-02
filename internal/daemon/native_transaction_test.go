@@ -357,7 +357,7 @@ func nativeTransactionFixture(t *testing.T, ctx context.Context) (*databaseHandl
 	}
 	traces := routetrace.New(auxiliary)
 	handler := newNativeDatabaseHandler(
-		ctx, dictionary, rows, nil, nil, auxiliary,
+		ctx, dictionary, rows, nil, auxiliary,
 		security.New(auxiliary, security.Options{}), traces,
 		func(context.Context) ([]byte, error) { return nil, nil },
 		func(callContext context.Context) (executor.ExplicitTransaction, error) {

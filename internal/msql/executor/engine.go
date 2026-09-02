@@ -15,7 +15,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
-	"github.com/HW-Yue/Memora/internal/routevector"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/wikiexport"
@@ -75,7 +74,6 @@ type Engine struct {
 	points           PointReads
 	packages         PackageManager
 	wiki             WikiExporter
-	routeVectors     RouteVectorReader
 	lexical          LexicalIndexMaintenance
 	lexicalLocations LexicalLocationReader
 	assimilation     AssimilationCommitter
@@ -100,10 +98,6 @@ type LexicalIndexMaintenance interface {
 
 type LexicalLocationReader interface {
 	SearchLexicalLocations(context.Context, lexicallocation.Request) (lexicallocation.Page, error)
-}
-
-type RouteVectorReader interface {
-	OpenActive(context.Context, string) (*routevector.Generation, routevector.Marker, error)
 }
 
 type PackageManager interface {
@@ -226,29 +220,14 @@ func New(dictionary Catalog, rows Rows) *Engine {
 }
 
 func NewWithPointReads(dictionary Catalog, rows Rows, points PointReads) *Engine {
-	return NewWithPointReadsAndRouteVectors(dictionary, rows, points, nil)
-}
-
-func NewWithPointReadsAndRouteVectors(
-	dictionary Catalog,
-	rows Rows,
-	points PointReads,
-	vectors RouteVectorReader,
-) *Engine {
 	engine := New(dictionary, rows)
-	engine.points, engine.routeVectors = points, vectors
+	engine.points = points
 	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
 		engine.lexical = maintenance
 	}
 	if locations, ok := points.(LexicalLocationReader); ok {
 		engine.lexicalLocations = locations
 	}
-	return engine
-}
-
-func NewWithRouteVectors(dictionary Catalog, rows Rows, vectors RouteVectorReader) *Engine {
-	engine := New(dictionary, rows)
-	engine.routeVectors = vectors
 	return engine
 }
 
@@ -282,13 +261,12 @@ func NewWithCapabilities(
 	dictionary Catalog,
 	rows Rows,
 	points PointReads,
-	vectors RouteVectorReader,
 	packages PackageManager,
 	wiki WikiExporter,
 	assimilation AssimilationCommitter,
 ) *Engine {
 	engine := New(dictionary, rows)
-	engine.points, engine.routeVectors = points, vectors
+	engine.points = points
 	engine.packages, engine.wiki, engine.assimilation = packages, wiki, assimilation
 	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
 		engine.lexical = maintenance

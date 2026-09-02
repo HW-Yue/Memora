@@ -2,7 +2,6 @@ package executor
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -10,10 +9,8 @@ import (
 	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/result"
-	"github.com/HW-Yue/Memora/internal/routeexact"
 	"github.com/HW-Yue/Memora/internal/routelexical"
 	"github.com/HW-Yue/Memora/internal/router"
-	"github.com/HW-Yue/Memora/internal/routevector"
 	"github.com/HW-Yue/Memora/internal/security"
 )
 
@@ -51,7 +48,12 @@ func (engine *Engine) showRouteCandidates(
 	case "LEXICAL":
 		return engine.showLexicalRouteCandidates(ctx, show, bound)
 	case "VECTOR":
-		return engine.showVectorRouteCandidates(ctx, show, bound)
+		// Vector retrieval was removed: it had no publisher, so the generation
+		// it searched could never hold anything, and holding every Route vector
+		// resident was an unbounded structure serving an unreachable feature.
+		// The statement keeps parsing and keeps saying so.
+		return Output{}, executeError(result.CodeUnsupported,
+			"vector Route candidates are unavailable: vector retrieval is not implemented")
 	default:
 		return Output{}, executeError(result.CodeValidation, "SHOW ROUTE CANDIDATES predictor is unsupported")
 	}
@@ -106,131 +108,6 @@ func (engine *Engine) showLexicalRouteCandidates(
 	if err := builder.Add(discovery.Batch{
 		Snapshot: matched.Snapshot, CatalogRevision: matched.CatalogRevision,
 		Candidates: candidates,
-	}); err != nil {
-		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be assembled")
-	}
-	frame := builder.Frame()
-	return Output{
-		Columns: []result.Column{}, Rows: []result.Row{}, Truncated: frame.Truncated, Discovery: &frame,
-	}, nil
-}
-
-func (engine *Engine) showVectorRouteCandidates(
-	ctx context.Context,
-	show *ast.ShowStatement,
-	bound bindings,
-) (Output, error) {
-	if show == nil || show.Predictor != "VECTOR" || show.Query == nil || show.Space == nil ||
-		show.Limit == nil || show.ByteLimit == nil {
-		return Output{}, executeError(result.CodeValidation, "SHOW ROUTE CANDIDATES is incomplete")
-	}
-	vector, err := routeVectorParameter(show.Query, bound)
-	if err != nil {
-		return Output{}, err
-	}
-	spaceDigest, err := routerString(show.Space, bound, "Route embedding space digest")
-	if err != nil {
-		return Output{}, err
-	}
-	candidateLimit, err := candidateInteger(show.Limit, bound, "SHOW ROUTE CANDIDATES LIMIT", 1, maxRouteCandidates)
-	if err != nil {
-		return Output{}, err
-	}
-	byteLimit, err := candidateInteger(show.ByteLimit, bound, "SHOW ROUTE CANDIDATES BYTES", minCandidateBytes, maxCandidateBytes)
-	if err != nil {
-		return Output{}, err
-	}
-	query := routeexact.Query{SpaceDigest: spaceDigest, Vector: vector, Limit: candidateLimit}
-	if _, err := routeexact.Search(query, nil); err != nil {
-		return Output{}, executeError(result.CodeValidation, err.Error())
-	}
-	source, err := engine.lexicalRouteSource(ctx)
-	if err != nil {
-		return Output{}, err
-	}
-	base, err := routelexical.Snapshot(source)
-	if err != nil {
-		return Output{}, executeError(result.CodeInternal, "Route candidate source is invalid")
-	}
-
-	scopes := make([]routeexact.Scope, 0, len(source.Databases))
-	receipts := make([]routeexact.GenerationReceipt, 0, len(source.Databases))
-	for _, database := range source.Databases {
-		if engine.routeVectors == nil {
-			continue
-		}
-		generation, marker, openErr := engine.routeVectors.OpenActive(ctx, database.ID)
-		if openErr != nil {
-			if ctx.Err() != nil {
-				return Output{}, ctx.Err()
-			}
-			// Derived predictor failures are represented in the receipt and
-			// never turn the authoritative Router read into a query failure.
-			continue
-		}
-		manifest := generation.Manifest()
-		if manifest.SpaceDigest != spaceDigest {
-			continue
-		}
-		allowedTables := make(map[string]struct{}, len(database.Tables))
-		for _, table := range database.Tables {
-			allowedTables[table.ID] = struct{}{}
-		}
-		scopes = append(scopes, routeexact.Scope{
-			DatabaseID: database.ID, Generation: generation, AllowedTableIDs: allowedTables,
-		})
-		receipts = append(receipts, routeexact.GenerationReceipt{
-			DatabaseID: database.ID, GenerationID: marker.GenerationID,
-			MarkerRevision: marker.Revision, ManifestSHA256: marker.ManifestSHA256,
-		})
-	}
-	matched, err := routeexact.Search(query, scopes)
-	if err != nil {
-		if errors.Is(err, routeexact.ErrInvalidQuery) {
-			return Output{}, executeError(result.CodeValidation, err.Error())
-		}
-		return Output{}, executeError(result.CodeInternal, "Route vector scope is invalid")
-	}
-	snapshot, err := routeexact.Snapshot(base.Snapshot, spaceDigest, receipts)
-	if err != nil {
-		return Output{}, executeError(result.CodeInternal, "Route vector snapshot could not be assembled")
-	}
-	// A frame carries no predictor receipt any more, so "the predictor could
-	// not run" has nowhere to be reported inside a successful answer. Returning
-	// an empty candidate list would assert something false — that the tree was
-	// searched and held nothing — so an unavailable predictor is an error.
-	if len(scopes) == 0 {
-		return Output{}, executeError(
-			result.CodeNotFound,
-			"no current authorized generation matches the requested Route embedding space",
-		)
-	}
-	builder, err := discovery.NewBuilder(snapshot, base.CatalogRevision, uint64(candidateLimit), uint64(byteLimit))
-	if err != nil {
-		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be initialized")
-	}
-	// The Router is the one place a path is spelled, so the path comes from the
-	// Route node rather than from anything the vector generation stored.
-	paths := make(map[string]string, len(source.Routes))
-	for _, node := range source.Routes {
-		if !node.Deleted {
-			paths[node.ID] = node.Path
-		}
-	}
-	candidates := make([]discovery.Candidate, 0, len(matched.Matches))
-	for _, match := range matched.Matches {
-		path, live := paths[match.RouteID]
-		if !live {
-			// The generation is derived and may lag the Router. A candidate
-			// the Router no longer has is not a location.
-			continue
-		}
-		candidates = append(candidates, discovery.Candidate{
-			DatabaseID: match.DatabaseID, TableID: match.TableID, Path: path,
-		})
-	}
-	if err := builder.Add(discovery.Batch{
-		Snapshot: snapshot, CatalogRevision: base.CatalogRevision, Candidates: candidates,
 	}); err != nil {
 		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be assembled")
 	}
@@ -323,60 +200,3 @@ func candidateInteger(expression *ast.Expression, bound bindings, label string, 
 	}
 	return int(value), nil
 }
-
-func routeVectorParameter(expression *ast.Expression, bound bindings) ([]float32, error) {
-	value, err := evaluate(expression, catalog.Table{}, nil, bound)
-	if err != nil {
-		return nil, err
-	}
-	switch typed := value.(type) {
-	case []float32:
-		return append([]float32(nil), typed...), nil
-	case []float64:
-		values := make([]float32, len(typed))
-		for index, component := range typed {
-			values[index] = float32(component)
-		}
-		return values, nil
-	case []any:
-		values := make([]float32, len(typed))
-		for index, component := range typed {
-			number, ok := routeVectorNumber(component)
-			if !ok {
-				return nil, executeError(result.CodeValidation, "Route query vector must contain only numeric components")
-			}
-			values[index] = float32(number)
-		}
-		return values, nil
-	default:
-		return nil, executeError(result.CodeValidation, "Route query vector must be a numeric array parameter")
-	}
-}
-
-func routeVectorNumber(value any) (float64, bool) {
-	switch typed := value.(type) {
-	case float64:
-		return typed, true
-	case float32:
-		return float64(typed), true
-	case int:
-		return float64(typed), true
-	case int64:
-		return float64(typed), true
-	case int32:
-		return float64(typed), true
-	case uint:
-		return float64(typed), true
-	case uint64:
-		return float64(typed), true
-	case uint32:
-		return float64(typed), true
-	case json.Number:
-		value, err := typed.Float64()
-		return value, err == nil
-	default:
-		return 0, false
-	}
-}
-
-var _ RouteVectorReader = (*routevector.Service)(nil)

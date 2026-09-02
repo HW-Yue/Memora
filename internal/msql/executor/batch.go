@@ -63,15 +63,14 @@ func NewBatchSessionWithPointReads(
 	rows Rows,
 	points PointReads,
 ) *BatchSession {
-	return NewBatchSessionWithPointReadsAndRouteVectors(ctx, dictionary, rows, points, nil)
+	return newBatchSessionWithPointReads(ctx, dictionary, rows, points)
 }
 
-func NewBatchSessionWithPointReadsAndRouteVectors(
+func newBatchSessionWithPointReads(
 	ctx context.Context,
 	dictionary Catalog,
 	rows Rows,
 	points PointReads,
-	vectors RouteVectorReader,
 ) *BatchSession {
 	if ctx == nil {
 		ctx = context.Background()
@@ -79,7 +78,7 @@ func NewBatchSessionWithPointReadsAndRouteVectors(
 	sessionContext, cancel := context.WithCancel(ctx)
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
-		autocommit: NewWithPointReadsAndRouteVectors(dictionary, rows, points, vectors), rows: rows, points: points,
+		autocommit: NewWithPointReads(dictionary, rows, points), rows: rows, points: points,
 		transactions: inferredTransactionFactory(rows),
 	}
 }
@@ -133,13 +132,12 @@ func NewBatchSessionWithCapabilities(
 	dictionary Catalog,
 	rows Rows,
 	points PointReads,
-	vectors RouteVectorReader,
 	packages PackageManager,
 	wiki WikiExporter,
 	assimilation AssimilationCommitter,
 ) *BatchSession {
 	return NewBatchSessionWithCapabilitiesAndTransactions(
-		ctx, dictionary, rows, points, vectors, packages, wiki, assimilation,
+		ctx, dictionary, rows, points, packages, wiki, assimilation,
 		inferredTransactionFactory(rows),
 	)
 }
@@ -149,7 +147,6 @@ func NewBatchSessionWithCapabilitiesAndTransactions(
 	dictionary Catalog,
 	rows Rows,
 	points PointReads,
-	vectors RouteVectorReader,
 	packages PackageManager,
 	wiki WikiExporter,
 	assimilation AssimilationCommitter,
@@ -164,7 +161,7 @@ func NewBatchSessionWithCapabilitiesAndTransactions(
 	sessionContext, cancel := context.WithCancel(ctx)
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
-		autocommit: NewWithCapabilities(dictionary, rows, points, vectors, packages, wiki, assimilation),
+		autocommit: NewWithCapabilities(dictionary, rows, points, packages, wiki, assimilation),
 		rows:       rows, points: points, transactions: transactions,
 	}
 }

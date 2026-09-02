@@ -28,7 +28,6 @@ type Config struct {
 	Catalog      executor.Catalog
 	Rows         executor.Rows
 	Points       executor.PointReads
-	RouteVectors executor.RouteVectorReader
 	Packages     executor.PackageManager
 	Wiki         executor.WikiExporter
 	Assimilation executor.AssimilationCommitter
@@ -162,7 +161,7 @@ func newSession(ctx context.Context, id string, config Config) *Session {
 	gate := make(chan struct{}, 1)
 	gate <- struct{}{}
 	batch := executor.NewBatchSessionWithCapabilitiesAndTransactions(
-		sessionContext, config.Catalog, config.Rows, config.Points, config.RouteVectors,
+		sessionContext, config.Catalog, config.Rows, config.Points,
 		config.Packages, config.Wiki, config.Assimilation, config.Transactions,
 	)
 	return &Session{

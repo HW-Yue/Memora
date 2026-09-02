@@ -3,9 +3,11 @@
 package skilldiscovery
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"unicode/utf8"
@@ -13,7 +15,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
-	"github.com/HW-Yue/Memora/internal/routeexact"
 	"github.com/HW-Yue/Memora/internal/security"
 )
 
@@ -616,10 +617,7 @@ func validateRequest(request Request) error {
 		if request.CandidateLimit < 2 || request.CandidateUTF8ByteLimit < 512 {
 			return invalid("two predictors require at least two candidates and 512 bytes")
 		}
-		if _, err := routeexact.Search(routeexact.Query{
-			SpaceDigest: request.Vector.SpaceDigest,
-			Vector:      append([]float32(nil), request.Vector.Values...), Limit: 1,
-		}, nil); err != nil {
+		if err := validateVectorQuery(request.Vector); err != nil {
 			return invalid("vector query is invalid: %v", err)
 		}
 	}
@@ -829,4 +827,41 @@ func reflectCallInput(left, right executor.StatementInput) bool {
 
 func invalid(format string, arguments ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, arguments...))
+}
+
+// validateVectorQuery checks the shape of a vector query.
+//
+// It used to be done by handing the query to the exact search with no scopes,
+// which validated and then found nothing. That package is gone — vector
+// retrieval had no publisher, so the generation it searched could never hold
+// anything — but the request contract still carries a vector, and a malformed
+// one must still be refused the same way.
+func validateVectorQuery(query *VectorQuery) error {
+	const (
+		maxDimensions = 4096
+		maxTopK       = 64
+	)
+	_ = maxTopK
+	// The digest is "sha256:" plus 64 lower-case hex characters.
+	digest, found := strings.CutPrefix(query.SpaceDigest, "sha256:")
+	if !found || len(digest) != 64 {
+		return fmt.Errorf("embedding space digest is invalid")
+	}
+	if _, err := hex.DecodeString(digest); err != nil {
+		return fmt.Errorf("embedding space digest is invalid")
+	}
+	if len(query.Values) == 0 || len(query.Values) > maxDimensions {
+		return fmt.Errorf("vector dimensions must be between 1 and %d", maxDimensions)
+	}
+	var norm float64
+	for _, value := range query.Values {
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return fmt.Errorf("vector contains a non-finite component")
+		}
+		norm += float64(value) * float64(value)
+	}
+	if math.Abs(norm-1) > 1e-4 {
+		return fmt.Errorf("vector must be L2 normalized")
+	}
+	return nil
 }

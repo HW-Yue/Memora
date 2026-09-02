@@ -21,7 +21,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/nativesnapshot"
 	"github.com/HW-Yue/Memora/internal/pagestoremigration"
 	"github.com/HW-Yue/Memora/internal/routetrace"
-	"github.com/HW-Yue/Memora/internal/routevector"
 	"github.com/HW-Yue/Memora/internal/security"
 	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
 	"golang.org/x/sys/unix"
@@ -225,17 +224,9 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 	)
 	traces := routetrace.New(auxiliaryStore)
 	rowsWithTraces := &nativeRouteTraceRows{Service: rows, traces: traces}
-	routeVectors, err := routevector.New(filepath.Join(dataDir, "derived"), rowsWithTraces, routevector.Options{})
-	if err != nil {
-		_ = authority.Close()
-		_ = nativeFile.Close()
-		_ = auxiliaryStore.Close()
-		_ = securityStore.Close()
-		return err
-	}
 	pageServices := &nativePageServices{Authority: authority}
 	handler := newNativeDatabaseHandler(
-		ctx, dictionary, rowsWithTraces, pageServices, routeVectors, auxiliaryStore,
+		ctx, dictionary, rowsWithTraces, pageServices, auxiliaryStore,
 		security.New(securityStore, security.Options{}), traces,
 		func(context.Context) ([]byte, error) { return nativesnapshot.NewNative(nativeFile).Export() },
 		func(callContext context.Context) (executor.ExplicitTransaction, error) {

@@ -136,7 +136,7 @@ func TestAssimilationSubmitIsRejectedInsideExplicitTransaction(t *testing.T) {
 		SubjectSHA256: strings.TrimPrefix(plan.SHA256, "sha256:"), Confirmed: true,
 	}
 	authorization, _ := security.AuthorizationFrom(assimilationAuthorization(ctx, security.LevelWrite, approval))
-	session := executor.NewBatchSessionWithCapabilities(ctx, dictionary, rows, nil, nil, nil, nil, committer)
+	session := executor.NewBatchSessionWithCapabilities(ctx, dictionary, rows, nil, nil, nil, committer)
 	defer session.Close()
 	envelope := session.Execute(ctx, executor.BatchRequest{
 		RequestID: "explicit-assimilation", Source: "BEGIN;SUBMIT ASSIMILATION PLAN :plan FOR DATABASE work;COMMIT",
@@ -224,7 +224,7 @@ func assimilationEngineFixture(
 		}
 	}
 	rows := row.New(database, dictionary, row.Options{})
-	return executor.NewWithCapabilities(dictionary, rows, nil, nil, nil, nil, committer), dictionary, rows, func() { _ = database.Close() }
+	return executor.NewWithCapabilities(dictionary, rows, nil, nil, nil, committer), dictionary, rows, func() { _ = database.Close() }
 }
 
 func executorAssimilationProposal(source string) protocolmsql.AssimilationProposal {
