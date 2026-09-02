@@ -596,10 +596,13 @@ func (f *File) IDs(kind ObjectKind) ([]string, error) {
 	}
 	f.enumerations.Add(1)
 	ids := make([]string, 0)
-	for key := range f.records {
-		if key.kind == kind {
-			ids = append(ids, key.id)
+	if err := f.walkCommitted(func(recordKind ObjectKind, id string, _ recordMeta) error {
+		if recordKind == kind {
+			ids = append(ids, id)
 		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	sort.Strings(ids)
 	return ids, nil
@@ -617,12 +620,15 @@ func (f *File) Records() ([]RecordRef, error) {
 		return nil, ErrClosed
 	}
 	f.enumerations.Add(1)
-	result := make([]RecordRef, 0, len(f.records))
-	for key, meta := range f.records {
+	result := make([]RecordRef, 0)
+	if err := f.walkCommitted(func(kind ObjectKind, id string, meta recordMeta) error {
 		result = append(result, RecordRef{
-			Kind: key.kind, SchemaVersion: meta.schemaVersion, ID: key.id,
+			Kind: kind, SchemaVersion: meta.schemaVersion, ID: id,
 			PayloadLength: meta.payloadLength,
 		})
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	sort.Slice(result, func(left, right int) bool {
 		if result[left].Kind != result[right].Kind {
@@ -852,5 +858,85 @@ func writeFull(writer io.Writer, data []byte) error {
 		}
 		data = data[n:]
 	}
+	return nil
+}
+
+// walkCommitted visits every committed logical record in the log, in physical
+// order, skipping transaction markers and any incomplete crash tail.
+//
+// It exists so enumeration does not need a process-resident index. IDs and
+// Records used to read f.records, which is why that map had to hold an entry
+// for every record the file had ever seen; walking on demand is what lets the
+// map go away (architecture principle four, criterion 3).
+//
+// It reads record headers and IDs but never payloads, and does not re-verify
+// payload CRCs: Open already checked every one, and both callers of this walk
+// (the migration Plan build and the snapshot export) read the payloads they
+// care about through Get, which checks the CRC again at that point. Reading
+// every payload here would make enumeration cost the same as a full open for
+// no additional guarantee.
+//
+// The caller must hold at least a read lock on f.mu.
+func (f *File) walkCommitted(visit func(kind ObjectKind, id string, meta recordMeta) error) error {
+	stat, err := f.file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat native store file: %w", err)
+	}
+	fileSize := stat.Size()
+
+	type pendingRecord struct {
+		kind ObjectKind
+		id   string
+		meta recordMeta
+	}
+	var pending []pendingRecord
+	inTransaction := false
+
+	for offset := int64(fileHeaderSize); offset < fileSize; {
+		if fileSize-offset < recordHeaderSize {
+			return nil
+		}
+		var encoded [recordHeaderSize]byte
+		if _, err := f.file.ReadAt(encoded[:], offset); err != nil {
+			return fmt.Errorf("read native record header at offset %d: %w", offset, err)
+		}
+		header, err := decodeRecordHeader(encoded[:])
+		if err != nil {
+			return fmt.Errorf("record at offset %d: %w", offset, err)
+		}
+		if int64(header.recordLength) > fileSize-offset {
+			return nil
+		}
+		id := make([]byte, header.idLength)
+		if _, err := f.file.ReadAt(id, offset+recordHeaderSize); err != nil {
+			return fmt.Errorf("read native record ID at offset %d: %w", offset, err)
+		}
+		meta := recordMeta{
+			payloadOffset: offset + recordHeaderSize + int64(header.idLength),
+			payloadLength: header.payloadLength,
+			payloadCRC:    header.payloadCRC,
+			schemaVersion: header.schema,
+		}
+		switch header.kind {
+		case objectKindTransactionBegin:
+			inTransaction, pending = true, pending[:0]
+		case objectKindTransactionCommit:
+			for _, record := range pending {
+				if err := visit(record.kind, record.id, record.meta); err != nil {
+					return err
+				}
+			}
+			inTransaction, pending = false, pending[:0]
+		default:
+			if inTransaction {
+				pending = append(pending, pendingRecord{kind: header.kind, id: string(id), meta: meta})
+			} else if err := visit(header.kind, string(id), meta); err != nil {
+				return err
+			}
+		}
+		offset += int64(header.recordLength)
+	}
+	// An unterminated transaction at the tail is not committed; its buffered
+	// records are dropped rather than visited.
 	return nil
 }

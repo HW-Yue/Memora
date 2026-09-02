@@ -116,6 +116,70 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 - **顺带订正**：第四条准则里「记录文件要有它自己的持久索引」这个结论没错，
   错的是它那句循环依赖的论证——那个圈只在索引树住在 generation 里面时才存在
 
+### E9. 内存索引全删,改成盘上索引 ← **进行中**
+
+- **前置**:E7 阶段 1–4 ✅
+- **裁定(2026-09-02)**:**进程里的常驻索引一个不留**,点查一律走盘上的 B+ 树。
+  这不是 E8 的一部分,**E8 的硬门不挡它**——它只动内存结构与读写路径,
+  不动盘上格式、不动权威归属、可逆
+
+**先量再改。** 拆开量过之后,「开库全扫」与「全量常驻」是**两件代价完全不同的事**,
+必须分开处理:
+
+| 记录条数 | 全量开库 | 常驻堆 | 只走文件不建表 | 建表占多少时间 |
+| --- | --- | --- | --- | --- |
+| 50,000 | 255 ms | 4.3 MiB | 264 ms | **~0%** |
+| 200,000 | 1.215 s | 17.1 MiB | 1.182 s | **3%** |
+
+- **常驻那 17 MiB,几乎不花时间,只花内存** → 删掉是净赚,**本项负责**;
+- **开库那 1.2 秒,全在走文件本身**(每条读 header、读 ID、读完整 payload、
+  算 CRC32)。崩溃尾巴目前只能靠走到底找到 → **绕不开,归 E8**。
+
+**第二个测量决定了做法。** 给 `File.Get` 加临时计数器,跑八个读面
+(Get／ListPage／AsOfRevision／HistoryPage／ListRouterChildren／ListRouterNodes／
+DescribeTable／SnapshotCatalog),记录文件只被点读了**一个 kind**:
+
+```
+读面点读记录文件 kind=CommittedChange  2 次
+```
+
+Row、History、Route、Relation、Database、Table、Column **一次都没有**——
+正文都在树里了,`File.records` 里那些条目在读路径上是**纯废重**。
+所以剩下的活只针对还没搬家的三个 kind,不是重造一套索引。
+
+**阶段**(编号即执行顺序;第 5 项因为按请求付费,实际排在 2 之前):
+
+1. **枚举不再依赖常驻表** ✅ ——`IDs`／`Records` 改成按需走一遍日志
+   (`walkCommitted`),只读 header 与 ID、不读 payload、不重算 CRC
+   (Open 已经验过,两个调用方随后都会经 `Get` 再验一次)。
+   门:`TestEnumerationReadsTheFileNotAResidentIndex` 把 `f.records` 清空后
+   两个枚举面仍答对;`TestEnumerationDropsAnUncommittedTail` 盯住未提交尾巴;
+2. **点读不再依赖常驻表** ← 当前。给还在被点读的 kind 找盘上的家,
+   **办法是搬进已有的树,不是给记录文件另建一套偏移索引**——后者正是
+   [记录文件的索引与权威](../storage/record-index-and-authority-v1.md)§5 否掉的路 B:
+   - `CommittedChange` 正文进 changeindex 树叶子(今天叶子只存 Locator,
+     正文仍 `tree.source.Get(sequence)` 回记录文件);
+   - `Configuration` 正文进 objects 树(照 E7 阶段 4 的做法);
+   - `SnapshotMeta` 只有导出／导入两处用,非活路径,走按需扫;
+   - **迁移路径改走物理地址**:`Records()` 走一遍时把 `Location` 一起带出来,
+     之后按偏移读(`File.Location`／`ReadAtLocation`,当初就是为此留的),
+     否则「按需扫的 `Get`」会让迁移变成 O(n²);
+3. **写入侧的重复 ID 拒绝不再依赖常驻表**。`Put`／`Transaction.Put`／`Commit`
+   三处都查 `f.records`;树里已有 16 处 `ErrConflict` 做同一件事,
+   记录文件那层是重复的防御,收敛到树侧;
+4. **删掉 `File.records` 字段本身**。此时 `scan()` 只剩崩溃尾巴一件事,
+   常驻归零。门:开 5 万条记录的库,常驻堆增量 < 1 MiB,且**不随记录数增长**;
+5. **`nativekv` 的那张表**(`nativekv.go:43`)——辅助文件被整个解码进
+   `values map[string]value`。同样是无上界常驻,**之前漏记了**。
+   **而且它比记录文件那张更急**:`Begin`(`nativekv.go:80`)对**每一个事务**
+   ——包括只读事务——把整张表连同每条 payload **深拷贝一份**当快照。
+   记录文件那张是开库一次性的,这张是**每个请求一次**,而辅助库正是
+   security、hostinput、routetrace 每次调用都要碰的那个。
+   本项排在阶段 2 之前处理。
+
+**明确不做**:不给记录文件建通用的 `(kind,id)→offset` 盘上索引。那是路 B,
+已否;它的隐含前提是偏移永久有效,等于放弃空间回收。
+
 ### E0. 共享循环 redo log ✅
 
 - **前置**：无。**五个阶段全部完成。**
