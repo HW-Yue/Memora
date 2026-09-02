@@ -25,6 +25,13 @@ type value struct {
 	deleted  bool
 }
 
+// Database holds the committed state of one KV file.
+//
+// values is treated as immutable once published: nothing writes into the map
+// or into a value's payload after it becomes visible. Commit builds the next
+// map and swaps it in under the write lock instead of mutating this one. That
+// is what lets Begin hand out the current map by reference rather than copying
+// it — see Begin.
 type Database struct {
 	mu     sync.RWMutex
 	file   *nativestore.File
@@ -77,12 +84,20 @@ func (database *Database) Begin(ctx context.Context, mode store.Mode) (store.Tx,
 	if database.closed {
 		return nil, store.ErrTxClosed
 	}
-	snapshot := make(map[string]value, len(database.values))
-	for key, item := range database.values {
-		item.payload = append([]byte(nil), item.payload...)
-		snapshot[key] = item
-	}
-	return &transaction{database: database, mode: mode, snapshot: snapshot, changes: map[string]value{}}, nil
+	// The snapshot is the published map by reference, not a copy.
+	//
+	// A transaction must not see commits that land after it starts, and it used
+	// to buy that by deep-copying every entry and every payload — on read-only
+	// transactions too. That is paid once per transaction, and the stores this
+	// backs are touched on every call, so the cost grew with how much the
+	// instance had ever recorded.
+	//
+	// Referencing is safe because the published map is immutable: Commit swaps
+	// in a new map rather than writing into this one, and no payload is ever
+	// mutated in place (Get and Scan hand out copies, Put copies its argument).
+	// A commit that lands after this line therefore publishes a different map
+	// and leaves the one this transaction holds untouched.
+	return &transaction{database: database, mode: mode, snapshot: database.values, changes: map[string]value{}}, nil
 }
 
 func (database *Database) Close() error {
@@ -123,15 +138,20 @@ func (tx *transaction) Scan(ctx context.Context, bucket string) ([]store.Entry, 
 	if err := tx.ready(ctx); err != nil {
 		return nil, err
 	}
-	merged := make(map[string]value, len(tx.snapshot)+len(tx.changes))
-	for key, item := range tx.snapshot {
-		merged[key] = item
-	}
-	for key, item := range tx.changes {
-		merged[key] = item
-	}
+	// Uncommitted changes win over the snapshot, so they are read first and the
+	// snapshot skips any key they cover. This used to merge both into a third
+	// map first, which allocated one entry per key in the store on every scan
+	// even when the bucket held nothing.
 	entries := []store.Entry{}
-	for _, item := range merged {
+	for _, item := range tx.changes {
+		if item.bucket == bucket && !item.deleted {
+			entries = append(entries, store.Entry{Key: item.key, Value: append([]byte(nil), item.payload...)})
+		}
+	}
+	for key, item := range tx.snapshot {
+		if _, overridden := tx.changes[key]; overridden {
+			continue
+		}
 		if item.bucket == bucket && !item.deleted {
 			entries = append(entries, store.Entry{Key: item.key, Value: append([]byte(nil), item.payload...)})
 		}
@@ -201,9 +221,18 @@ func (tx *transaction) Commit() error {
 	if err := nativeTx.Commit(); err != nil {
 		return err
 	}
-	for _, item := range staged {
-		tx.database.values[logicalKey(item.bucket, item.key)] = item
+	// Publish a new map rather than writing into the current one: transactions
+	// opened earlier hold that map by reference and must keep seeing the state
+	// they started from. This copy is the one place the entry count is paid,
+	// and only on a write that actually commits.
+	next := make(map[string]value, len(tx.database.values)+len(staged))
+	for key, item := range tx.database.values {
+		next[key] = item
 	}
+	for _, item := range staged {
+		next[logicalKey(item.bucket, item.key)] = item
+	}
+	tx.database.values = next
 	return nil
 }
 

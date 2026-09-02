@@ -171,11 +171,21 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
    常驻归零。门:开 5 万条记录的库,常驻堆增量 < 1 MiB,且**不随记录数增长**;
 5. **`nativekv` 的那张表**(`nativekv.go:43`)——辅助文件被整个解码进
    `values map[string]value`。同样是无上界常驻,**之前漏记了**。
-   **而且它比记录文件那张更急**:`Begin`(`nativekv.go:80`)对**每一个事务**
-   ——包括只读事务——把整张表连同每条 payload **深拷贝一份**当快照。
-   记录文件那张是开库一次性的,这张是**每个请求一次**,而辅助库正是
-   security、hostinput、routetrace 每次调用都要碰的那个。
-   本项排在阶段 2 之前处理。
+   分两半,**因为它比记录文件那张更急**:
+   - **5a. 每事务的全量深拷贝** ✅ ——`Begin` 原先对**每一个事务**
+     (只读事务也算)把整张表连同每条 payload 深拷贝一份当快照。
+     记录文件那张是开库一次性的,这张是**每个事务一次**,而
+     security、hostinput、routetrace 每次调用都 `Begin`,routetrace 还随
+     使用无限增长。**实测 4000 条时每个 `Begin` 分配 1.81 MB**。
+     改成写时复制:已发布的 map 视为不可变,`Begin` 按引用拿,`Commit` 造新
+     map 再换上去。**1,810,925 字节 → 96 字节,且不随条目数变化。**
+     `Scan` 顺带不再先合并出第三张 map。
+     隔离性是这个快照存在的理由,也是这个改动最可能弄坏的东西,
+     所以配了 `TestAnOpenTransactionDoesNotSeeALaterCommit`:
+     在提交前开的事务,读改过的键、新增的键、删掉的键,三种都不能串;
+   - **5b. 那张常驻表本身** ← 待。要给这两个 KV 文件盘上的索引。
+     形态未定:或者给它们自己的 B+ 树,或者把 security／hostinput／routetrace
+     搬进主库的树。**先出规格再动手**,不在本轮
 
 **明确不做**:不给记录文件建通用的 `(kind,id)→offset` 盘上索引。那是路 B,
 已否;它的隐含前提是偏移永久有效,等于放弃空间回收。
