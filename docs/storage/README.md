@@ -352,16 +352,18 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
     Catalog 写路径的全扫（`ApplySchemaChangePlan` 重建整个 Catalog、
     `stageVersion` 每写一个对象扫一遍）已于同批消除；
 13. **Overflow Page 未实现**：单条编码记录超过 8 KiB 硬失败，不跨页拆分；
-13a. **开树时全扫页文件**（2026-09-02 新发现）：`treecommit.OpenRuntime`
-    调 `scanFreePages`（`runtime.go:177`）从头到尾读一遍页文件的每一页，
-    只为重建空闲页集合。**引擎里每一棵树都在付**。
-    实测同样 100 个活键，写 1 遍开库常驻 61 KB、写 50 遍 976 KB——
-    加上写时复制让页文件涨得比空闲表还回来得快，开库随**写入历史**增长。
+13a. ~~**开树时全扫页文件**~~ **已修复（2026-09-02）**：
+    `treecommit.OpenRuntime` 曾调 `scanFreePages`（`runtime.go:177`）
+    从头到尾读一遍页文件的每一页，只为重建空闲页集合——**引擎里每一棵树都在付**，
+    而且只增不删的树读完整个文件只得到一个空集合。实测 1785 页时占开树耗时 34%。
+    可复用页集合是树的状态，现在**跟其余状态一起写在控制页里**（格式 v3，
+    最多 2035 个页号；装不下就记为「未记录」回退到扫描，绝不截断丢页；
+    v2 老库解码后扫一次，下次提交即升级）。
+    门 `TestOpeningATreeDoesNotReadEveryPage` 数页读次数：
+    224 页的树，重开从读 566 页降到 **2 页**。
     **顺带订正**：此前多处（含本文第 7 节的语气）暗示树层开库已是 InnoDB 的
     形状「只读一页 + 重放 redo + 按需取页」，那是只核了 `page.Open`、
-    没核 `OpenRuntime` 得出的错误结论。
-    方向是把空闲页集合持久化（InnoDB 的 FSP free list 那种），
-    见[执行计划](../planning/execution-plan.md) E10；
+    没核 `OpenRuntime` 得出的错误结论——**现在这句话才成立**；
 14. ~~**`routevector.Generation.vectors`** 把全部 Route 向量常驻内存~~
     **已关闭（2026-09-02）**：向量检索整条链删除（`3ff6136`）。
     一个不设上界的常驻结构，为一个到不了用户手里的功能服务，

@@ -24,10 +24,10 @@ func TestControlCodecGoldenAndRoundTrip(t *testing.T) {
 	}) {
 		t.Fatalf("Header = %#v", value.Header)
 	}
-	wantPayload := make([]byte, payloadSize)
+	wantPayload := make([]byte, headerSize)
 	copy(wantPayload[:8], "MEMTRC02")
-	binary.LittleEndian.PutUint16(wantPayload[8:10], 2)
-	binary.LittleEndian.PutUint16(wantPayload[10:12], payloadSize)
+	binary.LittleEndian.PutUint16(wantPayload[8:10], formatVersion)
+	binary.LittleEndian.PutUint16(wantPayload[10:12], headerSize)
 	binary.LittleEndian.PutUint64(wantPayload[16:24], 7)
 	binary.LittleEndian.PutUint64(wantPayload[24:32], 9)
 	binary.LittleEndian.PutUint64(wantPayload[32:40], 12)
@@ -90,7 +90,7 @@ func TestControlCodecRejectsInvalidStateAndCorruption(t *testing.T) {
 		{"LSN", func(value *page.Page) { value.Header.LSN = 0 }, ErrCorrupt},
 		{"magic", func(value *page.Page) { value.Payload[0] ^= 1 }, ErrCorrupt},
 		{"version", func(value *page.Page) {
-			binary.LittleEndian.PutUint16(value.Payload[8:10], 3)
+			binary.LittleEndian.PutUint16(value.Payload[8:10], 4)
 		}, ErrUnsupportedVersion},
 		{"size", func(value *page.Page) {
 			binary.LittleEndian.PutUint16(value.Payload[10:12], 31)

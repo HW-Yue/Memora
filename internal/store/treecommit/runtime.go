@@ -121,7 +121,7 @@ func AttachRuntime(
 	if err != nil {
 		return nil, fmt.Errorf("decode Tree control: %w", err)
 	}
-	free, err := scanFreePages(store, state)
+	free, err := openFreePages(store, controlPage, state)
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +174,41 @@ func validateRuntimeInputs(
 	return nil
 }
 
+// openFreePages recovers the Tree's reusable Page set.
+//
+// The set is written into the control Page by every commit, so the usual answer
+// is a decode of a Page that has already been read. scanFreePages is the
+// fallback for the two cases where the Page does not carry it: a Tree written
+// before the set was persisted, and one whose set was too large for the Page.
+// Both are answered correctly, just slowly.
+func openFreePages(
+	store wal.PageStore,
+	controlPage page.Page,
+	state treecontrol.State,
+) (map[uint64]struct{}, error) {
+	ids, recorded, err := treecontrol.DecodeFreePages(controlPage)
+	if err != nil {
+		return nil, fmt.Errorf("decode reusable Pages: %w", err)
+	}
+	if !recorded {
+		return scanFreePages(store, state)
+	}
+	result := make(map[uint64]struct{}, len(ids))
+	for _, pageID := range ids {
+		if pageID >= state.NextPageID {
+			return nil, fmt.Errorf("%w: reusable Page %d beyond the space", treecontrol.ErrCorrupt, pageID)
+		}
+		result[pageID] = struct{}{}
+	}
+	return result, nil
+}
+
+// scanFreePages rebuilds the reusable set by reading every Page in the space.
+//
+// This used to run on every open of every Tree, which made opening cost the
+// size of the Page file rather than the size of the data — and on a Tree that
+// had only grown it read the whole file to build an empty set. It is now the
+// fallback described on openFreePages.
 func scanFreePages(store wal.PageStore, state treecontrol.State) (map[uint64]struct{}, error) {
 	result := make(map[uint64]struct{})
 	for pageID := treecontrol.FirstDataPageID; pageID < state.NextPageID; pageID++ {
@@ -481,7 +516,9 @@ func CommitGroup(transactionID uint64, members []GroupMember) ([]CommitReceipt, 
 			Records: transaction.Records[entry.offset : entry.offset+len(entry.prepared)],
 		}
 		member.Receipt.RecordCount = uint32(len(entry.prepared))
-		batch, next, err := materializeBatch(runtime.state, plan, entry.prepared, member, entry.recipes)
+		batch, next, nextFree, err := materializeBatch(
+			runtime.state, runtime.free, plan, entry.prepared, member, entry.recipes,
+		)
 		if err != nil {
 			// The transaction is already durable, so a failure here leaves the
 			// log ahead of memory for EVERY member, not just this one — the
@@ -494,10 +531,10 @@ func CommitGroup(transactionID uint64, members []GroupMember) ([]CommitReceipt, 
 			return nil, err
 		}
 		runtime.state = next
-		for _, pageID := range plan.Reused {
-			delete(runtime.free, pageID)
-		}
-		for _, pageID := range plan.Retired {
+		// Rebuilt from the same slice the control Page carries, so what the
+		// Runtime believes is reusable and what the Page says cannot drift.
+		runtime.free = make(map[uint64]struct{}, len(nextFree))
+		for _, pageID := range nextFree {
 			runtime.free[pageID] = struct{}{}
 		}
 		receipts[index] = CommitReceipt{WAL: transaction.Receipt, State: next}
@@ -634,21 +671,22 @@ func (runtime *Runtime) preflight(
 
 func materializeBatch(
 	base treecontrol.State,
+	baseFree map[uint64]struct{},
 	plan btree.MutationPlan,
 	prepared []wal.Record,
 	committed wal.CommittedTransaction,
 	recipes []batchRecipe,
-) ([]buffer.BatchChange, treecontrol.State, error) {
+) ([]buffer.BatchChange, treecontrol.State, []uint64, error) {
 	if len(prepared) == 0 || len(committed.Records) != len(prepared) ||
 		uint32(len(prepared)) != committed.Receipt.RecordCount {
-		return nil, treecontrol.State{}, fmt.Errorf("WAL Record count")
+		return nil, treecontrol.State{}, nil, fmt.Errorf("WAL Record count")
 	}
 	for index := range prepared {
 		left, right := prepared[index], committed.Records[index]
 		if left.Type != right.Type || left.SpaceID != right.SpaceID ||
 			left.PageID != right.PageID || !bytes.Equal(left.Payload, right.Payload) ||
 			right.LSN == 0 || right.TransactionID != committed.Receipt.TransactionID {
-			return nil, treecontrol.State{}, fmt.Errorf("WAL Record %d mismatch", index)
+			return nil, treecontrol.State{}, nil, fmt.Errorf("WAL Record %d mismatch", index)
 		}
 	}
 	batch := make([]buffer.BatchChange, 0, len(recipes)+1)
@@ -656,7 +694,7 @@ func materializeBatch(
 		record := committed.Records[recipe.recordIndex]
 		image, err := page.Decode(record.Payload)
 		if err != nil || image.Header.LSN != 0 {
-			return nil, treecontrol.State{}, fmt.Errorf("decode committed Page image")
+			return nil, treecontrol.State{}, nil, fmt.Errorf("decode committed Page image")
 		}
 		image.Header.LSN = record.LSN
 		batch = append(batch, buffer.BatchChange{
@@ -665,19 +703,41 @@ func materializeBatch(
 	}
 	root := committed.Records[len(committed.Records)-1]
 	if root.Type != wal.TypeRoot || root.PageID != treecontrol.PageID {
-		return nil, treecontrol.State{}, fmt.Errorf("root redo is not last")
+		return nil, treecontrol.State{}, nil, fmt.Errorf("root redo is not last")
 	}
 	next := treecontrol.State{
 		SpaceID: base.SpaceID, Generation: base.Generation,
 		Revision: base.Revision + 1, RootPageID: plan.RootPageID,
 		NextPageID: plan.NextPageID, LSN: root.LSN,
 	}
-	control, err := treecontrol.Encode(next)
+	// The reusable set after this commit is the set before it, minus what the
+	// plan reused, plus what it retired. It goes into the control Page so the
+	// next open does not have to rediscover it by reading the whole space.
+	nextFree := nextFreePages(baseFree, plan)
+	control, err := treecontrol.EncodeWithFreePages(next, nextFree)
 	if err != nil {
-		return nil, treecontrol.State{}, err
+		return nil, treecontrol.State{}, nil, err
 	}
 	batch = append(batch, buffer.BatchChange{
 		Page: control, ExpectedLSN: base.LSN,
 	})
-	return batch, next, nil
+	return batch, next, nextFree, nil
+}
+
+// nextFreePages is the reusable set a plan leaves behind, sorted ascending as
+// both the control Page encoding and the Planner require.
+func nextFreePages(baseFree map[uint64]struct{}, plan btree.MutationPlan) []uint64 {
+	reused := make(map[uint64]struct{}, len(plan.Reused))
+	for _, pageID := range plan.Reused {
+		reused[pageID] = struct{}{}
+	}
+	result := make([]uint64, 0, len(baseFree)+len(plan.Retired))
+	for pageID := range baseFree {
+		if _, taken := reused[pageID]; !taken {
+			result = append(result, pageID)
+		}
+	}
+	result = append(result, plan.Retired...)
+	sort.Slice(result, func(left, right int) bool { return result[left] < result[right] })
+	return result
 }
