@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/HW-Yue/Memora/actions/workflows/ci.yml/badge.svg)](https://github.com/HW-Yue/Memora/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](./go.mod)
+[![Release](https://img.shields.io/github/v/release/HW-Yue/Memora?label=release)](https://github.com/HW-Yue/Memora/releases/latest)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](./LICENSE)
 
 **从零手写的单机数据库引擎,加一层给 AI Agent 用的语义读写协议。**
@@ -274,6 +275,30 @@ go build -o memora ./cmd/memora
 `memora --stdio`(长驻 JSONL 会话)、`memora doctor`、`memora upgrade`。
 `memora help` 有完整列表。
 
+### 真正的用法:作为 Skill 装进 Claude Code / Codex
+
+上面是手动开一个实例。**日常用法是让 AI 宿主自己去用它** —— Canonical Skill
+单独发布在 **[HW-Yue/memora-skill](https://github.com/HW-Yue/memora-skill)**,
+装上之后,Claude Code 或 Codex 会在需要时自己查 Memora、自己决定该不该写进去。
+
+Skill 的工作方式是刻意保守的:
+
+1. 每个会话第一次用之前,先跑只读探测 `scripts/check.sh` —— 报 `ready` 才用,
+   报 `missing` **不许自己下载**,必须先告诉用户装到哪、再拿到明确授权;
+2. 授权之后才跑 `scripts/install.sh --yes`,从
+   [GitHub Release](https://github.com/HW-Yue/Memora/releases/latest) 取已验证的制品
+   (当前 v0 引导只支持 macOS arm64 / amd64);
+3. 之后所有数据库操作都必须带 `memora.authorization/v2`:绑定 actor、
+   用户明确授权的 Database 名单、以及显式的权限等级 ——
+   L0 只读与计划、L1 有界可回滚的行写入、L2 才是结构性变更。
+   **`permission_denied` 永远不能靠自己放宽作用域或等级来绕过。**
+
+Skill 与引擎之间的契约是版本化的:[`contract.json`](./skills/memora/contract.json)
+把三十多个协议版本号(`memora.msql.ast/v1`、`memora.result/v1`、
+`memora.authorization/v2` …)钉在一起,宿主和引擎对不上就是硬失败,不是静默降级。
+
+📎 仓库里的源:[`skills/memora/SKILL.md`](./skills/memora/SKILL.md)
+
 ---
 
 ## 工程实践
@@ -314,6 +339,10 @@ cross-build    darwin/arm64 + darwin/amd64 交叉编译
 的验收之后,才上传二进制、checksum、manifest 和 Skill bundle。普通 PR 没有发布权限。
 制品由确定性 Builder 生成,要求 tracked worktree 干净。
 
+已经真的跑过:`v0.1.0` → `v0.1.2` 三个 Release 都是这条流水线产出的,
+装机用的 [memora-skill](https://github.com/HW-Yue/memora-skill) installer
+就是从这里取二进制。
+
 ### 文档:带行号的风险台账
 
 [`docs/development/known-risks.md`](./docs/development/known-risks.md)
@@ -343,7 +372,10 @@ cross-build    darwin/arm64 + darwin/amd64 交叉编译
 - Query Agent 目前只有一步记忆,多跳导航在结构上还做不到
   ——[已知风险 #1](./docs/development/known-risks.md),这是当前最优先的缺口
 - `internal/` 里 `native*` 与非 `native*` 存在成对的包,是一次尚未收尾的迁移
-- 还没有打过正式 release tag
+- `v0.1.3` 的 tag 已经打了,但它那次 Release workflow 失败,所以最新可安装版本
+  仍然是 `v0.1.2`
+- [memora-skill](https://github.com/HW-Yue/memora-skill) 里发布的 `SKILL.md`
+  比本仓库的源少一节(删除与归档语义),需要重新同步
 
 完整清单:[当前系统能力](./docs/product/system-capabilities.md) ·
 [已知风险](./docs/development/known-risks.md) ·
