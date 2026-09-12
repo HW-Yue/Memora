@@ -386,6 +386,26 @@ func (authority *Authority) NextChangeSequence(ctx context.Context) (uint64, err
 	// probe forward from it is one point read, where sweeping the whole change
 	// log used to make every write cost a pass over every change ever committed.
 	if authority.changes != nil {
+		// The index's high-water is the log's whenever the index is level with
+		// it, which every successful publication leaves it. Level is two numbers
+		// — how far into the log the index has read, and how long the log is —
+		// so establishing it reads no records at all.
+		//
+		// It is not blind trust: a publication that failed after committing to
+		// the log leaves the index behind, and handing out its high-water would
+		// reissue a sequence the log already holds. That case falls back to
+		// probing the log, which is what this used to do every time.
+		behind, err := authority.changes.behind()
+		if err != nil {
+			return 0, err
+		}
+		if !behind {
+			high, _, err := authority.changes.currentHighWater()
+			if err != nil {
+				return 0, err
+			}
+			return high + 1, nil
+		}
 		_, high, err := authority.changes.sourceHighWater()
 		if err != nil {
 			return 0, err
@@ -752,8 +772,11 @@ func (authority *Authority) PublishMutation(
 	if err != nil {
 		return authority.poisonPublication("Row/Route body", affected, err)
 	}
-	authority.catchUpFulltextAfterWrite(ctx)
+	// The change index first: the Fulltext catch-up reads how far the change log
+	// goes from that index, so catching Fulltext up before it would have it work
+	// from a high-water one publication behind.
 	authority.catchUpChangesAfterWrite(ctx)
+	authority.catchUpFulltextAfterWrite(ctx)
 	authority.maintainRedoLog()
 	return nil
 }
@@ -914,8 +937,11 @@ func (authority *Authority) PublishCatalog(
 	if err := authority.generation.EnsureTableTrees(catalogTableIDs(databases)); err != nil {
 		return authority.poisonPublication("Catalog Table Trees", affected, err)
 	}
-	authority.catchUpFulltextAfterWrite(ctx)
+	// The change index first: the Fulltext catch-up reads how far the change log
+	// goes from that index, so catching Fulltext up before it would have it work
+	// from a high-water one publication behind.
 	authority.catchUpChangesAfterWrite(ctx)
+	authority.catchUpFulltextAfterWrite(ctx)
 	authority.maintainRedoLog()
 	return nil
 }
@@ -1155,6 +1181,40 @@ func (authority *Authority) ChangeEnvelope(sequence uint64) (change.Envelope, er
 		return change.Envelope{}, changeindex.ErrNotFound
 	}
 	return authority.changes.getBySequence(sequence)
+}
+
+// CurrentRowRevision reports a Row's newest revision from the Table's current
+// Row Tree, and whether the Tree holds it at all.
+//
+// It takes no Authority lock: this is reached from inside a publication, where
+// the lock is already held — the same reason TableByIdentity is not
+// DescribeTable.
+//
+// The write path used to establish this by probing the record log for
+// revision 1, 2, 4, 8 … and bisecting, which is O(log revisions) point reads
+// through that log's process-resident index. The Tree answers in one descent
+// and is the structure that index was standing in for.
+func (authority *Authority) CurrentRowRevision(
+	databaseID, tableID, rowID string,
+) (uint64, bool, error) {
+	if authority == nil || authority.generation == nil || tableID == "" || rowID == "" {
+		return 0, false, nil
+	}
+	index := authority.generation.CurrentRowsFor(tableID)
+	if index == nil {
+		return 0, false, nil
+	}
+	locator, err := index.Lookup(rowID)
+	if errors.Is(err, currentrowindex.ErrNotFound) {
+		return 0, true, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if locator.DatabaseID != databaseID || locator.TableID != tableID {
+		return 0, false, fmt.Errorf("%w: current Row belongs to another Table", ErrTargetCorrupt)
+	}
+	return locator.Revision, true, nil
 }
 
 func (authority *Authority) RelationObjects() *objectindex.Index {

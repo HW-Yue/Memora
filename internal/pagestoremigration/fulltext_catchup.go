@@ -45,7 +45,11 @@ func (authority *Authority) fulltextRangeLocked() (uint64, bool, error) {
 	if err != nil {
 		return 0, false, fmt.Errorf("%w: Fulltext cursor: %v", ErrTargetCorrupt, err)
 	}
-	_, high, err := authority.changes.sourceHighWater()
+	// The change index's own high-water, not the log's: every publication
+	// catches the index up before it returns, and asking the log instead was a
+	// probe by point read, which the log can no longer answer without a pass
+	// over itself.
+	high, _, err := authority.changes.currentHighWater()
 	if err != nil {
 		return 0, false, err
 	}
@@ -78,11 +82,13 @@ func (authority *Authority) runCatchUpLocked(ctx context.Context) error {
 		if err != nil || !behind {
 			return err
 		}
-		next, err := authority.changes.source.NextSequence(0)
+		// The change index's high-water, not a probe forward through the log:
+		// probing is a point read per step, and the log no longer keeps a
+		// process-resident index to answer one.
+		high, _, err := authority.changes.currentHighWater()
 		if err != nil {
-			return fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
+			return err
 		}
-		high := next - 1
 		last := min(high, cursor+fulltextCatchUpBatch)
 		documents, err := authority.projectChangeRange(ctx, cursor+1, last)
 		if err != nil {
@@ -123,7 +129,10 @@ func (authority *Authority) projectChangeRange(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		envelope, err := authority.changes.source.Get(sequence)
+		// From the Tree, which carries envelopes. Reading the log per sequence
+		// was a point read through its process-resident index, and the catch-up
+		// runs after every write.
+		envelope, err := authority.changes.getBySequence(sequence)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"%w: committed change sequence %d: %v", ErrTargetCorrupt, sequence, err,

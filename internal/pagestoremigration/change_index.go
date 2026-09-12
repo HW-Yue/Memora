@@ -307,21 +307,54 @@ func (tree *authorityChangeTree) sourceHighWater() (indexed, source uint64, err 
 	return indexed, next - 1, nil
 }
 
+// currentHighWater is the last commit sequence the index holds.
+//
+// Every publication catches the index up before it returns and a reopen
+// reconciles before anything is allocated, so this is the log's high-water too —
+// which is what lets the commit sequence allocator stop probing the log.
+func (tree *authorityChangeTree) currentHighWater() (uint64, bool, error) {
+	if tree == nil || tree.index == nil {
+		return 0, false, nil
+	}
+	indexed, err := tree.index.HighWater()
+	if err != nil {
+		return 0, false, fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
+	}
+	return indexed, true, nil
+}
+
+// behind reports whether the index may have changes still to catch up on.
+//
+// It compares the log length with how far into the log the index has read. That
+// can say "maybe" when the growth was records of other kinds, which costs an
+// extra walk of a tail holding no changes — cheap, and the alternative is asking
+// the log for its last sequence, which is a point read the log can no longer
+// answer without a pass over itself.
 func (tree *authorityChangeTree) behind() (bool, error) {
-	indexed, source, err := tree.sourceHighWater()
+	if tree == nil || tree.index == nil || tree.source == nil {
+		return false, fmt.Errorf("%w: committed change reconcile", ErrInvalid)
+	}
+	mark, err := tree.index.LogOffset()
+	if err != nil {
+		return false, fmt.Errorf("%w: committed change log offset: %v", ErrTargetCorrupt, err)
+	}
+	size, err := tree.sourceSize()
 	if err != nil {
 		return false, err
 	}
-	return indexed < source, nil
+	return mark < size, nil
 }
 
 func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting bool) error {
 	if tree == nil || tree.index == nil || tree.source == nil || ctx == nil {
 		return fmt.Errorf("%w: committed change reconcile", ErrInvalid)
 	}
-	indexedHighWater, bodyHighWater, err := tree.sourceHighWater()
+	// The Tree says where it got to; the walk below says what came after. Asking
+	// the log where it ends was a point read per probe, and the log no longer
+	// keeps a process-resident index to answer one cheaply.
+	indexedHighWater, err := tree.index.HighWater()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
 	}
 	if verifyExisting {
 		for after := uint64(0); after < indexedHighWater; {
@@ -377,9 +410,6 @@ func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting b
 		func(sequence uint64, envelope change.Envelope, payload []byte) error {
 			if err := ctx.Err(); err != nil {
 				return err
-			}
-			if sequence > bodyHighWater {
-				return nil
 			}
 			batch = append(batch, changeindex.Record{
 				Locator: locatorForEnvelope(envelope), Body: payload,

@@ -211,6 +211,13 @@ func (repository *Repository) latestRevision(id string) (uint64, error) {
 	return low, nil
 }
 
+// rowRevisionSource answers a Row's newest revision from the generation's
+// current Row Tree. Optional: a Repository opened without a generation has no
+// Tree to ask, and only the Authority implements it.
+type rowRevisionSource interface {
+	CurrentRowRevision(databaseID, tableID, rowID string) (uint64, bool, error)
+}
+
 func (repository *Repository) revisionExists(id string, revision uint64) (bool, error) {
 	_, err := repository.file.Location(nativestore.ObjectKindRow, revisionRecordID(id, revision))
 	if err == nil {
