@@ -1004,7 +1004,14 @@ func (f *File) RecordsSince(offset int64) ([]Record, error) {
 	if f.closed {
 		return nil, ErrClosed
 	}
-	f.enumerations.Add(1)
+	// Enumerations counts passes over the whole file, which is what the read-path
+	// gates assert never happens. A read that starts from an offset a caller has
+	// durably recorded is bounded by what was written since, so it is not one —
+	// and counting it would make those gates fire on a bounded tail read while
+	// saying nothing new about a real sweep.
+	if offset <= int64(fileHeaderSize) {
+		f.enumerations.Add(1)
+	}
 	result := make([]Record, 0)
 	err := f.walkCommittedFrom(offset, func(kind ObjectKind, id string, meta recordMeta) error {
 		payload := make([]byte, meta.payloadLength)

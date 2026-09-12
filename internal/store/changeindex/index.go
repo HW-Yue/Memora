@@ -62,7 +62,13 @@ type Index struct {
 
 type operation struct{ key, value []byte }
 
-var metaHighWaterKey = []byte{0}
+var (
+	metaHighWaterKey = []byte{0}
+	// metaLogOffsetKey records how far into the record log this index has read.
+	// Catching up then costs the records written since, not a pass over the
+	// whole log — which is what made catching up on the write path a sweep.
+	metaLogOffsetKey = []byte{4}
+)
 
 // bodyChunkBytes is how much of an envelope goes in one leaf record.
 //
@@ -194,6 +200,65 @@ func (index *Index) Append(transactionID uint64, records []Record) (Receipt, err
 		if err := planner.Upsert(item.key, item.value); err != nil {
 			return Receipt{}, classifyTreeError(err)
 		}
+	}
+	committed, err := index.runtime.Commit(transactionID, planner.Plan())
+	if err != nil {
+		return Receipt{}, err
+	}
+	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
+}
+
+// LogOffset reports how far into the record log this index has read, or zero
+// when it has never recorded one.
+func (index *Index) LogOffset() (int64, error) {
+	if index == nil || index.runtime == nil {
+		return 0, fmt.Errorf("%w: log offset request", ErrInvalid)
+	}
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return 0, nil
+	}
+	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+	if err != nil {
+		return 0, err
+	}
+	encoded, err := searcher.Get(metaLogOffsetKey)
+	if errors.Is(err, btree.ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil || len(encoded) != 8 {
+		return 0, fmt.Errorf("%w: log offset", ErrCorrupt)
+	}
+	return int64(binary.BigEndian.Uint64(encoded)), nil
+}
+
+// SetLogOffset records how far into the record log this index has read.
+//
+// It is written in a commit of its own, after the records it covers, so it can
+// never claim more than the Tree holds: a crash in between leaves the offset
+// behind and the next catch-up reads the same tail again, which converges
+// because re-appending a change the Tree already has is a no-op.
+func (index *Index) SetLogOffset(transactionID uint64, offset int64) (Receipt, error) {
+	if index == nil || index.runtime == nil || transactionID == 0 || offset < 0 {
+		return Receipt{}, fmt.Errorf("%w: log offset", ErrInvalid)
+	}
+	index.mu.Lock()
+	defer index.mu.Unlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return Receipt{}, fmt.Errorf("%w: index is not bootstrapped", ErrConflict)
+	}
+	planner, err := btree.NewMutationPlanner(
+		state.SpaceID, state.Generation, state.RootPageID, state.NextPageID, index.runtime,
+		index.runtime.FreePageIDs()...,
+	)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if err := planner.Upsert(bytes.Clone(metaLogOffsetKey), encodeUint64(uint64(offset))); err != nil {
+		return Receipt{}, classifyTreeError(err)
 	}
 	committed, err := index.runtime.Commit(transactionID, planner.Plan())
 	if err != nil {

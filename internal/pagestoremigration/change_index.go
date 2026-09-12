@@ -362,7 +362,18 @@ func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting b
 		batch = batch[:0]
 		return nil
 	}
-	walkErr := tree.source.WalkSince(indexedHighWater,
+	// Start from the offset this index has already read, not from the beginning:
+	// catching up on the write path would otherwise be a pass over the whole log
+	// every time.
+	from, err := tree.index.LogOffset()
+	if err != nil {
+		return fmt.Errorf("%w: committed change log offset: %v", ErrTargetCorrupt, err)
+	}
+	logSize, err := tree.sourceSize()
+	if err != nil {
+		return err
+	}
+	walkErr := tree.source.WalkFrom(from, indexedHighWater,
 		func(sequence uint64, envelope change.Envelope, payload []byte) error {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -383,6 +394,17 @@ func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting b
 	}
 	if err := flush(); err != nil {
 		return err
+	}
+	// The offset goes last, in a commit of its own, so it can never claim more
+	// than the Tree holds.
+	if logSize > from {
+		transactionID, err := tree.nextTransactionID()
+		if err == nil {
+			_, err = tree.index.SetLogOffset(transactionID, logSize)
+		}
+		if err != nil {
+			return fmt.Errorf("%w: record committed change log offset: %v", ErrTargetCorrupt, err)
+		}
 	}
 	return tree.maintainRedoLog()
 }
@@ -474,18 +496,16 @@ func (tree *authorityChangeTree) get(transactionID string) (change.Envelope, err
 // getBySequence resolves a transaction's envelope from the change sequence a Row
 // revision carries.
 //
-// It prefers the Tree, which now carries envelopes, and falls back to the record
-// log when the Tree does not have that sequence yet. The index is reconciled
-// lazily — only when someone lists or gets a change — so it lags the log between
-// a write and the next such read, and a history read must not depend on that
-// having happened.
+// It reads the Tree, which carries envelopes. The Tree used to be reconciled
+// lazily — only when someone listed or got a change — so it lagged the log
+// between a write and the next such read, and this had to read the log instead.
+// Every publication now catches the index up before it returns, bounded by a
+// durable record of how far into the log the index has read, so the Tree is the
+// answer.
 //
-// Catching the index up inside the write path was tried and backed out: the
-// catch-up reads the log's tail, and without a durable marker of how far it has
-// read that is a pass over the whole file — trading a point read for a sweep on
-// every write. Closing this properly needs the envelope handed to the index at
-// publish time, which is plumbing through the write path rather than a read-side
-// change.
+// The log is still consulted for a sequence the Tree does not have: the window
+// after a crash and before the reopen reconcile, and changes indexed before
+// envelopes moved into the Tree.
 func (tree *authorityChangeTree) getBySequence(sequence uint64) (change.Envelope, error) {
 	if tree == nil || tree.source == nil || sequence == 0 {
 		return change.Envelope{}, changeindex.ErrNotFound
@@ -566,4 +586,53 @@ func (tree *authorityChangeTree) Close() error {
 		return nil
 	}
 	return errors.Join(tree.set.Close(), tree.manager.Close())
+}
+
+// sourceSize is how long the record log is now. A length taken here is a record
+// boundary, so the index can store it and later ask only for what came after.
+func (tree *authorityChangeTree) sourceSize() (int64, error) {
+	size, err := tree.source.LogSize()
+	if err != nil {
+		return 0, fmt.Errorf("%w: measure committed change log: %v", ErrTargetCorrupt, err)
+	}
+	return size, nil
+}
+
+// catchUpChangesAfterWrite brings the committed change index level with the log
+// before a publication returns.
+//
+// The index used to be reconciled only when someone listed or got a change, so
+// between a write and the next such read it lagged the log — and a history read
+// that wanted a Row's attribution had to go to the log directly, a point read
+// through the log's process-resident index. Catching up here is what lets that
+// read go to the Tree instead.
+//
+// This was tried once without a durable offset and backed out: the catch-up read
+// the log from the beginning, so every write became a pass over the whole file.
+// The index now records how far it has read, so the catch-up costs the records
+// this write added.
+//
+// The caller holds the Authority write lock. A failure here never fails the
+// write — the log already has the change and the next reconcile picks it up —
+// but it is recorded rather than swallowed.
+func (authority *Authority) catchUpChangesAfterWrite(ctx context.Context) {
+	if authority == nil || authority.changes == nil {
+		return
+	}
+	if err := authority.changes.reconcile(ctx, false); err != nil {
+		authority.changeCatchUpErr = err
+		return
+	}
+	authority.changeCatchUpErr = nil
+}
+
+// ChangeCatchUpError reports the last failed committed change catch-up, or nil.
+// A failure here never failed a write.
+func (authority *Authority) ChangeCatchUpError() error {
+	if authority == nil {
+		return nil
+	}
+	authority.mu.RLock()
+	defer authority.mu.RUnlock()
+	return authority.changeCatchUpErr
 }

@@ -98,6 +98,7 @@ type Authority struct {
 	// maintenance error it never blocks a write, and the read-time trigger
 	// retries, but it must not vanish silently.
 	fulltextCatchUpErr error
+	changeCatchUpErr   error
 	closed             bool
 	writeGate          chan struct{}
 	locks              *objectlock.Manager
@@ -752,6 +753,7 @@ func (authority *Authority) PublishMutation(
 		return authority.poisonPublication("Row/Route body", affected, err)
 	}
 	authority.catchUpFulltextAfterWrite(ctx)
+	authority.catchUpChangesAfterWrite(ctx)
 	authority.maintainRedoLog()
 	return nil
 }
@@ -913,6 +915,7 @@ func (authority *Authority) PublishCatalog(
 		return authority.poisonPublication("Catalog Table Trees", affected, err)
 	}
 	authority.catchUpFulltextAfterWrite(ctx)
+	authority.catchUpChangesAfterWrite(ctx)
 	authority.maintainRedoLog()
 	return nil
 }

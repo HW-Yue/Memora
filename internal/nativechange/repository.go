@@ -25,6 +25,16 @@ type Repository struct{ file *nativestore.File }
 
 func New(file *nativestore.File) *Repository { return &Repository{file: file} }
 
+// LogSize is how long the record log is now. A length taken after a commit is a
+// record boundary, so a derived index can store it and later ask WalkFrom for
+// only what came after.
+func (repository *Repository) LogSize() (int64, error) {
+	if repository == nil || repository.file == nil {
+		return 0, fmt.Errorf("%w: log size request", ErrInvalid)
+	}
+	return repository.file.Size()
+}
+
 func Stage(transaction *nativestore.Transaction, value change.Envelope) error {
 	if transaction == nil {
 		return fmt.Errorf("%w: transaction", ErrInvalid)
@@ -170,12 +180,29 @@ func (repository *Repository) WalkSince(
 	after uint64,
 	visit func(sequence uint64, envelope change.Envelope, payload []byte) error,
 ) error {
+	return repository.WalkFrom(0, after, visit)
+}
+
+// WalkFrom is WalkSince starting at a byte offset in the log the caller has
+// durably recorded, so catching up costs what was written since rather than a
+// pass over the whole log.
+func (repository *Repository) WalkFrom(
+	offset int64,
+	after uint64,
+	visit func(sequence uint64, envelope change.Envelope, payload []byte) error,
+) error {
 	if repository == nil || repository.file == nil || visit == nil {
 		return fmt.Errorf("%w: walk request", ErrInvalid)
 	}
-	records, err := repository.file.RecordsOfKind(nativestore.ObjectKindCommittedChange)
+	all, err := repository.file.RecordsSince(offset)
 	if err != nil {
 		return err
+	}
+	records := make([]nativestore.Record, 0, len(all))
+	for _, record := range all {
+		if record.Kind == nativestore.ObjectKindCommittedChange {
+			records = append(records, record)
+		}
 	}
 	sequences := make([]uint64, 0, len(records))
 	payloads := make(map[uint64][]byte, len(records))
