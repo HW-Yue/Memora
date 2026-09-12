@@ -878,6 +878,19 @@ func writeFull(writer io.Writer, data []byte) error {
 //
 // The caller must hold at least a read lock on f.mu.
 func (f *File) walkCommitted(visit func(kind ObjectKind, id string, meta recordMeta) error) error {
+	return f.walkCommittedFrom(int64(fileHeaderSize), visit)
+}
+
+// walkCommittedFrom is walkCommitted starting at a record boundary rather than
+// at the first record. A derived index that already holds everything up to some
+// Size uses it to read only the tail.
+func (f *File) walkCommittedFrom(
+	start int64,
+	visit func(kind ObjectKind, id string, meta recordMeta) error,
+) error {
+	if start < int64(fileHeaderSize) {
+		start = int64(fileHeaderSize)
+	}
 	stat, err := f.file.Stat()
 	if err != nil {
 		return fmt.Errorf("stat native store file: %w", err)
@@ -892,7 +905,7 @@ func (f *File) walkCommitted(visit func(kind ObjectKind, id string, meta recordM
 	var pending []pendingRecord
 	inTransaction := false
 
-	for offset := int64(fileHeaderSize); offset < fileSize; {
+	for offset := start; offset < fileSize; {
 		if fileSize-offset < recordHeaderSize {
 			return nil
 		}
@@ -939,4 +952,75 @@ func (f *File) walkCommitted(visit func(kind ObjectKind, id string, meta recordM
 	// An unterminated transaction at the tail is not committed; its buffered
 	// records are dropped rather than visited.
 	return nil
+}
+
+// Size reports the record log's current length in bytes.
+//
+// It is a durable position, not a statistic: a length taken after a commit is a
+// record boundary, so a derived index can store it and later ask only for the
+// records written past it. RecordsSince is that ask.
+func (f *File) Size() (int64, error) {
+	if f == nil {
+		return 0, ErrClosed
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
+		return 0, ErrClosed
+	}
+	stat, err := f.file.Stat()
+	if err != nil {
+		return 0, fmt.Errorf("stat native store file: %w", err)
+	}
+	return stat.Size(), nil
+}
+
+// Record is one committed record with its payload.
+type Record struct {
+	Kind          ObjectKind
+	SchemaVersion uint32
+	ID            string
+	Payload       []byte
+}
+
+// RecordsSince returns every committed record written at or after offset, in
+// physical order, with its payload.
+//
+// A derived index catches up with this: it stores the Size it last indexed
+// through and asks for the tail, so a restart costs the records written since
+// rather than every record the file has ever held. Offset zero asks for all of
+// them, which is what a rebuild wants.
+//
+// The offset must be a record boundary — a Size taken after a commit always is.
+func (f *File) RecordsSince(offset int64) ([]Record, error) {
+	if f == nil {
+		return nil, ErrClosed
+	}
+	if offset < 0 {
+		return nil, fmt.Errorf("%w: negative offset", ErrInvalidArgument)
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
+		return nil, ErrClosed
+	}
+	f.enumerations.Add(1)
+	result := make([]Record, 0)
+	err := f.walkCommittedFrom(offset, func(kind ObjectKind, id string, meta recordMeta) error {
+		payload := make([]byte, meta.payloadLength)
+		if _, err := f.file.ReadAt(payload, meta.payloadOffset); err != nil {
+			return fmt.Errorf("read native record payload at %d: %w", meta.payloadOffset, err)
+		}
+		if crc32.ChecksumIEEE(payload) != meta.payloadCRC {
+			return fmt.Errorf("%w: payload CRC mismatch at %d", ErrCorrupt, meta.payloadOffset)
+		}
+		result = append(result, Record{
+			Kind: kind, SchemaVersion: meta.schemaVersion, ID: id, Payload: payload,
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
