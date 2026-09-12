@@ -185,7 +185,11 @@ func (source *nativeSource) Inventory(ctx context.Context) (SourceState, error) 
 	if source == nil || source.file == nil || ctx == nil {
 		return SourceState{}, fmt.Errorf("%w: native source", ErrInvalid)
 	}
-	references, err := source.file.Records()
+	// One pass that carries the payloads, rather than a pass for the references
+	// and a lookup per record. The lookup went through the record log's resident
+	// index, which is what this stage is removing; walking per record instead
+	// would have made the inventory quadratic.
+	references, err := source.file.RecordsSince(0)
 	if err != nil {
 		return SourceState{}, classifySourceError(err)
 	}
@@ -201,20 +205,14 @@ func (source *nativeSource) Inventory(ctx context.Context) (SourceState, error) 
 		if reference.Kind < nativestore.ObjectKindDatabase || reference.Kind > nativestore.ObjectKindMax {
 			return SourceState{}, fmt.Errorf("%w: object kind %d", ErrUnsupported, reference.Kind)
 		}
-		payload, err := source.file.Get(reference.Kind, reference.ID)
-		if err != nil {
-			return SourceState{}, classifySourceError(err)
-		}
-		if uint32(len(payload)) != reference.PayloadLength {
-			return SourceState{}, fmt.Errorf("%w: Record length changed", ErrCorrupt)
-		}
+		payload := reference.Payload
 		binary.BigEndian.PutUint16(encoded[:2], uint16(reference.Kind))
 		binary.BigEndian.PutUint32(encoded[2:6], reference.SchemaVersion)
 		_, _ = hash.Write(encoded[:6])
 		binary.BigEndian.PutUint32(encoded[:4], uint32(len(reference.ID)))
 		_, _ = hash.Write(encoded[:4])
 		_, _ = hash.Write([]byte(reference.ID))
-		binary.BigEndian.PutUint32(encoded[:4], reference.PayloadLength)
+		binary.BigEndian.PutUint32(encoded[:4], uint32(len(payload)))
 		_, _ = hash.Write(encoded[:4])
 		_, _ = hash.Write(payload)
 		byKind[reference.Kind]++
