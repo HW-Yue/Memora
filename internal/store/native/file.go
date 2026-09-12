@@ -1024,3 +1024,46 @@ func (f *File) RecordsSince(offset int64) ([]Record, error) {
 	}
 	return result, nil
 }
+
+// FindRecord returns one committed record's payload by walking the log, without
+// consulting the resident index.
+//
+// It is for the paths that read a record but must not be a reason for that
+// index to exist — a snapshot export checking whether its cached source is
+// still current, for instance. The cost is a pass over the log, so it is only
+// correct to use where a pass is already being made or the read is rare; a live
+// read path wants a Tree, not this.
+func (f *File) FindRecord(kind ObjectKind, id string) ([]byte, error) {
+	if f == nil {
+		return nil, ErrClosed
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
+		return nil, ErrClosed
+	}
+	f.enumerations.Add(1)
+	var found *recordMeta
+	err := f.walkCommittedFrom(int64(fileHeaderSize),
+		func(recordKind ObjectKind, recordIdentity string, meta recordMeta) error {
+			if recordKind == kind && recordIdentity == id {
+				value := meta
+				found = &value
+			}
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	if found == nil {
+		return nil, fmt.Errorf("%w: kind %d id %q", ErrNotFound, kind, id)
+	}
+	payload := make([]byte, found.payloadLength)
+	if _, err := f.file.ReadAt(payload, found.payloadOffset); err != nil {
+		return nil, fmt.Errorf("read native record payload at %d: %w", found.payloadOffset, err)
+	}
+	if crc32.ChecksumIEEE(payload) != found.payloadCRC {
+		return nil, fmt.Errorf("%w: payload CRC mismatch at %d", ErrCorrupt, found.payloadOffset)
+	}
+	return payload, nil
+}

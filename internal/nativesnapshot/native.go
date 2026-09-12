@@ -51,7 +51,12 @@ func (service *NativeService) Export() ([]byte, error) {
 		return nil, err
 	}
 	fingerprint := nativeFingerprint(encoded)
-	if payload, getErr := service.file.Get(nativestore.ObjectKindSnapshotMeta, nativeSourceID); getErr == nil {
+	// FindRecord rather than Get: this is a cache check on the export path, and
+	// reading it through the record log's resident index would be a reason for
+	// that index to exist. The export is already a pass over the Database.
+	if payload, getErr := service.file.FindRecord(
+		nativestore.ObjectKindSnapshotMeta, nativeSourceID,
+	); getErr == nil {
 		var source nativeSource
 		if json.Unmarshal(payload, &source) != nil {
 			return nil, nativeError(result.CodeInternal, "native snapshot metadata is corrupt")
