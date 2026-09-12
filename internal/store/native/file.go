@@ -659,6 +659,11 @@ func (f *File) scan(fileSize int64) error {
 		records map[recordKey]recordMeta
 		digest  []byte
 	}
+	// Duplicate IDs are still refused across every kind: the set lives only for
+	// the length of this scan, so detecting them costs nothing after Open
+	// returns. What is not kept is where the record is, for the kinds nothing
+	// point-reads any more.
+	seen := make(map[recordKey]struct{})
 	var pending *pendingTransaction
 	safeOffset := int64(fileHeaderSize)
 	for offset := int64(fileHeaderSize); offset < fileSize; {
@@ -693,7 +698,7 @@ func (f *File) scan(fileSize int64) error {
 			return fmt.Errorf("%w: invalid record ID at offset %d", ErrCorrupt, offset)
 		}
 		key := recordKey{kind: header.kind, id: string(id)}
-		if _, exists := f.records[key]; exists {
+		if _, exists := seen[key]; exists {
 			return fmt.Errorf("%w: duplicate record ID %q", ErrCorrupt, string(id))
 		}
 
@@ -725,22 +730,18 @@ func (f *File) scan(fileSize int64) error {
 			if !bytes.Equal(payload, want[:]) {
 				return fmt.Errorf("%w: transaction digest mismatch", ErrCorrupt)
 			}
-			for recordKey, recordMeta := range pending.records {
-				f.records[recordKey] = recordMeta
+			for key, meta := range pending.records {
+				seen[key] = struct{}{}
+				f.records[key] = meta
 			}
 			pending = nil
 			safeOffset = offset + int64(header.recordLength)
 		default:
 			if pending == nil {
-				if _, exists := f.records[key]; exists {
-					return fmt.Errorf("%w: duplicate record ID %q", ErrCorrupt, string(id))
-				}
+				seen[key] = struct{}{}
 				f.records[key] = meta
 				safeOffset = offset + int64(header.recordLength)
 			} else {
-				if _, exists := f.records[key]; exists {
-					return fmt.Errorf("%w: duplicate record ID %q", ErrCorrupt, string(id))
-				}
 				if _, exists := pending.records[key]; exists {
 					return fmt.Errorf("%w: duplicate transaction record ID %q", ErrCorrupt, string(id))
 				}
@@ -1049,6 +1050,27 @@ func (f *File) FindRecord(kind ObjectKind, id string) ([]byte, error) {
 	if f.closed {
 		return nil, ErrClosed
 	}
+	return f.findRecordLocked(kind, id)
+}
+
+// findRecordLocked reads one record's payload by walking the log. The caller
+// holds at least a read lock.
+func (f *File) findRecordLocked(kind ObjectKind, id string) ([]byte, error) {
+	found, err := f.findMetaLocked(kind, id)
+	if err != nil {
+		return nil, err
+	}
+	payload := make([]byte, found.payloadLength)
+	if _, err := f.file.ReadAt(payload, found.payloadOffset); err != nil {
+		return nil, fmt.Errorf("read native record payload at %d: %w", found.payloadOffset, err)
+	}
+	if crc32.ChecksumIEEE(payload) != found.payloadCRC {
+		return nil, fmt.Errorf("%w: payload CRC mismatch at %d", ErrCorrupt, found.payloadOffset)
+	}
+	return payload, nil
+}
+
+func (f *File) findMetaLocked(kind ObjectKind, id string) (recordMeta, error) {
 	f.enumerations.Add(1)
 	var found *recordMeta
 	err := f.walkCommittedFrom(int64(fileHeaderSize),
@@ -1060,19 +1082,12 @@ func (f *File) FindRecord(kind ObjectKind, id string) ([]byte, error) {
 			return nil
 		})
 	if err != nil {
-		return nil, err
+		return recordMeta{}, err
 	}
 	if found == nil {
-		return nil, fmt.Errorf("%w: kind %d id %q", ErrNotFound, kind, id)
+		return recordMeta{}, fmt.Errorf("%w: kind %d id %q", ErrNotFound, kind, id)
 	}
-	payload := make([]byte, found.payloadLength)
-	if _, err := f.file.ReadAt(payload, found.payloadOffset); err != nil {
-		return nil, fmt.Errorf("read native record payload at %d: %w", found.payloadOffset, err)
-	}
-	if crc32.ChecksumIEEE(payload) != found.payloadCRC {
-		return nil, fmt.Errorf("%w: payload CRC mismatch at %d", ErrCorrupt, found.payloadOffset)
-	}
-	return payload, nil
+	return *found, nil
 }
 
 // RecordsOfKind returns every committed record of one kind, with its payload,

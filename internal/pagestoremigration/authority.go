@@ -1145,6 +1145,18 @@ func (authority *Authority) RouteObjects() *objectindex.Index {
 
 // RelationObjects hands out the objects Tree the current generation holds, for
 // the same reason RouteObjects does: a COW rebuild replaces the generation.
+// ChangeEnvelope resolves a committed change by the sequence a Row revision
+// carries, for the history reader.
+//
+// It takes no Authority lock: the caller is already inside a read that holds
+// one, and the change index has a lock of its own.
+func (authority *Authority) ChangeEnvelope(sequence uint64) (change.Envelope, error) {
+	if authority == nil || authority.changes == nil {
+		return change.Envelope{}, changeindex.ErrNotFound
+	}
+	return authority.changes.getBySequence(sequence)
+}
+
 func (authority *Authority) RelationObjects() *objectindex.Index {
 	if authority == nil {
 		return nil

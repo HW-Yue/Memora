@@ -183,7 +183,7 @@ func historyRecord(item historyMetadata, value row.Row) history.Record {
 // §4.
 func (repository *Repository) attributionFor(value row.Row) (history.Record, error) {
 	if value.ChangeSequence != 0 {
-		envelope, err := nativechange.New(repository.file).Get(value.ChangeSequence)
+		envelope, err := repository.changeEnvelope(value.ChangeSequence)
 		if err == nil {
 			if record, ok := HistoryRecordFromEnvelope(value, envelope); ok {
 				return record, nil
@@ -195,6 +195,27 @@ func (repository *Repository) attributionFor(value row.Row) (history.Record, err
 		return history.Record{}, err
 	}
 	return historyRecord(item, value), nil
+}
+
+// changeSource resolves a committed change from the generation's own index.
+//
+// It is optional on purpose: a Repository opened without a generation has no
+// index to ask, and only the Authority implements it.
+type changeSource interface {
+	ChangeEnvelope(sequence uint64) (change.Envelope, error)
+}
+
+// changeEnvelope resolves the envelope naming one committed change.
+//
+// It asks the generation's change index when there is one. Reading the record
+// log instead is a point read through that log's process-resident index, and
+// this runs once per revision listed — so leaving it there would have kept that
+// index alive for the busiest read there is.
+func (repository *Repository) changeEnvelope(sequence uint64) (change.Envelope, error) {
+	if source, ok := repository.objects.(changeSource); ok && source != nil {
+		return source.ChangeEnvelope(sequence)
+	}
+	return nativechange.New(repository.file).Get(sequence)
 }
 
 func (repository *Repository) historyMetadataFor(rowID string, revision uint64) (historyMetadata, error) {
