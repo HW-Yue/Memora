@@ -62,6 +62,8 @@ const (
 	// below 8 KiB leaves room for the header and the key.
 	chunkBytes = 6 << 10
 
+	publishBatch = 500
+
 	indexedThroughID = "indexed-through"
 
 	kvSpaceID    = uint64(0x6b76) // "kv"
@@ -72,6 +74,15 @@ const (
 	// as the bucket needs; the cost is the entries returned, not the entries
 	// that exist.
 	scanPageSize = 200
+
+	// publishBatch is how many Tree updates go into one commit.
+	//
+	// One commit's changed Pages all have to be dirty at once, and the buffer
+	// Pool holds a fixed number of frames, so a commit large enough to dirty
+	// more Pages than the Pool has frames fails with no evictable frame. A
+	// transaction's size is the caller's business — a snapshot import writes ten
+	// thousand keys in one — so the Tree side batches rather than assuming the
+	// caller stays small.
 )
 
 type value struct {
@@ -238,10 +249,6 @@ func (database *Database) catchUp() error {
 // publish writes one batch of entries plus the marker in a single Tree commit,
 // so the marker can never claim more than the Tree holds.
 func (database *Database) publish(entries map[string]value, through int64) error {
-	transactionID, err := database.nextTransactionID()
-	if err != nil {
-		return err
-	}
 	logicalKeys := make([]string, 0, len(entries))
 	for logical := range entries {
 		logicalKeys = append(logicalKeys, logical)
@@ -287,13 +294,34 @@ func (database *Database) publish(entries map[string]value, through int64) error
 	}
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, uint64(through))
-	updates = append(updates, objectindex.Update{
+	marker := objectindex.Update{
 		Record: objectindex.Record{
 			Kind: metaKind, ID: indexedThroughID, Revision: markerRevision + 1, Body: body,
 		},
 		ExpectedRevision: markerRevision,
-	})
+	}
 
+	// The marker goes last, in a commit of its own. A crash between batches
+	// leaves the Tree holding some of them with the marker still behind, so the
+	// next open replays the same tail; re-applying an entry the Tree already has
+	// is skipped above, so the replay converges instead of conflicting.
+	for start := 0; start < len(updates); start += publishBatch {
+		end := min(start+publishBatch, len(updates))
+		if err := database.applyBatch(updates[start:end]); err != nil {
+			return err
+		}
+	}
+	return database.applyBatch([]objectindex.Update{marker})
+}
+
+func (database *Database) applyBatch(updates []objectindex.Update) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	transactionID, err := database.nextTransactionID()
+	if err != nil {
+		return err
+	}
 	if err := database.relieveRedoRing(); err != nil {
 		return err
 	}

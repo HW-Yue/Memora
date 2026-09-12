@@ -112,3 +112,61 @@ func retained(t *testing.T, open func() func() error) float64 {
 	}
 	return result
 }
+
+// TestOneHugeTransactionCommits pins that a transaction's size is the caller's
+// business, not the Tree's.
+//
+// One Tree commit's changed Pages all have to be dirty at once, and the buffer
+// Pool has a fixed number of frames, so a commit that dirties more Pages than
+// there are frames fails with no evictable frame. The map this replaced had no
+// such coupling: a caller could stage as much as it liked. A logical snapshot
+// import writes ten thousand keys in one transaction and started failing on
+// exactly this, so the Tree side commits in batches and writes its catch-up
+// marker last — a crash between batches leaves the marker behind and the next
+// open replays the same tail, which converges because re-applying an entry the
+// Tree already holds is skipped.
+func TestOneHugeTransactionCommits(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "auxiliary.memora")
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const entries = 10000
+	tx, err := database.Begin(ctx, store.ReadWrite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := make([]byte, 300)
+	for index := 0; index < entries; index++ {
+		if err := tx.Put(ctx, "rows", fmt.Sprintf("row-%08d", index), payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("committing %d writes in one transaction: %v", entries, err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// All of it has to be there after a reopen, marker and entries agreeing.
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+	reader, err := reopened.Begin(ctx, store.ReadOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reader.Rollback() }()
+	found, err := reader.Scan(ctx, "rows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != entries {
+		t.Fatalf("Scan after reopen returned %d entries, want %d", len(found), entries)
+	}
+}
