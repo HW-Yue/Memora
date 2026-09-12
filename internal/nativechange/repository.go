@@ -158,3 +158,57 @@ func parseRecordID(id string) (uint64, error) {
 	}
 	return sequence, nil
 }
+
+// WalkSince visits every committed change above after, in sequence order, in one
+// pass over the log.
+//
+// The change index used to catch up by asking for each sequence in turn, which
+// went through the record log's process-resident index. That index is being
+// removed, and a lookup that walks the log would make catching up quadratic —
+// so the walk happens once and the caller batches what it sees.
+func (repository *Repository) WalkSince(
+	after uint64,
+	visit func(sequence uint64, envelope change.Envelope, payload []byte) error,
+) error {
+	if repository == nil || repository.file == nil || visit == nil {
+		return fmt.Errorf("%w: walk request", ErrInvalid)
+	}
+	records, err := repository.file.RecordsOfKind(nativestore.ObjectKindCommittedChange)
+	if err != nil {
+		return err
+	}
+	sequences := make([]uint64, 0, len(records))
+	payloads := make(map[uint64][]byte, len(records))
+	for _, record := range records {
+		sequence, err := parseRecordID(record.ID)
+		if err != nil {
+			return err
+		}
+		if sequence <= after {
+			continue
+		}
+		sequences = append(sequences, sequence)
+		payloads[sequence] = record.Payload
+	}
+	sort.Slice(sequences, func(left, right int) bool { return sequences[left] < sequences[right] })
+	for _, sequence := range sequences {
+		payload := payloads[sequence]
+		envelope, err := decode(payload, sequence)
+		if err != nil {
+			return err
+		}
+		if err := visit(sequence, envelope, payload); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Decode turns one stored envelope payload back into a change, checking that it
+// names the sequence it was filed under.
+//
+// It is exported for the change index, which now carries the payloads itself and
+// therefore has to decode them without going back through the record log.
+func Decode(payload []byte, sequence uint64) (change.Envelope, error) {
+	return decode(payload, sequence)
+}

@@ -125,7 +125,7 @@ func buildAuthorityChangeTreeWithOperations(
 	if err := checkpoint(phaseChangeStagingCreated); err != nil {
 		return err
 	}
-	locators, err := collectChangeLocators(ctx, nativechange.New(file))
+	records, err := collectChangeRecords(ctx, nativechange.New(file))
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func buildAuthorityChangeTreeWithOperations(
 		var index *changeindex.Index
 		index, err = changeindex.Open(runtime)
 		if err == nil {
-			_, err = index.Bootstrap(1, locators)
+			_, err = index.Bootstrap(1, records)
 		}
 	}
 	if err == nil {
@@ -170,7 +170,7 @@ func buildAuthorityChangeTreeWithOperations(
 	}
 	// Verify that the immutable source did not advance while the candidate was built.
 	after, err := nativechange.New(file).NextSequence(0)
-	if err != nil || after != uint64(len(locators))+1 {
+	if err != nil || after != uint64(len(records))+1 {
 		if err == nil {
 			err = ErrSourceChanged
 		}
@@ -244,24 +244,26 @@ func validateChangeIndexEntries(directory string) error {
 	return nil
 }
 
-func collectChangeLocators(
+// collectChangeRecords reads the whole change log in one pass, envelopes
+// included. It used to ask the log for each sequence in turn, which went
+// through that log's process-resident index; one pass is what lets the index go
+// away without making the build quadratic.
+func collectChangeRecords(
 	ctx context.Context,
 	source *nativechange.Repository,
-) ([]changeindex.Locator, error) {
-	next, err := source.NextSequence(0)
+) ([]changeindex.Record, error) {
+	result := make([]changeindex.Record, 0)
+	err := source.WalkSince(0, func(_ uint64, envelope change.Envelope, payload []byte) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		result = append(result, changeindex.Record{
+			Locator: locatorForEnvelope(envelope), Body: payload,
+		})
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: inspect committed change source: %v", ErrTargetCorrupt, err)
-	}
-	result := make([]changeindex.Locator, 0)
-	for sequence := uint64(1); sequence < next; sequence++ {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		envelope, err := source.Get(sequence)
-		if err != nil {
-			return nil, fmt.Errorf("%w: committed change sequence %d: %v", ErrTargetCorrupt, sequence, err)
-		}
-		result = append(result, locatorForEnvelope(envelope))
 	}
 	return result, nil
 }
@@ -336,18 +338,14 @@ func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting b
 			after = through
 		}
 	}
-	for first := indexedHighWater + 1; first <= bodyHighWater; {
-		last := min(bodyHighWater, first+changeReconcileBatch-1)
-		locators := make([]changeindex.Locator, 0, last-first+1)
-		for sequence := first; sequence <= last; sequence++ {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			envelope, err := tree.source.Get(sequence)
-			if err != nil {
-				return fmt.Errorf("%w: committed change sequence %d: %v", ErrTargetCorrupt, sequence, err)
-			}
-			locators = append(locators, locatorForEnvelope(envelope))
+	// One pass over the tail, flushed in batches. Asking the log for each
+	// sequence in turn went through its process-resident index; walking per
+	// sequence instead would be quadratic, so the walk happens once and the
+	// batch is what bounds memory.
+	batch := make([]changeindex.Record, 0, changeReconcileBatch)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
 		}
 		// The change index has its own log, so it has its own ring and its
 		// own last chance to free space before the append meets it.
@@ -356,12 +354,35 @@ func (tree *authorityChangeTree) reconcile(ctx context.Context, verifyExisting b
 		}
 		transactionID, err := tree.nextTransactionID()
 		if err == nil {
-			_, err = tree.index.Append(transactionID, locators)
+			_, err = tree.index.Append(transactionID, batch)
 		}
 		if err != nil {
 			return fmt.Errorf("%w: append committed change index: %v", ErrTargetCorrupt, err)
 		}
-		first = last + 1
+		batch = batch[:0]
+		return nil
+	}
+	walkErr := tree.source.WalkSince(indexedHighWater,
+		func(sequence uint64, envelope change.Envelope, payload []byte) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if sequence > bodyHighWater {
+				return nil
+			}
+			batch = append(batch, changeindex.Record{
+				Locator: locatorForEnvelope(envelope), Body: payload,
+			})
+			if len(batch) < changeReconcileBatch {
+				return nil
+			}
+			return flush()
+		})
+	if walkErr != nil {
+		return walkErr
+	}
+	if err := flush(); err != nil {
+		return err
 	}
 	return tree.maintainRedoLog()
 }
@@ -414,11 +435,28 @@ func (tree *authorityChangeTree) nextTransactionID() (uint64, error) {
 }
 
 func (tree *authorityChangeTree) verifyLocator(locator changeindex.Locator) error {
-	envelope, err := tree.source.Get(locator.CommitSequence)
-	if err != nil || locatorForEnvelope(envelope) != locator {
+	envelope, err := tree.envelopeFor(locator)
+	if err != nil || !sameChange(locatorForEnvelope(envelope), locator) {
 		return fmt.Errorf("%w: committed change locator/body mismatch at %d", ErrTargetCorrupt, locator.CommitSequence)
 	}
 	return nil
+}
+
+// envelopeFor resolves a Locator to its envelope.
+//
+// The Tree carries the envelope, so this is a read of the same structure the
+// Locator came from. A Locator written before envelopes moved into the Tree
+// carries no body; those fall back to the record log, which is the only reason
+// that log is still point-read for this kind.
+func (tree *authorityChangeTree) envelopeFor(locator changeindex.Locator) (change.Envelope, error) {
+	body, stored, err := tree.index.Body(locator.CommitSequence)
+	if err != nil {
+		return change.Envelope{}, err
+	}
+	if !stored {
+		return tree.source.Get(locator.CommitSequence)
+	}
+	return nativechange.Decode(body, locator.CommitSequence)
 }
 
 func (tree *authorityChangeTree) get(transactionID string) (change.Envelope, error) {
@@ -426,23 +464,42 @@ func (tree *authorityChangeTree) get(transactionID string) (change.Envelope, err
 	if err != nil {
 		return change.Envelope{}, err
 	}
-	envelope, err := tree.source.Get(locator.CommitSequence)
-	if err != nil || locatorForEnvelope(envelope) != locator {
+	envelope, err := tree.envelopeFor(locator)
+	if err != nil || !sameChange(locatorForEnvelope(envelope), locator) {
 		return change.Envelope{}, fmt.Errorf("%w: committed change locator/body mismatch", ErrTargetCorrupt)
 	}
 	return envelope, nil
 }
 
 // getBySequence resolves a transaction's envelope from the change sequence a Row
-// revision carries. It reads the immutable source directly rather than the Page
-// index: that index is reconciled lazily — only when someone lists or gets a
-// change — so it lags the source in between, and a history read must not depend
-// on that having happened. The source read is a point lookup by sequence and the
-// envelope validates its own checksum on decode.
+// revision carries.
+//
+// It prefers the Tree, which now carries envelopes, and falls back to the record
+// log when the Tree does not have that sequence yet. The index is reconciled
+// lazily — only when someone lists or gets a change — so it lags the log between
+// a write and the next such read, and a history read must not depend on that
+// having happened.
+//
+// Catching the index up inside the write path was tried and backed out: the
+// catch-up reads the log's tail, and without a durable marker of how far it has
+// read that is a pass over the whole file — trading a point read for a sweep on
+// every write. Closing this properly needs the envelope handed to the index at
+// publish time, which is plumbing through the write path rather than a read-side
+// change.
 func (tree *authorityChangeTree) getBySequence(sequence uint64) (change.Envelope, error) {
 	if tree == nil || tree.source == nil || sequence == 0 {
 		return change.Envelope{}, changeindex.ErrNotFound
 	}
+	locator, err := tree.index.LookupSequence(sequence)
+	if err == nil {
+		return tree.envelopeFor(locator)
+	}
+	if !errors.Is(err, changeindex.ErrNotFound) {
+		return change.Envelope{}, err
+	}
+	// The Tree does not have it. Every publication catches the index up before
+	// it returns, so this is the window after a crash and before the reopen
+	// reconcile — rare, and the record log still has the answer.
 	return tree.source.Get(sequence)
 }
 
@@ -464,8 +521,8 @@ func (tree *authorityChangeTree) list(
 			return nil, false, err
 		}
 		for _, locator := range locators {
-			envelope, err := tree.source.Get(locator.CommitSequence)
-			if err != nil || locatorForEnvelope(envelope) != locator {
+			envelope, err := tree.envelopeFor(locator)
+			if err != nil || !sameChange(locatorForEnvelope(envelope), locator) {
 				return nil, false, fmt.Errorf("%w: committed change locator/body mismatch", ErrTargetCorrupt)
 			}
 			if databaseID == "" || envelopeHasDatabase(envelope, databaseID) {
@@ -478,6 +535,17 @@ func (tree *authorityChangeTree) list(
 		position = through
 	}
 	return result, false, nil
+}
+
+// sameChange compares what names a change, not how it is stored.
+//
+// BodyChunks is a storage detail the Tree fills in, so a Locator read back from
+// the Tree carries it and one derived from an envelope does not. Comparing whole
+// Locators made every verification fail.
+func sameChange(left, right changeindex.Locator) bool {
+	return left.CommitSequence == right.CommitSequence &&
+		left.TransactionID == right.TransactionID &&
+		left.Checksum == right.Checksum
 }
 
 func locatorForEnvelope(envelope change.Envelope) changeindex.Locator {

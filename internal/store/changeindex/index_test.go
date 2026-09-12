@@ -1,6 +1,7 @@
 package changeindex
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -19,7 +20,7 @@ const testSpaceID = uint64(0x4d454d434847)
 func TestBootstrapCreatesSequenceAndTransactionAuthority(t *testing.T) {
 	_, _, runtime, index := newTestIndex(t)
 	want := locators(1, 7)
-	receipt, err := index.Bootstrap(1, want)
+	receipt, err := index.Bootstrap(1, recordsOf(want))
 	if err != nil || !receipt.Changed || runtime.State().RootPageID == 0 {
 		t.Fatalf("Bootstrap() = %+v, %v", receipt, err)
 	}
@@ -39,7 +40,7 @@ func TestBootstrapCreatesSequenceAndTransactionAuthority(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, want[2:5]) {
 		t.Fatalf("Range(2, 7, 3) = %+v, %v", got, err)
 	}
-	if _, err := index.Bootstrap(2, want); !errors.Is(err, ErrConflict) {
+	if _, err := index.Bootstrap(2, recordsOf(want)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("second Bootstrap error = %v", err)
 	}
 }
@@ -62,15 +63,15 @@ func TestBootstrapEmptyCreatesZeroHighWater(t *testing.T) {
 
 func TestAppendIsContiguousAtomicAndIdempotent(t *testing.T) {
 	set, _, _, index := newTestIndex(t)
-	if _, err := index.Bootstrap(1, locators(1, 2)); err != nil {
+	if _, err := index.Bootstrap(1, records(1, 2)); err != nil {
 		t.Fatal(err)
 	}
 	added := locators(3, 5)
-	receipt, err := index.Append(2, added)
+	receipt, err := index.Append(2, recordsOf(added))
 	if err != nil || !receipt.Changed {
 		t.Fatalf("Append() = %+v, %v", receipt, err)
 	}
-	receipt, err = index.Append(3, added)
+	receipt, err = index.Append(3, recordsOf(added))
 	if err != nil || receipt.Changed {
 		t.Fatalf("idempotent Append() = %+v, %v", receipt, err)
 	}
@@ -80,17 +81,17 @@ func TestAppendIsContiguousAtomicAndIdempotent(t *testing.T) {
 	}
 
 	gap := locator(7)
-	if _, err := index.Append(4, []Locator{gap}); !errors.Is(err, ErrConflict) {
+	if _, err := index.Append(4, []Record{{Locator: gap}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("gap Append error = %v", err)
 	}
 	duplicateTransaction := locator(6)
 	duplicateTransaction.TransactionID = locator(2).TransactionID
-	if _, err := index.Append(5, []Locator{duplicateTransaction}); !errors.Is(err, ErrConflict) {
+	if _, err := index.Append(5, []Record{{Locator: duplicateTransaction}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate transaction Append error = %v", err)
 	}
 	changedIdentity := locator(5)
 	changedIdentity.Checksum = fmt.Sprintf("%064x", 999)
-	if _, err := index.Append(6, []Locator{changedIdentity}); !errors.Is(err, ErrConflict) {
+	if _, err := index.Append(6, []Record{{Locator: changedIdentity}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("changed identity Append error = %v", err)
 	}
 	highWater, err := index.HighWater()
@@ -102,7 +103,7 @@ func TestAppendIsContiguousAtomicAndIdempotent(t *testing.T) {
 func TestLargeIndexSplitsAndMatchesRangeReference(t *testing.T) {
 	_, _, runtime, index := newTestIndex(t)
 	want := locators(1, 700)
-	if _, err := index.Bootstrap(1, want); err != nil {
+	if _, err := index.Bootstrap(1, recordsOf(want)); err != nil {
 		t.Fatal(err)
 	}
 	root, err := runtime.Read(runtime.State().RootPageID)
@@ -136,10 +137,10 @@ func TestCrashBeforeFlushReopensIndexFromWAL(t *testing.T) {
 	pagePath := filepath.Join(directory, "changes.pages")
 	set, manager, runtime, index := openTestIndex(t, walPath, pagePath, false)
 	want := locators(1, 32)
-	if _, err := index.Bootstrap(1, want[:3]); err != nil {
+	if _, err := index.Bootstrap(1, recordsOf(want[:3])); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := index.Append(2, want[3:]); err != nil {
+	if _, err := index.Append(2, recordsOf(want[3:])); err != nil {
 		t.Fatal(err)
 	}
 	committed := runtime.State()
@@ -168,7 +169,7 @@ func TestReadRejectsCorruptTreeWithoutFallback(t *testing.T) {
 	walPath := filepath.Join(directory, "wal")
 	pagePath := filepath.Join(directory, "changes.pages")
 	set, manager, runtime, index := openTestIndex(t, walPath, pagePath, false)
-	if _, err := index.Bootstrap(1, locators(1, 4)); err != nil {
+	if _, err := index.Bootstrap(1, records(1, 4)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.FlushDirty(16); err != nil {
@@ -200,7 +201,7 @@ func TestReadRejectsCorruptTreeWithoutFallback(t *testing.T) {
 
 func TestConcurrentReadsObserveCommittedSnapshots(t *testing.T) {
 	_, _, _, index := newTestIndex(t)
-	if _, err := index.Bootstrap(1, locators(1, 8)); err != nil {
+	if _, err := index.Bootstrap(1, records(1, 8)); err != nil {
 		t.Fatal(err)
 	}
 	var wait sync.WaitGroup
@@ -222,7 +223,7 @@ func TestConcurrentReadsObserveCommittedSnapshots(t *testing.T) {
 		}()
 	}
 	for sequence := uint64(9); sequence <= 16; sequence++ {
-		if _, err := index.Append(sequence-7, []Locator{locator(sequence)}); err != nil {
+		if _, err := index.Append(sequence-7, []Record{{Locator: locator(sequence)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -251,6 +252,19 @@ func TestLocatorCodecRejectsNonCanonicalAndCorruptPayloads(t *testing.T) {
 		}
 	}
 }
+
+// recordsOf wraps Locators as Records with no envelope, which is what these
+// tests assert on: the identity and ordering rules are the Locator's, and the
+// envelope is covered separately.
+func recordsOf(values []Locator) []Record {
+	result := make([]Record, 0, len(values))
+	for _, value := range values {
+		result = append(result, Record{Locator: value})
+	}
+	return result
+}
+
+func records(first, last uint64) []Record { return recordsOf(locators(first, last)) }
 
 func locators(first, last uint64) []Locator {
 	result := make([]Locator, 0, last-first+1)
@@ -324,5 +338,65 @@ func assertLookup(t *testing.T, want Locator, lookup func() (Locator, error)) {
 	got, err := lookup()
 	if err != nil || got != want {
 		t.Fatalf("lookup = %+v, %v; want %+v", got, err, want)
+	}
+}
+
+// TestTheTreeCarriesTheEnvelope pins what moved into the leaves.
+//
+// The envelope used to live only in the record log, reached by a point read
+// through that log's process-resident index. The change log is the one kind
+// whose records grow with every commit, so leaving it there kept that index
+// growing too. Envelopes now ride in the Tree, split across records of their own
+// key space when they are larger than one leaf can hold.
+func TestTheTreeCarriesTheEnvelope(t *testing.T) {
+	_, _, _, index := newTestIndex(t)
+
+	small := []byte(`{"commit_sequence":1}`)
+	large := make([]byte, 40<<10)
+	for position := range large {
+		large[position] = byte(position % 251)
+	}
+
+	if _, err := index.Bootstrap(1, []Record{
+		{Locator: locator(1), Body: small},
+		{Locator: locator(2), Body: large},
+		{Locator: locator(3)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	body, stored, err := index.Body(1)
+	if err != nil || !stored || !bytes.Equal(body, small) {
+		t.Fatalf("Body(1) = %d bytes, stored %v, err %v", len(body), stored, err)
+	}
+	if body, stored, err = index.Body(2); err != nil || !stored || !bytes.Equal(body, large) {
+		t.Fatalf("Body(2) = %d bytes, stored %v, err %v; want %d", len(body), stored, err, len(large))
+	}
+	// A Record written without an envelope reports that rather than an empty
+	// one: that is what a change indexed before envelopes moved here looks like,
+	// and the caller has to know to fall back to the log.
+	if _, stored, err = index.Body(3); err != nil || stored {
+		t.Fatalf("Body(3) stored = %v, err = %v; want not stored", stored, err)
+	}
+
+	// Envelope pieces live in their own key space, so a range scan over
+	// sequences must not walk into them.
+	found, err := index.Range(0, 3, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 3 {
+		t.Fatalf("Range returned %d locators, want 3", len(found))
+	}
+	if found[1].BodyChunks == 0 {
+		t.Fatalf("locator 2 lost its piece count: %+v", found[1])
+	}
+
+	// And appending after a Bootstrap that stored envelopes still works.
+	if _, err := index.Append(2, []Record{{Locator: locator(4), Body: large}}); err != nil {
+		t.Fatal(err)
+	}
+	if body, stored, err = index.Body(4); err != nil || !stored || !bytes.Equal(body, large) {
+		t.Fatalf("Body(4) = %d bytes, stored %v, err %v", len(body), stored, err)
 	}
 }

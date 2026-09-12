@@ -29,6 +29,24 @@ type Locator struct {
 	CommitSequence uint64 `json:"commit_sequence"`
 	TransactionID  string `json:"transaction_id"`
 	Checksum       string `json:"checksum"`
+
+	// BodyChunks is how many pieces the envelope was split into to be stored.
+	//
+	// It is omitted when zero, which is what a Locator written before the Tree
+	// carried bodies looks like, so those still decode and still read their
+	// envelope from the record log.
+	BodyChunks int `json:"body_chunks,omitempty"`
+}
+
+// Record is one committed change: what names it, and the envelope itself.
+//
+// The envelope used to live only in the record log, reached by a point read
+// through that log's process-resident index. Carrying it here is what lets that
+// index go away — the change log is the one kind whose records grow with every
+// commit, so leaving it behind would have kept the index growing too.
+type Record struct {
+	Locator Locator
+	Body    []byte
 }
 
 type Receipt struct {
@@ -46,6 +64,23 @@ type operation struct{ key, value []byte }
 
 var metaHighWaterKey = []byte{0}
 
+// bodyChunkBytes is how much of an envelope goes in one leaf record.
+//
+// A leaf record is capped well below a Page, and an envelope may be up to a
+// megabyte, so envelopes are split rather than refused. The slack below the cap
+// leaves room for the key.
+const bodyChunkBytes = 6 << 10
+
+// bodyKey addresses one piece of one envelope. Pieces live in their own key
+// space so a range scan over sequences never walks into them.
+func bodyKey(sequence uint64, chunk int) []byte {
+	key := make([]byte, 13)
+	key[0] = 3
+	binary.BigEndian.PutUint64(key[1:9], sequence)
+	binary.BigEndian.PutUint32(key[9:], uint32(chunk))
+	return key
+}
+
 func Open(runtime *treecommit.Runtime) (*Index, error) {
 	if runtime == nil || runtime.State().SpaceID == 0 {
 		return nil, fmt.Errorf("%w: durable Tree Runtime", ErrInvalid)
@@ -53,11 +88,11 @@ func Open(runtime *treecommit.Runtime) (*Index, error) {
 	return &Index{runtime: runtime}, nil
 }
 
-func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt, error) {
+func (index *Index) Bootstrap(transactionID uint64, records []Record) (Receipt, error) {
 	if index == nil || index.runtime == nil || transactionID == 0 {
 		return Receipt{}, fmt.Errorf("%w: Bootstrap request", ErrInvalid)
 	}
-	prepared, err := prepareLocators(locators)
+	prepared, bodies, err := prepareRecords(records)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -66,7 +101,7 @@ func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt
 			return Receipt{}, fmt.Errorf("%w: bootstrap sequence gap", ErrConflict)
 		}
 	}
-	operations, err := locatorOperations(prepared)
+	operations, err := locatorOperations(prepared, bodies)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -93,11 +128,11 @@ func (index *Index) Bootstrap(transactionID uint64, locators []Locator) (Receipt
 	return Receipt{Changed: true, State: committed.State, WAL: committed.WAL}, nil
 }
 
-func (index *Index) Append(transactionID uint64, locators []Locator) (Receipt, error) {
-	if index == nil || index.runtime == nil || transactionID == 0 || len(locators) == 0 {
+func (index *Index) Append(transactionID uint64, records []Record) (Receipt, error) {
+	if index == nil || index.runtime == nil || transactionID == 0 || len(records) == 0 {
 		return Receipt{}, fmt.Errorf("%w: Append request", ErrInvalid)
 	}
-	prepared, err := prepareLocators(locators)
+	prepared, bodies, err := prepareRecords(records)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -116,6 +151,7 @@ func (index *Index) Append(transactionID uint64, locators []Locator) (Receipt, e
 		return Receipt{}, err
 	}
 	active := make([]Locator, 0, len(prepared))
+	activeBodies := make(map[uint64][]byte, len(prepared))
 	next := highWater
 	for _, locator := range prepared {
 		existing, sequenceFound, err := lookup(searcher, sequenceKey(locator.CommitSequence))
@@ -137,11 +173,12 @@ func (index *Index) Append(transactionID uint64, locators []Locator) (Receipt, e
 		}
 		next = locator.CommitSequence
 		active = append(active, locator)
+		activeBodies[locator.CommitSequence] = bodies[locator.CommitSequence]
 	}
 	if len(active) == 0 {
 		return Receipt{State: state}, nil
 	}
-	operations, err := locatorOperations(active)
+	operations, err := locatorOperations(active, activeBodies)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -221,6 +258,43 @@ func (index *Index) lookupKey(key []byte, sequence uint64, transactionID string)
 	return locator, nil
 }
 
+// Body returns the envelope stored for one commit sequence.
+//
+// It reports false when the Tree holds the Locator but not the envelope, which
+// is what a change indexed before bodies moved here looks like; the caller then
+// falls back to the record log.
+func (index *Index) Body(sequence uint64) ([]byte, bool, error) {
+	if index == nil || index.runtime == nil || sequence == 0 {
+		return nil, false, fmt.Errorf("%w: body request", ErrInvalid)
+	}
+	locator, err := index.LookupSequence(sequence)
+	if err != nil {
+		return nil, false, err
+	}
+	if locator.BodyChunks == 0 {
+		return nil, false, nil
+	}
+	index.mu.RLock()
+	defer index.mu.RUnlock()
+	state := index.runtime.State()
+	if state.RootPageID == 0 {
+		return nil, false, ErrNotFound
+	}
+	searcher, err := btree.NewSearcher(state.SpaceID, state.RootPageID, index.runtime)
+	if err != nil {
+		return nil, false, err
+	}
+	joined := make([]byte, 0, locator.BodyChunks*bodyChunkBytes)
+	for chunk := 0; chunk < locator.BodyChunks; chunk++ {
+		piece, err := searcher.Get(bodyKey(sequence, chunk))
+		if err != nil {
+			return nil, false, fmt.Errorf("%w: envelope piece %d of %d", ErrCorrupt, chunk, sequence)
+		}
+		joined = append(joined, piece...)
+	}
+	return joined, true, nil
+}
+
 func (index *Index) Range(after, through uint64, limit int) ([]Locator, error) {
 	if index == nil || index.runtime == nil || limit < 1 || limit > 1000 || through < after {
 		return nil, fmt.Errorf("%w: range request", ErrInvalid)
@@ -270,6 +344,27 @@ func (index *Index) Range(after, through uint64, limit int) ([]Locator, error) {
 	return result, nil
 }
 
+// prepareRecords sorts and validates a batch, and works out how many pieces
+// each envelope needs. The piece count is part of the Locator, so it has to be
+// settled before anything is encoded.
+func prepareRecords(records []Record) ([]Locator, map[uint64][]byte, error) {
+	locators := make([]Locator, 0, len(records))
+	bodies := make(map[uint64][]byte, len(records))
+	for _, record := range records {
+		locator := record.Locator
+		if len(record.Body) > 0 {
+			locator.BodyChunks = (len(record.Body) + bodyChunkBytes - 1) / bodyChunkBytes
+			bodies[locator.CommitSequence] = record.Body
+		}
+		locators = append(locators, locator)
+	}
+	prepared, err := prepareLocators(locators)
+	if err != nil {
+		return nil, nil, err
+	}
+	return prepared, bodies, nil
+}
+
 func prepareLocators(locators []Locator) ([]Locator, error) {
 	result := append([]Locator(nil), locators...)
 	sort.Slice(result, func(left, right int) bool { return result[left].CommitSequence < result[right].CommitSequence })
@@ -289,7 +384,7 @@ func prepareLocators(locators []Locator) ([]Locator, error) {
 	return result, nil
 }
 
-func locatorOperations(locators []Locator) ([]operation, error) {
+func locatorOperations(locators []Locator, bodies map[uint64][]byte) ([]operation, error) {
 	result := make([]operation, 0, len(locators)*2)
 	for _, locator := range locators {
 		encoded, err := encodeLocator(locator)
@@ -300,6 +395,18 @@ func locatorOperations(locators []Locator) ([]operation, error) {
 			operation{key: sequenceKey(locator.CommitSequence), value: encoded},
 			operation{key: transactionKey(locator.TransactionID), value: encoded},
 		)
+		body := bodies[locator.CommitSequence]
+		if locator.BodyChunks*bodyChunkBytes < len(body) ||
+			(locator.BodyChunks > 0 && len(body) == 0) {
+			return nil, fmt.Errorf("%w: envelope piece count", ErrInvalid)
+		}
+		for chunk := 0; chunk < locator.BodyChunks; chunk++ {
+			start := chunk * bodyChunkBytes
+			end := min(start+bodyChunkBytes, len(body))
+			result = append(result, operation{
+				key: bodyKey(locator.CommitSequence, chunk), value: bytes.Clone(body[start:end]),
+			})
+		}
 	}
 	sort.Slice(result, func(left, right int) bool { return bytes.Compare(result[left].key, result[right].key) < 0 })
 	return result, nil
