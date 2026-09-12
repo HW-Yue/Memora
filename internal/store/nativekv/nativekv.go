@@ -684,11 +684,13 @@ func decode(payload []byte) (item value, chunks int, err error) {
 		return value{}, 0, errors.New("invalid native KV payload")
 	}
 	if version == chunkedVersion {
+		// A chunked header reuses the value-length field as the piece count and
+		// carries no payload bytes of its own, so the record is exactly the
+		// header plus the bucket and key.
 		if bucketLength+keyLength != len(payload)-23 || valueLength == 0 {
 			return value{}, 0, errors.New("invalid native KV payload")
 		}
 		chunks = int(valueLength)
-		valueLength = 0
 	} else if bucketLength+keyLength+valueLength != len(payload)-23 {
 		return value{}, 0, errors.New("invalid native KV payload")
 	}
