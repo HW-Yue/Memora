@@ -72,21 +72,20 @@ func (repository *Repository) GetRelation(id string, includeDeleted bool) (relat
 		}
 		return value, nil
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindRelation)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindRelation)
 	if err != nil {
 		return relation.Relation{}, err
 	}
 	var latest relation.Relation
 	found := false
-	for _, recordID := range ids {
-		if recordID != id && !strings.HasPrefix(recordID, id+"@") {
+	for _, item := range stored {
+		if item.ID != id && !strings.HasPrefix(item.ID, id+"@") {
 			continue
 		}
-		payload, err := repository.file.Get(nativestore.ObjectKindRelation, recordID)
-		if err != nil {
-			return relation.Relation{}, err
-		}
-		value, err := decodeRelation(payload)
+		value, err := decodeRelation(item.Payload)
 		if err != nil {
 			return relation.Relation{}, err
 		}
@@ -126,26 +125,30 @@ func (repository *Repository) ListRelations(endpoint relation.Endpoint, outgoing
 		sort.Slice(result, func(left, right int) bool { return result[left].ID < result[right].ID })
 		return result, nil
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindRelation)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindRelation)
 	if err != nil {
 		return nil, err
 	}
-	logicalIDs := make(map[string]struct{})
-	for _, recordID := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindRelation, recordID)
+	// The latest revision of each Relation comes out of the same pass. Asking
+	// GetRelation for each logical ID would walk the log once more per ID, which
+	// is what this shape used to do against the resident index and would now be
+	// a file pass each time.
+	latest := make(map[string]relation.Relation)
+	for _, item := range stored {
+		value, err := decodeRelation(item.Payload)
 		if err != nil {
 			return nil, err
 		}
-		value, err := decodeRelation(payload)
-		if err != nil {
-			return nil, err
+		if current, seen := latest[value.ID]; !seen || value.Revision > current.Revision {
+			latest[value.ID] = value
 		}
-		logicalIDs[value.ID] = struct{}{}
 	}
 	result := make([]relation.Relation, 0)
-	for id := range logicalIDs {
-		value, err := repository.GetRelation(id, false)
-		if err != nil {
+	for _, value := range latest {
+		if value.State == relation.StateDeleted {
 			continue
 		}
 		candidate := value.Target
@@ -161,17 +164,16 @@ func (repository *Repository) ListRelations(endpoint relation.Endpoint, outgoing
 }
 
 func (repository *Repository) AllRelationVersions() ([]relation.Relation, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindRelation)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindRelation)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]relation.Relation, 0, len(ids))
-	for _, recordID := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindRelation, recordID)
-		if err != nil {
-			return nil, err
-		}
-		value, err := decodeRelation(payload)
+	result := make([]relation.Relation, 0, len(stored))
+	for _, item := range stored {
+		value, err := decodeRelation(item.Payload)
 		if err != nil {
 			return nil, err
 		}

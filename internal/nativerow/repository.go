@@ -244,14 +244,18 @@ func (repository *Repository) ReadAsOfCommit(id string, commitSequence uint64) (
 	if id == "" || commitSequence == 0 {
 		return row.Row{}, fmt.Errorf("%w: RowID and commit sequence are required", ErrInvalid)
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindRow)
 	if err != nil {
 		return row.Row{}, err
 	}
 	var selected row.Row
 	found := false
-	for _, recordID := range ids {
-		value, err := repository.readRecord(recordID)
+	for _, item := range stored {
+		recordID := item.ID
+		value, err := repository.readStoredRecord(recordID, item.Payload)
 		if err != nil {
 			return row.Row{}, err
 		}
@@ -272,17 +276,16 @@ func (repository *Repository) List(databaseID, tableID string, limit int) ([]row
 	if limit < 1 || limit > 1000 {
 		return nil, false, fmt.Errorf("%w: limit must be between 1 and 1000", ErrInvalid)
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindRow)
 	if err != nil {
 		return nil, false, err
 	}
 	logicalIDs := make(map[string]struct{})
-	for _, recordID := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindRow, recordID)
-		if err != nil {
-			return nil, false, err
-		}
-		value, err := decode(payload)
+	for _, item := range stored {
+		value, err := decode(item.Payload)
 		if err != nil {
 			return nil, false, err
 		}
@@ -314,13 +317,17 @@ func (repository *Repository) List(databaseID, tableID string, limit int) ([]row
 }
 
 func (repository *Repository) AllRows() ([]row.Row, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindRow)
 	if err != nil {
 		return nil, err
 	}
 	logical := map[string]struct{}{}
-	for _, recordID := range ids {
-		value, err := repository.readRecord(recordID)
+	for _, item := range stored {
+		recordID := item.ID
+		value, err := repository.readStoredRecord(recordID, item.Payload)
 		if err != nil {
 			return nil, err
 		}
@@ -353,13 +360,17 @@ func (repository *Repository) AllRowVersions() ([]row.Row, error) {
 			tables[table.ID] = table
 		}
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindRow)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindRow)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]row.Row, 0, len(ids))
-	for _, recordID := range ids {
-		value, err := repository.readDecodedRecord(recordID)
+	result := make([]row.Row, 0, len(stored))
+	for _, item := range stored {
+		recordID := item.ID
+		value, err := decodeStoredRecord(recordID, item.Payload)
 		if err != nil {
 			return nil, err
 		}
@@ -421,6 +432,19 @@ func (repository *Repository) readRecord(recordID string) (row.Row, error) {
 	if err != nil {
 		return row.Row{}, err
 	}
+	return repository.normalizeRecord(value)
+}
+
+// readStoredRecord is readRecord for a caller that already has the bytes.
+func (repository *Repository) readStoredRecord(recordID string, payload []byte) (row.Row, error) {
+	value, err := decodeStoredRecord(recordID, payload)
+	if err != nil {
+		return row.Row{}, err
+	}
+	return repository.normalizeRecord(value)
+}
+
+func (repository *Repository) normalizeRecord(value row.Row) (row.Row, error) {
 	table, err := repository.table(value.DatabaseID, value.TableID)
 	if err != nil {
 		return row.Row{}, fmt.Errorf("%w: row %q has invalid catalog reference", ErrCorrupt, value.ID)
@@ -444,6 +468,14 @@ func (repository *Repository) readDecodedRecord(recordID string) (row.Row, error
 	if err != nil {
 		return row.Row{}, err
 	}
+	return decodeStoredRecord(recordID, payload)
+}
+
+// decodeStoredRecord is readDecodedRecord for a caller that already has the
+// bytes. The walking readers below read the whole kind in one pass, so making
+// them go back through the record log's resident index per record would be both
+// redundant and, once that index is gone, quadratic.
+func decodeStoredRecord(recordID string, payload []byte) (row.Row, error) {
 	value, err := decode(payload)
 	if err != nil {
 		return row.Row{}, fmt.Errorf("%w: decode row record %q", ErrCorrupt, recordID)

@@ -393,16 +393,16 @@ func (repository *Repository) nodes() ([]router.Node, error) {
 	if index := repository.index(); index != nil {
 		return walkObjectRoutes(index)
 	}
-	ids, err := repository.file.IDs(nativestore.ObjectKindRoute)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindRoute)
 	if err != nil {
 		return nil, err
 	}
-	histories := make(map[string][]router.Node, len(ids))
-	for _, id := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindRoute, id)
-		if err != nil {
-			return nil, err
-		}
+	histories := make(map[string][]router.Node, len(stored))
+	for _, item := range stored {
+		id, payload := item.ID, item.Payload
 		value, err := decodeNode(payload)
 		if err != nil {
 			return nil, err

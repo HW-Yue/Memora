@@ -1067,3 +1067,29 @@ func (f *File) FindRecord(kind ObjectKind, id string) ([]byte, error) {
 	}
 	return payload, nil
 }
+
+// RecordsOfKind returns every committed record of one kind, with its payload,
+// in ascending ID order.
+//
+// It replaces asking for the IDs of a kind and then looking each one up. That
+// shape cost one pass plus a lookup per record, and the lookup went through the
+// record log's resident index — so removing that index would have turned every
+// one of those readers quadratic. One pass carries everything they need.
+//
+// These are the readers that run without a generation: the migration that
+// builds one from the log, and anything opened on a file with no Authority. A
+// reader that has a Tree should use it rather than this.
+func (f *File) RecordsOfKind(kind ObjectKind) ([]Record, error) {
+	records, err := f.RecordsSince(0)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Record, 0)
+	for _, record := range records {
+		if record.Kind == kind {
+			result = append(result, record)
+		}
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].ID < result[right].ID })
+	return result, nil
+}

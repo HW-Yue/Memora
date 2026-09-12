@@ -302,16 +302,16 @@ type columnRecord struct {
 }
 
 func (repository *Repository) readDatabases() ([]databaseRecord, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindDatabase)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindDatabase)
 	if err != nil {
 		return nil, err
 	}
 	latest := make(map[string]databaseRecord)
-	for _, recordID := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindDatabase, recordID)
-		if err != nil {
-			return nil, err
-		}
+	for _, found := range stored {
+		recordID, payload := found.ID, found.Payload
 		record, err := decodeDatabase(payload)
 		if err != nil {
 			return nil, fmt.Errorf("%w: decode database %q", ErrCorrupt, recordID)
@@ -329,16 +329,16 @@ func (repository *Repository) readDatabases() ([]databaseRecord, error) {
 }
 
 func (repository *Repository) readTables() ([]tableRecord, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindTable)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindTable)
 	if err != nil {
 		return nil, err
 	}
 	latest := make(map[string]tableRecord)
-	for _, recordID := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindTable, recordID)
-		if err != nil {
-			return nil, err
-		}
+	for _, found := range stored {
+		recordID, payload := found.ID, found.Payload
 		record, err := decodeTable(payload)
 		if err != nil {
 			return nil, fmt.Errorf("%w: decode table %q", ErrCorrupt, recordID)
@@ -356,16 +356,16 @@ func (repository *Repository) readTables() ([]tableRecord, error) {
 }
 
 func (repository *Repository) readColumns() ([]columnRecord, error) {
-	ids, err := repository.file.IDs(nativestore.ObjectKindColumn)
+	// One pass carrying the payloads, not a pass for the IDs and a lookup per
+	// record: the lookup went through the record log's resident index, which is
+	// being removed, and walking per record would make this quadratic.
+	stored, err := repository.file.RecordsOfKind(nativestore.ObjectKindColumn)
 	if err != nil {
 		return nil, err
 	}
 	latest := make(map[string]columnRecord)
-	for _, recordID := range ids {
-		payload, err := repository.file.Get(nativestore.ObjectKindColumn, recordID)
-		if err != nil {
-			return nil, err
-		}
+	for _, found := range stored {
+		recordID, payload := found.ID, found.Payload
 		record, err := decodeColumn(payload)
 		if err != nil {
 			return nil, fmt.Errorf("%w: decode column %q", ErrCorrupt, recordID)
