@@ -116,6 +116,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [ADR-0010：小规模高质量评测优先](./decisions/0010-small-scale-high-quality-evaluation.md) — 评测目标从绝对质量分
   改为架构对照证据；F212–F215 与候选 F216–F218 转 Deferred；
 - [ADR-0011：存储引擎只做数据库，其余一切建表](./decisions/0011-pure-storage-engine-tables-everything.md) — history、语义树等全部是引擎上的普通表；不做 MVCC；全文索引归属 Deferred。
+- [清理计划：ADR-0011 之后的删除](./planning/cleanup-2026-09-adr0011.md) — A 组明确废弃直接删，
+  B 组（老库兼容链、冻结评测设施）待裁定；
 - [F228：语义配套表同生](./planning/f228-route-companion-table.md) — 实现计划；ADR-0011 第 1 步，
   建数据表时自动建隐藏的语义表，角色进 Catalog，Agent 面不可见；
 - [F219：确定性答案评分](./planning/f219-deterministic-answer-scoring.md) — 候选；不依赖模型的检索命中主判定与
