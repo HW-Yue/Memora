@@ -7,14 +7,23 @@ import (
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
-// TestReadingConfigurationHistoryNeverSweepsTheFile pins the property both
-// configuration histories now have: the cost is how many revisions this key has,
-// not how many Configuration records the Database holds.
+// TestReadingConfigurationHistoryCostsOnePassWhateverItsDepth pins what is left
+// to pin after E8 stage 3, and it is a different statement from the one this
+// test used to make.
 //
-// Listing every Configuration record and keeping the ones whose ID started with
-// the key grew with every other kind of configuration ever written, and with
-// every revision of each — for a history that is usually one entry long.
-func TestReadingConfigurationHistoryNeverSweepsTheFile(t *testing.T) {
+// It used to assert zero passes. That was true because the record log carried a
+// process-resident map of where every record lived, so a point read was a map
+// lookup — and that map is the thing stage 3 deletes, because it grew with how
+// many times the Database had ever been written to rather than with how much it
+// held. With it gone there is no index over the log at all, and a read of the
+// log is a pass over the log. Asserting zero would now only be satisfiable by
+// putting the map back.
+//
+// What still has to hold, and is the property that actually matters, is that
+// the cost does not grow: one pass to read a history, whether that history is
+// one revision deep or twenty. The chained point reads this replaced were one
+// pass per revision.
+func TestReadingConfigurationHistoryCostsOnePassWhateverItsDepth(t *testing.T) {
 	file, err := nativestore.Create(
 		filepath.Join(t.TempDir(), "database.memora"), nativestore.FileKindDatabase,
 	)
@@ -45,8 +54,31 @@ func TestReadingConfigurationHistoryNeverSweepsTheFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if swept := file.Enumerations() - before; swept != 0 {
-		t.Fatalf("reading configuration history swept the file %d times", swept)
+	shallow := file.Enumerations() - before
+	// One pass per history — two histories are read here — and no more.
+	if shallow != 2 {
+		t.Fatalf("reading two configuration histories took %d passes, want 2", shallow)
+	}
+	for index := 0; index < 18; index++ {
+		latest, currentErr := service.Current()
+		if currentErr != nil {
+			t.Fatal(currentErr)
+		}
+		widened := latest.Budgets
+		widened.SelectRows++
+		if _, err := service.Update(widened, latest.Revision, "agent:test", "widen"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deepBefore := file.Enumerations()
+	if _, err := service.History(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PolicyHistory(); err != nil {
+		t.Fatal(err)
+	}
+	if deep := file.Enumerations() - deepBefore; deep != shallow {
+		t.Fatalf("a 20-revision history took %d passes vs %d for a short one", deep, shallow)
 	}
 	// The answers are the ones the sweep gave: a dense chain from revision 1.
 	if len(history) != int(budgets.Revision)+1 {

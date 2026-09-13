@@ -157,7 +157,8 @@ func TestOpenIgnoresCompleteTransactionWithoutCommit(t *testing.T) {
 	}
 }
 
-func TestOpenRejectsTransactionDigestMismatch(t *testing.T) {
+// TestVerifyRejectsTransactionDigestMismatch, formerly TestOpenRejects...
+func TestVerifyRejectsTransactionDigestMismatch(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "database.memora")
@@ -177,8 +178,17 @@ func TestOpenRejectsTransactionDigestMismatch(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(path); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("Open(bad digest) error = %v, want ErrCorrupt", err)
+	// The digest is checked by Verify now rather than by opening: E8 stage 3
+	// took the whole-log read off the open path. What must not change is that
+	// a transaction whose digest does not add up is reported as corruption
+	// rather than served.
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open(bad digest) error = %v, want it to open", err)
+	}
+	defer reopened.Close()
+	if err := reopened.Verify(); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Verify(bad digest) error = %v, want ErrCorrupt", err)
 	}
 }
 
@@ -253,7 +263,9 @@ func TestRecoveryTruncatesEveryPartialTransactionPrefix(t *testing.T) {
 	}
 }
 
-func TestOpenRejectsCorruptionInsideCommittedTransaction(t *testing.T) {
+// TestVerifyRejectsCorruptionInsideCommittedTransaction, formerly
+// TestOpenRejects...
+func TestVerifyRejectsCorruptionInsideCommittedTransaction(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "database.memora")
@@ -287,7 +299,12 @@ func TestOpenRejectsCorruptionInsideCommittedTransaction(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(path); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("Open(corrupt committed data) error = %v", err)
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open(corrupt committed data) error = %v, want it to open", err)
+	}
+	defer reopened.Close()
+	if err := reopened.Verify(); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Verify(corrupt committed data) error = %v, want ErrCorrupt", err)
 	}
 }

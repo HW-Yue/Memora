@@ -277,25 +277,37 @@ func (repository *Repository) Get(id string) (router.Node, error) {
 		}
 		return decodeStoredNode(stored)
 	}
+	// One pass, keeping this node's revisions. Probing revision 1, 2, 3 … was
+	// cheap while the record log carried a process-resident map of where every
+	// record lived; E8 stage 3 deleted it, so each probe became a pass.
+	//
+	// Revision 1 is the bare ID and the rest are "<id>@<revision>", so requiring
+	// the separator excludes another node whose ID merely starts with this one,
+	// and ascending ID order is ascending revision order.
+	prefix := id + "@"
+	records, err := repository.file.RecordsMatching(
+		nativestore.ObjectKindRoute,
+		func(candidate string) bool {
+			return candidate == id || strings.HasPrefix(candidate, prefix)
+		},
+	)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if len(records) == 0 {
+		return router.Node{}, nativestore.ErrNotFound
+	}
 	var latest router.Node
-	found := false
-	for revision := uint64(1); ; revision++ {
-		recordID := nodeRecordID(id, revision)
-		payload, err := repository.file.Get(nativestore.ObjectKindRoute, recordID)
-		if errors.Is(err, nativestore.ErrNotFound) {
-			break
+	for index, record := range records {
+		revision := uint64(index + 1)
+		if record.ID != nodeRecordID(id, revision) {
+			return router.Node{}, fmt.Errorf("%w: route revision chain has a gap", ErrCorrupt)
 		}
-		if err != nil {
-			return router.Node{}, err
-		}
-		value, decodeErr := decodeNode(payload)
+		value, decodeErr := decodeNode(record.Payload)
 		if decodeErr != nil || value.ID != id || value.Revision != revision {
 			return router.Node{}, fmt.Errorf("%w: route identity mismatch", ErrCorrupt)
 		}
-		latest, found = value, true
-	}
-	if !found {
-		return router.Node{}, nativestore.ErrNotFound
+		latest = value
 	}
 	return latest, nil
 }

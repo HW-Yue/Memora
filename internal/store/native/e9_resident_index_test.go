@@ -6,15 +6,19 @@ import (
 	"testing"
 )
 
-// TestEnumerationReadsTheFileNotAResidentIndex is stage one of deleting every
+// TestEnumerationReadsTheFileNotAResidentIndex was stage one of deleting every
 // process-resident index over the record log.
 //
 // IDs and Records used to iterate f.records, which is why that map had to hold
 // an entry for every record the file had ever seen — one per write, forever,
 // with no capacity and no eviction (architecture principle four, criterion 3).
-// They now walk the log on demand, so enumeration no longer keeps the map
-// alive. This test proves that by emptying the map and asserting both surfaces
-// still answer correctly: if either still read it, both would come back empty.
+// The test used to empty that map and assert both surfaces still answered: if
+// either still read it, both would come back empty.
+//
+// E8 stage 3 deleted the map, so there is nothing left to empty. What the test
+// still earns its place for is the answers themselves — a walk has to agree
+// with what the map used to say, including which records a transaction
+// published and which a standalone Put did.
 func TestEnumerationReadsTheFileNotAResidentIndex(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "database.memora")
 	file, err := Create(path, FileKindDatabase)
@@ -42,16 +46,12 @@ func TestEnumerationReadsTheFileNotAResidentIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	file.mu.Lock()
-	file.records = map[recordKey]recordMeta{}
-	file.mu.Unlock()
-
 	ids, err := file.IDs(ObjectKindRow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(ids) != 3 || ids[0] != "row-0" || ids[2] != "row-2" {
-		t.Fatalf("IDs with an empty resident map = %v, want the three committed Rows", ids)
+		t.Fatalf("IDs() = %v, want the three committed Rows", ids)
 	}
 	if configuration, err := file.IDs(ObjectKindConfiguration); err != nil {
 		t.Fatal(err)

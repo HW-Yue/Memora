@@ -55,6 +55,38 @@ func Stage(transaction *nativestore.Transaction, value change.Envelope) error {
 	)
 }
 
+// GetAll resolves a set of committed changes in one pass over the record log.
+//
+// One at a time is a pass each, now that the log carries no process-resident
+// index. A sequence the log does not hold is left out rather than reported: the
+// callers here have a fallback for a revision with no envelope.
+func (repository *Repository) GetAll(sequences map[uint64]struct{}) (map[uint64]change.Envelope, error) {
+	found := make(map[uint64]change.Envelope, len(sequences))
+	if repository == nil || repository.file == nil || len(sequences) == 0 {
+		return found, nil
+	}
+	wanted := make(map[string]uint64, len(sequences))
+	for sequence := range sequences {
+		wanted[recordID(sequence)] = sequence
+	}
+	records, err := repository.file.RecordsMatching(
+		nativestore.ObjectKindCommittedChange,
+		func(id string) bool { _, ok := wanted[id]; return ok },
+	)
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		sequence := wanted[record.ID]
+		envelope, err := Decode(record.Payload, sequence)
+		if err != nil {
+			return nil, err
+		}
+		found[sequence] = envelope
+	}
+	return found, nil
+}
+
 func (repository *Repository) Get(sequence uint64) (change.Envelope, error) {
 	if repository == nil || repository.file == nil || sequence == 0 {
 		return change.Envelope{}, fmt.Errorf("%w: sequence", ErrInvalid)

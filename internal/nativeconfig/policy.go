@@ -85,26 +85,29 @@ func (service *Service) PolicyHistory() ([]PolicyRevision, error) {
 // policyHistory walks the revision chain forward from 1, for the reason given
 // on history: revisions are dense, so the chain finds itself.
 func (service *Service) policyHistory() ([]PolicyRevision, error) {
+	stored, err := service.file.RecordsOfKind(nativestore.ObjectKindConfiguration)
+	if err != nil {
+		return nil, err
+	}
+	prefix := RoutePolicyKey + "_r"
 	values := make([]PolicyRevision, 0)
-	for revision := uint64(1); ; revision++ {
-		payload, err := service.file.Get(
-			nativestore.ObjectKindConfiguration,
-			fmt.Sprintf("%s_r%020d", RoutePolicyKey, revision),
-		)
-		if errors.Is(err, nativestore.ErrNotFound) {
-			return values, nil
+	for _, record := range stored {
+		if !strings.HasPrefix(record.ID, prefix) {
+			continue
 		}
-		if err != nil {
-			return nil, err
+		revision := uint64(len(values)) + 1
+		if record.ID != fmt.Sprintf("%s_r%020d", RoutePolicyKey, revision) {
+			return nil, configError(result.CodeInternal, "native Route policy configuration is corrupt")
 		}
 		var value PolicyRevision
-		if err := json.Unmarshal(payload, &value); err != nil ||
+		if err := json.Unmarshal(record.Payload, &value); err != nil ||
 			value.Version != Version || value.Key != RoutePolicyKey ||
 			value.Revision != revision || validateRoutePolicy(value.Policy) != nil {
 			return nil, configError(result.CodeInternal, "native Route policy configuration is corrupt")
 		}
 		values = append(values, value)
 	}
+	return values, nil
 }
 
 func (service *Service) UpdatePolicy(policy RoutePolicy, expected uint64, actor, reason string) (PolicyRevision, error) {

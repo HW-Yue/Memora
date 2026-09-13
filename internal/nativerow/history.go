@@ -82,27 +82,34 @@ func (repository *Repository) HistoryAll(databaseID, tableID, rowID string) ([]h
 	return repository.historyWalk(databaseID, tableID, rowID, 0)
 }
 
-// historyWalk follows a Row's version chain from its newest revision backwards,
-// newest first. Each hop is a direct read at the address the newer revision
-// carries, so the walk costs one read per revision returned and never touches a
-// revision the caller did not ask for. A limit of 0 walks to revision 1.
+// historyWalk returns a Row's revisions newest first, in one pass over the log.
+//
+// It used to point-read each revision by its record ID, which was cheap while
+// the record log carried a process-resident map of where every record lived.
+// E8 stage 3 deleted that map, so N point reads became N passes; one pass that
+// keeps this Row's records costs the same as reading one revision did. A limit
+// of 0 walks to revision 1.
+//
+// This is the fallback. A Repository with a generation reads revisions out of
+// the Table's clustered version Tree and never reaches here.
 func (repository *Repository) historyWalk(
 	databaseID, tableID, rowID string, limit int,
 ) ([]history.Record, error) {
-	latest, err := repository.latestRevision(rowID)
+	records, err := repository.revisionRecords(rowID)
 	if err != nil {
 		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, nativestore.ErrNotFound
 	}
 	table, err := repository.table(databaseID, tableID)
 	if err != nil {
 		return nil, err
 	}
-	// Revisions are contiguous from 1, so walking backwards from the latest is a
-	// sequence of point lookups on known record IDs — the cost is the revisions
-	// returned, never the records the Database holds.
-	result := make([]history.Record, 0, latest)
-	for revision := latest; revision >= 1; revision-- {
-		value, err := repository.readRecordWithTable(revisionRecordID(rowID, revision), table)
+	values := make([]row.Row, 0, len(records))
+	for index := len(records) - 1; index >= 0; index-- {
+		revision := uint64(index + 1)
+		value, err := decodeStoredRecordWithTable(records[index].ID, records[index].Payload, table)
 		if err != nil {
 			return nil, err
 		}
@@ -112,16 +119,102 @@ func (repository *Repository) historyWalk(
 		if value.Revision != revision {
 			return nil, fmt.Errorf("%w: revision record %d identifies revision %d", ErrCorrupt, revision, value.Revision)
 		}
-		record, err := repository.attributionFor(value)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, record)
-		if limit > 0 && len(result) == limit {
+		values = append(values, value)
+		if limit > 0 && len(values) == limit {
 			break
 		}
 	}
+	return repository.attributionsFor(rowID, values)
+}
+
+// attributionsFor resolves the attribution for a batch of revisions.
+//
+// One pass for the envelopes and, where a revision predates them, one for the
+// legacy history records. Resolving them one revision at a time is what made
+// SHOW HISTORY cost a pass per revision once the record log lost its
+// process-resident map.
+func (repository *Repository) attributionsFor(
+	rowID string, values []row.Row,
+) ([]history.Record, error) {
+	envelopes, err := repository.changeEnvelopes(values)
+	if err != nil {
+		return nil, err
+	}
+	var legacy map[uint64]historyMetadata
+	result := make([]history.Record, 0, len(values))
+	for _, value := range values {
+		if envelope, ok := envelopes[value.ChangeSequence]; ok && value.ChangeSequence != 0 {
+			if record, found := HistoryRecordFromEnvelope(value, envelope); found {
+				result = append(result, record)
+				continue
+			}
+		}
+		if legacy == nil {
+			legacy, err = repository.historyMetadata(rowID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		item, ok := legacy[value.Revision]
+		if !ok {
+			return nil, fmt.Errorf(
+				"%w: revision %d of Row %q has no attribution", ErrCorrupt, value.Revision, rowID,
+			)
+		}
+		result = append(result, historyRecord(item, value))
+	}
 	return result, nil
+}
+
+// changeEnvelopes resolves every envelope a batch of revisions names.
+//
+// Through the generation's change index one at a time when there is one — those
+// are Tree descents — and otherwise in one pass over the record log. A sequence
+// the log does not hold is simply absent from the map; the caller falls back.
+func (repository *Repository) changeEnvelopes(values []row.Row) (map[uint64]change.Envelope, error) {
+	wanted := make(map[uint64]struct{}, len(values))
+	for _, value := range values {
+		if value.ChangeSequence != 0 {
+			wanted[value.ChangeSequence] = struct{}{}
+		}
+	}
+	found := make(map[uint64]change.Envelope, len(wanted))
+	if len(wanted) == 0 {
+		return found, nil
+	}
+	if source, ok := repository.objects.(changeSource); ok && source != nil {
+		for sequence := range wanted {
+			envelope, err := source.ChangeEnvelope(sequence)
+			if err != nil {
+				continue
+			}
+			found[sequence] = envelope
+		}
+		return found, nil
+	}
+	return nativechange.New(repository.file).GetAll(wanted)
+}
+
+// historyMetadata reads every legacy history record for one Row in one pass.
+func (repository *Repository) historyMetadata(rowID string) (map[uint64]historyMetadata, error) {
+	records, err := repository.file.RecordsMatching(
+		nativestore.ObjectKindHistory, revisionIDPredicate(rowID),
+	)
+	if err != nil {
+		return nil, err
+	}
+	items := make(map[uint64]historyMetadata, len(records))
+	for _, record := range records {
+		item, err := decodeHistory(record.Payload)
+		if err != nil {
+			return nil, err
+		}
+		if item.rowID != rowID {
+			return nil, fmt.Errorf("%w: history record identifies another Row", ErrCorrupt)
+		}
+		items[item.revision] = item
+	}
+	return items, nil
 }
 
 // HistoryRecordFromEnvelope assembles what SHOW HISTORY returns for one
@@ -170,52 +263,12 @@ func historyRecord(item historyMetadata, value row.Row) history.Record {
 	}
 }
 
-// attributionFor resolves who wrote one revision and why.
-//
-// Attribution belongs to the transaction, not to the revision: a write touching
-// many Rows has one actor and one reason, recorded once in the Change Log. The
-// revision carries the change sequence that names it, so the lookup is a point
-// read on the envelope.
-//
-// A revision whose change sequence is zero predates that link. Those fall back
-// to the per-Row History record, which is the only reason that record kind is
-// still read — nothing writes a new one. See docs/storage/per-table-tree-v1.md
-// §4.
-func (repository *Repository) attributionFor(value row.Row) (history.Record, error) {
-	if value.ChangeSequence != 0 {
-		envelope, err := repository.changeEnvelope(value.ChangeSequence)
-		if err == nil {
-			if record, ok := HistoryRecordFromEnvelope(value, envelope); ok {
-				return record, nil
-			}
-		}
-	}
-	item, err := repository.historyMetadataFor(value.ID, value.Revision)
-	if err != nil {
-		return history.Record{}, err
-	}
-	return historyRecord(item, value), nil
-}
-
 // changeSource resolves a committed change from the generation's own index.
 //
 // It is optional on purpose: a Repository opened without a generation has no
 // index to ask, and only the Authority implements it.
 type changeSource interface {
 	ChangeEnvelope(sequence uint64) (change.Envelope, error)
-}
-
-// changeEnvelope resolves the envelope naming one committed change.
-//
-// It asks the generation's change index when there is one. Reading the record
-// log instead is a point read through that log's process-resident index, and
-// this runs once per revision listed — so leaving it there would have kept that
-// index alive for the busiest read there is.
-func (repository *Repository) changeEnvelope(sequence uint64) (change.Envelope, error) {
-	if source, ok := repository.objects.(changeSource); ok && source != nil {
-		return source.ChangeEnvelope(sequence)
-	}
-	return nativechange.New(repository.file).Get(sequence)
 }
 
 func (repository *Repository) historyMetadataFor(rowID string, revision uint64) (historyMetadata, error) {

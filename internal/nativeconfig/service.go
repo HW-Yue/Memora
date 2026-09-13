@@ -110,37 +110,42 @@ func (service *Service) History() ([]Revision, error) {
 	return service.history()
 }
 
-// history walks the revision chain forward from 1.
+// history reads every revision of this key in one pass over the log.
 //
-// Revisions are numbered from 1 with no gaps — the chain check below has always
-// enforced that — so the whole history is found by point-reading revision 1, 2,
-// 3 … until one is missing. That is exactly as many reads as there are
-// revisions.
+// It used to point-read revision 1, 2, 3 … until one was missing, which was
+// cheap while the record log carried a process-resident map of where every
+// record lived. E8 stage 3 deleted that map — it was the thing that grew with
+// how many times the Database had been written to — so a point read is now a
+// pass, and N of them are N passes. One pass that keeps what it wants is the
+// same answer for a fraction of the work.
 //
-// It used to list every Configuration record in the Database and keep the ones
-// whose ID started with this key. That cost a full sweep, and it grew with every
-// other kind of configuration the Database had ever held, not with this one.
+// Records come back in ascending ID order and the IDs are the key followed by a
+// zero-padded revision, so ascending ID is ascending revision. The chain is
+// still required to be dense from 1: a gap is corruption, not a hole to skip.
 func (service *Service) history() ([]Revision, error) {
+	stored, err := service.file.RecordsOfKind(nativestore.ObjectKindConfiguration)
+	if err != nil {
+		return nil, err
+	}
+	prefix := QueryBudgetsKey + "_r"
 	values := make([]Revision, 0)
-	for revision := uint64(1); ; revision++ {
-		payload, err := service.file.Get(
-			nativestore.ObjectKindConfiguration,
-			fmt.Sprintf("%s_r%020d", QueryBudgetsKey, revision),
-		)
-		if errors.Is(err, nativestore.ErrNotFound) {
-			return values, nil
+	for _, record := range stored {
+		if !strings.HasPrefix(record.ID, prefix) {
+			continue
 		}
-		if err != nil {
-			return nil, err
+		revision := uint64(len(values)) + 1
+		if record.ID != fmt.Sprintf("%s_r%020d", QueryBudgetsKey, revision) {
+			return nil, configError(result.CodeInternal, "native query budget configuration is corrupt")
 		}
 		var value Revision
-		if err := json.Unmarshal(payload, &value); err != nil ||
+		if err := json.Unmarshal(record.Payload, &value); err != nil ||
 			value.Version != Version || value.Key != QueryBudgetsKey ||
 			value.Revision != revision || validateBudgets(value.Budgets) != nil {
 			return nil, configError(result.CodeInternal, "native query budget configuration is corrupt")
 		}
 		values = append(values, value)
 	}
+	return values, nil
 }
 
 func (service *Service) Update(budgets QueryBudgets, expected uint64, actor, reason string) (Revision, error) {

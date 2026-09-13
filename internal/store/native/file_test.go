@@ -42,7 +42,20 @@ func TestPutCloseReopenGet(t *testing.T) {
 	}
 }
 
-func TestMultipleRecordsAndDuplicateID(t *testing.T) {
+// TestARepeatedIDIsTheLogsLatestRatherThanARefusal records what E8 stage 3
+// changed here, and why it could not be kept.
+//
+// Refusing a repeated ID meant knowing every ID the file had ever held, which
+// is the process-resident map this stage deletes — the one thing that grew with
+// how many times the Database had been written to rather than with how much it
+// held. There is no cheap version of that check: it is the map.
+//
+// So the log behaves like a log. A repeated ID is a later record for the same
+// name, and a read resolves to the last one committed. Identity is enforced
+// where it is now decided: within a transaction, still, by this file; and
+// across the Database by the Trees, whose compare-and-set is both the commit
+// point and atomic, which this read-then-refuse never was.
+func TestARepeatedIDIsTheLogsLatestRatherThanARefusal(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "database.memora")
@@ -58,12 +71,40 @@ func TestMultipleRecordsAndDuplicateID(t *testing.T) {
 	if err := file.Put(ObjectKindOpaque, 1, "row_b", []byte("B")); err != nil {
 		t.Fatalf("Put(row_b) error = %v", err)
 	}
-	if err := file.Put(ObjectKindOpaque, 1, "row_a", []byte("again")); !errors.Is(err, ErrDuplicateID) {
-		t.Fatalf("Put(duplicate) error = %v, want ErrDuplicateID", err)
+	if err := file.Put(ObjectKindOpaque, 1, "row_a", []byte("again")); err != nil {
+		t.Fatalf("Put(repeat) error = %v", err)
+	}
+	got, err := file.Get(ObjectKindOpaque, "row_a")
+	if err != nil || string(got) != "again" {
+		t.Fatalf("Get(row_a) = %q, %v, want the later record", got, err)
+	}
+	// Within one transaction the refusal stays: those records are in hand, so
+	// the check costs nothing, and two records for one name in a single
+	// transaction is a caller mistake with no defensible reading.
+	transaction, err := file.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Put(ObjectKindOpaque, 1, "row_c", []byte("one")); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Put(
+		ObjectKindOpaque, 1, "row_c", []byte("two"),
+	); !errors.Is(err, ErrDuplicateID) {
+		t.Fatalf("Put(duplicate in one transaction) error = %v, want ErrDuplicateID", err)
+	}
+	if err := transaction.Rollback(); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestOpenRejectsCorruptPayload(t *testing.T) {
+// TestCorruptionIsFoundByVerifyRatherThanByOpening.
+//
+// Was TestOpenRejectsCorruptPayload. Opening used to read every record and
+// check it, which is exactly the cost E8 stage 3 removes. The check did not go
+// away — Verify does it on request, and a read of the damaged record still
+// refuses — it stopped being something every open pays for.
+func TestCorruptionIsFoundByVerifyRatherThanByOpening(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "database.memora")
@@ -87,8 +128,16 @@ func TestOpenRejectsCorruptPayload(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if _, err := Open(path); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("Open(corrupt) error = %v, want ErrCorrupt", err)
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open(corrupt) error = %v, want it to open", err)
+	}
+	defer reopened.Close()
+	if err := reopened.Verify(); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Verify(corrupt) error = %v, want ErrCorrupt", err)
+	}
+	if _, err := reopened.Get(ObjectKindOpaque, "row_001"); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Get(corrupt record) error = %v, want ErrCorrupt", err)
 	}
 }
 

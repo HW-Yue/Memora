@@ -25,20 +25,33 @@ func sweepsToGetNode(t *testing.T, depth, fanout int) uint64 {
 
 // TestReadingOneRouteNodeCostsTheSameAtAnyTreeSize pins the property that makes
 // route_paths affordable: resolving one Route node by ID must not depend on how
-// many Route nodes exist. Every SELECT resolves one node per leaf per Row, so a
-// read that sweeps the file turns a result page into a full-database scan.
+// many Route nodes exist.
+//
+// It used to assert zero passes over the record log. That was true because the
+// log carried a process-resident map of where every record lived, and E8
+// stage 3 deleted that map — it was the thing that grew with how many times the
+// Database had ever been written to. Without it there is no index over the log,
+// so reading the log is a pass over the log, and zero is only reachable by
+// putting the map back.
+//
+// This is the fallback path, which a Database with no generation takes. The
+// production path reads the objects Tree and touches the log not at all; the
+// gate for that is pagestoremigration's TestALiveWorkloadNeverSweepsTheRecordFile.
+// What has to hold here is that the cost is flat.
 func TestReadingOneRouteNodeCostsTheSameAtAnyTreeSize(t *testing.T) {
 	t.Parallel()
 
 	small, large := sweepsToGetNode(t, 2, 3), sweepsToGetNode(t, 4, 5)
-	if small != 0 || large != 0 {
-		t.Fatalf("Get swept the file %d times in a small tree and %d in a large one", small, large)
+	if small != 1 || large != 1 {
+		t.Fatalf("Get took %d passes in a small tree and %d in a large one, want 1", small, large)
 	}
 }
 
 // TestReadingOneRouteNodeCostsTheSameAtAnyRevisionDepth pins the other axis: a
 // leaf that has been mounted, renamed and re-mounted has several revisions, and
-// finding the latest must not cost more than a bounded probe.
+// finding the latest must cost the same as finding the only revision of a leaf
+// that has never moved. Probing revision 1, 2, 3 … was one pass each once the
+// log lost its resident map; one pass that keeps this node's records is flat.
 func TestReadingOneRouteNodeCostsTheSameAtAnyRevisionDepth(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +88,7 @@ func TestReadingOneRouteNodeCostsTheSameAtAnyRevisionDepth(t *testing.T) {
 	if err != nil || node.Revision != leaf.Revision {
 		t.Fatalf("Get() = %#v, %v", node, err)
 	}
-	if swept := file.Enumerations() - before; swept != 0 {
-		t.Fatalf("reading a 31-revision Route node swept the file %d times", swept)
+	if swept := file.Enumerations() - before; swept != 1 {
+		t.Fatalf("reading a 31-revision Route node took %d passes, want 1", swept)
 	}
 }

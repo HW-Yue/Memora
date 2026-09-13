@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -68,11 +69,10 @@ func (repository *Repository) StageInitial(transaction *nativestore.Transaction,
 	if transaction == nil || value.Revision != 1 || value.State != row.StateLive {
 		return fmt.Errorf("%w: transaction and live revision 1 are required", ErrInvalid)
 	}
-	if _, err := repository.ReadIncludingDeleted(value.ID); !errors.Is(err, nativestore.ErrNotFound) {
-		if err == nil {
-			return ErrRevisionConflict
-		}
+	if exists, err := repository.rowExists(value); err != nil {
 		return err
+	} else if exists {
+		return ErrRevisionConflict
 	}
 	table, err := repository.table(value.DatabaseID, value.TableID)
 	if err != nil {
@@ -118,7 +118,45 @@ func (repository *Repository) StageRevision(transaction *nativestore.Transaction
 	return transaction.Put(nativestore.ObjectKindRow, recordSchemaVersion, revisionRecordID(value.ID, value.Revision), payload)
 }
 
+// rowRevisionSource answers a Row's newest revision out of the Table's current
+// Row Tree. Only the Authority implements it; a Repository opened without a
+// generation has no Tree to ask.
+type rowRevisionSource interface {
+	CurrentRowRevision(databaseID, tableID, rowID string) (uint64, bool, error)
+}
+
+// validateRevision checks that this Row follows the one the Database holds.
+//
+// Through the Tree when there is one. The record-log path below finds the
+// current revision by probing for revision 1, 2, 4, 8 … and bisecting: O(log
+// revisions) point reads, each of which is a lookup in the process-resident
+// record table E8 exists to delete. The Tree answers in one descent, and it is
+// the structure that table was standing in for.
+//
+// The Tree path checks the revision and the Table the Row belongs to;
+// CurrentRowRevision reports a Row found under another Table as corruption. It
+// does not re-check CreatedAt, which the record-log path compared against the
+// previous record. That continuity is established where it is actually decided
+// — the Service builds revision N+1 from the current Row the Tree returned —
+// and the ordering is enforced by the current-Row Tree's ExpectedRevision
+// compare-and-set inside the group commit, which is atomic where this
+// read-then-write never was.
 func (repository *Repository) validateRevision(value row.Row) error {
+	if source, ok := repository.objects.(rowRevisionSource); ok && source != nil {
+		revision, known, err := source.CurrentRowRevision(value.DatabaseID, value.TableID, value.ID)
+		if err != nil {
+			return err
+		}
+		if known {
+			if revision == 0 {
+				return nativestore.ErrNotFound
+			}
+			if value.Revision != revision+1 {
+				return ErrRevisionConflict
+			}
+			return nil
+		}
+	}
 	latest, err := repository.ReadIncludingDeleted(value.ID)
 	if err != nil {
 		return err
@@ -129,6 +167,28 @@ func (repository *Repository) validateRevision(value row.Row) error {
 		return ErrRevisionConflict
 	}
 	return nil
+}
+
+// rowExists reports whether the Database already holds this Row, for the
+// initial-revision writers that must refuse to overwrite one.
+//
+// Through the Tree when there is one, for the reason validateRevision gives.
+func (repository *Repository) rowExists(value row.Row) (bool, error) {
+	if source, ok := repository.objects.(rowRevisionSource); ok && source != nil {
+		revision, known, err := source.CurrentRowRevision(value.DatabaseID, value.TableID, value.ID)
+		if err != nil {
+			return false, err
+		}
+		if known {
+			return revision != 0, nil
+		}
+	}
+	if _, err := repository.ReadIncludingDeleted(value.ID); err == nil {
+		return true, nil
+	} else if !errors.Is(err, nativestore.ErrNotFound) {
+		return false, err
+	}
+	return false, nil
 }
 
 func (repository *Repository) writeRecord(value row.Row, recordID string) error {
@@ -172,54 +232,57 @@ func (repository *Repository) ReadIncludingDeleted(id string) (row.Row, error) {
 	return repository.readRecord(revisionRecordID(id, latest))
 }
 
-// latestRevision finds a Row's newest revision by probing for it rather than by
-// sweeping every record. Revisions are contiguous from 1 — validateRevision
-// admits only latest+1 — so the highest present revision can be found by
-// doubling until a revision is missing and then bisecting the gap, which costs
-// O(log revisions) point lookups instead of one pass over the whole file.
+// latestRevision finds a Row's newest revision in one pass over the log.
+//
+// It used to probe for revision 1, 2, 4, 8 … and bisect: O(log revisions) point
+// reads, which were cheap only because the record log carried a
+// process-resident map of where every record lived. E8 stage 3 deleted that
+// map, so each of those probes became a pass. One pass that keeps this Row's
+// records is the same answer for a fraction of the work.
+//
+// This is the fallback. A Repository with a generation answers from the Table's
+// current Row Tree in one descent and never reaches here — see
+// validateRevision.
 func (repository *Repository) latestRevision(id string) (uint64, error) {
-	present, err := repository.revisionExists(id, 1)
+	records, err := repository.revisionRecords(id)
 	if err != nil {
 		return 0, err
 	}
-	if !present {
+	if len(records) == 0 {
 		return 0, nativestore.ErrNotFound
 	}
-	low, high := uint64(1), uint64(2)
-	for {
-		present, err := repository.revisionExists(id, high)
-		if err != nil {
-			return 0, err
-		}
-		if !present {
-			break
-		}
-		low, high = high, high*2
-	}
-	for high-low > 1 {
-		middle := low + (high-low)/2
-		present, err := repository.revisionExists(id, middle)
-		if err != nil {
-			return 0, err
-		}
-		if present {
-			low = middle
-		} else {
-			high = middle
-		}
-	}
-	return low, nil
+	return uint64(len(records)), nil
 }
 
-func (repository *Repository) revisionExists(id string, revision uint64) (bool, error) {
-	_, err := repository.file.Location(nativestore.ObjectKindRow, revisionRecordID(id, revision))
-	if err == nil {
-		return true, nil
+// revisionRecords returns a Row's revisions in ascending order, in one pass.
+//
+// Revisions are contiguous from 1 — validateRevision admits only latest+1 — so
+// the records that come back are revision 1..N in order, and a gap is
+// corruption rather than something to walk around.
+func (repository *Repository) revisionRecords(id string) ([]nativestore.Record, error) {
+	records, err := repository.file.RecordsMatching(
+		nativestore.ObjectKindRow, revisionIDPredicate(id),
+	)
+	if err != nil {
+		return nil, err
 	}
-	if errors.Is(err, nativestore.ErrNotFound) {
-		return false, nil
+	for index, record := range records {
+		if record.ID != revisionRecordID(id, uint64(index+1)) {
+			return nil, fmt.Errorf("%w: Row %q revision chain has a gap", ErrCorrupt, id)
+		}
 	}
-	return false, err
+	return records, nil
+}
+
+// revisionIDPredicate keeps the record IDs that belong to one Row.
+//
+// Revision 1 is the bare ID and the rest are "<id>@<revision>", so another Row
+// whose ID merely starts with this one is excluded by requiring the separator.
+func revisionIDPredicate(id string) func(string) bool {
+	prefix := id + "@"
+	return func(candidate string) bool {
+		return candidate == id || strings.HasPrefix(candidate, prefix)
+	}
 }
 
 func (repository *Repository) ReadRevision(id string, revision uint64) (row.Row, error) {
@@ -448,6 +511,22 @@ func (repository *Repository) normalizeRecord(value row.Row) (row.Row, error) {
 	table, err := repository.table(value.DatabaseID, value.TableID)
 	if err != nil {
 		return row.Row{}, fmt.Errorf("%w: row %q has invalid catalog reference", ErrCorrupt, value.ID)
+	}
+	return normalizeDecodedRecord(value, table)
+}
+
+// decodeStoredRecordWithTable is readRecordWithTable over bytes already in
+// hand, for a caller that read a batch of revisions in one pass rather than one
+// at a time.
+func decodeStoredRecordWithTable(
+	recordID string, payload []byte, table catalog.Table,
+) (row.Row, error) {
+	value, err := decodeStoredRecord(recordID, payload)
+	if err != nil {
+		return row.Row{}, err
+	}
+	if value.DatabaseID != table.DatabaseID || value.TableID != table.ID {
+		return row.Row{}, fmt.Errorf("%w: Row body does not belong to indexed Table", ErrCorrupt)
 	}
 	return normalizeDecodedRecord(value, table)
 }

@@ -85,12 +85,23 @@ const (
 )
 
 type File struct {
-	mu             sync.RWMutex
-	file           *os.File
-	kind           FileKind
-	records        map[recordKey]recordMeta
-	recoveryOffset int64
-	closed         bool
+	mu   sync.RWMutex
+	file *os.File
+	kind FileKind
+	// path is the log's own name, which the commit hint sits beside.
+	path string
+	// committed is where the last committed transaction ends. It is what the
+	// open establishes and what every append advances; see commit_hint.go for
+	// why the open can establish it without reading the log.
+	committed int64
+	// hinted is the value last written to the hint file, so the hint is
+	// rewritten on an interval rather than on every commit.
+	hinted int64
+	// recoveredRecords is how many record headers the open had to hop to find
+	// the end of the log. It is what the open-cost gate measures: the number
+	// must not be a function of how long the log is.
+	recoveredRecords int
+	closed           bool
 	// enumerations counts full-file sweeps (IDs, Records). Every one of them is
 	// O(all records ever written), so a read path that takes one does not scale
 	// with the data. Tests assert this stays at zero for point reads.
@@ -214,7 +225,10 @@ func Create(path string, kind FileKind) (*File, error) {
 	}
 
 	removeOnError = false
-	return &File{file: file, kind: kind, records: make(map[recordKey]recordMeta)}, nil
+	result := &File{file: file, kind: kind, path: path, committed: int64(fileHeaderSize)}
+	_ = writeCommitHint(path, result.committed)
+	result.hinted = result.committed
+	return result, nil
 }
 
 func Open(path string) (*File, error) {
@@ -226,7 +240,7 @@ func Open(path string) (*File, error) {
 		return nil, fmt.Errorf("open native store file: %w", err)
 	}
 
-	result, err := openFile(file)
+	result, err := openFile(file, path)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
@@ -234,7 +248,7 @@ func Open(path string) (*File, error) {
 	return result, nil
 }
 
-func openFile(file *os.File) (*File, error) {
+func openFile(file *os.File, path string) (*File, error) {
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("stat native store file: %w", err)
@@ -252,18 +266,28 @@ func openFile(file *os.File) (*File, error) {
 		return nil, err
 	}
 
-	result := &File{file: file, kind: header.kind, records: make(map[recordKey]recordMeta)}
-	if err := result.scan(stat.Size()); err != nil {
+	// The header and nothing else. E8 stage 3 removed the scan that used to run
+	// here: it read every record ever written, verified each one, and built a
+	// map of where they all live — time and memory proportional to how many
+	// times the Database has been written to, paid on every open, and the
+	// single largest thing clustered promotion exists to delete
+	// (docs/storage/record-index-and-authority-v1.md §1).
+	//
+	// Two things went with it, both deliberately:
+	//
+	// Corruption is found when a record is read rather than when the file is
+	// opened. That is what every other store here already does — page.Open
+	// reads one page — and a log whose records are individually checksummed
+	// does not need to be read end to end to be opened. Verify still does it on
+	// request.
+	//
+	// A torn tail is left in place rather than truncated. Finding it costs the
+	// same scan, and it is inert: the walk that reads this file stops at the
+	// last commit mark, and the next write appends past it. What it costs is
+	// bytes, on a file that already never reclaims any.
+	result := &File{file: file, kind: header.kind, path: path}
+	if err := result.recoverCommitted(path, stat.Size()); err != nil {
 		return nil, err
-	}
-	if result.recoveryOffset > 0 && result.recoveryOffset < stat.Size() {
-		if err := file.Truncate(result.recoveryOffset); err != nil {
-			return nil, fmt.Errorf("truncate native crash tail: %w", err)
-		}
-		if err := file.Sync(); err != nil {
-			return nil, fmt.Errorf("sync native crash recovery: %w", err)
-		}
-		result.recoveryOffset = 0
 	}
 	return result, nil
 }
@@ -283,19 +307,13 @@ func (f *File) Put(kind ObjectKind, schemaVersion uint32, id string, payload []b
 	if kind == objectKindTransactionBegin || kind == objectKindTransactionCommit {
 		return fmt.Errorf("%w: reserved transaction kind", ErrInvalidArgument)
 	}
-	key := recordKey{kind: kind, id: id}
-	if _, exists := f.records[key]; exists {
-		return ErrDuplicateID
-	}
-
-	meta, err := f.appendRecord(kind, schemaVersion, id, payload)
-	if err != nil {
+	if _, err := f.appendRecord(kind, schemaVersion, id, payload); err != nil {
 		return err
 	}
 	if err := f.file.Sync(); err != nil {
 		return fmt.Errorf("sync native record: %w", err)
 	}
-	f.records[key] = meta
+	f.advanceCommittedLocked()
 	return nil
 }
 
@@ -326,9 +344,6 @@ func (transaction *Transaction) Put(kind ObjectKind, schemaVersion uint32, id st
 	defer transaction.file.mu.RUnlock()
 	if transaction.file.closed {
 		return ErrClosed
-	}
-	if _, exists := transaction.file.records[key]; exists {
-		return ErrDuplicateID
 	}
 	if _, exists := transaction.keys[key]; exists {
 		return ErrDuplicateID
@@ -368,11 +383,6 @@ func (transaction *Transaction) Prepare() error {
 	defer transaction.file.mu.Unlock()
 	if transaction.file.closed {
 		return ErrClosed
-	}
-	for key := range transaction.keys {
-		if _, exists := transaction.file.records[key]; exists {
-			return ErrDuplicateID
-		}
 	}
 	transaction.id = deterministicTransactionID(transaction.records)
 	if _, err := transaction.file.appendRecord(objectKindTransactionBegin, 1, transaction.id, nil); err != nil {
@@ -436,9 +446,9 @@ func (transaction *Transaction) Complete() error {
 	if err := transaction.file.file.Sync(); err != nil {
 		return fmt.Errorf("sync native transaction commit: %w", err)
 	}
+	transaction.file.advanceCommittedLocked()
 	transaction.locations = make(map[recordKey]Location, len(transaction.metas))
 	for key, meta := range transaction.metas {
-		transaction.file.records[key] = meta
 		transaction.locations[key] = meta.location()
 	}
 	return nil
@@ -558,18 +568,7 @@ func (f *File) Get(kind ObjectKind, id string) ([]byte, error) {
 	if f.closed {
 		return nil, ErrClosed
 	}
-	meta, ok := f.records[recordKey{kind: kind, id: id}]
-	if !ok {
-		return nil, ErrNotFound
-	}
-	payload := make([]byte, meta.payloadLength)
-	if _, err := f.file.ReadAt(payload, meta.payloadOffset); err != nil {
-		return nil, fmt.Errorf("read native record payload: %w", err)
-	}
-	if crc32.ChecksumIEEE(payload) != meta.payloadCRC {
-		return nil, fmt.Errorf("%w: payload CRC mismatch", ErrCorrupt)
-	}
-	return payload, nil
+	return f.findRecordLocked(kind, id)
 }
 
 // Enumerations reports how many full-file sweeps this handle has served. A read
@@ -583,8 +582,11 @@ func (f *File) Enumerations() uint64 {
 }
 
 // Location returns a record's physical address so a writer can point a new
-// revision at an existing one. It resolves the name through the record map;
-// ReadAtLocation then needs no map at all.
+// revision at an existing one.
+//
+// It resolves the name by walking the log, which is a pass over the file and is
+// counted as one. There is no index to resolve it through any more — see the
+// File doc comment — so a caller on a hot path must not use this.
 func (f *File) Location(kind ObjectKind, id string) (Location, error) {
 	if f == nil {
 		return Location{}, ErrClosed
@@ -594,9 +596,9 @@ func (f *File) Location(kind ObjectKind, id string) (Location, error) {
 	if f.closed {
 		return Location{}, ErrClosed
 	}
-	meta, ok := f.records[recordKey{kind: kind, id: id}]
-	if !ok {
-		return Location{}, ErrNotFound
+	meta, err := f.findMetaLocked(kind, id)
+	if err != nil {
+		return Location{}, err
 	}
 	return meta.location(), nil
 }
@@ -703,10 +705,43 @@ func (f *File) Close() error {
 		return ErrClosed
 	}
 	f.closed = true
+	// A clean close leaves an exact hint, so the next open walks nothing.
+	if f.path != "" && f.committed != f.hinted {
+		if writeCommitHint(f.path, f.committed) == nil {
+			f.hinted = f.committed
+		}
+	}
 	return f.file.Close()
 }
 
-func (f *File) scan(fileSize int64) error {
+// Verify reads the whole log and reports the first thing wrong with it.
+//
+// This is what opening used to do on every open. E8 stage 3 took it off that
+// path — the cost was proportional to how many times the Database had ever been
+// written to — and left it here, for a caller that actually wants to know: a
+// doctor command, a restore checking what it just wrote, a test.
+//
+// It reports corruption. It does not repair, and it does not truncate a torn
+// tail: a transaction with no commit mark is not damage, it is a write that did
+// not happen, and the readers already skip it.
+func (f *File) Verify() error {
+	if f == nil {
+		return ErrClosed
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
+		return ErrClosed
+	}
+	f.enumerations.Add(1)
+	stat, err := f.file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat native store file: %w", err)
+	}
+	return f.verifyLocked(stat.Size())
+}
+
+func (f *File) verifyLocked(fileSize int64) error {
 	type pendingTransaction struct {
 		id      string
 		start   int64
@@ -719,13 +754,11 @@ func (f *File) scan(fileSize int64) error {
 	// point-reads any more.
 	seen := make(map[recordKey]struct{})
 	var pending *pendingTransaction
-	safeOffset := int64(fileHeaderSize)
 	for offset := int64(fileHeaderSize); offset < fileSize; {
 		if fileSize-offset < recordHeaderSize {
-			f.recoveryOffset = safeOffset
-			if pending != nil {
-				f.recoveryOffset = pending.start
-			}
+			// A record that runs past the end of the file is where a crash
+			// landed mid-append. Nothing after it is readable and nothing
+			// claims it committed, so the log ends here.
 			return nil
 		}
 		var encoded [recordHeaderSize]byte
@@ -737,10 +770,9 @@ func (f *File) scan(fileSize int64) error {
 			return fmt.Errorf("record at offset %d: %w", offset, err)
 		}
 		if int64(header.recordLength) > fileSize-offset {
-			f.recoveryOffset = safeOffset
-			if pending != nil {
-				f.recoveryOffset = pending.start
-			}
+			// A record that runs past the end of the file is where a crash
+			// landed mid-append. Nothing after it is readable and nothing
+			// claims it committed, so the log ends here.
 			return nil
 		}
 
@@ -792,17 +824,13 @@ func (f *File) scan(fileSize int64) error {
 			if !bytes.Equal(payload, want[:]) {
 				return fmt.Errorf("%w: transaction digest mismatch", ErrCorrupt)
 			}
-			for key, meta := range pending.records {
+			for key := range pending.records {
 				seen[key] = struct{}{}
-				f.records[key] = meta
 			}
 			pending = nil
-			safeOffset = offset + int64(header.recordLength)
 		default:
 			if pending == nil {
 				seen[key] = struct{}{}
-				f.records[key] = meta
-				safeOffset = offset + int64(header.recordLength)
 			} else {
 				if _, exists := pending.records[key]; exists {
 					return fmt.Errorf("%w: duplicate transaction record ID %q", ErrCorrupt, string(id))
@@ -814,9 +842,6 @@ func (f *File) scan(fileSize int64) error {
 			}
 		}
 		offset += int64(header.recordLength)
-	}
-	if pending != nil {
-		f.recoveryOffset = pending.start
 	}
 	return nil
 }
@@ -1022,6 +1047,27 @@ func (f *File) walkCommittedFrom(
 // It is a durable position, not a statistic: a length taken after a commit is a
 // record boundary, so a derived index can store it and later ask only for the
 // records written past it. RecordsSince is that ask.
+// advanceCommittedLocked records that everything written so far is committed,
+// and refreshes the hint when enough has been written since the last one.
+//
+// The caller holds the write lock and has already synced. The hint is written
+// without a sync of its own and a failure is swallowed: a stale or missing hint
+// costs a longer walk after the next crash, and nothing else — see
+// commit_hint.go.
+func (f *File) advanceCommittedLocked() {
+	offset, err := f.file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return
+	}
+	f.committed = offset
+	if f.path == "" || f.committed-f.hinted < hintInterval {
+		return
+	}
+	if writeCommitHint(f.path, f.committed) == nil {
+		f.hinted = f.committed
+	}
+}
+
 // Path is where this Database's record log lives on disk.
 //
 // A backup copies the file rather than reading it record by record, so it needs
@@ -1043,11 +1089,7 @@ func (f *File) Size() (int64, error) {
 	if f.closed {
 		return 0, ErrClosed
 	}
-	stat, err := f.file.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("stat native store file: %w", err)
-	}
-	return stat.Size(), nil
+	return f.committed, nil
 }
 
 // Record is one committed record with its payload.
@@ -1175,6 +1217,51 @@ func (f *File) findMetaLocked(kind ObjectKind, id string) (recordMeta, error) {
 // These are the readers that run without a generation: the migration that
 // builds one from the log, and anything opened on a file with no Authority. A
 // reader that has a Tree should use it rather than this.
+// RecordsMatching returns, in one pass, the committed records of a kind whose
+// ID the predicate keeps, in ascending ID order.
+//
+// It is RecordsOfKind with a filter applied while walking rather than after, so
+// a caller after one object's revisions does not first materialise every record
+// of that kind. One pass either way — there is no index over this log — but the
+// memory is what the caller asked for instead of what the Database holds.
+func (f *File) RecordsMatching(kind ObjectKind, keep func(id string) bool) ([]Record, error) {
+	if f == nil {
+		return nil, ErrClosed
+	}
+	if keep == nil {
+		return f.RecordsOfKind(kind)
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.closed {
+		return nil, ErrClosed
+	}
+	f.enumerations.Add(1)
+	result := make([]Record, 0)
+	err := f.walkCommittedFrom(int64(fileHeaderSize),
+		func(recordKind ObjectKind, id string, meta recordMeta) error {
+			if recordKind != kind || !keep(id) {
+				return nil
+			}
+			payload := make([]byte, meta.payloadLength)
+			if _, err := f.file.ReadAt(payload, meta.payloadOffset); err != nil {
+				return fmt.Errorf("read native record payload at %d: %w", meta.payloadOffset, err)
+			}
+			if crc32.ChecksumIEEE(payload) != meta.payloadCRC {
+				return fmt.Errorf("%w: payload CRC mismatch at %d", ErrCorrupt, meta.payloadOffset)
+			}
+			result = append(result, Record{
+				Kind: recordKind, SchemaVersion: meta.schemaVersion, ID: id, Payload: payload,
+			})
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].ID < result[right].ID })
+	return result, nil
+}
+
 func (f *File) RecordsOfKind(kind ObjectKind) ([]Record, error) {
 	records, err := f.RecordsSince(0)
 	if err != nil {

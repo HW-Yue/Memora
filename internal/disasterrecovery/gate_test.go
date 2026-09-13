@@ -82,9 +82,12 @@ func TestTheBackupAndBinlogRestoreALostDatabaseToItsLastCommit(t *testing.T) {
 	if err := disasterrecovery.Restore(ctx, target, backupRoot, archive); err != nil {
 		t.Fatalf("Restore() error = %v", err)
 	}
+	// The record log and the commit hint beside it — the small file that lets
+	// the next open find the end of the log without reading it. No page files:
+	// those are derived, and building them is what the open below does.
 	if entries, err := os.ReadDir(filepath.Join(target, "databases")); err != nil ||
-		len(entries) != 1 {
-		t.Fatalf("restore left %v, %v, want the record log alone", entries, err)
+		len(entries) != 2 {
+		t.Fatalf("restore left %v, %v, want the record log and its hint", entries, err)
 	}
 
 	restored := openInstance(t, ctx, target)
