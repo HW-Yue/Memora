@@ -30,6 +30,11 @@ var (
 	ErrInvalid = errors.New("binlog input is invalid")
 	ErrCorrupt = errors.New("binlog is corrupt")
 	ErrClosed  = errors.New("binlog is closed")
+	// ErrGap is a restore whose base snapshot is older than the log still
+	// reaches. It is reported rather than tolerated: replaying what is left
+	// would silently skip the transactions in between and produce a Database
+	// that never existed.
+	ErrGap = errors.New("binlog no longer reaches that position")
 )
 
 const (
@@ -182,6 +187,40 @@ func (log *Log) Append(entry Entry) error {
 	return nil
 }
 
+// Position is a coordinate in the log: which segment, and how far into it.
+//
+// It is what pairs a full backup with the log that rolls it forward. A logical
+// snapshot says what the Database held; the position says where in the log that
+// state stops, so a restore replays the tail and not the whole history. Without
+// it the only restore possible is "replay everything", which stops working the
+// first time retention drops a segment — which is to say, after 30 days.
+//
+// It is deliberately not part of the logical snapshot document: that document's
+// canonical hash is over logical content, and two Databases holding the same
+// data must hash the same whatever their logs happen to look like. The position
+// travels beside the snapshot, not inside it.
+type Position struct {
+	Segment uint64 `json:"segment"`
+	Offset  int64  `json:"offset"`
+}
+
+// Position reports where the next frame will be written.
+//
+// Taken before a full backup starts, it is the point the backup is rolled
+// forward from. Taken after, it would skip whatever committed while the backup
+// ran; the caller orders the two, not this method.
+func (log *Log) Position() (Position, error) {
+	if log == nil {
+		return Position{}, fmt.Errorf("%w: binlog", ErrInvalid)
+	}
+	log.mu.Lock()
+	defer log.mu.Unlock()
+	if log.closed {
+		return Position{}, ErrClosed
+	}
+	return Position{Segment: log.sequence, Offset: log.written}, nil
+}
+
 // Replay reads every complete frame in order.
 //
 // A partial frame at the end is where a crash landed mid-append. It stops the
@@ -189,8 +228,22 @@ func (log *Log) Append(entry Entry) error {
 // committed, so it is not part of the Database's history. A frame that is
 // complete but does not check out is corruption and is reported.
 func (log *Log) Replay(visit func(Entry) error) error {
+	return log.ReplayFrom(Position{}, visit)
+}
+
+// ReplayFrom reads every complete frame at or after a position.
+//
+// The zero position means the whole log, which is what Replay asks for. A
+// position naming a segment the log no longer holds is ErrGap: the base backup
+// is older than retention reaches, and the transactions in between are gone.
+// Reporting that is the point — replaying the remaining segments would produce
+// a Database missing a middle, which is worse than no restore at all.
+func (log *Log) ReplayFrom(from Position, visit func(Entry) error) error {
 	if log == nil || visit == nil {
 		return fmt.Errorf("%w: binlog replay", ErrInvalid)
+	}
+	if from.Offset < 0 {
+		return fmt.Errorf("%w: binlog position offset %d", ErrInvalid, from.Offset)
 	}
 	log.mu.Lock()
 	defer log.mu.Unlock()
@@ -201,20 +254,51 @@ func (log *Log) Replay(visit func(Entry) error) error {
 	if err != nil {
 		return err
 	}
+	if from.Segment != 0 && !holds(sequences, from.Segment) {
+		return fmt.Errorf(
+			"%w: restore starts at segment %d, the log holds %v",
+			ErrGap, from.Segment, sequences,
+		)
+	}
 	for _, sequence := range sequences {
-		if err := log.replaySegment(sequence, visit); err != nil {
+		if sequence < from.Segment {
+			continue
+		}
+		offset := int64(0)
+		if sequence == from.Segment {
+			offset = from.Offset
+		}
+		if err := log.replaySegment(sequence, offset, visit); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// replaySegment reads one file. The active segment is read through its own
-// handle so an in-flight append is not missed; the rest are opened read-only.
-func (log *Log) replaySegment(sequence uint64, visit func(Entry) error) error {
+// holds reports whether the log still has a segment. A position naming one it
+// does not is a gap in both directions: retention dropped it, or the position
+// came from a different log.
+func holds(sequences []uint64, sequence uint64) bool {
+	for _, candidate := range sequences {
+		if candidate == sequence {
+			return true
+		}
+	}
+	return false
+}
+
+// replaySegment reads one file from an offset. The active segment is read
+// through its own handle so an in-flight append is not missed; the rest are
+// opened read-only.
+//
+// The offset is a frame boundary the log itself reported, so a read starting
+// there starts on a frame magic. An offset that is not one fails the same way
+// corruption does, which is the right answer for a position that was invented
+// rather than recorded.
+func (log *Log) replaySegment(sequence uint64, offset int64, visit func(Entry) error) error {
 	var reader *bufio.Reader
 	if sequence == log.sequence {
-		if _, err := log.file.Seek(0, io.SeekStart); err != nil {
+		if _, err := log.file.Seek(offset, io.SeekStart); err != nil {
 			return fmt.Errorf("rewind binlog: %w", err)
 		}
 		reader = bufio.NewReader(log.file)
@@ -224,6 +308,11 @@ func (log *Log) replaySegment(sequence uint64, visit func(Entry) error) error {
 			return fmt.Errorf("open binlog segment: %w", err)
 		}
 		defer func() { _ = file.Close() }()
+		if offset != 0 {
+			if _, err := file.Seek(offset, io.SeekStart); err != nil {
+				return fmt.Errorf("seek binlog segment: %w", err)
+			}
+		}
 		reader = bufio.NewReader(file)
 	}
 	for {

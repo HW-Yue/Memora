@@ -960,6 +960,18 @@ func (f *File) walkCommittedFrom(
 // It is a durable position, not a statistic: a length taken after a commit is a
 // record boundary, so a derived index can store it and later ask only for the
 // records written past it. RecordsSince is that ask.
+// Path is where this Database's record log lives on disk.
+//
+// A backup copies the file rather than reading it record by record, so it needs
+// the name, and taking it from the handle keeps the caller from having to carry
+// the path alongside the File it already holds.
+func (f *File) Path() string {
+	if f == nil || f.file == nil {
+		return ""
+	}
+	return f.file.Name()
+}
+
 func (f *File) Size() (int64, error) {
 	if f == nil {
 		return 0, ErrClosed
