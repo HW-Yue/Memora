@@ -282,3 +282,12 @@ func validOutcome(value Outcome) bool {
 		return false
 	}
 }
+
+// Seal validates a draft and assigns its sequence and checksum.
+func Seal(draft Draft, sequence uint64) (Trace, error) {
+	draft = cloneDraft(draft)
+	if err := draft.validate(); err != nil {
+		return Trace{}, err
+	}
+	return seal(draft, sequence)
+}

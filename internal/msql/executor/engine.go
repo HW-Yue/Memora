@@ -202,6 +202,12 @@ func New(dictionary Catalog, rows Rows) *Engine {
 	if service, ok := dictionary.(routeCandidateCatalog); ok {
 		engine.candidateCatalog = service
 	}
+	if maintenance, ok := rows.(LexicalIndexMaintenance); ok {
+		engine.lexical = maintenance
+	}
+	if locations, ok := rows.(LexicalLocationReader); ok {
+		engine.lexicalLocations = locations
+	}
 	return engine
 }
 

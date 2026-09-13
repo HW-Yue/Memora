@@ -32,6 +32,12 @@ type routeCandidateRows interface {
 // archivedCatalogReader lets the scope check tell an archived Table apart from
 // a Table that does not exist. Without it, a Route node under an archived
 // Table looks identical to a dangling Route node.
+// routeVectorRows is the vector predictor: nearest Route nodes to a query by
+// embedding (sqlite-vec vec0).
+type routeVectorRows interface {
+	SearchRouteVectors(context.Context, string, int) ([]router.Node, error)
+}
+
 type archivedCatalogReader interface {
 	ShowArchivedTables(context.Context, string) ([]catalog.Table, error)
 }
@@ -48,12 +54,7 @@ func (engine *Engine) showRouteCandidates(
 	case "LEXICAL":
 		return engine.showLexicalRouteCandidates(ctx, show, bound)
 	case "VECTOR":
-		// Vector retrieval was removed: it had no publisher, so the generation
-		// it searched could never hold anything, and holding every Route vector
-		// resident was an unbounded structure serving an unreachable feature.
-		// The statement keeps parsing and keeps saying so.
-		return Output{}, executeError(result.CodeUnsupported,
-			"vector Route candidates are unavailable: vector retrieval is not implemented")
+		return engine.showVectorRouteCandidates(ctx, show, bound)
 	default:
 		return Output{}, executeError(result.CodeValidation, "SHOW ROUTE CANDIDATES predictor is unsupported")
 	}
@@ -115,6 +116,69 @@ func (engine *Engine) showLexicalRouteCandidates(
 	return Output{
 		Columns: []result.Column{}, Rows: []result.Row{}, Truncated: frame.Truncated, Discovery: &frame,
 	}, nil
+}
+
+func (engine *Engine) showVectorRouteCandidates(
+	ctx context.Context,
+	show *ast.ShowStatement,
+	bound bindings,
+) (Output, error) {
+	if show == nil || show.Query == nil || show.Limit == nil {
+		return Output{}, executeError(result.CodeValidation, "SHOW ROUTE CANDIDATES is incomplete")
+	}
+	vectors, ok := engine.rows.(routeVectorRows)
+	if !ok {
+		return Output{}, executeError(result.CodeUnsupported, "vector Route candidates are not supported by this backend")
+	}
+	query, err := routerString(show.Query, bound, "vector Route query")
+	if err != nil {
+		return Output{}, err
+	}
+	candidateLimit, err := candidateInteger(show.Limit, bound, "SHOW ROUTE CANDIDATES LIMIT", 1, maxRouteCandidates)
+	if err != nil {
+		return Output{}, err
+	}
+	byteLimit := maxCandidateBytes
+	if show.ByteLimit != nil {
+		byteLimit, err = candidateInteger(show.ByteLimit, bound, "SHOW ROUTE CANDIDATES BYTES", minCandidateBytes, maxCandidateBytes)
+		if err != nil {
+			return Output{}, err
+		}
+	}
+	source, err := engine.lexicalRouteSource(ctx)
+	if err != nil {
+		return Output{}, err
+	}
+	state, err := routelexical.Snapshot(source)
+	if err != nil {
+		return Output{}, executeError(result.CodeInternal, "Route candidate source is invalid")
+	}
+	visible := make(map[string]struct{}, len(source.Routes))
+	for _, node := range source.Routes {
+		visible[node.ID] = struct{}{}
+	}
+	nodes, err := vectors.SearchRouteVectors(ctx, query, candidateLimit*2)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	builder, err := discovery.NewBuilder(state.Snapshot, state.CatalogRevision, uint64(candidateLimit), uint64(byteLimit))
+	if err != nil {
+		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be initialized")
+	}
+	candidates := make([]discovery.Candidate, 0, len(nodes))
+	for _, node := range nodes {
+		if _, ok := visible[node.ID]; !ok {
+			continue
+		}
+		candidates = append(candidates, discovery.Candidate{DatabaseID: node.DatabaseID, TableID: node.TableID, Path: node.Path})
+	}
+	if err := builder.Add(discovery.Batch{
+		Snapshot: state.Snapshot, CatalogRevision: state.CatalogRevision, Candidates: candidates,
+	}); err != nil {
+		return Output{}, executeError(result.CodeInternal, "Discovery Frame could not be assembled")
+	}
+	frame := builder.Frame()
+	return Output{Columns: []result.Column{}, Rows: []result.Row{}, Truncated: frame.Truncated, Discovery: &frame}, nil
 }
 
 func (engine *Engine) lexicalRouteSource(ctx context.Context) (routelexical.Source, error) {

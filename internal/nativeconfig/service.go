@@ -1,17 +1,10 @@
 package nativeconfig
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/HW-Yue/Memora/internal/change"
-	"github.com/HW-Yue/Memora/internal/nativechange"
 	"github.com/HW-Yue/Memora/internal/result"
-	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
 const (
@@ -48,11 +41,6 @@ type Error struct {
 func (err *Error) Error() string      { return err.Message }
 func (err *Error) StableCode() string { return string(err.Code) }
 
-type Service struct {
-	file *nativestore.File
-	mu   sync.Mutex
-}
-
 func Defaults() QueryBudgets {
 	return QueryBudgets{
 		RouteChildren: 12, OpenLocators: 1, SelectScan: 1000,
@@ -60,229 +48,7 @@ func Defaults() QueryBudgets {
 	}
 }
 
-func New(file *nativestore.File) (*Service, error) {
-	if file == nil {
-		return nil, configError(result.CodeInternal, "native configuration file is required")
-	}
-	service := &Service{file: file}
-	if _, err := service.Current(); errors.Is(err, nativestore.ErrNotFound) {
-		initial := Revision{
-			Version: Version, Key: QueryBudgetsKey, Revision: 1, Budgets: Defaults(),
-			Actor: "engine:bootstrap", Reason: "materialize database query budget defaults",
-			RecordedAt: time.Now().UTC(),
-		}
-		if err := service.put(initial); err != nil {
-			return nil, err
-		}
-	} else if err != nil {
-		return nil, err
-	}
-	if err := service.materializeRoutePolicy(); err != nil {
-		return nil, err
-	}
-	return service, nil
-}
-
-func Existing(file *nativestore.File) *Service {
-	return &Service{file: file}
-}
-
-func (service *Service) Current() (Revision, error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	return service.current()
-}
-
-func (service *Service) current() (Revision, error) {
-	revisions, err := service.history()
-	if err != nil {
-		return Revision{}, err
-	}
-	if len(revisions) == 0 {
-		return Revision{}, nativestore.ErrNotFound
-	}
-	return revisions[len(revisions)-1], nil
-}
-
-func (service *Service) History() ([]Revision, error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	return service.history()
-}
-
-// history reads every revision of this key in one pass over the log.
-//
-// It used to point-read revision 1, 2, 3 … until one was missing, which was
-// cheap while the record log carried a process-resident map of where every
-// record lived. E8 stage 3 deleted that map — it was the thing that grew with
-// how many times the Database had been written to — so a point read is now a
-// pass, and N of them are N passes. One pass that keeps what it wants is the
-// same answer for a fraction of the work.
-//
-// Records come back in ascending ID order and the IDs are the key followed by a
-// zero-padded revision, so ascending ID is ascending revision. The chain is
-// still required to be dense from 1: a gap is corruption, not a hole to skip.
-func (service *Service) history() ([]Revision, error) {
-	stored, err := service.file.RecordsOfKind(nativestore.ObjectKindConfiguration)
-	if err != nil {
-		return nil, err
-	}
-	prefix := QueryBudgetsKey + "_r"
-	values := make([]Revision, 0)
-	for _, record := range stored {
-		if !strings.HasPrefix(record.ID, prefix) {
-			continue
-		}
-		revision := uint64(len(values)) + 1
-		if record.ID != fmt.Sprintf("%s_r%020d", QueryBudgetsKey, revision) {
-			return nil, configError(result.CodeInternal, "native query budget configuration is corrupt")
-		}
-		var value Revision
-		if err := json.Unmarshal(record.Payload, &value); err != nil ||
-			value.Version != Version || value.Key != QueryBudgetsKey ||
-			value.Revision != revision || validateBudgets(value.Budgets) != nil {
-			return nil, configError(result.CodeInternal, "native query budget configuration is corrupt")
-		}
-		values = append(values, value)
-	}
-	return values, nil
-}
-
-func (service *Service) Update(budgets QueryBudgets, expected uint64, actor, reason string) (Revision, error) {
-	return service.UpdateCommitted(budgets, expected, actor, reason, 0)
-}
-
-func (service *Service) UpdateCommitted(
-	budgets QueryBudgets, expected uint64, actor, reason string, sequence uint64,
-) (Revision, error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	if err := validateMutation(expected, actor, reason); err != nil {
-		return Revision{}, err
-	}
-	if err := validateBudgets(budgets); err != nil {
-		return Revision{}, err
-	}
-	current, err := service.current()
-	if err != nil {
-		return Revision{}, err
-	}
-	if current.Revision != expected {
-		return Revision{}, configError(result.CodeRevisionConflict, "configuration revision conflicts with latest")
-	}
-	next := Revision{
-		Version: Version, Key: QueryBudgetsKey, Revision: current.Revision + 1,
-		Budgets: budgets, Actor: strings.TrimSpace(actor), Reason: strings.TrimSpace(reason),
-		RecordedAt: time.Now().UTC(),
-	}
-	return next, service.commit(next, sequence, change.OperationUpdate)
-}
-
-func (service *Service) Restore(target, expected uint64, actor, reason string) (Revision, error) {
-	return service.RestoreCommitted(target, expected, actor, reason, 0)
-}
-
-func (service *Service) RestoreCommitted(
-	target, expected uint64, actor, reason string, sequence uint64,
-) (Revision, error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	if target == 0 {
-		return Revision{}, configError(result.CodeValidation, "configuration restore target revision is required")
-	}
-	if err := validateMutation(expected, actor, reason); err != nil {
-		return Revision{}, err
-	}
-	history, err := service.history()
-	if err != nil {
-		return Revision{}, err
-	}
-	current := history[len(history)-1]
-	if current.Revision != expected {
-		return Revision{}, configError(result.CodeRevisionConflict, "configuration revision conflicts with latest")
-	}
-	if target > uint64(len(history)) {
-		return Revision{}, configError(result.CodeNotFound, "configuration target revision was not found")
-	}
-	next := Revision{
-		Version: Version, Key: QueryBudgetsKey, Revision: current.Revision + 1,
-		Budgets: history[target-1].Budgets, Actor: strings.TrimSpace(actor), Reason: strings.TrimSpace(reason),
-		RestoredRevision: target, RecordedAt: time.Now().UTC(),
-	}
-	return next, service.commit(next, sequence, change.OperationRestore)
-}
-
-func (service *Service) commit(value Revision, sequence uint64, operation change.Operation) error {
-	if sequence == 0 {
-		var err error
-		sequence, err = nativechange.New(service.file).NextSequence(0)
-		if err != nil {
-			return err
-		}
-	}
-	transaction, err := service.file.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = transaction.Rollback() }()
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	id := fmt.Sprintf("%s_r%020d", QueryBudgetsKey, value.Revision)
-	if err := transaction.Put(nativestore.ObjectKindConfiguration, recordSchema, id, payload); err != nil {
-		return err
-	}
-	envelope, err := change.NewEnvelope(sequence, value.RecordedAt, change.Metadata{
-		Actor: value.Actor, Source: "msql", Reason: value.Reason,
-	}, []change.Entry{{
-		ObjectKind: change.ObjectConfiguration, ObjectID: value.Key, Operation: operation,
-		BeforeRevision: value.Revision - 1, AfterRevision: value.Revision,
-	}})
-	if err != nil {
-		return err
-	}
-	if err := nativechange.Stage(transaction, envelope); err != nil {
-		return err
-	}
-	return transaction.Commit()
-}
-
-func (service *Service) put(value Revision) error {
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	id := fmt.Sprintf("%s_r%020d", QueryBudgetsKey, value.Revision)
-	if err := service.file.Put(nativestore.ObjectKindConfiguration, recordSchema, id, payload); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (service *Service) StageHistory(transaction *nativestore.Transaction, values []Revision) error {
-	if transaction == nil {
-		return configError(result.CodeInternal, "native configuration transaction is required")
-	}
-	for index, value := range values {
-		if value.Version != Version || value.Key != QueryBudgetsKey ||
-			value.Revision != uint64(index+1) || validateBudgets(value.Budgets) != nil ||
-			strings.TrimSpace(value.Actor) == "" || strings.TrimSpace(value.Reason) == "" {
-			return configError(result.CodeValidation, "logical snapshot query budget history is invalid")
-		}
-		payload, err := json.Marshal(value)
-		if err != nil {
-			return err
-		}
-		id := fmt.Sprintf("%s_r%020d", QueryBudgetsKey, value.Revision)
-		if err := transaction.Put(nativestore.ObjectKindConfiguration, recordSchema, id, payload); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateMutation(expected uint64, actor, reason string) error {
+func ValidateMutation(expected uint64, actor, reason string) error {
 	if expected == 0 {
 		return configError(result.CodeValidation, "configuration mutation requires expected revision")
 	}
@@ -292,7 +58,7 @@ func validateMutation(expected uint64, actor, reason string) error {
 	return nil
 }
 
-func validateBudgets(value QueryBudgets) error {
+func ValidateBudgets(value QueryBudgets) error {
 	if value.RouteChildren < 1 || value.RouteChildren > 100 {
 		return configError(result.CodeConstraint, "route_children must be between 1 and 100")
 	}

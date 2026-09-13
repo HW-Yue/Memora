@@ -10,19 +10,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/HW-Yue/Memora/internal/embedding"
 	"github.com/HW-Yue/Memora/internal/ipc"
-	"github.com/HW-Yue/Memora/internal/msql/executor"
-	"github.com/HW-Yue/Memora/internal/nativecatalog"
-	"github.com/HW-Yue/Memora/internal/nativeconfig"
-	"github.com/HW-Yue/Memora/internal/nativemigration"
-	"github.com/HW-Yue/Memora/internal/nativemutation"
-	"github.com/HW-Yue/Memora/internal/nativerouter"
-	"github.com/HW-Yue/Memora/internal/nativerow"
-	"github.com/HW-Yue/Memora/internal/nativesnapshot"
-	"github.com/HW-Yue/Memora/internal/pagestoremigration"
-	"github.com/HW-Yue/Memora/internal/routetrace"
-	"github.com/HW-Yue/Memora/internal/security"
-	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
+	"github.com/HW-Yue/Memora/internal/store"
 	"golang.org/x/sys/unix"
 )
 
@@ -35,27 +25,6 @@ var (
 type Paths struct {
 	LockFile string
 	PIDFile  string
-}
-
-type nativeRouteTraceRows struct {
-	*nativemutation.Service
-	traces *routetrace.Service
-}
-
-func (rows *nativeRouteTraceRows) ListRouteTraces(
-	ctx context.Context,
-	databaseID string,
-	after uint64,
-	snapshot routetrace.Snapshot,
-	limit int,
-) ([]routetrace.Trace, routetrace.Snapshot, bool, error) {
-	return rows.traces.List(ctx, databaseID, after, snapshot, limit)
-}
-
-func (rows *nativeRouteTraceRows) GetRouteTrace(
-	ctx context.Context, traceID, databaseID string,
-) (routetrace.Trace, error) {
-	return rows.traces.Get(ctx, traceID, databaseID)
 }
 
 func RuntimePaths(dataDir string) (Paths, error) {
@@ -152,6 +121,7 @@ func Inspect(dataDir string) (State, error) {
 	return State{Running: true, PID: pid}, nil
 }
 
+// Run serves one Instance until ctx is cancelled.
 func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 	lease, err := Acquire(dataDir)
 	if err != nil {
@@ -166,73 +136,11 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		_ = listener.Close()
 		_ = os.Remove(socketPath)
 	}()
-	migration, err := nativemigration.OpenDefault(ctx, dataDir)
+	database, err := OpenStore(dataDir)
 	if err != nil {
 		return err
 	}
-	nativeFile := migration.File
-	// One defer rather than a close beside each of the record store's, and
-	// deliberately after them: every path out of here closes the store first,
-	// and the log has to outlive the last write it records.
-	if migration.Binlog != nil {
-		defer func() { _ = migration.Binlog.Close() }()
-	}
-	authority, err := pagestoremigration.OpenAuthority(
-		ctx, nativeFile, filepath.Join(dataDir, "databases"),
-	)
-	if err != nil {
-		_ = nativeFile.Close()
-		return err
-	}
-	auxiliaryStore, err := nativekvstore.Open(filepath.Join(dataDir, "system", "auxiliary.memora"))
-	if err != nil {
-		_ = authority.Close()
-		_ = nativeFile.Close()
-		return err
-	}
-	securityStore, err := nativekvstore.Open(filepath.Join(dataDir, "system", "security.memora"))
-	if err != nil {
-		_ = authority.Close()
-		_ = nativeFile.Close()
-		_ = auxiliaryStore.Close()
-		return err
-	}
-	dictionary := nativecatalog.NewService(
-		nativecatalog.New(nativeFile), nativecatalog.ServiceOptions{Authority: authority},
-	)
-	// Relations read through the generation's objects Tree; writes still append
-	// to the record log, which stays the authority.
-	rowRepository := nativerow.NewWithObjects(nativeFile, authority)
-	// Routes read through the generation's objects Tree; writes still append to
-	// the record log, which stays the authority.
-	routeRepository := nativerouter.NewWithObjects(nativeFile, authority)
-	configuration, err := nativeconfig.New(nativeFile)
-	if err != nil {
-		_ = authority.Close()
-		_ = nativeFile.Close()
-		_ = auxiliaryStore.Close()
-		_ = securityStore.Close()
-		return err
-	}
-	rowService := nativerow.NewService(
-		rowRepository, dictionary, nativerow.ServiceOptions{Authority: authority},
-	)
-	rows := nativemutation.NewService(
-		rowService, dictionary, rowRepository, routeRepository,
-		nativemutation.New(nativeFile, rowRepository, routeRepository, authority),
-		configuration,
-	)
-	traces := routetrace.New(auxiliaryStore)
-	rowsWithTraces := &nativeRouteTraceRows{Service: rows, traces: traces}
-	pageServices := &nativePageServices{Authority: authority}
-	handler := newNativeDatabaseHandler(
-		ctx, dictionary, rowsWithTraces, pageServices, auxiliaryStore,
-		security.New(securityStore, security.Options{}), traces,
-		func(context.Context) ([]byte, error) { return nativesnapshot.NewNative(nativeFile).Export() },
-		func(callContext context.Context) (executor.ExplicitTransaction, error) {
-			return rowsWithTraces.BeginExplicitTransaction(callContext)
-		},
-	)
+	handler := newHandler(ctx, database)
 	server := ipc.NewServer(handler)
 	if ready != nil {
 		select {
@@ -240,17 +148,25 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 		case <-ctx.Done():
 			_ = server.Close()
 			_ = handler.Close()
-			return errors.Join(authority.Close(), nativeFile.Close(), auxiliaryStore.Close(), securityStore.Close())
+			return database.Close()
 		}
 	}
 	serveErr := server.Serve(ctx, listener)
-	serverErr := server.Close()
-	handlerErr := handler.Close()
-	authorityErr := authority.Close()
-	storeErr := nativeFile.Close()
-	auxiliaryStoreErr := auxiliaryStore.Close()
-	securityStoreErr := securityStore.Close()
-	return errors.Join(serveErr, serverErr, handlerErr, authorityErr, storeErr, auxiliaryStoreErr, securityStoreErr)
+	return errors.Join(serveErr, server.Close(), handler.Close(), database.Close())
+}
+
+// OpenStore opens the Instance's SQLite database, with vector search enabled
+// when an embedding model is configured.
+func OpenStore(dataDir string) (*store.DB, error) {
+	options := store.Options{}
+	if config, ok := embedding.FromEnvironment(); ok {
+		client, err := embedding.New(config)
+		if err != nil {
+			return nil, err
+		}
+		options.Embedder = client
+	}
+	return store.Open(filepath.Join(dataDir, "databases", store.FileName), options)
 }
 
 func (lease *Lease) Close() error {

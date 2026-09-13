@@ -1,8 +1,0 @@
-format
-vet
-lint
-unit
-race
-integration
-e2e
-cross-build

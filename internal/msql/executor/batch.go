@@ -10,7 +10,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/lexer"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
-	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 )
 
@@ -137,14 +136,12 @@ func NewBatchSessionWithCapabilitiesAndTransactions(
 
 func inferredTransactionFactory(rows Rows) TransactionFactory {
 	transactional, ok := rows.(interface {
-		BeginTransaction(context.Context) (*row.Transaction, error)
+		BeginExplicitTransaction(context.Context) (ExplicitTransaction, error)
 	})
 	if !ok {
 		return nil
 	}
-	return func(ctx context.Context) (ExplicitTransaction, error) {
-		return transactional.BeginTransaction(ctx)
-	}
+	return transactional.BeginExplicitTransaction
 }
 
 func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) result.Envelope {

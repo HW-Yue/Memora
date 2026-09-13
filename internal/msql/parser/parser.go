@@ -517,10 +517,7 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 				return ast.Statement{}, err
 			}
 			show.Query = &query
-			if show.Predictor == "VECTOR" {
-				if _, err := parser.expectWord("SPACE"); err != nil {
-					return ast.Statement{}, err
-				}
+			if show.Predictor == "VECTOR" && parser.matchWord("SPACE") {
 				space, err := parser.parseExpression(1)
 				if err != nil {
 					return ast.Statement{}, err

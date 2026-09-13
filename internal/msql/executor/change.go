@@ -11,7 +11,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
-	"github.com/HW-Yue/Memora/internal/store/changeindex"
 )
 
 type committedChangeReads interface {
@@ -251,9 +250,9 @@ func scopedChangeEntries(entries []change.Entry, databaseID string) []change.Ent
 
 func normalizeChangeReadError(err error) error {
 	switch {
-	case errors.Is(err, changeindex.ErrNotFound):
+	case errors.Is(err, change.ErrNotFound):
 		return executeError(result.CodeNotFound, "committed change was not found")
-	case errors.Is(err, changeindex.ErrInvalid):
+	case errors.Is(err, change.ErrInvalid):
 		return executeError(result.CodeValidation, "committed change request is invalid")
 	default:
 		return normalizeError(err)
