@@ -180,32 +180,37 @@
 - 可变对象用**版本化记录 ID**：`id` 是第 1 版，`id@%020d` 是第 N 版
   （`nativerow.revisionRecordID`、`nativecatalog.stageVersion`）。
 
-### 那张常驻内存的表
+### 那张常驻内存的表（已删除，2026-09-13 `887c652`）
 
-`File.records` 是 `map[{kind, id}] → {payloadOffset, payloadLength, payloadCRC,
-schemaVersion}`（`file.go:77`）。
+`File.records` 曾是 `map[{kind, id}] → {payloadOffset, payloadLength,
+payloadCRC, schemaVersion}`。
 
 **它不是 cache——没有容量、没有淘汰。它是这个文件唯一的物理索引**：
 给定 (kind, id) 只有它知道字节在哪，每次 `Get` 都要先查它。
 `Open()` 时 `scan()` 从头读完整个文件、逐条 CRC 校验、丢掉负载、只留偏移。
 
-由于每个版本是一条独立记录，**这张表随"历史上写过多少次"增长，
+由于每个版本是一条独立记录，**这张表随「历史上写过多少次」增长，
 不随活跃数据增长**。一行改 100 次就是 100 个永不释放的条目。
-这是与数据量相关的唯一无上界常驻结构，也是
-[写入形态](../product/write-model.md)要消除的目标。
+这是与数据量相关的唯一无上界常驻结构。
 
-`File.Enumerations()`（`file.go:455`）计数全库扫描（`IDs`／`Records`），
-作为"读路径不得枚举全库"的回归护栏。
+E8 把它连同开库全扫一起删了。实测（每条 400 字节、20 万次历史写入）
+**1.34 s / 27.5 MiB → 53 µs / 1.4 KB**。开库现在只读文件头，加旁边一个
+16 字节的 commit hint——那是崩溃留下的半条记录必须被切掉的唯一理由，
+埋进中间之后每次读都会停在那里。细节与逐条代价见
+[记录文件的索引与权威](./record-index-and-authority-v1.md)§6.5／§6.6。
 
-**开库之后的活路径上已经不再有全扫**，但**开库本身仍然全扫**——那一条由
-[记录文件的索引与权威](./record-index-and-authority-v1.md)收尾——**路线未定**，
-两条路（非聚簇索引文件 / 聚簇转正）差别不在优劣，在于要不要放弃 compaction。
+留下的结果是：**记录日志上没有索引了**。走树的读路径（生产路径）根本不碰它；
+没有 generation 时的回退路径读它就是走一遍文件，所以那几道门断言的是
+「不增长」——一遍，不随版本深度、不随库大小——而不是「零」。
+
+`File.Enumerations()` 计数整条走一遍（`IDs`／`Records`／回退点读），
+仍然是「读路径不得枚举全库」的回归护栏。
 
 门是
 `TestALiveWorkloadNeverSweepsTheRecordFile`：四次写加九个读面，`Enumerations()`
-增量为零。开库本身仍然全读，而且应该全读——generation 是派生的，从记录日志把
-它建出来正是全读的用途。剩下的 `IDs()` 调用点全部不在活路径上（无 generation
-时的回退、重建路径、快照导出、零调用方），逐条核对见
+增量为零。**开库本身也不再全读**（E8 阶段 3）。剩下会整条走一遍的调用点全部不
+在活路径上：无 generation 时的回退、显式升版重建（`memora upgrade --pages`）、
+快照导出、`Verify()`。逐条核对见
 [物理索引](./physical-index-v1.md)「全表扫描清点」。
 
 **Route 与 Catalog 已经不再经过它**（E7 阶段 2／4）：
@@ -335,11 +340,12 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
 这一条），逐条证据见[架构审计 2026-08](../development/architecture-audit-2026-08.md)，
 不在此重复。
 
-11. **`File.records` 常驻表仍在**，`Open()` 仍逐条 CRC 扫完整个文件；
-    这是与数据量相关的唯一无上界常驻结构（见第 7 节）。
-    **2026-08-31 升级为违反[架构原则](../product/architecture-principles.md)
-    第四条**（命中判据 3：没有容量、没有淘汰，却是唯一的索引），
-    迁移设计见[物理索引](./physical-index-v1.md)（阶段 1–4 ✅）；
+11. **`File.records` 常驻表 ✅ 已删除**（2026-09-13 `887c652`，E8 阶段 3）。
+    它曾是与数据量相关的唯一无上界常驻结构，2026-08-31 升级为违反
+    [架构原则](../product/architecture-principles.md)第四条（命中判据 3：
+    没有容量、没有淘汰，却是唯一的索引）。开库也不再全扫：
+    **1.34 s / 27.5 MiB → 53 µs / 1.4 KB**。见
+    [记录文件的索引与权威](./record-index-and-authority-v1.md)；
     阶段 5 已于 **2026-09-02 裁定走聚簇转正**——页文件 + redo 日志 = 数据库本身，
     记录文件退出正确性路径，理由（空间回收是能不能做的差别）与代价见
     **[记录文件的索引与权威](./record-index-and-authority-v1.md)**。
