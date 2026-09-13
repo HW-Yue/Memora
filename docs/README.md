@@ -155,6 +155,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [语义 Router](./query/semantic-routing.md)
 - [Route 配套表](./product/route-companion-table.md) — 方向性结论；语义索引是
   每张业务表自动配的一张普通表，Route 操作就是对它的读写；
+- [数据行的生命周期](./product/row-lifecycle-successor.md) — 方向性结论；原地修改写 history，
+  拆分／合并／删除走废弃 + 接替，引用懒更新；
 - [Route Branch Fan-out 策略](./query/route-branch-fanout-policy.md) — Database 自治目标与
   Agent 语义重构规则；「无默认值、可带理由超限」两条已被 F223 取代；
 - [检索质量链路](./query/retrieval-quality.md)

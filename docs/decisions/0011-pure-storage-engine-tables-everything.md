@@ -46,6 +46,8 @@
 - Agent 改数据 → 一个事务内：改 `notes`，追加 `notes_history`；
 - `SHOW HISTORY`、`AS OF` 改为对 history 表的 `SELECT`，不再依赖引擎版本树；
 - 「只写数据表的 history」是产品层写路径的规则，引擎不需要「跳过 history」标志。
+- history 只记**原地修改**；拆分、合并、删除改变身份，走主表里的废弃 + 接替，
+  引用懒更新，见[数据行的生命周期](../product/row-lifecycle-successor.md)。
 
 ### 4. 语义树是配套普通表
 
