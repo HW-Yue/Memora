@@ -59,7 +59,7 @@ Agent 改语义树 → 内部生成参数化 SQL，在一个事务内改 `notes_
 
 | 现役结构 | 归属 |
 |---|---|
-| objects 树里的 Relation | 产品层普通表 |
+| objects 树里的 Relation | 不再单独建表：链接是数据行上的 `links` 字段，见[双向链接](../product/row-links.md) |
 | change 树（谁改的、为什么） | 产品层普通表，与数据、history 同一事务写 |
 | Configuration（`route_policy` 等） | 产品层普通表 |
 | Catalog | 引擎系统表；表的角色标记是它的字段 |
