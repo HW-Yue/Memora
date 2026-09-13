@@ -258,6 +258,10 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 
 ### 7.3 阶段 7 的量测结论：不删 `Node.Path`
 
+> **已被取代（2026-09-13）**：[Route 配套表](../product/route-companion-table.md)
+> 决定不存路径——path → 节点反查已无生产调用方，全文 `path` 字段先不做。
+> 下文的量测数字仍有效，结论不再适用。
+
 量测代码在 `internal/nativerouter/path_cost_test.go`，树形取自
 [路由评测语料](../development/route-benchmark-corpus-v1.md)：depth ≤ 6、
 fanout ≤ 12（F223）。量出三件事，其中两件推翻了原设想。

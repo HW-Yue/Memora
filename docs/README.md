@@ -152,6 +152,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [Canonical Skill](./agent/canonical-skill-v1.md)
 - [MSQL](./query/msql.md)
 - [语义 Router](./query/semantic-routing.md)
+- [Route 配套表](./product/route-companion-table.md) — 方向性结论；语义索引与
+  history 同类，是每张业务表自动配的一张表，节点是行、引用是 RowID；
 - [Route Branch Fan-out 策略](./query/route-branch-fanout-policy.md) — Database 自治目标与
   Agent 语义重构规则；「无默认值、可带理由超限」两条已被 F223 取代；
 - [检索质量链路](./query/retrieval-quality.md)
