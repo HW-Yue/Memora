@@ -238,6 +238,9 @@ func (db *DB) BeginTransaction(ctx context.Context) (*Transaction, error) {
 		if transaction.closed {
 			return fail(result.CodeInvalidTransaction, "transaction is closed")
 		}
+		if metadata, ok := change.MetadataFrom(ctx); ok {
+			transaction.t.claimAttribution(metadata)
+		}
 		return fn(transaction.t)
 	}}
 	return transaction, nil

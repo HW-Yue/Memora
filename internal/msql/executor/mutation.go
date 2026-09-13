@@ -7,16 +7,19 @@ import (
 	"strings"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/result"
 	datarow "github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, parameters Parameters, options MutationOptions) (Output, error) {
 	if err := engine.authorizeStatement(ctx, statement); err != nil {
 		return Output{}, err
 	}
+	ctx = withAttribution(ctx, statement, options)
 	if engine.catalogStatement(statement) {
 		bound, err := bindParameters(statement, parameters)
 		if err != nil {
@@ -553,4 +556,27 @@ func mutationMetadata(options MutationOptions) datarow.WriteMetadata {
 		SourceReceiptID: options.SourceReceiptID, SourceLocator: options.SourceLocator,
 		SourceContentHash: options.SourceContentHash, Reason: options.Reason,
 	}
+}
+
+// withAttribution records who is executing the statement and why, so every
+// change the backend commits — including Catalog and Route writes, which carry
+// no per-call metadata — is attributed to the real actor.
+func withAttribution(ctx context.Context, statement ast.Statement, options MutationOptions) context.Context {
+	metadata := change.Metadata{
+		Actor: options.Actor, Source: options.Source, Reason: options.Reason,
+		SourceReceiptID: options.SourceReceiptID, SourceKind: string(options.SourceKind),
+		SourceLocator: options.SourceLocator, SourceContentHash: options.SourceContentHash,
+	}
+	if authorization, ok := security.AuthorizationFrom(ctx); ok {
+		if metadata.Actor == "" {
+			metadata.Actor = authorization.Actor
+		}
+	}
+	if metadata.Source == "" {
+		metadata.Source = "msql"
+	}
+	if metadata.Reason == "" {
+		metadata.Reason = strings.ToLower(strings.ReplaceAll(statement.Kind, "_", " "))
+	}
+	return change.WithMetadata(ctx, metadata)
 }

@@ -23,6 +23,7 @@ import (
 	sqlitevec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/result"
 )
 
@@ -258,6 +259,9 @@ func (db *DB) update(ctx context.Context, fn func(*tx) error) error {
 	t, err := db.begin(ctx)
 	if err != nil {
 		return err
+	}
+	if metadata, ok := change.MetadataFrom(ctx); ok {
+		t.claimAttribution(metadata)
 	}
 	if err := fn(t); err != nil {
 		_ = t.rollback()
