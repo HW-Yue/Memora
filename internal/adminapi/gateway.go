@@ -27,8 +27,8 @@ const (
 	DefaultAddress  = "127.0.0.1:3888"
 	MaxRequestBytes = 256 << 10
 	maxStatements   = 32
-	defaultTTL      = 15 * time.Minute
-	maxTTL          = time.Hour
+	defaultTTL      = 12 * time.Hour
+	maxTTL          = 24 * time.Hour
 	sessionCookie   = "memora_admin_session"
 )
 
@@ -104,7 +104,7 @@ func Start(ctx context.Context, config Config) (*Gateway, error) {
 		ttl = defaultTTL
 	}
 	if ttl < time.Second || ttl > maxTTL {
-		return nil, errors.New("admin API session TTL is outside 1 second to 1 hour")
+		return nil, errors.New("admin API session TTL is outside 1 second to 24 hours")
 	}
 	if len(config.Scopes) != 0 {
 		authorization := security.Authorization{
