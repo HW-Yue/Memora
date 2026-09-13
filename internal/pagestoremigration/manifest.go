@@ -47,6 +47,13 @@ var (
 	ErrConflict       = errors.New("Page index generation conflicts with the requested Plan")
 	ErrTargetCorrupt  = errors.New("Page index generation is corrupt")
 	ErrOutcomeUnknown = errors.New("Page index generation publication outcome is unknown")
+	// ErrUpgradeRequired is a generation written by an older build. Opening
+	// used to rebuild it silently, by re-reading the record log; E8 stage 2
+	// took that away, because a rebuild from the record log is exactly what
+	// clustered promotion says the Database no longer depends on. Upgrading is
+	// now something an operator asks for, with the daemon stopped and a backup
+	// taken — "memora upgrade --pages --yes".
+	ErrUpgradeRequired = errors.New("Page index generation needs an explicit upgrade")
 )
 
 type treeManifest struct {

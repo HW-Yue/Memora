@@ -44,7 +44,13 @@ func TestGenerationBuildIncludesDurableFulltextTree(t *testing.T) {
 	}
 }
 
-func TestLegacyThreeTreeAuthorityAutomaticallyUpgradesByCOW(t *testing.T) {
+// TestLegacyThreeTreeAuthorityUpgradesByCOWWhenAsked.
+//
+// Was ...AutomaticallyUpgradesByCOW. E8 stage 2 took away the "automatically":
+// opening a generation an older build wrote refuses, and the COW rebuild is an
+// operator step. What it produces is unchanged, including leaving the old
+// generation on disk as the rollback point.
+func TestLegacyThreeTreeAuthorityUpgradesByCOWWhenAsked(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	_, _, _, inserted := authorityValues(t, ctx, file, authority)
@@ -78,10 +84,7 @@ func TestLegacyThreeTreeAuthorityAutomaticallyUpgradesByCOW(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	upgraded, err := OpenAuthority(ctx, file, directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	upgraded := assertUpgradeRefusedThenApplied(t, ctx, file, directory)
 	defer upgraded.Close()
 	if upgraded.marker.Epoch != 1 || upgraded.marker.Generation == GenerationDirectory ||
 		upgraded.Generation().Fulltext() == nil {

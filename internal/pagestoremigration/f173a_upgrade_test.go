@@ -15,7 +15,12 @@ import (
 	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
-func TestRowOnlyV2AuthorityAutomaticallyUpgradesCatalogByCOW(t *testing.T) {
+// TestRowOnlyV2AuthorityUpgradesCatalogByCOWWhenAsked.
+//
+// Was ...AutomaticallyUpgradesCatalogByCOW; see
+// TestLegacyThreeTreeAuthorityUpgradesByCOWWhenAsked for what E8 stage 2
+// changed.
+func TestRowOnlyV2AuthorityUpgradesCatalogByCOWWhenAsked(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
@@ -38,10 +43,7 @@ func TestRowOnlyV2AuthorityAutomaticallyUpgradesCatalogByCOW(t *testing.T) {
 	}
 	buildRowOnlyV2Generation(t, directory, plan)
 
-	upgraded, err := OpenAuthority(ctx, file, directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	upgraded := assertUpgradeRefusedThenApplied(t, ctx, file, directory)
 	defer upgraded.Close()
 	if upgraded.marker.Epoch != 1 || upgraded.marker.Generation == GenerationDirectory {
 		t.Fatalf("row-only generation did not COW upgrade: %+v", upgraded.marker)

@@ -70,7 +70,7 @@ Commands:
   reflect    Ingest an explicit conversation event
   schema     Execute a validated Schema Plan
   service    Manage the macOS user LaunchAgent
-  upgrade    Plan or apply a transactional Instance format upgrade
+  upgrade    Plan or apply an Instance format upgrade, or --pages a Page index one
   version    Show build version
 
 Run 'memora help' for usage.
@@ -126,10 +126,14 @@ type Dependencies struct {
 	ConfirmFeedback    func(context.Context, string, feedback.Confirmation) (feedback.ConfirmationReceipt, error)
 	PreviewUpgrade     func(string) (instanceupgrade.Plan, error)
 	ApplyUpgrade       func(context.Context, string, instanceupgrade.Options) (instanceupgrade.Receipt, error)
-	RepairUpgrade      func(context.Context, string, string, instanceupgrade.Options) (instanceupgrade.Receipt, error)
-	MoveInstance       func(context.Context, string, string, string, instancemove.Options) (instancemove.Receipt, error)
-	Executable         func() (string, error)
-	ManageLaunchAgent  func(context.Context, string, launchagent.Config) (launchagent.Receipt, error)
+	// UpgradePageGeneration rebuilds the page index generation, with the daemon
+	// stopped. Separate from ApplyUpgrade because the page generation and the
+	// Instance metadata format are separate versions.
+	UpgradePageGeneration func(context.Context, string) (daemon.PageUpgradeReceipt, error)
+	RepairUpgrade         func(context.Context, string, string, instanceupgrade.Options) (instanceupgrade.Receipt, error)
+	MoveInstance          func(context.Context, string, string, string, instancemove.Options) (instancemove.Receipt, error)
+	Executable            func() (string, error)
+	ManageLaunchAgent     func(context.Context, string, launchagent.Config) (launchagent.Receipt, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -1273,6 +1277,7 @@ func runUpgrade(
 	var daemonArgs []string
 	planRequested := false
 	applyRequested := false
+	pagesRequested := false
 	approved := false
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
@@ -1286,11 +1291,41 @@ func runUpgrade(
 			planRequested = true
 		case "--apply":
 			applyRequested = true
+		case "--pages":
+			pagesRequested = true
 		case "--yes":
 			approved = true
 		default:
 			return usageError(stderr, fmt.Sprintf("unknown upgrade option: %q", args[index]))
 		}
+	}
+	// --pages upgrades the page index generation rather than the Instance
+	// metadata format. They are separate versions with separate histories, so
+	// they are separate requests; asking for both at once would hide which one
+	// a receipt describes.
+	if pagesRequested {
+		if planRequested || applyRequested {
+			return usageError(stderr, "upgrade --pages cannot be combined with --plan or --apply")
+		}
+		if !approved {
+			return usageError(stderr, "upgrade --pages requires --yes after explicit approval")
+		}
+		dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+		if code != ExitOK {
+			return code
+		}
+		upgrade := dependencies.UpgradePageGeneration
+		if upgrade == nil {
+			upgrade = daemon.UpgradePageGeneration
+		}
+		receipt, err := upgrade(context.Background(), dataDir)
+		if err != nil {
+			return commandError(stderr, "upgrade Page generation", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
 	}
 	if planRequested == applyRequested {
 		return usageError(stderr, "upgrade requires exactly one of --plan or --apply")

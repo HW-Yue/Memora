@@ -772,3 +772,28 @@ func (value preparedFunc) Complete() error {
 	}
 	return value.complete()
 }
+
+// assertUpgradeRefusedThenApplied is the shape every old-generation test takes
+// after E8 stage 2.
+//
+// Opening refuses, because an open that rebuilds is an open that reads the
+// record log to decide what the Database holds. The rebuild still exists — a
+// Database written by an older build has to be able to get here from there —
+// but it is asked for, once, by an operator. The Authority it returns is the
+// upgraded one, opened the ordinary way.
+func assertUpgradeRefusedThenApplied(
+	t *testing.T, ctx context.Context, file *nativestore.File, directory string,
+) *Authority {
+	t.Helper()
+	if _, err := OpenAuthority(ctx, file, directory); !errors.Is(err, ErrUpgradeRequired) {
+		t.Fatalf("OpenAuthority(old generation) error = %v, want ErrUpgradeRequired", err)
+	}
+	if _, err := UpgradeGeneration(ctx, file, directory); err != nil {
+		t.Fatalf("UpgradeGeneration() error = %v", err)
+	}
+	upgraded, err := OpenAuthority(ctx, file, directory)
+	if err != nil {
+		t.Fatalf("OpenAuthority() after the upgrade = %v", err)
+	}
+	return upgraded
+}

@@ -27,7 +27,7 @@ Commands:
   reflect    Ingest an explicit conversation event
   schema     Execute a validated Schema Plan
   service    Manage the macOS user LaunchAgent
-  upgrade    Plan or apply a transactional Instance format upgrade
+  upgrade    Plan or apply an Instance format upgrade, or --pages a Page index one
   version    Show build version
 
 Run 'memora help' for usage.

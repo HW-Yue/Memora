@@ -99,10 +99,48 @@ type Authority struct {
 	checkpoint       func(authorityPhase) error
 }
 
+// OpenAuthority opens the page authority over a Database directory.
+//
+// A generation an older build wrote is refused rather than rebuilt: see
+// ErrUpgradeRequired, and UpgradeGeneration for the way through.
 func OpenAuthority(
 	ctx context.Context,
 	file *nativestore.File,
 	databaseDirectory string,
+) (*Authority, error) {
+	return openAuthority(ctx, file, databaseDirectory, false)
+}
+
+// UpgradeGeneration rebuilds a Database's generation from the record log and
+// returns the new one's receipt.
+//
+// This is the explicit half of what opening used to do on its own. It is the
+// one path left that treats the record log as a source of truth, and it exists
+// because a Database written by an older build has to be able to get here from
+// there — the log is still on disk as the archive, so the rebuild still works,
+// it just no longer happens behind anyone's back.
+//
+// The caller is responsible for the daemon being stopped and a backup existing.
+// Both are the upgrade command's job, not this function's.
+func UpgradeGeneration(
+	ctx context.Context, file *nativestore.File, databaseDirectory string,
+) (ReplacementReceipt, error) {
+	authority, err := openAuthority(ctx, file, databaseDirectory, true)
+	if err != nil {
+		return ReplacementReceipt{}, err
+	}
+	defer func() { _ = authority.Close() }()
+	if !authority.needsUpgrade() {
+		return ReplacementReceipt{}, fmt.Errorf("%w: generation is current", ErrConflict)
+	}
+	return authority.ReplaceGeneration(ctx)
+}
+
+func openAuthority(
+	ctx context.Context,
+	file *nativestore.File,
+	databaseDirectory string,
+	allowUpgrade bool,
 ) (*Authority, error) {
 	if ctx == nil || file == nil || databaseDirectory == "" {
 		return nil, fmt.Errorf("%w: authority request", ErrInvalid)
@@ -180,20 +218,38 @@ func OpenAuthority(
 	// the archive would discard a committed write. See
 	// docs/storage/record-index-and-authority-v1.md §5.
 	//
-	// A generation missing a Tree, holding one redo log per Tree, or keeping
-	// every Table's current Rows in one shared Tree, or no objects Tree, still
-	// has to be replaced whatever its contents say — the second cannot publish
-	// atomically across Trees, the third is the layout v5 replaced, and the
-	// fourth leaves every Route and Relation with no index but the record
-	// file's resident map.
-	if authority.generation.fulltext == nil || authority.generation.log == nil ||
-		!authority.generation.manifest.perTableRows() ||
-		!authority.generation.manifest.physicalObjectIndex() {
-		if _, err := authority.ReplaceGeneration(ctx); err != nil {
-			return nil, errors.Join(err, authority.Close())
+	// E8 stage 2 then took away the other half: a generation an older build
+	// wrote is no longer rebuilt here either. Both were the same move — reading
+	// the record log to decide what the Database holds — and the second was the
+	// louder one, because it rebuilt the whole generation. It is refused
+	// instead, and UpgradeGeneration is where it can be asked for.
+	if authority.needsUpgrade() {
+		if !allowUpgrade {
+			return nil, errors.Join(
+				fmt.Errorf(
+					"%w: generation %q was written by an older build; "+
+						"stop the daemon and run \"memora upgrade --pages --yes\"",
+					ErrUpgradeRequired, authority.generation.manifest.Version,
+				),
+				authority.Close(),
+			)
 		}
 	}
 	return authority, nil
+}
+
+// needsUpgrade reports whether this generation predates what the read and write
+// paths expect.
+//
+// A generation missing a Tree, holding one redo log per Tree, keeping every
+// Table's current Rows in one shared Tree, or with no objects Tree, cannot be
+// served as it stands — the second cannot publish atomically across Trees, the
+// third is the layout v5 replaced, and the fourth leaves every Route and
+// Relation with no index but the record file's resident map.
+func (authority *Authority) needsUpgrade() bool {
+	return authority.generation.fulltext == nil || authority.generation.log == nil ||
+		!authority.generation.manifest.perTableRows() ||
+		!authority.generation.manifest.physicalObjectIndex()
 }
 
 // NextRowID allocates the next Row ID number for a Table.

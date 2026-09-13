@@ -3,8 +3,10 @@ package pagestoremigration
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/nativerouter"
@@ -142,8 +144,9 @@ func TestTheObjectsTreeIsSeededWithEveryCurrentRoute(t *testing.T) {
 // existing database takes: a v5 generation has no objects Tree at all.
 //
 // It must not be readable as-is — a missing Tree is not a Tree with nothing in
-// it — so the Authority rebuilds the generation by COW, the same path a v4
-// database takes on the way to v5.
+// it — so the generation is rebuilt by COW, the same path a v4 database takes
+// on the way to v5. E8 stage 2 made that rebuild an explicit operator step
+// rather than something opening does on its own.
 func TestAGenerationWithoutAnObjectsTreeIsRebuilt(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
@@ -154,10 +157,7 @@ func TestAGenerationWithoutAnObjectsTreeIsRebuilt(t *testing.T) {
 	plan := currentPlan(t, file)
 	buildPreObjectsGeneration(t, directory, plan)
 
-	reopened, err := OpenAuthority(ctx, file, directory)
-	if err != nil {
-		t.Fatalf("a pre-objects generation must open by rebuilding: %v", err)
-	}
+	reopened := assertUpgradeRefusedThenApplied(t, ctx, file, directory)
 	defer reopened.Close()
 	if reopened.generation.Objects() == nil {
 		t.Fatal("the rebuilt generation still has no objects Index")
@@ -287,5 +287,57 @@ func assertRouteInObjectsTree(t *testing.T, authority *Authority, node router.No
 	if stored.Revision != node.Revision || !bytes.Equal(stored.Body, want) {
 		t.Fatalf("objects Tree holds Route %q at revision %d, want revision %d verbatim",
 			node.ID, stored.Revision, node.Revision)
+	}
+}
+
+// TestAnOldGenerationRefusesToOpenAndSaysWhatToRun is E8 stage 2's contract.
+//
+// Silently rebuilding on open was two things at once: a migration, and a read
+// of the whole record log to decide what the Database holds. Promotion keeps
+// the first and refuses the second, so the refusal has to carry the way
+// through, or the only thing an operator learns is that their Database stopped
+// opening.
+func TestAnOldGenerationRefusesToOpenAndSaysWhatToRun(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	plan := currentPlan(t, file)
+	buildPreObjectsGeneration(t, directory, plan)
+
+	_, err := OpenAuthority(ctx, file, directory)
+	if !errors.Is(err, ErrUpgradeRequired) {
+		t.Fatalf("OpenAuthority(old generation) error = %v, want ErrUpgradeRequired", err)
+	}
+	if !strings.Contains(err.Error(), "memora upgrade --pages --yes") {
+		t.Fatalf("the refusal does not name the command to run: %v", err)
+	}
+	// Refusing is not damaging: the generation is exactly where it was, so the
+	// operator can take a backup before deciding anything.
+	if _, statErr := os.Stat(filepath.Join(directory, GenerationDirectory)); statErr != nil {
+		t.Fatalf("the refused generation was disturbed: %v", statErr)
+	}
+
+	receipt, err := UpgradeGeneration(ctx, file, directory)
+	if err != nil {
+		t.Fatalf("UpgradeGeneration() error = %v", err)
+	}
+	if receipt.Epoch != 1 || receipt.Generation == GenerationDirectory {
+		t.Fatalf("UpgradeGeneration() receipt = %+v", receipt)
+	}
+	upgraded, err := OpenAuthority(ctx, file, directory)
+	if err != nil {
+		t.Fatalf("OpenAuthority() after the upgrade = %v", err)
+	}
+	defer upgraded.Close()
+	if _, err := upgraded.DescribeTable(ctx, "work", table.Name); err != nil {
+		t.Fatalf("Catalog after the upgrade: %v", err)
+	}
+	// Asking again is refused rather than quietly building a second identical
+	// generation: an upgrade is a thing that happens once.
+	if _, err := UpgradeGeneration(ctx, file, directory); !errors.Is(err, ErrConflict) {
+		t.Fatalf("second UpgradeGeneration() = %v, want ErrConflict", err)
 	}
 }

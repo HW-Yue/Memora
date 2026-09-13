@@ -188,9 +188,11 @@ func generationPageBytes(t *testing.T, generationDirectory string) map[string][]
 // A v3 generation is complete and healthy — four Trees, every document present,
 // nothing for reconcile to do. Its only defect is structural: one redo log per
 // Tree, so a publication spanning Trees cannot be one transaction. Writing to
-// it would silently give up the atomicity stage 2 just bought, so the Authority
-// rebuilds it by COW instead, exactly as it does for a generation missing a
-// Tree.
+// it would silently give up the atomicity stage 2 just bought, so it has to be
+// rebuilt by COW, exactly as a generation missing a Tree does.
+//
+// E8 stage 2 moved who asks: opening refuses, and the rebuild is an explicit
+// operator step. The structural defect and the fix are unchanged.
 func TestPerTreeLogGenerationIsUpgradedOnOpen(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
@@ -208,10 +210,7 @@ func TestPerTreeLogGenerationIsUpgradedOnOpen(t *testing.T) {
 	}
 	buildPerTreeLogGeneration(t, directory, plan)
 
-	upgraded, err := OpenAuthority(ctx, file, directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	upgraded := assertUpgradeRefusedThenApplied(t, ctx, file, directory)
 	defer upgraded.Close()
 	if upgraded.marker.Epoch != 1 || upgraded.marker.Generation == GenerationDirectory {
 		t.Fatalf("per-Tree-log generation was not upgraded: %+v", upgraded.marker)
