@@ -115,6 +115,7 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [F215：低并发 Provider 退避与评测断点](./planning/f215-low-concurrency-resume.md) — 单 worker、有限重试、hash-bound checkpoint 与失败题续跑；
 - [ADR-0010：小规模高质量评测优先](./decisions/0010-small-scale-high-quality-evaluation.md) — 评测目标从绝对质量分
   改为架构对照证据；F212–F215 与候选 F216–F218 转 Deferred；
+- [ADR-0011：存储引擎只做数据库，其余一切建表](./decisions/0011-pure-storage-engine-tables-everything.md) — history、语义树等全部是引擎上的普通表；不做 MVCC；全文索引归属 Deferred。
 - [F219：确定性答案评分](./planning/f219-deterministic-answer-scoring.md) — 候选；不依赖模型的检索命中主判定与
   judge 指标部分缺失表示，是 ADR-0010 之后任何评测运行的前置项。
 - [F220：Query Working Set](./planning/f220-query-working-set.md) — 候选；带完整 Route 链路的有界语义工作集，
@@ -152,8 +153,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [Canonical Skill](./agent/canonical-skill-v1.md)
 - [MSQL](./query/msql.md)
 - [语义 Router](./query/semantic-routing.md)
-- [Route 配套表](./product/route-companion-table.md) — 方向性结论；语义索引与
-  history 同类，是每张业务表自动配的一张表，节点是行、引用是 RowID；
+- [Route 配套表](./product/route-companion-table.md) — 方向性结论；语义索引是
+  每张业务表自动配的一张普通表，Route 操作就是对它的读写；
 - [Route Branch Fan-out 策略](./query/route-branch-fanout-policy.md) — Database 自治目标与
   Agent 语义重构规则；「无默认值、可带理由超限」两条已被 F223 取代；
 - [检索质量链路](./query/retrieval-quality.md)

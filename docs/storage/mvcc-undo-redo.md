@@ -5,6 +5,9 @@ Store writer，物理 Undo 继续后置。见
 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)和
 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
+> **已被 [ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md) 取代（2026-09-13）**：
+> 不再做 MVCC，写串行、读最新提交；history 改为数据表的配套普通表。
+
 > **目标形态已改，本文两处结论作废。**
 > [写入形态](../product/write-model.md)取代了它们：
 >

@@ -2,27 +2,33 @@
 
 状态：**方向性结论**（2026-09-13）。这是目标形态，不是现役实现。
 与[写入形态](./write-model.md) §1 第 3 条「语义索引是第三种特殊结构」冲突时，
-**以本文为准**——语义索引与 history 同类，是业务表的配套表。
+**以本文为准**——语义索引是业务表旁边的一张普通表，Route 操作就是对它的读写。
 查询链路（发现 → 逐层走到叶子 → RowID 回表）仍以
 [查询形态](./query-model.md)为准，变的只是 Route 存在哪、一层怎么取。
 
 ## 一句话
 
-每张业务表自动配一张语义表，就像自动配一张 history 表。
-节点是行，引用是 RowID，走一层只读这一行。
+每张业务表自动配一张普通的语义表。节点是行，引用是 RowID，
+走一层只读这一行。Route 语句是对这张表的读写，不是新树种。
 
 ## 配套关系
 
-建 `notes` 时引擎同时给出三张表：
+建 `notes` 时引擎同时给出：
 
 ```text
-notes            正文
-notes_history    这张表的变更
-notes_routes     这张表的语义索引
+notes            正文（普通表）
+notes_history    这张表的变更（普通表）
+notes_routes     这张表的语义索引（普通表）
 ```
 
-后两张都是配套表：跟业务表同生，不单独建一种 object kind，
-也不和正文挤在同一张表里。一张表一种行语义。
+三张都进 Catalog，都有自己的 RowID 和表树，引擎对它们一视同仁；
+角色是产品层记在 Catalog 上的标记。不新造树种，也不和正文挤在同一张表里。
+一张表一种行语义。分层原则见
+[ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)。
+
+「只有数据表写 history」「只有数据表对 Agent 可见」都是产品层的规则，
+不是引擎标志。列表类字段（`child_ids` 等）先存为 TEXT 里的 JSON。
+现役 `history:<tableID>` 树与版本树由 history 表取代。
 
 系统表（路由表、history 表自己）不再套语义索引，避免递归。
 入口写在业务 Table 的 `router_root_id` 上。
@@ -122,7 +128,8 @@ SELECT ... WHERE row_id =
 - 不是 objects 树上按 `(kind, routeID)` 平铺的卡片；
 - 不是全库共用的一棵总 Route 树；
 - 不是正文表里用 `kind` 字段混进导航行；
-- 不是再为父子关系造一种独立对象或边索引。
+- 不是再为父子关系造一种独立对象或边索引；
+- 不是 history 那种 `history:<tableID>` 树种再抄一份叫 `routes:<tableID>`。
 
 objects 树若还在，只可能暂存 Catalog／Relation 等尚未表化的东西；
 它对语义索引没有产品职责。

@@ -29,8 +29,9 @@ binlog 作为唯一恢复依据。与本规范冲突时，以本文为准。
    找到叶子 = 找到它下面的 RowID；RowID 指向业务表里那条真实数据。
 
    > **形态修订（方向性结论，2026-09-13）**：语义索引不再是第三种特殊对象，
-   > 而是与 history 同类的**配套表**（`notes` ↔ `notes_routes`）。
-   > 节点是行，引用是 RowID。见[Route 配套表](./route-companion-table.md)。
+   > 而是业务表旁边的一张**普通表**（`notes` ↔ `notes_routes`），
+   > Route 操作就是对它的读写。不是 `history:<tableID>` 那种内部树种。
+   > 见[Route 配套表](./route-companion-table.md)。
    > 下面关于叶子挂 RowID、行上 `route_leaf_ids`、路径不存的约定仍然有效。
 
    **这个挂载是双向的**：业务行同时带一个默认字段 `route_leaf_ids`，
