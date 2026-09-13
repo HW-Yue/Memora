@@ -1,4 +1,4 @@
-package store_test
+package sqlstore_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	msqlservice "github.com/HW-Yue/Memora/internal/msql/service"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
-	"github.com/HW-Yue/Memora/internal/store"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
 // bagOfWords is a deterministic embedder: each word lights one dimension, so
@@ -50,14 +50,14 @@ func (bagOfWords) Embed(_ context.Context, texts []string) ([][]float32, error) 
 
 type harness struct {
 	t       *testing.T
-	db      *store.DB
+	db      *sqlstore.DB
 	session *msqlservice.Session
 	seq     int
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "memora.db"), store.Options{Embedder: bagOfWords{}})
+	db, err := sqlstore.Open(filepath.Join(t.TempDir(), "memora.db"), sqlstore.Options{Embedder: bagOfWords{}})
 	if err != nil {
 		t.Fatal(err)
 	}

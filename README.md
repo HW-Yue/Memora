@@ -1,429 +1,128 @@
-# Memora
+# Memora（SQLite 原型分支）
 
-[![CI](https://github.com/HW-Yue/Memora/actions/workflows/ci.yml/badge.svg)](https://github.com/HW-Yue/Memora/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](./go.mod)
-[![Release](https://img.shields.io/github/v/release/HW-Yue/Memora?label=release)](https://github.com/HW-Yue/Memora/releases/latest)
-[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](./LICENSE)
+> 分支 `rewrite/adr0011`：底层整体换成 **SQLite + sqlite-vec（vec0）**。
+> MSQL 语法、Skill 文档、CLI 命令、MCP 工具、Admin 前端都**与 main 保持一致**，
+> 只是它们下面不再是自研存储引擎。设计依据见
+> [ADR-0011](./docs/decisions/0011-pure-storage-engine-tables-everything.md)。
 
-**从零手写的单机数据库引擎,加一层给 AI Agent 用的语义读写协议。**
+Memora 是一个给 AI Agent 用的本地个人数据库：Agent 自己建模、用 MSQL 读写，
+通过**语义树**逐层找到数据，再按 RowID 回表取事实。
 
-Memora 是一个本地个人数据库:底层是自研的存储引擎——16 KiB Page、B+ 树、
-WAL 与崩溃恢复、Buffer Pool、MVCC,**运行时零第三方依赖**;上层是一套受约束的
-SQL 方言(MSQL)和写入协议,让 AI Agent 能自主建模、检索和修改数据,
-但**永远碰不到 Page、索引和日志**。
+## 三分钟跑起来
 
-一句话说清它解决什么:*把 AI 的长期记忆放进一个真正的数据库里,而不是放进
-一堆 Markdown 文件或者一个向量库。* 数据是结构化、可查询、有版本、能回滚的;
-AI 的每一次写入都要先过校验、再验证、留下回执。
-
-| | |
-| --- | --- |
-| **语言 / 依赖** | Go 1.25,运行时依赖仅 `google/uuid` 与 `golang.org/x/sys` |
-| **规模** | 101,269 行生产代码 / 74,278 行测试代码,131 个包 |
-| **测试** | 1,380 个测试函数、5 个 fuzz 目标,含断页修复与故障注入 |
-| **CI** | 七道门 × 两平台(macOS / Linux):format、vet、lint、unit、race、integration、e2e、交叉编译 |
-
----
-
-## 一分钟看懂:系统长什么样
-
-```mermaid
-flowchart TB
-    HOST["<b>AI 宿主</b> — Claude Code · Codex(通过 Memora Skill 接入)"]
-
-    HOST --> CLI["<b>CLI</b><br/>memora exec / query"]
-    HOST --> MCP["<b>MCP</b><br/>单一 memora_execute 工具"]
-    HOST --> STDIO["<b>stdio</b><br/>长驻 JSONL 会话"]
-    HOST --> SDK["<b>SDK</b><br/>中立 wire protocol"]
-
-    CLI --> DAEMON
-    MCP --> DAEMON
-    STDIO --> DAEMON
-    SDK --> DAEMON
-
-    DAEMON["<b>memora daemon</b> — 常驻进程 · unix socket · 持有 Instance"]
-
-    DAEMON --> MSQL["<b>MSQL 执行链路</b><br/>lexer → parser(手写递归下降) → ast → binder → executor"]
-    MSQL --> POLICY["<b>Policy / Security</b><br/>授权作用域 · 写入护栏 · actor/source/reason 出处溯源"]
-
-    POLICY --> CAT["<b>Catalog</b><br/>自描述 Schema"]
-    POLICY --> ROW["<b>Row / History</b><br/>版本化行"]
-    POLICY --> ROUTE["<b>Router</b><br/>语义导航树"]
-    POLICY --> REL["<b>Relation</b>"]
-
-    CAT --> ENGINE
-    ROW --> ENGINE
-    ROUTE --> ENGINE
-    REL --> ENGINE
-
-    ENGINE["<b>存储引擎</b> — 零第三方依赖<br/>Page · B+ 树 · WAL · Buffer Pool · MVCC · 索引树"]
-
-    classDef hi fill:#0d47a1,stroke:#0d47a1,color:#fff
-    class ENGINE,DAEMON hi
-```
-
-**关键约束:Agent 只表达逻辑操作。** Page、索引、MVCC、Undo/Redo 和恢复全部由
-引擎自动完成,并且有全仓库范围的 import allowlist 在编译期强制:Agent 相关的包
-**不允许**直接引用存储层。
-
----
-
-## 这个项目里最硬的部分:存储引擎
-
-`internal/store/` —— 14,717 行生产代码 / 16,141 行测试代码,没有第三方依赖。
-
-```mermaid
-flowchart LR
-    PAGE["<b>page</b><br/>页管理器"]
-    TC["<b>treecontrol</b><br/>控制页"]
-    BTREE["<b>btree</b><br/>B+ 树"]
-    BUF["<b>buffer</b><br/>缓冲池"]
-    WAL["<b>wal</b><br/>预写日志 · 崩溃恢复"]
-    TCM["<b>treecommit</b><br/>组提交运行时"]
-    IDX["<b>索引树</b><br/>objectindex · catalogindex · currentrowindex<br/>rowversionindex · changeindex · fulltextindex · objectlock"]
-    KV["<b>nativekv</b> — 引擎门面,领域层唯一入口"]
-
-    PAGE --> TC
-    PAGE --> BTREE
-    PAGE --> BUF
-    TC --> BTREE
-    TC --> BUF
-    BTREE --> WAL
-    BUF --> TCM
-    WAL --> TCM
-    TCM --> IDX
-    IDX --> KV
-
-    classDef core fill:#0d47a1,stroke:#0d47a1,color:#fff
-    class PAGE,BTREE,WAL core
-```
-
-| 层 | 做了什么 |
-| --- | --- |
-| **page** | 16 KiB 定长页、Castagnoli CRC32、format version;typed page(Data / BTreeInternal / BTreeLeaf / Free / Manifest / Overflow / TreeControl)。**损坏就明确报错,不假装能恢复。** |
-| **treecontrol** | 树的持久状态与可复用页集合(控制页格式 v3),跟着 WAL 的 root 记录一起恢复 |
-| **btree** | point / range 查找、split、delete、rebalance、cursor |
-| **buffer** | WAL-before-data、young/old 淘汰、脏页按页号升序批量刷出 |
-| **wal** | segment 与 ring、durable frontier、checkpoint、reclaim、tree redo、torn-tail 恢复、repair-open |
-| **treecommit** | 多棵树在一次提交里原子落盘,durable-then-publish、no-steal |
-| **索引树** | Catalog / 当前 Row / Row Version 三类权威索引,Route 与 Fulltext 派生树,COW generation 替换 |
-
-### 崩溃与损坏是被测出来的,不是被声称的
-
-这一层的测试不测 happy path。真实的测试名:
-
-```
-TestRecoverFullPageImageRepairsTornPage          断页用全页镜像修复
-TestRecoverWriteAndSyncFaultsConvergeOnRetry     写/同步故障注入后重试收敛
-TestOpenSegmentSetRepairsSubprocessCrashTail     子进程真崩溃后的 WAL 尾部修复
-TestRecoverValidatesWholeTransactionBeforeWrite  写页前先校验整个事务
-TestRecoverRejectsDeltaOutsidePage               拒绝越界 redo
-TestRecoverSkipsNewerPageLSN                     幂等重放
-```
-
-WAL 一个包 73 个测试,B+ 树 57 个。覆盖 corruption、reopen、fault injection、
-reference model 与 race —— 这是[项目自己的完成门](./docs/planning/feature-tdd-protocol.md)
-里对内核 Feature 的硬性要求。
-
-📎 直接看代码:[`wal/recovery_test.go`](./internal/store/wal/recovery_test.go) ·
-[`wal/repair_open_test.go`](./internal/store/wal/repair_open_test.go) ·
-[`btree/rebalance.go`](./internal/store/btree/rebalance.go) ·
-[`buffer/dirty.go`](./internal/store/buffer/dirty.go)
-
-### 几个具体的性能改动
-
-不是"感觉快了",是定位 → 量化 → 改 → 复测:
-
-| 问题 | 改动 | 结果 |
-| --- | --- | --- |
-| 开树时 `scanFreePages` 从头读遍整个页文件重建可复用页集合 | 集合是树的状态,写进控制页(格式升到 v3),提交时增量维护 | 1785 页时占开树总耗时 **34%**(1.06s → 0.70s);224 页的树重开从**读 566 页降到读 2 页** |
-| 每次 `Begin` 复制整份事务快照 | 改为写时复制 | 每次 Begin **1.81 MB → 96 字节** |
-| Buffer Pool 按变脏顺序刷页,而页管理器要求页号升序到达 | 刷脏页按页号升序 | 修掉一个"页文件边长边 checkpoint 就整轮失败"的潜伏 bug |
-| Catalog 写路径全表扫描 | 迁入 objects 树 + commit 序号改持久分配器 | 写路径全表扫描清零,并加了**全工作负载零扫描门**防回归 |
-
-### 实测性能
-
-容器化 Linux / Xeon 2.8 GHz(fsync 未必反映真实盘):
-
-| 操作 | 结果 |
-| --- | --- |
-| 单事务批量写入 500 行 | 84 ms → **168 µs/行** |
-| `SELECT ... LIMIT 20` | **< 1 ms** 引擎耗时 |
-| 570 行实例磁盘占用 | 556 KB |
-| CLI 单次调用固定开销 | ~10 ms(其中约 95% 是进程启动,不是引擎) |
-
----
-
-## 第二块:MSQL —— 手写的 SQL 方言
-
-`internal/msql/` —— lexer → parser → ast → binder → executor → service → session,
-4,685 行,递归下降,**没有用任何 parser generator**。带 fuzz 测试。
-
-和标准 SQL 的关键差别:**Schema 必须自描述**。建库建表时强制声明用途、
-适用范围和反范围,列要声明语义角色 —— 因为 Schema 的读者是 AI,不是人。
-
-```sql
-CREATE DATABASE life
-  PURPOSE 'Personal knowledge'
-  SCOPE 'Notes and decisions'
-  ANTI SCOPE 'Work material';
-
-CREATE TABLE life.notes
-  PURPOSE 'Durable notes'
-  SCOPE 'Reviewed knowledge'
-  ANTI SCOPE 'Raw documents'
-  ROW SEMANTICS 'One reviewed note'
-  (
-    title   TEXT NOT NULL PURPOSE 'Display title'  ROLE title,
-    summary TEXT(1200)    PURPOSE 'Complete note'  ROLE summary
-  );
-```
-
-这不是语法糖 —— 没有 `PURPOSE` 的 `CREATE` 会被直接拒绝
-(`catalog database "life" requires purpose`)。
-
----
-
-## 第三块:AI 不能裸写数据库
-
-这是整个产品设计里我最想讲的一点。
-
-一个 Agent 直接对生产数据 `UPDATE` 是不可接受的:它可能记错、可能覆盖掉
-你三个月前的结论、而且事后你不知道是谁在什么依据下改的。所以 Memora 里
-**AI 的每一次写入都必须是一份 Mutation Plan**:
-
-```mermaid
-flowchart LR
-    P["<b>Preflight</b><br/>≥1 条只读查询<br/>必须写明期望行数"] --> S["<b>Steps</b><br/>1–8 步,有界<br/>带 schema version 与<br/>revision 乐观锁"] --> V["<b>Verify</b><br/>写后验证查询"] --> R["<b>Receipt</b><br/>回执:改了什么<br/>是否验证通过"]
-
-    G["<b>贯穿的护栏</b><br/>authorized_databases 作用域 · max_affected_rows 上限<br/>actor / source_event_id / reason 出处三元组必须与每一步一致"] -.-> S
-
-    classDef ok fill:#0d47a1,stroke:#0d47a1,color:#fff
-    class R ok
-```
-
-真的能跑 —— 在下面 Quickstart 建好的实例上直接执行:
+需要 Go 1.25 与 C 编译器（SQLite 与 sqlite-vec 通过 cgo 编译，macOS 自带 clang 即可）。
 
 ```bash
-memora mutate --data-dir /tmp/demo --plan '{
-  "version":"memora.mutation-plan/v1","id":"plan-1","decision":"IGNORE",
-  "database":"life","table":"notes","actor":"agent:host",
-  "source_event_id":"conversation:event-1",
-  "reason":"already captured by an existing Row",
-  "authorized_databases":["life"],
-  "preflight":[{"id":"duplicate-check",
-    "msql":"SELECT row_id FROM life.notes WHERE row_id = :row LIMIT 1",
-    "input":{"parameters":{"named":{"row":"row_01"}}},"expect_rows":0}],
-  "steps":[],"verify":[]}'
+CGO_CFLAGS="-Wno-deprecated-declarations" go build -o bin/memora ./cmd/memora
 ```
-
-```json
-{"version":"memora.mutation-receipt/v1","plan_id":"plan-1","decision":"IGNORE",
- "status":"ignored","changes":[],"ignored":1,"verified":true,"warnings":[]}
-```
-
-`IGNORE`(判定"这条信息已经存在,不写")在这里是**一等公民决策**,
-和 `INSERT` / `REVISE` / `MERGE` / `SPLIT` / `MOVE` / `RELATE` 并列 ——
-让 AI 显式地决定"不写",比让它默认写入安全得多。
-
-📎 [`internal/skillwrite/policy.go`](./internal/skillwrite/policy.go)(校验规则)·
-[`skills/memora/SKILL.md`](./skills/memora/SKILL.md)(Agent 面向的完整协议)
-
----
-
-## Quickstart
 
 ```bash
-go build -o memora ./cmd/memora
-
-./memora init --data-dir /tmp/demo
-./memora daemon start --data-dir /tmp/demo
+bin/memora init
 ```
-
-建一个自描述的库和表:
 
 ```bash
-./memora exec --data-dir /tmp/demo \
-  "CREATE DATABASE life PURPOSE 'Personal knowledge' \
-   SCOPE 'Notes and decisions' ANTI SCOPE 'Work material'"
-
-./memora exec --data-dir /tmp/demo \
-  "CREATE TABLE life.notes PURPOSE 'Durable notes' SCOPE 'Reviewed knowledge' \
-   ANTI SCOPE 'Raw documents' ROW SEMANTICS 'One reviewed note' \
-   (title TEXT NOT NULL PURPOSE 'Display title' ROLE title, \
-    summary TEXT(1200) PURPOSE 'Complete note' ROLE summary)"
+bin/memora daemon start
 ```
-
-查询:
 
 ```bash
-./memora query --data-dir /tmp/demo "SHOW TABLES FROM life"
-./memora query --data-dir /tmp/demo "DESCRIBE TABLE life.notes"
-./memora query --data-dir /tmp/demo "SELECT title FROM life.notes LIMIT 5"
+bin/memora doctor
 ```
 
-所有结果都是稳定的 `memora.result/v1` 信封(JSON),给 Agent 和给人是同一份。
+默认实例目录是 `~/Library/Application Support/Memora/instances/default`，
+可以用 `--data-dir /绝对路径` 指定。数据库就是其中的 `databases/memora.db`，
+任何 SQLite 工具都能打开查看。
 
-看一眼库里发生了什么:
+### 打开向量检索（可选）
+
+向量由 OpenAI 兼容的 `/v1/embeddings` 接口生成，存进 vec0：
 
 ```bash
-./memora admin --data-dir /tmp/demo   # 127.0.0.1:3888 本地只读观察界面
-./memora daemon stop --data-dir /tmp/demo
+export MEMORA_EMBEDDING_API_KEY=sk-...            # 或 OPENAI_API_KEY
+export MEMORA_EMBEDDING_BASE_URL=https://api.openai.com/v1   # 可换成任意兼容服务，如本地 Ollama
+export MEMORA_EMBEDDING_MODEL=text-embedding-3-small
+export MEMORA_EMBEDDING_DIMENSIONS=1536
 ```
 
-其他入口:`memora mcp`(MCP,单一 `memora_execute` 工具)、
-`memora --stdio`(长驻 JSONL 会话)、`memora doctor`、`memora upgrade`。
-`memora help` 有完整列表。
-
-### 真正的用法:作为 Skill 装进 Claude Code / Codex
-
-上面是手动开一个实例。**日常用法是让 AI 宿主自己去用它** —— Canonical Skill
-单独发布在 **[HW-Yue/memora-skill](https://github.com/HW-Yue/memora-skill)**,
-装上之后,Claude Code 或 Codex 会在需要时自己查 Memora、自己决定该不该写进去。
-
-Skill 的工作方式是刻意保守的:
-
-1. 每个会话第一次用之前,先跑只读探测 `scripts/check.sh` —— 报 `ready` 才用,
-   报 `missing` **不许自己下载**,必须先告诉用户装到哪、再拿到明确授权;
-2. 授权之后才跑 `scripts/install.sh --yes`,从
-   [GitHub Release](https://github.com/HW-Yue/Memora/releases/latest) 取已验证的制品
-   (当前 v0 引导只支持 macOS arm64 / amd64);
-3. 之后所有数据库操作都必须带 `memora.authorization/v2`:绑定 actor、
-   用户明确授权的 Database 名单、以及显式的权限等级 ——
-   L0 只读与计划、L1 有界可回滚的行写入、L2 才是结构性变更。
-   **`permission_denied` 永远不能靠自己放宽作用域或等级来绕过。**
-
-Skill 与引擎之间的契约是版本化的:[`contract.json`](./skills/memora/contract.json)
-把三十多个协议版本号(`memora.msql.ast/v1`、`memora.result/v1`、
-`memora.authorization/v2` …)钉在一起,宿主和引擎对不上就是硬失败,不是静默降级。
-
-📎 仓库里的源:[`skills/memora/SKILL.md`](./skills/memora/SKILL.md)
-
----
-
-## 工程实践
-
-这部分和代码本身同等重要,单独拿出来说。
-
-### CI:七道门,两个平台
-
-[`scripts/ci.sh`](./scripts/ci.sh) —— 本地和 CI 跑的是同一个脚本。
-
-```
-format         gofmt
-vet            go vet,GOOS=linux 和 GOOS=darwin 各扫一遍
-lint           staticcheck + errcheck + ineffassign,版本钉死,同样双平台
-unit           go test ./...
-race           go test -race ./...
-integration    go test -tags=integration ./...
-e2e            go test -tags=e2e ./...
-cross-build    darwin/arm64 + darwin/amd64 交叉编译
-```
-
-两个刻意的设计,都是被真实事故逼出来的(脚本注释里写明了):
-
-- **vet / lint 按 GOOS 各扫一遍**,而不是只扫跑 CI 的那台机器 ——
-  `//go:build darwin` 后面的文件对 Linux 扫描是隐形的,曾经有两个
-  `_darwin.go` 的问题就是这样躲过本地检查、在 CI 才炸的。
-- **lint 工具链版本钉死到 go.mod 的版本**,并且**不 export** ——
-  export 会漏进 `go test`,让测试的子进程去下载 toolchain,走上它绝对不能走的路径。
-  这个 pin 前后坏过两次,注释里都记着。
-
-没有 baseline、没有豁免文件:引入这道门的时候把所有告警都修了,所以现在报出来的一定是新的。
-
-### 发布:签名 tag 才能触发
-
-[`.github/workflows/release.yml`](./.github/workflows/release.yml) ——
-所有 action 按 commit SHA 钉死。只有**验证过签名的** annotated `vX.Y.Z` tag 能触发;
-先跑完整测试,在 arm64 与 amd64 runner 上分别做原生冒烟、并完成"从零到第一条记忆"
-的验收之后,才上传二进制、checksum、manifest 和 Skill bundle。普通 PR 没有发布权限。
-制品由确定性 Builder 生成,要求 tracked worktree 干净。
-
-已经真的跑过:`v0.1.0` → `v0.1.2` 三个 Release 都是这条流水线产出的,
-装机用的 [memora-skill](https://github.com/HW-Yue/memora-skill) installer
-就是从这里取二进制。
-
-### 文档:带行号的风险台账
-
-[`docs/development/known-risks.md`](./docs/development/known-risks.md)
-记录**已确认存在但还没修**的问题,每条给 `文件:行` 和判断依据,不写推测,
-并且明确区分"实现漂移"和"评估后的有意选择"。
-[架构审计](./docs/development/architecture-audit-2026-08.md)是某一时点的实测清单,
-缺陷、耦合、重复逐条列出,每条带调用方计数。
-
-被取代的设计不删除,标注"已被取代"并链到当前设计 —— 这样读旧代码的人不会被旧文档骗。
-
----
-
-## 项目状态与已知边界
-
-写在这里而不是藏起来:
-
-**成熟(有测试、当前无已知缺陷)**
-- 存储引擎:Page / WAL / B+ 树 / Buffer Pool / MVCC / 索引 / COW generation 替换
-- MSQL:词法、语法、绑定、执行、会话、多语句真原子事务、中立 wire protocol
-- 安装、daemon、格式升级、诊断、确定性发布链路
-
-**已交付但质量未验证**
-- 语义 Router 与检索的实际效果(机制完成,召回质量缺真实评测证据)
-- 资料吸收(PDF / EPUB / DOCX → 语义模块)
-
-**明确未完成**
-- Query Agent 目前只有一步记忆,多跳导航在结构上还做不到
-  ——[已知风险 #1](./docs/development/known-risks.md),这是当前最优先的缺口
-- `internal/` 里 `native*` 与非 `native*` 存在成对的包,是一次尚未收尾的迁移
-- `v0.1.3` 的 tag 已经打了,但它那次 Release workflow 失败,所以最新可安装版本
-  仍然是 `v0.1.2`
-- [memora-skill](https://github.com/HW-Yue/memora-skill) 里发布的 `SKILL.md`
-  比本仓库的源少一节(删除与归档语义),需要重新同步
-
-完整清单:[当前系统能力](./docs/product/system-capabilities.md) ·
-[已知风险](./docs/development/known-risks.md) ·
-[路线 v3](./docs/planning/roadmap-v3.md)
-
----
-
-## 文档导航
-
-`docs/` 下 271 篇当前文档 + 145 篇归档。**不要从头读**,入口是
-[`docs/README.md`](./docs/README.md)。三份最高参考规范:
-
-1. [写入形态](./docs/product/write-model.md) —— 数据怎么落库
-2. [查询形态](./docs/product/query-model.md) —— 数据怎么被找到
-3. [架构原则](./docs/product/architecture-principles.md) —— 代码怎么组织(每条带"怎么算违反"的判据)
-
----
-
-## 关于 AI 协作
-
-> **这个项目是我与 AI 编码工具协作完成的,git 历史里的 author 是工具本身,
-> 我在这里说明清楚,而不是让你自己去猜。**
->
-> 我负责的是:架构与数据结构选型、写入与查询形态的规格、每一项 Feature 的
-> 拆分与验收标准、TDD 完成门的定义、以及所有技术裁定(哪条路走、哪条路砍掉、
-> 哪个缺陷是有意选择而不是遗留)。AI 负责在这些约束下实现与重构。
->
-> 如果你想看我的判断而不是生成的代码,直接读这几份 ——
-> [架构原则](./docs/product/architecture-principles.md)(每条带判据和已知违例)、
-> [已知风险](./docs/development/known-risks.md)(带行号,含明确标注为"有意选择"的条目)、
-> [TDD 协议](./docs/planning/feature-tdd-protocol.md)、
-> 以及 [`scripts/ci.sh`](./scripts/ci.sh) 的注释。
-> 那些是设计决策,不是代码生成的产物。
-
----
-
-## 本地验证
+设置后重启 daemon。已有数据补向量：
 
 ```bash
-go build ./...
-go test ./...          # 115 个包
-./scripts/ci.sh        # 全部七道门
-./scripts/ci.sh --stage race
+bin/memora reindex
 ```
+
+不配置时一切照常工作，只有 `USING VECTOR` 会返回「未配置向量模型」。
+
+## 第一次写入与查询
+
+所有请求都带授权（`authorization`）；写入还要带出处（`mutation`）。
+
+```bash
+AUTH='"authorization":{"version":"memora.authorization/v2","actor":"agent:me","authorized_databases":["work"],"default_level":"L2"}'
+bin/memora exec --input "{$AUTH}" "CREATE DATABASE work PURPOSE 'Work memory' SCOPE 'Projects and decisions'"
+bin/memora exec --input "{$AUTH}" "CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One reviewed fact' (title TEXT NOT NULL PURPOSE 'Title' ROLE title, body TEXT PURPOSE 'Body' ROLE summary)"
+```
+
+建语义树、挂数据：
+
+```bash
+M='"mutation":{"actor":"agent:me","source":"readme","reason":"setup","max_affected_rows":1,"expected_schema_version":1}'
+bin/memora exec --input "{\"parameters\":{\"named\":{\"p\":\"All work knowledge\"}},$M,$AUTH}" "CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE :p"
+bin/memora exec --input "{\"parameters\":{\"named\":{\"parent\":\"<root route_id>\",\"name\":\"architecture\",\"kind\":\"leaf\",\"purpose\":\"Architecture decisions\"}},$M,$AUTH}" "CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose"
+```
+
+Agent 的查询路径（与 Skill 文档一致）：
+
+```text
+SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :q LIMIT 8 BYTES 4096   -- 或 USING VECTOR
+SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12
+SHOW ROUTES UNDER :branch LIMIT 12
+OPEN ROUTE :leaf LIMIT 1                       -- 得到 row_id
+SELECT * FROM work.notes WHERE row_id = :row LIMIT 1   -- 只有 SELECT 是事实
+```
+
+## 接入 Agent
+
+- **Skill**：`skills/memora`，安装方式与 main 相同（`skills/memora/scripts/install.sh`）。
+- **MCP**：`memora mcp` 提供单一工具 `memora_execute`，接 Claude Code / Codex。
+- **Admin 控制台**：`memora admin --scope work` 打开本地只读控制台（目录、语义树画布、变更时间线、路由轨迹）。
+
+## 命令
+
+| 命令 | 用途 |
+|---|---|
+| `init` / `daemon start\|stop\|status\|run` / `doctor` | 实例与守护进程 |
+| `query` / `exec` / `parse` | 执行或解析 MSQL |
+| `capture` / `decide` | 捕获待定输入、做值不值得写的决定 |
+| `mutate` / `schema` | 执行带预检与验证的写入计划、Schema 计划 |
+| `assimilate` | 资料吸收的状态与回执 |
+| `reflect` / `feedback` / `maintain` | 对话检查点、反馈、语义健康维护 |
+| `mcp` / `admin` / `reindex` / `version` | 接入、控制台、重建索引 |
+
+## 存储里有什么
+
+全部是 SQLite 普通表：
+
+| 表 | 内容 |
+|---|---|
+| `mem_databases` / `mem_tables` | Catalog；每张数据表带角色（data / history / routes），Agent 只看得到 data |
+| `data_<table_id>` | 数据行：值（按列 ID 存）、revision、`route_leaf_ids`、`links`、`successor_ids` |
+| `history_<table_id>` | 该表每一次原地修改的完整版本；`SHOW HISTORY`、`AS OF` 读这里 |
+| `routes_<table_id>` | 语义树节点：`parent_id` + `child_ids`，叶子挂 `row_id`；删除只置 `deprecated` 并记接替者 |
+| `mem_changes` | 已提交事务的变更信封（谁、为什么、改了什么） |
+| `mem_postings` | 词法倒排（`LEXICAL` 候选与 `SHOW LEXICAL LOCATIONS`） |
+| `mem_vectors`（vec0）+ `mem_vector_items` | 行与语义节点的向量 |
+| `mem_config` / `mem_traces` / `mem_kv` | 配置版本、路由轨迹、宿主工作流状态 |
+
+写入串行，读取总是看到最近一次提交，不做 MVCC。拆分/合并数据行时，旧行标记为
+superseded 并记录 `successor_ids`；引用按需跟随接替者（懒更新）。
+
+## 与 main 的差异
+
+- 删除：自研 Page / B+ 树 / WAL / Buffer Pool / MVCC、Page Store 迁移链、实例升级与迁移、
+  数据库打包与 Wiki 导出、评测与 benchmark 设施。
+- 新增：`internal/sqlstore`（SQLite 后端）、`internal/embedding`（OpenAI 兼容嵌入）、
+  `SHOW ROUTE CANDIDATES ... USING VECTOR` 的实际实现（`SPACE` 子句可省略）。
+- 暂不提供：`export` / `pack` / `open` / `install` / `move` / `upgrade` / `service` 命令。
 
 ## 许可
 
-个人学习、研究、娱乐和其他非商业用途可依据
-[PolyForm Noncommercial 1.0.0](./LICENSE) 免费使用、修改和分发。
-商业用途需事先取得书面付费商业许可证,见[商业授权说明](./COMMERCIAL-LICENSE.md)。
-因此本项目是 source-available,不是 OSI 定义的开源软件。
+PolyForm Noncommercial，见 [LICENSE](./LICENSE)；商业授权见 [COMMERCIAL-LICENSE.md](./COMMERCIAL-LICENSE.md)。

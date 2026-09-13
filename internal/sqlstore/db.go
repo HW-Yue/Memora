@@ -4,7 +4,7 @@
 // every data table, its history table, its semantic-route table, the change
 // log, configuration, and the vector index (sqlite-vec vec0). There is no MVCC
 // of Memora's own: writers are serialised, readers see the last commit.
-package store
+package sqlstore
 
 import (
 	"context"
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS mem_vector_items (
 `
 
 func (db *DB) migrate(ctx context.Context) error {
-	if _, err := db.sql.ExecContext(ctx, schema); err != nil {
+	if _, err := db.sql.ExecContext(ctx, schema+";"+kvSchema); err != nil {
 		return fmt.Errorf("create Memora schema: %w", err)
 	}
 	if db.embedder != nil {

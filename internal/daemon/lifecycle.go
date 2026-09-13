@@ -12,7 +12,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/embedding"
 	"github.com/HW-Yue/Memora/internal/ipc"
-	"github.com/HW-Yue/Memora/internal/store"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 	"golang.org/x/sys/unix"
 )
 
@@ -157,8 +157,8 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 
 // OpenStore opens the Instance's SQLite database, with vector search enabled
 // when an embedding model is configured.
-func OpenStore(dataDir string) (*store.DB, error) {
-	options := store.Options{}
+func OpenStore(dataDir string) (*sqlstore.DB, error) {
+	options := sqlstore.Options{}
 	if config, ok := embedding.FromEnvironment(); ok {
 		client, err := embedding.New(config)
 		if err != nil {
@@ -166,7 +166,7 @@ func OpenStore(dataDir string) (*store.DB, error) {
 		}
 		options.Embedder = client
 	}
-	return store.Open(filepath.Join(dataDir, "databases", store.FileName), options)
+	return sqlstore.Open(filepath.Join(dataDir, "databases", sqlstore.FileName), options)
 }
 
 func (lease *Lease) Close() error {

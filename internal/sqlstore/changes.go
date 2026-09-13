@@ -1,4 +1,4 @@
-package store
+package sqlstore
 
 import (
 	"context"
@@ -172,4 +172,15 @@ func (db *DB) GetCommittedChange(ctx context.Context, transactionID, databaseID 
 		return nil
 	})
 	return envelope, err
+}
+
+// claimAttribution sets who this transaction's change envelope is attributed
+// to, before any entry records a system default.
+func (t *tx) claimAttribution(metadata change.Metadata) {
+	if t.change == nil {
+		t.change = &changeDraft{entries: map[string]change.Entry{}}
+	}
+	if strings.TrimSpace(metadata.Actor) != "" {
+		t.change.metadata = metadata
+	}
 }

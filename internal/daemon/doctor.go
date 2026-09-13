@@ -3,14 +3,15 @@ package daemon
 import (
 	"context"
 
-	"github.com/HW-Yue/Memora/internal/store"
+	"github.com/HW-Yue/Memora/internal/ipc"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
-type DoctorReport = store.Report
+type DoctorReport = sqlstore.Report
 
 // Doctor asks the running daemon for a health report.
 func Doctor(ctx context.Context, dataDir string) (DoctorReport, error) {
-	client, err := dial(ctx, dataDir)
+	client, err := dialDaemon(ctx, dataDir)
 	if err != nil {
 		return DoctorReport{}, err
 	}
@@ -20,6 +21,14 @@ func Doctor(ctx context.Context, dataDir string) (DoctorReport, error) {
 	return report, err
 }
 
-func (h *handler) doctor(ctx context.Context) (DoctorReport, error) {
-	return h.database.Doctor(ctx)
+func (handler *databaseHandler) doctor(ctx context.Context) (DoctorReport, error) {
+	return handler.database.Doctor(ctx)
+}
+
+func dialDaemon(ctx context.Context, dataDir string) (*ipc.Client, error) {
+	path, err := SocketPath(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	return ipc.Dial(ctx, path)
 }

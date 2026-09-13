@@ -11,17 +11,25 @@ import (
 	osexec "os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/HW-Yue/Memora/internal/adminapi"
+	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/config"
+	"github.com/HW-Yue/Memora/internal/conversation"
 	"github.com/HW-Yue/Memora/internal/daemon"
+	"github.com/HW-Yue/Memora/internal/feedback"
+	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/mcpadapter"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/msql/readquery"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
+	"github.com/HW-Yue/Memora/internal/semantichealth"
+	"github.com/HW-Yue/Memora/internal/skillschema"
+	"github.com/HW-Yue/Memora/internal/skillwrite"
 )
 
 const (
@@ -30,27 +38,31 @@ const (
 	ExitUsage   = 2
 )
 
-const helpText = `Memora is an AI-maintained local personal database on SQLite.
+const helpText = `Memora is an AI-maintained local personal database (SQLite + sqlite-vec).
 
 Usage:
   memora <command> [options]
 
 Commands:
-  admin      Start a temporary local read-only Admin console
-  daemon     Manage the local daemon (start | stop | status | run)
-  doctor     Check database integrity and index health
+  admin      Start a temporary local read-only Admin API
+  assimilate  Track, review, and receipt source assimilation
+  capture    Capture or reload one bounded pending host input
+  daemon     Manage the local daemon
+  decide     Finalize or reload one Host Input worthiness decision
+  doctor     Verify logical database integrity
   exec       Execute MSQL through the local daemon
+  feedback   Record feedback or confirm an auditable revision
   help       Show this help
   init       Initialize a local instance
+  maintain   Report and retry low-risk semantic maintenance
   mcp        Serve MCP over newline-delimited stdio
+  mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
   reindex    Rebuild lexical postings and the vector index
+  reflect    Ingest an explicit conversation event
+  schema     Execute a validated Schema Plan
   version    Show build version
-
-Vector search uses an OpenAI-compatible embeddings API:
-  MEMORA_EMBEDDING_API_KEY (or OPENAI_API_KEY), MEMORA_EMBEDDING_BASE_URL,
-  MEMORA_EMBEDDING_MODEL, MEMORA_EMBEDDING_DIMENSIONS
 
 Run 'memora help' for usage.
 `
@@ -89,9 +101,21 @@ type Dependencies struct {
 		string,
 		[]executor.StatementInput,
 	) (result.Envelope, error)
-	ServeAdmin  func(context.Context, adminapi.Config, func(adminapi.Descriptor) error) error
-	OpenBrowser func(string) error
-	Executable  func() (string, error)
+	ServeAdmin         func(context.Context, adminapi.Config, func(adminapi.Descriptor) error) error
+	OpenBrowser        func(string) error
+	Reflect            func(context.Context, string, conversation.Event) (conversation.Receipt, error)
+	Assimilate         func(context.Context, string, assimilation.Event) (assimilation.Receipt, error)
+	SubmitAssimilation func(context.Context, string, assimilation.Submission) (assimilation.SourceReceipt, error)
+	GetSourceReceipt   func(context.Context, string, string) (assimilation.SourceReceipt, error)
+	CaptureHostInput   func(context.Context, string, hostinput.Input) (hostinput.Receipt, error)
+	GetHostInput       func(context.Context, string, string, string) (hostinput.Pending, error)
+	DecideHostInput    func(context.Context, string, hostinput.WorthinessDecision) (hostinput.WorthinessReceipt, error)
+	GetDecision        func(context.Context, string, string, string) (hostinput.WorthinessResult, error)
+	SemanticHealth     func(context.Context, string) (semantichealth.Report, error)
+	Maintain           func(context.Context, string, semantichealth.Request) (semantichealth.Receipt, error)
+	RecordFeedback     func(context.Context, string, feedback.Event) (feedback.Receipt, error)
+	ConfirmFeedback    func(context.Context, string, feedback.Confirmation) (feedback.ConfirmationReceipt, error)
+	Executable         func() (string, error)
 }
 
 func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
@@ -109,18 +133,34 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runDaemon(args[1:], stdout, stderr, dependencies)
 	case "admin":
 		return runAdmin(args[1:], stdout, stderr, dependencies)
+	case "assimilate":
+		return runAssimilate(args[1:], stdout, stderr, dependencies)
+	case "capture":
+		return runCapture(args[1:], stdout, stderr, dependencies)
+	case "decide":
+		return runDecide(args[1:], stdout, stderr, dependencies)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, dependencies)
 	case "exec", "query":
 		return runExecute(args[0], args[1:], stdout, stderr, dependencies)
+	case "feedback":
+		return runFeedback(args[1:], stdout, stderr, dependencies)
 	case "init":
 		return runInit(args[1:], stdout, stderr, dependencies)
+	case "mutate":
+		return runMutate(args[1:], stdout, stderr, dependencies)
+	case "maintain":
+		return runMaintain(args[1:], stdout, stderr, dependencies)
 	case "mcp":
 		return runMCP(args[1:], stdout, stderr, build, dependencies)
 	case "reindex":
 		return runReindex(args[1:], stdout, stderr, dependencies)
 	case "parse":
 		return runParse(args[1:], stdout, stderr, dependencies)
+	case "reflect":
+		return runReflect(args[1:], stdout, stderr, dependencies)
+	case "schema":
+		return runSchema(args[1:], stdout, stderr, dependencies)
 	case "version":
 		return runVersion(args[1:], stdout, stderr, build)
 	default:
@@ -131,9 +171,560 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 	}
 }
 
+func runCapture(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var candidateJSON, receiptID, workspace string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--candidate":
+			if index+1 >= len(args) || candidateJSON != "" {
+				return usageError(stderr, "--candidate requires one JSON object")
+			}
+			candidateJSON = args[index+1]
+			index++
+		case "--receipt":
+			if index+1 >= len(args) || receiptID != "" {
+				return usageError(stderr, "--receipt requires one input ID")
+			}
+			receiptID = args[index+1]
+			index++
+		case "--workspace":
+			if index+1 >= len(args) || workspace != "" {
+				return usageError(stderr, "--workspace requires one value")
+			}
+			workspace = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown capture option: %q", args[index]))
+		}
+	}
+	if (candidateJSON == "") == (receiptID == "") || (receiptID != "" && strings.TrimSpace(workspace) == "") ||
+		(candidateJSON != "" && workspace != "") {
+		return usageError(stderr, "capture requires exactly one of --candidate or --receipt with --workspace")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if receiptID != "" {
+		load := dependencies.GetHostInput
+		if load == nil {
+			load = daemon.GetHostInput
+		}
+		pending, err := load(context.Background(), dataDir, receiptID, workspace)
+		if err != nil {
+			return commandError(stderr, "read pending host input", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(pending); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	var input hostinput.Input
+	decoder := json.NewDecoder(bytes.NewBufferString(candidateJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--candidate must be one strict Host Input JSON object")
+	}
+	capture := dependencies.CaptureHostInput
+	if capture == nil {
+		capture = daemon.CaptureHostInput
+	}
+	receipt, err := capture(context.Background(), dataDir, input)
+	if err != nil {
+		return commandError(stderr, "capture host input", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	return ExitOK
+}
+
+func runDecide(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var decisionJSON, receiptID, workspace string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--decision":
+			if index+1 >= len(args) || decisionJSON != "" {
+				return usageError(stderr, "--decision requires one JSON object")
+			}
+			decisionJSON = args[index+1]
+			index++
+		case "--receipt":
+			if index+1 >= len(args) || receiptID != "" {
+				return usageError(stderr, "--receipt requires one decision ID")
+			}
+			receiptID = args[index+1]
+			index++
+		case "--workspace":
+			if index+1 >= len(args) || workspace != "" {
+				return usageError(stderr, "--workspace requires one value")
+			}
+			workspace = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown decide option: %q", args[index]))
+		}
+	}
+	if (decisionJSON == "") == (receiptID == "") || (receiptID != "" && strings.TrimSpace(workspace) == "") ||
+		(decisionJSON != "" && workspace != "") {
+		return usageError(stderr, "decide requires exactly one of --decision or --receipt with --workspace")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if receiptID != "" {
+		load := dependencies.GetDecision
+		if load == nil {
+			load = daemon.GetWorthinessDecision
+		}
+		outcome, err := load(context.Background(), dataDir, receiptID, workspace)
+		if err != nil {
+			return commandError(stderr, "read worthiness decision", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(outcome); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	var decision hostinput.WorthinessDecision
+	decoder := json.NewDecoder(bytes.NewBufferString(decisionJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decision); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--decision must be one strict Worthiness Decision JSON object")
+	}
+	decide := dependencies.DecideHostInput
+	if decide == nil {
+		decide = daemon.DecideHostInput
+	}
+	receipt, err := decide(context.Background(), dataDir, decision)
+	if err != nil {
+		return commandError(stderr, "finalize worthiness decision", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	return ExitOK
+}
+
 func writeJSON(stdout, stderr io.Writer, value any) int {
 	if err := json.NewEncoder(stdout).Encode(value); err != nil {
 		return writeFailure(stderr, err)
+	}
+	return ExitOK
+}
+
+func runFeedback(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var eventJSON, confirmationJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--event":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--event requires a JSON object")
+			}
+			if eventJSON != "" {
+				return usageError(stderr, "--event may only be specified once")
+			}
+			eventJSON = args[index+1]
+			index++
+		case "--confirmation":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--confirmation requires a JSON object")
+			}
+			if confirmationJSON != "" {
+				return usageError(stderr, "--confirmation may only be specified once")
+			}
+			confirmationJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown feedback option: %q", args[index]))
+		}
+	}
+	if (eventJSON == "") == (confirmationJSON == "") {
+		return usageError(stderr, "feedback requires exactly one of --event or --confirmation")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if eventJSON != "" {
+		var event feedback.Event
+		decoder := json.NewDecoder(bytes.NewBufferString(eventJSON))
+		decoder.DisallowUnknownFields()
+		decoder.UseNumber()
+		if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+			return usageError(stderr, "--event must be one strict Feedback Event JSON object")
+		}
+		record := dependencies.RecordFeedback
+		if record == nil {
+			record = daemon.RecordFeedback
+		}
+		receipt, err := record(context.Background(), dataDir, event)
+		if err != nil {
+			return commandError(stderr, "record feedback", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	var confirmation feedback.Confirmation
+	decoder := json.NewDecoder(bytes.NewBufferString(confirmationJSON))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&confirmation); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--confirmation must be one strict Feedback Confirmation JSON object")
+	}
+	confirm := dependencies.ConfirmFeedback
+	if confirm == nil {
+		confirm = daemon.ConfirmFeedback
+	}
+	receipt, err := confirm(context.Background(), dataDir, confirmation)
+	if err != nil {
+		return commandError(stderr, "confirm feedback revision", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if receipt.Status == "committed_unverified" {
+		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runAssimilate(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var eventJSON string
+	var submissionJSON string
+	var receiptID string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--event":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--event requires a JSON object")
+			}
+			if eventJSON != "" {
+				return usageError(stderr, "--event may only be specified once")
+			}
+			eventJSON = args[index+1]
+			index++
+		case "--submission":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--submission requires a JSON object")
+			}
+			if submissionJSON != "" {
+				return usageError(stderr, "--submission may only be specified once")
+			}
+			submissionJSON = args[index+1]
+			index++
+		case "--receipt":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--receipt requires a submission ID")
+			}
+			if receiptID != "" {
+				return usageError(stderr, "--receipt may only be specified once")
+			}
+			receiptID = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown assimilate option: %q", args[index]))
+		}
+	}
+	selected := 0
+	for _, value := range []string{eventJSON, submissionJSON, receiptID} {
+		if value != "" {
+			selected++
+		}
+	}
+	if selected != 1 {
+		return usageError(stderr, "assimilate requires exactly one of --event, --submission, or --receipt")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if receiptID != "" {
+		load := dependencies.GetSourceReceipt
+		if load == nil {
+			load = daemon.SourceReceipt
+		}
+		receipt, err := load(context.Background(), dataDir, receiptID)
+		if err != nil {
+			return commandError(stderr, "read Source Receipt", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+			return writeFailure(stderr, err)
+		}
+		if receipt.Status != assimilation.SubmissionCommitted {
+			return ExitFailure
+		}
+		return ExitOK
+	}
+	if submissionJSON != "" {
+		var submission assimilation.Submission
+		decoder := json.NewDecoder(bytes.NewBufferString(submissionJSON))
+		decoder.DisallowUnknownFields()
+		decoder.UseNumber()
+		if err := decoder.Decode(&submission); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+			return usageError(stderr, "--submission must be one strict Assimilation Submission JSON object")
+		}
+		submit := dependencies.SubmitAssimilation
+		if submit == nil {
+			submit = daemon.SubmitAssimilation
+		}
+		receipt, err := submit(context.Background(), dataDir, submission)
+		if err != nil {
+			return commandError(stderr, "submit reviewed assimilation", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+			return writeFailure(stderr, err)
+		}
+		if receipt.Status != assimilation.SubmissionCommitted {
+			return ExitFailure
+		}
+		return ExitOK
+	}
+	var event assimilation.Event
+	decoder := json.NewDecoder(bytes.NewBufferString(eventJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--event must be one strict Assimilation Event JSON object")
+	}
+	process := dependencies.Assimilate
+	if process == nil {
+		process = daemon.Assimilate
+	}
+	receipt, err := process(context.Background(), dataDir, event)
+	if err != nil {
+		return commandError(stderr, "record assimilation coverage", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if receipt.Status == assimilation.StatusIncomplete {
+		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runMaintain(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+	var daemonArgs []string
+	var requestJSON string
+	report := false
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--report":
+			report = true
+		case "--request":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--request requires a JSON object")
+			}
+			requestJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown maintain option: %q", args[index]))
+		}
+	}
+	if report == (requestJSON != "") {
+		return usageError(stderr, "maintain requires exactly one of --report or --request")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	if report {
+		inspect := dependencies.SemanticHealth
+		if inspect == nil {
+			inspect = daemon.SemanticHealth
+		}
+		value, err := inspect(context.Background(), dataDir)
+		if err != nil {
+			return commandError(stderr, "inspect semantic health", err)
+		}
+		if err := json.NewEncoder(stdout).Encode(value); err != nil {
+			return writeFailure(stderr, err)
+		}
+		return ExitOK
+	}
+	var request semantichealth.Request
+	decoder := json.NewDecoder(bytes.NewBufferString(requestJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--request must be one strict Maintenance Request JSON object")
+	}
+	maintain := dependencies.Maintain
+	if maintain == nil {
+		maintain = daemon.Maintain
+	}
+	receipt, err := maintain(context.Background(), dataDir, request)
+	if err != nil {
+		return commandError(stderr, "maintain semantic database", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	return ExitOK
+}
+
+func runReflect(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var eventJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--event":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--event requires a JSON object")
+			}
+			if eventJSON != "" {
+				return usageError(stderr, "--event may only be specified once")
+			}
+			eventJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown reflect option: %q", args[index]))
+		}
+	}
+	if eventJSON == "" {
+		return usageError(stderr, "reflect requires --event JSON")
+	}
+	var event conversation.Event
+	decoder := json.NewDecoder(bytes.NewBufferString(eventJSON))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--event must be one strict Conversation Event JSON object")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	reflectEvent := dependencies.Reflect
+	if reflectEvent == nil {
+		reflectEvent = daemon.Reflect
+	}
+	receipt, err := reflectEvent(context.Background(), dataDir, event)
+	if err != nil {
+		return commandError(stderr, "reflect conversation event", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if receipt.Status == conversation.StatusNeedsContext {
+		return ExitFailure
+	}
+	return ExitOK
+}
+
+func runSchema(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var planJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--plan":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--plan requires a JSON object")
+			}
+			if planJSON != "" {
+				return usageError(stderr, "--plan may only be specified once")
+			}
+			planJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown schema option: %q", args[index]))
+		}
+	}
+	if planJSON == "" {
+		return usageError(stderr, "schema requires --plan JSON")
+	}
+	var plan skillschema.Plan
+	decoder := json.NewDecoder(bytes.NewBufferString(planJSON))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&plan); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--plan must be one strict Schema Plan JSON object")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	execute := dependencies.ExecuteMSQL
+	if execute == nil {
+		execute = daemon.Execute
+	}
+	tool := skillschema.ToolFunc(func(ctx context.Context, call skillschema.Call) (result.Envelope, error) {
+		return execute(ctx, dataDir, call.Request.Source, call.Request.Statements)
+	})
+	report, err := skillschema.New(tool).Run(context.Background(), plan)
+	if err != nil {
+		if report.Receipt.Version != "" {
+			if encodeErr := json.NewEncoder(stdout).Encode(report.Receipt); encodeErr != nil {
+				return writeFailure(stderr, encodeErr)
+			}
+		}
+		return commandError(stderr, "execute Schema Plan", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(report.Receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if !report.Receipt.Verified {
+		return ExitFailure
 	}
 	return ExitOK
 }
@@ -310,6 +901,68 @@ func serveAdmin(
 		return errors.Join(err, closeErr, waitErr)
 	}
 	return gateway.Wait()
+}
+
+func runMutate(
+	args []string,
+	stdout, stderr io.Writer,
+	dependencies Dependencies,
+) int {
+	var daemonArgs []string
+	var planJSON string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--data-dir":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--data-dir requires a path")
+			}
+			daemonArgs = append(daemonArgs, args[index], args[index+1])
+			index++
+		case "--plan":
+			if index+1 >= len(args) {
+				return usageError(stderr, "--plan requires a JSON object")
+			}
+			if planJSON != "" {
+				return usageError(stderr, "--plan may only be specified once")
+			}
+			planJSON = args[index+1]
+			index++
+		default:
+			return usageError(stderr, fmt.Sprintf("unknown mutate option: %q", args[index]))
+		}
+	}
+	if planJSON == "" {
+		return usageError(stderr, "mutate requires --plan JSON")
+	}
+	var plan skillwrite.Plan
+	decoder := json.NewDecoder(bytes.NewBufferString(planJSON))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(&plan); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return usageError(stderr, "--plan must be one strict Mutation Plan JSON object")
+	}
+	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
+	if code != ExitOK {
+		return code
+	}
+	execute := dependencies.ExecuteMSQL
+	if execute == nil {
+		execute = daemon.Execute
+	}
+	tool := skillwrite.ToolFunc(func(ctx context.Context, call skillwrite.Call) (result.Envelope, error) {
+		return execute(ctx, dataDir, call.Request.Source, call.Request.Statements)
+	})
+	report, err := skillwrite.New(tool).Run(context.Background(), plan)
+	if err != nil {
+		return commandError(stderr, "execute Mutation Plan", err)
+	}
+	if err := json.NewEncoder(stdout).Encode(report.Receipt); err != nil {
+		return writeFailure(stderr, err)
+	}
+	if report.Receipt.Status == skillwrite.ReceiptCommittedUnverified {
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func runDoctor(

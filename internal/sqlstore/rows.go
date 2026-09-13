@@ -1,4 +1,4 @@
-package store
+package sqlstore
 
 import (
 	"context"
@@ -221,6 +221,7 @@ func dedupe(values []string) []string {
 // ---- the operations, on a transaction ----
 
 func (t *tx) insert(ctx context.Context, databaseName, tableName string, values map[string]any, options row.WriteOptions) (row.Row, error) {
+	t.claimAttribution(metadataFrom(options.Metadata))
 	table, err := t.liveTable(ctx, databaseName, tableName)
 	if err != nil {
 		return row.Row{}, err
@@ -341,6 +342,7 @@ func (t *tx) advance(ctx context.Context, table catalog.Table, value *storedRow)
 }
 
 func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID string, changes map[string]any, options row.WriteOptions) (row.Row, error) {
+	t.claimAttribution(metadataFrom(options.Metadata))
 	table, value, err := t.liveRowForWrite(ctx, databaseName, tableName, rowID, options.ExpectedRevision)
 	if err != nil {
 		return row.Row{}, err
