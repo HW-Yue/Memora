@@ -317,10 +317,10 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
 
 **规格已编写**：[三份日志](./three-logs-v1.md)（4 阶段）。以下是待做的差距。
 
-8. **binlog 不存在**。`redo/`、`undo/`、`binlog/` 三个目录每个实例都建、
-   **从来没人往里写**（`instance/instance.go:39-41`）；真正在用的 redo WAL
-   住在 generation 目录里，与那个 `redo/` 无关。
-   今天扮演恢复依据的是记录文件 `database.memora`；
+8. **binlog ✅ 已补上**（E6 阶段 1–2）。`internal/binlog` 挂在记录存储的提交
+   点上，一笔事务一帧，保留期 30 天；2026-09-13 端到端验通了它和全量备份
+   接起来的灾难恢复链，见[灾难恢复链](./disaster-recovery-v1.md)。
+   仍然是差距的是 `undo/`：目录建了、没人往里写；
 9. **redolog 没有独立的 prepare 阶段**。当前只有单个 commit record + digest
    （`store/wal/transaction.go`），规范要求 `prepare` → binlog 写成功 → `commit`。
    注意顺序：两阶段标记的用途是判断「binlog 写完没有」，
