@@ -11,12 +11,12 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
-	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
 func TestHealthReportIsDeterministicAndNeverAutoMutatesSemanticIssues(t *testing.T) {
 	t.Parallel()
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "health.memora"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "health.memora"))
 	if err != nil {
 		t.Fatal(err)
 	}

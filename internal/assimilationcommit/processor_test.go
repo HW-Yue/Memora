@@ -11,14 +11,14 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
-	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
 
 func TestProcessorExecutesOneAtomicMSQLStatementPersistsRedactedReceiptAndReplays(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	database, err := nativekvstore.Open(t.TempDir() + "/assimilation.db")
+	database, err := sqlstore.OpenKV(t.TempDir() + "/assimilation.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestProcessorExecutesOneAtomicMSQLStatementPersistsRedactedReceiptAndReplay
 func TestProcessorKeepsMultipleStatementsInsideExplicitTransaction(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	database, err := nativekvstore.Open(t.TempDir() + "/assimilation.db")
+	database, err := sqlstore.OpenKV(t.TempDir() + "/assimilation.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestProcessorKeepsMultipleStatementsInsideExplicitTransaction(t *testing.T)
 func TestProcessorMarksTransportUncertaintyInDoubtWithoutBlindReplay(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	database, err := nativekvstore.Open(t.TempDir() + "/assimilation.db")
+	database, err := sqlstore.OpenKV(t.TempDir() + "/assimilation.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestProcessorMarksTransportUncertaintyInDoubtWithoutBlindReplay(t *testing.
 func TestProcessorKnownRollbackReleasesReservationForGuardedRetry(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	database, err := nativekvstore.Open(t.TempDir() + "/assimilation.db")
+	database, err := sqlstore.OpenKV(t.TempDir() + "/assimilation.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestProcessorKnownRollbackReleasesReservationForGuardedRetry(t *testing.T) 
 func TestProcessorConcurrentSubmissionHasOneDispatch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	database, err := nativekvstore.Open(t.TempDir() + "/assimilation.db")
+	database, err := sqlstore.OpenKV(t.TempDir() + "/assimilation.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestProcessorConcurrentSubmissionHasOneDispatch(t *testing.T) {
 func TestProcessorRejectsCorruptPersistedReceipt(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	database, err := nativekvstore.Open(t.TempDir() + "/assimilation.db")
+	database, err := sqlstore.OpenKV(t.TempDir() + "/assimilation.db")
 	if err != nil {
 		t.Fatal(err)
 	}

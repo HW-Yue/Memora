@@ -13,13 +13,13 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/semantichealth"
-	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
 func TestRouteHealthFindsOnlyDeterministicStructuralDebtAndIsOrderIndependent(t *testing.T) {
 	t.Parallel()
 
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "route-health.memora"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "route-health.memora"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestRouteHealthFindsOnlyDeterministicStructuralDebtAndIsOrderIndependent(t 
 func TestTruncatedRowsSuppressAbsenceBasedMembershipFindings(t *testing.T) {
 	t.Parallel()
 
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "truncated-health.memora"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "truncated-health.memora"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestTruncatedRowsSuppressAbsenceBasedMembershipFindings(t *testing.T) {
 func TestOrphanMountIsFoundOnTheLeafField(t *testing.T) {
 	t.Parallel()
 
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "orphan-health.memora"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "orphan-health.memora"))
 	if err != nil {
 		t.Fatal(err)
 	}

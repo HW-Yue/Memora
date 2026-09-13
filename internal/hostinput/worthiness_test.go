@@ -13,13 +13,13 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/skillwrite"
 	"github.com/HW-Yue/Memora/internal/store"
-	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
 func TestWorthinessDecisionFinalizesPendingAndReplaysAcrossReopen(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "host-input.db")
-	database, err := nativekvstore.Open(path)
+	database, err := sqlstore.OpenKV(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestWorthinessDecisionFinalizesPendingAndReplaysAcrossReopen(t *testing.T) 
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := nativekvstore.Open(path)
+	reopened, err := sqlstore.OpenKV(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestWorthinessDecisionFinalizesPendingAndReplaysAcrossReopen(t *testing.T) 
 
 func TestWorthinessDecisionRejectsMismatchedBindingAndUnverifiedMutation(t *testing.T) {
 	t.Parallel()
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestWorthinessWriteAndReviseRequireMatchingCommittedChange(t *testing.T) {
 	for _, verdict := range []hostinput.WorthinessVerdict{hostinput.VerdictWrite, hostinput.VerdictRevise} {
 		verdict := verdict
 		t.Run(string(verdict), func(t *testing.T) {
-			database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+			database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -113,7 +113,7 @@ func TestWorthinessWriteAndReviseRequireMatchingCommittedChange(t *testing.T) {
 			}
 		})
 	}
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "mismatch.db"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "mismatch.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestWorthinessWriteAndReviseRequireMatchingCommittedChange(t *testing.T) {
 
 func TestWorthinessDecisionIdentityAndWorkspaceStayIsolated(t *testing.T) {
 	t.Parallel()
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestWorthinessDecisionIdentityAndWorkspaceStayIsolated(t *testing.T) {
 
 func TestConcurrentIdenticalWorthinessDecisionCommitsOneResult(t *testing.T) {
 	t.Parallel()
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestConcurrentIdenticalWorthinessDecisionCommitsOneResult(t *testing.T) {
 
 func TestWorthinessCommitFaultLeavesPendingAndNoDecision(t *testing.T) {
 	t.Parallel()
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestWorthinessCommitFaultLeavesPendingAndNoDecision(t *testing.T) {
 
 func TestCorruptWorthinessDecisionFailsClosed(t *testing.T) {
 	t.Parallel()
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

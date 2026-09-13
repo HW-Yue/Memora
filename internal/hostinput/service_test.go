@@ -11,13 +11,13 @@ import (
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/hostinput"
 	"github.com/HW-Yue/Memora/internal/result"
-	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
 func TestCaptureReturnsStableNonEchoingReceiptAndReplaysAcrossReopen(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "host-input.db")
-	store, err := nativekvstore.Open(path)
+	store, err := sqlstore.OpenKV(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestCaptureReturnsStableNonEchoingReceiptAndReplaysAcrossReopen(t *testing.
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := nativekvstore.Open(path)
+	reopened, err := sqlstore.OpenKV(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestCaptureReturnsStableNonEchoingReceiptAndReplaysAcrossReopen(t *testing.
 
 func TestConcurrentIdenticalCaptureCommitsOneStableRecord(t *testing.T) {
 	t.Parallel()
-	store, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+	store, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestConcurrentIdenticalCaptureCommitsOneStableRecord(t *testing.T) {
 
 func TestCaptureRejectsIdentityReuseInvalidSourcesAndWorkspaceLeak(t *testing.T) {
 	t.Parallel()
-	store, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+	store, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestCaptureRejectsIdentityReuseInvalidSourcesAndWorkspaceLeak(t *testing.T)
 
 func TestCaptureCanonicalizesScopeAndEnforcesPendingCapacity(t *testing.T) {
 	t.Parallel()
-	store, err := nativekvstore.Open(filepath.Join(t.TempDir(), "host-input.db"))
+	store, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "host-input.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

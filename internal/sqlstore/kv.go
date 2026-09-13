@@ -148,3 +148,19 @@ func (tx *kvTx) Rollback() error {
 	defer tx.release()
 	return tx.sql.Rollback()
 }
+
+// OwnedKV is a KV store that owns its database and closes it.
+type OwnedKV struct {
+	*KV
+}
+
+func (kv *OwnedKV) Close() error { return kv.db.Close() }
+
+// OpenKV opens a standalone database file used only as a key-value store.
+func OpenKV(path string) (*OwnedKV, error) {
+	db, err := Open(path, Options{})
+	if err != nil {
+		return nil, err
+	}
+	return &OwnedKV{KV: db.KV("default")}, nil
+}

@@ -10,14 +10,14 @@ import (
 	"github.com/HW-Yue/Memora/internal/assimilation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/store"
-	nativekvstore "github.com/HW-Yue/Memora/internal/store/nativekv"
+	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
 func TestStructuredInventoryMergesDuplicateWindowsAndBlocksIncompleteFinish(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "coverage.db"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "coverage.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestCheckpointAndUnreadRangesRecoverAcrossRestart(t *testing.T) {
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "resume.db")
-	database, err := nativekvstore.Open(path)
+	database, err := sqlstore.OpenKV(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestCheckpointAndUnreadRangesRecoverAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopened, err := nativekvstore.Open(path)
+	reopened, err := sqlstore.OpenKV(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestInventoryValidationAndExplicitClear(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	database, err := nativekvstore.Open(filepath.Join(t.TempDir(), "validation.db"))
+	database, err := sqlstore.OpenKV(filepath.Join(t.TempDir(), "validation.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
