@@ -84,5 +84,6 @@ Agent 改语义树 → 内部生成参数化 SQL，在一个事务内改 `notes_
 3. history 切到 history 表，删除版本树、`history:` 树与 MVCC 可见性代码；
 4. Relation、change log、Configuration 依次表化，objects 树与 change 树退役；
 5. 全文索引归属另行决定。
+6. 引擎支持大行跨页存储（Overflow Page），是[双向链接](../product/row-links.md)不设上限的前提。
 
 第 2 步不依赖第 3 步，可以最先开工。
