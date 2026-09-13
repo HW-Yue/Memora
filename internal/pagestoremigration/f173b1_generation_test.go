@@ -2,17 +2,12 @@ package pagestoremigration
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
-	"github.com/HW-Yue/Memora/internal/catalogfulltext"
 	"github.com/HW-Yue/Memora/internal/fulltext"
 	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/router"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
-	"github.com/HW-Yue/Memora/internal/store/treecontrol"
-	"github.com/HW-Yue/Memora/internal/store/wal"
 )
 
 func TestGenerationV3SeedIncludesCatalogRouteAndRowDocuments(t *testing.T) {
@@ -55,77 +50,25 @@ func TestGenerationV3SeedIncludesCatalogRouteAndRowDocuments(t *testing.T) {
 	}
 }
 
-func TestV2AuthorityIncrementallyReconcilesRouteAndDeletedTombstone(t *testing.T) {
-	ctx := context.Background()
-	directory, file, authority := newAuthorityFixture(t)
-	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
-	if err := authority.Close(); err != nil {
-		t.Fatal(err)
-	}
-	routes := nativerouter.New(file)
-	root, leaf := createDirectRouteFixture(t, routes, table.DatabaseID, table.ID)
-	plan := currentPlan(t, file)
-	replaceWithCatalogRowV2Generation(t, directory, plan)
-
-	reopened, err := OpenAuthority(ctx, file, directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reopened.marker.Epoch != 0 {
-		t.Fatalf("revision-one Route unexpectedly forced COW: %+v", reopened.marker)
-	}
-	assertCatalogPosting(t, reopened.Generation(), "architecture", fulltext.KindRoute, leaf.ID, 1)
-	if err := reopened.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	leaf.Revision, leaf.Deleted = 2, true
-	transaction, err := file.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := routes.StageNode(transaction, leaf); err != nil {
-		_ = transaction.Rollback()
-		t.Fatal(err)
-	}
-	if err := transaction.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err = OpenAuthority(ctx, file, directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
-	if postings, err := reopened.Generation().Fulltext().Postings("architecture"); err != nil || len(postings) != 0 {
-		t.Fatalf("deleted Route postings = %#v, %v", postings, err)
-	}
-	objects, err := reopened.Generation().Fulltext().Objects()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, object := range objects {
-		if object.Kind == fulltext.KindRoute && object.ObjectID == leaf.ID {
-			if object.State != fulltext.StateDeleted || object.Revision != 2 {
-				t.Fatalf("Route tombstone = %#v", object)
-			}
-			return
-		}
-	}
-	t.Fatalf("Route tombstone is missing; root=%s", root.ID)
-}
-
+// TestRoutesWrittenAroundTheAuthorityAreNotAbsorbed replaces two tests:
+// TestV2AuthorityIncrementallyReconcilesRouteAndDeletedTombstone and
 // TestAuthorityAbsorbsARouteFirstSeenAtALaterRevision.
 //
-// The generation holds no Route documents at all while the Router's leaf is
-// already at revision 2. The Fulltext index used to demand that the first
-// document it ever saw for an object be revision 1, so this looked like
-// corruption and forced a whole-generation COW rebuild.
+// Both wrote Routes straight to the record log and asserted that opening the
+// Authority pulled them into the generation — one incrementally, one several
+// revisions in. That was the reconcile pass, and it was right while the record
+// log was the authority.
 //
-// It is not corruption. The index is derived and follows the change log, so
-// meeting an object for the first time several revisions in is ordinary lag —
-// index it where it is. Rebuilding a generation to absorb one late Route is the
-// heavy machinery an ordinary update covers.
-func TestAuthorityAbsorbsARouteFirstSeenAtALaterRevision(t *testing.T) {
+// E8 stage 1 removed it, because the same pass that pulls a Route in is the one
+// that pushes a Tree back to an archive which is now allowed to be behind. A
+// Route that never reached a Tree is not a Route the Database has, and opening
+// it again does not change that.
+//
+// What is still worth pinning is what the two old tests were really guarding:
+// the open does not rebuild the generation over it either. Ignoring a stray
+// record is cheap; rebuilding a generation to absorb one is the heavy machinery
+// this stage exists to delete.
+func TestRoutesWrittenAroundTheAuthorityAreNotAbsorbed(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	_, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
@@ -134,30 +77,24 @@ func TestAuthorityAbsorbsARouteFirstSeenAtALaterRevision(t *testing.T) {
 	}
 	routes := nativerouter.New(file)
 	_, leaf := createDirectRouteFixture(t, routes, table.DatabaseID, table.ID)
-	leaf.Revision, leaf.Synopsis = 2, "Gap recovered synopsis"
-	transaction, err := file.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := routes.StageNode(transaction, leaf); err != nil {
-		_ = transaction.Rollback()
-		t.Fatal(err)
-	}
-	if err := transaction.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	plan := currentPlan(t, file)
-	replaceWithCatalogRowV2Generation(t, directory, plan)
 
 	reopened, err := OpenAuthority(ctx, file, directory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
 	if reopened.marker.Epoch != 0 || reopened.marker.Generation != GenerationDirectory {
-		t.Fatalf("a late Route forced a rebuild: %+v", reopened.marker)
+		t.Fatalf("a record-log Route forced a generation rebuild: %+v", reopened.marker)
 	}
-	assertCatalogPosting(t, reopened.Generation(), "recovered", fulltext.KindRoute, leaf.ID, 2)
+	if postings, err := reopened.Generation().Fulltext().Postings("architecture"); err != nil ||
+		len(postings) != 0 {
+		t.Fatalf("record-log Route postings = %#v, %v, want none", postings, err)
+	}
+	if _, err := reopened.RouteObjects().Get(nativerouter.ObjectKind, leaf.ID); err == nil {
+		t.Fatal("a Route that never reached a Tree was absorbed into the objects Tree")
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func createDirectRouteFixture(
@@ -188,74 +125,4 @@ func currentPlan(t *testing.T, file *nativestore.File) Plan {
 		t.Fatal(err)
 	}
 	return plan
-}
-
-func replaceWithCatalogRowV2Generation(t *testing.T, directory string, plan Plan) {
-	t.Helper()
-	if err := os.RemoveAll(filepath.Join(directory, GenerationDirectory)); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(directory, AuthorityMarkerFilename)); err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(directory, GenerationDirectory)
-	if err := os.Mkdir(target, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	capacity, err := migrationCapacity(plan)
-	if err != nil {
-		t.Fatal(err)
-	}
-	catalogDocuments, err := catalogfulltext.Project(plan.Catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rowValues, err := rowDocuments(plan)
-	if err != nil {
-		t.Fatal(err)
-	}
-	documents := append(catalogDocuments, rowValues...)
-	// Current format, one shared redo log. What makes this generation look
-	// pre-F173b is the missing Route documents, not the log layout — a per-Tree
-	// log would be upgraded by COW on open and hide the incremental reconcile
-	// this fixture exists to exercise.
-	manifest := generationManifest{
-		Version: generationVersion, PlanVersion: PlanVersion,
-		PlanDigest: plan.Digest, SourceFingerprint: plan.SourceFingerprint,
-		Trees: make([]treeManifest, len(expectedTrees)),
-	}
-	log, err := wal.CreateSegmentSet(filepath.Join(target, sharedWALDirectory), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for index, specification := range expectedTrees {
-		var state treecontrol.State
-		if specification.Kind == "fulltext" {
-			state = buildRowOnlyFulltextTree(t, target, specification, capacity, documents, log)
-		} else {
-			state, err = buildTree(target, specification, capacity, plan, log)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		specification.State = treeStateFromRuntime(state)
-		manifest.Trees[index] = specification
-	}
-	if err := log.Close(); err != nil {
-		t.Fatal(err)
-	}
-	manifest.ContentDigest, err = contentDigest(target, manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := writeManifest(target, manifest); err != nil {
-		t.Fatal(err)
-	}
-	marker, err := newAuthorityMarker(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := writeAuthorityMarker(directory, marker); err != nil {
-		t.Fatal(err)
-	}
 }

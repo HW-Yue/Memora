@@ -20,17 +20,13 @@ import (
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativechange"
-	"github.com/HW-Yue/Memora/internal/nativerouter"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/relation"
-	"github.com/HW-Yue/Memora/internal/routefulltext"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/rowid"
-	"github.com/HW-Yue/Memora/internal/store/catalogindex"
 	"github.com/HW-Yue/Memora/internal/store/changeindex"
 	"github.com/HW-Yue/Memora/internal/store/currentrowindex"
-	"github.com/HW-Yue/Memora/internal/store/fulltextindex"
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 	"github.com/HW-Yue/Memora/internal/store/objectindex"
 	"github.com/HW-Yue/Memora/internal/store/objectlock"
@@ -39,15 +35,6 @@ import (
 )
 
 var ErrAuthorityPoisoned = errors.New("Page Store authority requires reopen recovery")
-
-// errGenerationRebuildRequired marks a reconcile that cannot bring the
-// generation forward in place.
-//
-// Every Tree in a generation is derived from the authoritative native store, so
-// a Tree that has drifted beyond what an incremental reconcile can apply is not
-// corruption — it is a follower too far behind to step. Rebuilding by COW is
-// the general answer, and it keeps the old generation as a rollback point.
-var errGenerationRebuildRequired = errors.New("generation requires COW rebuild")
 
 type authorityPhase string
 
@@ -98,12 +85,18 @@ type Authority struct {
 	// maintenance error it never blocks a write, and the read-time trigger
 	// retries, but it must not vanish silently.
 	fulltextCatchUpErr error
-	changeCatchUpErr   error
-	closed             bool
-	writeGate          chan struct{}
-	locks              *objectlock.Manager
-	nextOwner          atomic.Uint64
-	checkpoint         func(authorityPhase) error
+	// archiveErr holds the last record log commit mark that could not be
+	// written after the Trees had already committed. The write happened — the
+	// Trees are the Database — so this cannot fail it, and it cannot fence the
+	// Database either: what is behind is the archive, and the binlog already
+	// holds the frame. It must not vanish, so ArchiveError exposes it.
+	archiveErr       error
+	changeCatchUpErr error
+	closed           bool
+	writeGate        chan struct{}
+	locks            *objectlock.Manager
+	nextOwner        atomic.Uint64
+	checkpoint       func(authorityPhase) error
 }
 
 func OpenAuthority(
@@ -176,26 +169,26 @@ func OpenAuthority(
 	}
 	authority.catalog.Store(catalogReader)
 	authority.writeGate <- struct{}{}
+	// E8 stage 1 removed the reconcile pass that used to run here.
+	//
+	// It re-read the whole record log on every open and pushed the Trees back
+	// to whatever it said. That was right while the record log was the
+	// authority: publications committed it first, so a fault could leave the
+	// Trees a revision behind, and this is where they caught up. It is wrong
+	// now, and actively harmful — the Trees commit first, so a Tree ahead of
+	// the record log is the normal outcome of a fault, and pushing them back to
+	// the archive would discard a committed write. See
+	// docs/storage/record-index-and-authority-v1.md §5.
+	//
 	// A generation missing a Tree, holding one redo log per Tree, or keeping
-	// every Table's current Rows in one shared Tree, or no objects Tree, has to
-	// be rebuilt whatever its contents say — the second cannot publish
+	// every Table's current Rows in one shared Tree, or no objects Tree, still
+	// has to be replaced whatever its contents say — the second cannot publish
 	// atomically across Trees, the third is the layout v5 replaced, and the
 	// fourth leaves every Route and Relation with no index but the record
-	// file's resident map. Decide that BEFORE reconciling: the
-	// COW upgrade's value is that it leaves the old generation untouched as a
-	// rollback point, and reconciling one that is about to be discarded writes
-	// to it for nothing.
-	replace := authority.generation.fulltext == nil || authority.generation.log == nil ||
+	// file's resident map.
+	if authority.generation.fulltext == nil || authority.generation.log == nil ||
 		!authority.generation.manifest.perTableRows() ||
-		!authority.generation.manifest.physicalObjectIndex()
-	if !replace {
-		reconcileErr := authority.reconcile(ctx)
-		if reconcileErr != nil && !errors.Is(reconcileErr, errGenerationRebuildRequired) {
-			return nil, errors.Join(reconcileErr, generation.Close(), changeTree.Close())
-		}
-		replace = reconcileErr != nil
-	}
-	if replace {
+		!authority.generation.manifest.physicalObjectIndex() {
 		if _, err := authority.ReplaceGeneration(ctx); err != nil {
 			return nil, errors.Join(err, authority.Close())
 		}
@@ -609,8 +602,24 @@ func (authority *Authority) AsOfCommit(
 	return authority.rows.AsOfCommit(ctx, table, rowID, sequence, snapshot)
 }
 
+// PublishMutation writes one mutation to the Trees and the record log.
+//
+// The Trees decide. The record log is prepared first — its records and the
+// binlog frame go down, and nothing yet claims they happened — then the Trees
+// commit as one WAL transaction, and only then does the log write its commit
+// mark. That order is what E8 means by clustered promotion: the Trees plus the
+// redo log are the Database, and the record log is the archive beside it
+// (docs/storage/record-index-and-authority-v1.md §5).
+//
+// It buys an outcome where there used to be a question. Committing the record
+// log first made it the authority, so a Tree failure after it left a write that
+// had happened in one store and not the other — reported as ErrOutcomeUnknown,
+// the Database fenced, and repaired on the next open by re-reading the record
+// log. Now a Tree failure is a failed write: the Trees commit atomically or not
+// at all, the prepared records are discarded by the next open, and the caller
+// gets an error rather than a Database it has to ask about.
 func (authority *Authority) PublishMutation(
-	ctx context.Context, mutation nativerow.Mutation, commit func() error,
+	ctx context.Context, mutation nativerow.Mutation, commit nativerow.Publication,
 ) error {
 	if authority == nil || ctx == nil || mutation.Empty() || commit == nil {
 		return fmt.Errorf("%w: Row/Route/Relation publication", ErrInvalid)
@@ -636,17 +645,21 @@ func (authority *Authority) PublishMutation(
 	if _, err := projectRouteChangeDocuments(databases, routes); err != nil {
 		return err
 	}
-	if err := commit(); err != nil {
+	if err := commit.Prepare(); err != nil {
 		return err
 	}
+	// From here to the Tree commit, every way out is a failed write: the
+	// prepared records carry no commit mark, so the next open discards them and
+	// the Database is exactly what it was. Nothing is fenced and nothing is
+	// left to reconcile.
 	if len(rows) != 0 {
 		if err := authority.checkpointPhase(phaseRowBodyCommitted); err != nil {
-			return authority.poisonPublication("Row/Route body", affected, err)
+			return err
 		}
 	}
 	if len(routes) != 0 {
 		if err := authority.checkpointPhase(phaseRouteBodyCommitted); err != nil {
-			return authority.poisonPublication("Row/Route body", affected, err)
+			return err
 		}
 	}
 	versions, err := clusteredVersions(databases, rows)
@@ -690,11 +703,11 @@ func (authority *Authority) PublishMutation(
 	// the group cannot release until the commit it is still being built for.
 	objectRecords, err := routeObjectUpdates(routes)
 	if err != nil {
-		return authority.poisonPublication("Row/Route body", affected, err)
+		return err
 	}
 	relationRecords, err := nativerow.RelationObjectUpdates(relations)
 	if err != nil {
-		return authority.poisonPublication("Row/Route body", affected, err)
+		return err
 	}
 	objectRecords = append(objectRecords, relationRecords...)
 	transactionID, err := authority.nextGroupTransactionID()
@@ -753,24 +766,43 @@ func (authority *Authority) PublishMutation(
 			return nil
 		})
 	}
-	// The phases now all fire after the single commit. They no longer mark
-	// points a publication could be torn at — there is only one — but they stay
-	// as fault-injection seams, and the tests use them to prove exactly that:
-	// a fault at any of them leaves the three Trees agreeing.
-	if err == nil && len(rows) != 0 {
-		err = authority.checkpointPhase(phaseRowVersionPublished)
-	}
-	if err == nil && len(rows) != 0 {
-		err = authority.checkpointPhase(phaseRowFulltextPublished)
-	}
-	if err == nil && len(routes) != 0 {
-		err = authority.checkpointPhase(phaseRouteFulltextPublished)
-	}
-	if err == nil && len(rows) != 0 {
-		err = authority.checkpointPhase(phaseRowCurrentPublished)
-	}
 	if err != nil {
-		return authority.poisonPublication("Row/Route body", affected, err)
+		return err
+	}
+	// Past this line the write has happened: the group commit is the point, and
+	// it returned. Everything below is the archive and the derived indexes
+	// catching up to a fact that is already durable, so nothing below may turn
+	// a committed write into a reported failure.
+	//
+	// The phases stay as fault-injection seams, and they now model exactly
+	// that: a process that stops here has committed the Row and left the
+	// archive a transaction behind. The tests assert the Database reads the new
+	// revision anyway, because the Trees are the Database.
+	var stopped error
+	for _, phase := range []struct {
+		name  authorityPhase
+		fires bool
+	}{
+		{phaseRowVersionPublished, len(rows) != 0},
+		{phaseRowFulltextPublished, len(rows) != 0},
+		{phaseRouteFulltextPublished, len(routes) != 0},
+		{phaseRowCurrentPublished, len(rows) != 0},
+	} {
+		if stopped != nil || !phase.fires {
+			continue
+		}
+		stopped = authority.checkpointPhase(phase.name)
+	}
+	if stopped != nil {
+		authority.archiveErr = stopped
+		return nil
+	}
+	// The archive's mark. A failure here leaves the record log a transaction
+	// behind the Database — an archive gap, not a lost write — and is reported
+	// without taking the Database's writability with it.
+	if err := commit.Complete(); err != nil {
+		authority.archiveErr = err
+		return nil
 	}
 	// The change index first: the Fulltext catch-up reads how far the change log
 	// goes from that index, so catching Fulltext up before it would have it work
@@ -799,6 +831,22 @@ func (authority *Authority) RedoMaintenanceError() error {
 	authority.mu.RLock()
 	defer authority.mu.RUnlock()
 	return authority.redoMaintenanceErr
+}
+
+// ArchiveError reports the last record log commit mark that could not follow a
+// Tree commit.
+//
+// It is not a failed write. The Trees committed, so the Database holds the
+// change; what is a transaction short is the archive beside it. Reported rather
+// than swallowed because an archive that silently stops tracking the Database
+// is the kind of thing only noticed when it is needed.
+func (authority *Authority) ArchiveError() error {
+	if authority == nil {
+		return nil
+	}
+	authority.mu.RLock()
+	defer authority.mu.RUnlock()
+	return authority.archiveErr
 }
 
 func (authority *Authority) maintainRedoLog() {
@@ -851,8 +899,13 @@ func (authority *Authority) DescribeTable(
 	return authority.catalog.Load().DescribeTable(ctx, databaseName, tableName)
 }
 
+// PublishCatalog writes one Catalog transition to the Trees and the record log.
+//
+// Same order, same reason as PublishMutation: the record log is prepared, the
+// Catalog and objects Trees commit as one WAL transaction, and the mark
+// follows. The Trees decide.
 func (authority *Authority) PublishCatalog(
-	ctx context.Context, databases []catalog.Database, commit func() error,
+	ctx context.Context, databases []catalog.Database, commit nativecatalog.Publication,
 ) error {
 	if authority == nil || ctx == nil || commit == nil {
 		return fmt.Errorf("%w: Catalog publication", ErrInvalid)
@@ -880,11 +933,13 @@ func (authority *Authority) PublishCatalog(
 	if _, err := catalogTransitionDocuments(current, databases); err != nil {
 		return err
 	}
-	if err := commit(); err != nil {
+	if err := commit.Prepare(); err != nil {
 		return err
 	}
+	// Everything from here to the Tree commit is a failed write: the prepared
+	// records carry no commit mark, so the next open discards them.
 	if err := authority.checkpointPhase(phaseCatalogBodyCommitted); err != nil {
-		return authority.poisonPublication("Catalog body", affected, err)
+		return err
 	}
 	// One WAL transaction for the Catalog Tree and the Fulltext Tree, for the
 	// same reason as a Row publication: two commits could tear between them.
@@ -898,7 +953,7 @@ func (authority *Authority) PublishCatalog(
 	}
 	catalogRecords, err := nativecatalog.ObjectRecords(databases)
 	if err != nil {
-		return authority.poisonPublication("Catalog body", affected, err)
+		return err
 	}
 	transactionID, err := authority.nextGroupTransactionID()
 	if err == nil {
@@ -920,14 +975,26 @@ func (authority *Authority) PublishCatalog(
 			)
 		})
 	}
-	if err == nil {
-		err = authority.checkpointPhase(phaseCatalogPublished)
-	}
-	if err == nil {
-		err = authority.checkpointPhase(phaseCatalogFulltextPublished)
-	}
 	if err != nil {
-		return authority.poisonPublication("Catalog body", affected, err)
+		return err
+	}
+	// Past this line the transition has happened. The phases below model a
+	// process that stops after the Trees committed and before the archive
+	// caught up, so they record the gap rather than failing a durable write.
+	var stopped error
+	for _, phase := range []authorityPhase{phaseCatalogPublished, phaseCatalogFulltextPublished} {
+		if stopped == nil {
+			stopped = authority.checkpointPhase(phase)
+		}
+	}
+	if stopped == nil {
+		if err := commit.Complete(); err != nil {
+			stopped = err
+		}
+	}
+	if stopped != nil {
+		authority.archiveErr = stopped
+		return nil
 	}
 	// A Table's Tree is created with the Table. Doing it after the Catalog is
 	// published means the Tree set is derived from a Catalog that is already
@@ -937,6 +1004,7 @@ func (authority *Authority) PublishCatalog(
 	if err := authority.generation.EnsureTableTrees(catalogTableIDs(databases)); err != nil {
 		return authority.poisonPublication("Catalog Table Trees", affected, err)
 	}
+	_ = affected
 	// The change index first: the Fulltext catch-up reads how far the change log
 	// goes from that index, so catching Fulltext up before it would have it work
 	// from a high-water one publication behind.
@@ -1238,223 +1306,6 @@ func (authority *Authority) Generation() *Generation {
 	return authority.generation
 }
 
-func (authority *Authority) reconcile(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	plan, err := authority.reader.Build(ctx)
-	if err != nil {
-		return err
-	}
-	for _, step := range []func(Plan) error{
-		authority.replaceCatalog,
-		authority.reconcileRoutes,
-		authority.reconcileRelations,
-		authority.appendVersions,
-		authority.reconcileFulltext,
-		authority.advanceCurrent,
-	} {
-		if err := step(plan); err != nil {
-			return rebuildOnConflict(err)
-		}
-	}
-	return nil
-}
-
-// rebuildOnConflict turns a Tree's "that transition does not follow from what I
-// hold" into the signal to rebuild the generation.
-//
-// A conflict here is not a damaged Tree. It means the generation drifted
-// further from the authoritative store than a step-by-step reconcile can cover
-// — a Row updated twice while this generation was not the Authority, say. The
-// data to rebuild from is all still there.
-func rebuildOnConflict(err error) error {
-	if err == nil || errors.Is(err, errGenerationRebuildRequired) {
-		return err
-	}
-	if errors.Is(err, currentrowindex.ErrConflict) ||
-		errors.Is(err, rowversionindex.ErrConflict) ||
-		errors.Is(err, catalogindex.ErrConflict) ||
-		errors.Is(err, fulltextindex.ErrConflict) {
-		return fmt.Errorf("%w: %v", errGenerationRebuildRequired, err)
-	}
-	return err
-}
-
-// replaceCatalog brings both halves of the Catalog back to what the record log
-// says: the Locators in the Catalog Tree and the bodies in the objects Tree.
-//
-// Both, in one WAL transaction, because that is the invariant the reader
-// depends on — a Locator naming an object the objects Tree does not hold is
-// corruption, not a race. Reconciling only the Locators is how a publication
-// faulted between its record commit and its Tree commit would come back as a
-// Catalog Tree pointing at bodies that were never written.
-func (authority *Authority) replaceCatalog(plan Plan) error {
-	records, err := nativecatalog.ObjectRecords(plan.Catalog)
-	if err != nil {
-		return err
-	}
-	id, err := authority.nextTransactionID("catalog")
-	if err != nil {
-		return err
-	}
-	return treecommit.CommitGroupFunc(id, func(group *treecommit.Group) error {
-		if err := authority.generation.catalog.StageReplace(group, plan.Catalog); err != nil {
-			return err
-		}
-		return authority.generation.objects.StageReplaceKinds(
-			group, nativecatalog.ObjectKinds, records,
-		)
-	})
-}
-
-// reconcileRoutes brings the objects Tree's Routes back to what the record log
-// says.
-//
-// A Route publication commits its record first and its Tree second, so a fault
-// between them leaves the Tree one revision behind — the record log is the
-// authority and has moved on. A replacement rather than an update because the
-// Plan carries every current Route: it converges whatever the Tree was left
-// holding, without needing to know how far behind it fell.
-func (authority *Authority) reconcileRoutes(plan Plan) error {
-	records, err := routeObjectRecords(plan.CurrentRoutes)
-	if err != nil {
-		return err
-	}
-	id, err := authority.nextTransactionID("objects")
-	if err != nil {
-		return err
-	}
-	_, err = authority.generation.objects.ReplaceKinds(
-		id, []uint16{nativerouter.ObjectKind}, records,
-	)
-	return err
-}
-
-// reconcileRelations brings the objects Tree's Relations back to what the record
-// log says, for the same reason reconcileRoutes does: a publication commits its
-// record first and its Tree second.
-func (authority *Authority) reconcileRelations(plan Plan) error {
-	records, err := nativerow.RelationObjectRecords(plan.CurrentRelations)
-	if err != nil {
-		return err
-	}
-	id, err := authority.nextTransactionID("objects")
-	if err != nil {
-		return err
-	}
-	_, err = authority.generation.objects.ReplaceKinds(
-		id, []uint16{nativerow.RelationObjectKind}, records,
-	)
-	return err
-}
-
-func (authority *Authority) appendVersions(plan Plan) error {
-	if len(plan.RowVersions) == 0 {
-		return nil
-	}
-	id, err := authority.nextTransactionID("versions")
-	if err != nil {
-		return err
-	}
-	if _, err := authority.generation.versions.Append(id, plan.RowVersions); err != nil {
-		return err
-	}
-	return authority.appendTableVersions(plan)
-}
-
-// appendTableVersions catches each Table's history Tree up to the same
-// revisions the shared Tree just took. Reconcile reads the native store, which
-// is the source both Trees are derived from, so a Table Tree that missed a
-// publication is filled in here rather than left to drift.
-func (authority *Authority) appendTableVersions(plan Plan) error {
-	grouped := make(map[string][]rowversionindex.Locator, 1)
-	for _, locator := range plan.RowVersions {
-		grouped[locator.TableID] = append(grouped[locator.TableID], locator)
-	}
-	for _, tableID := range sortedKeys(grouped) {
-		index := authority.generation.HistoryFor(tableID)
-		if index == nil {
-			// A Table named by a revision but absent from the Catalog has no
-			// Tree to hold it. Reconcile publishes the Catalog first, so this
-			// is a Row whose Table is gone, not one whose Tree is late.
-			continue
-		}
-		id, err := authority.nextGroupTransactionID()
-		if err != nil {
-			return err
-		}
-		if _, err := index.Append(id, grouped[tableID]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (authority *Authority) reconcileFulltext(plan Plan) error {
-	if authority.generation.fulltext == nil {
-		return nil
-	}
-	documents, err := generationDocuments(plan)
-	if err != nil {
-		return err
-	}
-	objects, err := authority.generation.fulltext.Objects()
-	if err != nil {
-		return err
-	}
-	current := make(map[string]struct{}, len(documents))
-	for _, document := range documents {
-		if isReconciledFulltextKind(document.Kind) {
-			current[catalogObjectKey(document.Kind, document.ObjectID)] = struct{}{}
-		}
-	}
-	for _, object := range objects {
-		if !isReconciledFulltextKind(object.Kind) || object.State != fulltext.StateLive {
-			continue
-		}
-		if _, exists := current[catalogObjectKey(object.Kind, object.ObjectID)]; exists {
-			continue
-		}
-		var tombstone fulltext.Document
-		if isCatalogKind(object.Kind) {
-			tombstone, err = catalogfulltext.Tombstone(object)
-		} else {
-			tombstone, err = routefulltext.Tombstone(object)
-		}
-		if err != nil {
-			return err
-		}
-		documents = append(documents, tombstone)
-	}
-	// The open-time pass is a full reconcile against the authoritative source,
-	// which is what catches drift a change-log replay cannot see — an object
-	// live in the index but gone from the source leaves no change entry behind
-	// once its log has been reclaimed. Recording the cursor at the same time is
-	// what makes every later catch-up incremental instead of another full pass.
-	next, err := authority.changes.source.NextSequence(0)
-	if err != nil {
-		return fmt.Errorf("%w: committed change high-water: %v", ErrTargetCorrupt, err)
-	}
-	cursor := next - 1
-	if len(documents) == 0 && cursor == 0 {
-		return nil
-	}
-	id, err := authority.nextGroupTransactionID()
-	if err != nil {
-		return err
-	}
-	if cursor == 0 {
-		_, err = authority.generation.fulltext.ReplaceBatch(id, documents)
-	} else {
-		_, err = authority.generation.fulltext.AdvanceThrough(id, documents, cursor)
-	}
-	if errors.Is(err, fulltextindex.ErrConflict) {
-		return fmt.Errorf("%w: %v", errGenerationRebuildRequired, err)
-	}
-	return err
-}
-
 func catalogTransitionDocuments(
 	current, next []catalog.Database,
 ) ([]fulltext.Document, error) {
@@ -1492,53 +1343,8 @@ func catalogTransitionDocuments(
 	return result, nil
 }
 
-func isCatalogKind(kind fulltext.ObjectKind) bool {
-	return kind == fulltext.KindDatabase || kind == fulltext.KindTable || kind == fulltext.KindColumn
-}
-
-func isReconciledFulltextKind(kind fulltext.ObjectKind) bool {
-	return isCatalogKind(kind) || kind == fulltext.KindRoute
-}
-
 func catalogObjectKey(kind fulltext.ObjectKind, objectID string) string {
 	return string(kind) + "\x00" + objectID
-}
-
-func (authority *Authority) advanceCurrent(plan Plan) error {
-	updates := make(map[string][]currentrowindex.Update, 1)
-	for _, locator := range plan.CurrentRows {
-		index := authority.generation.CurrentRowsFor(locator.TableID)
-		if index == nil {
-			return fmt.Errorf("%w: Table %q has no Tree", ErrInvalid, locator.TableID)
-		}
-		current, err := index.Lookup(locator.RowID)
-		if errors.Is(err, currentrowindex.ErrNotFound) {
-			updates[locator.TableID] = append(updates[locator.TableID],
-				currentrowindex.Update{Locator: locator})
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if current == locator {
-			continue
-		}
-		updates[locator.TableID] = append(updates[locator.TableID], currentrowindex.Update{
-			ExpectedRevision: current.Revision, Locator: locator,
-		})
-	}
-	for _, tableID := range sortedKeys(updates) {
-		// Every Tree commits into the one shared log, so the ID space is the
-		// log's rather than any one Tree's.
-		id, err := authority.nextGroupTransactionID()
-		if err != nil {
-			return err
-		}
-		if _, err := authority.generation.CurrentRowsFor(tableID).Apply(id, updates[tableID]); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // sortedKeys returns a map's keys in a stable order, so a batch of Trees is

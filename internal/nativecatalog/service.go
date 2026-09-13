@@ -28,7 +28,7 @@ type PageAuthority interface {
 	DescribeDatabase(context.Context, string) (catalog.Database, error)
 	ShowTables(context.Context, string) ([]catalog.Table, error)
 	DescribeTable(context.Context, string, string) (catalog.Table, error)
-	PublishCatalog(context.Context, []catalog.Database, func() error) error
+	PublishCatalog(context.Context, []catalog.Database, Publication) error
 }
 
 type ServiceOptions struct {
@@ -322,9 +322,11 @@ func (service *Service) mutate(ctx context.Context, mutation func(*[]catalog.Dat
 		return err
 	}
 	if service.authority != nil {
-		return service.authority.PublishCatalog(ctx, databases, func() error {
-			return service.repository.WriteCommitted(previous, databases, envelope)
-		})
+		publication, err := service.repository.PrepareCommitted(previous, databases, envelope)
+		if err != nil {
+			return err
+		}
+		return service.authority.PublishCatalog(ctx, databases, publication)
 	}
 	return service.repository.WriteCommitted(previous, databases, envelope)
 }

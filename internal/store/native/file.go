@@ -158,9 +158,15 @@ type Transaction struct {
 	records []bufferedRecord
 	keys    map[recordKey]struct{}
 	closed  bool
-	// locations is filled by Commit. A writer that needs to chain a later
+	// locations is filled by Complete. A writer that needs to chain a later
 	// revision to one it just wrote reads the address back from here.
 	locations map[recordKey]Location
+	// prepared, digest and metas carry Prepare's work over to Complete. They
+	// are the transaction's state between the two halves, which is the window
+	// another store commits in.
+	prepared bool
+	digest   []byte
+	metas    map[recordKey]recordMeta
 }
 
 type fileHeader struct {
@@ -333,15 +339,36 @@ func (transaction *Transaction) Put(kind ObjectKind, schemaVersion uint32, id st
 }
 
 func (transaction *Transaction) Commit() error {
+	if err := transaction.Prepare(); err != nil {
+		return err
+	}
+	return transaction.Complete()
+}
+
+// Prepare writes the transaction's records and reports them to the binlog,
+// stopping one step short of the commit mark.
+//
+// This is the prepare of the write model's prepare → binlog → commit
+// (docs/product/write-model.md §3). After it returns the records are on disk
+// and the log holds the frame, and nothing yet claims the transaction
+// committed: a crash here leaves a tail the next open discards.
+//
+// It is separate from Complete so another store can be the one that decides.
+// The page Trees commit between the two, and the mark this file writes
+// afterwards is an archive's record of what the Trees committed, not the
+// decision itself.
+func (transaction *Transaction) Prepare() error {
 	if transaction == nil || transaction.closed || transaction.file == nil {
 		return ErrClosed
+	}
+	if transaction.prepared {
+		return fmt.Errorf("%w: transaction is already prepared", ErrInvalidArgument)
 	}
 	transaction.file.mu.Lock()
 	defer transaction.file.mu.Unlock()
 	if transaction.file.closed {
 		return ErrClosed
 	}
-	transaction.closed = true
 	for key := range transaction.keys {
 		if _, exists := transaction.file.records[key]; exists {
 			return ErrDuplicateID
@@ -376,14 +403,41 @@ func (transaction *Transaction) Commit() error {
 	if err := transaction.file.appendBinlog(transaction); err != nil {
 		return err
 	}
-	if _, err := transaction.file.appendRecord(objectKindTransactionCommit, 1, transaction.id, digest.Sum(nil)); err != nil {
+	transaction.digest = digest.Sum(nil)
+	transaction.metas = metas
+	transaction.prepared = true
+	return nil
+}
+
+// Complete writes the commit mark for a prepared transaction and publishes its
+// records.
+//
+// Until it returns the records are present but invisible: a reopen discards
+// them. A transaction that is prepared and never completed is therefore not a
+// loss to repair but an outcome — the write did not happen.
+func (transaction *Transaction) Complete() error {
+	if transaction == nil || transaction.closed || transaction.file == nil {
+		return ErrClosed
+	}
+	if !transaction.prepared {
+		return fmt.Errorf("%w: transaction is not prepared", ErrInvalidArgument)
+	}
+	transaction.file.mu.Lock()
+	defer transaction.file.mu.Unlock()
+	if transaction.file.closed {
+		return ErrClosed
+	}
+	transaction.closed = true
+	if _, err := transaction.file.appendRecord(
+		objectKindTransactionCommit, 1, transaction.id, transaction.digest,
+	); err != nil {
 		return err
 	}
 	if err := transaction.file.file.Sync(); err != nil {
 		return fmt.Errorf("sync native transaction commit: %w", err)
 	}
-	transaction.locations = make(map[recordKey]Location, len(metas))
-	for key, meta := range metas {
+	transaction.locations = make(map[recordKey]Location, len(transaction.metas))
+	for key, meta := range transaction.metas {
 		transaction.file.records[key] = meta
 		transaction.locations[key] = meta.location()
 	}
@@ -718,9 +772,17 @@ func (f *File) scan(fileSize int64) error {
 		}
 		switch header.kind {
 		case objectKindTransactionBegin:
-			if pending != nil || len(payload) != 0 {
+			if len(payload) != 0 {
 				return fmt.Errorf("%w: invalid transaction BEGIN", ErrCorrupt)
 			}
+			// A BEGIN while one is already open means that one never reached
+			// its COMMIT. It used to be corruption, because the only way to
+			// write a BEGIN without a COMMIT was to die between them, and a
+			// dead process writes nothing after. Prepare/Complete made it an
+			// ordinary outcome: the Trees refused the write, so the prepared
+			// records stay where they are, unclaimed, and the next write lands
+			// after them. Unclaimed is exactly what "not committed" means, so
+			// the span is dropped and the scan carries on.
 			pending = &pendingTransaction{id: string(id), start: offset, records: make(map[recordKey]recordMeta)}
 		case objectKindTransactionCommit:
 			if pending == nil || pending.id != string(id) || len(payload) != sha256.Size {

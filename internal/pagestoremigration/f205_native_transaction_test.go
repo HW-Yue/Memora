@@ -17,6 +17,14 @@ import (
 	nativestore "github.com/HW-Yue/Memora/internal/store/native"
 )
 
+// TestF205MultiRowPublicationFaultReopensAsOneOutcome.
+//
+// F205's subject is that a publication touching several Rows is one outcome,
+// not one per Row. E8 stage 1 changed which outcome this particular fault
+// produces: phaseRowCurrentPublished fires after the group commit has returned,
+// so both Rows are committed and what the fault stops is the archive's commit
+// mark. One outcome, still — and now the reopen reads it out of the Trees with
+// the record log a transaction behind, which is the point of promotion.
 func TestF205MultiRowPublicationFaultReopensAsOneOutcome(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
@@ -75,15 +83,16 @@ func TestF205MultiRowPublicationFaultReopensAsOneOutcome(t *testing.T) {
 		{Row: firstBody, Operation: history.OperationUpdate, Metadata: row.WriteMetadata{Actor: "f205", Source: "test", Reason: "fault"}, RecordedAt: firstBody.UpdatedAt},
 		{Row: secondBody, Operation: history.OperationUpdate, Metadata: row.WriteMetadata{Actor: "f205", Source: "test", Reason: "fault"}, RecordedAt: secondBody.UpdatedAt},
 	}})
-	if !errors.Is(err, ErrOutcomeUnknown) {
-		t.Fatalf("multi-row fault error = %v", err)
+	if err != nil {
+		t.Fatalf("multi-row fault error = %v, want the committed write", err)
+	}
+	if authority.ArchiveError() == nil {
+		t.Fatal("ArchiveError() = nil, want the injected failure")
 	}
 	authority.checkpoint = nil
-	// F226: reads stay available; the affected Database fails closed for writes.
 	if _, err := authority.Capture(ctx); err != nil {
-		t.Fatalf("Capture() after fault = %v, want success", err)
+		t.Fatalf("Capture() after the fault = %v, want success", err)
 	}
-	assertDatabaseWritesPoisoned(t, ctx, authority, table.DatabaseID)
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)
 	}

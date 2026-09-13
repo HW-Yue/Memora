@@ -258,7 +258,7 @@ func TestAPublishedRouteLandsInTheObjectsTree(t *testing.T) {
 	// is keyed by identity, and the current node is the whole of what it holds.
 	revised := root
 	revised.Revision, revised.Synopsis = root.Revision+1, "revised synopsis"
-	if err := authority.PublishMutation(ctx, nativerow.Mutation{Routes: []router.Node{revised}}, func() error {
+	if err := authority.PublishMutation(ctx, nativerow.Mutation{Routes: []router.Node{revised}}, prepared(func() error {
 		transaction, err := file.Begin()
 		if err != nil {
 			return err
@@ -267,7 +267,7 @@ func TestAPublishedRouteLandsInTheObjectsTree(t *testing.T) {
 			return err
 		}
 		return transaction.Commit()
-	}); err != nil {
+	})); err != nil {
 		t.Fatal(err)
 	}
 	assertRouteInObjectsTree(t, authority, revised)

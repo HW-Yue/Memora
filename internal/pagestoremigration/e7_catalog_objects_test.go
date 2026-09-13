@@ -107,9 +107,9 @@ func TestACatalogPublicationMovesBothTreesTogether(t *testing.T) {
 	next := editTable(databases, table.ID, func(target *catalog.Table) {
 		target.Columns = append(target.Columns, added)
 	})
-	if err := authority.PublishCatalog(ctx, next, func() error {
+	if err := authority.PublishCatalog(ctx, next, prepared(func() error {
 		return nativecatalog.New(file).Write(databases, next)
-	}); err != nil {
+	})); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,9 +158,9 @@ func TestDroppingACatalogObjectRemovesItsBody(t *testing.T) {
 	withColumn := editTable(databases, table.ID, func(target *catalog.Table) {
 		target.Columns = append(target.Columns, added)
 	})
-	if err := authority.PublishCatalog(ctx, withColumn, func() error {
+	if err := authority.PublishCatalog(ctx, withColumn, prepared(func() error {
 		return nativecatalog.New(file).Write(databases, withColumn)
-	}); err != nil {
+	})); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := authority.Generation().Objects().Lookup(
@@ -172,9 +172,9 @@ func TestDroppingACatalogObjectRemovesItsBody(t *testing.T) {
 	withoutColumn := editTable(withColumn, table.ID, func(target *catalog.Table) {
 		target.Columns = target.Columns[:len(target.Columns)-1]
 	})
-	if err := authority.PublishCatalog(ctx, withoutColumn, func() error {
+	if err := authority.PublishCatalog(ctx, withoutColumn, prepared(func() error {
 		return nativecatalog.New(file).Write(withColumn, withoutColumn)
-	}); err != nil {
+	})); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := authority.Generation().Objects().Lookup(

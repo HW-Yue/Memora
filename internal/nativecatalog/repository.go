@@ -31,72 +31,125 @@ func (repository *Repository) Write(previous, next []catalog.Database) error {
 func (repository *Repository) WriteCommitted(
 	previous, next []catalog.Database, envelope change.Envelope,
 ) error {
-	return repository.write(previous, next, &envelope)
+	publication, err := repository.PrepareCommitted(previous, next, envelope)
+	if err != nil {
+		return err
+	}
+	if err := publication.Prepare(); err != nil {
+		return err
+	}
+	return publication.Complete()
 }
+
+// PrepareCommitted stages a Catalog transition without committing it.
+//
+// The returned Publication's two halves straddle the Tree commit: Prepare puts
+// the records and the binlog frame down, the Catalog and objects Trees commit,
+// and Complete writes the record log's mark. The Trees are what decide — see
+// pagestoremigration.PublishMutation for why the order is this way round.
+//
+// A transition that moves nothing returns a Publication that does nothing, so
+// the caller does not have to ask whether there was anything to write.
+func (repository *Repository) PrepareCommitted(
+	previous, next []catalog.Database, envelope change.Envelope,
+) (Publication, error) {
+	return repository.stage(previous, next, &envelope)
+}
+
+// Publication is a record log transaction split across the Tree commit.
+type Publication interface {
+	Prepare() error
+	Complete() error
+}
+
+// unchanged is the Publication for a transition that stages nothing.
+type unchanged struct{}
+
+func (unchanged) Prepare() error  { return nil }
+func (unchanged) Complete() error { return nil }
 
 func (repository *Repository) write(
 	previous, databases []catalog.Database, envelope *change.Envelope,
 ) error {
+	publication, err := repository.stage(previous, databases, envelope)
+	if err != nil {
+		return err
+	}
+	if err := publication.Prepare(); err != nil {
+		return err
+	}
+	return publication.Complete()
+}
+
+func (repository *Repository) stage(
+	previous, databases []catalog.Database, envelope *change.Envelope,
+) (Publication, error) {
 	if repository == nil || repository.file == nil {
-		return fmt.Errorf("%w: native file is required", ErrInvalid)
+		return nil, fmt.Errorf("%w: native file is required", ErrInvalid)
 	}
 	if err := validateCatalog(databases); err != nil {
-		return err
+		return nil, err
 	}
 	// Where every object stood after the last publication. This is what replaces
 	// the sweep stageVersion used to do, once per object written.
 	prior, err := catalogPayloads(previous)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	transaction, err := repository.file.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() { _ = transaction.Rollback() }()
+	staged := false
+	defer func() {
+		if !staged {
+			_ = transaction.Rollback()
+		}
+	}()
 	changed := false
 	for databaseIndex, database := range databases {
 		payload, err := encodeDatabase(database, uint64(databaseIndex))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		staged, err := repository.stageVersion(transaction, nativestore.ObjectKindDatabase, database.ID, database.SchemaVersion, payload, prior)
 		if err != nil {
-			return fmt.Errorf("write database %q: %w", database.ID, err)
+			return nil, fmt.Errorf("write database %q: %w", database.ID, err)
 		}
 		changed = changed || staged
 		for tableIndex, table := range database.Tables {
 			payload, err = encodeTable(table, uint64(tableIndex))
 			if err != nil {
-				return err
+				return nil, err
 			}
 			staged, err = repository.stageVersion(transaction, nativestore.ObjectKindTable, table.ID, table.SchemaVersion, payload, prior)
 			if err != nil {
-				return fmt.Errorf("write table %q: %w", table.ID, err)
+				return nil, fmt.Errorf("write table %q: %w", table.ID, err)
 			}
 			changed = changed || staged
 			for columnIndex, column := range table.Columns {
 				payload, err = encodeColumn(column, table.ID, uint64(columnIndex))
 				if err != nil {
-					return err
+					return nil, err
 				}
 				staged, err = repository.stageVersion(transaction, nativestore.ObjectKindColumn, column.ID, column.SchemaVersion, payload, prior)
 				if err != nil {
-					return fmt.Errorf("write column %q: %w", column.ID, err)
+					return nil, fmt.Errorf("write column %q: %w", column.ID, err)
 				}
 				changed = changed || staged
 			}
 		}
 	}
 	if !changed {
-		return nil
+		return unchanged{}, nil
 	}
 	if envelope != nil {
 		if err := nativechange.Stage(transaction, *envelope); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return transaction.Commit()
+	staged = true
+	return transaction, nil
 }
 
 // StageSnapshot writes a validated Catalog into an empty native snapshot transaction.

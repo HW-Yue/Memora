@@ -59,6 +59,17 @@ func (mutation Mutation) Empty() bool {
 	return len(mutation.Rows)+len(mutation.Routes)+len(mutation.Relations) == 0
 }
 
+// Publication is a record log transaction split across the Tree commit.
+//
+// Prepare puts the records and the binlog frame on disk without claiming they
+// happened; the Trees commit; Complete writes the mark. The Authority drives
+// both halves, which is how the Trees came to be the ones that decide — see
+// pagestoremigration.PublishMutation.
+type Publication interface {
+	Prepare() error
+	Complete() error
+}
+
 // PageAuthority owns current/version visibility after F107.
 type PageAuthority interface {
 	BeginWrite(context.Context) (func(), error)
@@ -73,7 +84,7 @@ type PageAuthority interface {
 	AsOfCommit(context.Context, catalog.Table, string, uint64, uint64) (row.Row, error)
 	History(context.Context, catalog.Table, string) ([]history.Record, error)
 	NextCommitSequence(context.Context) (uint64, error)
-	PublishMutation(context.Context, Mutation, func() error) error
+	PublishMutation(context.Context, Mutation, Publication) error
 	RouteObjects() *objectindex.Index
 }
 
@@ -220,7 +231,7 @@ func (service *Service) Insert(ctx context.Context, databaseName, tableName stri
 		// transaction, so a publication that reported only the Row would leave
 		// the generation holding Routes the record log has already moved past.
 		commit = func() error {
-			return service.authority.PublishMutation(ctx, Mutation{Rows: []row.Row{value}, Routes: mounted}, transaction.Commit)
+			return service.authority.PublishMutation(ctx, Mutation{Rows: []row.Row{value}, Routes: mounted}, transaction)
 		}
 	}
 	if err := commit(); err != nil {
@@ -433,7 +444,7 @@ func (service *Service) commitRowRevision(ctx context.Context, value row.Row, op
 	if service.authority != nil {
 		// The leaf-side Route revisions travel with the Row, for the reason
 		// given where a Row is first inserted.
-		return service.authority.PublishMutation(ctx, Mutation{Rows: []row.Row{value}, Routes: mounted}, transaction.Commit)
+		return service.authority.PublishMutation(ctx, Mutation{Rows: []row.Row{value}, Routes: mounted}, transaction)
 	}
 	return transaction.Commit()
 }
@@ -934,7 +945,7 @@ func (service *Service) commitRelationChange(ctx context.Context, value relation
 	// only index it had was the resident record table.
 	if service.authority != nil {
 		return service.authority.PublishMutation(ctx,
-			Mutation{Relations: []relation.Relation{value}}, transaction.Commit)
+			Mutation{Relations: []relation.Relation{value}}, transaction)
 	}
 	return transaction.Commit()
 }
@@ -1372,7 +1383,7 @@ func (service *Service) commitRouteNodeChanges(
 	commit := transaction.Commit
 	if service.authority != nil {
 		commit = func() error {
-			return service.authority.PublishMutation(ctx, Mutation{Routes: values}, transaction.Commit)
+			return service.authority.PublishMutation(ctx, Mutation{Routes: values}, transaction)
 		}
 	}
 	return primary, commit()

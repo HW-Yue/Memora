@@ -82,7 +82,13 @@ func TestRouteAliasesReplaceLivePostingAndSurviveReopenThroughMSQL(t *testing.T)
 	assertRoutePosting(t, reopened, "agent", leaf.ID, "aliases", 3)
 }
 
-func TestRouteAliasPublicationFaultPoisonsThenReopenConverges(t *testing.T) {
+// TestRouteAliasPublicationFaultLeavesTheAliasesUnchanged.
+//
+// Was TestRouteAliasPublicationFaultPoisonsThenReopenConverges. The fault lands
+// before the Tree commit, so under E8 stage 1 it is a failed write: the aliases
+// are what they were, the Database stays writable, and the reopen has nothing
+// to converge.
+func TestRouteAliasPublicationFaultLeavesTheAliasesUnchanged(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
@@ -107,15 +113,19 @@ func TestRouteAliasPublicationFaultPoisonsThenReopenConverges(t *testing.T) {
 		return nil
 	}
 	_, err = rows.UpdateRouterAliases(ctx, leaf.ID, []string{"agent loop"}, leaf.Revision)
-	if !errors.Is(err, ErrOutcomeUnknown) {
-		t.Fatalf("faulted alias update error = %v", err)
+	if err == nil || errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("faulted alias update error = %v, want a plain failure", err)
 	}
-	// F226: reads stay available; the affected Database fails closed for writes.
 	if _, err := authority.Capture(ctx); err != nil {
-		t.Fatalf("Capture() after fault = %v, want success", err)
+		t.Fatalf("Capture() after a failed write = %v, want success", err)
 	}
-	assertDatabaseWritesPoisoned(t, ctx, authority, leaf.DatabaseID)
 	authority.checkpoint = nil
+	// Still writable, and the retry lands.
+	if _, err := rows.UpdateRouterAliases(
+		ctx, leaf.ID, []string{"agent loop"}, leaf.Revision,
+	); err != nil {
+		t.Fatalf("retry after a failed alias update = %v, want success", err)
+	}
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)
 	}

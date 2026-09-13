@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
-	"github.com/HW-Yue/Memora/internal/fulltext"
 	"github.com/HW-Yue/Memora/internal/nativecatalog"
 	"github.com/HW-Yue/Memora/internal/nativerow"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -73,7 +72,19 @@ func TestAuthorityMarkerGoldenEncoding(t *testing.T) {
 	}
 }
 
-func TestAuthorityReopenRepairsBodyCommitMissingFromPageTrees(t *testing.T) {
+// TestARecordLogWriteThatNeverReachedTheTreesIsNotAWrite replaces
+// TestAuthorityReopenRepairsBodyCommitMissingFromPageTrees.
+//
+// That test wrote a Row straight to the record log, around the Authority, and
+// asserted that the next open picked it up. It passed because the record log
+// was the authority and the open re-read it into the Trees. E8 stage 1 makes
+// the Trees the authority, so the record log is no longer a way in: a write
+// that never reached a Tree never happened, before the reopen and after it.
+//
+// Worth keeping as a test rather than deleting, because the old behaviour was
+// also the mechanism by which a reopen could undo a committed write — the same
+// pass that pulled this Row in would push a Tree back to the log.
+func TestARecordLogWriteThatNeverReachedTheTreesIsNotAWrite(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	dictionary, _, table, _ := authorityValuesWithoutRow(t, ctx, file, authority)
@@ -89,7 +100,7 @@ func TestAuthorityReopenRepairsBodyCommitMissingFromPageTrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := authority.Get(ctx, table, inserted.ID, snapshot); err == nil {
-		t.Fatal("unpublished native body was visible before reopen")
+		t.Fatal("a Row that never reached a Tree was visible")
 	}
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)
@@ -114,9 +125,8 @@ func TestAuthorityReopenRepairsBodyCommitMissingFromPageTrees(t *testing.T) {
 	reopenedRows := nativerow.NewService(
 		nativerow.New(reopenedFile), reopenedCatalog, nativerow.ServiceOptions{Authority: reopened},
 	)
-	got, err := reopenedRows.Get(ctx, "work", "notes", inserted.ID)
-	if err != nil || got.Values["title"] != "repair" {
-		t.Fatalf("repaired Get() = %+v, %v", got, err)
+	if _, err := reopenedRows.Get(ctx, "work", "notes", inserted.ID); err == nil {
+		t.Fatal("reopening absorbed a record-log-only Row, want it still absent")
 	}
 }
 
@@ -280,9 +290,96 @@ func TestAuthorityMarkerPublicationFaultsAreRecoverableOrOutcomeUnknown(t *testi
 	}
 }
 
-func TestAuthorityRowPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
+// TestARowPublicationFaultBeforeTheTreeCommitLeavesTheWriteUndone is E8 stage
+// 1's contract, and it replaces a weaker one.
+//
+// It used to read "poison and reopen converges": the record log committed
+// first, so a Tree fault after it left a write that had happened in one store
+// and not the other. That was reported as ErrOutcomeUnknown, the Database was
+// fenced for writes, and the next open re-read the whole record log to bring
+// the Trees back up to it.
+//
+// The Trees commit first now, so there is no such state to describe. A fault
+// before the group commit is a write that did not happen: the Trees never
+// staged it, the record log's prepared records carry no commit mark and the
+// next open discards them, and the Database is exactly what it was. Nothing is
+// fenced and nothing is reconciled.
+func TestARowPublicationFaultBeforeTheTreeCommitLeavesTheWriteUndone(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, rows, table, inserted := authorityValues(t, ctx, file, authority)
+	injected := errors.New("injected publication fault")
+	authority.checkpoint = func(current authorityPhase) error {
+		if current == phaseRowBodyCommitted {
+			return injected
+		}
+		return nil
+	}
+	_, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "recovered"}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: inserted.Revision,
+	})
+	if !errors.Is(err, injected) {
+		t.Fatalf("Update(pre-commit fault) error = %v, want the injected failure", err)
+	}
+	if errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("Update(pre-commit fault) reported an unknown outcome: %v", err)
+	}
+	if _, err := authority.Capture(ctx); err != nil {
+		t.Fatalf("Capture() after a failed write = %v, want success", err)
+	}
+	// The Database stays writable. A failed write is a failed write, not a
+	// reason to stop accepting the next one.
+	authority.checkpoint = nil
+	if _, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "after"}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion,
+	}); err != nil {
+		t.Fatalf("write after a failed publication = %v, want success", err)
+	}
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopenedFile.Close()
+	reopened, err := OpenAuthority(ctx, reopenedFile, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	dictionary := nativecatalog.NewService(
+		nativecatalog.New(reopenedFile), nativecatalog.ServiceOptions{Authority: reopened},
+	)
+	reopenedRows := nativerow.NewService(
+		nativerow.New(reopenedFile), dictionary, nativerow.ServiceOptions{Authority: reopened},
+	)
+	got, err := reopenedRows.Get(ctx, "work", "notes", inserted.ID)
+	if err != nil || got.Revision != 1 || got.Values["title"] != "indexed" {
+		t.Fatalf("reopened Get() = %+v, %v, want the pre-fault revision", got, err)
+	}
+	assertRowPosting(t, reopened, "indexed", inserted.ID, 1)
+	assertNoRowPosting(t, reopened, "recovered")
+}
+
+// TestARowPublicationFaultAfterTheTreeCommitStillCommitted is the other side of
+// the same line.
+//
+// These phases fire after the group commit returns, so the write has happened:
+// the Trees hold the revision and the redo log has it. What a fault here stops
+// is the archive's commit mark and the derived catch-ups that follow it. The
+// write must therefore succeed, the Database must read the new revision, and
+// the archive's gap must be reported rather than swallowed.
+//
+// This is what promotion means in one test. Before it, the record log was the
+// Database and a Tree that did not match it was repaired from it. Now the Trees
+// are the Database and the record log is allowed to be behind.
+func TestARowPublicationFaultAfterTheTreeCommitStillCommitted(t *testing.T) {
 	for _, phase := range []authorityPhase{
-		phaseRowBodyCommitted, phaseRowVersionPublished, phaseRowFulltextPublished, phaseRowCurrentPublished,
+		phaseRowVersionPublished, phaseRowFulltextPublished, phaseRowCurrentPublished,
 	} {
 		t.Run(string(phase), func(t *testing.T) {
 			ctx := context.Background()
@@ -295,22 +392,13 @@ func TestAuthorityRowPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
 				}
 				return nil
 			}
-			_, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "recovered"}, row.WriteOptions{
+			if _, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "recovered"}, row.WriteOptions{
 				ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: inserted.Revision,
-			})
-			if !errors.Is(err, ErrOutcomeUnknown) || !strings.Contains(err.Error(), injected.Error()) {
-				t.Fatalf("Update(%s fault) error = %v", phase, err)
+			}); err != nil {
+				t.Fatalf("Update(%s fault) error = %v, want the committed write", phase, err)
 			}
-			// F226: an uncertain publication no longer blocks reads — the
-			// committed generation stays consistent — but the affected
-			// Database still fails closed for writes.
-			if _, err := authority.Capture(ctx); err != nil {
-				t.Fatalf("poisoned Capture() error = %v, want success", err)
-			}
-			if _, err := rows.Insert(ctx, "work", "notes", map[string]any{"title": "blocked"}, row.WriteOptions{
-				ExpectedSchemaVersion: table.SchemaVersion,
-			}); !errors.Is(err, ErrAuthorityPoisoned) {
-				t.Fatalf("write to the poisoned Database = %v, want ErrAuthorityPoisoned", err)
+			if !errors.Is(authority.ArchiveError(), injected) {
+				t.Fatalf("ArchiveError() = %v, want the injected failure", authority.ArchiveError())
 			}
 			authority.checkpoint = nil
 			if err := authority.Close(); err != nil {
@@ -329,24 +417,83 @@ func TestAuthorityRowPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer reopened.Close()
-			dictionary := nativecatalog.NewService(
-				nativecatalog.New(reopenedFile), nativecatalog.ServiceOptions{Authority: reopened},
-			)
-			reopenedRows := nativerow.NewService(
-				nativerow.New(reopenedFile), dictionary, nativerow.ServiceOptions{Authority: reopened},
-			)
-			got, err := reopenedRows.Get(ctx, "work", "notes", inserted.ID)
-			if err != nil || got.Revision != 2 || got.Values["title"] != "recovered" {
-				t.Fatalf("reopened recovered Get() = %+v, %v", got, err)
+			// The record log never got the mark, so it still says revision 1.
+			// The Database says 2, because the Trees are the Database.
+			if _, err := nativerow.New(reopenedFile).ReadRevision(inserted.ID, 2); err == nil {
+				t.Fatal("the archive was expected to be a transaction behind")
 			}
-			assertNoRowPosting(t, reopened, "indexed")
-			assertRowPosting(t, reopened, "recovered", inserted.ID, 2)
+			snapshot, err := reopened.Capture(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := reopened.Get(ctx, table, inserted.ID, snapshot)
+			if err != nil || got.Revision != 2 || got.Values["title"] != "recovered" {
+				t.Fatalf("reopened Get() = %+v, %v, want the committed revision", got, err)
+			}
 		})
 	}
 }
 
-func TestAuthorityCatalogPublicationFaultsPoisonAndReopenConverges(t *testing.T) {
-	for _, phase := range []authorityPhase{phaseCatalogBodyCommitted, phaseCatalogPublished, phaseCatalogFulltextPublished} {
+// TestACatalogPublicationFaultBeforeTheTreeCommitLeavesTheWriteUndone is the
+// Catalog's half of E8 stage 1, and it replaces the poison-and-converge test
+// for the same reason the Row one was replaced.
+func TestACatalogPublicationFaultBeforeTheTreeCommitLeavesTheWriteUndone(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	dictionary := nativecatalog.NewService(
+		nativecatalog.New(file), nativecatalog.ServiceOptions{Authority: authority},
+	)
+	injected := errors.New("injected Catalog publication fault")
+	authority.checkpoint = func(current authorityPhase) error {
+		if current == phaseCatalogBodyCommitted {
+			return injected
+		}
+		return nil
+	}
+	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{
+		Name: "recovered", Purpose: "Recovered", Scope: "Fault fixture",
+	}); !errors.Is(err, injected) {
+		t.Fatalf("CreateDatabase(pre-commit fault) error = %v, want the injected failure", err)
+	}
+	if _, err := authority.ShowDatabases(ctx); err != nil {
+		t.Fatalf("ShowDatabases() after a failed write = %v, want success", err)
+	}
+	// Still writable: the Catalog is exactly what it was.
+	authority.checkpoint = nil
+	if _, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{
+		Name: "after", Purpose: "After", Scope: "Fault fixture",
+	}); err != nil {
+		t.Fatalf("CreateDatabase after a failed write = %v, want success", err)
+	}
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopenedFile.Close()
+	reopened, err := OpenAuthority(ctx, reopenedFile, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if _, err := reopened.DescribeDatabase(ctx, "recovered"); err == nil {
+		t.Fatal("a Catalog write that failed before the Tree commit came back after a reopen")
+	}
+	if _, err := reopened.DescribeDatabase(ctx, "after"); err != nil {
+		t.Fatalf("the Database written after the fault = %v, want it present", err)
+	}
+}
+
+// TestACatalogPublicationFaultAfterTheTreeCommitStillCommitted is the other
+// side: these phases fire once the Catalog and objects Trees have committed, so
+// the transition has happened and only the archive is left behind.
+func TestACatalogPublicationFaultAfterTheTreeCommitStillCommitted(t *testing.T) {
+	for _, phase := range []authorityPhase{phaseCatalogPublished, phaseCatalogFulltextPublished} {
 		t.Run(string(phase), func(t *testing.T) {
 			ctx := context.Background()
 			directory, file, authority := newAuthorityFixture(t)
@@ -360,15 +507,14 @@ func TestAuthorityCatalogPublicationFaultsPoisonAndReopenConverges(t *testing.T)
 				}
 				return nil
 			}
-			_, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{
+			got, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{
 				Name: "recovered", Purpose: "Recovered", Scope: "Fault fixture",
 			})
-			if !errors.Is(err, ErrOutcomeUnknown) {
-				t.Fatalf("CreateDatabase(%s fault) error = %v", phase, err)
+			if err != nil {
+				t.Fatalf("CreateDatabase(%s fault) error = %v, want the committed write", phase, err)
 			}
-			// F226: Catalog reads stay available after an uncertain publication.
-			if _, err := authority.ShowDatabases(ctx); err != nil {
-				t.Fatalf("poisoned ShowDatabases() error = %v, want success", err)
+			if !errors.Is(authority.ArchiveError(), injected) {
+				t.Fatalf("ArchiveError() = %v, want the injected failure", authority.ArchiveError())
 			}
 			authority.checkpoint = nil
 			if err := authority.Close(); err != nil {
@@ -387,11 +533,10 @@ func TestAuthorityCatalogPublicationFaultsPoisonAndReopenConverges(t *testing.T)
 				t.Fatal(err)
 			}
 			defer reopened.Close()
-			got, err := reopened.DescribeDatabase(ctx, "recovered")
-			if err != nil || got.Name != "recovered" {
-				t.Fatalf("reopened recovered Database = %+v, %v", got, err)
+			described, err := reopened.DescribeDatabase(ctx, "recovered")
+			if err != nil || described.ID != got.ID {
+				t.Fatalf("reopened Database = %+v, %v, want the committed transition", described, err)
 			}
-			assertCatalogPosting(t, reopened.Generation(), "recovered", fulltext.KindDatabase, got.ID, got.SchemaVersion)
 		})
 	}
 }
@@ -535,7 +680,18 @@ func authorityValuesWithoutRow(
 // Database. Before F226 the Authority carried a single instance-wide poisoned
 // flag that both BeginWrite and lockRead consulted, so one bad publication took
 // the whole Instance offline for reads and writes alike.
-func TestRowPublicationFaultIsolatesOneDatabase(t *testing.T) {
+// TestARowPublicationFaultLeavesEveryDatabaseWritable replaces
+// TestRowPublicationFaultIsolatesOneDatabase.
+//
+// F226 scoped the blast radius of an uncertain publication: it fenced the
+// Databases the write touched and left the rest alone. That was the best
+// available answer while a publication could end in a state nobody could name.
+//
+// E8 stage 1 removes the state rather than scoping it. A fault before the group
+// commit is a failed write, so there is nothing to fence — not the Database the
+// write touched, and not any other. The isolation this test was named for is
+// now total.
+func TestARowPublicationFaultLeavesEveryDatabaseWritable(t *testing.T) {
 	ctx := context.Background()
 	_, file, authority := newAuthorityFixture(t)
 	dictionary, rows, table, inserted := authorityValues(t, ctx, file, authority)
@@ -563,14 +719,11 @@ func TestRowPublicationFaultIsolatesOneDatabase(t *testing.T) {
 	}
 	if _, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "recovered"}, row.WriteOptions{
 		ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: inserted.Revision,
-	}); !errors.Is(err, ErrOutcomeUnknown) {
-		t.Fatalf("faulted Update error = %v, want ErrOutcomeUnknown", err)
+	}); !errors.Is(err, injected) {
+		t.Fatalf("faulted Update error = %v, want the injected failure", err)
 	}
 	authority.checkpoint = nil
 
-	// Reads stay available everywhere: each generation is swapped atomically
-	// under the same lock readers hold, so a reader always sees one complete
-	// generation. Refusing reads turns one uncertain write into a dead Instance.
 	snapshot, err := authority.Capture(ctx)
 	if err != nil {
 		t.Fatalf("Capture() after fault = %v, want success", err)
@@ -581,39 +734,41 @@ func TestRowPublicationFaultIsolatesOneDatabase(t *testing.T) {
 	if _, err := authority.ShowDatabases(ctx); err != nil {
 		t.Fatalf("ShowDatabases() after fault = %v, want success", err)
 	}
-
-	// Writes to the untouched Database stay available.
 	if _, err := rows.Insert(ctx, "personal", "notes", map[string]any{"title": "unaffected"}, row.WriteOptions{
 		ExpectedSchemaVersion: other.SchemaVersion,
 	}); err != nil {
-		t.Fatalf("Insert into the unaffected Database = %v, want success", err)
+		t.Fatalf("Insert into the other Database = %v, want success", err)
 	}
-
-	// Writes to the affected Database still fail closed, and say which one.
-	_, err = rows.Insert(ctx, "work", "notes", map[string]any{"title": "blocked"}, row.WriteOptions{
-		ExpectedSchemaVersion: table.SchemaVersion,
-	})
-	if !errors.Is(err, ErrAuthorityPoisoned) {
-		t.Fatalf("Insert into the affected Database = %v, want ErrAuthorityPoisoned", err)
-	}
-	if !strings.Contains(err.Error(), table.DatabaseID) {
-		t.Fatalf("poison error %q does not name the affected Database %q", err, table.DatabaseID)
+	// The Database the failed write touched is writable too — that is what
+	// changed. And the retry of the write itself goes through.
+	if _, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "recovered"}, row.WriteOptions{
+		ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: inserted.Revision,
+	}); err != nil {
+		t.Fatalf("retry into the affected Database = %v, want success", err)
 	}
 }
 
-// assertDatabaseWritesPoisoned checks that one Database fails closed for writes
-// after an uncertain publication. F226 scopes poison per Database, so probing a
-// read (the old proxy) no longer proves anything: reads stay available.
-func assertDatabaseWritesPoisoned(
-	t *testing.T, ctx context.Context, authority *Authority, databaseID string,
-) {
-	t.Helper()
-	release, err := authority.BeginRowWrite(ctx, databaseID, "tbl_probe", []string{"row_probe"})
-	if err == nil {
-		release()
-		t.Fatalf("writes to database %s are still allowed, want ErrAuthorityPoisoned", databaseID)
+// preparedFunc adapts a plain commit closure to the two-phase Publication the
+// Authority now drives. The closure runs at Prepare, which is where the record
+// log's own write lands: the Trees commit after it, and Complete only writes
+// the mark.
+type preparedFunc struct {
+	prepare  func() error
+	complete func() error
+}
+
+func prepared(commit func() error) preparedFunc { return preparedFunc{prepare: commit} }
+
+func (value preparedFunc) Prepare() error {
+	if value.prepare == nil {
+		return nil
 	}
-	if !errors.Is(err, ErrAuthorityPoisoned) {
-		t.Fatalf("write to database %s = %v, want ErrAuthorityPoisoned", databaseID, err)
+	return value.prepare()
+}
+
+func (value preparedFunc) Complete() error {
+	if value.complete == nil {
+		return nil
 	}
+	return value.complete()
 }

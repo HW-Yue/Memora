@@ -78,12 +78,15 @@ func (service *Service) ApplySchemaChangePlan(
 	if err != nil {
 		return catalog.Table{}, 0, err
 	}
-	commit := func() error { return service.repository.WriteCommitted(previous, databases, envelope) }
 	if service.authority != nil {
-		if err := service.authority.PublishCatalog(ctx, databases, commit); err != nil {
+		publication, err := service.repository.PrepareCommitted(previous, databases, envelope)
+		if err != nil {
 			return catalog.Table{}, 0, err
 		}
-	} else if err := commit(); err != nil {
+		if err := service.authority.PublishCatalog(ctx, databases, publication); err != nil {
+			return catalog.Table{}, 0, err
+		}
+	} else if err := service.repository.WriteCommitted(previous, databases, envelope); err != nil {
 		return catalog.Table{}, 0, err
 	}
 	return updatedTable, sequence, nil

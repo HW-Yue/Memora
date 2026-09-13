@@ -38,10 +38,10 @@ func TestFulltextIsNotInTheWriteTransaction(t *testing.T) {
 		SchemaVersion: table.SchemaVersion, Revision: 1, CommitSequence: 1,
 		State: row.StateLive, Values: map[string]any{table.Columns[0].ID: "decoupled"},
 		CreatedAt: written, UpdatedAt: written,
-	}}}, func() error {
+	}}}, prepared(func() error {
 		committed = true
 		return nil
-	}); err != nil || !committed {
+	})); err != nil || !committed {
 		t.Fatalf("PublishMutation() committed=%v error=%v", committed, err)
 	}
 	if after := treeRevision(t, authority, "versions"); after == beforeVersions {

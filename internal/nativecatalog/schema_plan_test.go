@@ -112,6 +112,6 @@ func (authority *faultCatalogAuthority) ShowTables(context.Context, string) ([]c
 func (authority *faultCatalogAuthority) DescribeTable(context.Context, string, string) (catalog.Table, error) {
 	return authority.database.Tables[0], nil
 }
-func (authority *faultCatalogAuthority) PublishCatalog(_ context.Context, _ []catalog.Database, _ func() error) error {
+func (authority *faultCatalogAuthority) PublishCatalog(_ context.Context, _ []catalog.Database, _ Publication) error {
 	return authority.publishErr
 }

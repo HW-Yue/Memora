@@ -119,10 +119,10 @@ func TestAuthorityRejectsInvalidCatalogProjectionBeforeBodyCommit(t *testing.T) 
 	committed := false
 	err := authority.PublishCatalog(ctx, []catalog.Database{{
 		ID: "db_invalid", Name: "invalid", Purpose: "Invalid", Scope: "Tests",
-	}}, func() error {
+	}}, prepared(func() error {
 		committed = true
 		return nil
-	})
+	}))
 	if err == nil || committed {
 		t.Fatalf("invalid Catalog projection commit=%v error=%v", committed, err)
 	}
@@ -131,7 +131,12 @@ func TestAuthorityRejectsInvalidCatalogProjectionBeforeBodyCommit(t *testing.T) 
 	}
 }
 
-func TestAuthorityCatalogFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
+// TestACatalogWALFaultLeavesTheTransitionUndone replaces
+// TestAuthorityCatalogFulltextWALFaultPoisonsAndReopenConverges, for the reason
+// TestAWALFaultLeavesTheWriteUndoneRatherThanUncertain gives: the group commit
+// is the commit point, so a redo log that refuses it is a write that did not
+// happen, not one whose outcome has to be repaired on the next open.
+func TestACatalogWALFaultLeavesTheTransitionUndone(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	for _, tree := range authority.generation.trees {
@@ -147,12 +152,14 @@ func TestAuthorityCatalogFulltextWALFaultPoisonsAndReopenConverges(t *testing.T)
 	_, err := dictionary.CreateDatabase(ctx, catalog.DatabaseDefinition{
 		Name: "walcatalog", Purpose: "Catalog WAL recovery", Scope: "Tests",
 	})
-	if !errors.Is(err, ErrOutcomeUnknown) {
-		t.Fatalf("Catalog Fulltext WAL fault error = %v", err)
+	if err == nil {
+		t.Fatal("CreateDatabase() over a closed redo log unexpectedly succeeded")
 	}
-	// F226: Catalog reads stay available after an uncertain publication.
+	if errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("CreateDatabase() over a closed redo log reported an unknown outcome: %v", err)
+	}
 	if _, err := authority.ShowDatabases(ctx); err != nil {
-		t.Fatalf("ShowDatabases() after fault = %v, want success", err)
+		t.Fatalf("ShowDatabases() after a failed write = %v, want success", err)
 	}
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)
@@ -170,11 +177,9 @@ func TestAuthorityCatalogFulltextWALFaultPoisonsAndReopenConverges(t *testing.T)
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	database, err := reopened.DescribeDatabase(ctx, "walcatalog")
-	if err != nil {
-		t.Fatal(err)
+	if _, err := reopened.DescribeDatabase(ctx, "walcatalog"); err == nil {
+		t.Fatal("a Catalog transition the redo log refused came back after a reopen")
 	}
-	assertCatalogPosting(t, reopened.Generation(), "walcatalog", fulltext.KindDatabase, database.ID, database.SchemaVersion)
 }
 
 type emptySchemaRows struct{}

@@ -142,7 +142,7 @@ func (coordinator *Coordinator) Commit(plan Plan) error {
 		}
 		return coordinator.pages.PublishMutation(context.Background(),
 			nativerow.Mutation{Rows: values, Routes: plan.Routes, Relations: plan.Relations},
-			transaction.Commit)
+			transaction)
 	}
 	return transaction.Commit()
 }
@@ -205,7 +205,7 @@ func (coordinator *Coordinator) CommitRoutePlan(plan RoutePlanCommit) (uint64, e
 		commit = func() error {
 			return coordinator.pages.PublishMutation(context.Background(),
 				nativerow.Mutation{Rows: plan.Rows, Routes: plan.Routes},
-				transaction.Commit)
+				transaction)
 		}
 	}
 	if err := commit(); err != nil {

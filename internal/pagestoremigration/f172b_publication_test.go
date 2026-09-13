@@ -48,10 +48,10 @@ func TestAuthorityRejectsInvalidRowProjectionBeforeBodyCommit(t *testing.T) {
 		ID: "row_invalid", DatabaseID: table.DatabaseID, TableID: table.ID,
 		SchemaVersion: table.SchemaVersion, Revision: 1, State: row.StateLive,
 		Values: map[string]any{"col_unknown": "not in schema"},
-	}}}, func() error {
+	}}}, prepared(func() error {
 		committed = true
 		return nil
-	})
+	}))
 	if err == nil || committed {
 		t.Fatalf("invalid projection commit=%v error=%v", committed, err)
 	}
@@ -84,10 +84,10 @@ func TestAuthorityPublishesMultipleRowsInOneFulltextTransaction(t *testing.T) {
 	// which drive a write that actually records a change.
 	before := treeRevision(t, authority, "versions")
 	committed := false
-	if err := authority.PublishMutation(ctx, nativerow.Mutation{Rows: values}, func() error {
+	if err := authority.PublishMutation(ctx, nativerow.Mutation{Rows: values}, prepared(func() error {
 		committed = true
 		return nil
-	}); err != nil || !committed {
+	})); err != nil || !committed {
 		t.Fatalf("PublishMutation(batch) committed=%v error=%v", committed, err)
 	}
 	if after := treeRevision(t, authority, "versions"); after != before+1 {
@@ -150,7 +150,15 @@ func TestCoordinatorPublishesMultiRowMutationToOneFulltextRevision(t *testing.T)
 	}
 }
 
-func TestAuthorityFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
+// TestAWALFaultLeavesTheWriteUndoneRatherThanUncertain replaces
+// TestAuthorityFulltextWALFaultPoisonsAndReopenConverges.
+//
+// Closing the shared redo log under the Authority makes the group commit fail,
+// which used to happen after the record log had already committed — an
+// uncertain outcome, a fenced Database, and a reopen that pulled the Trees back
+// up to the record log. The group commit is the commit point now, so a WAL that
+// refuses it is a write that did not happen.
+func TestAWALFaultLeavesTheWriteUndoneRatherThanUncertain(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	_, rows, table, inserted := authorityValues(t, ctx, file, authority)
@@ -164,14 +172,16 @@ func TestAuthorityFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
 	_, err := rows.Update(ctx, "work", "notes", inserted.ID, map[string]any{"title": "wal recovered"}, row.WriteOptions{
 		ExpectedSchemaVersion: table.SchemaVersion, ExpectedRevision: inserted.Revision,
 	})
-	if !errors.Is(err, ErrOutcomeUnknown) {
-		t.Fatalf("Fulltext WAL fault Update() error = %v", err)
+	if err == nil {
+		t.Fatal("Update() over a closed redo log unexpectedly succeeded")
 	}
-	// F226: reads stay available; the affected Database fails closed for writes.
+	if errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("Update() over a closed redo log reported an unknown outcome: %v", err)
+	}
+	// Reads stay available: the generation is exactly what it was.
 	if _, err := authority.Capture(ctx); err != nil {
-		t.Fatalf("Capture() after fault = %v, want success", err)
+		t.Fatalf("Capture() after a failed write = %v, want success", err)
 	}
-	assertDatabaseWritesPoisoned(t, ctx, authority, table.DatabaseID)
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -188,9 +198,8 @@ func TestAuthorityFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	assertNoRowPosting(t, reopened, "indexed")
-	assertRowPosting(t, reopened, "wal", inserted.ID, 2)
-	assertRowPosting(t, reopened, "recovered", inserted.ID, 2)
+	assertRowPosting(t, reopened, "indexed", inserted.ID, 1)
+	assertNoRowPosting(t, reopened, "recovered")
 }
 
 func TestAuthorityReopenFulltextReplayDoesNotAppendWAL(t *testing.T) {
@@ -227,7 +236,18 @@ func TestAuthorityReopenFulltextReplayDoesNotAppendWAL(t *testing.T) {
 	assertRowPosting(t, reopened, "indexed", inserted.ID, 1)
 }
 
-func TestAuthorityReopenUsesCOWForSkippedFulltextRevisions(t *testing.T) {
+// TestRevisionsWrittenAroundTheAuthorityAreIgnoredRatherThanAbsorbed replaces
+// TestAuthorityReopenUsesCOWForSkippedFulltextRevisions.
+//
+// That test wrote two Row revisions straight to the record log and asserted the
+// next open noticed the gap and rebuilt the whole generation by COW. Both
+// halves are gone: the record log is not a way into the Database, so there is
+// no gap to notice, and rebuilding the generation from it is exactly what E8
+// stage 1 removed — the same pass would push a Tree back to an archive that is
+// legitimately behind.
+//
+// The generation is therefore left alone. The Database is what the Trees say.
+func TestRevisionsWrittenAroundTheAuthorityAreIgnoredRatherThanAbsorbed(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	_, _, table, inserted := authorityValues(t, ctx, file, authority)
@@ -253,20 +273,12 @@ func TestAuthorityReopenUsesCOWForSkippedFulltextRevisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if reopened.marker.Epoch != 1 {
-		t.Fatalf("revision gap did not publish COW generation: %+v", reopened.marker)
+	if reopened.marker.Epoch != 0 {
+		t.Fatalf("record-log revisions forced a generation rebuild: %+v", reopened.marker)
 	}
-	assertNoRowPosting(t, reopened, "indexed")
+	assertRowPosting(t, reopened, "indexed", inserted.ID, 1)
 	assertNoRowPosting(t, reopened, "second")
-	assertRowPosting(t, reopened, "third", inserted.ID, 3)
-
-	old, err := openLiveGeneration(filepath.Join(directory, GenerationDirectory))
-	if err != nil {
-		t.Fatalf("old generation was not preserved: %v", err)
-	}
-	if err := old.Close(); err != nil {
-		t.Fatal(err)
-	}
+	assertNoRowPosting(t, reopened, "third")
 }
 
 func assertRowPosting(t *testing.T, authority *Authority, term, rowID string, revision uint64) {

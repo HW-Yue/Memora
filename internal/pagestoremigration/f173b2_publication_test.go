@@ -207,10 +207,10 @@ func TestAuthorityRejectsInvalidRouteProjectionBeforeBodyCommit(t *testing.T) {
 	err := authority.PublishMutation(ctx, nativerow.Mutation{Routes: []router.Node{{
 		Version: router.Version, ID: "route_invalid", DatabaseID: "db_missing", TableID: "tbl_missing",
 		Name: "invalid", Path: "/", Kind: router.KindRoot, Purpose: "Invalid",
-	}}}, func() error {
+	}}}, prepared(func() error {
 		committed = true
 		return nil
-	})
+	}))
 	if err == nil || committed {
 		t.Fatalf("invalid Route projection commit=%v error=%v", committed, err)
 	}
@@ -219,63 +219,34 @@ func TestAuthorityRejectsInvalidRouteProjectionBeforeBodyCommit(t *testing.T) {
 	}
 }
 
-func TestAuthorityRoutePublicationFaultsPoisonAndReopenConverges(t *testing.T) {
-	for _, phase := range []authorityPhase{phaseRouteBodyCommitted, phaseRouteFulltextPublished} {
-		t.Run(string(phase), func(t *testing.T) {
-			ctx := context.Background()
-			directory, file, authority := newAuthorityFixture(t)
-			_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
-			authority.checkpoint = func(current authorityPhase) error {
-				if current == phase {
-					return errors.New("injected Route publication fault")
-				}
-				return nil
-			}
-			root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "Recovered route", "")
-			if !errors.Is(err, ErrOutcomeUnknown) {
-				t.Fatalf("Route %s fault error = %v", phase, err)
-			}
-			// F226: reads stay available; the affected Database fails closed for writes.
-			if _, err := authority.Capture(ctx); err != nil {
-				t.Fatalf("Capture() after fault = %v, want success", err)
-			}
-			assertDatabaseWritesPoisoned(t, ctx, authority, root.DatabaseID)
-			authority.checkpoint = nil
-			if err := authority.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if err := file.Close(); err != nil {
-				t.Fatal(err)
-			}
-			reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer reopenedFile.Close()
-			reopened, err := OpenAuthority(ctx, reopenedFile, directory)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer reopened.Close()
-			assertRoutePosting(t, reopened, "recovered", root.ID, "purpose", root.Revision)
-		})
-	}
-}
-
-func TestAuthorityRouteFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
+// TestARoutePublicationFaultBeforeTheTreeCommitLeavesTheWriteUndone is the
+// Route's half of E8 stage 1. See
+// TestARowPublicationFaultBeforeTheTreeCommitLeavesTheWriteUndone for why the
+// old "poison and reopen converges" contract no longer describes anything.
+func TestARoutePublicationFaultBeforeTheTreeCommitLeavesTheWriteUndone(t *testing.T) {
 	ctx := context.Background()
 	directory, file, authority := newAuthorityFixture(t)
 	_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
-	for _, tree := range authority.generation.trees {
-		if tree.manifest.Kind == "fulltext" {
-			if err := tree.set.Close(); err != nil {
-				t.Fatal(err)
-			}
+	injected := errors.New("injected Route publication fault")
+	authority.checkpoint = func(current authorityPhase) error {
+		if current == phaseRouteBodyCommitted {
+			return injected
 		}
+		return nil
 	}
-	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "WAL recovered route", "")
-	if !errors.Is(err, ErrOutcomeUnknown) {
-		t.Fatalf("Route Fulltext WAL fault error = %v", err)
+	if _, err := rows.CreateTableRouterRoot(
+		ctx, "work", "notes", "Recovered route", "",
+	); !errors.Is(err, injected) {
+		t.Fatalf("Route pre-commit fault error = %v, want the injected failure", err)
+	}
+	if _, err := authority.Capture(ctx); err != nil {
+		t.Fatalf("Capture() after a failed write = %v, want success", err)
+	}
+	// Still writable, and the retry succeeds.
+	authority.checkpoint = nil
+	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "Recovered route", "")
+	if err != nil {
+		t.Fatalf("retry after a failed Route publication = %v, want success", err)
 	}
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)
@@ -294,6 +265,92 @@ func TestAuthorityRouteFulltextWALFaultPoisonsAndReopenConverges(t *testing.T) {
 	}
 	defer reopened.Close()
 	assertRoutePosting(t, reopened, "recovered", root.ID, "purpose", root.Revision)
+}
+
+// TestARoutePublicationFaultAfterTheTreeCommitStillCommitted is the other side:
+// the phase fires once the objects Tree has committed, so the Route exists and
+// only the archive is left behind.
+func TestARoutePublicationFaultAfterTheTreeCommitStillCommitted(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	injected := errors.New("injected Route publication fault")
+	authority.checkpoint = func(current authorityPhase) error {
+		if current == phaseRouteFulltextPublished {
+			return injected
+		}
+		return nil
+	}
+	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "Recovered route", "")
+	if err != nil {
+		t.Fatalf("Route post-commit fault error = %v, want the committed write", err)
+	}
+	if !errors.Is(authority.ArchiveError(), injected) {
+		t.Fatalf("ArchiveError() = %v, want the injected failure", authority.ArchiveError())
+	}
+	authority.checkpoint = nil
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopenedFile.Close()
+	reopened, err := OpenAuthority(ctx, reopenedFile, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if _, err := reopened.RouteObjects().Get(nativerouter.ObjectKind, root.ID); err != nil {
+		t.Fatalf("committed Route missing from the objects Tree after a reopen: %v", err)
+	}
+}
+
+// TestARouteWALFaultLeavesTheWriteUndone is the Route's version of
+// TestAWALFaultLeavesTheWriteUndoneRatherThanUncertain.
+func TestARouteWALFaultLeavesTheWriteUndone(t *testing.T) {
+	ctx := context.Background()
+	directory, file, authority := newAuthorityFixture(t)
+	_, rows, _, _ := authorityValuesWithoutRow(t, ctx, file, authority)
+	for _, tree := range authority.generation.trees {
+		if tree.manifest.Kind == "fulltext" {
+			if err := tree.set.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	root, err := rows.CreateTableRouterRoot(ctx, "work", "notes", "WAL recovered route", "")
+	if err == nil {
+		t.Fatal("CreateTableRouterRoot() over a closed redo log unexpectedly succeeded")
+	}
+	if errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("CreateTableRouterRoot() over a closed redo log reported an unknown outcome: %v", err)
+	}
+	if err := authority.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedFile, err := nativestore.Open(filepath.Join(directory, "database.memora"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopenedFile.Close()
+	reopened, err := OpenAuthority(ctx, reopenedFile, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if root.ID != "" {
+		if _, err := reopened.RouteObjects().Get(nativerouter.ObjectKind, root.ID); err == nil {
+			t.Fatal("a Route the redo log refused came back after a reopen")
+		}
+	}
 }
 
 func TestAuthorityReopenPublishedRouteDoesNotAppendFulltextWAL(t *testing.T) {
