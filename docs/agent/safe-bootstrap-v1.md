@@ -36,5 +36,5 @@ healthy 就不能向用户报告安装完成。临时归档和 staged binary 始
 ## 关联
 
 - [Canonical Skill v1](./canonical-skill-v1.md)
-- [macOS Instance 数据目录](../storage/macos-instance-directory.md)
+- [macOS Instance 数据目录](../archive/storage/macos-instance-directory.md)
 - [历史 TDD 开发总计划](../archive/planning/tdd-development-plan.md)

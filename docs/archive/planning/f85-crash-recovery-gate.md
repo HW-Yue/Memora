@@ -6,7 +6,7 @@
 
 - 唯一结果：重启只把完整已提交的 Page redo 幂等写回 Page Store；
 - 依赖：F81 Page Codec、F82 Page File Manager、F83 Stream、F84 Transaction 完成；
-- 格式：见 [Crash Recovery v1](../../storage/crash-recovery-v1.md)；
+- 格式：见 [Crash Recovery v1](../storage/crash-recovery-v1.md)；
 - 明确不做：checkpoint/回收、Buffer Pool、reader publish、B+ Tree、root/allocator；
 - torn Page 只能由 page-init/FPI 修复，delta 不猜旧内容；
 - 用户执行授权：2026-07-31；

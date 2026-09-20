@@ -66,7 +66,7 @@
   的独立关系。改为**叶子直接挂 RowID** + 一棵反向索引树。
   这一改让三类语义健康问题（`stale_membership`、`invalid_membership_scope`、
   `multi_row_leaf`）**结构性消失**——不是修好了，是不可能发生了。
-  见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+  见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
 
 **反过来的例子，同样属于本条**：history 从"一种对象"变成"一张表"是对的，
 但表默认可查，于是"已删除 Row 的历史必须拿不到"这条规则就得**明写**，
@@ -181,7 +181,7 @@ revision 链点读。**开库之后的活路径上已经没有全扫了**——�
 
 **还差最后一步**：开库时 `scan()` 仍然逐条读完整个文件建起那张表。它是记录
 文件唯一的物理索引，要给记录文件自己一个持久索引、把 `scan` 降级为修复路径，
-这一条才真正关闭（见[物理索引](../storage/physical-index-v1.md)阶段 5）。
+这一条才真正关闭（见[物理索引](../archive/storage/physical-index-v1.md)阶段 5）。
 
 ### 记录文件要有它自己的持久索引（2026-09-02 订正措辞并裁定路线）
 
@@ -225,11 +225,11 @@ revision 链点读。**开库之后的活路径上已经没有全扫了**——�
 逻辑哈希逐字一致。
 
 迁移设计与两条路的完整对照见
-[记录文件的索引与权威](../storage/record-index-and-authority-v1.md)。
+[记录文件的索引与权威](../archive/storage/record-index-and-authority-v1.md)。
 
 ## 关联
 
 - [AI-native 产品宪章](./ai-native-product-charter.md) — 上位
 - [写入形态](./write-model.md)、[查询形态](./query-model.md) — 并列
 - [架构审计](../development/architecture-audit-2026-08.md) — 本文三条原则的实测证据
-- [记录文件的索引与权威](../storage/record-index-and-authority-v1.md) — 第四条的收尾迁移
+- [记录文件的索引与权威](../archive/storage/record-index-and-authority-v1.md) — 第四条的收尾迁移

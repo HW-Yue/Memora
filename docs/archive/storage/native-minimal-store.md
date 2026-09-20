@@ -6,7 +6,7 @@ reshape 已闭环。
 > **目标形态已改。** 本文描述的通用记录存储——13 种 object kind 全塞在同一个平坦
 > append-only 文件里，靠一张常驻内存的 `records` map 做唯一物理索引，每个版本一条
 > 独立记录，于是那张 map 随"写过多少次"增长、永不释放——已被
-> [写入形态](../product/write-model.md)取代。
+> [写入形态](../../product/write-model.md)取代。
 >
 > 关键错位：**这个文件现在同时兼着两个角色**。它既是事实上的 **binlog**
 > （append-only、BEGIN/COMMIT 成帧、所有二级结构都从它重建），又混装着
@@ -30,7 +30,7 @@ Pool。
 
 F52 起草时设想的是每 Database 一个文件（`databases/db_<stable-id>/database.memora`）。
 **实现没有走这条路，而且不会走了**：所有 Database 共用一套物理文件，理由与评估见
-[F226](../planning/f226-per-database-fault-isolation.md)。下面是实测的当前布局
+[F226](../../planning/f226-per-database-fault-isolation.md)。下面是实测的当前布局
 （两个 Database 与一个 Database 的文件集合完全相同）：
 
 ```text
@@ -149,8 +149,8 @@ MSQL Executor 已把精确 `WHERE row_id = :id` 识别为专用 Get，不扫描�
 下一步目标是 16 KiB Page 上的持久化 B+ Tree、单实例 Buffer Pool 与 Redo WAL：
 Catalog、当前 Row、Row version 和 Table 顺序拥有已提交 root，内存 Map 只作缓存。
 它不改变 MSQL、RowID、History 或 Route。见
-[ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)和
-[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
+[ADR-0005](../../decisions/0005-btree-mandatory-primary-index.md)和
+[ADR-0006](../../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 ## F52 验收
 
@@ -163,6 +163,6 @@ Catalog、当前 Row、Row version 和 Table 顺序拥有已提交 root，内存
 
 ## 关联
 
-- [F52 开工门](../archive/planning/f52-native-format-gate.md)
-- [ADR-0003](../decisions/0003-native-minimal-store-first.md)
-- [逻辑类型与字段预算](../data/logical-types.md)
+- [F52 开工门](../planning/f52-native-format-gate.md)
+- [ADR-0003](../../decisions/0003-native-minimal-store-first.md)
+- [逻辑类型与字段预算](../../data/logical-types.md)

@@ -2,7 +2,7 @@
 
 状态：F109 已完成并验收；2026-08-01 冻结格式与提交边界。
 
-> **目标形态已改。** 本文冻结的 envelope 就是[写入形态](../product/write-model.md)
+> **目标形态已改。** 本文冻结的 envelope 就是[写入形态](../../product/write-model.md)
 > 三份日志里的 **change log**，它的职责被收窄为**事务回滚的 undo 依据**，
 > **不参与崩溃恢复重建**——那是 binlog 的唯一职责。
 > 另外 envelope 目前与 Row/Table 等正文混装在同一个 `database.memora` 记录流里，

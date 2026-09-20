@@ -7,7 +7,7 @@
 合法 Mutation Plan 可确定生成 recovery 已能消费的 Page/allocator/root redo，非法输入
 零 I/O、零部分输出。
 
-规格：[Tree Commit Preparation v1](../../storage/tree-commit-preparation-v1.md)。
+规格：[Tree Commit Preparation v1](../storage/tree-commit-preparation-v1.md)。
 
 ## RED Matrix
 

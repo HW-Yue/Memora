@@ -6,7 +6,7 @@
 
 - 唯一结果：Frame 数受硬上限约束，young/old LRU 只淘汰未 pin Frame；
 - 依赖：F87 Page Loading 已完成；
-- 契约：见 [Buffer Pool Eviction v1](../../storage/buffer-pool-eviction-v1.md)；
+- 契约：见 [Buffer Pool Eviction v1](../storage/buffer-pool-eviction-v1.md)；
 - 明确不做：dirty/flush/WAL、后台等待、自适应参数；
 - 用户执行授权：2026-07-31，源自全部剩余 Feature 持续实施授权；
 - 开工前结论：PASS。

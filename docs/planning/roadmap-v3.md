@@ -102,7 +102,7 @@ Agent 轨道一节——**它们仍然有效，只是不再排在最前**。
 - [写入形态](../product/write-model.md)、[查询形态](../product/query-model.md)、
   [架构原则](../product/architecture-principles.md)
 - [执行计划](./execution-plan.md)、[架构审计](../development/architecture-audit-2026-08.md)
-- 迁移设计：[叶子直挂 RowID](../storage/leaf-rowid-v1.md)、
-  [每表一棵树](../storage/per-table-tree-v1.md)、
+- 迁移设计：[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)、
+  [每表一棵树](../archive/storage/per-table-tree-v1.md)、
   [候选预测器只给路径](../query/predictor-path-only-v1.md)
 - [路线 v2](../archive/planning/roadmap-v2.md)（已归档）

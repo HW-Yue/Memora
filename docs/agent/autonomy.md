@@ -59,5 +59,5 @@ AI 创建类型前需要发现已有表和字段。发现同义表或字段时�
 ## 关联
 
 - [MSQL](../query/msql.md)
-- [MVCC、Undo Log 与 Redo Log](../storage/mvcc-undo-redo.md)
+- [MVCC、Undo Log 与 Redo Log](../archive/storage/mvcc-undo-redo.md)
 - [自描述 Data Dictionary](../data/self-describing-data-dictionary.md)

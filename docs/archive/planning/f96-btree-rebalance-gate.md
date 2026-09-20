@@ -6,7 +6,7 @@
 
 - 唯一结果：删除造成的相邻 child pair 可 merge 或 byte-balanced redistribute，并同步 parent；
 - 依赖：F90–F95 已完成；
-- 契约：见 [B+ Tree Rebalance v1](../../storage/btree-rebalance-v1.md)；
+- 契约：见 [B+ Tree Rebalance v1](../storage/btree-rebalance-v1.md)；
 - 明确不做：underflow 触发策略、tree descent、Page 回收、root 发布、Buffer Pool/WAL；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；
 - 开工前结论：PASS。

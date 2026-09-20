@@ -7,7 +7,7 @@
 一个 committed 多 Page write set 可在硬容量 Buffer Pool 内全有或全无发布，新 Page
 可安装，control 最后进入 committed view。
 
-规格：[Atomic Buffer Publish v1](../../storage/atomic-buffer-publish-v1.md)。
+规格：[Atomic Buffer Publish v1](../storage/atomic-buffer-publish-v1.md)。
 
 ## RED Matrix
 

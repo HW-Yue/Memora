@@ -3,7 +3,7 @@
 状态：F85 已完成；冻结已提交 Page redo 的幂等重放边界。
 
 > **目标形态已改。** 本文的恢复只重放 Redo WAL 的 Page 物理日志，
-> 已被[写入形态](../product/write-model.md)取代，两处不同：
+> 已被[写入形态](../../product/write-model.md)取代，两处不同：
 >
 > 1. **binlog 是唯一恢复依据**——业务表当前数据、history 表、语义索引挂载都从 binlog
 >    重放重建；redolog 退到只判定"哪些事务算已提交"，不再充当业务数据的重建来源；

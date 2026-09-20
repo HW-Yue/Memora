@@ -6,7 +6,7 @@
 
 - 唯一结果：未满 leaf/internal Node 可有序插入或替换一个 key；
 - 依赖：F90 Node Codec 已完成；
-- 契约：见 [B+ Tree Single-Node Upsert v1](../../storage/btree-single-node-upsert-v1.md)；
+- 契约：见 [B+ Tree Single-Node Upsert v1](../storage/btree-single-node-upsert-v1.md)；
 - 明确不做：树下降、split、parent/root、持久化；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；
 - 开工前结论：PASS。

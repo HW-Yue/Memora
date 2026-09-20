@@ -8,7 +8,7 @@
 
 `rewrite/adr0011` 内核把 Route 与 Row 的向量写进同一张 sqlite-vec 表。其中
 `indexRow`（`internal/sqlstore/search.go:90-91`）把表名 + row semantics + 全部列值送去
-embedding——正是 ADR-0007 与[存储索引边界](../storage/indexing.md)禁止的
+embedding——正是 ADR-0007 与[存储索引边界](../archive/storage/indexing.md)禁止的
 「Row 正文向量副本」。而该向量当前**无任何生产读取方**。
 
 禁令源自 F21/F23 的撤销：当时融合评分直接产出事实候选，语义树被绕过。但禁令写的是
@@ -55,7 +55,7 @@ embedding——正是 ADR-0007 与[存储索引边界](../storage/indexing.md)�
 |---|---|---|
 | ADR-0007 | 禁止持久化 Row 正文、文档 chunk、图片或事实的向量副本 | Row 语义向量在本 ADR 约束下允许；chunk／图片／PDF 仍禁止 |
 | confirmed-directions 第 10 条 | 检索主路径是 AI 对 Table 级语义 Router 的逐层 SQL 导航 | 融合发现是主路径，逐层导航是兜底与区域探索 |
-| [存储索引边界](../storage/indexing.md) | 同 ADR-0007 的禁令 | 按上表修订 |
+| [存储索引边界](../archive/storage/indexing.md) | 同 ADR-0007 的禁令 | 按上表修订 |
 
 第 51 条「禁止设置或调优融合权重」**不受修订**：RRF 只用 rank，无权重可调。
 

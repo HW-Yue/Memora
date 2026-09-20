@@ -183,22 +183,13 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 
 ### 存储与可靠性
 
-**先读这两份**：
+- **[存储层：当前形态](./storage/README.md)** — 唯一入口，很短：本层没有自研实现，
+  基座是 SQLite + sqlite-vec，一切都是普通表，不做自己的 MVCC。
 
-- **[存储层：当前实现总览](./storage/README.md)** — 现在实际是什么样，
-  逐层给出事实并指向对应的冻结规格。读懂这一层的唯一入口；
-- **[写入形态](./product/write-model.md)** — 存储层的**设计终点**，
-  最高产品参考规范。总览末尾列出现役实现与它之间的已知偏差。
-
-落实写入形态的迁移设计：
-
-- [叶子直挂 RowID](./storage/leaf-rowid-v1.md) — membership 的废弃与迁移：
-  职责拆解、反向索引树、对外可见面变更与分阶段顺序。
-
-其余按 Feature 切分的规格在各自验收门通过时冻结，是证据链而非现状描述，
-从总览的对应小节进入。被取代的已移入 `archive/storage/`——包括
-[聚簇行存储 v1](./archive/storage/clustered-row-storage-v1.md)，
-它曾是设计终点，2026-08-22 被写入形态取代。
+自研引擎时代的 63 份规格（Page、Buffer Pool、WAL 与三份日志、B+ Tree、COW generation、
+MVCC/undo、崩溃恢复、Instance 物理格式与升级等）**已全部归档**到
+[`archive/storage/`](./archive/storage/)：只用于追溯，**不是设计依据**。
+对应的 ADR-0003～ADR-0006 在 `decisions/` 中标记为 Superseded。
 
 ### 使用与观察
 

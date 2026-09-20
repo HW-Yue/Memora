@@ -12,7 +12,7 @@ Memora daemon 同时承载存储引擎和 Agent Runtime，但它们使用的内�
 
 Agent 上一次查询访问过的数据 Page 会因 LRU 的最近访问特性自然留在 Buffer Pool。这里不建立“上次 Agent 查过，所以优先搜索”的语义通道，也不使用热度修改倒排、Router 或关系评分。
 
-Buffer Pool 的完整设计见 [Buffer Pool](../storage/buffer-pool.md)。
+Buffer Pool 的完整设计见 [Buffer Pool](../archive/storage/buffer-pool.md)。
 
 ## Query Workspace
 
@@ -48,6 +48,6 @@ Query Workspace 绑定调用方、权限 scope 和会话。版本变化后必须
 
 ## 关联
 
-- [Buffer Pool](../storage/buffer-pool.md)
+- [Buffer Pool](../archive/storage/buffer-pool.md)
 - [上下文生命周期](./context-lifecycle.md)
 - [内置 Agent Runtime](../agent/embedded-agent-runtime.md)

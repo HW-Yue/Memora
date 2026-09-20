@@ -6,7 +6,7 @@
 
 - 故事：`US-ENGINE`、`US-RECOVER`、`US-CORRECT`；
 - 唯一结果：单 writer 把 Tree plan 变成 WAL-durable、Buffer 原子可见的 commit；
-- 规格：[Durable Tree Runtime v1](../../storage/durable-tree-runtime-v1.md)；
+- 规格：[Durable Tree Runtime v1](../storage/durable-tree-runtime-v1.md)；
 - 依赖：F97d1/F97d2 已完成；
 - 明确不做：Catalog/Row key、F98 索引、checkpoint、snapshot、对象锁；
 - 开工前结论：PASS。

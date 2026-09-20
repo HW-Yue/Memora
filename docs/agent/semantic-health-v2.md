@@ -17,7 +17,7 @@
 > （叶子指向不存在的 Row）保留，改读叶子上的 RowID 字段判定。
 > **这是对外可见的能力减少**，记在
 > [待发布的对外可见变化](../development/release-notes-pending.md)。
-> 职责拆解与分阶段迁移见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+> 职责拆解与分阶段迁移见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
 
 ## 只读快照
 

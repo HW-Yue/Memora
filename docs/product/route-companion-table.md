@@ -79,7 +79,7 @@ notes_routes     这张表的语义索引（普通表）
 
 ## 不存路径的后果
 
-[叶子直挂 RowID §7.3](../storage/leaf-rowid-v1.md) 曾以两条理由保留 `Node.Path`，
+[叶子直挂 RowID §7.3](../archive/storage/leaf-rowid-v1.md) 曾以两条理由保留 `Node.Path`，
 本文取代该结论：
 
 - path → 节点反查：`ResolveRouterPath` 已无生产调用方，不再需要；
@@ -150,7 +150,7 @@ objects 树若还在，只可能暂存 Catalog／Relation 等尚未表化的东�
 
 - [写入形态](./write-model.md)、[查询形态](./query-model.md)、
   [架构原则](./architecture-principles.md) 第二条
-- [叶子直挂 RowID](../storage/leaf-rowid-v1.md)、
-  [每表一棵树](../storage/per-table-tree-v1.md)
+- [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)、
+  [每表一棵树](../archive/storage/per-table-tree-v1.md)
 - [F169 一叶一行](../planning/f169-single-row-route-leaf.md)、
   [F223 扇出上限](../planning/f223-route-branch-fanout-limit.md)

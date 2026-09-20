@@ -6,7 +6,7 @@
 
 - 唯一结果：internal/leaf Node 可确定编码到 16 KiB Page 并严格拒绝损坏；
 - 依赖：F81 Page Codec 已完成；
-- 格式：见 [B+ Tree Node Codec v1](../../storage/btree-node-codec-v1.md)；
+- 格式：见 [B+ Tree Node Codec v1](../storage/btree-node-codec-v1.md)；
 - 明确不做：search、cursor、mutation、split、root persistence；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；
 - 开工前结论：PASS。

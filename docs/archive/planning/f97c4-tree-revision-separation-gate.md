@@ -7,7 +7,7 @@
 Tree control、metadata redo 与 recovery 明确分离 physical generation 和 publication
 revision，连续普通提交保持同一 Page generation。
 
-规格：[Tree Control v2](../../storage/tree-control-v2.md)。
+规格：[Tree Control v2](../storage/tree-control-v2.md)。
 
 ## RED Matrix
 

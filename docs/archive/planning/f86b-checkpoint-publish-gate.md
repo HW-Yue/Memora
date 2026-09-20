@@ -6,7 +6,7 @@
 
 - 唯一结果：只有 Page durability barrier 成功后才能持久发布恢复起点；
 - 依赖：F85 Recovery、F86a Segment Set 已完成；
-- 格式：见 [Checkpoint Publish v1](../../storage/checkpoint-publish-v1.md)；
+- 格式：见 [Checkpoint Publish v1](../storage/checkpoint-publish-v1.md)；
 - 明确不做：Segment 删除、自动 checkpoint、Buffer Pool cleaner；
 - 用户执行授权：2026-07-31，源自全部 Feature 持续实施授权；
 - 开工前结论：PASS。

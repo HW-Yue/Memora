@@ -6,7 +6,7 @@
 
 - 唯一结果：已提交 Page 可标记 dirty，并且只在 WAL durable 后安全写回；
 - 依赖：F84 Durable Transaction、F87 Page Loading、F88 Eviction 已完成；
-- 契约：见 [Buffer Pool Dirty Flush v1](../../storage/buffer-pool-dirty-flush-v1.md)；
+- 契约：见 [Buffer Pool Dirty Flush v1](../storage/buffer-pool-dirty-flush-v1.md)；
 - 明确不做：业务 commit 接线、checkpoint fsync、后台 cleaner；
 - 用户执行授权：2026-07-31，源自全部剩余 Feature 持续实施授权；
 - 开工前结论：PASS。

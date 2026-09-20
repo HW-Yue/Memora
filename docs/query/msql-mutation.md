@@ -10,7 +10,7 @@
 > 一并消失的是 membership 自带的 `MembershipRevision` 与墓碑——
 > 挂载关系并进叶子后由叶子自己的 revision 接管。
 > 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码。
-> 迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+> 迁移设计见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
 
 F31 起，Canonical Skill 的正式自主写入先通过版本化 Mutation Plan 和
 Policy，再由本 Executor 执行；直接 `exec` 仍是底层逻辑 MSQL 入口，不能

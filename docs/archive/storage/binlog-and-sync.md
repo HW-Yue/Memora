@@ -3,7 +3,7 @@
 状态：F109 durable envelope 与 F113 Page cursor/MSQL 读取均已完成；同步边界仍是未来方向。
 
 > **目标形态已改，而且这份文档的名字会误导人。** 本文把 Change Log **就叫做
-> "Memora Binlog"**。在[写入形态](../product/write-model.md)里这是**两个不同的日志**：
+> "Memora Binlog"**。在[写入形态](../../product/write-model.md)里这是**两个不同的日志**：
 >
 > | 日志 | 职责 | 参与恢复？ |
 > |------|------|-----------|
@@ -136,5 +136,5 @@ delta 或混合重放格式，在同步 Feature Review 时再决定。
 ## 关联
 
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)
-- [历史数据可视化与本地观察接口计划](../archive/planning/visual-inspection-feature-plan.md)
-- [History Store v1](../data/history-store-v1.md)
+- [历史数据可视化与本地观察接口计划](../planning/visual-inspection-feature-plan.md)
+- [History Store v1](../../data/history-store-v1.md)

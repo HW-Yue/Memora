@@ -7,7 +7,7 @@
 - 唯一结果：WAL segment 可按严格 LSN 追加、扫描、同步并拒绝损坏；
 - 依赖：F81 Page Codec、F82 Page File Manager 已完成；
 - 用户结果：后续 Page 更新拥有可解释的物理日志顺序；
-- 架构：见 [WAL Record Stream v1](../../storage/wal-record-stream-v1.md)；
+- 架构：见 [WAL Record Stream v1](../storage/wal-record-stream-v1.md)；
 - 明确不做：durable COMMIT 语义、recovery、checkpoint、Buffer Pool；
 - AI/MSQL/Route 不接触 WAL，无 Vector/Provider/SQLite；
 - 用户执行授权：2026-07-31；

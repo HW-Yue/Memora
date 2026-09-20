@@ -8,7 +8,7 @@
 > [写入形态](../product/write-model.md)去掉了独立的 membership 关系——
 > 叶子直接挂 RowID，判据变成"有没有叶子指向这个 Row"，靠反向索引树回答。
 > **问题本身依然成立**（零 Route 归属的孤儿 Row 要在写入时挡住），
-> 变的是判据的取法。迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+> 变的是判据的取法。迁移设计见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
 
 ## 问题
 

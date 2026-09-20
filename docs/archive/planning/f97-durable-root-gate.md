@@ -54,7 +54,7 @@ F97 的验收只证明这段旅程所依赖的物理索引可持久提交；业�
 | F97d Durable Tree Commit | 私有计划按 WAL durable → committed Page → root-last 发布并可 reopen | Catalog/Row key 编码、MVCC |
 
 F97a 详细候选契约见
-[B+ Tree Mutation Plan v1](../../storage/btree-mutation-plan-v1.md)，独立开工门见
+[B+ Tree Mutation Plan v1](../storage/btree-mutation-plan-v1.md)，独立开工门见
 [F97a B+ Tree Mutation Plan](./f97a-btree-mutation-plan-gate.md)。
 F97b Review 见 [WAL Recovery Open 拆分 Review](./f97b-wal-recovery-open-review.md)。
 
@@ -64,7 +64,7 @@ control Page，保存 committed root、generation 与连续 allocator high-water
 Page，但空间复用或 generation compaction 留给后续独立 Feature，避免同时引入 free-list
 恢复协议。控制格式见 [Tree Control v1](../storage/tree-control-v1.md)，redo payload
 见 [Root/Allocator Redo v1](../storage/root-allocator-redo-v1.md)，恢复顺序见
-[Tree Metadata Recovery v1](../../storage/tree-metadata-recovery-v1.md)。
+[Tree Metadata Recovery v1](../storage/tree-metadata-recovery-v1.md)。
 
 ## RED 与完成证据候选
 

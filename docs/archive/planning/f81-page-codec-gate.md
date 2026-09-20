@@ -8,7 +8,7 @@
 - 用户故事：为后续 RowID 的 B+ Tree 纯代码取数提供可信固定 Page；
 - 产品协议影响：无；AI、MSQL、Route Frame 看不到物理 Page；
 - 架构选择：CRC32C、64-byte Header、明确 Page Type，见
-  [Page Codec v1](../../storage/page-codec-v1.md)；
+  [Page Codec v1](../storage/page-codec-v1.md)；
 - 永久边界：无 Vector/cosine，无 SQLite，无 Provider，无文件 I/O；
 - 明确不做：Page Manager、WAL、Buffer Pool、B+ Tree；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；

@@ -9,7 +9,7 @@
 > 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
 > 但**不能作为新开发的设计依据**。
 > membership 的职责拆解、新归宿与分阶段迁移见
-> [叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+> [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
 
 ## 产品门
 

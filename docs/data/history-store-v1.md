@@ -63,4 +63,4 @@ AS OF snapshot 按稳定 Column ID 通过当前 Catalog 投影，因此 rename �
 
 - [Row Store v1](./row-store-v1.md)
 - [MSQL Mutation Executor v1](../query/msql-mutation.md)
-- [MVCC、Undo Log 与 Redo Log](../storage/mvcc-undo-redo.md)
+- [MVCC、Undo Log 与 Redo Log](../archive/storage/mvcc-undo-redo.md)

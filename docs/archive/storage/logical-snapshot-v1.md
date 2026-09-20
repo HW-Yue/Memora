@@ -3,7 +3,7 @@
 状态：F26a/F26b 已冻结版本化逻辑格式、v0 迁移、确定性哈希、Store 导出、原子导入和逻辑索引重建。
 
 > **目标形态已改。** 本文的信封按"History 是一种系统对象"导出归属，
-> 已被[写入形态](../product/write-model.md)取代：history 独立成表，
+> 已被[写入形态](../../product/write-model.md)取代：history 独立成表，
 > 且**binlog 是唯一恢复依据**——备份与恢复都只依赖 binlog，不再依赖快照 + Change Log。
 > 逻辑快照在新形态下的定位（是否保留、导出什么）待定。
 > 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
@@ -45,8 +45,8 @@ Row 定位、History revision、Relation 正反向定位、Agent、Router、机�
 
 ## 关联
 
-- [Catalog v1](../data/catalog-v1.md)
-- [Row Store v1](../data/row-store-v1.md)
-- [History Store v1](../data/history-store-v1.md)
-- [Relationship Store v1](../data/relationship-store-v1.md)
-- [原生极简 Store ADR](../decisions/0003-native-minimal-store-first.md)
+- [Catalog v1](../../data/catalog-v1.md)
+- [Row Store v1](../../data/row-store-v1.md)
+- [History Store v1](../../data/history-store-v1.md)
+- [Relationship Store v1](../../data/relationship-store-v1.md)
+- [原生极简 Store ADR](../../decisions/0003-native-minimal-store-first.md)

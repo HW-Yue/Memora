@@ -102,5 +102,5 @@ go test ./internal/store/fulltextindex ./internal/pagestoremigration
 
 - [F172a](./f172a-row-posting-generation.md)
 - [F171](./f171-persistent-posting-store.md)
-- [Page Store Authority](../storage/page-store-authority-v1.md)
+- [Page Store Authority](../archive/storage/page-store-authority-v1.md)
 - [TDD 协议](./feature-tdd-protocol.md)

@@ -55,4 +55,4 @@ collision-free binary key；批量请求按该 key 排序、去重，所以输�
 
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)
 - [Snapshot Visibility v1](./snapshot-visibility-v1.md)
-- [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)
+- [ADR-0004](../../decisions/0004-fast-row-directory-minimal-mvcc.md)

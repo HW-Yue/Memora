@@ -60,7 +60,7 @@ F90–F97 使用手工 fixture、排序 reference model、保存 seed 的随机�
 检查。F93/F95 的中间树只用于 package 内测试，不能在 F94/F96 完成前接业务路径。
 F97 拆分 Review 见 [F97 Durable Root 开工门](./f97-durable-root-gate.md)。
 F97a 冻结契约见
-[B+ Tree Mutation Plan v1](../../storage/btree-mutation-plan-v1.md)。
+[B+ Tree Mutation Plan v1](../storage/btree-mutation-plan-v1.md)。
 F97b 修订证据见
 [WAL Recovery Open 拆分 Review](./f97b-wal-recovery-open-review.md)。
 

@@ -73,5 +73,5 @@ snapshot SHA-256 校验。未知 envelope 字段、损坏内容、不支持版�
 ## 关联
 
 - [可安装的独立语义数据库](./installable-database-package.md)
-- [Logical Snapshot v1](../storage/logical-snapshot-v1.md)
+- [Logical Snapshot v1](../archive/storage/logical-snapshot-v1.md)
 - [MSQL](../query/msql.md)

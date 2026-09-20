@@ -6,7 +6,7 @@
 
 - 唯一结果：从单 leaf 删除精确 key 后该 key 不可见且邻居不受影响；
 - 依赖：F90 Node Codec、F91 Point Search、F93 Single-Node Upsert 已完成；
-- 契约：见 [B+ Tree Leaf Delete v1](../../storage/btree-leaf-delete-v1.md)；
+- 契约：见 [B+ Tree Leaf Delete v1](../storage/btree-leaf-delete-v1.md)；
 - 明确不做：internal/parent mutation、fill factor、borrow、merge、root shrink、WAL；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；
 - 开工前结论：PASS。

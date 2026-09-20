@@ -76,5 +76,5 @@ Catalog 或权威记录损坏时 doctor 失败，不伪装为 healthy。当前�
 ## 关联
 
 - [本地 IPC 协议](./ipc-protocol.md)
-- [Logical Snapshot v1](../storage/logical-snapshot-v1.md)
+- [Logical Snapshot v1](../archive/storage/logical-snapshot-v1.md)
 - [MSQL Result Envelope v1](../query/result-envelope.md)

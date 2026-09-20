@@ -45,6 +45,6 @@ Unix socket/IPC 是否删除是独立运行时决策。“删除 SQLite”不能
 
 ## 关联
 
-- [原生极简存储格式](../storage/native-minimal-store.md)
+- [原生极简存储格式](../archive/storage/native-minimal-store.md)
 - [ADR-0001：SQLite 原型 Store](./0001-prototype-store.md)
 - [历史 Phase D 计划](../archive/planning/tdd-phase-d-release-kernel.md)

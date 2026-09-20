@@ -10,7 +10,7 @@ committed root/allocator redo 可按 bootstrap → Page → control-last 顺序�
 
 - 用户故事：`US-RECOVER`、`US-ENGINE`、`US-DEVELOPER`；
 - 依赖：F81–F97c2 已完成；
-- 规格：[Tree Metadata Recovery v1](../../storage/tree-metadata-recovery-v1.md)；
+- 规格：[Tree Metadata Recovery v1](../storage/tree-metadata-recovery-v1.md)；
 - 明确不做：生成 mutation、在线 durable commit、业务 key、MVCC 和 Page 复用。
 
 结论：PASS。F97c3 只把已提交 redo 应用到 Page/Tree control；F97d 才产生 WAL 并在线发布。

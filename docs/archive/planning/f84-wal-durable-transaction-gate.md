@@ -7,7 +7,7 @@
 - 唯一结果：事务只在 change + commit 全部写入且 WAL Sync 成功后返回成功；
 - 依赖：F83 WAL Record Stream 已完成；
 - 架构：单 writer、连续事务、commit digest、失败后 poisoned，见
-  [WAL Durable Transaction v1](../../storage/wal-durable-transaction-v1.md)；
+  [WAL Durable Transaction v1](../storage/wal-durable-transaction-v1.md)；
 - 明确不做：Page apply、reader publish、recovery、checkpoint、Group Commit；
 - AI/MSQL/Route 不接触物理 WAL，无 Vector/Provider/SQLite；
 - 用户执行授权：2026-07-31；

@@ -108,5 +108,5 @@ change buffer、adaptive hash、Group Commit、完整 per-table Tablespace/Exten
 ## 关联
 
 - [ADR-0005：B+ Tree 必做](./0005-btree-mandatory-primary-index.md)
-- [Buffer Pool](../storage/buffer-pool.md)
-- [MVCC、Undo、Redo 与 Binlog](../storage/mvcc-undo-redo.md)
+- [Buffer Pool](../archive/storage/buffer-pool.md)
+- [MVCC、Undo、Redo 与 Binlog](../archive/storage/mvcc-undo-redo.md)

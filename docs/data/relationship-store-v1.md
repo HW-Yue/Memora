@@ -55,4 +55,4 @@ MSQL 使用参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UN
 - [语义记录模型](./semantic-records.md)
 - [Row Store v1](./row-store-v1.md)
 - [History Store v1](./history-store-v1.md)
-- [物理与检索索引](../storage/indexing.md)
+- [物理与检索索引](../archive/storage/indexing.md)

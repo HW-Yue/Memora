@@ -8,7 +8,7 @@
 > 这个反查改由一棵专门的**反向索引树**（`row_id → leaf_ids`）承担。
 > 返回内容、字段名和语义都不变。
 > 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码。
-> 迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+> 迁移设计见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
 
 ## 绑定边界
 

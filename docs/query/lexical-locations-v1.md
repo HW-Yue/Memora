@@ -8,7 +8,7 @@
 > 现在返回 `kind`／`database_id`／`table_id`／`object_id`，
 > 外加 route 与 table 命中的 `path`。
 > **row 与 column 的 path 还没有**：它要「行 → 叶子」反查，
-> 见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。在那之前它们只给身份，
+> 见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。在那之前它们只给身份，
 > 不给猜出来的路径。本文其余部分（游标、快照、边界）仍然有效。
 
 ## 语法与预算

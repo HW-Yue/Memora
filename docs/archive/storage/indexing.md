@@ -5,7 +5,7 @@ F81–F106 逐项 Review。F19–F23 的混合答案路径仍撤销；ADR-0008 �
 与持久化 posting store 已由 F170–F171 完成，生产发布和 MSQL 查询继续分阶段实现。
 
 > **目标形态已改。** 本文把语义索引的 Leaf → Row 归属描述为独立的 membership 关系，
-> 并按"全实例共用的物理主索引"划分职责。[写入形态](../product/write-model.md)取代了
+> 并按"全实例共用的物理主索引"划分职责。[写入形态](../../product/write-model.md)取代了
 > 这两点：**叶子直接挂 RowID**（无独立 membership），且**每张表各是一棵独立的
 > B+ 树**（业务表与 history 表都是），而非共用一棵靠键里嵌 `table_id` 区分。
 > 「物理索引 vs 语义索引」的职责边界本身不变。
@@ -47,8 +47,8 @@ AI 使用的语义索引：
 允许通过 MSQL 显式调用全内容字面位置或 Route-only Vector 候选。Lexical 可以返回
 Database/Table/Route/Row ID 与 revision；Vector 仍不含 Row。两者都只返回位置、来源和
 有界分数，AI 必须读取 Router 或 SQL 回表。完整边界见
-[ADR-0007](../decisions/0007-route-predictor-arsenal.md)与
-[ADR-0008](../decisions/0008-full-content-inverted-index.md)。
+[ADR-0007](../../decisions/0007-route-predictor-arsenal.md)与
+[ADR-0008](../../decisions/0008-full-content-inverted-index.md)。
 
 ## Row 与 Route 原子性
 
@@ -91,11 +91,11 @@ Catalog name/id → current Schema revision locator
 
 精确 RowID Get 沿根到叶定位，Table cursor 沿叶链有序前进。内存 Catalog/Page Map
 只作为缓存；重启从已提交 root/manifest 打开，不能全量扫描 Row Record 重建索引。
-详见 [ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)。
+详见 [ADR-0005](../../decisions/0005-btree-mandatory-primary-index.md)。
 
 最小 MVCC 使用 immutable Row revision、commit marker 和 snapshot sequence；
 不预设“最新 Record + 物理 Undo chain”。长期 History 仍独立保存语义 revision。
-见 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)。
+见 [ADR-0004](../../decisions/0004-fast-row-directory-minimal-mvcc.md)。
 
 语义 Row 的字符预算属于 Schema/Column 约束；Page 的字节容量属于物理存储。
 Row split 由 AI 按语义完成，Page split 由引擎自动完成，二者不能混淆。
@@ -110,7 +110,7 @@ Row split 由 AI 按语义完成，Page split 由引擎自动完成，二者不�
 
 ## 关联
 
-- [AI-native 产品宪章](../product/ai-native-product-charter.md)
-- [Agent 语义目录索引](../query/semantic-routing.md)
+- [AI-native 产品宪章](../../product/ai-native-product-charter.md)
+- [Agent 语义目录索引](../../query/semantic-routing.md)
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)
-- [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)
+- [ADR-0007：Router 权威，候选预测器可组合](../../decisions/0007-route-predictor-arsenal.md)

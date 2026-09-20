@@ -276,7 +276,7 @@ Document IR、OCR 证据门。而吸收的**提交侧**（`REVIEW`/`SUBMIT ASSIM
 
 - history 独立成表、每张表一棵独立 B+ 树、三份日志分工 →
   [存储层总览「已知偏差」](../storage/README.md)；
-- 语义索引叶子直挂 RowID → [叶子直挂 RowID](../storage/leaf-rowid-v1.md)；
+- 语义索引叶子直挂 RowID → [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)；
 - 检索只返回路径 → [候选预测器只给路径](../query/predictor-path-only-v1.md)。
 
 ---

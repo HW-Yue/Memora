@@ -1,6 +1,6 @@
 # 语义索引叶子直挂 RowID：membership 的废弃与迁移
 
-状态：**迁移设计**（2026-08-22）。落实[写入形态](../product/write-model.md) §2
+状态：**迁移设计**（2026-08-22）。落实[写入形态](../../product/write-model.md) §2
 「叶子直接挂 RowID，不再有独立的 membership 对应关系」，不是独立规范——
 与写入形态冲突时以写入形态为准。**尚未排期，未开始实现。**
 
@@ -51,7 +51,7 @@ native 侧它是**两个** object kind（`internal/store/native/file.go:56-65`�
 `internal/router/service.go` 那套 bucket 实现（`router_leaf_members`／
 `router_row_memberships`，文件 24-25 行）只能经 `row.New`
 （`internal/row/service.go:73`）到达，而 **`row.New(` 的调用方全部是测试**。
-按[旧代码清理边界](../development/legacy-code-boundary.md)，`internal/router`
+按[旧代码清理边界](../../development/legacy-code-boundary.md)，`internal/router`
 作为迁移、package、逻辑快照与 native 对拍的参考模型保留，
 「不是生产存储 authority」——与代码一致。
 
@@ -160,7 +160,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 ### 5.3 两份指向的一致性
 
 叶子存 RowID、行存 leaf ID——同一份事实存了两遍，命中
-[架构原则](../product/architecture-principles.md) §2 的判据 2。
+[架构原则](../../product/architecture-principles.md) §2 的判据 2。
 **这是一个有意的例外，必须写明而不是默认**：
 
 - 两边都在**同一次写入的同一个事务**里落盘，不存在"两个结构各自演化"；
@@ -198,7 +198,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
    `MembershipRevision`，换个名字重新引进来等于白做；
 2. `Node.Revision` 的含义就是「这条节点记录变了」。**一个现在持有 Row 的叶子
    确实和之前不一样了**，告诉并发编辑者这件事是对的，不是噪声；
-3. [F169](../planning/f169-single-row-route-leaf.md) 保证一个叶子至多挂一行，
+3. [F169](../../planning/f169-single-row-route-leaf.md) 保证一个叶子至多挂一行，
    所以这是叶子一生中至多发生两次的事，不是每次写入都抖。
 
 **客户端契约**：编辑一个叶子前重新读它的 revision，不要沿用创建时那个。
@@ -221,7 +221,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 阶段 7 **有一道前置量测**：先测真实语义树深度与 `route_paths` 的读代价。
 量测已做完，结论与原设想不同，见 §7.3。
 
-阶段 6 受[旧代码清理边界](../development/legacy-code-boundary.md)的删除规则约束：
+阶段 6 受[旧代码清理边界](../../development/legacy-code-boundary.md)的删除规则约束：
 删除前必须证明目标不在 `cmd/...` 生产依赖图中，并先增加「旧路径不得重新出现」的 RED。
 
 **跨阶段的逐字一致基线**：切换前后比对 `OPEN ROUTE`、`SHOW ROUTES`、
@@ -258,12 +258,12 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 
 ### 7.3 阶段 7 的量测结论：不删 `Node.Path`
 
-> **已被取代（2026-09-13）**：[Route 配套表](../product/route-companion-table.md)
+> **已被取代（2026-09-13）**：[Route 配套表](../../product/route-companion-table.md)
 > 决定不存路径——path → 节点反查已无生产调用方，全文 `path` 字段先不做。
 > 下文的量测数字仍有效，结论不再适用。
 
 量测代码在 `internal/nativerouter/path_cost_test.go`，树形取自
-[路由评测语料](../development/route-benchmark-corpus-v1.md)：depth ≤ 6、
+[路由评测语料](../../development/route-benchmark-corpus-v1.md)：depth ≤ 6、
 fanout ≤ 12（F223）。量出三件事，其中两件推翻了原设想。
 
 **一、真正的瓶颈不是 `Path`，是节点点查。**
@@ -286,7 +286,7 @@ revision。每条 SELECT 的每行每叶子都走一次，一页结果就是一�
 
 原设想的收益是「RENAME 退化成改一个节点」。不成立：`Path` **不是唯一一份
 物化的 trace**。同一条路径还被物化在三个派生结构里——
-[Route 倒排生成](../planning/f173b1-route-posting-generation.md)的全文索引
+[Route 倒排生成](../../planning/f173b1-route-posting-generation.md)的全文索引
 把它当作可检索字段（`routefulltext/project.go` 的 `textField("path", …)`）、
 向量面（`routevector/surface.go`）、词法检索（`routelexical/search.go`）。
 
@@ -319,10 +319,10 @@ revision。每条 SELECT 的每行每叶子都走一次，一页结果就是一�
 
 ## 关联
 
-- [写入形态](../product/write-model.md)（上位规范）、[查询形态](../product/query-model.md)
+- [写入形态](../../product/write-model.md)（上位规范）、[查询形态](../../product/query-model.md)
 - [存储层总览](./README.md)「已知偏差」C 组
-- [语义 Router](../query/semantic-routing.md)、[Route Read v1](../query/route-read-v1.md)
-- [Route Mutation Plan v1](../query/route-mutation-plan-v1.md)、
-  [Route Mutation Execution v1](../query/route-mutation-execution-v1.md)
-- [F169：Leaf 单 Row 不变量](../planning/f169-single-row-route-leaf.md)（不变量保留）
-- [语义健康 v2](../agent/semantic-health-v2.md)、[旧代码清理边界](../development/legacy-code-boundary.md)
+- [语义 Router](../../query/semantic-routing.md)、[Route Read v1](../../query/route-read-v1.md)
+- [Route Mutation Plan v1](../../query/route-mutation-plan-v1.md)、
+  [Route Mutation Execution v1](../../query/route-mutation-execution-v1.md)
+- [F169：Leaf 单 Row 不变量](../../planning/f169-single-row-route-leaf.md)（不变量保留）
+- [语义健康 v2](../../agent/semantic-health-v2.md)、[旧代码清理边界](../../development/legacy-code-boundary.md)

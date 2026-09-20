@@ -10,7 +10,7 @@
 - 依赖：F83–F86c、F97a 已完成；
 - 语义：validation/写前错误确定未提交；WAL/control I/O 开始后的错误返回
   `ErrOutcomeUnknown` 并 poison，重开按最高有效 frontier 判定；
-- 格式：[Durable WAL Frontier v1](../../storage/wal-durable-frontier-v1.md)；
+- 格式：[Durable WAL Frontier v1](../storage/wal-durable-frontier-v1.md)；
 - 明确不做：截尾/删除 speculative WAL、Page/root/allocator redo、B+ Tree、Buffer Pool；
 - F97b2 不属于本 Feature 的实现范围；F97b1 开工前结论：PASS。
 

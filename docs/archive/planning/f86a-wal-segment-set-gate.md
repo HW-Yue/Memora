@@ -6,7 +6,7 @@
 
 - 唯一结果：WAL 可在多个连续 Segment 间显式 roll、重开并保持全局事务顺序；
 - 依赖：F83 Stream、F84 Durable Transaction、F85 Recovery 已完成；
-- 格式：见 [WAL Segment Set v1](../../storage/wal-segment-set-v1.md)；
+- 格式：见 [WAL Segment Set v1](../storage/wal-segment-set-v1.md)；
 - 明确不做：checkpoint 发布、recovery 起点、Segment 删除、自动大小策略；
 - 用户执行授权：2026-07-31，源自 F81–F109 全部 Feature 持续实施授权；
 - 拆分原因：rolling、checkpoint publish、reclaim 是三个独立故障域；

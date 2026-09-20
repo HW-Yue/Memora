@@ -19,7 +19,7 @@
 
 **客户端要做的事**：编辑一个叶子前重新读它的 revision，不要沿用创建时那个。
 
-背景与取舍见[叶子直挂 RowID](../storage/leaf-rowid-v1.md) §6.1。
+背景与取舍见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md) §6.1。
 
 ### 语义健康报告少三项
 
@@ -61,6 +61,6 @@ Membership 对象与它两端漂移出来的状态，那个对象已经不存在
 
 ## 关联
 
-- [叶子直挂 RowID](../storage/leaf-rowid-v1.md)
+- [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)
 - [语义健康 v2](../agent/semantic-health-v2.md)
 - [GitHub Release 自动化](./github-release-automation-v1.md)

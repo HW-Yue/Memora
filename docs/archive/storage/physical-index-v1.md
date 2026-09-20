@@ -1,6 +1,6 @@
 # 物理索引:把常驻内存的索引全部搬进 B+ 树
 
-状态:**迁移设计**(2026-08-31)。落实[架构原则](../product/architecture-principles.md)
+状态:**迁移设计**(2026-08-31)。落实[架构原则](../../product/architecture-principles.md)
 **第四条**「一切都要有物理存储,启动只给钩子,查的时候按需去文件里取」。
 不是独立规范——与架构原则冲突时以架构原则为准。
 
@@ -300,7 +300,7 @@ Route、Relation、Catalog 正文共用 objects 树。同一次 `CommitGroupFunc
 
 ## 关联
 
-- [架构原则](../product/architecture-principles.md) **第四条**(上位规范)
+- [架构原则](../../product/architecture-principles.md) **第四条**(上位规范)
 - [存储层总览](./README.md) §7「那张常驻内存的表」、§11 偏差 11／12／14
 - [派生索引追平](./derived-index-catchup-v1.md)(游标模式的先例)
 - [每表一棵树](./per-table-tree-v1.md)(Row 那一族的先例)

@@ -44,5 +44,5 @@ Row transaction 按稳定 Catalog Column 顺序读取所有当前 TEXT 值；INT
 ## 关联
 
 - [Agent Inverted Index v1](./agent-index-v1.md)
-- [物理与检索索引](../../storage/indexing.md)
+- [物理与检索索引](../storage/indexing.md)
 - [MSQL](../../query/msql.md)

@@ -13,7 +13,7 @@
 - 作用域：物理 B+ Tree Page 与私有 allocator high-water；不改变 Row revision、
   History、Route、Schema、Result Envelope 或 AI 上下文预算；
 - 依赖：F90–F96 已完成且当前 `go test ./internal/store/...` 通过；
-- 契约：[B+ Tree Mutation Plan v1](../../storage/btree-mutation-plan-v1.md)；
+- 契约：[B+ Tree Mutation Plan v1](../storage/btree-mutation-plan-v1.md)；
 - 架构：复用既有 Page/Node codec 与纯 mutation，不引入新后端、Provider、Vector、
   SQLite fallback 或 Agent 旁路；
 - 明确不做：WAL、Buffer Pool、root/control Page、文件 I/O、业务 key、MVCC 与锁；

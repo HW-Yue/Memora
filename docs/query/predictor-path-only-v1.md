@@ -69,7 +69,7 @@
 | `database` | 库级，无树内路径；只返回 `database` |
 
 `row` 那一行依赖「行 → 叶子」反向查找。这正是
-[叶子直挂 RowID](../storage/leaf-rowid-v1.md) 里定的反向索引树要承担的事，
+[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md) 里定的反向索引树要承担的事，
 两份设计在这里对接：**本设计不另造反查机制。**
 
 ## 3. 前后对比：每个字段的去留
@@ -194,7 +194,7 @@ Frame 不再带 `PredictorReceipt`，「向量预测器没有可用 generation�
 
 - [查询形态](../product/query-model.md) §6（上位）、
   [架构原则](../product/architecture-principles.md) §3
-- [叶子直挂 RowID](../storage/leaf-rowid-v1.md)（`row` 的反查在那边定）
+- [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)（`row` 的反查在那边定）
 - [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)
 - [ADR-0008：全内容倒排索引](../decisions/0008-full-content-inverted-index.md)
 - [架构审计](../development/architecture-audit-2026-08.md)

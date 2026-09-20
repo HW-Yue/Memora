@@ -47,5 +47,5 @@ APPLY。包含 DROP 的计划不返回自动补偿，避免把逻辑 History 保
 ## 关联
 
 - [Schema Change Plan v1](./schema-change-plan-v1.md)
-- [Committed Change Envelope v1](../storage/committed-change-envelope-v1.md)
+- [Committed Change Envelope v1](../archive/storage/committed-change-envelope-v1.md)
 - [Skill Schema 生命周期 v1](../agent/skill-schema-lifecycle-v1.md)

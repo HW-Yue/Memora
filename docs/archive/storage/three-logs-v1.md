@@ -1,6 +1,6 @@
 # 三份日志各司其职，binlog 是唯一恢复依据
 
-状态：**迁移设计**（2026-08-30）。落实[写入形态](../product/write-model.md)
+状态：**迁移设计**（2026-08-30）。落实[写入形态](../../product/write-model.md)
 §3「写入流程（含日志与两阶段提交）」与 §5「日志体系：三份日志各司其职」。
 不是独立规范——与写入形态冲突时以写入形态为准。
 
@@ -41,7 +41,7 @@
 
 所以**没有 binlog 的时候，prepare／commit 无事可判**：
 今天一个 WAL 事务要么带着提交记录完整落盘、要么没有，本身已经是原子的。
-先加标记等于造一个没有对手方的机制——正是[已知风险](../development/known-risks.md)
+先加标记等于造一个没有对手方的机制——正是[已知风险](../../development/known-risks.md)
 7a 那类「写好了、测好了、没人调用」的失败模式，本路线一直在消灭它。
 
 **所以本设计的阶段顺序是 binlog 在前、标记在后**，与写入形态列举流程的
@@ -183,7 +183,7 @@ COMMIT 记录之前**——一个钩子覆盖全部九处，而且构造上不�
 redo WAL 提交的是 **generation 那几棵派生树**，而派生树与记录文件不一致时
 本来就会被重建（开机 reconcile，必要时整个 COW）。把它拉进恢复协议，
 等于让一个可重建的结构参与判定「什么算已提交」——与
-[架构原则](../product/architecture-principles.md)「派生索引可重建」相反。
+[架构原则](../../product/architecture-principles.md)「派生索引可重建」相反。
 
 它自己那份原子性（一次跨树提交 = 一次 WAL 事务）仍然需要，也已经有了
 （见[共享循环 redo log](./shared-circular-redo-v1.md) §2.1）。
@@ -208,7 +208,7 @@ CRC 头。**两份都留着，总磁盘约 1.9 倍。**
   而这三样在 §6 里**明确不做**。
 
 所以照原样开启，就是为一个当前没有消费者的结构付 1.9 倍磁盘。
-这正是[已知风险](../development/known-risks.md) 7d 裁定向量发布方时用的判据
+这正是[已知风险](../../development/known-risks.md) 7d 裁定向量发布方时用的判据
 （「先造结构去满足洁癖」），同一条判据在这里给出同一个答案。
 
 **这也是我自己规格里的一处不自洽**：§6 已经把 PITR／复制／同步划到范围外，
@@ -266,7 +266,7 @@ binlog 存字节，记录文件只存 `(kind, id) → 偏移` 的索引。一份
 
 **保留窗口默认 30 天**，与 MySQL 8.0 的 `binlog_expire_logs_seconds` 一致。
 
-这与[已知风险](../development/known-risks.md) 7a（redo WAL 无界增长）
+这与[已知风险](../../development/known-risks.md) 7a（redo WAL 无界增长）
 **不是同一条判据**：redo 的旧记录在 checkpoint 之后是纯粹的浪费，
 而 binlog 的旧记录**就是它存在的理由**——能回到多久以前，取决于留了多久的
 日志。所以这里不是「尽早回收」，是「留够、但有界」。
@@ -315,7 +315,7 @@ Catalog Atlas 与逻辑快照哈希。
 
 ## 关联
 
-- [写入形态](../product/write-model.md) §3／§5（上位规范）
+- [写入形态](../../product/write-model.md) §3／§5（上位规范）
 - [共享循环 redo log](./shared-circular-redo-v1.md)（redolog 的现状与环）
 - [每表一棵树](./per-table-tree-v1.md)（binlog 要记录的、已定型的结构）
-- [存储层总览](./README.md)、[执行计划](../planning/execution-plan.md) E6
+- [存储层总览](./README.md)、[执行计划](../../planning/execution-plan.md) E6

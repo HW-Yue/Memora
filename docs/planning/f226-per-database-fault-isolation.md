@@ -41,7 +41,7 @@ databases/
 没有按 Database 分目录。物理故障域因此等于整个 Instance：单个 Page 损坏、
 单个 WAL torn tail、单次 generation 替换失败，影响面都是全部 Database。
 
-发现之初这被记为「实现漂移」——[原生 Store](../storage/native-minimal-store.md)
+发现之初这被记为「实现漂移」——[原生 Store](../archive/storage/native-minimal-store.md)
 当时写的是 `databases/db_<stable-id>/database.memora`，每 Database 一个文件。
 **2026-08-20 评估后结论相反：单套文件是正确取舍，漂的是那份文档。** 该文档已改为
 描述实测布局并写明这是有意选择；本节保留原始记录以便追溯判断过程，
@@ -105,7 +105,7 @@ poison 仍只在内存中，reopen 后由既有 reconciliation 收敛，与改�
   拿到「单库可独立恢复」的实际好处而不动文件布局；
 - 备份／恢复／搬迁按 Database：走既有的逻辑 snapshot 与 Database Package，
   不依赖文件边界；
-- 文档与实现对齐：[原生 Store](../storage/native-minimal-store.md) 的布局描述已改为
+- 文档与实现对齐：[原生 Store](../archive/storage/native-minimal-store.md) 的布局描述已改为
   实测布局，并写明单套文件是有意选择。
 
 #### 重新评估的触发条件
@@ -146,6 +146,6 @@ poison 仍只在内存中，reopen 后由既有 reconciliation 收敛，与改�
 ## 关联
 
 - [执行计划](./execution-plan.md)
-- [原生 Store](../storage/native-minimal-store.md) — 布局描述当前与实现不一致
-- [Page Store Authority](../storage/page-store-authority-v1.md)
+- [原生 Store](../archive/storage/native-minimal-store.md) — 布局描述当前与实现不一致
+- [Page Store Authority](../archive/storage/page-store-authority-v1.md)
 - [已知风险](../development/known-risks.md)

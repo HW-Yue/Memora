@@ -6,7 +6,7 @@
 
 - 唯一结果：明确 key 可沿 root 精确定位 leaf value；
 - 依赖：F90 Node Codec 已完成；
-- 契约：见 [B+ Tree Point Search v1](../../storage/btree-point-search-v1.md)；
+- 契约：见 [B+ Tree Point Search v1](../storage/btree-point-search-v1.md)；
 - 明确不做：range、mutation、split、持久 root；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；
 - 开工前结论：PASS。

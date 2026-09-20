@@ -3,7 +3,7 @@
 状态：B+ Tree 是必做主索引；F81–F97 先在当前 Database 物理边界内实现 Page/root。
 
 > **目标形态已改，本文一处判断需要订正。** 原状态行把"完整 Tablespace/History/
-> 独立 generation 目录"标为**后置候选**——[写入形态](../product/write-model.md)把
+> 独立 generation 目录"标为**后置候选**——[写入形态](../../product/write-model.md)把
 > per-table 切分变成了**目标**：每张业务表一棵独立 B+ 树，每张业务表另配一张
 > history 表（同样一棵独立树）。此外 `database.memora` 的角色收敛为 **binlog**
 > （唯一恢复依据），change log 分离为独立日志。
@@ -92,4 +92,4 @@ indexes/
 - [macOS Instance 数据目录](./macos-instance-directory.md)
 - [Tablespace、Page 与 Record 布局](./tablespace-page-record-layout.md)
 - [物理与检索索引](./indexing.md)
-- [Agent 语义目录索引](../query/semantic-routing.md)
+- [Agent 语义目录索引](../../query/semantic-routing.md)

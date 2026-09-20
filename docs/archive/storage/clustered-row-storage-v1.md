@@ -12,8 +12,8 @@
 > 同一份内容只存一处、常驻内存有上界。写入形态在此之上更进一步——
 > **每张表各是一棵独立的 B+ 树**，而不是全实例共用一棵靠键里嵌 `table_id` 区分。
 >
-> 原状态行：设计定稿，实施中；取代 [Page Store Authority v1](../../storage/page-store-authority-v1.md)
-> 描述的过渡形态，兑现 [Tablespace/Page/Record 布局](../../storage/tablespace-page-record-layout.md)
+> 原状态行：设计定稿，实施中；取代 [Page Store Authority v1](../storage/page-store-authority-v1.md)
+> 描述的过渡形态，兑现 [Tablespace/Page/Record 布局](../storage/tablespace-page-record-layout.md)
 > 里"当前 Row、聚簇索引和二级 B+ Tree"那个一直被标为后置候选的终点。
 
 ## 一句话
@@ -150,8 +150,8 @@ SHOW HISTORY / AS OF / MVCC 可见性
 
 ## 关联
 
-- [Tablespace、Page 与 Record 布局](../../storage/tablespace-page-record-layout.md)
-- [Page Store Authority v1](../../storage/page-store-authority-v1.md)（过渡形态）
-- [Buffer Pool](../../storage/buffer-pool.md)
-- [MVCC、Undo 与 Redo 边界](../../storage/mvcc-undo-redo.md)
+- [Tablespace、Page 与 Record 布局](../storage/tablespace-page-record-layout.md)
+- [Page Store Authority v1](../storage/page-store-authority-v1.md)（过渡形态）
+- [Buffer Pool](../storage/buffer-pool.md)
+- [MVCC、Undo 与 Redo 边界](../storage/mvcc-undo-redo.md)
 - [ADR-0006：MySQL 式 Page/Buffer Pool/WAL](../../decisions/0006-mysql-page-buffer-wal-cow.md)

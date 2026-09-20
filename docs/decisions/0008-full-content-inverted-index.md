@@ -79,5 +79,5 @@ phrase、stemming、停用词、snippet 和历史检索均需独立证据与 Fea
 
 - [ADR-0007：Router 权威，候选预测器可组合](./0007-route-predictor-arsenal.md)
 - [F170：全内容倒排语义模型](../planning/f170-inverted-index-surface.md)
-- [物理与语义索引](../storage/indexing.md)
+- [物理与语义索引](../archive/storage/indexing.md)
 - [Lexical Route Locations v1](../query/lexical-route-locations-v1.md)

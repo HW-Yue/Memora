@@ -85,5 +85,5 @@ RED 入口：`go test ./internal/msql/parser ./internal/msql/executor ./internal
 ## 关联
 
 - [F173b2](./f173b2-live-route-posting-publication.md)
-- [Generation v3](../storage/page-index-generation-v3.md)
+- [Generation v3](../archive/storage/page-index-generation-v3.md)
 - [TDD 协议](./feature-tdd-protocol.md)

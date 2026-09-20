@@ -2,14 +2,14 @@
 
 状态：F103–F104 已完成 Row snapshot 与精确对象 Lock Manager；F107 接入 Page
 Store writer，物理 Undo 继续后置。见
-[ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)和
-[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
+[ADR-0004](../../decisions/0004-fast-row-directory-minimal-mvcc.md)和
+[ADR-0006](../../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
-> **已被 [ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md) 取代（2026-09-13）**：
+> **已被 [ADR-0011](../../decisions/0011-pure-storage-engine-tables-everything.md) 取代（2026-09-13）**：
 > 不再做 MVCC，写串行、读最新提交；history 改为数据表的配套普通表。
 
 > **目标形态已改，本文两处结论作废。**
-> [写入形态](../product/write-model.md)取代了它们：
+> [写入形态](../../product/write-model.md)取代了它们：
 >
 > 1. **日志分工与命名**。本文标题里的 "Binlog" 指的是 Change Log。新形态里这是
 >    **三份不同的日志**：change log 管事务回滚（undo）、redolog 管
@@ -44,7 +44,7 @@ Store writer，物理 Undo 继续后置。见
 > 这一段的**诊断**成立（当前确实是两份归属拷贝），但它开的**药方已作废**。
 > 曾经的计划是删掉该记录类型、让 `SHOW HISTORY` 由「版本链取数据 + Change Log 取归属」
 > 拼出——`48ef5b6` 已按此加了 `Row.ChangeSequence` 外键。
-> [写入形态](../product/write-model.md)给的是另一个答案：**history 独立成表**，
+> [写入形态](../../product/write-model.md)给的是另一个答案：**history 独立成表**，
 > 归属就存在 history 表里，一行的全部变更按 `(row_id, 序号)` 范围扫。
 > `Row.ChangeSequence` 在新形态下何去何从待定。
 > 现状见[存储层总览](./README.md)。
@@ -114,5 +114,5 @@ F109 Committed Change Log（Binlog）记录已提交事务的逻辑变化，第�
 ## 关联
 
 - [存储引擎术语](./terminology.md)
-- [AI 自主权与约束](../agent/autonomy.md)
+- [AI 自主权与约束](../../agent/autonomy.md)
 - [物理与检索索引](./indexing.md)

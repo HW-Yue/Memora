@@ -6,7 +6,7 @@
 
 - 唯一结果：满 leaf/internal 加入一个 entry 后可拆为合法两页并生成 parent separator；
 - 依赖：F90 Node Codec、F93 Single-Node Upsert 已完成；
-- 契约：见 [B+ Tree Split v1](../../storage/btree-split-v1.md)；
+- 契约：见 [B+ Tree Split v1](../storage/btree-split-v1.md)；
 - 明确不做：allocator、递归 parent 持久化、WAL、delete；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；
 - 开工前结论：PASS。

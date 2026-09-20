@@ -1,6 +1,6 @@
 # Page Index Generation v2
 
-状态：已被 [Generation v3](../../storage/page-index-generation-v3.md) 取代；保留为 v2 兼容格式说明。
+状态：已被 [Generation v3](../storage/page-index-generation-v3.md) 取代；保留为 v2 兼容格式说明。
 
 ## 结果
 

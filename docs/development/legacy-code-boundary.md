@@ -32,7 +32,7 @@
     （`ReplaceMembershipsIn`、`MembershipsForRowIn`、`router_leaf_members` 与
     `router_row_memberships` 两个 bucket）对 daemon **已是死代码**——生产只构造
     `nativerouter.New`（`internal/daemon/lifecycle.go:199`），而 `row.New(` 的调用方
-    全是测试。它随[叶子直挂 RowID](../storage/leaf-rowid-v1.md) 的迁移一并退场，
+    全是测试。它随[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md) 的迁移一并退场，
     但删除仍受本文下面的删除规则约束：先证明不在生产依赖图中，并先加 RED。
     同一迁移里 `nativerouter.Repository.Attach`（`repository.go:134`）也没有
     非测试调用方；

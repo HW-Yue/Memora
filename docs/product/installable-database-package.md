@@ -106,4 +106,4 @@ memora open work_x.memora-db   校验并只读审阅 manifest
 - [AI-native 产品契约](./ai-native-contract.md)
 - [Database Package v1](./database-package-v1.md)
 - [可选内置 Agent Runtime](../agent/embedded-agent-runtime.md)
-- [Instance、Database 与 Table](../storage/instance-database-table.md)
+- [Instance、Database 与 Table](../archive/storage/instance-database-table.md)

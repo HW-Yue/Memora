@@ -2,7 +2,7 @@
 
 状态：F87–F89 已完成；16 KiB Page、Redo WAL、young/old LRU、
 pin/latch 与 dirty/flush 顺序已确认，复杂扩展后置。见
-[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
+[ADR-0006](../../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 F87 的冻结边界见 [Buffer Pool Page Loading v1](./buffer-pool-page-loading-v1.md)。
 F88 的冻结边界见 [Buffer Pool Eviction v1](./buffer-pool-eviction-v1.md)。
@@ -76,4 +76,4 @@ Query Workspace 可以保存一次 Agent Loop 当前需要的 Route Frame、Sche
 
 - [Tablespace、Page 与 Record 布局](./tablespace-page-record-layout.md)
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)
-- [上下文生命周期](../query/context-lifecycle.md)
+- [上下文生命周期](../../query/context-lifecycle.md)

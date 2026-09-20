@@ -103,10 +103,10 @@ system/auxiliary.memora
 Record，不进入逻辑 Database snapshot、Wiki 或 Database Package；`memora doctor`
 会严格验证审计版本与记录完整性。
 
-Unix socket 不放入 datadir，避免自定义深层路径超过 macOS `AF_UNIX` 上限。它位于仅当前用户可访问的临时运行目录，文件名由规范化 datadir 稳定派生；具体协议与清理规则见 [本地 IPC 协议](../development/ipc-protocol.md)。
+Unix socket 不放入 datadir，避免自定义深层路径超过 macOS `AF_UNIX` 上限。它位于仅当前用户可访问的临时运行目录，文件名由规范化 datadir 稳定派生；具体协议与清理规则见 [本地 IPC 协议](../../development/ipc-protocol.md)。
 
 F148 已确定使用当前用户 GUI session 的 LaunchAgent；每个 data dir 独立派生 label，异常退出
-重启、正常退出保持停止，详见 [macOS LaunchAgent v1](../development/macos-launch-agent-v1.md)。
+重启、正常退出保持停止，详见 [macOS LaunchAgent v1](../../development/macos-launch-agent-v1.md)。
 
 ## 传统数据库参考边界
 

@@ -53,10 +53,10 @@ History 元数据与 Row 同叶（`1438eac`、`56f25b9`）。
 
 **2026-08-22 已排期**：四处差距全部进入[执行计划](./execution-plan.md)的 E 阶段
 （E0–E6，引擎优先），排序理由见[路线 v3](./roadmap-v3.md)。迁移设计已备齐三份：
-[叶子直挂 RowID](../storage/leaf-rowid-v1.md)（membership 不是死代码而是承重的——
+[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)（membership 不是死代码而是承重的——
 职责一部分被叶子吸收、一部分交给 Row 上的 `route_leaf_ids` 字段，
 还有三类语义健康问题结构性消失）、
-[每表一棵树](../storage/per-table-tree-v1.md)（含 history 成表与 RowID 按表递增，
+[每表一棵树](../archive/storage/per-table-tree-v1.md)（含 history 成表与 RowID 按表递增，
 三件是同一套机制所以合写一份）、
 [候选预测器只给路径](../query/predictor-path-only-v1.md)。
 三份日志（E6）的设计待 E4/E5 定型后再出。

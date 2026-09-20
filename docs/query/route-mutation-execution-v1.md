@@ -9,7 +9,7 @@
 > 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码，
 > 但**不能作为新开发的设计依据**。
 > membership 的职责拆解、新归宿与分阶段迁移见
-> [叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+> [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
 
 ## MSQL 与批准
 
@@ -59,4 +59,4 @@ sequence、各类覆盖计数与 `verified=true`。Receipt 是本次提交结果
 
 - [Route Mutation Plan v1](./route-mutation-plan-v1.md)
 - [Committed Change Read v1](./change-read-v1.md)
-- [Exact Object Write Lock v1](../storage/exact-object-write-lock-v1.md)
+- [Exact Object Write Lock v1](../archive/storage/exact-object-write-lock-v1.md)

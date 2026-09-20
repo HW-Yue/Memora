@@ -46,8 +46,8 @@ decision 的事务不发布；decision I/O 错误返回 outcome unknown，由 re
 | F97b1 Durable WAL Frontier | 每次成功的 Commit/Checkpoint/Roll 都发布双槽 durable byte boundary | WAL 已 Sync 但 control 未发布时仍被普通 reopen 当作 durable | 截尾、Page redo |
 | F97b2 Repairing Open | 严格校验 frontier 内字节，持久截断/删除 frontier 后 tail，并恢复 writer | partial/uncommitted active tail 仍使 open 失败 | frontier 写入、root redo |
 
-冻结协议见 [Durable WAL Frontier v1](../../storage/wal-durable-frontier-v1.md)与
-[WAL Recovery Open v1](../../storage/wal-recovery-open-v1.md)。F97b2 的开工与完成门见
+冻结协议见 [Durable WAL Frontier v1](../storage/wal-durable-frontier-v1.md)与
+[WAL Recovery Open v1](../storage/wal-recovery-open-v1.md)。F97b2 的开工与完成门见
 [F97b2 WAL Recovery Open](./f97b2-wal-recovery-open-gate.md)；二者完成后 F97c 已进入
 Review，并按规模门拆为 F97c1/F97c2。
 

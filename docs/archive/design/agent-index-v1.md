@@ -49,6 +49,6 @@ F20 的机械 posting 使用独立来源和结构。F21 才负责两路归一化
 
 ## 关联
 
-- [物理与检索索引](../../storage/indexing.md)
+- [物理与检索索引](../storage/indexing.md)
 - [语义记录模型](../../data/semantic-records.md)
 - [MSQL](../../query/msql.md)

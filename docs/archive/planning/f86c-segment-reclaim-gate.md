@@ -6,7 +6,7 @@
 
 - 唯一结果：只删除 durable checkpoint 已完全覆盖的旧 Segment，并可安全重开；
 - 依赖：F86a Segment Set、F86b Checkpoint Publish 已完成；
-- 格式：见 [WAL Segment Reclaim v1](../../storage/wal-segment-reclaim-v1.md)；
+- 格式：见 [WAL Segment Reclaim v1](../storage/wal-segment-reclaim-v1.md)；
 - 明确不做：自动策略、PITR、远端归档、retained Segment 截断；
 - 用户执行授权：2026-07-31，源自全部 Feature 持续实施授权；
 - 开工前结论：PASS。

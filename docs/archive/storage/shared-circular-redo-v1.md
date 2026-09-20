@@ -9,7 +9,7 @@
 ## 为什么换方案
 
 原方案是「滚段 + 回收旧段」（PostgreSQL 形态）：磁盘占用**靠 checkpoint 策略去防**。
-新方案是固定环：**结构上不可能涨**。这与[架构原则](../product/architecture-principles.md)
+新方案是固定环：**结构上不可能涨**。这与[架构原则](../../product/architecture-principles.md)
 §2 判据 3 一致——结构性消除一类 bug，胜过为它写扫描与修复工具。
 
 **但循环不能替代 checkpoint。** 腾出环空间的**正是** checkpoint（推进 checkpoint LSN
@@ -57,7 +57,7 @@ versions、fulltext、current 三棵树——**三套 WAL、三次独立提交**
 **正是在给这个缺口打补丁**。
 
 一套共享日志 = **一次提交 = 跨树原子**，这套补丁可以整个拿掉。
-这正面命中[架构原则](../product/architecture-principles.md) §1 的判据 1
+这正面命中[架构原则](../../product/architecture-principles.md) §1 的判据 1
 （「一次逻辑操作横跨多个互不保证原子性的事务域」）。
 
 ### 2.2 循环才有意义
@@ -226,7 +226,7 @@ generation，开机由 `reconcile`（`authority.go:804`）从原生文件追平�
 **阶段 2 让「三棵树彼此」原子，没让「原生文件 ↔ generation」原子。**
 后者要等[每表一棵树](./per-table-tree-v1.md)与写入形态的三份日志——
 业务 Row 自己住进 B+ 树之后，「原生存储文件」这个独立事务域才消失。
-它同样命中[架构原则](../product/architecture-principles.md) §1 判据 1，
+它同样命中[架构原则](../../product/architecture-principles.md) §1 判据 1，
 只是收口点在 E4／E6，不在这里。
 
 结论：阶段 3 **不做删除**，改为把这条边界写清楚，
@@ -260,10 +260,10 @@ reconcile 无事可做——**唯一的缺陷是结构性的**：日志分家就
 
 ## 关联
 
-- [写入形态](../product/write-model.md) §3／§5／§6（三份日志与恢复）
-- [架构原则](../product/architecture-principles.md) §1（高内聚低耦合）
+- [写入形态](../../product/write-model.md) §3／§5／§6（三份日志与恢复）
+- [架构原则](../../product/architecture-principles.md) §1（高内聚低耦合）
 - [每表一棵树](./per-table-tree-v1.md) §5.5（共享 buffer pool，同一根因）
-- [存储层总览](./README.md) 第 2 节、[已知风险](../development/known-risks.md) 7a
+- [存储层总览](./README.md) 第 2 节、[已知风险](../../development/known-risks.md) 7a
 - 现有冻结规格：[Segment Set](./wal-segment-set-v1.md)、
   [Checkpoint Publish](./checkpoint-publish-v1.md)、
   [Segment Reclaim](./wal-segment-reclaim-v1.md)——

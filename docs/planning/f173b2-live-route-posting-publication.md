@@ -90,5 +90,5 @@ poison；Authority 在 reopen 时由 F173b1 Plan v3 收敛，revision gap 必要
 ## 关联
 
 - [F173b1](./f173b1-route-posting-generation.md)
-- [Page Store Authority](../storage/page-store-authority-v1.md)
+- [Page Store Authority](../archive/storage/page-store-authority-v1.md)
 - [TDD 协议](./feature-tdd-protocol.md)

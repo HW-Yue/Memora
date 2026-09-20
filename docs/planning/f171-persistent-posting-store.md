@@ -111,5 +111,5 @@ corruption corpus、commit fault 和 reader/writer race。完成时执行受影�
 
 - [F170 reference index](./f170-inverted-index-surface.md)
 - [ADR-0008](../decisions/0008-full-content-inverted-index.md)
-- [持久化索引](../storage/indexing.md)
+- [持久化索引](../archive/storage/indexing.md)
 - [TDD 协议](./feature-tdd-protocol.md)

@@ -6,7 +6,7 @@
 
 - 唯一结果：leaf chain 可按边界、limit 升序续读且不重不漏；
 - 依赖：F90 Node Codec、F91 Point Search 已完成；
-- 契约：见 [B+ Tree Range Cursor v1](../../storage/btree-range-cursor-v1.md)；
+- 契约：见 [B+ Tree Range Cursor v1](../storage/btree-range-cursor-v1.md)；
 - 明确不做：reverse、MVCC、mutation、split；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；
 - 开工前结论：PASS。

@@ -7,7 +7,7 @@ SPLIT/MERGE 收敛为单条公开原子 MSQL。
 > [写入形态](../product/write-model.md)取代了它——**叶子直接挂 RowID**，
 > 挂载不再是单独的对象。策略里「最多 32 个 Route membership」「同一 Row 仍可属于多个 Leaf」**都保留**。
 > 本文仍如实描述**当前代码**，在实现改完之前可以照它读代码。
-> 迁移设计见[叶子直挂 RowID](../storage/leaf-rowid-v1.md)。
+> 迁移设计见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
 
 ## Mutation Plan
 

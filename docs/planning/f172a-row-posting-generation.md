@@ -112,5 +112,5 @@ go test ./internal/rowfulltext ./internal/pagestoremigration
 
 - [F171](./f171-persistent-posting-store.md)
 - [Generation v2](../archive/storage/page-index-generation-v2.md)
-- [COW replacement](../storage/cow-generation-replacement-v1.md)
+- [COW replacement](../archive/storage/cow-generation-replacement-v1.md)
 - [TDD 协议](./feature-tdd-protocol.md)

@@ -8,7 +8,7 @@
 - 用户故事：B+ Tree 后续只读取目标 Page，不加载完整 Data File；
 - 依赖：F81 Page Codec 已完成；
 - 架构选择：slot 0 manifest、连续 Page ID、`ReadAt/WriteAt`，见
-  [Page File Manager v1](../../storage/page-file-manager-v1.md)；
+  [Page File Manager v1](../storage/page-file-manager-v1.md)；
 - 明确不做：WAL、事务 durability、recovery、Buffer Pool、B+ Tree；
 - 永久边界：物理地址不进入 MSQL/Route，无 Vector/Provider/SQLite；
 - 用户执行授权：2026-07-31，用户要求执行到 F161；

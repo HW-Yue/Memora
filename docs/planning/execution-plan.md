@@ -24,10 +24,10 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 | 确定性指标阈值定多少 | **首轮不定**，`report` 模式产出分布后再冻结 | F222 |
 | 语义重建不对称性 | **先执行 B**（吸收 Agent 偏向多写），A 列为 A12 | [讨论稿](../data/semantic-rebuild-asymmetry.md) |
 | 工作集淘汰策略 | v1 冻结为 LRU + Pinned 最后淘汰 | [F220](./f220-query-working-set.md) |
-| 行→叶子怎么反查 | **Row 加 `route_leaf_ids` 默认字段**，不另建结构；写入时挂载已确定 | [叶子直挂 RowID](../storage/leaf-rowid-v1.md) §5 |
+| 行→叶子怎么反查 | **Row 加 `route_leaf_ids` 默认字段**，不另建结构；写入时挂载已确定 | [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md) §5 |
 | 语义树路径存不存 | **不存，顺 `ParentID` 实时算**；树会被频繁重构，存下来必然过期 | 同上 §5.1 |
 | 向量检索 | **整条链删掉**（2026-09-02，`3ff6136`）；重做时必须是盘上索引 | S3 |
-| 记录文件的权威地位 | **聚簇转正**：页文件 + redo = 数据库本身，记录文件退出正确性路径 | E8、[记录文件的索引与权威](../storage/record-index-and-authority-v1.md) |
+| 记录文件的权威地位 | **聚簇转正**：页文件 + redo = 数据库本身，记录文件退出正确性路径 | E8、[记录文件的索引与权威](../archive/storage/record-index-and-authority-v1.md) |
 | fork／merge／upgrade | **删掉**（2026-09-02，`27f8164`），无任何可达调用方 | 清理台账 |
 | 导出面对已删 Row 的过滤 | **可接受，只记不改**——契约是可达性，不是物理擦除 | 审计 §1.5 |
 | `EXPORT WIKI`／`INSTALL PACKAGE` | **改判为删**（2026-09-02）。原判「接线缺失」，但要接的那一头是已死的 legacy 栈，接 = 重写 | S1、清理台账 |
@@ -44,7 +44,7 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 - **前置**:无。B+ 树、treecommit、`objectindex`、游标模式**全部就绪**
 - **依据**:[架构原则](../product/architecture-principles.md) **第四条**
   (2026-08-31 新增)——一切都要有物理存储,启动只给钩子,查的时候按需去文件里取
-- **规格**:[物理索引](../storage/physical-index-v1.md)(5 阶段)
+- **规格**:[物理索引](../archive/storage/physical-index-v1.md)(5 阶段)
 - **为什么是队头**:`File.records` 命中第四条判据第 3 条(**没有容量、没有淘汰,
   却是唯一的索引**),是四条准则里唯一一条**会随时间自动恶化**的违反。
   它随「历史上写过多少次」增长,一行改 100 次就是 100 个永不释放的条目
@@ -65,12 +65,12 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
   Catalog 正文都已迁入,读面全部切换,`nativecatalog.IndexedReader` 连记录文件
   句柄都不再持有;Configuration 改成顺 revision 链点读
 - **阶段 4 与原设计不同**:正文放进 objects 树而不是 catalog 树自己的叶子,
-  理由见[物理索引](../storage/physical-index-v1.md)§4;主要是 catalog 树的
+  理由见[物理索引](../archive/storage/physical-index-v1.md)§4;主要是 catalog 树的
   `readEntries` 每次写都把整棵树读进内存做 diff,正文塞进去正是要消灭的形状
 - **开库之后的活路径上已无全扫**。门是 `TestALiveWorkloadNeverSweepsTheRecordFile`：
   四次写加九个读面，`Enumerations()` 增量为零。剩下的 `IDs()` 调用点全部不在
   活路径上（无 generation 时的回退、重建路径、快照导出、零调用方），逐条核对见
-  [物理索引](../storage/physical-index-v1.md)「全表扫描清点」
+  [物理索引](../archive/storage/physical-index-v1.md)「全表扫描清点」
 - **commit 序号已改为持久分配器**：原先每次写要扫两遍全库取最大值。
   现在是 versions 树的 high-water，Relation 通过 commit floor 一起算进去；
   分配失败烧掉一个号是可接受的（要求连续的是 change 序号，另一个分配器）
@@ -83,7 +83,7 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 ### E8. 记录文件退出正确性路径 ✅（2026-09-13，阶段 0–3 全完成）
 
 - **前置**：E7 阶段 1–4 ✅
-- **规格**：[记录文件的索引与权威](../storage/record-index-and-authority-v1.md)
+- **规格**：[记录文件的索引与权威](../archive/storage/record-index-and-authority-v1.md)
 - **要解决的**（已量，每条 400 字节）：开库全扫 + 常驻表，20 万次历史写入 =
   **1.34 s / 27.5 MiB**，两者都随「写过多少次」而不是「有多少数据」增长
 - **结果**（同样条件复量，`887c652`）：**53 µs / 1.4 KB**。两个数现在都不随
@@ -187,7 +187,7 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
    两个枚举面仍答对;`TestEnumerationDropsAnUncommittedTail` 盯住未提交尾巴;
 2. **点读不再依赖常驻表** ← 当前。给还在被点读的 kind 找盘上的家,
    **办法是搬进已有的树,不是给记录文件另建一套偏移索引**——后者正是
-   [记录文件的索引与权威](../storage/record-index-and-authority-v1.md)§5 否掉的路 B:
+   [记录文件的索引与权威](../archive/storage/record-index-and-authority-v1.md)§5 否掉的路 B:
    - `CommittedChange` 正文进 changeindex 树叶子(今天叶子只存 Locator,
      正文仍 `tree.source.Get(sequence)` 回记录文件);
    - `Configuration` 正文进 objects 树(照 E7 阶段 4 的做法);
@@ -292,7 +292,7 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
 ### E0. 共享循环 redo log ✅
 
 - **前置**：无。**五个阶段全部完成。**
-- **规格**：[共享循环 redo log](../storage/shared-circular-redo-v1.md)（5 阶段）
+- **规格**：[共享循环 redo log](../archive/storage/shared-circular-redo-v1.md)（5 阶段）
 - **进度**：阶段 1（一套共享 redo log）、阶段 2（跨树提交合并为一次 WAL 提交）
   **已完成**；阶段 3 核实后**无可拆**——phase checkpoint 是纯测试接缝，
   poison 补的是「原生文件 ↔ generation」这个阶段 2 没动的事务域（收口在 E4／E6）；
@@ -375,7 +375,7 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
 ### E3. 语义索引叶子直挂 RowID ✅
 
 - **前置**：E2
-- **规格**：[叶子直挂 RowID](../storage/leaf-rowid-v1.md)（7 阶段）
+- **规格**：[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)（7 阶段）
 - **改动**：`internal/router/model.go`（Node 加 RowID）、`internal/row/model.go`
   （Row 加 `route_leaf_ids`）、`internal/nativerouter/repository.go`（编解码）、
   以及约 310 处 membership 引用散在 21 个非测试文件
@@ -395,7 +395,7 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
 ### E3.5. 共享 buffer pool ✅
 
 - **前置**：无。但**是 E4／E5 的硬前置**
-- **依据**：[每表一棵树](../storage/per-table-tree-v1.md) §5.5
+- **依据**：[每表一棵树](../archive/storage/per-table-tree-v1.md) §5.5
 - **现状**：与 InnoDB 不同，这里**每棵树一个 buffer pool**——`buffer.New` 全仓只有
   一个调用点（`treecommit/runtime.go:90`，在 `OpenRuntime` 内），每棵树调一次；
   loader 闭包把 `SpaceID` 写死，结构上无法共享
@@ -411,7 +411,7 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
 ### E4. 每表一棵独立 B+ 树 + RowID 按表递增 ✅
 
 - **前置**：E2、**E3.5**
-- **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 1–3
+- **规格**：[每表一棵树](../archive/storage/per-table-tree-v1.md) 阶段 1–3
 - **已完成**：generation 升 v5，固定树三棵 + 每表一棵；聚簇键收缩为 `row_id`；
   表树里一个保留键做 RowID 计数器，与拿号的行同一次提交落盘
 - **两处订正**（见规格 §5.6）：
@@ -427,7 +427,7 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
 ### E5. history 独立成表 ✅
 
 - **前置**：E4 ✅（同一套机制，**分开做等于写两遍**）
-- **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 4–6，
+- **规格**：[每表一棵树](../archive/storage/per-table-tree-v1.md) 阶段 4–6，
   落地形态与裁定见该文 §5.7、§5.8
 - **已完成**：每表一棵 history 树（键 `(row_id, revision)`，读完整历史一次
   范围扫）；行版本按表与共享 `versions` 树在同一 WAL 事务里双写；
@@ -452,7 +452,7 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
 ### E6. 三份日志与恢复 ✅（阶段 3 裁定不做，理由充分）
 
 - **前置**：E4 ✅、E5 ✅
-- **规格**：[三份日志](../storage/three-logs-v1.md)（4 阶段，2026-08-30 编写）
+- **规格**：[三份日志](../archive/storage/three-logs-v1.md)（4 阶段，2026-08-30 编写）
 - **进度**：阶段 1（binlog 独立成日志）**已完成**——挂在记录存储的提交点上
   （`Transaction.Commit` 的记录 sync 之后、COMMIT 记录之前），一个钩子覆盖
   九处封套写入方，构造上不可能与记录文件不一致。

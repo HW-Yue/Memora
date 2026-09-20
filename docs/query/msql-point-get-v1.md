@@ -52,7 +52,7 @@ database/table name
 
 ## 关联
 
-- [Catalog Lookup Index v1](../storage/catalog-lookup-index-v1.md)
-- [Current Row Index v1](../storage/current-row-index-v1.md)
-- [Row Version Index v1](../storage/row-version-index-v1.md)
+- [Catalog Lookup Index v1](../archive/storage/catalog-lookup-index-v1.md)
+- [Current Row Index v1](../archive/storage/current-row-index-v1.md)
+- [Row Version Index v1](../archive/storage/row-version-index-v1.md)
 - [MSQL SELECT Planner v1](./msql-select.md)

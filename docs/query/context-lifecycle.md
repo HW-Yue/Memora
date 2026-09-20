@@ -55,7 +55,7 @@ Query Workspace 不是相关性缓存，不让 Agent 因为上次走过某条 Ro
 
 ### L2：Engine Cache
 
-B+ Tree、Data、Data Dictionary 和 posting Page 由引擎 Buffer Pool 缓存，不进入模型上下文。详见 [Buffer Pool](../storage/buffer-pool.md)。
+B+ Tree、Data、Data Dictionary 和 posting Page 由引擎 Buffer Pool 缓存，不进入模型上下文。详见 [Buffer Pool](../archive/storage/buffer-pool.md)。
 
 ## 查询生命周期候选
 

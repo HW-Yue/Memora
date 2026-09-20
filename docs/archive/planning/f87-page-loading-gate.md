@@ -6,7 +6,7 @@
 
 - 唯一结果：同一 Page 只装载一次，并在 Handle 生命周期内保持 pin 与 latch 正确；
 - 依赖：F81 Page Codec、F82 Page File Manager 已完成；
-- 契约：见 [Buffer Pool Page Loading v1](../../storage/buffer-pool-page-loading-v1.md)；
+- 契约：见 [Buffer Pool Page Loading v1](../storage/buffer-pool-page-loading-v1.md)；
 - 明确不做：容量、淘汰、dirty、flush、WAL 接线；
 - 用户执行授权：2026-07-31，源自全部剩余 Feature 持续实施授权；
 - 开工前结论：PASS。

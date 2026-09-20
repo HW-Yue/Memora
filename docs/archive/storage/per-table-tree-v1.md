@@ -1,6 +1,6 @@
 # 每表一棵树：业务表、history 表与按表递增的 RowID
 
-状态：**迁移设计**（2026-08-22）。落实[写入形态](../product/write-model.md)
+状态：**迁移设计**（2026-08-22）。落实[写入形态](../../product/write-model.md)
 §1「每张表 = 一棵独立的 B+ 树」、§1.2「history 独立成表」与
 §2.4「RowID 按表递增」。不是独立规范——与写入形态冲突时以写入形态为准。
 
@@ -70,7 +70,7 @@ generation 目前固定开四棵树（`pagestoremigration/generation.go:34-37`�
 
 `IDSource`（`nativerow/service.go:39`）现在是 `Next() (string, error)`，
 **不接受表参数**——按表递增就无从谈起。这个 1 方法接口在仓库里
-**被重复定义 8 次**（见[架构审计](../development/architecture-audit-2026-08.md) §3.2），
+**被重复定义 8 次**（见[架构审计](../../development/architecture-audit-2026-08.md) §3.2），
 `type uuidSource` 一行实现被声明 20 次。
 
 改造时一并收敛：签名加表标识，实现收进一个共享小包。这是审计里
@@ -100,7 +100,7 @@ Relation（`internal/relation`）两端各存 `DatabaseID/TableID/RowID`，已�
 1. **业务行的 `history_id`** 存最新一条的复合键，是「只看最近一次改动」的点查入口，
    不承担串联全部版本的职责；
 2. **删除的契约**：Row 被删除后，它在 history 表的整个 `(row_id, *)` 区段
-   **一并不可达**（[查询形态 §7](../product/query-model.md)）。
+   **一并不可达**（[查询形态 §7](../../product/query-model.md)）。
    history 是一张真的表，而表默认可查——这条不明写，新读面会一个一个漏；
 3. **`Row.ChangeSequence` 的去留**在这一步裁定。它是 `48ef5b6` 为
    「删掉 History、归属只留在变更日志」那条**已废弃**路线加的外键；
@@ -307,7 +307,7 @@ if key.SpaceID != config.SpaceID { return page.Page{}, ...ErrInvalid }
 （每表业务树 + history 树），于是内存变成 **16 MiB/表**——
 10 张表 160 MiB，100 张表 1.6 GB。
 
-这直接推翻[架构原则](../product/architecture-principles.md)与写入形态里
+这直接推翻[架构原则](../../product/architecture-principles.md)与写入形态里
 「常驻内存有上界」那条：单个 pool 有上界，**总量没有**。
 
 **所以要先做**：一个 pool 服务所有树，`buffer.Key{SpaceID, PageID}` 本来就带
@@ -345,7 +345,7 @@ if key.SpaceID != config.SpaceID { return page.Page{}, ...ErrInvalid }
 
 ## 关联
 
-- [写入形态](../product/write-model.md)（上位规范）、[查询形态](../product/query-model.md)
-- [架构原则](../product/architecture-principles.md) §2（能用一张表就用表）
+- [写入形态](../../product/write-model.md)（上位规范）、[查询形态](../../product/query-model.md)
+- [架构原则](../../product/architecture-principles.md) §2（能用一张表就用表）
 - [叶子直挂 RowID](./leaf-rowid-v1.md)、[存储层总览](./README.md)「已知偏差」A/B 组
-- [架构审计](../development/architecture-audit-2026-08.md) §2.1（耦合）、§3.2（接口重复）
+- [架构审计](../../development/architecture-audit-2026-08.md) §2.1（耦合）、§3.2（接口重复）

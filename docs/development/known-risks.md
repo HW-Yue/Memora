@@ -20,7 +20,7 @@
 
 叠加成因：所有 Database 共用一套物理文件（实测 `databases/page-index-v1/` 下
 单套 Page/WAL，没有按库分目录），所以物理故障域也等于整个 Instance。
-这与 [原生 Store](../storage/native-minimal-store.md) 第 21 行声称的
+这与 [原生 Store](../archive/storage/native-minimal-store.md) 第 21 行声称的
 `databases/db_<stable-id>/database.memora` 不一致——实现漂移了。
 
 **2026-08-11 [F226](../planning/f226-per-database-fault-isolation.md) Stage 1 已实现**：
@@ -149,7 +149,7 @@ wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的�
 它是本文件里唯一随时间持续恶化的一条。
 
 方案已从「给段式日志接上回收」改为
-[共享循环 redo log](../storage/shared-circular-redo-v1.md)：全实例一套日志、
+[共享循环 redo log](../archive/storage/shared-circular-redo-v1.md)：全实例一套日志、
 固定大小、循环使用。段式把磁盘占用交给 checkpoint 策略去防，固定环让它
 **结构上不可能涨**——不 checkpoint 的后果从"磁盘静默涨到天上"变成"写入背压报错"。
 同一改动顺带堵上跨树提交不原子的洞（见该文档 §2.1）。
