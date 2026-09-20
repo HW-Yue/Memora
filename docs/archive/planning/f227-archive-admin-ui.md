@@ -101,4 +101,4 @@ Admin Gateway 只读，前端不执行任何归档操作。归档对象的页面
 ## 关联
 
 - [F227 删除与归档](./f227-object-archive.md)
-- [F223 Route Branch Fan-out 上限](../../planning/f223-route-branch-fanout-limit.md)
+- [F223 Route Branch Fan-out 上限](../../planning/route-branch-fanout-limit.md)

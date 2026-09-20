@@ -198,7 +198,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
    `MembershipRevision`，换个名字重新引进来等于白做；
 2. `Node.Revision` 的含义就是「这条节点记录变了」。**一个现在持有 Row 的叶子
    确实和之前不一样了**，告诉并发编辑者这件事是对的，不是噪声；
-3. [F169](../../planning/f169-single-row-route-leaf.md) 保证一个叶子至多挂一行，
+3. [F169](../../planning/single-row-route-leaf.md) 保证一个叶子至多挂一行，
    所以这是叶子一生中至多发生两次的事，不是每次写入都抖。
 
 **客户端契约**：编辑一个叶子前重新读它的 revision，不要沿用创建时那个。
@@ -314,7 +314,7 @@ revision。每条 SELECT 的每行每叶子都走一次，一页结果就是一�
 
 - 阶段 4 之后 `change.ObjectRouteMembership` 在 `Validate` 白名单里保留多久，
   与整体的已发布格式支持窗口一起定；
-- `docs/planning/f224-mandatory-row-route.md`（候选：写入时强制语义索引）
+- `docs/planning/mandatory-row-route.md`（候选：写入时强制语义索引）
   建立在 membership 之上，需按本文重写后再评估。
 
 ## 关联
@@ -324,5 +324,5 @@ revision。每条 SELECT 的每行每叶子都走一次，一页结果就是一�
 - [语义 Router](../../query/semantic-routing.md)、[Route Read v1](../../query/route-read-v1.md)
 - [Route Mutation Plan v1](../../query/route-mutation-plan-v1.md)、
   [Route Mutation Execution v1](../../query/route-mutation-execution-v1.md)
-- [F169：Leaf 单 Row 不变量](../../planning/f169-single-row-route-leaf.md)（不变量保留）
+- [F169：Leaf 单 Row 不变量](../../planning/single-row-route-leaf.md)（不变量保留）
 - [语义健康 v2](../../agent/semantic-health-v2.md)、[旧代码清理边界](../development/legacy-code-boundary.md)

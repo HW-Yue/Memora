@@ -1,7 +1,7 @@
 # F225：Row 必须可展示（写入时强制 summary）
 
 状态：候选，2026-08-11 提出；尚未 Review、尚未获得实现授权。
-与 [F224](../../planning/f224-mandatory-row-route.md) 同形状、同执行点，是写入侧的第二个不变量。
+与 [F224](../../planning/mandatory-row-route.md) 同形状、同执行点，是写入侧的第二个不变量。
 
 ## 问题
 
@@ -101,6 +101,6 @@ adapters 为生成物，改完 canonical 后重新生成。
 ## 关联
 
 - [执行计划](../../planning/execution-plan.md)
-- [F224 Row 必须可导航](../../planning/f224-mandatory-row-route.md) — 同执行点的姊妹不变量
-- [F223 Route Branch Fan-out 硬上限](../../planning/f223-route-branch-fanout-limit.md) — 处理形状来源
+- [F224 Row 必须可导航](../../planning/mandatory-row-route.md) — 同执行点的姊妹不变量
+- [F223 Route Branch Fan-out 硬上限](../../planning/route-branch-fanout-limit.md) — 处理形状来源
 - [语义记录模型](../../data/semantic-records.md)

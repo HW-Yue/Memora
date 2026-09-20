@@ -24,7 +24,7 @@ option 集**不含 route_id**——模型对随机 hex 无法推理，ID 由脚�
 从「LLM 单层提示准确率」变为「一次 `Choice` 能可靠区分多少 option，以及愿为此付多少 token」。
 
 写入路径本轮不动，判断者仍是原有 Agent，因此
-[F223 的结构 fan-out 硬上限](../planning/f223-route-branch-fanout-limit.md)原样保留，
+[结构 fan-out 硬上限](../planning/route-branch-fanout-limit.md)原样保留，
 默认值 12 的原始理由完好。
 
 ## no-match 出口
@@ -49,7 +49,7 @@ option 集**不含 route_id**——模型对随机 hex 无法推理，ID 由脚�
 
 ## 写入侧：暂不采用
 
-写入侧的 no-match 等价于「这条内容不属于任何现有 child，该新建分支」，是 F223 计数
+写入侧的 no-match 等价于「这条内容不属于任何现有 child，该新建分支」，是 fan-out 计数
 上限那个粗暴触发器的精确版本：上限用「数满了」迫使重构，no-match 用「语义上确实不属于」
 判断。
 
@@ -67,4 +67,4 @@ option 集**不含 route_id**——模型对随机 hex 无法推理，ID 由脚�
 - [检索路线与内核面](./retrieval-routes-jev.md)
 - [Route 读取协议](./route-read-v1.md)
 - [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)
-- [F223：Route Branch Fan-out 硬上限](../planning/f223-route-branch-fanout-limit.md)
+- [fan-out 硬上限](../planning/route-branch-fanout-limit.md)

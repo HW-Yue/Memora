@@ -51,7 +51,7 @@ unix socket 连接）这一条与存储层无关，仍然成立。
 - Route branch fan-out 硬上限：`route_policy.branch_fanout` 启动默认 12，三条写入路径统一执行，
   越界失败并给出重构或提高上限两条可执行出路。提高上限**一次最多 +4**，天花板 100，
   因此加宽语义树是反复判断的过程而不是一次性设置
-  （[F223](../../planning/f223-route-branch-fanout-limit.md)）；
+  （[F223](../../planning/route-branch-fanout-limit.md)）；
 - 有界 Catalog Atlas 与逐层导航；Route alias；
 - 全内容倒排索引：确定性 tokenizer、持久 posting store、在线原子替换、
   全量 COW rebuild 与 parity receipt、权限先行的有界 cursor 查询；

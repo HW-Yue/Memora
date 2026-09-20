@@ -1,7 +1,7 @@
 # Route Branch Fan-out 策略
 
 状态：**部分被取代**。「不提供产品默认值」与「允许带理由的受控超限」两条已由
-[F223](../planning/f223-route-branch-fanout-limit.md)取代：现在有启动默认值 12，
+[fan-out 硬上限](../planning/route-branch-fanout-limit.md)取代：现在有启动默认值 12，
 超限一律失败，没有例外通道。本文其余判断仍然有效。
 
 ## 问题
@@ -64,7 +64,7 @@ Leaf 不能成为其他 Route 节点的 parent。若两个不同 Row 对应的 L
 
 ## 关联
 
-- [F223：Route Branch Fan-out 硬上限](../planning/f223-route-branch-fanout-limit.md)
+- [fan-out 硬上限](../planning/route-branch-fanout-limit.md)
 - [语义 Router](./semantic-routing.md)
 - [Route Mutation Plan v1](./route-mutation-plan-v1.md)
 - [AI-native 可演化配置](../product/adaptive-configuration.md)

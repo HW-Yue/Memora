@@ -2,6 +2,10 @@
 
 状态：**2026-09-20。当前唯一的工作队列。**
 
+工作项用题目，不再编号。`F1`–`F228` 是旧引擎 Feature 流水号，只留在
+`docs/archive/` 和个别规格的历史状态行里。ADR 仍用四位编号。
+分支用 `feature/<short-name>`，不要再开 `feature/Fxx-...`。
+
 每项仍须按 [TDD 协议](./feature-tdd-protocol.md) 独立 Review、授权、实现、验收。
 持久化相关项测 reopen / 中断 / 错误注入；SQLite 自己的页格式与崩溃恢复不测。
 
@@ -36,9 +40,10 @@
 关键词与向量两条路的存储、维护和 MSQL 入口。约束已经冻住：只出路径、事实回表。
 方案未定前不写代码。
 
-### F224：Row 必须可导航
+### 行必须可导航
 
-[规格](./f224-mandatory-row-route.md)。零叶子的 Row 没有路径可返回。本轮不实现。
+[规格](./mandatory-row-route.md)。零叶子的 live Row 没有语义路径。
+判据要按叶子直挂 RowID 重写后再开工；拆分见 [过程稿](../plan.md)。
 
 ### 行链接读写
 

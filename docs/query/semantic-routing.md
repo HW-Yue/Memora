@@ -101,7 +101,7 @@ SQLite 负责页与文件；语义 Branch 含混时，引擎只报告结构事�
 本 Database `route_policy.branch_fanout` 个 live child，启动默认 12。第 `N+1` 个子节点
 一定失败，失败信封里带两条可执行出路——重构子树，或用
 `ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :n` 提高本库上限——由 Agent 自己
-判断走哪条。规则见 [F223](../planning/f223-route-branch-fanout-limit.md)与
+判断走哪条。规则见 [fan-out 硬上限](../planning/route-branch-fanout-limit.md)与
 [Route Branch Fan-out 策略](./route-branch-fanout-policy.md)。
 已占用 Leaf 不接收第二个 Row，AI 必须创建新的语义 Leaf，必要时先增加 Branch。
 

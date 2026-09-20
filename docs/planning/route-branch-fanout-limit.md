@@ -1,4 +1,6 @@
-# F223：Route Branch Fan-out 硬上限
+# Fan-out 硬上限
+
+曾用名：F223（旧引擎 Feature 流水号，已停用）。
 
 状态：已实现（2026-08-16）。取代 [Route Branch Fan-out 策略](../query/route-branch-fanout-policy.md)
 中「不设产品默认值、允许带理由的受控超限」的方向。

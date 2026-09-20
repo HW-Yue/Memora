@@ -696,7 +696,7 @@ CLI 子命令**语法保留**，固定返回 not implemented——与 `USING VEC
 | A3 | [F219](./f219-deterministic-answer-scoring.md) 确定性答案评分 | A2 | 主指标 `route_hit`／`field_hit`／`retrieval_correct`；transcript 不支持时判未命中 |
 | A4 | [F222](./f222-release-gate-policy-v2.md) Release Gate Policy v2 | A3 | `report`/`gate` 双模式；阈值未冻结时 `gate` 拒绝运行 |
 | A5 | 三组小规模对照 | A1–A4 | 三 arm／强弱模型建索引／工作集冷启动；产出物之一是冻结 `gate` 阈值 |
-| A6 | [F224](../../planning/f224-mandatory-row-route.md) Row 必须可导航 | **E3** | **判据要重写**：从「有没有 live membership」改为「有没有叶子指向它」，读 `route_leaf_ids` |
+| A6 | [F224](../../planning/mandatory-row-route.md) Row 必须可导航 | **E3** | **判据要重写**：从「有没有 live membership」改为「有没有叶子指向它」，读 `route_leaf_ids` |
 | A7 | [F225](./f225-mandatory-row-summary.md) Row 必须可展示 | E 阶段 | summary role 列非空；引擎只判定非空不判定质量。SKILL.md 侧已落地 |
 | A10 | F220 Stage 2 | A5、S7 | 负向记忆、相关性淘汰、精确失效 |
 | A11 | 跨 Session topic 身份与有界恢复 | A10 | 需先出独立规格 |

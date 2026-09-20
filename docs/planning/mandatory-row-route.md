@@ -1,7 +1,8 @@
-# F224：Row 必须可导航（写入时强制语义索引）
+# 行必须可导航
 
+曾用名：F224（旧引擎 Feature 流水号，已停用）。
 状态：候选，2026-08-11 提出；尚未 Review、尚未获得实现授权。
-沿用 [F223](./f223-route-branch-fanout-limit.md) 的处理形状：越界不是警告，是写入失败。
+沿用 [fan-out 硬上限](./route-branch-fanout-limit.md) 的处理形状：越界不是警告，是写入失败。
 
 > **目标形态已改，本候选需按新形态重写后再评估。** 本文建立在
 > membership 之上（「Row 有没有 live membership」是它的判据）。
@@ -105,6 +106,6 @@ Route leaf membership; either attach an existing leaf or create one first
 ## 关联
 
 - [执行计划](./execution-plan.md)
-- [F223 Route Branch Fan-out 硬上限](./f223-route-branch-fanout-limit.md)
+- [fan-out 硬上限](./route-branch-fanout-limit.md)
 - [语义 Router](../query/semantic-routing.md)
 - [AI-native 产品契约](../product/ai-native-contract.md)

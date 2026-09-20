@@ -113,12 +113,12 @@ history 是一张真的表，而表默认可查，所以这条必须明写：删
   一次最多 +4（加宽语义树需要反复判断）。
 
 引擎不替 Agent 选，只保证上限可发现、越界必然失败、两条出路都可执行。
-规则见 [F223](../planning/f223-route-branch-fanout-limit.md)。
+规则见 [fan-out 硬上限](../planning/route-branch-fanout-limit.md)。
 
 ### 4.4 叶子只挂一条数据
 
 一个叶子最多挂一个活跃 Row。叶子已占用时应新建叶子（同一 Row 可属于多个叶子），
-而不是往已占用的叶子继续挂。见 [F169](../planning/f169-single-row-route-leaf.md)。
+而不是往已占用的叶子继续挂。见 [一叶一行](../planning/single-row-route-leaf.md)。
 
 ## 5. 变更记录
 

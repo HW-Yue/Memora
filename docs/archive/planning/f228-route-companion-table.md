@@ -1,8 +1,10 @@
 # F228：建数据表时自动建出隐藏的语义配套表
 
-状态：**实现计划**（2026-09-13），待授权开工。
-[ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md) 实施顺序第 1 步；
-表形态见 [Route 配套表](../product/route-companion-table.md)。
+归档。代码已实现；现行规格见 [Route 配套表](../../product/route-companion-table.md)。
+曾用名 F228，不再作为工作编号。
+
+原状态：**实现计划**（2026-09-13）。
+[ADR-0011](../../decisions/0011-pure-storage-engine-tables-everything.md) 实施顺序第 1 步。
 
 ## 一句话
 

@@ -22,7 +22,9 @@
 ## 派发工作
 
 - [执行计划](./planning/execution-plan.md) — **当前唯一工作队列**
+- [过程稿](./plan.md) — 按块核实后再收成执行计划
 - [TDD 协议](./planning/feature-tdd-protocol.md) · [Feature 产品门](./planning/feature-product-gate.md)
+- [决策日志](./decisions.md) — 运行中的判断记录；规范级结论仍进下方 ADR
 
 ## 现行内核与规格
 
@@ -33,11 +35,10 @@
   [行生命周期](./product/row-lifecycle-successor.md) ·
   [行链接](./product/row-links.md)
 - [可演化配置](./product/adaptive-configuration.md) ·
-  [Fan-out 硬上限](./planning/f223-route-branch-fanout-limit.md)
+  [Fan-out 硬上限](./planning/route-branch-fanout-limit.md)
 
-现役不变量与排队项：[F169 单行叶子](./planning/f169-single-row-route-leaf.md)、
-[F224 行必须可导航](./planning/f224-mandatory-row-route.md)、
-[F228 语义配套表](./planning/f228-route-companion-table.md)。
+现役不变量：[一叶一行](./planning/single-row-route-leaf.md)。
+排队：[行必须可导航](./planning/mandatory-row-route.md)。
 
 ## 决策（Accepted）
 

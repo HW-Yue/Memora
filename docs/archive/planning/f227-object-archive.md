@@ -303,6 +303,6 @@ has wrong Table`）。根因是两处要求 Row 的 schema 版本与 Table 当�
 
 - [Admin UI 归档规则](./f227-archive-admin-ui.md)
 - [执行计划](../../planning/execution-plan.md)
-- [F224 Row 必须可导航](../../planning/f224-mandatory-row-route.md)
+- [F224 Row 必须可导航](../../planning/mandatory-row-route.md)
 - [F225 Row 必须可展示](./f225-mandatory-row-summary.md)
 - [F226 Database 级故障隔离](./f226-per-database-fault-isolation.md)

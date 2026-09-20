@@ -1,6 +1,6 @@
 # Route 产品模板：业务表的配套语义表
 
-状态：**方向性结论**（2026-09-13）。这是目标形态，不是现役实现。
+状态：**已实现**（`sqlstore` 同事务建 `_memora_routes_*`）。规格仍以本文为准。
 与[写入形态](./write-model.md) §1 第 3 条「语义索引是第三种特殊结构」冲突时，
 **以本文为准**——语义索引是业务表旁边的一张普通表，Route 操作就是对它的读写。
 查询链路（发现 → 逐层走到叶子 → RowID 回表）仍以
@@ -152,5 +152,5 @@ objects 树若还在，只可能暂存 Catalog／Relation 等尚未表化的东�
   [架构原则](./architecture-principles.md) 第二条
 - [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)、
   [每表一棵树](../archive/storage/per-table-tree-v1.md)
-- [F169 一叶一行](../planning/f169-single-row-route-leaf.md)、
-  [F223 扇出上限](../planning/f223-route-branch-fanout-limit.md)
+- [一叶一行](../planning/single-row-route-leaf.md)、
+  [fan-out 硬上限](../planning/route-branch-fanout-limit.md)
