@@ -18,6 +18,13 @@
 | Row 向量 | 允许，命中直接返回叶子路径，逐段带 `route_id` |
 | 写入侧 | 本轮不动；`branch_fanout` 硬上限保留 |
 | jev | Skill 侧选择器，不进内核（[jev 选择器](../query/jev-branch-selection.md)） |
+| PDF / 长文档吸收机 | **删**。不落 PDF/chunk；也不保留 Assimilation MSQL / Document IR / Source Receipt 流水线 |
+| Admin 网页 | **留**。只读观察，不当写入或交互入口 |
+| MCP | **留** |
+| 内置 Agent 周边 | **删**。conversation journal、hostinput、feedback、`memora ask` / reflect / capture / decide |
+| Semantic Health | **删**。`maintain --report` 与事后扫描 |
+| ARCHIVE / UNARCHIVE / PURGE | **删**。对象归档不是产品面；废弃+接替走行生命周期 |
+| 评测设施 F212–F215 | **删**。ADR-0010 的「代码冻结保留」作废 |
 
 ## 队列
 
