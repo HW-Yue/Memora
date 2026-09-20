@@ -28,7 +28,6 @@ type Config struct {
 	Catalog      executor.Catalog
 	Rows         executor.Rows
 	Points       executor.PointReads
-	Assimilation executor.AssimilationCommitter
 	Transactions executor.TransactionFactory
 
 	// MaxSessions caps how many sessions may be open at once. Sessions are
@@ -158,9 +157,8 @@ func newSession(ctx context.Context, id string, config Config) *Session {
 	sessionContext, cancel := context.WithCancel(ctx)
 	gate := make(chan struct{}, 1)
 	gate <- struct{}{}
-	batch := executor.NewBatchSessionWithCapabilitiesAndTransactions(
-		sessionContext, config.Catalog, config.Rows, config.Points,
-		config.Assimilation, config.Transactions,
+	batch := executor.NewBatchSessionWithTransactions(
+		sessionContext, config.Catalog, config.Rows, config.Points, config.Transactions,
 	)
 	return &Session{
 		id: id, context: sessionContext, cancel: cancel, gate: gate,

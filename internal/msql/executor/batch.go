@@ -53,7 +53,7 @@ type BatchSession struct {
 }
 
 func NewBatchSession(ctx context.Context, dictionary Catalog, rows Rows) *BatchSession {
-	return newBatchSessionWithPointReads(ctx, dictionary, rows, nil)
+	return NewBatchSessionWithPointReads(ctx, dictionary, rows, nil)
 }
 
 func NewBatchSessionWithPointReads(
@@ -62,45 +62,14 @@ func NewBatchSessionWithPointReads(
 	rows Rows,
 	points PointReads,
 ) *BatchSession {
-	return newBatchSessionWithPointReads(ctx, dictionary, rows, points)
+	return NewBatchSessionWithTransactions(ctx, dictionary, rows, points, inferredTransactionFactory(rows))
 }
 
-func newBatchSessionWithPointReads(
+func NewBatchSessionWithTransactions(
 	ctx context.Context,
 	dictionary Catalog,
 	rows Rows,
 	points PointReads,
-) *BatchSession {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	sessionContext, cancel := context.WithCancel(ctx)
-	return &BatchSession{
-		context: sessionContext, cancel: cancel,
-		autocommit: NewWithPointReads(dictionary, rows, points), rows: rows, points: points,
-		transactions: inferredTransactionFactory(rows),
-	}
-}
-
-func NewBatchSessionWithCapabilities(
-	ctx context.Context,
-	dictionary Catalog,
-	rows Rows,
-	points PointReads,
-	assimilation AssimilationCommitter,
-) *BatchSession {
-	return NewBatchSessionWithCapabilitiesAndTransactions(
-		ctx, dictionary, rows, points, assimilation,
-		inferredTransactionFactory(rows),
-	)
-}
-
-func NewBatchSessionWithCapabilitiesAndTransactions(
-	ctx context.Context,
-	dictionary Catalog,
-	rows Rows,
-	points PointReads,
-	assimilation AssimilationCommitter,
 	transactions TransactionFactory,
 ) *BatchSession {
 	if transactions == nil {
@@ -112,7 +81,7 @@ func NewBatchSessionWithCapabilitiesAndTransactions(
 	sessionContext, cancel := context.WithCancel(ctx)
 	return &BatchSession{
 		context: sessionContext, cancel: cancel,
-		autocommit: NewWithCapabilities(dictionary, rows, points, assimilation),
+		autocommit: NewWithPointReads(dictionary, rows, points),
 		rows:       rows, points: points, transactions: transactions,
 	}
 }
@@ -253,20 +222,6 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 			}
 			transactionStart = -1
 		default:
-			if session.active != nil && statement.Assimilation != nil {
-				executeErr := executeError(result.CodeInvalidTransaction, "assimilation statements require autocommit mode")
-				if statement.Assimilation.Action == "SUBMIT" {
-					rollbackErr := session.active.Rollback()
-					session.active = nil
-					markRolledBack(results, transactionStart, "transaction was rolled back before assimilation submit")
-					if rollbackErr != nil {
-						executeErr = normalizeError(rollbackErr)
-					}
-					session.aborted = true
-				}
-				results = append(results, statementFailure(index, statement.Kind, source, executeErr))
-				continue
-			}
 			engine := session.autocommit
 			if session.active != nil {
 				engine = New(session.active, session.active)
@@ -439,9 +394,7 @@ func mutationStatement(statement ast.Statement) bool {
 	return statement.Insert != nil || statement.Update != nil || statement.Delete != nil ||
 		statement.Restore != nil || statement.Reshape != nil ||
 		statement.CreateRoute != nil || statement.RenameRoute != nil || statement.UpdateRoute != nil || statement.DeleteRoute != nil ||
-		statement.Archive != nil ||
 		statement.ApplyRoute != nil || statement.ApplySchema != nil ||
-		statement.Assimilation != nil && statement.Assimilation.Action == "SUBMIT" ||
 		statement.Configuration != nil
 }
 

@@ -70,10 +70,7 @@ SELECT * FROM work.notes WHERE row_id = :row LIMIT 1   -- 只有 SELECT 是事�
 |---|---|
 | `init` / `daemon start\|stop\|status\|run` / `doctor` | 实例与守护进程 |
 | `query` / `exec` / `parse` | 执行或解析 MSQL |
-| `capture` / `decide` | 捕获待定输入、做值不值得写的决定 |
 | `mutate` / `schema` | 执行带预检与验证的写入计划、Schema 计划 |
-| `assimilate` | 资料吸收的状态与回执 |
-| `reflect` / `feedback` / `maintain` | 对话检查点、反馈、语义健康维护 |
 | `mcp` / `admin` / `version` | 接入、控制台 |
 
 ## 存储里有什么

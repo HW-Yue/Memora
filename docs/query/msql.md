@@ -21,14 +21,10 @@ Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop
 
 未来内置 Agent 对 Memora 的依赖只有版本化 `ExecuteMSQL` 端口。即使 Agent 与 daemon 在同一 Go
 进程中，也必须提交完整 MSQL Request 并经过上述全部阶段；不能把“同进程调用”解释为直接调用
-Catalog、Row、Router、Assimilation Controller、Store 或索引包。Agent 需要而 Grammar 尚未表达的
+Catalog、Row、Router 或 Store。Agent 需要而 Grammar 尚未表达的
 数据库能力，必须先作为独立 MSQL Feature 实现，不能为 Agent 增加私有 RPC 或 Go 后门。
 
-F195 之后，新 Agent 使用正式 assimilation MSQL surface；Job、SourceStore、Document IR 与 coverage
-是 Agent-owned 状态。早期 `assimilation.record/submit/receipt` IPC 仅保留外部兼容，新 Agent 禁止
-依赖，也不得把它们包装成新的内部工具。
-
-宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。完整边界见 [Policy Enforcement v2](../archive/development/policy-enforcement-v2.md)。
+宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route 和管理操作；`SHOW DATABASES` 只返回 scope 内对象。完整边界见 [Policy Enforcement v2](../archive/development/policy-enforcement-v2.md)。
 
 ## 标准进入流程
 
@@ -63,18 +59,7 @@ Memora 专有管理能力采用独立的声明式语句，并解析为明确的 
 
 F174 的 `SHOW LEXICAL LOCATIONS` 与 F173c 的 posting 重建**已从 Grammar 和内核删除**。新召回语法见 [查询形态](../product/query-model.md)。
 
-F195 冻结资料吸收提交面：
-
-```sql
-REVIEW ASSIMILATION FOR DATABASE work USING :proposal;
-SUBMIT ASSIMILATION PLAN :plan FOR DATABASE work;
-SHOW ASSIMILATION RECEIPT :receipt IN DATABASE work;
-```
-
-REVIEW 逐条解析 proposal 中的 MSQL，只接受同库 L1 数据 mutation，并检查完整 coverage、参数、
-Schema/revision/affected-row guard 和 document source provenance；结果是规范 hash-bound plan。
-SUBMIT 要求同库 L1 scope 和 `SUBMIT_ASSIMILATION` 精确 approval，在独立 Session 中执行
-`BEGIN → statements → COMMIT`。Receipt 不保存 MSQL、参数或正文。结构审阅不等于事实正确性；F196 已增加有锚点的
+F195 的资料吸收 MSQL（`REVIEW/SUBMIT ASSIMILATION`、`SHOW ASSIMILATION RECEIPT`）**已从 Grammar 删除**。PDF / 吸收机不是产品面。
 claim ledger 与候选语句，F197–F199 继续增加问题交互、独立语义复核与回读对账。完整契约见
 [F195 规格](../archive/planning/f195-msql-assimilation-surface.md)和 [F196 规格](../archive/planning/f196-draft-claim-ledger.md)。
 
@@ -187,8 +172,7 @@ Database；历史迁移背景见 [Router Tree v1](../archive/design/router-tree-
 
 普通 SQL 负责业务 Row 修改；Agent 生成的完整 Route membership 也必须由
 声明式 MSQL 语句或 UPDATE 扩展正式提交，不能通过私有 API 旁路写索引。具体
-Grammar 待冻结。逻辑 DELETE 默认保留 revision 和 History Store；不可恢复的
-PURGE 是独立高风险语句。
+Grammar 待冻结。逻辑 DELETE 默认保留 revision 和 History；删除是终态，没有 PURGE 语句。
 
 普通 UPDATE 未提供 Route snapshot 时保留现有 membership，并将 locator revision
 与 Row revision 原子推进；提供 snapshot 时则以显式完整集合为准。需要改变语义

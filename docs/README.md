@@ -60,8 +60,7 @@
   [Skill 写入](./agent/skill-write-v1.md) ·
   [Schema 生命周期](./agent/skill-schema-lifecycle-v1.md)
 - [MCP Adapter](./agent/mcp-adapter-v1.md) ·
-  [Agent 的 MSQL 边界](./agent/agent-msql-dependency-injection.md) ·
-  [Semantic Health](./agent/semantic-health-v2.md)
+  [Agent 的 MSQL 边界](./agent/agent-msql-dependency-injection.md)
 - [CLI](./development/cli-database-workflow.md) ·
   [Go SDK](./development/go-sdk-v1.md) ·
   [IPC](./development/ipc-protocol.md) ·

@@ -232,26 +232,6 @@ func (engine *Engine) deleteRoute(
 	return routerRevisionMutationOutput(revision), nil
 }
 
-// archive runs ARCHIVE and UNARCHIVE for the three container kinds. Archiving
-// never destroys anything, so UNARCHIVE is the exact inverse.
-func (engine *Engine) archive(
-	ctx context.Context,
-	statement *ast.ArchiveStatement,
-	bound bindings,
-	options MutationOptions,
-) (Output, error) {
-	switch statement.Object {
-	case "DATABASE":
-		return engine.archiveDatabase(ctx, statement, bound)
-	case "TABLE":
-		return engine.archiveTable(ctx, statement, bound)
-	case "COLUMN":
-		return engine.archiveColumn(ctx, statement, bound)
-	default:
-		return Output{}, executeError(result.CodeValidation, "ARCHIVE object kind is unsupported")
-	}
-}
-
 func (engine *Engine) showRoutes(
 	ctx context.Context,
 	statement ast.Statement,

@@ -293,8 +293,8 @@ function listSectionContinuation(kind, rows, hrefFor, page, loadMore) {
 // archived() is the single place the archive modifier is spelled. Writing it
 // per call site would mean one missed spot silently returns the live-only
 // answer, which is the failure mode the archive rule cannot tolerate.
-function archived(archiveMode) {
-  return archiveMode ? " INCLUDING ARCHIVED" : "";
+function archived(_archiveMode) {
+  return "";
 }
 
 // archiveNote explains an archived object in place. Reaching one by deep link

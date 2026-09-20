@@ -31,14 +31,12 @@ type Statement struct {
 	RenameRoute   *RenameRouteStatement        `json:"rename_route,omitempty"`
 	UpdateRoute   *UpdateRouteStatement        `json:"update_route,omitempty"`
 	DeleteRoute   *DeleteRouteStatement        `json:"delete_route,omitempty"`
-	Archive       *ArchiveStatement            `json:"archive,omitempty"`
 	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
 	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
 	ApplySchema   *ApplySchemaChangeStatement  `json:"apply_schema_change,omitempty"`
 	Configuration *ConfigurationStatement      `json:"configuration,omitempty"`
-	Assimilation  *AssimilationStatement       `json:"assimilation,omitempty"`
 	Transaction   *TransactionStatement        `json:"transaction,omitempty"`
 }
 
@@ -72,17 +70,13 @@ type ShowStatement struct {
 	Query     *Expression `json:"query,omitempty"`
 	Space     *Expression `json:"space,omitempty"`
 	ByteLimit *Expression `json:"byte_limit,omitempty"`
-	// IncludingArchived widens exactly this statement to archived objects. It
-	// never changes the ancestor rule and never leaks into another statement.
-	IncludingArchived bool `json:"including_archived,omitempty"`
 }
 
 type DescribeStatement struct {
-	Object            string      `json:"object"`
-	Name              Name        `json:"name"`
-	Compact           bool        `json:"compact,omitempty"`
-	Route             *Expression `json:"route,omitempty"`
-	IncludingArchived bool        `json:"including_archived,omitempty"`
+	Object  string      `json:"object"`
+	Name    Name        `json:"name"`
+	Compact bool        `json:"compact,omitempty"`
+	Route   *Expression `json:"route,omitempty"`
 }
 
 type CreateStatement struct {
@@ -191,18 +185,6 @@ type DeleteRouteStatement struct {
 	Route *Expression `json:"route"`
 }
 
-// ArchiveStatement carries both ARCHIVE and UNARCHIVE for every archivable
-// object kind. Archiving is Memora's only delete semantics, so one node keeps
-// the risk classification, batch dispatch and authorization scope in one place
-// instead of one statement type per object.
-type ArchiveStatement struct {
-	Restore bool        `json:"restore,omitempty"`
-	Object  string      `json:"object"`
-	Name    Name        `json:"name,omitempty"`
-	Target  *Expression `json:"target,omitempty"`
-	Reason  *Expression `json:"reason,omitempty"`
-}
-
 type OpenRouteStatement struct {
 	Mode   string      `json:"mode"`
 	Route  *Expression `json:"route"`
@@ -240,12 +222,6 @@ type ConfigurationStatement struct {
 	RouteFrameNodes *Expression `json:"route_frame_nodes,omitempty"`
 	BranchFanout    *Expression `json:"branch_fanout,omitempty"`
 	TargetRevision  *Expression `json:"target_revision,omitempty"`
-}
-
-type AssimilationStatement struct {
-	Action   string      `json:"action"`
-	Database Name        `json:"database"`
-	Value    *Expression `json:"value"`
 }
 
 type TransactionStatement struct {
@@ -353,9 +329,6 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.UpdateRoute.Aliases)
 	case statement.DeleteRoute != nil:
 		appendExpression(statement.DeleteRoute.Route)
-	case statement.Archive != nil:
-		appendExpression(statement.Archive.Target)
-		appendExpression(statement.Archive.Reason)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
 		appendExpression(statement.Show.Route)
 		appendExpression(statement.Show.Cursor)
@@ -380,8 +353,6 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Configuration.RouteFrameNodes)
 		appendExpression(statement.Configuration.BranchFanout)
 		appendExpression(statement.Configuration.TargetRevision)
-	case statement.Assimilation != nil:
-		appendExpression(statement.Assimilation.Value)
 	}
 	return parameters
 }

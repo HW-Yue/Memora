@@ -1,7 +1,6 @@
 ---
 name: memora
 description: memora 是用户的个人记忆与知识库。用户问到关于自己、项目、过往经历或个人相关的问题时，先在 memora 中查找；聊天中出现值得记录的新事实、决定、想法或任何有意义的内容时，存入 memora。本地查不到答案时再上网搜索；搜索到值得保留的内容也存入 memora。
-allowed-tools: Bash(memora assimilate *) Bash(memora doctor) Bash(memora exec *) Bash(memora feedback *) Bash(memora maintain *) Bash(memora mutate *) Bash(memora query *) Bash(memora reflect *) Bash(memora schema *)
 ---
 
 # Memora Canonical Skill
@@ -10,9 +9,8 @@ Use this single source for stable host behavior. It targets `memora.msql.ast/v1`
 and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
-Only use the `memora assimilate`, `memora capture`, `memora decide`, `memora doctor`, `memora query`, `memora exec`,
-`memora feedback`, `memora maintain`, `memora mutate`, `memora schema`, and
-`memora reflect` interfaces for normal database work. The approval-gated
+Only use the `memora doctor`, `memora query`, `memora exec`,
+`memora mutate`, and `memora schema` interfaces for normal database work. The approval-gated
 `upgrade` and `doctor repair` recovery commands below are the only exception.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
@@ -254,7 +252,7 @@ Within the user's authorized scope, use:
 Discover → query existing rows → plan → validate → execute → verify
 ```
 
-Choose IGNORE, INSERT, REVISE, MERGE, SPLIT, MOVE, or RELATE before generating
+Choose IGNORE, INSERT, REVISE, MERGE, SPLIT, or MOVE before generating
 MSQL. Prefer revising an existing semantic module over appending a duplicate.
 Use parameters, expected schema/revision, a maximum affected-row count, actor,
 source, reason, and the complete current Route leaf membership snapshot.
@@ -353,131 +351,6 @@ memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"<complete
 memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decision":"IGNORE","database":"work","table":"notes","actor":"agent:host","source_event_id":"conversation:event-7","reason":"existing Row already captures it","authorized_databases":["work"],"preflight":[{"id":"duplicate-check","msql":"SELECT row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1","input":{"parameters":{"named":{"row":"row_01"}}},"expect_rows":1}],"steps":[],"verify":[]}'
 ```
 
-## Capture pending host input
-
-Before deciding whether a new short user assertion or bounded source excerpt is
-worth a database mutation, capture it as one `memora.host-input/v1`. Bind a
-stable input ID, workspace, actor, and the exact 1–32 user-authorized Database
-selectors. Keep `candidate_text` within 12,000 UTF-8 bytes. This auxiliary inbox
-is temporary handoff state, not a semantic Row, fact, History entry, or answer.
-
-Use `conversation_assertion` only without a locator or source hash. A
-`document_anchor` or `repository_anchor` requires both a bounded locator and the
-source content SHA-256. Never label capture as `reviewed_source`. Send a whole
-document, directory, media source, or multi-window task through `assimilate`
-instead of splitting it into Host Inputs.
-
-```sh
-memora capture --candidate '{"version":"memora.host-input/v1","input_id":"input-12","workspace":"project-memora","actor":"agent:host","authorized_databases":["work"],"candidate_text":"Router results are locators, not facts.","source":{"kind":"conversation_assertion","title":"Router boundary"}}'
-```
-
-Require `memora.host-input-receipt/v1`, `status=pending`, and matching input,
-content, and scope hashes. The capture receipt deliberately omits candidate
-text. After host restart or context loss, reload the exact pending candidate
-only with its workspace:
-
-```sh
-memora capture --receipt input-12 --workspace project-memora
-```
-
-An identical input ID/content replay is success; different content under the
-same ID is a hard revision conflict. `pending` proves only durable capture. Do
-not infer IGNORE/WRITE/REVISE or run MSQL from the receipt; the worthiness
-decision is a separate reviewed step.
-
-## Finalize worthiness
-
-After capture, use normal discovery and bounded queries to decide whether the
-candidate should be ignored, inserted as a new semantic module, or used to
-revise an existing Row. Express and execute that choice through a validated
-Mutation Plan first. Then finalize the pending input with one strict
-`memora.worthiness-decision/v1`:
-
-```sh
-memora decide --decision '{"version":"memora.worthiness-decision/v1","decision_id":"decision-12","input_id":"input-12","workspace":"project-memora","actor":"agent:host","input_sha256":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","scope_sha256":"sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","verdict":"IGNORE","reason":"preflight found the same semantic module","authorized_databases":["work"],"mutation_receipt":{"version":"memora.mutation-receipt/v1","plan_id":"plan-ignore-12","decision":"IGNORE","status":"ignored","changes":[],"ignored":1,"verified":true,"warnings":[]}}'
-```
-
-IGNORE requires the verified ignored receipt from an IGNORE Mutation Plan.
-WRITE requires a committed, verified INSERT receipt; REVISE requires a
-committed, verified REVISE receipt. WRITE/REVISE also name the authorized
-Database/Table and the exact Row ID/revision returned by one matching change.
-Never fabricate a Mutation Receipt and never finalize from
-`committed_unverified`; resolve verification first.
-
-Require `memora.worthiness-receipt/v1` and `status=finalized`. It omits the
-candidate text. After restart, reload the stable decision with:
-
-```sh
-memora decide --receipt decision-12 --workspace project-memora
-```
-
-The engine verifies receipt shape and capture binding, not semantic truth. A
-finalized WRITE/REVISE refers to the preceding MSQL mutation; the decision API
-does not write Rows itself.
-
-## Assimilate sources
-
-Treat documents and media as temporary host input. Start one
-`memora.assimilation-event/v1` inventory with a source ID, bounded title/locator,
-content SHA-256, and parent-linked source, directory, chapter, page, table, and
-attachment units. Give each readable unit a normalized half-open extent; mark a
-unit optional only when omission is intentional. Do not place source text in a
-label, locator, anchor, event, or database Row.
-
-Read bounded windows and send only unit ID, `[start,end)`, and window SHA-256.
-Memora merges overlaps and treats an identical window as a no-op. Save an active
-unit, offset, bounded host cursor, and last window event before interruption.
-Use a `status` event after restart or context loss to recover the checkpoint and
-unread ranges; do not depend on old chat history.
-
-Call `finish` only after inventory traversal. An `incomplete` receipt is a hard
-failure: continue from its unread ranges and never report successful absorption.
-`coverage_complete` means only that F36 review and semantic submission may
-begin; it does not mean knowledge was written. After a successful later commit
-or explicit cancellation, call `clear` to remove temporary Memora state. Never
-delete or modify the user's source file.
-
-Build one `memora.assimilation-submission/v1` only after coverage completes.
-Represent each complete, independently editable semantic module with its normal
-Mutation Plan; represent structure only with RELATE Plans. Bind every module and
-relationship to at least one short source anchor inside a readable inventory
-unit. Express RELATE endpoints as reviewed module IDs in the `source` and
-`target` parameters; Memora replaces them with the verified object IDs returned
-by those module plans. Bind every important number or other key fact separately to its module,
-field, value SHA-256, and exact anchor. Do not copy source windows or quotations
-into the submission merely to support review.
-
-Each semantic module's `summary` is a complete, self-contained Markdown
-document of roughly 1,000 CJK characters — the full rendered body the reader
-should see, not a compressed extract or a few bullet points. Configure the
-summary Column's TEXT limit (e.g. `TEXT(2500)`) to hold the document plus
-Markdown syntax; the 1200-character default ceiling is too small for a
-1,000-CJK-character body. Length is counted in Unicode code points, so Markdown
-headers, list markers, and code blocks consume the same budget as CJK text.
-Never silently truncate: if the ceiling is too low, submit a Schema change to
-widen the summary Column before writing, and write the document to match the
-configured budget.
-
-Run a second pass as `memora.assimilation-review/v1`. It may use another Agent,
-or the same Agent with a context ID isolated from the draft. It must bind the
-draft SHA-256 and coverage revision, check the exact module/relationship/key-fact
-ID sets, and explicitly verify anchors, key facts, conflicts, and absence of raw
-source content. If any semantic conflict remains, submit its ID and stop on
-`needs_user`; resolve it through the normal conflict flow before creating a new
-submission ID.
-
-Only `committed` in `memora.source-receipt/v1` means absorption succeeded. An
-`in_doubt` submission may have partially committed: query the affected logical
-Rows and revisions, then recover with a new submission instead of replaying the
-old write. Reload compact provenance with `memora assimilate --receipt <id>`.
-After committed, send an explicit coverage `clear` event; the Source Receipt
-survives while the temporary inventory, coverage, windows, and checkpoint do not.
-
-```sh
-memora assimilate --event '{"version":"memora.assimilation-event/v1","event_id":"book-status-2","task_id":"book-task","workspace":"project-memora","kind":"status"}'
-memora assimilate --receipt book-submit-1
-```
-
 ## Evolve schemas
 
 Before creating a domain, discover existing Database and Table names and aliases.
@@ -522,106 +395,6 @@ receipt directly. A destructive plan containing DROP has no automatic
 compensation proposal because History values must not be presented as an
 ordinary reversible Schema action.
 
-## Delete what rebuilds, archive what does not
-
-Removal splits in two, along one line: can the user recreate the thing exactly?
-
-**Route nodes, Rows and Relations are deleted, and deletion is final.** A Route
-node is a semantic index entry — a name, a purpose, aliases, an edge — and
-`CREATE ROUTE` rebuilds an identical one, so it keeps no archive. A Relation is
-one link; `RELATE` rebuilds it. A deleted Row is unreachable by construction:
-`SHOW HISTORY` is addressable only by `row_id` and a deleted Row appears in no
-listing, so its History goes with it. History earns its keep on **UPDATE**,
-where the Row is still there to explain.
-
-**Databases, Tables and Columns are archived, and archiving is reversible.**
-They hold other people's content and cannot be recreated by hand, so removal
-here means "leaves every read surface", not "gone".
-
-Three rules govern deletion, and all three fail hard rather than losing data:
-
-1. **A Route leaf must be emptied before it can be deleted.** Deleting a leaf
-   that still holds Rows would strip their navigation, and a live Row must be
-   reachable. Move the Rows to another leaf first — the error names how many are
-   in the way. A node with live children refuses the same way;
-2. **Nothing follows a delete.** A deleted Route node or Relation rejects every
-   later revision, restore included;
-3. **`RESTORE … TO REVISION` is not a way back from `DELETE FROM`.** It rewinds
-   a live Row to an earlier revision; on a deleted Row it refuses and says so.
-
-Deletion today is semantic — the object is unreachable and unrecoverable, but
-the bytes stay on disk until compaction lands. Never tell a user their data has
-been erased.
-
-```sh
-memora exec --input '{"parameters":{"named":{"reason":"retired project"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ARCHIVE DATABASE work REASON :reason"
-```
-
-`ARCHIVE|UNARCHIVE` accepts **only** `DATABASE work`, `TABLE work.notes` and
-`COLUMN work.notes.draft`, all **L2**. `ARCHIVE` always requires `REASON`;
-`UNARCHIVE` never takes one. There is no `ARCHIVE ROUTE|ROW|RELATION` — the
-parser rejects it — and no `SHOW ROUTES … INCLUDING ARCHIVED`. `DROP TABLE` and
-`DROP DATABASE` are still not statements the parser accepts; `ARCHIVE` is the
-operation. `DROP_COLUMN` in a Schema Plan now archives the column, which is why
-it is reversible.
-
-Three rules that decide what an archive does:
-
-1. **It never touches descendants.** Archiving a Table changes no Row and bumps
-   no Row revision. An object is visible only when neither it nor any ancestor
-   is archived, computed at read time;
-2. **`UNARCHIVE` reverses exactly one decision.** Restoring a Database leaves a
-   Table you archived separately still archived;
-3. **The name stays taken.** Creating over an archived object fails and names
-   it. Do not work around this by inventing a new name — `UNARCHIVE` it or
-   rename it deliberately.
-
-Archived objects are invisible until a read asks for them:
-
-```sh
-memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW TABLES FROM work INCLUDING ARCHIVED"
-```
-
-`INCLUDING ARCHIVED` works on `SHOW DATABASES`, `SHOW TABLES`, `SHOW COLUMNS`,
-`DESCRIBE DATABASE` and `DESCRIBE TABLE`. It widens exactly the statement it
-appears on, and the rows it returns carry `archived_at` and `archived_reason`
-so an archived object can never be mistaken for a live one. Use it before
-`UNARCHIVE` — it is the only way to find out what is archived and why.
-
-Ask the user before archiving a Database or a Table. Both hide everything
-underneath in one statement, and while nothing is destroyed, the user loses
-sight of the content until someone restores it. Ask before deleting anything,
-full stop — there is no `UNARCHIVE` on that side.
-
-```sh
-memora schema --plan '{"version":"memora.schema-plan/v1","id":"schema-8","actor":"agent:host","source_event_id":"conversation:event-8","reason":"new durable project domain","authorized_databases":["work"],"ensure":{"database":{"name":"work","purpose":"Project knowledge","scope":"Reviewed projects"},"database_synonyms":["projects"],"table":{"name":"notes","purpose":"Durable decisions","row_semantics":"One reviewed decision","columns":[{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title"}]},"table_synonyms":["decisions"]}}'
-```
-
-## Reflect conversation deltas
-
-Call `memora reflect` explicitly when a stable conclusion is ready, the user asks
-to remember it, before a host compaction checkpoint, or when the host can signal
-session end. Do not assume a hidden lifecycle hook and do not invoke it after
-every message. Mark greetings, transient reasoning, and duplicates as `ignore`;
-attach one validated Mutation Plan to at most one `persist` delta per event.
-
-Use a host-stable `event_id`, session ID, workspace, and authorized Database set.
-The Mutation Plan provenance must equal the event ID and cannot expand that
-authorization. Retrying identical content returns the stored receipt without a
-Tool call; reusing an ID for different content is a revision conflict. An event
-left in progress by interruption is in doubt and requires recovery instead of a
-blind retry. A `needs_context` receipt means the host must restore the missing
-Database or plan before writing.
-
-Checkpoint events store only active Database, Route path, and last event ID;
-they replace the same session's prior checkpoint during project switches.
-Session-end events explicitly clear it. Never put raw conversation text in the
-event journal or checkpoint.
-
-```sh
-memora reflect --event '{"version":"memora.conversation-event/v1","event_id":"checkpoint-9","session_id":"host-session-2","kind":"checkpoint","workspace":"project-memora","authorized_databases":["work"],"checkpoint":{"active_database":"work","route_path":"/architecture","last_event_id":"event-8"}}'
-```
-
 ## Request the user
 
 Ask the user before any semantic-conflict mutation. Build a temporary
@@ -644,24 +417,7 @@ create a database-level candidate/disputed state, or silently pick a winner.
 Also ask before irreversible, privacy-reducing, permission-expanding, or broadly
 destructive operations.
 
-## Maintain semantic health
-
-Run `memora maintain --report` only when the user asks or at an explicit
-conversation checkpoint; do not assume a hidden hook or scan after every turn.
-Treat `memora.semantic-health/v2` issues as deterministic structural candidates, not facts.
-Route capacity, ambiguity, structure, membership, unrouted Row, duplicate Row, synonymous Column,
-and stale description findings are review-only; never infer the correct semantic placement from a scan.
-SELECT duplicate Rows before proposing MERGE, inspect synonymous fields before a
-Schema plan, and request review before Router splits or description rewrites.
-
-Semantic-health findings are review-only in v2. Do not submit a maintenance
-mutation for them automatically. Use the normal Schema, Router, or Row mutation
-flow after the AI has inspected the affected logical objects and the user has
-approved any broad or destructive change.
-
-```sh
-memora maintain --report
-```
+## Router mutations
 
 ### Route branch fan-out
 
@@ -723,29 +479,6 @@ Require `memora.route-mutation-receipt/v1`, `status=committed`, and `verified=tr
 Never translate plan actions into ad hoc CREATE/DELETE/UPDATE statements. Never edit
 and re-hash a reviewed plan. A truncated scan, approval mismatch, or revision conflict
 requires a fresh inspection and new proposal; do not retry a stale plan.
-
-## Record feedback and revise
-
-Record useful, irrelevant, stale, wrong, or incomplete quality feedback against
-the exact displayed Database, Table, Row ID, and revision. A feedback event is
-an auditable quality signal only: it never runs MSQL or changes facts, History,
-indexes, or Route memberships.
-
-```sh
-memora feedback --event '{"version":"memora.feedback-event/v1","event_id":"feedback-10","kind":"wrong","actor":"agent:host","reason":"user says the summary is wrong","target":{"database":"work","table":"notes","row_id":"row_01","revision":2}}'
-```
-
-For stale, wrong, or incomplete feedback, re-SELECT the current Row and wait for
-an explicit user confirmation with a new source event. Submit either a normal
-revision Mutation Plan or an undo request in `memora.feedback-confirmation/v1`.
-Keep scope, actor, provenance, expected revision, and the feedback ID bound to
-the confirmation. Never mutate useful/irrelevant feedback or expand its scope.
-
-Logical undo uses RESTORE and appends a new `COMPENSATE` revision. It never
-deletes History or rewinds the current revision. Supply the expected schema and
-current revisions plus complete index and Route snapshots. If a confirmation is
-in doubt, inspect logical Row History before recovery; never blindly replay it.
-Only a verified `memora.feedback-confirmation-receipt/v1` establishes success.
 
 ## License
 

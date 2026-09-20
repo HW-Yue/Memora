@@ -93,10 +93,6 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		} else {
 			statement, err = parser.parseRestore()
 		}
-	case parser.matchWord("ARCHIVE"):
-		statement, err = parser.parseArchive(false)
-	case parser.matchWord("UNARCHIVE"):
-		statement, err = parser.parseArchive(true)
 	case parser.matchWord("SPLIT"):
 		statement, err = parser.parseSplit()
 	case parser.matchWord("MERGE"):
@@ -115,10 +111,6 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		}
 	case parser.matchWord("OPEN"):
 		statement, err = parser.parseOpenRoute()
-	case parser.matchWord("REVIEW"):
-		statement, err = parser.parseReviewAssimilation()
-	case parser.matchWord("SUBMIT"):
-		statement, err = parser.parseSubmitAssimilation()
 	case parser.matchWord("BEGIN"):
 		statement = transactionStatement("BEGIN")
 	case parser.matchWord("START"):
@@ -140,52 +132,6 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 	}
 	statement.Span = lexer.Span{Start: start, End: parser.previous().Span.End}
 	return statement, nil
-}
-
-func (parser *parser) parseReviewAssimilation() (ast.Statement, error) {
-	for _, word := range []string{"ASSIMILATION", "FOR", "DATABASE"} {
-		if _, err := parser.expectWord(word); err != nil {
-			return ast.Statement{}, err
-		}
-	}
-	database, err := parser.parseName()
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	if _, err := parser.expectWord("USING"); err != nil {
-		return ast.Statement{}, err
-	}
-	value, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	return ast.Statement{Kind: "REVIEW_ASSIMILATION", Assimilation: &ast.AssimilationStatement{
-		Action: "REVIEW", Database: database, Value: &value,
-	}}, nil
-}
-
-func (parser *parser) parseSubmitAssimilation() (ast.Statement, error) {
-	for _, word := range []string{"ASSIMILATION", "PLAN"} {
-		if _, err := parser.expectWord(word); err != nil {
-			return ast.Statement{}, err
-		}
-	}
-	value, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	for _, word := range []string{"FOR", "DATABASE"} {
-		if _, err := parser.expectWord(word); err != nil {
-			return ast.Statement{}, err
-		}
-	}
-	database, err := parser.parseName()
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	return ast.Statement{Kind: "SUBMIT_ASSIMILATION", Assimilation: &ast.AssimilationStatement{
-		Action: "SUBMIT", Database: database, Value: &value,
-	}}, nil
 }
 
 func transactionStatement(action string) ast.Statement {
@@ -334,26 +280,6 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Table = &name
-	case parser.matchWord("ASSIMILATION"):
-		if _, err := parser.expectWord("RECEIPT"); err != nil {
-			return ast.Statement{}, err
-		}
-		value, err := parser.parseExpression(1)
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		for _, word := range []string{"IN", "DATABASE"} {
-			if _, err := parser.expectWord(word); err != nil {
-				return ast.Statement{}, err
-			}
-		}
-		database, err := parser.parseName()
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		return ast.Statement{Kind: "SHOW_ASSIMILATION_RECEIPT", Assimilation: &ast.AssimilationStatement{
-			Action: "RECEIPT", Database: database, Value: &value,
-		}}, nil
 	case parser.matchWord("CHANGES"):
 		show.Object = "CHANGES"
 		if parser.matchWord("IN") {
@@ -563,7 +489,7 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		}
 		show.Limit = &limit
 	default:
-		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, CATALOG ATLAS, TABLES, COLUMNS, ASSIMILATION RECEIPT, CHANGES, CHANGE, ROUTE TRACE, HISTORY, or ROUTES")
+		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, CATALOG ATLAS, TABLES, COLUMNS, CHANGES, CHANGE, ROUTE TRACE, HISTORY, or ROUTES")
 	}
 	if show.Object == "DATABASES" || show.Object == "TABLES" || show.Object == "COLUMNS" || show.Object == "CATALOG_ATLAS" {
 		if parser.matchWord("CURSOR") {
@@ -588,11 +514,6 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			show.ByteLimit = &byteLimit
 		}
 	}
-	includingArchived, err := parser.parseIncludingArchived()
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	show.IncludingArchived = includingArchived
 	show.Compact = parser.matchWord("COMPACT")
 	if show.Object == "CATALOG_ATLAS" && !show.Compact {
 		return ast.Statement{}, parser.unexpected("COMPACT")
@@ -625,26 +546,8 @@ func (parser *parser) parseDescribe() (ast.Statement, error) {
 		return ast.Statement{}, err
 	}
 	describe.Name = name
-	includingArchived, err := parser.parseIncludingArchived()
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	describe.IncludingArchived = includingArchived
 	describe.Compact = parser.matchWord("COMPACT")
 	return ast.Statement{Kind: "DESCRIBE", Describe: describe}, nil
-}
-
-// parseIncludingArchived reads the single opt-in that widens a read to archived
-// objects. It is spelled the same way everywhere so a caller never has to
-// remember a per-statement variant.
-func (parser *parser) parseIncludingArchived() (bool, error) {
-	if !parser.matchWord("INCLUDING") {
-		return false, nil
-	}
-	if _, err := parser.expectWord("ARCHIVED"); err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 func (parser *parser) parseCreate() (ast.Statement, error) {
@@ -1106,60 +1009,6 @@ func (parser *parser) parseDelete() (ast.Statement, error) {
 		deleteStatement.Where = &where
 	}
 	return ast.Statement{Kind: "DELETE", Delete: deleteStatement}, nil
-}
-
-// parseArchive parses ARCHIVE and UNARCHIVE, which apply to containers only:
-// Database, Table and Column hold content that cannot be rebuilt from anything
-// else, so hiding them has to be reversible. Route, Row and Relation are
-// deleted outright instead — see the default branch below.
-func (parser *parser) parseArchive(restore bool) (ast.Statement, error) {
-	statement := &ast.ArchiveStatement{Restore: restore}
-	switch {
-	case parser.matchWord("DATABASE"):
-		statement.Object = "DATABASE"
-		name, err := parser.parseName()
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		statement.Name = name
-	case parser.matchWord("TABLE"):
-		statement.Object = "TABLE"
-		name, err := parser.parseName()
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		statement.Name = name
-	case parser.matchWord("COLUMN"):
-		statement.Object = "COLUMN"
-		name, err := parser.parseName()
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		statement.Name = name
-	default:
-		// Route, Row and Relation are deleted, not archived: an index node and a
-		// link are cheap to rebuild, and a Row the user deleted is meant to be
-		// gone. They keep DELETE ROUTE / DELETE FROM / UNRELATE.
-		return ast.Statement{}, parser.unexpected("DATABASE, TABLE or COLUMN")
-	}
-	if parser.matchWord("REASON") {
-		reason, err := parser.parseExpression(1)
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		statement.Reason = &reason
-	}
-	if !restore && statement.Reason == nil {
-		return ast.Statement{}, parser.unexpected("REASON")
-	}
-	return ast.Statement{Kind: archiveStatementKind(restore), Archive: statement}, nil
-}
-
-func archiveStatementKind(restore bool) string {
-	if restore {
-		return "UNARCHIVE"
-	}
-	return "ARCHIVE"
 }
 
 func (parser *parser) parseRestore() (ast.Statement, error) {

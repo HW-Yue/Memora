@@ -30,16 +30,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	if statement.Select != nil {
 		return engine.Query(ctx, statement, parameters)
 	}
-	if statement.Assimilation != nil {
-		if engine == nil || engine.catalog == nil {
-			return Output{}, executeError(result.CodeInternal, "assimilation MSQL engine is not configured")
-		}
-		bound, err := bindParameters(statement, parameters)
-		if err != nil {
-			return Output{}, err
-		}
-		return engine.executeAssimilation(ctx, statement.Assimilation, bound)
-	}
 	if engine == nil || engine.catalog == nil || engine.rows == nil {
 		return Output{}, executeError(result.CodeInternal, "mutation engine is not configured")
 	}
@@ -84,8 +74,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.updateRouteSynopsis(ctx, statement.UpdateRoute, bound, options)
 	case statement.DeleteRoute != nil:
 		return engine.deleteRoute(ctx, statement.DeleteRoute, bound, options)
-	case statement.Archive != nil:
-		return engine.archive(ctx, statement.Archive, bound, options)
 	case statement.OpenRoute != nil:
 		return engine.openRoute(ctx, statement.OpenRoute, bound)
 	case statement.PlanRoute != nil:

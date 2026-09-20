@@ -80,12 +80,11 @@ func (engine *Engine) authorizeDatabaseReferenceAtLevel(ctx context.Context, lev
 func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 	switch {
 	case statement.Insert != nil, statement.Update != nil, statement.Delete != nil,
-		statement.Restore != nil, statement.Archive != nil && (statement.Archive.Object == "ROW" || statement.Archive.Object == "RELATION"),
-		statement.Assimilation != nil && statement.Assimilation.Action == "SUBMIT":
+		statement.Restore != nil:
 		return security.LevelWrite
 	case statement.Create != nil, statement.Alter != nil, statement.Reshape != nil,
 		statement.CreateRoute != nil, statement.RenameRoute != nil,
-		statement.UpdateRoute != nil, statement.DeleteRoute != nil, statement.Archive != nil,
+		statement.UpdateRoute != nil, statement.DeleteRoute != nil,
 		statement.ApplyRoute != nil, statement.ApplySchema != nil,
 		statement.Configuration != nil:
 		return security.LevelStructural
@@ -119,10 +118,6 @@ func statementDatabaseNames(statement ast.Statement) []string {
 			appendDatabase(statement.Describe.Name)
 		} else {
 			appendQualifiedTable(statement.Describe.Name)
-		}
-	case statement.Archive != nil:
-		if len(statement.Archive.Name.Parts) > 0 {
-			appendDatabase(statement.Archive.Name)
 		}
 	case statement.Create != nil:
 		if strings.EqualFold(statement.Create.Object, "DATABASE") {
@@ -158,8 +153,6 @@ func statementDatabaseNames(statement ast.Statement) []string {
 		appendQualifiedTable(statement.ApplySchema.Table)
 	case statement.CreateRoute != nil && statement.CreateRoute.Table != nil:
 		appendQualifiedTable(*statement.CreateRoute.Table)
-	case statement.Assimilation != nil:
-		appendDatabase(statement.Assimilation.Database)
 	}
 	return databases
 }

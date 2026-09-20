@@ -14,7 +14,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
-	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
 )
 
 const maxQueryScan = 1000
@@ -62,12 +61,6 @@ type Engine struct {
 	catalogBinder *binder.Catalog
 	rows          Rows
 	points        PointReads
-	assimilation  AssimilationCommitter
-}
-
-type AssimilationCommitter interface {
-	SubmitAssimilation(context.Context, protocolmsql.AssimilationPlan) (protocolmsql.AssimilationReceipt, error)
-	AssimilationReceipt(context.Context, string, string) (protocolmsql.AssimilationReceipt, error)
 }
 
 type Parameters struct {
@@ -174,18 +167,6 @@ func New(dictionary Catalog, rows Rows) *Engine {
 func NewWithPointReads(dictionary Catalog, rows Rows, points PointReads) *Engine {
 	engine := New(dictionary, rows)
 	engine.points = points
-	return engine
-}
-
-func NewWithCapabilities(
-	dictionary Catalog,
-	rows Rows,
-	points PointReads,
-	assimilation AssimilationCommitter,
-) *Engine {
-	engine := New(dictionary, rows)
-	engine.points = points
-	engine.assimilation = assimilation
 	return engine
 }
 
