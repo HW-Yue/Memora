@@ -70,35 +70,22 @@ authorization（[Route 读取协议](./route-read-v1.md)已有此条），不能
 成本账：判断「够不够」必须真读到内容，所以每个 `leaf` 候选都带一次回表。
 top-5 全试即 5 次 `SELECT`。融合面的 `LIMIT` 应按这个账取值，不是越大越好。
 
-## 4. 两项前置缺陷（未修不能开工）
+## 4. Row 向量：已裁定，另有一项前置缺陷
 
-### 4.1 route 与 row 向量混在一张 vec0 表里
+**裁定**见 [ADR-0012：Row 向量命中直接返回叶子路径](../decisions/0012-row-vector-leaf-path.md)：
+命中 Row 直接给它的叶子路径（逐段带 ID），不上卷；事实仍只由 SQL 回表产生。
+后果是融合发现面成为检索主路径、逐层导航退为兜底与区域探索，并且
+[F224「Row 必须可导航」](../planning/f224-mandatory-row-route.md)升级为**硬前置**
+——零叶子的 Row 在本形态下不可召回。
+
+### 前置缺陷：route 与 row 向量混在一张 vec0 表里
 
 `mem_vectors` 同时存 route 与 row 向量，而 kind 过滤发生在 KNN **之后**
 （`internal/sqlstore/search.go:311-314`，`k = limit*4+16`）。库里 Row 远多于 Route 节点时，
 全局最近的那批几乎全是 Row，`USING VECTOR` 的 route 候选会**接近零且不报错**，
-数据越多越严重。
+数据越多越严重。ADR-0012 生效后两种 kind 都是主路径，这条必须先修。
 
 修法在 sqlite-vec 这一层：按 kind 分表，或用 vec0 的 metadata / partition key 做**预**过滤。
-
-### 4.2 Row 向量需要一次产品裁定
-
-`indexRow`（`internal/sqlstore/search.go:90-91`）把表名 + row semantics + 全部列值
-送去做 embedding，即
-[ADR-0007](../decisions/0007-route-predictor-arsenal.md) 与
-[存储索引边界](../storage/indexing.md) 禁止的「Row 正文向量副本」。
-
-产品意图是：Row 向量命中后**返回该 Row 的语义路径**，事实仍由 SQL 回表。
-但 F169 冻结了「一个 Leaf 最多一个活跃 Row」，`open_locators` 基数为 `0..1`，
-因此一条 Row 的叶子路径**唯一指向那一行**——「只返回路径」在 Row 命中这条线上
-不构成任何实际约束，等价于向量直达事实，只多一跳。
-
-这是红线位置的改变，必须由独立 ADR 裁定，不能作为「反正只返回路径」的实现细节。
-两个候选形态：
-
-- **直给叶子路径**：一跳到底，但语义树在检索中退化为可解释性装饰，路线 B/C 失去意义；
-- **上卷到祖先 branch**：向量只回答「在哪个语义区域」，最后一跳仍由 Agent 或 jev 判断，
-  语义树保持主路径；代价是多一到两次导航往返。
 
 ## 5. 两条通道的可见性等级不同
 
@@ -143,7 +130,6 @@ OPEN ROUTE / 只读 PLAN。脚本可循环：解析 JSON → 取 child → 填�
 
 ## 待决
 
-- 4.2 的红线位置（直给叶子路径 vs 上卷到 branch）；
 - 第 5 节的可见性语义三选一；
 - 融合面 `LIMIT` 与 `BYTES` 的默认值（受第 3 节回表成本与第 2 节 ID 开销约束）。
 
