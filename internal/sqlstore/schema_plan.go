@@ -51,12 +51,12 @@ func (db *DB) ApplySchemaChangePlan(ctx context.Context, databaseName, tableName
 				var id string
 				var revision uint64
 				if err := rows.Scan(&id, &revision); err != nil {
-					rows.Close()
+					_ = rows.Close()
 					return err
 				}
 				live[id] = revision
 			}
-			rows.Close()
+			_ = rows.Close()
 			if len(live) != len(plan.RowGuards) {
 				return fail(result.CodeRevisionConflict, "live Row set changed after Schema planning")
 			}

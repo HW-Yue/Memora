@@ -103,7 +103,8 @@ else
       )
     else
       mkdir -p "$work_dir/go-bin"
-      GOBIN="$work_dir/go-bin" go install "github.com/HW-Yue/Memora/cmd/memora@v${version}"
+      GOBIN="$work_dir/go-bin" CGO_ENABLED=1 CGO_CFLAGS="${CGO_CFLAGS:--Wno-deprecated-declarations}" \
+        go install "github.com/HW-Yue/Memora/cmd/memora@v${version}"
       cp "$work_dir/go-bin/memora" "$staged"
     fi
     chmod 755 "$staged"

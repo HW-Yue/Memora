@@ -1,8 +1,8 @@
 {
   "version": "memora.codex-adapter/v2",
-  "canonical_digest": "c591b5916b071fc34c01ec57568d8ed0f6805cea40fa67d8201d761e76594346",
-  "protocol_digest": "69c8f7ea6c2d6eb8b9e4335ac1c9be84c9fdc352b7b905f0a0817b2fec015125",
-  "task_contract_digest": "abb76eaf088e154cad636837ab0f5b0c9496ae74adc30d261c4a8b9e94acee44",
+  "canonical_digest": "046df85f85f3d1b3c682a13eae4aa3eda77b2a876c50e8042daa0d7c1f6ffd6c",
+  "protocol_digest": "beff394c6c4794e881de8b36c04d1fccf025ad9d4da1701f386733ffa7f7a60b",
+  "task_contract_digest": "613ad116bd1977580e6f0c4781c80ffeea88567e994610d3f92c6f4d225915d1",
   "files": [
     {
       "path": ".agents/skills/memora/COMMERCIAL-LICENSE.md",
@@ -16,27 +16,27 @@
     },
     {
       "path": ".agents/skills/memora/SKILL.md",
-      "sha256": "c591b5916b071fc34c01ec57568d8ed0f6805cea40fa67d8201d761e76594346",
+      "sha256": "046df85f85f3d1b3c682a13eae4aa3eda77b2a876c50e8042daa0d7c1f6ffd6c",
       "mode": "0644"
     },
     {
       "path": ".agents/skills/memora/agents/openai.yaml",
-      "sha256": "950c63bd062412103ab6738af008a79b9f09c5de7ff07f9a7b82cf08a83c19f2",
+      "sha256": "14faf50003d219b45c395be97391189303d99f64552d7d82ede56c67bf2c43bc",
       "mode": "0644"
     },
     {
       "path": ".agents/skills/memora/contract.json",
-      "sha256": "69c8f7ea6c2d6eb8b9e4335ac1c9be84c9fdc352b7b905f0a0817b2fec015125",
+      "sha256": "beff394c6c4794e881de8b36c04d1fccf025ad9d4da1701f386733ffa7f7a60b",
       "mode": "0644"
     },
     {
       "path": ".agents/skills/memora/host-contract.json",
-      "sha256": "abb76eaf088e154cad636837ab0f5b0c9496ae74adc30d261c4a8b9e94acee44",
+      "sha256": "613ad116bd1977580e6f0c4781c80ffeea88567e994610d3f92c6f4d225915d1",
       "mode": "0644"
     },
     {
       "path": ".agents/skills/memora/references/product-manual.md",
-      "sha256": "cb7ea81f96f3a5db1caddf9a02470ad796a046ed614ee4a98b4b81527c7ada15",
+      "sha256": "8a4409a57be09313470771379f064118bf726f2cbff6ee7e70a6084951431682",
       "mode": "0644"
     },
     {
@@ -46,12 +46,12 @@
     },
     {
       "path": ".agents/skills/memora/scripts/install.sh",
-      "sha256": "24561e5e387fc6184a3934e6df7c890485b6c13a48b57aa51c36054522b0ef56",
+      "sha256": "6ee39d82abcb2582bbb0203873699c7148bc59a486b0635650e685e5ceeb1722",
       "mode": "0755"
     },
     {
       "path": ".codex/rules/memora.rules",
-      "sha256": "a54add83d120d9e8ecf431fbbca4331ddb035677086482e90471770903eadb62",
+      "sha256": "bf974c037df29cafe7793471e24d87ff747f9d361ff25dbfd6f939af182b2dbe",
       "mode": "0644"
     }
   ]

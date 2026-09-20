@@ -37,7 +37,7 @@ func (t *tx) loadDatabases(ctx context.Context) ([]catalog.Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	databases := []catalog.Database{}
 	for rows.Next() {
 		var body string
@@ -83,7 +83,7 @@ func (t *tx) loadTables(ctx context.Context, databaseID string) ([]catalog.Table
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	tables := []catalog.Table{}
 	for rows.Next() {
 		var body string

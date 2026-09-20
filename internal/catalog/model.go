@@ -128,8 +128,3 @@ func (column Column) Validate(value any) (any, error) {
 		Nullable: column.Nullable,
 	}, value)
 }
-
-type snapshot struct {
-	Version   string     `json:"version"`
-	Databases []Database `json:"databases"`
-}

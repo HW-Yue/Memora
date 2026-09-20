@@ -48,13 +48,3 @@ type Locator struct {
 	RowID      string `json:"row_id"`
 	Revision   uint64 `json:"revision"`
 }
-
-type stringIndex struct {
-	Version string   `json:"version"`
-	Values  []string `json:"values"`
-}
-
-type locatorIndex struct {
-	Version  string    `json:"version"`
-	Locators []Locator `json:"locators"`
-}

@@ -124,7 +124,7 @@ func (db *DB) ListCommittedChanges(ctx context.Context, databaseID string, after
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var body string
 			if err := rows.Scan(&body); err != nil {

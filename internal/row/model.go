@@ -86,16 +86,3 @@ type RouteUpdate struct {
 	Purpose          string  `json:"purpose,omitempty"`
 	Synopsis         *string `json:"synopsis,omitempty"`
 }
-
-type storedRow struct {
-	ID             string         `json:"row_id"`
-	DatabaseID     string         `json:"database_id"`
-	TableID        string         `json:"table_id"`
-	SchemaVersion  uint64         `json:"schema_version"`
-	Revision       uint64         `json:"revision"`
-	CommitSequence uint64         `json:"commit_sequence"`
-	State          State          `json:"row_state"`
-	Values         map[string]any `json:"values"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-}

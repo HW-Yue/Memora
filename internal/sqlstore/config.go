@@ -14,7 +14,7 @@ func (t *tx) configRevisions(ctx context.Context, key string, decode func(string
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var body string
 		if err := rows.Scan(&body); err != nil {

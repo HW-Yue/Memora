@@ -73,16 +73,6 @@ func (t *tx) endpointRow(ctx context.Context, databaseName, tableName, rowID str
 	return table, value, nil
 }
 
-// setLinkFields rewrites only the links column; a link change is not a content
-// revision of the row.
-func (t *tx) setLinks(ctx context.Context, table catalog.Table, rowID string, links []Link) error {
-	if links == nil {
-		links = []Link{}
-	}
-	_, err := t.q().ExecContext(ctx, `UPDATE `+dataTable(table.ID)+` SET links = ? WHERE row_id = ?`, encodeJSON(links), rowID)
-	return err
-}
-
 // RowLinks returns a row's links with stale summaries refreshed in memory. A
 // summary is stale when the linked row has moved past the revision it was
 // taken from; the stored copy is rewritten lazily by RefreshLinkSummaries.

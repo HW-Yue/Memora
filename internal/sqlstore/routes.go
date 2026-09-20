@@ -42,7 +42,7 @@ func (t *tx) tableRouteNodes(ctx context.Context, tableID string) ([]routeNode, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	nodes := []routeNode{}
 	for rows.Next() {
 		var body string
@@ -500,12 +500,12 @@ func (t *tx) allNodes(ctx context.Context) ([]router.Node, error) {
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		tableIDs = append(tableIDs, id)
 	}
-	rows.Close()
+	_ = rows.Close()
 	nodes := []router.Node{}
 	for _, tableID := range tableIDs {
 		routeRows, err := t.q().QueryContext(ctx, `SELECT body FROM `+routeTable(tableID)+` WHERE deprecated = 0`)
@@ -516,17 +516,17 @@ func (t *tx) allNodes(ctx context.Context) ([]router.Node, error) {
 		for routeRows.Next() {
 			var body string
 			if err := routeRows.Scan(&body); err != nil {
-				routeRows.Close()
+				_ = routeRows.Close()
 				return nil, err
 			}
 			var node routeNode
 			if err := decodeJSON(body, &node); err != nil {
-				routeRows.Close()
+				_ = routeRows.Close()
 				return nil, err
 			}
 			stored = append(stored, node)
 		}
-		routeRows.Close()
+		_ = routeRows.Close()
 		for _, node := range stored {
 			value, err := t.withPath(ctx, node)
 			if err != nil {

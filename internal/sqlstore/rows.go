@@ -289,7 +289,7 @@ func (t *tx) listPage(ctx context.Context, databaseName, tableName string, limit
 	if err != nil {
 		return nil, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	values := []row.Row{}
 	for rows.Next() {
 		value, err := scanRow(rows)
@@ -406,7 +406,7 @@ func (t *tx) historyRecords(ctx context.Context, table catalog.Table, rowID stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	records := []history.Record{}
 	for rows.Next() {
 		var body string

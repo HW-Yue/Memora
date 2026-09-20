@@ -91,7 +91,7 @@ func (tx *kvTx) Scan(ctx context.Context, bucket string) ([]store.Entry, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	entries := []store.Entry{}
 	for rows.Next() {
 		var entry store.Entry

@@ -23,7 +23,6 @@ const (
 var (
 	ErrInvalid         = errors.New("Route Trace is invalid")
 	ErrConflict        = errors.New("Route Trace conflicts with an existing receipt")
-	ErrCorrupt         = errors.New("Route Trace store is corrupt")
 	ErrNotFound        = errors.New("Route Trace was not found")
 	ErrSnapshotExpired = errors.New("Route Trace snapshot expired after retention cleanup")
 )

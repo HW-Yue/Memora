@@ -63,7 +63,7 @@ func (db *DB) ListRouteTraces(ctx context.Context, databaseID string, after uint
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var body string
 			if err := rows.Scan(&body); err != nil {

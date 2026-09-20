@@ -384,7 +384,7 @@ IGNORE Plan, `REWRITE` to a REVISE Plan for the displayed Row/revision, and
 `REMOVE` to a MERGE Plan that updates one displayed survivor and logically
 deletes only the selected displayed Rows. Bind Database/Table, actor, reason,
 authorization, step targets, and expected revisions to the conflict view. Run
-the resulting Plan through normal Policy and `reflect`/`mutate`; refresh the
+the resulting Plan through normal Policy and `mutate`; refresh the
 view on a revision conflict. Never expand permission, modify an unshown Row,
 create a database-level candidate/disputed state, or silently pick a winner.
 
