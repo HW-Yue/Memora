@@ -43,9 +43,8 @@ term
 - 权限 scope 在读取 posting 前确定，禁止用命中数量泄露未授权 Database；
 - 写入成功但索引尚未恢复一致时，相关 lexical 查询返回明确 unavailable，不能返回旧命中。
 
-倒排索引是派生 generation，可以由当前 Catalog、live Row 和 active Route 全量重建。增量发布、
-generation 切换和 crash recovery 必须复用 Page/WAL 权威边界，不能在 daemon 中维护只存在于内存的
-第二真相源。
+倒排索引是派生表，可以由当前 Catalog、live Row 和 active Route 全量重建。增量发布
+与崩溃一致性走同一个 SQLite 事务；不能在 daemon 中维护只存在于内存的第二真相源。
 
 ## 查询协议
 
@@ -58,19 +57,15 @@ phrase、stemming、停用词、snippet 和历史检索均需独立证据与 Fea
 
 ## 与 ADR-0007 的关系
 
-本 ADR 取代 ADR-0007 中“Lexical 只能返回 Database/Table/Route”的限制，但不改变其 Vector 边界：
-
-- Row、正文和事实 Embedding 仍禁止；
-- CPU Vector 仍只匹配 Route semantic surface；
-- Lexical RowID 只是确定性位置提示，最终事实仍来自 SQL Row；
-- Router 仍是 AI 可读、可维护的语义结构，不由倒排词项取代。
+本 ADR 的倒排范围仍有效。向量边界已被 [ADR-0012](./0012-row-vector-leaf-path.md) 修订：
+允许 Route 与 Row 的语义向量，仍禁止文档 chunk / PDF / 图片向量。
 
 ## 分阶段交付
 
 1. F170：冻结并实现全内容 lexical surface、token、posting 与 reference model；
-2. F171：实现持久化 posting B+ Tree 与 generation reopen/corruption 证据；
-3. F172：把 live Row 写入、修改和删除接入原子索引发布；
-4. F173：把 Catalog、Route 和 rebuild 接入同一 snapshot/recovery 边界；
+2. F171：持久化 posting 表（现役为 `mem_postings`）与 reopen/corruption 证据；
+3. F172：把 live Row 写入、修改和删除接入同一 SQLite 事务；
+4. F173：把 Catalog、Route 和 rebuild 接入同一事务边界；
 5. F174：增加权限隔离、有界结果和 SQL 回表约束的 MSQL location 查询。
 
 每项必须独立 Review、RED、完成门和合入，不以本 ADR 作为批量实现授权。

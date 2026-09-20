@@ -40,8 +40,6 @@ type Statement struct {
 	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
 	ApplySchema   *ApplySchemaChangeStatement  `json:"apply_schema_change,omitempty"`
 	Configuration *ConfigurationStatement      `json:"configuration,omitempty"`
-	Package       *PackageStatement            `json:"package,omitempty"`
-	Export        *ExportStatement             `json:"export,omitempty"`
 	Rebuild       *RebuildStatement            `json:"rebuild,omitempty"`
 	Assimilation  *AssimilationStatement       `json:"assimilation,omitempty"`
 	Transaction   *TransactionStatement        `json:"transaction,omitempty"`
@@ -260,21 +258,6 @@ type ConfigurationStatement struct {
 	TargetRevision  *Expression `json:"target_revision,omitempty"`
 }
 
-type PackageStatement struct {
-	Action   string      `json:"action"`
-	Database Name        `json:"database,omitempty"`
-	Author   *Expression `json:"author,omitempty"`
-	Value    *Expression `json:"value,omitempty"`
-	ReadOnly bool        `json:"read_only,omitempty"`
-	Trusted  bool        `json:"trusted,omitempty"`
-}
-
-type ExportStatement struct {
-	Format  string      `json:"format"`
-	Path    *Expression `json:"path"`
-	Profile *Expression `json:"profile"`
-}
-
 type RebuildStatement struct {
 	Object string `json:"object"`
 }
@@ -437,12 +420,6 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Configuration.RouteFrameNodes)
 		appendExpression(statement.Configuration.BranchFanout)
 		appendExpression(statement.Configuration.TargetRevision)
-	case statement.Package != nil:
-		appendExpression(statement.Package.Author)
-		appendExpression(statement.Package.Value)
-	case statement.Export != nil:
-		appendExpression(statement.Export.Path)
-		appendExpression(statement.Export.Profile)
 	case statement.Assimilation != nil:
 		appendExpression(statement.Assimilation.Value)
 	}

@@ -7,12 +7,8 @@
 
 四条原则。每条给出**判据**——怎么算违反——因为没有判据的原则等于没有原则。
 
-> **2026-09-20 注**：**四条原则本身不变。** 但文中「已知实例」举的例子取自已删除的
-> 自研引擎代码（`nativestore`、`nativerow`、`nativemutation`、`PageAuthority`、
-> `pagestoremigration`、`treecommit`、`wal/tree_redo.go`、`authorityChangeTree` 等包
-> 现在都不存在了，见 [ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)）。
-> 这些例子**只用于理解判据怎么用**，不要照它们去找代码，也不要据此判断当前耦合状况。
-> 当前实现的实例待按 `internal/sqlstore` 重新采集。
+持久化基座是 SQLite + sqlite-vec（[ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)）。
+实例一律按 `internal/sqlstore` 采集。
 
 ## 一、高内聚低耦合，整体简洁清晰
 
@@ -31,20 +27,11 @@
 
 ### 已知实例
 
-- **一次 row INSERT 碰约 15 样东西**，横跨两个事务域：`nativestore.File` 事务里
-  写闸、Catalog 读、RowID、两个序列计数器、Row 记录、History 记录、
-  membership 记录、change envelope；`commit()` **之后** `PublishMutation`
-  再碰三棵各自独立 `treecommit`/WAL 的树（versions／fulltext／current）、
-  四次 phase checkpoint、失败时 `poisonPublication`。两个域之间没有原子性。
-
-  好消息是**耦合方向本来是对的**：`nativerow`／`nativemutation` 不 import 任何
-  检索包，只经 `PageAuthority` 接口。真正的耦合点集中在 `pagestoremigration`。
-
-- **现成的解耦模板就在仓库里**：`authorityChangeTree.reconcile` —— 变更日志驱动、
-  游标推进、批量、读时惰性触发地重放进 `changeindex`。派生索引若都照它走，
-  写入事务就只剩"写自己的数据"。
-
-细目与证据见[架构审计](../archive/development/architecture-audit-2026-08.md)。
+- **一次逻辑写入必须落在同一个 SQLite 事务里。** 数据表、history 表、语义配套表、
+  `mem_changes` 和词法 `mem_postings` 同提交。向量 embedding 在提交后写入 vec0，
+  它是派生索引：失败时相关查询明确 unavailable，不能变成第二真相源。
+  违反：提交后再另开事务维护权威数据，或在进程里另建一份与文件不对齐的索引。
+  见 [存储层](../storage/README.md)。
 
 ## 二、能用一张表解决的，就别造复杂逻辑
 
@@ -69,11 +56,10 @@
 - **History**：曾是每行每版本一条独立记录，与变更日志的事务级归属重复。
   写入形态改为**每张业务表一张 history 表**，键 `(row_id, 序号)`，
   读一行的完整历史一次范围扫；
-- **Membership**：曾是带 `MembershipRevision` 与墓碑、正反两个 object kind
-  的独立关系。改为**叶子直接挂 RowID** + 一棵反向索引树。
-  这一改让三类语义健康问题（`stale_membership`、`invalid_membership_scope`、
-  `multi_row_leaf`）**结构性消失**——不是修好了，是不可能发生了。
-  见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
+- **Membership**：曾是带独立 revision 与墓碑的正反关系。改为**叶子直接挂 RowID**，
+  反向查询走语义配套表。三类语义健康问题（`stale_membership`、
+  `invalid_membership_scope`、`multi_row_leaf`）因此**结构性消失**。
+  见[写入形态](./write-model.md)。
 
 **反过来的例子，同样属于本条**：history 从"一种对象"变成"一张表"是对的，
 但表默认可查，于是"已删除 Row 的历史必须拿不到"这条规则就得**明写**，
@@ -131,9 +117,6 @@
 
 判据：打开时把与行数成正比的结构整份读进内存、查询代价随全库规模而非结果规模
 增长、或内存结构是找不到数据就丢的**唯一索引**——都是违反。有界 cache 不算。
-
-本节原先论证自研「记录文件 + generation + B+ 树」的段落已失效，
-全文见 [归档](../archive/storage/record-index-and-authority-v1.md)。
 
 ## 关联
 

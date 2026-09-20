@@ -49,7 +49,7 @@ AI 可以创建和演化 Table/Column/关系；创建前必须发现现有定义
 
 ### 4. 标准化操作
 
-正式读写只通过版本化 MSQL。Skill 解释语法，Parser/Policy/MVCC 执行约束。Agent 不能直接改物理文件，也不能把自然语言猜测当成提交。
+正式读写只通过版本化 MSQL。Skill 解释语法，Parser、Policy 和 SQLite 事务执行约束。Agent 不能直接改物理文件，也不能把自然语言猜测当成提交。
 
 ### 5. 语义 Row 而非 Chunk
 
@@ -89,10 +89,10 @@ v0 的 AI 来自 Codex/Claude Code 等外部宿主；未来若增加内置 Runti
 引擎决定：
 
 - SQL 语法、类型、约束和 Policy；
-- Page、Extent、Segment、索引和 Buffer Pool；
-- 事务、MVCC、Undo Log、Redo Log 和恢复；
+- 哪些表存在、角色标记，以及词法 postings / vec0 何时更新；
+- 写串行与读看最后一次提交（无自研 MVCC）；
 - revision 冲突、引用完整性和输出预算执行；
-- LRU 失效和 Data Dictionary 版本。
+- Data Dictionary 版本。
 
 引擎内部不调用 LLM 决定物理行为，AI 也不接触物理地址。
 

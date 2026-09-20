@@ -4,20 +4,20 @@
 检索语法与 Database 级 Route path，F76 已实现公开原子 SPLIT/MERGE，F79 已实现
 版本化查询预算配置，F129/F130 已实现 Route Mutation Plan 与审批执行，F131/F132 已实现
 Schema Change Plan 与审批执行。
-F173c 已实现 `REBUILD LEXICAL INDEX` 的全量 COW generation 维护语句；F174 已实现只返回
+F173c 已实现 `REBUILD LEXICAL INDEX` 的全量 posting 表重建；F174 已实现只返回
 当前位置、必须 SQL 回表的全内容 lexical query。F182a 增加 Route alias 的有界、revision-guarded
 完整替换，并让 Route read 返回非 null alias 列表。
 F195 已增加资料吸收 proposal 的结构审阅、hash-bound 提交与最小收据读取语句。
 
 ## 定位
 
-MSQL 是 Memora 面向 Agent 的唯一正式操作语言。它参考 SQL 标准和 MySQL 的成熟表达方式，以 SQL 为主体增加数据库发现、语义路由、包管理、导出和诊断等 Memora 专有操作。目标是让所有正式操作都经过统一、容易解析的标准化语言，而不是发明多套工具协议。
+MSQL 是 Memora 面向 Agent 的唯一正式操作语言。它参考 SQL 的成熟表达方式，以 SQL 为主体增加数据库发现、语义路由和诊断等 Memora 专有操作。目标是让所有正式操作都经过统一、容易解析的标准化语言，而不是发明多套工具协议。
 
 MSQL 不以兼容 MySQL 为目标，不承诺 MySQL 的完整 Grammar、行为、网络协议或客户端兼容性。相同概念优先沿用熟悉的 SQL 写法；只有 Memora 独有能力才增加扩展语句。
 
-对事务、autocommit、批处理等已有成熟 SQL 语义的行为，默认参考 MySQL；只有 Memora 独有能力或有明确产品理由时才偏离，并在 MSQL 规格中显式记录差异。
+事务、autocommit 与批处理落在 SQLite 上：写串行，读看最后一次提交。只有 Memora 独有能力或有明确产品理由时才偏离标准 SQL 写法，并在 MSQL 规格中显式记录差异。
 
-Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop 必须提交同一种 MSQL Request，并经过同一套 Lexer、Parser、AST、Binder、Policy、事务和执行器。`pack`、`install`、`open`、`export`、`doctor` 等 CLI 命令只是对应 MSQL 的参数化便捷入口，不能拥有绕过 MSQL 的实现路径。自然语言由 Agent 转换为 MSQL，不属于 MSQL Grammar。
+Codex/Claude Skill、CLI 命令、外部 SDK 和未来可选的内置 Agent Loop 必须提交同一种 MSQL Request，并经过同一套 Lexer、Parser、AST、Binder、Policy、事务和执行器。CLI 只是对应 MSQL 的参数化便捷入口，不能拥有绕过 MSQL 的实现路径。自然语言由 Agent 转换为 MSQL，不属于 MSQL Grammar。
 
 未来内置 Agent 对 Memora 的依赖只有版本化 `ExecuteMSQL` 端口。即使 Agent 与 daemon 在同一 Go
 进程中，也必须提交完整 MSQL Request 并经过上述全部阶段；不能把“同进程调用”解释为直接调用
@@ -28,7 +28,7 @@ F195 之后，新 Agent 使用正式 assimilation MSQL surface；Job、SourceSto
 是 Agent-owned 状态。早期 `assimilation.record/submit/receipt` IPC 仅保留外部兼容，新 Agent 禁止
 依赖，也不得把它们包装成新的内部工具。
 
-宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。直接使用内部 Go API 或本地用户运行的普通 SQL 可走可信本地操作员路径，但 `PACK DATABASE`、`EXPORT WIKI` 和 `INSTALL PACKAGE` 没有无 scope/approval 降级。完整边界见 [Policy Enforcement v2](../archive/development/policy-enforcement-v2.md)。
+宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。完整边界见 [Policy Enforcement v2](../archive/development/policy-enforcement-v2.md)。
 
 ## 标准进入流程
 
@@ -57,43 +57,20 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 事务：BEGIN、COMMIT、ROLLBACK、SET TRANSACTION ISOLATION LEVEL；
 - 历史：SHOW HISTORY、AS OF REVISION/COMMIT_SEQUENCE、RESTORE 补偿；
 - 关系：RELATE、SHOW RELATIONS、UNRELATE；
-- 管理：PACK、INSTALL、OPEN、EXPORT、DOCTOR、REBUILD LEXICAL INDEX；
+- 管理：REBUILD LEXICAL INDEX；
 - 配置：SHOW CONFIGURATION/HISTORY、ALTER CONFIGURATION、RESTORE CONFIGURATION；
 - 吸收：REVIEW/SUBMIT ASSIMILATION、SHOW ASSIMILATION RECEIPT；
 
-Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。F44 已冻结的写法：
+Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。`PACK DATABASE`、`OPEN PACKAGE`、`INSTALL PACKAGE` 与 `EXPORT WIKI` 已从 Grammar 删除，Parser 直接拒绝。
 
-```sql
-PACK DATABASE work_x BY :author;
-OPEN PACKAGE :package READ ONLY;
-INSTALL PACKAGE :package TRUSTED;
-```
-
-包内容通过参数绑定进入执行器。`READ ONLY` 和 `TRUSTED` 是强制安全子句；这些语句只能
-autocommit，显式事务中不直接执行。返回格式见 [Database Package v1](../archive/product/database-package-v1.md)。
-
-> **实现已于 2026-09-02 删除**，语法保留。这三条语句现在固定返回
-> `unsupported`，理由是它们端到端从来没通过（原实现只接受已死的 legacy 栈）。
-> 规格仍以 Database Package v1 为准，需要时按 native 栈重写。
-
-F45 已冻结单向 Wiki 导出：
-
-```sql
-EXPORT WIKI TO :path PROFILE :profile;
-```
-
-CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得插值进 MSQL；目标必须是绝对规范化路径。语句只允许 autocommit，不读取或回流 Vault 中的人类编辑。投影、稳定路径、manifest 与增量规则见 [Obsidian Wiki 导出](../archive/export/obsidian-wiki.md)。
-
-> **实现已于 2026-09-02 删除**，语法保留，固定返回 `unsupported`。同上。
-
-F173c 冻结 instance-wide lexical generation 维护语句：
+F173c 冻结 instance-wide lexical 维护语句：
 
 ```sql
 REBUILD LEXICAL INDEX;
 ```
 
-它是仅 autocommit 的 L2 structural operation，通过 staging generation、reference verification 和
-原子 marker swap 完成；结果返回 generation/epoch、source/plan digest、规范 snapshot SHA-256、
+它是仅 autocommit 的 L2 structural operation，在一个 SQLite 事务里重建 `mem_postings`；
+结果返回 generation/epoch、source/plan digest、规范 snapshot SHA-256、
 `parity`、`verified` 与 `reused`，不返回 posting 或 Row 内容。
 
 F174 冻结全内容倒排位置语句：
@@ -277,7 +254,7 @@ MSQL v0 必须允许一次 request 携带由分号分隔的多条语句，使 Ag
 
 一个 request 可以包含完整事务，也可以在长驻会话中跨 request 保持事务状态。短生命周期 CLI 不得在进程退出后保留未完成事务。
 
-隔离级别参考 MySQL/InnoDB：默认 `REPEATABLE READ`，首版同时支持 `READ COMMITTED`；一致性读、`FOR SHARE` / `FOR UPDATE` 锁定读、范围锁与防幻读边界按 InnoDB 语义实现。
+隔离遵循 SQLite 与 [ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)：写事务串行，读只看最后一次提交。没有 Memora 自研 MVCC、快照或 `FOR SHARE` / `FOR UPDATE`。分页读可能看到页与页之间发生的提交。
 
 错误处理按操作类型区分：纯读批次中的一条查询失败不阻止其他独立查询继续执行。每条语句都必须产生结构化结果；失败项至少标明 statement index、对应语句、稳定错误码和清晰原因，不能只返回模糊的 batch 级错误。
 
@@ -296,11 +273,11 @@ Skill 应包含：
 - 上下文缓存规则；
 - 禁止直接读取物理文件、猜 Schema 或强制覆盖冲突。
 
-Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
+Skill 不是安全边界，Parser、Policy 和 SQLite 事务才是。
 
 ## 后续问题
 
-- Table 级 Route DDL、迁移和 generation 语法怎样冻结？
+- Table 级 Route DDL 与迁移语法怎样冻结？
 
 ## 关联
 

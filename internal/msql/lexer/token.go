@@ -47,18 +47,18 @@ func (token Token) IsKeyword(keyword string) bool {
 }
 
 var keywords = map[string]struct{}{
-	"ADD": {}, "AGAINST": {}, "ALL": {}, "ALTER": {}, "AND": {}, "ANTI": {}, "ARCHIVE": {}, "ARCHIVED": {},
+	"ADD": {}, "ALL": {}, "ALTER": {}, "AND": {}, "ANTI": {}, "ARCHIVE": {}, "ARCHIVED": {},
 	"AS": {}, "AT": {}, "BEGIN": {},
 	"ATLAS": {}, "BY": {}, "BYTES": {}, "CANDIDATES": {}, "CATALOG": {}, "COMMIT": {}, "COMPACT": {}, "CREATE": {}, "DATABASE": {},
 	"DATABASES": {}, "DELETE": {}, "DESCRIBE": {}, "DOCTOR": {}, "DROP": {},
-	"EXPLAIN": {}, "EXPORT": {}, "FALSE": {}, "FOR": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
-	"INSTALL": {}, "INSTANCE": {}, "INTO": {}, "LEXICAL": {}, "LIMIT": {},
+	"EXPLAIN": {}, "FALSE": {}, "FOR": {}, "FROM": {}, "HISTORY": {}, "INSERT": {},
+	"INSTANCE": {}, "INTO": {}, "LEXICAL": {}, "LIMIT": {},
 	"NOT": {}, "NULL": {}, "OF": {}, "ON": {}, "OPEN": {}, "OR": {},
-	"ONLY": {}, "ORDER": {}, "PACK": {}, "PACKAGE": {}, "PROFILE": {}, "PURGE": {}, "PURPOSE": {}, "READ": {},
+	"ONLY": {}, "ORDER": {}, "PURGE": {}, "PURPOSE": {}, "READ": {},
 	"RENAME": {}, "RESTORE": {}, "ROLLBACK": {}, "ROUTE": {}, "ROUTES": {}, "ROW": {},
 	"SCOPE": {}, "SELECT": {}, "SEMANTICS": {}, "SET": {}, "SHOW": {}, "SPACE": {}, "START": {},
 	"COLUMN": {}, "COLUMNS": {}, "TABLE": {}, "TABLES": {}, "TO": {},
-	"TRANSACTION": {}, "TRUE": {}, "TRUSTED": {}, "UNARCHIVE": {}, "UPDATE": {}, "USING": {}, "VALUES": {},
-	"VECTOR": {}, "WHERE": {}, "WIKI": {}, "INCLUDING": {},
+	"TRANSACTION": {}, "TRUE": {}, "UNARCHIVE": {}, "UPDATE": {}, "USING": {}, "VALUES": {},
+	"VECTOR": {}, "WHERE": {}, "INCLUDING": {},
 	"RELATE": {}, "UNRELATE": {},
 }

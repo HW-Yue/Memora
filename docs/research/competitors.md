@@ -19,7 +19,7 @@ AI 自主 Database/Table/Column
 + 语义记录可持续修订
 + 上下文预算是一等约束
 + 不依赖外部 Embedding API
-+ 本地单可执行文件与 Wiki 导出
++ 本地单可执行文件
 ```
 
 这是 Memora 的机会，也是必须用实验而非口号证明的组合假设。

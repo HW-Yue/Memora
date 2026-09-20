@@ -25,7 +25,7 @@ func (engine *Engine) showCommittedChanges(
 ) (Output, error) {
 	reads, ok := engine.rows.(committedChangeReads)
 	if !ok {
-		return Output{}, executeError(result.CodeUnsupported, "committed change reads require Page Store authority")
+		return Output{}, executeError(result.CodeUnsupported, "committed change reads are not available")
 	}
 	databaseID, scope, err := engine.changeReadScope(ctx, show, changeTimelineKind)
 	if err != nil {
@@ -63,7 +63,7 @@ func (engine *Engine) showCommittedChanges(
 	next := ""
 	if more {
 		if len(values) == 0 {
-			return Output{}, executeError(result.CodeInternal, "change timeline returned an empty continuation Page")
+			return Output{}, executeError(result.CodeInternal, "change timeline returned an empty continuation page")
 		}
 		next, err = encodeChangeCursor(changeCursorCore{
 			Version: changeCursorVersion, Kind: changeTimelineKind, Scope: scope,
@@ -108,7 +108,7 @@ func (engine *Engine) showCommittedChange(
 ) (Output, error) {
 	reads, ok := engine.rows.(committedChangeReads)
 	if !ok {
-		return Output{}, executeError(result.CodeUnsupported, "committed change reads require Page Store authority")
+		return Output{}, executeError(result.CodeUnsupported, "committed change reads are not available")
 	}
 	databaseID, scope, err := engine.changeReadScope(ctx, show, changeEntriesKind)
 	if err != nil {

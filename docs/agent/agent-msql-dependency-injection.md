@@ -110,7 +110,7 @@ Store、Catalog、Row、Router、索引或内部事务对象。
 禁止：
 
 - `internal/agent` → `internal/store|catalog|row|router|index|daemon`；
-- Agent 直接打开 Instance、Page、WAL 或数据库文件；
+- Agent 直接打开 Instance 或 SQLite 数据库文件；
 - 为了性能增加绕开 Parser、Policy 或事务的“内部快速路径”；
 - 让数据库内核依赖 Agent、模型 Provider、Eino 或文档解析实现。
 
@@ -118,7 +118,7 @@ Store、Catalog、Row、Router、索引或内部事务对象。
 
 每个数据库实例只创建一个共享的 `MSQLService`，IPC handler 与内置 Agent adapter 必须复用它，
 不能各自创建带独立锁状态的数据库服务。每个 IPC 连接和 Agent run 拥有独立逻辑 Session；
-同一 Session 内请求串行，不同 Session 可以并发并由事务、MVCC、revision 和 Store 锁解决冲突。
+同一 Session 内请求串行，不同 Session 可以并发；写事务串行，读看最后一次提交，revision 冲突由 MSQL 返回。
 
 Agent 的一次工具调用提交完整 MSQL batch；需要原子性的 `BEGIN` 到 `COMMIT` 必须处于同一次调用。
 等待模型、文档解析或用户确认时不得持有数据库事务。取消、超时或 Session 关闭必须回滚未完成事务；

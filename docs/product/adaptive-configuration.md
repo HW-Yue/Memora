@@ -14,14 +14,13 @@
 → 按条件运行 benchmark、提交或回滚
 ```
 
-配置不是 prompt 偏好，也不是进程内临时变量。陌生 Agent、数据库包和恢复流程必须能够读取同一份当前配置及历史。
+配置不是 prompt 偏好，也不是进程内临时变量。陌生 Agent 和恢复流程必须能够读取同一份当前配置及历史。
 
 ## 首批配置对象
 
-- 当前原生 authority 的 Router 分支、叶子 locator、SELECT 扫描/返回和
+- 当前 Router 分支、叶子 locator、SELECT 扫描/返回和
   Route Frame 预算已进入 `query_budgets`；
 - Table 级 Router fanout、深度和字符预算由 F126 的真实模型能力曲线提供证据；
-- Table 级 Router 增量/子树/generation 重建阈值与 compaction 策略；
 - 查询回表 Row 数、关系遍历和输出预算；
 - Column 级文本最大字符数，启动默认值 1200；
 - 后续经验证适合自治的 alias、关系扩展和缓存策略。
@@ -101,7 +100,7 @@ RESTORE CONFIGURATION ROUTE_POLICY TO REVISION :revision;
 - 生效范围、兼容版本和回滚目标；
 - 最近验证结果与是否仍处于 candidate 状态。
 
-Database 级配置随数据库包迁移。Column 级配置属于 Schema/Data Dictionary，也随包和 revision 历史迁移。
+Database 级配置随该 Database 的 Data Dictionary 迁移。Column 级配置属于 Schema，也随 revision 历史迁移。
 
 ## 调整边界
 
@@ -113,9 +112,9 @@ AI 优化的触发条件、证据窗口、benchmark、审批、观察期和自�
 
 以下内容只能由版本化引擎或明确的管理员安全策略改变：
 
-- 事务原子性、MVCC 和恢复正确性；
+- 事务原子性与 SQLite 恢复正确性；
 - 权限上限、隐私隔离和审批等级；
-- Page/Record 格式、校验和与格式版本；
+- SQLite 文件格式与 sqlite-vec 内部；
 - 系统字段、revision 链和引用完整性；
 - 防止资源耗尽、损坏和越权的最终安全边界。
 

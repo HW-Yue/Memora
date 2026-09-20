@@ -20,12 +20,11 @@ AI 负责语义层：
 引擎负责物理层：
 
 - SQL Parser、类型和约束；
-- Page、B+ Tree 和倒排索引；
-- MVCC、Undo Log、Redo Log 和锁；
-- Page split、merge、compaction 和恢复；
+- SQLite 表、索引、事务与恢复；
+- 词法 postings 表与 sqlite-vec；
 - 权限、审计和版本冲突。
 
-AI 不能操作 Page、offset、物理索引或 Redo Log。
+AI 不能操作 SQLite 页、offset、vec0 内部或数据库文件。
 
 ## 核心体验
 

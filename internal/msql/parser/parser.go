@@ -117,18 +117,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseRelate()
 	case parser.matchWord("UNRELATE"):
 		statement, err = parser.parseUnrelate()
-	case parser.matchWord("PACK"):
-		statement, err = parser.parsePackDatabase()
-	case parser.matchWord("EXPORT"):
-		statement, err = parser.parseExportWiki()
 	case parser.matchWord("OPEN"):
-		if parser.checkWord("PACKAGE") {
-			statement, err = parser.parseOpenPackage()
-		} else {
-			statement, err = parser.parseOpenRoute()
-		}
-	case parser.matchWord("INSTALL"):
-		statement, err = parser.parseInstallPackage()
+		statement, err = parser.parseOpenRoute()
 	case parser.matchWord("REBUILD"):
 		statement, err = parser.parseRebuildLexicalIndex()
 	case parser.matchWord("REVIEW"):
@@ -1653,84 +1643,6 @@ func (parser *parser) parseOpenRoute() (ast.Statement, error) {
 	}
 	statement.Limit = &limit
 	return ast.Statement{Kind: "OPEN_ROUTE", OpenRoute: statement}, nil
-}
-
-func (parser *parser) parsePackDatabase() (ast.Statement, error) {
-	if _, err := parser.expectWord("DATABASE"); err != nil {
-		return ast.Statement{}, err
-	}
-	database, err := parser.parseName()
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	if _, err := parser.expectWord("BY"); err != nil {
-		return ast.Statement{}, err
-	}
-	author, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	return ast.Statement{Kind: "PACK_DATABASE", Package: &ast.PackageStatement{
-		Action: "PACK", Database: database, Author: &author,
-	}}, nil
-}
-
-func (parser *parser) parseExportWiki() (ast.Statement, error) {
-	if _, err := parser.expectWord("WIKI"); err != nil {
-		return ast.Statement{}, err
-	}
-	if _, err := parser.expectWord("TO"); err != nil {
-		return ast.Statement{}, err
-	}
-	path, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	if _, err := parser.expectWord("PROFILE"); err != nil {
-		return ast.Statement{}, err
-	}
-	profile, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	return ast.Statement{Kind: "EXPORT_WIKI", Export: &ast.ExportStatement{
-		Format: "WIKI", Path: &path, Profile: &profile,
-	}}, nil
-}
-
-func (parser *parser) parseOpenPackage() (ast.Statement, error) {
-	if _, err := parser.expectWord("PACKAGE"); err != nil {
-		return ast.Statement{}, err
-	}
-	value, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	if _, err := parser.expectWord("READ"); err != nil {
-		return ast.Statement{}, err
-	}
-	if _, err := parser.expectWord("ONLY"); err != nil {
-		return ast.Statement{}, err
-	}
-	return ast.Statement{Kind: "OPEN_PACKAGE", Package: &ast.PackageStatement{
-		Action: "OPEN", Value: &value, ReadOnly: true,
-	}}, nil
-}
-
-func (parser *parser) parseInstallPackage() (ast.Statement, error) {
-	if _, err := parser.expectWord("PACKAGE"); err != nil {
-		return ast.Statement{}, err
-	}
-	value, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
-	}
-	if _, err := parser.expectWord("TRUSTED"); err != nil {
-		return ast.Statement{}, err
-	}
-	return ast.Statement{Kind: "INSTALL_PACKAGE", Package: &ast.PackageStatement{
-		Action: "INSTALL", Value: &value, Trusted: true,
-	}}, nil
 }
 
 func (parser *parser) parseName() (ast.Name, error) {

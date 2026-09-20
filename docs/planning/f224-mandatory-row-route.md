@@ -6,9 +6,9 @@
 > **目标形态已改，本候选需按新形态重写后再评估。** 本文建立在
 > membership 之上（「Row 有没有 live membership」是它的判据）。
 > [写入形态](../product/write-model.md)去掉了独立的 membership 关系——
-> 叶子直接挂 RowID，判据变成"有没有叶子指向这个 Row"，靠反向索引树回答。
+> 叶子直接挂 RowID，判据变成"有没有叶子指向这个 Row"。
 > **问题本身依然成立**（零 Route 归属的孤儿 Row 要在写入时挡住），
-> 变的是判据的取法。迁移设计见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。
+> 变的是判据的取法。见[写入形态](../product/write-model.md)。
 
 ## 问题
 
@@ -46,7 +46,7 @@ F223 自己批评过这个模式：「`semantichealth` 在 12 个 child 时报 `
 
 - **INSERT**：结果 Row 必须 ≥ 1 个 membership。缺失或空数组均失败；
 - **UPDATE**：`RouteLeafIDs == nil` 现在表示「保留既有归属」
-  （`internal/row/history.go:212`、`internal/nativerow/service.go:633`），
+  （`internal/sqlstore` 写入路径），
   这个语义**必须保留**。只有当本次更新会把归属清空时才失败；
 - **DELETE / tombstone**：已删除的 Row 没有 live 归属，**豁免**；
 - **SPLIT / MERGE**：每个 live 目标各自满足上述不变量，沿用既有
@@ -55,7 +55,7 @@ F223 自己批评过这个模式：「`semantichealth` 在 12 个 child 时报 `
 ## 执行点
 
 在**引擎层**统一执行，与 F223 一致（「三条写入路径统一执行」）。
-`internal/nativerow` 是所有路径的唯一汇合点；只在 skillwrite 加校验挡不住
+`internal/sqlstore` 是所有路径的唯一汇合点；只在 skillwrite 加校验挡不住
 `msql.execute` 直连。
 
 skillwrite 的 `validateSnapshot` 同时修掉空数组漏洞，作为提前失败的第二道，

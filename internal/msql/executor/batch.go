@@ -459,8 +459,7 @@ func mutationStatement(statement ast.Statement) bool {
 		statement.Archive != nil ||
 		statement.ApplyRoute != nil || statement.ApplySchema != nil ||
 		statement.Assimilation != nil && statement.Assimilation.Action == "SUBMIT" ||
-		statement.Configuration != nil ||
-		(statement.Package != nil && statement.Package.Action == "INSTALL")
+		statement.Configuration != nil
 }
 
 func spanSource(source string, span lexer.Span, fallback string) string {
@@ -495,5 +494,5 @@ func mutationKind(kind string) bool {
 		kind == "RENAME_ROUTE" || kind == "UPDATE_ROUTE" || kind == "DELETE_ROUTE" ||
 		kind == "APPLY_ROUTE_MUTATION" || kind == "APPLY_SCHEMA_CHANGE" ||
 		kind == "SUBMIT_ASSIMILATION" ||
-		kind == "ALTER_CONFIGURATION" || kind == "RESTORE_CONFIGURATION" || kind == "INSTALL_PACKAGE"
+		kind == "ALTER_CONFIGURATION" || kind == "RESTORE_CONFIGURATION"
 }

@@ -62,6 +62,5 @@ objects 树里的 Relation 族随 ADR-0011 第 4 步退役。
 
 ## 引擎前提
 
-链接与摘要不设上限，意味着单行可以超过现役 8 KiB 的单条记录上限
-（[存储现状](../storage/README.md)第 13 条：Overflow Page 未实现，超限硬失败）。
-链接落地前，引擎要先支持大行跨页存储。
+链接与摘要不设上限。行正文是 SQLite TEXT，大行由 SQLite 自己存，
+本项目不实现 Overflow Page。

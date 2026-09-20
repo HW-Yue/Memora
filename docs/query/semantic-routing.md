@@ -77,7 +77,7 @@ SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 
 每次返回一层，AI 根据用户意图和节点可读描述选择下一层。当前路径、候选子节点、
 预算与 snapshot 构成 `Route Frame`；它随查询结束丢弃，不写入长期 system
-prompt，也不等同于物理 Buffer Pool。
+prompt，也不等同于 SQLite 页缓存。
 
 默认 `SHOW ROUTES` 不携带较长 synopsis。只有相邻 purpose 无法稳定区分时，AI
 才执行 `DESCRIBE ROUTE :route_id` 按需读取；详细预算和内容边界见
@@ -96,7 +96,7 @@ Route ID，帮助 AI 预取根节点或缩短冷启动。候选不能跳过显�
 
 ## 语义维护
 
-物理 Page 满时由引擎自动 split；语义 Branch 含混时，引擎只报告结构事实，由 AI 决定
+SQLite 负责页与文件；语义 Branch 含混时，引擎只报告结构事实，由 AI 决定
 怎样命名、拆分或移动。但 Branch 的**数量**是硬约束：一个 root 或 Branch 最多带
 本 Database `route_policy.branch_fanout` 个 live child，启动默认 12。第 `N+1` 个子节点
 一定失败，失败信封里带两条可执行出路——重构子树，或用
@@ -109,7 +109,7 @@ Route ID，帮助 AI 预取根节点或缩短冷启动。候选不能跳过显�
 
 1. Row 增量：替换单 Row 的完整 membership；
 2. 局部子树：处理 overflow、错挂、歧义或语义漂移；
-3. Table generation：规则/格式升级或完整性失败时旁路重建。
+3. Table 级语义树：规则/格式升级或完整性失败时旁路重建。
 
 全量重建不能就地清空当前树：
 

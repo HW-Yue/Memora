@@ -5,7 +5,7 @@
 ## 目的
 
 Admin 与 Agent 只通过 MSQL 读取 F109 的 committed change envelope。时间线按独立
-change commit sequence 排序；Page index 只定位 immutable envelope，不复制 Row 正文。
+change commit sequence 排序；`mem_changes` 只定位已提交 envelope，不复制 Row 正文。
 
 ## Timeline
 
@@ -24,7 +24,7 @@ SHOW CHANGES [IN DATABASE work]
 - `IN DATABASE` 的 summary 只返回所选稳定 Database ID，并把 `entry_count` 收敛为该
   Database 的可见 entry 数；跨库事务的其他 scope 不进入单库 Admin 响应。
 
-首屏固定 Page index 当前 high-water 为 snapshot。后续新 commit 不改变旧 snapshot；cursor
+首屏固定当前 high-water 为 snapshot。后续新 commit 不改变旧 snapshot；cursor
 绑定全局/Database scope、snapshot high-water 和已消费 commit sequence，因此分页不重、
 不漏，也不会混合两个快照。
 
@@ -50,13 +50,12 @@ Database。无 authorization 的本地管理会话可读取全 Instance。
 
 ## 边界
 
-- 产品读取只走 derived Page change index，禁止回退到 `nativechange.ListAfter`；
-- immutable envelope body 仍是真相源，Page index 可由它在 open/read reconcile；
-- 不做 retention、同步、PITR、页面或正文 diff；
+- 产品读取只走 `mem_changes`，禁止旁路扫描数据表拼变更时间线；
+- envelope 仍是真相源，索引可由它在 open/read 时核对；
+- 不做 retention、同步、PITR 或正文 diff；
 - Route trace 属于 F114，不写入 committed change timeline。
 
 ## 关联
 
-- [Committed Change Envelope v1](../archive/storage/committed-change-envelope-v1.md)
-- [Committed Change Page Index v1](../archive/storage/committed-change-page-index-v1.md)
+- [写入形态 · 变更记录](../product/write-model.md)
 - [F113 开工与完成门](../archive/planning/f113-change-read-protocol-gate.md)

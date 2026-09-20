@@ -33,20 +33,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	if statement.Select != nil {
 		return engine.Query(ctx, statement, parameters)
 	}
-	// Database Package and Wiki export still parse; their implementations were
-	// deleted on 2026-09-02 along with the rest of the unreachable legacy
-	// store.Store stack. They were never reachable in production: the only
-	// injection point for them was a daemon handler with no callers, so the
-	// native handler always saw a nil manager and returned this same code.
-	// Rebuilding them on the native stack is a rewrite, not a wiring change.
-	if statement.Package != nil {
-		return Output{}, executeError(
-			result.CodeUnsupported, "database package operations are not implemented")
-	}
-	if statement.Export != nil {
-		return Output{}, executeError(
-			result.CodeUnsupported, "Wiki export is not implemented")
-	}
 	if statement.Assimilation != nil {
 		if engine == nil || engine.catalog == nil {
 			return Output{}, executeError(result.CodeInternal, "assimilation MSQL engine is not configured")

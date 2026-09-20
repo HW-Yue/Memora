@@ -92,8 +92,7 @@ func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 		statement.UpdateRoute != nil, statement.DeleteRoute != nil, statement.Archive != nil,
 		statement.ApplyRoute != nil, statement.ApplySchema != nil,
 		statement.Configuration != nil,
-		statement.Rebuild != nil,
-		statement.Package != nil && statement.Package.Action == "INSTALL":
+		statement.Rebuild != nil:
 		return security.LevelStructural
 	default:
 		return security.LevelRead
@@ -167,8 +166,6 @@ func statementDatabaseNames(statement ast.Statement) []string {
 		appendQualifiedTable(statement.Relate.TargetTable)
 	case statement.CreateRoute != nil && statement.CreateRoute.Table != nil:
 		appendQualifiedTable(*statement.CreateRoute.Table)
-	case statement.Package != nil && statement.Package.Action == "PACK":
-		appendDatabase(statement.Package.Database)
 	case statement.Assimilation != nil:
 		appendDatabase(statement.Assimilation.Database)
 	}

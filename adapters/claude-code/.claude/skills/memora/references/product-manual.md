@@ -23,8 +23,7 @@ Memora 是本地、面向 AI Agent 的个人语义数据库。AI 是逻辑层的
 Embedding 或原始 PDF/图片。外部资料只在宿主侧临时读取，经过覆盖、来源锚点和复核后，
 写入可维护的语义模块，并用 Source Receipt 表示已完成吸收。
 
-MSQL 是 Agent 的唯一正式数据库语言（对外说明时也可简称 SQL）。Agent 不直接操作
-Page、B+ Tree、Buffer Pool、WAL、Undo/Redo、倒排文件或 Instance 文件。
+MSQL 是 Agent 的唯一正式数据库语言（对外说明时也可简称 SQL）。Agent 不直接操作 SQLite 页、WAL、vec0 内部或 Instance 文件。
 
 ## 整体架构
 
@@ -50,11 +49,11 @@ Memora daemon
   │    ├─ semantic Route index（逐层导航）
   │    ├─ full-content lexical postings（候选位置）
   │    └─ optional Route-only vector predictor（只作提示）
-  └─ Native storage
-       ├─ 16 KiB Page + Buffer Pool + persistent B+ Tree
-       ├─ MVCC / object locks / expected revision
-       ├─ Redo WAL + checkpoint + crash recovery
-       └─ committed Change Log（可审计变化流）
+  └─ SQLite + sqlite-vec
+       ├─ 普通表：Catalog、数据、history、语义配套、change、postings
+       ├─ vec0：Route / Row 语义向量（只作定位）
+       ├─ 写串行，读看最后一次提交
+       └─ WAL 与崩溃恢复由 SQLite 承担
 ```
 
 Route、lexical 和 vector 都是导航层。它们返回候选位置或 RowID，不能直接返回事实；

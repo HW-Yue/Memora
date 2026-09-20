@@ -64,7 +64,7 @@ func (engine *Engine) showRouteTraces(
 	next := ""
 	if more {
 		if len(values) == 0 {
-			return Output{}, executeError(result.CodeInternal, "Route Trace timeline returned an empty continuation Page")
+			return Output{}, executeError(result.CodeInternal, "Route Trace timeline returned an empty continuation page")
 		}
 		next, err = encodeRouteTraceCursor(routeTraceCursorCore{
 			Version: routeTraceCursorVersion, Kind: routeTraceTimelineKind, Scope: scope,

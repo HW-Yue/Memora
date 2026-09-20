@@ -55,7 +55,7 @@ query 使用全内容索引唯一 tokenizer。posting 按对象 identity 聚合�
 ## 权限、快照与故障
 
 - Executor 必须先从当前 Catalog 解析授权 Database，再把稳定 database_id scope 交给查询端口；
-- Page Store 只允许按 `(term, database_id)` 物理前缀读取，禁止全索引读取后再过滤；
+- `mem_postings` 只允许按 `(term, database_id)` 读取，禁止全索引读取后再过滤；
 - scope 进入 cursor 摘要，因此 cursor 不能跨授权范围复用；
 - snapshot 由当前 query、授权 database_id 和完整聚合候选规范编码得到；候选变化后 continuation
   返回 `REVISION_CONFLICT`；

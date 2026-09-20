@@ -14,10 +14,10 @@
 1. **表角色**：`catalog.Table` 加 `Role`（`data`／`routes`）与 `OwnerTableID`
    （语义表指向它服务的数据表）；数据表加 `RouterRootID`（本步恒为空，第 2 步填）。
    Table codec 追加字段 15／16／17，缺省解码为 `data`、空，老 Catalog 照常读。
-2. **同生**：`nativecatalog.CreateTable` 在**同一次 Catalog 发布**里追加语义表。
+2. **同生**：`sqlstore` 在**同一个 SQLite 事务**里追加语义表。
    列：`name` `kind` `purpose` `synopsis` `parent_id` `row_id` 为 TEXT，
    `aliases` `child_ids` `successor_ids` 为 TEXT 存 JSON，`deprecated` 为 BOOLEAN。
-   表树沿用现役「Catalog 发布后 `EnsureTableTrees`」，崩在两者之间时下次发布补建。
+   崩在建表中途时整笔回滚，下次 `CREATE TABLE` 再试。
 3. **同死**：`ArchiveTable` 在同一次发布里归档其语义表。改名不联动（见命名）。
 4. **命名**：语义表名 `_memora_routes_<ownerTableID>`，按 ID 不按名字派生，
    数据表改名无需联动；用户 `CREATE TABLE`／`RENAME TABLE` 拒绝 `_memora_` 前缀。
@@ -32,20 +32,20 @@
 ## 不覆盖（相邻行为）
 
 - 根节点行、`RouterRootID` 赋值、任何 Route 语义与 `SHOW ROUTES` 切换 → 第 2 步；
-- 语义表不写 history → 第 3 步（本步现役引擎仍会为语义表行写版本树，本步没有行，无影响）；
+- 语义表不写 history → 第 3 步（本步没有行，无影响）；
 - 删除旧 Route 专用引擎包（已在 `rewrite/adr0011` 完成，现役是 `sqlstore` 语义表）；
 - 全文索引是否收录语义表 → Deferred。
 
 ## 协议与格式
 
-- 无 generation 版本升级：变的是 Catalog 对象正文里的可选字段；
+- Catalog 角色字段缺省解码为 `data`；老库补建语义表，不升级自研 generation 格式；
 - 不改 MSQL 语法；Agent 可观察的唯一变化是 `_memora_` 前缀被保留。
 
 ## RED
 
 | 测试 | 命令 | 当前为什么失败 |
 |---|---|---|
-| `TestCreateTableCreatesHiddenRouteCompanion` | `go test ./internal/nativecatalog -run Companion` | `CreateTable` 只产出一张表，`Table` 无 `Role` |
+| `TestCreateTableCreatesHiddenRouteCompanion` | `go test ./internal/sqlstore -run Companion` | `CreateTable` 只产出一张表，`Table` 无 `Role` |
 
 输入：新建库 → `CREATE TABLE notes`。期望：Catalog 快照里恰有两张表，
 第二张 `Role=routes`、`OwnerTableID=notes.ID`、列集合如上；reopen 后不变。
@@ -60,7 +60,7 @@
 | 4 | Catalog 校验：语义表的 owner 不存在 | `ErrCorrupt` |
 | 5 | Catalog 校验：一张数据表两张语义表 | `ErrCorrupt` |
 | 6 | Catalog 校验：语义表的 owner 本身是语义表 | `ErrCorrupt`（不递归） |
-| 7 | 故障：Catalog 发布后、`EnsureTableTrees` 前崩溃 | reopen 能读 Catalog；下次发布补齐语义表树 |
+| 7 | 故障：建数据表后、建语义表前崩溃 | 整笔回滚；reopen 两张表都不存在 |
 | 8 | 故障：Catalog 发布本身在 group commit 前失败 | 两张表都不存在，无半张 |
 | 9 | reopen：建表 → 关库 → 开库 | 语义表、表树、角色全部还在 |
 | 10 | 归档数据表 | 同一次发布里语义表也归档；reopen 一致 |
@@ -75,7 +75,7 @@
 
 | 部分 | 生产 | 测试 |
 |---|---|---|
-| `catalog` 模型 + `nativecatalog` codec 与校验 | ~90 | ~150 |
+| `catalog` 模型 + `sqlstore` 校验 | ~90 | ~150 |
 | 同生／同死／补建／保留前缀 | ~120 | ~180 |
 | Agent 面过滤（executor、binder、atlas、lexical） | ~100 | ~150 |
 | internal scope | ~60 | ~80 |
