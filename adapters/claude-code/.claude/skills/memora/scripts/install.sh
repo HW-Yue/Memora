@@ -98,7 +98,8 @@ else
       [ -f "$source_dir/go.mod" ] || fail "source directory does not contain go.mod"
       (
         cd "$source_dir"
-        go build -trimpath -ldflags "-X main.version=$version -X main.commit=source -X main.builtAt=source" -o "$staged" ./cmd/memora
+        CGO_ENABLED=1 CGO_CFLAGS="${CGO_CFLAGS:--Wno-deprecated-declarations}" \
+          go build -trimpath -ldflags "-X main.version=$version -X main.commit=source -X main.builtAt=source" -o "$staged" ./cmd/memora
       )
     else
       mkdir -p "$work_dir/go-bin"

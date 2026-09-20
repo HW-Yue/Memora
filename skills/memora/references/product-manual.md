@@ -148,7 +148,6 @@ memora query --input '{...authorization...}' 'SHOW CATALOG ATLAS LIMIT 64'
 memora exec  --input '{...authorization...}' 'SELECT ...'
 ```
 
-升级和 `doctor repair` 必须先展示只读计划并获得单独确认；安装同意不等于升级或修复同意。
 遇到 `permission_denied`、`stale_revision`、checksum 不一致、签名不匹配或 `in_doubt`，
 停止扩权和盲目重试，按返回的逻辑收据重新发现或请求用户处理。
 

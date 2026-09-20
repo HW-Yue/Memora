@@ -1,6 +1,6 @@
 # 测试约定
 
-状态：F02 起执行。
+状态：F02 起执行；2026-09-20 按 SQLite 基座修订门禁。
 
 ## 默认命令
 
@@ -8,30 +8,25 @@
 ./scripts/ci.sh
 ```
 
-它按固定顺序执行 format、vet、unit、race、integration、e2e 和无 CGO macOS 双架构 cross-build。开发中可以只运行一层：
+它按固定顺序执行 format、vet、lint、unit、race，以及带 CGO 的本机构建并打开数据库。
+开发中可以只运行一层：
 
 ```bash
 ./scripts/ci.sh --list
 ./scripts/ci.sh --stage unit
-./scripts/ci.sh --stage integration
+./scripts/ci.sh --stage cgo-build
 ```
 
-普通测试不得访问网络、真实用户 datadir 或模型 API。真实 Codex/Claude 测试属于受控 smoke/benchmark，不进入默认 PR 门禁。
+`gofmt` 只扫 `cmd/` 和 `internal/`。没有独立的 `tests/` 目录，也没有
+`//go:build integration|e2e` 文件，所以没有空转的 tag stage。
 
-GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workflow 中复制另一套测试顺序。PR CI 只有 `contents: read` 权限，不发布 Release 或上传产品制品；发布流程属于后续独立 feature。
+构建必须 `CGO_ENABLED=1`。`go-sqlite3` 在 `CGO_ENABLED=0` 时链到 `static_mock.go`，
+产物打不开数据库；`cgo-build` 拒绝这条路径，并在本机跑 `init` / `daemon` / `doctor`。
+交叉编译 sqlite3 需要 C 交叉编译器，本仓库不提供，本机 runner 各验各的三元组。
 
-## Testkit
+普通测试不得访问网络、真实用户 datadir 或模型 API。
 
-`internal/testkit` 提供：
-
-- `Sandbox`：每个测试独立临时根目录，拒绝绝对路径、`..` 和符号链接逃逸；
-- `FakeClock`：确定性读取与推进时间；
-- `FakeIDs`：按固定顺序产生 ID，耗尽后明确失败；
-- `Faults`：在命名 fault point 的第 N 次命中时注入错误；
-- `CompareGolden`：显式比较或更新 golden；
-- `ReadFixture`：只从调用测试旁边的 `testdata/` 读取 fixture。
-
-生产代码中的时间、ID 和故障点必须通过窄接口注入，不能在核心测试中依赖真实时钟、随机 ID 或进程运气。
+GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workflow 中复制另一套测试顺序。PR CI 只有 `contents: read` 权限，不发布 Release。签名发布工具链尚未移植到 SQLite 基座；对 `v*` tag 的 Release workflow 会明确失败，而不是调用不存在的脚本。
 
 ## TDD 证据
 
@@ -39,7 +34,7 @@ GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workfl
 
 ## 隔离规则
 
-- 文件测试只使用 `t.TempDir()`/`testkit.Sandbox`；
+- 文件测试只使用 `t.TempDir()`；
 - 环境变量修改不得与 `t.Parallel()` 混用；
 - fixture 不依赖执行顺序或上一个测试留下的状态；
 - 测试结束后的清理由 Go testing 生命周期负责；

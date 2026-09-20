@@ -11,7 +11,7 @@ gofmt_command=${MEMORA_CI_GOFMT:-gofmt}
 staticcheck_version=v0.7.0
 errcheck_version=v1.20.0
 ineffassign_version=v0.1.0
-stages=(format vet lint unit race integration e2e cross-build)
+stages=(format vet lint unit race cgo-build)
 # The platforms this project ships on. vet and lint sweep each one so that a
 # file behind a //go:build tag cannot hide from either.
 supported_platforms=(linux darwin)
@@ -29,7 +29,7 @@ run_stage() {
   printf 'ci: %s\n' "$stage"
   case "$stage" in
     format)
-      unformatted=$($gofmt_command -l cmd internal tests)
+      unformatted=$($gofmt_command -l cmd internal)
       if [[ -n "$unformatted" ]]; then
         printf 'unformatted Go files:\n%s\n' "$unformatted" >&2
         return 1
@@ -79,7 +79,7 @@ run_stage() {
       #
       # A subshell, so the temp directory is removed on the way out whether the
       # stage passes or fails. A RETURN trap would outlive this function — traps
-      # are shell-wide — and an EXIT trap would be overwritten by cross-build's.
+      # are shell-wide — and an EXIT trap would be overwritten by cgo-build's.
       (
       lint_tool_dir=$(mktemp -d)
       trap 'rm -rf -- "$lint_tool_dir"' EXIT
@@ -111,19 +111,26 @@ run_stage() {
     race)
       "$go_command" test -race ./...
       ;;
-    integration)
-      "$go_command" test -tags=integration ./...
-      ;;
-    e2e)
-      "$go_command" test -tags=e2e ./...
-      ;;
-    cross-build)
-      cross_build_dir=$(mktemp -d)
-      trap 'rm -rf -- "$cross_build_dir"' EXIT
-      CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$go_command" build -trimpath \
-        -o "$cross_build_dir/memora-arm64" ./cmd/memora
-      CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 "$go_command" build -trimpath \
-        -o "$cross_build_dir/memora-amd64" ./cmd/memora
+    cgo-build)
+      # go-sqlite3 with CGO_ENABLED=0 links static_mock.go and cannot open a
+      # database. Cross-compiling sqlite3 needs a C cross-compiler we do not
+      # ship, so this stage builds the host triple and actually opens a file.
+      if [[ "${CGO_ENABLED:-1}" == "0" ]]; then
+        printf 'ci: cgo-build refuses CGO_ENABLED=0; go-sqlite3 would link a mock that cannot open a database\n' >&2
+        return 1
+      fi
+      (
+      work=$(mktemp -d)
+      trap 'rm -rf -- "$work"' EXIT
+      export CGO_ENABLED=1
+      export CGO_CFLAGS="${CGO_CFLAGS:--Wno-deprecated-declarations}"
+      "$go_command" build -trimpath -o "$work/memora" ./cmd/memora
+      data="$work/instance"
+      "$work/memora" init --data-dir "$data"
+      "$work/memora" daemon start --data-dir "$data"
+      "$work/memora" doctor --data-dir "$data"
+      "$work/memora" daemon stop --data-dir "$data"
+      )
       ;;
     *)
       printf 'ci: unknown stage %q\n' "$stage" >&2

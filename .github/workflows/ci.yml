@@ -15,10 +15,10 @@ concurrency:
 
 jobs:
   test:
-    # Both platforms run the same seven gates. macOS is where development
+    # Both platforms run the same six gates. macOS is where development
     # happens; Linux is where anyone else's machine and every container is, and
     # the storage layer is full of file-system behaviour that differs between
-    # them.
+    # them. sqlite3 requires CGO; the cgo-build stage opens a real database.
     name: ${{ matrix.os }} tests
     runs-on: ${{ matrix.os }}
     strategy:
@@ -37,4 +37,7 @@ jobs:
           cache: true
 
       - name: Run CI gates
+        env:
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: "-Wno-deprecated-declarations"
         run: ./scripts/ci.sh

@@ -5,14 +5,10 @@
   "receipt_version": "memora.real-host-receipt/v1",
   "skill_version": "memora.skill/v1",
   "allowed_commands": [
-    "assimilate",
     "doctor",
     "exec",
-    "feedback",
-    "maintain",
     "mutate",
     "query",
-    "reflect",
     "schema"
   ],
   "host_surfaces": [
