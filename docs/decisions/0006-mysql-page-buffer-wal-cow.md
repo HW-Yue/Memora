@@ -1,6 +1,11 @@
 # ADR-0006：MySQL 式 Page/Buffer Pool/WAL，COW 用于 generation
 
-状态：Accepted，2026-07-31；F81–F108 及 F97a–F97d3 拆分项均已完成；
+状态：**Superseded**，2026-09-20，被 [ADR-0011](./0011-pure-storage-engine-tables-everything.md)
+取代。Page、Buffer Pool、WAL 与 COW generation 全部由 SQLite 承担，本项目不再实现，
+对应代码已删除、规格已归档到 [`archive/storage/`](../archive/storage/)。
+当前形态见[存储层当前形态](../storage/README.md)。
+
+原状态：Accepted，2026-07-31；F81–F108 及 F97a–F97d3 拆分项均已完成；
 每项仍须独立 TDD、验收和合入。
 
 ## 总体选择

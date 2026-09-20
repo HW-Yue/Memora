@@ -1,6 +1,11 @@
 # 当前系统能力
 
-状态：2026-08-11 权威能力快照。**这是了解「系统现在是什么」的入口文档。**
+状态：2026-08-11 快照，2026-09-20 部分重写。**这是了解「系统现在是什么」的入口文档。**
+
+> **注意**：第 1 节已按 SQLite 基座重写。其余各节仍是 2026-08-11 的快照，
+> 其中涉及 Relation、`SHOW HISTORY` 与 Route 实现细节的描述可能早于
+> [ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md) 的重写，
+> 按节逐步核对，不要整篇当作现状。
 
 本文按能力域组织，不按 Feature 编号。F 编号是开发过程的账本，不是系统的结构；
 查某项能力的历史证据再去 [Feature 状态](../planning/feature-status.md)按编号回溯。
@@ -8,38 +13,27 @@
 只收录已交付、有测试、当前无已知缺陷的能力。有缺陷或未验证的部分见
 [已知风险](../development/known-risks.md)，未实现的部分见[路线 v3](../planning/roadmap-v3.md)。
 
-## 1. 存储引擎（成熟）
+## 1. 存储层（不自研）
 
-自研，零第三方运行时依赖。这是系统中最扎实的一层。
+> **2026-09-20 重写。** 原文这一节描述的自研引擎（Page、WAL、B+ Tree、Buffer Pool、
+> MVCC、COW generation、自研文件布局）**已整体删除**，代码不在仓库里，规格已归档到
+> [`archive/storage/`](../archive/storage/)。
 
-- **Page 层**：16 KiB 固定 Page、Castagnoli CRC32、format version、typed page（Data／
-  BTreeInternal／BTreeLeaf／Free／Manifest／Overflow／TreeControl）；损坏明确报错不假装恢复。
-- **WAL**：segment、record header、durable frontier、checkpoint、reclaim、torn-tail 恢复、
-  tree redo、repair-open。7,404 行，含 corruption 与 fault injection 证据。
-- **B+ Tree**：point／range、split、delete、rebalance、多层原子提交（treecommit）。
-- **Buffer Pool**：WAL-before-data、young/old 淘汰、dirty batch flush。
-- **MVCC**：statement snapshot、精确对象写锁、immutable revision、durable-then-publish、
-  no-steal；未实现 physical undo（当前策略下不需要）。
-- **索引**：Catalog／当前 Row／Row Version 三类权威索引；Catalog／Route／Row Fulltext
-  派生树；Table Row cursor；COW generation replacement（当前 v3）；free Page reuse。
-- **文件布局**：所有 Database 共用一套物理文件（`databases/` 下单个
-  `database.memora` 加一套 `page-index-v1/` 与 `change-index-v1/`），**这是有意选择**：
-  最热的读路径（Catalog Atlas 与 `SHOW LEXICAL LOCATIONS FROM ALL TABLES`）本来就
-  跨 Database，按库拆分会把它变成常态 fan-out。故障隔离在逻辑层完成：poison 按
-  Database 收敛，读永不因写发布失败而失效
-  （[F226](../planning/f226-per-database-fault-isolation.md)）。
+持久化基座是 **SQLite + sqlite-vec**（[ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)），
+代码在 `internal/sqlstore`。
 
-**实测性能**（容器化 Linux／Xeon 2.8 GHz，fsync 未必反映真实盘）：
+- 一个实例 = 一个 SQLite 文件；Page、WAL、B+ Tree、校验和、崩溃恢复由 SQLite 承担；
+- **不做 MVCC**：写事务串行，读只看最后一次提交，没有快照、read view 或 undo；
+- 一切都是普通表：Catalog、`data_<id>`、`history_<id>`、`routes_<id>`、
+  `mem_changes`、`mem_config`、`mem_postings`；
+- 词法 postings 在写事务内同步维护；向量索引是 vec0 虚拟表，embedding 由外部 API
+  在**提交之后**异步计算，因此向量召回有写后可见延迟。
 
-| 操作 | 结果 |
-| --- | --- |
-| 单事务批量写入 500 行 | 84 ms → **168 µs/行** |
-| 单事务批量写入 50 行 | 20 ms → 401 µs/行（进程启动未摊薄） |
-| `SELECT ... LIMIT 20` | < 1 ms 引擎耗时 |
-| CLI 单次调用固定开销 | ~10 ms（进程启动 + unix socket 连接，主导单条 CLI 操作） |
-| 570 行实例磁盘占用 | 556 KB |
+细节见[存储层当前形态](../storage/README.md)与[写入形态](./write-model.md)。
 
-结论：**引擎不是瓶颈**，且余量很大。单条 CLI 操作的 9 ms 里约 95% 是进程启动。
+**性能数据待重测。** 原文那张表测的是已删除的自研引擎，对当前实现无效，
+因此整表移除而不是留着让人误读。CLI 单次调用约 10 ms 固定开销（进程启动 +
+unix socket 连接）这一条与存储层无关，仍然成立。
 
 ## 2. MSQL 语言与执行（成熟）
 

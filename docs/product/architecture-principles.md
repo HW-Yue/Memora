@@ -7,6 +7,13 @@
 
 四条原则。每条给出**判据**——怎么算违反——因为没有判据的原则等于没有原则。
 
+> **2026-09-20 注**：**四条原则本身不变。** 但文中「已知实例」举的例子取自已删除的
+> 自研引擎代码（`nativestore`、`nativerow`、`nativemutation`、`PageAuthority`、
+> `pagestoremigration`、`treecommit`、`wal/tree_redo.go`、`authorityChangeTree` 等包
+> 现在都不存在了，见 [ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)）。
+> 这些例子**只用于理解判据怎么用**，不要照它们去找代码，也不要据此判断当前耦合状况。
+> 当前实现的实例待按 `internal/sqlstore` 重新采集。
+
 ## 一、高内聚低耦合，整体简洁清晰
 
 一个组件应该只对一件事负责，并且把那件事负责到底。

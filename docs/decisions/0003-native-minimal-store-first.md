@@ -1,6 +1,10 @@
 # ADR-0003：原生极简 Store 优先
 
-状态：Accepted，2026-07-30。先完成 Put/Get，再接真实 Row 与 MSQL；事务、恢复和
+状态：**Superseded**，2026-09-20，被 [ADR-0011](./0011-pure-storage-engine-tables-everything.md)
+取代。本项目不再自研 Store：持久化基座是 SQLite + sqlite-vec，见
+[存储层当前形态](../storage/README.md)。本文只用于追溯当初为何选择自研起步。
+
+原状态：Accepted，2026-07-30。先完成 Put/Get，再接真实 Row 与 MSQL；事务、恢复和
 SQLite 迁移均后置。
 
 ## 决策

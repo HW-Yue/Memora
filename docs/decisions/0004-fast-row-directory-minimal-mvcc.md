@@ -1,7 +1,10 @@
 # ADR-0004：RowID 快速目录与本地最小 MVCC
 
-状态：部分被 [ADR-0005](./0005-btree-mandatory-primary-index.md) 取代；MVCC 部分已被
-[ADR-0011](./0011-pure-storage-engine-tables-everything.md) 取代（不再做 MVCC）。写锁边界继续有效；第 3–6 项的内存目录/O(1)/B+ Tree 后置结论不再有效。
+状态：**Superseded**，2026-09-20，被 [ADR-0011](./0011-pure-storage-engine-tables-everything.md)
+取代：不做 MVCC，且不自研行目录与索引。当前形态见[存储层当前形态](../storage/README.md)。
+
+原状态：部分被 [ADR-0005](./0005-btree-mandatory-primary-index.md) 取代；MVCC 部分已被
+ADR-0011 取代（不再做 MVCC）。写锁边界继续有效；第 3–6 项的内存目录/O(1)/B+ Tree 后置结论不再有效。
 
 ## 背景
 

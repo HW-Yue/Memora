@@ -1,6 +1,10 @@
 # ADR-0005：B+ Tree 是必做的持久化主索引
 
-状态：Accepted，2026-07-31；物理策略已由
+状态：**Superseded**，2026-09-20，被 [ADR-0011](./0011-pure-storage-engine-tables-everything.md)
+取代。本项目不再实现 B+ Tree：主索引由 SQLite 提供，见
+[存储层当前形态](../storage/README.md)。
+
+原状态：Accepted，2026-07-31；物理策略已由
 [ADR-0006](./0006-mysql-page-buffer-wal-cow.md) 细化，F81–F108 仍须逐项 Review。
 
 ## 背景
