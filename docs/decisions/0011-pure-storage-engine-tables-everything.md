@@ -1,6 +1,8 @@
 # ADR-0011：存储引擎只做数据库，其余一切在它上面建表
 
-状态：Accepted，2026-09-13；2026-09-20 明确基座为 **SQLite + sqlite-vec**。
+状态：Accepted，2026-09-13；2026-09-20 明确基座为 **SQLite**。
+同日删除当时的词法/向量召回内核（`mem_postings` / vec0 / embedding）；
+召回仍是产品四条路之一，架构待规划。
 取代 [ADR-0004](../archive/decisions/0004-fast-row-directory-minimal-mvcc.md)
 与 [MVCC、Undo 与 Redo 边界](../archive/storage/mvcc-undo-redo.md)。
 语义树的表形态见 [Route 配套表](../product/route-companion-table.md)。
@@ -19,7 +21,7 @@ objects 树、change 树、全文树。每一种都有自己的 codec 和发布�
 产品层   history、语义树、变更日志、链接、配置……全部是普通 SQLite 表
          Agent 的每个操作 = 内部生成的一个事务，对这些表做 SQL 读写
 ───────────────────────────────────────────────
-SQLite    表、索引、事务、WAL、恢复；sqlite-vec 提供 vec0
+SQLite    表、索引、事务、WAL、恢复
           不知道什么是 history，也不知道什么是 Route
 ```
 
@@ -59,8 +61,7 @@ Agent 改语义树 → 内部生成参数化 SQL，在一个事务内改语义�
 | 变更日志 | 普通表 `mem_changes`，与数据、history 同一事务写 |
 | 配置 | 普通表 |
 | Catalog | 普通表；表的角色标记是它的字段 |
-| 词法索引 | 普通表 `mem_postings` |
-| 向量索引 | sqlite-vec vec0 虚拟表 `mem_vectors` |
+| 词法 / 向量索引 | 当前内核已删；产品仍要这两条召回路，架构待规划 |
 
 对 Agent 可见哪些表（只有数据表），由产品层按 Catalog 标记过滤。
 

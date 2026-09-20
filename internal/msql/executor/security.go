@@ -87,8 +87,7 @@ func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 		statement.CreateRoute != nil, statement.RenameRoute != nil,
 		statement.UpdateRoute != nil, statement.DeleteRoute != nil, statement.Archive != nil,
 		statement.ApplyRoute != nil, statement.ApplySchema != nil,
-		statement.Configuration != nil,
-		statement.Rebuild != nil:
+		statement.Configuration != nil:
 		return security.LevelStructural
 	default:
 		return security.LevelRead

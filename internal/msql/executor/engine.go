@@ -62,25 +62,7 @@ type Engine struct {
 	catalogBinder *binder.Catalog
 	rows          Rows
 	points        PointReads
-	lexical       LexicalIndexMaintenance
 	assimilation  AssimilationCommitter
-}
-
-type LexicalRebuildReceipt struct {
-	PreviousGeneration     string
-	Generation             string
-	Epoch                  uint64
-	PlanDigest             string
-	SourceFingerprint      string
-	PreviousSnapshotSHA256 string
-	SnapshotSHA256         string
-	Parity                 bool
-	Verified               bool
-	Reused                 bool
-}
-
-type LexicalIndexMaintenance interface {
-	RebuildLexicalIndex(context.Context) (LexicalRebuildReceipt, error)
 }
 
 type AssimilationCommitter interface {
@@ -186,26 +168,12 @@ func New(dictionary Catalog, rows Rows) *Engine {
 	if service, ok := dictionary.(binder.CatalogService); ok {
 		engine.catalogBinder = binder.NewCatalog(service)
 	}
-	if maintenance, ok := rows.(LexicalIndexMaintenance); ok {
-		engine.lexical = maintenance
-	}
 	return engine
 }
 
 func NewWithPointReads(dictionary Catalog, rows Rows, points PointReads) *Engine {
 	engine := New(dictionary, rows)
 	engine.points = points
-	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
-		engine.lexical = maintenance
-	}
-	return engine
-}
-
-func NewWithLexicalIndexMaintenance(
-	dictionary Catalog, rows Rows, maintenance LexicalIndexMaintenance,
-) *Engine {
-	engine := New(dictionary, rows)
-	engine.lexical = maintenance
 	return engine
 }
 
@@ -218,9 +186,6 @@ func NewWithCapabilities(
 	engine := New(dictionary, rows)
 	engine.points = points
 	engine.assimilation = assimilation
-	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
-		engine.lexical = maintenance
-	}
 	return engine
 }
 

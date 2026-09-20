@@ -6,19 +6,22 @@
 
 ## 一句话
 
-Memora 不实现存储引擎。持久化基座是 **SQLite + sqlite-vec**，
+Memora 不实现存储引擎。持久化基座是 **SQLite**，
 一切产品结构都是普通 SQLite 表（[ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)）。
+词法倒排与向量索引的**当前内核已删除**，召回架构待规划，见
+[查询形态](../product/query-model.md)。
 
 ## 事实
 
-代码在 `internal/sqlstore`（14 个文件）。`internal/sqlstore/db.go` 开头的注释是
+代码在 `internal/sqlstore`。`internal/sqlstore/db.go` 开头的注释是
 这一层的权威描述：
 
 ```text
 Everything Memora keeps is an ordinary SQLite table (ADR-0011): the Catalog,
 every data table, its history table, its semantic-route table, the change
-log, configuration, and the vector index (sqlite-vec vec0). There is no MVCC
-of Memora's own: writers are serialised, readers see the last commit.
+log, and configuration. There is no MVCC of Memora's own: writers are
+serialised, readers see the last commit. Keyword/vector recall is not in
+this kernel; that architecture is planned separately.
 ```
 
 - 一个实例 = 一个 SQLite 文件（`<dataDir>/databases/<file>`，
@@ -26,16 +29,8 @@ of Memora's own: writers are serialised, readers see the last commit.
 - **不做 MVCC**：写事务串行，读只看最后一次提交。没有快照、read view 或 undo；
 - Page、Buffer Pool、WAL、B+ Tree、页格式、校验和、崩溃恢复**由 SQLite 承担**，
   不是本项目的实现对象，也不在本项目测试范围；
-- 词法 postings 是普通表 `mem_postings`，在写事务内同步维护；
-- 向量索引是 vec0 虚拟表 `mem_vectors`，embedding 由外部 API 计算
-  （`internal/embedding`），在**提交之后**异步写入，因此有写后可见延迟。
-
-## 已知缺陷
-
-`mem_vectors` 同时存放 route 与 row 两种 kind，而 kind 过滤发生在 KNN **之后**
-（`internal/sqlstore/search.go:311-314`）。Row 数量远大于 Route 节点时，
-route 候选会接近零且不报错。详见
-[检索路线](../query/retrieval-routes-jev.md) §4。
+- 现役表：Catalog、数据表、history、语义配套、`mem_changes`、配置、轨迹、KV。
+  旧库里可能还留着 `mem_postings` / `mem_vectors`，新 schema 不再创建它们。
 
 ## 为什么没有自研引擎了
 

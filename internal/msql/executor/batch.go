@@ -82,23 +82,6 @@ func newBatchSessionWithPointReads(
 	}
 }
 
-func NewBatchSessionWithLexicalIndexMaintenance(
-	ctx context.Context,
-	dictionary Catalog,
-	rows Rows,
-	maintenance LexicalIndexMaintenance,
-) *BatchSession {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	sessionContext, cancel := context.WithCancel(ctx)
-	return &BatchSession{
-		context: sessionContext, cancel: cancel,
-		autocommit: NewWithLexicalIndexMaintenance(dictionary, rows, maintenance), rows: rows,
-		transactions: inferredTransactionFactory(rows),
-	}
-}
-
 func NewBatchSessionWithCapabilities(
 	ctx context.Context,
 	dictionary Catalog,

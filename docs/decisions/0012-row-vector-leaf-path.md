@@ -4,14 +4,15 @@
 持久化边界。第 4 条「融合发现是主路径」已被
 [查询形态](../product/query-model.md) 的四条路取代：语义索引是 Agent 主路，
 关键词与向量是双路召回（当前 MSQL 门已删，待重写），jev 只在 Skill。
-Row 向量仍允许，命中仍只给叶子路径。
+Row 向量仍允许，命中仍只给叶子路径。2026-09-20 删除当时的 sqlite-vec 内核；
+本 ADR 的产品边界在规划新架构时仍然有效，当前没有向量实现。
 
 ## 背景
 
-`rewrite/adr0011` 内核把 Route 与 Row 的向量写进同一张 sqlite-vec 表。其中
-`indexRow`（`internal/sqlstore/search.go:90-91`）把表名 + row semantics + 全部列值送去
-embedding——正是 ADR-0007 与[存储索引边界](../archive/storage/indexing.md)禁止的
-「Row 正文向量副本」。而该向量当前**无任何生产读取方**。
+`rewrite/adr0011` 一度把 Route 与 Row 的向量写进同一张 sqlite-vec 表。其中
+`indexRow` 把表名 + row semantics + 全部列值送去 embedding——正是 ADR-0007 与
+[存储索引边界](../archive/storage/indexing.md)禁止的「Row 正文向量副本」。
+该内核已于 2026-09-20 删除。
 
 禁令源自 F21/F23 的撤销：当时融合评分直接产出事实候选，语义树被绕过。但禁令写的是
 「禁止持久化」，是存储级的一刀切，而实际需要的能力是：向量命中一条 Row 之后返回它的

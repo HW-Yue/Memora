@@ -2,8 +2,9 @@
 //
 // Everything Memora keeps is an ordinary SQLite table (ADR-0011): the Catalog,
 // every data table, its history table, its semantic-route table, the change
-// log, configuration, and the vector index (sqlite-vec vec0). There is no MVCC
-// of Memora's own: writers are serialised, readers see the last commit.
+// log, and configuration. There is no MVCC of Memora's own: writers are
+// serialised, readers see the last commit. Keyword/vector recall is not in
+// this kernel; that architecture is planned separately.
 package sqlstore
 
 import (
@@ -20,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	sqlitevec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/HW-Yue/Memora/internal/change"
@@ -30,26 +30,14 @@ import (
 // FileName is the single SQLite file an Instance keeps under its data directory.
 const FileName = "memora.db"
 
-var vecOnce sync.Once
-
-// Embedder turns text into vectors. A nil Embedder disables the vector index.
-type Embedder interface {
-	Dimensions() int
-	Embed(ctx context.Context, texts []string) ([][]float32, error)
-}
-
 type Options struct {
-	Embedder Embedder
-	Now      func() time.Time
+	Now func() time.Time
 }
 
 type DB struct {
-	sql      *sql.DB
-	write    sync.Mutex
-	embedder Embedder
-	now      func() time.Time
-	indexing sync.WaitGroup
-	vectorMu sync.Mutex
+	sql   *sql.DB
+	write sync.Mutex
+	now   func() time.Time
 }
 
 // Error is a storage failure with a stable result code.
@@ -67,7 +55,6 @@ func fail(code result.Code, format string, arguments ...any) error {
 
 // Open opens (creating if needed) the Instance database at path.
 func Open(path string, options Options) (*DB, error) {
-	vecOnce.Do(sqlitevec.Auto)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
 	}
@@ -81,7 +68,7 @@ func Open(path string, options Options) (*DB, error) {
 	if now == nil {
 		now = time.Now
 	}
-	db := &DB{sql: handle, embedder: options.Embedder, now: func() time.Time { return now().UTC() }}
+	db := &DB{sql: handle, now: func() time.Time { return now().UTC() }}
 	if err := db.migrate(context.Background()); err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -90,7 +77,6 @@ func Open(path string, options Options) (*DB, error) {
 }
 
 func (db *DB) Close() error {
-	db.indexing.Wait()
 	return db.sql.Close()
 }
 
@@ -129,10 +115,6 @@ CREATE TABLE IF NOT EXISTS mem_route_index (
 	route_id TEXT PRIMARY KEY,
 	table_id TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS mem_links (
-	relation_id TEXT PRIMARY KEY,
-	body TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS mem_counters (
 	name TEXT PRIMARY KEY,
 	value INTEGER NOT NULL
@@ -149,70 +131,21 @@ CREATE TABLE IF NOT EXISTS mem_traces (
 	sequence INTEGER NOT NULL,
 	body TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS mem_postings (
-	term TEXT NOT NULL,
-	object_kind TEXT NOT NULL,
-	object_id TEXT NOT NULL,
-	database_id TEXT NOT NULL,
-	table_id TEXT NOT NULL,
-	revision INTEGER NOT NULL,
-	field_id TEXT NOT NULL,
-	frequency INTEGER NOT NULL,
-	PRIMARY KEY(term, object_kind, object_id, field_id)
-);
-CREATE INDEX IF NOT EXISTS mem_postings_object ON mem_postings(object_kind, object_id);
-CREATE TABLE IF NOT EXISTS mem_vector_items (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	object_kind TEXT NOT NULL,
-	object_id TEXT NOT NULL,
-	database_id TEXT NOT NULL,
-	table_id TEXT NOT NULL,
-	digest TEXT NOT NULL,
-	UNIQUE(object_kind, object_id)
-);
 `
 
 func (db *DB) migrate(ctx context.Context) error {
 	if _, err := db.sql.ExecContext(ctx, schema+";"+kvSchema); err != nil {
 		return fmt.Errorf("create Memora schema: %w", err)
 	}
-	if db.embedder != nil {
-		dimensions := uint64(db.embedder.Dimensions())
-		var stored uint64
-		err := db.sql.QueryRowContext(ctx, `SELECT value FROM mem_counters WHERE name = 'vector_dimensions'`).Scan(&stored)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if stored != dimensions {
-			// A different model means every stored vector is meaningless: drop
-			// them and let Reindex refill the index.
-			for _, statement := range []string{
-				`DROP TABLE IF EXISTS mem_vectors`,
-				`DELETE FROM mem_vector_items`,
-				fmt.Sprintf(`INSERT INTO mem_counters(name, value) VALUES ('vector_dimensions', %d)
-					ON CONFLICT(name) DO UPDATE SET value = excluded.value`, dimensions),
-			} {
-				if _, err := db.sql.ExecContext(ctx, statement); err != nil {
-					return fmt.Errorf("reset vector index: %w", err)
-				}
-			}
-		}
-		statement := fmt.Sprintf(
-			"CREATE VIRTUAL TABLE IF NOT EXISTS mem_vectors USING vec0(embedding float[%d] distance_metric=cosine)", dimensions)
-		if _, err := db.sql.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("create vector index: %w", err)
-		}
-	}
 	return nil
 }
 
 // tx is one serialised write transaction, or a read over the last commit.
 type tx struct {
-	db      *DB
-	sql     *sql.Tx
-	now     time.Time
-	change  *changeDraft
-	indexed []indexJob
+	db     *DB
+	sql    *sql.Tx
+	now    time.Time
+	change *changeDraft
 }
 
 type queryer interface {
@@ -245,7 +178,6 @@ func (t *tx) commit(ctx context.Context) error {
 	if err := t.sql.Commit(); err != nil {
 		return err
 	}
-	t.db.runIndexJobs(t.indexed)
 	return nil
 }
 

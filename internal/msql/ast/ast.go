@@ -38,7 +38,6 @@ type Statement struct {
 	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
 	ApplySchema   *ApplySchemaChangeStatement  `json:"apply_schema_change,omitempty"`
 	Configuration *ConfigurationStatement      `json:"configuration,omitempty"`
-	Rebuild       *RebuildStatement            `json:"rebuild,omitempty"`
 	Assimilation  *AssimilationStatement       `json:"assimilation,omitempty"`
 	Transaction   *TransactionStatement        `json:"transaction,omitempty"`
 }
@@ -241,10 +240,6 @@ type ConfigurationStatement struct {
 	RouteFrameNodes *Expression `json:"route_frame_nodes,omitempty"`
 	BranchFanout    *Expression `json:"branch_fanout,omitempty"`
 	TargetRevision  *Expression `json:"target_revision,omitempty"`
-}
-
-type RebuildStatement struct {
-	Object string `json:"object"`
 }
 
 type AssimilationStatement struct {

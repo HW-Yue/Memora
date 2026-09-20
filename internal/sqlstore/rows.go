@@ -258,9 +258,6 @@ func (t *tx) insert(ctx context.Context, databaseName, tableName string, values 
 		return row.Row{}, err
 	}
 	t.rowChange(table, value, change.OperationInsert, options.Metadata, leaves)
-	if err := t.indexRow(ctx, table, value); err != nil {
-		return row.Row{}, err
-	}
 	return project(table, value), nil
 }
 
@@ -376,9 +373,6 @@ func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID strin
 		return row.Row{}, err
 	}
 	t.rowChange(table, value, change.OperationUpdate, options.Metadata, related)
-	if err := t.indexRow(ctx, table, value); err != nil {
-		return row.Row{}, err
-	}
 	return project(table, value), nil
 }
 
@@ -404,9 +398,6 @@ func (t *tx) deleteRow(ctx context.Context, databaseName, tableName, rowID strin
 		return row.Row{}, err
 	}
 	t.rowChange(table, value, change.OperationDelete, options.Metadata, nil)
-	if err := t.unindex(ctx, "row", value.ID); err != nil {
-		return row.Row{}, err
-	}
 	return project(table, value), nil
 }
 
@@ -522,11 +513,6 @@ func (t *tx) restore(ctx context.Context, databaseName, tableName, rowID string,
 		return row.Row{}, err
 	}
 	t.rowChange(table, value, change.OperationRestore, options.Metadata, nil)
-	if value.State == row.StateLive {
-		if err := t.indexRow(ctx, table, value); err != nil {
-			return row.Row{}, err
-		}
-	}
 	return project(table, value), nil
 }
 

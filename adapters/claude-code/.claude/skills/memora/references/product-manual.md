@@ -23,7 +23,7 @@ Memora 是本地、面向 AI Agent 的个人语义数据库。AI 是逻辑层的
 Embedding 或原始 PDF/图片。外部资料只在宿主侧临时读取，经过覆盖、来源锚点和复核后，
 写入可维护的语义模块，并用 Source Receipt 表示已完成吸收。
 
-MSQL 是 Agent 的唯一正式数据库语言（对外说明时也可简称 SQL）。Agent 不直接操作 SQLite 页、WAL、vec0 内部或 Instance 文件。
+MSQL 是 Agent 的唯一正式数据库语言（对外说明时也可简称 SQL）。Agent 不直接操作 SQLite 页、WAL 内部或 Instance 文件。
 
 ## 整体架构
 
@@ -47,18 +47,18 @@ Memora daemon
   │    └─ Table Route：Branch → Leaf → 0..1 RowID
   ├─ Derived navigation indexes
   │    ├─ semantic Route index（逐层导航）
-  │    ├─ full-content lexical postings（候选位置）
-  │    └─ optional Route-only vector predictor（只作提示）
-  └─ SQLite + sqlite-vec
-       ├─ 普通表：Catalog、数据、history、语义配套、change、postings
-       ├─ vec0：Route / Row 语义向量（只作定位）
+  │    ├─ 关键词召回（内核已删，架构待规划）
+  │    └─ 向量召回（内核已删，架构待规划）
+  └─ SQLite
+       ├─ 普通表：Catalog、数据、history、语义配套、change
        ├─ 写串行，读看最后一次提交
        └─ WAL 与崩溃恢复由 SQLite 承担
 ```
 
-Route、lexical 和 vector 都是导航层。它们返回候选位置或 RowID，不能直接返回事实；
+Route 是导航层。它返回位置或 RowID，不能直接返回事实；
 最终答案必须来自 revision 匹配的 `SELECT`。一个 Leaf 最多挂一个活跃 Row，同一个
-Row 可以挂在多个语义 Leaf；正文只保存一份。
+Row 可以挂在多个语义 Leaf；正文只保存一份。关键词与向量召回是产品上的另外两条路，
+当前内核已删。
 
 模型 Provider 属于宿主，不属于 Memora。API key、base URL 和完整模型上下文不能写入
 数据库、日志、收据或 MSQL input。当前 Skill-first 产品不要求 Memora 自带模型；
@@ -70,7 +70,7 @@ Row 可以挂在多个语义 Leaf；正文只保存一份。
 检查安装 → 确认 daemon → 绑定授权 scope
   → SHOW CATALOG ATLAS（必要时继续 cursor）
   → 选 Database/Table 与 Schema
-  → SHOW ROUTES 根节点（语义索引是 Agent 主路；关键词 / 向量召回门待重写）
+  → SHOW ROUTES 根节点（语义索引是 Agent 主路；关键词 / 向量召回内核已删）
   → 每次只选一层并读取下一层
   → OPEN ROUTE（得到唯一 Row locator）
   → SELECT RowID + projection + revision

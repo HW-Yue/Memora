@@ -21,10 +21,9 @@ AI 负责语义层：
 
 - SQL Parser、类型和约束；
 - SQLite 表、索引、事务与恢复；
-- 词法 postings 表与 sqlite-vec；
 - 权限、审计和版本冲突。
 
-AI 不能操作 SQLite 页、offset、vec0 内部或数据库文件。
+AI 不能操作 SQLite 页、offset 或数据库文件。
 
 ## 核心体验
 

@@ -38,7 +38,7 @@ const (
 	ExitUsage   = 2
 )
 
-const helpText = `Memora is an AI-maintained local personal database (SQLite + sqlite-vec).
+const helpText = `Memora is an AI-maintained local personal database (SQLite).
 
 Usage:
   memora <command> [options]
@@ -59,7 +59,6 @@ Commands:
   mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
   query      Query MSQL through the local daemon
-  reindex    Rebuild lexical postings and the vector index
   reflect    Ingest an explicit conversation event
   schema     Execute a validated Schema Plan
   version    Show build version
@@ -153,8 +152,6 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runMaintain(args[1:], stdout, stderr, dependencies)
 	case "mcp":
 		return runMCP(args[1:], stdout, stderr, build, dependencies)
-	case "reindex":
-		return runReindex(args[1:], stdout, stderr, dependencies)
 	case "parse":
 		return runParse(args[1:], stdout, stderr, dependencies)
 	case "reflect":
@@ -985,17 +982,6 @@ func runDoctor(
 		return ExitFailure
 	}
 	return ExitOK
-}
-
-func runReindex(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
-	dataDir, code := daemonDataDir(args, stderr, dependencies)
-	if code != ExitOK {
-		return code
-	}
-	if err := daemon.Reindex(context.Background(), dataDir); err != nil {
-		return commandError(stderr, "reindex", err)
-	}
-	return writeText(stdout, stderr, "Memora reindex scheduled; vectors fill in the background\n")
 }
 
 func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {

@@ -1,8 +1,7 @@
 # Memora（SQLite 原型分支）
 
-> 分支 `rewrite/adr0011`：底层整体换成 **SQLite + sqlite-vec（vec0）**。
-> MSQL 语法、Skill 文档、CLI 命令、MCP 工具、Admin 前端都**与 main 保持一致**，
-> 只是它们下面不再是自研存储引擎。设计依据见
+> 分支 `rewrite/adr0011`：底层换成 **SQLite**。词法/向量召回内核已删，架构待规划。
+> 现役是 Catalog、数据表、语义树与 `SHOW ROUTES` / `SELECT`。设计依据见
 > [ADR-0011](./docs/decisions/0011-pure-storage-engine-tables-everything.md)。
 
 Memora 是一个给 AI Agent 用的本地个人数据库：Agent 自己建模、用 MSQL 读写，
@@ -10,7 +9,7 @@ Memora 是一个给 AI Agent 用的本地个人数据库：Agent 自己建模、
 
 ## 三分钟跑起来
 
-需要 Go 1.25 与 C 编译器（SQLite 与 sqlite-vec 通过 cgo 编译，macOS 自带 clang 即可）。
+需要 Go 1.25 与 C 编译器（SQLite 通过 cgo 编译，macOS 自带 clang 即可）。
 
 ```bash
 CGO_CFLAGS="-Wno-deprecated-declarations" go build -o bin/memora ./cmd/memora
@@ -32,25 +31,6 @@ bin/memora doctor
 可以用 `--data-dir /绝对路径` 指定。数据库就是其中的 `databases/memora.db`，
 任何 SQLite 工具都能打开查看。
 
-### 打开向量检索（可选）
-
-向量由 OpenAI 兼容的 `/v1/embeddings` 接口生成，存进 vec0：
-
-```bash
-export MEMORA_EMBEDDING_API_KEY=sk-...            # 或 OPENAI_API_KEY
-export MEMORA_EMBEDDING_BASE_URL=https://api.openai.com/v1   # 可换成任意兼容服务，如本地 Ollama
-export MEMORA_EMBEDDING_MODEL=text-embedding-3-small
-export MEMORA_EMBEDDING_DIMENSIONS=1536
-```
-
-设置后重启 daemon。已有数据补向量：
-
-```bash
-bin/memora reindex
-```
-
-不配置时一切照常工作：语义索引与关键词倒排不受影响；向量写入在后台补，召回门待重写。
-
 ## 第一次写入与查询
 
 所有请求都带授权（`authorization`）；写入还要带出处（`mutation`）。
@@ -69,7 +49,7 @@ bin/memora exec --input "{\"parameters\":{\"named\":{\"p\":\"All work knowledge\
 bin/memora exec --input "{\"parameters\":{\"named\":{\"parent\":\"<root route_id>\",\"name\":\"architecture\",\"kind\":\"leaf\",\"purpose\":\"Architecture decisions\"}},$M,$AUTH}" "CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose"
 ```
 
-Agent 的查询路径（语义索引是主路；关键词 / 向量召回门待重写）：
+Agent 的查询路径（语义索引是现役主路；关键词 / 向量召回内核已删）：
 
 ```text
 SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12
@@ -94,7 +74,7 @@ SELECT * FROM work.notes WHERE row_id = :row LIMIT 1   -- 只有 SELECT 是事�
 | `mutate` / `schema` | 执行带预检与验证的写入计划、Schema 计划 |
 | `assimilate` | 资料吸收的状态与回执 |
 | `reflect` / `feedback` / `maintain` | 对话检查点、反馈、语义健康维护 |
-| `mcp` / `admin` / `reindex` / `version` | 接入、控制台、重建索引 |
+| `mcp` / `admin` / `version` | 接入、控制台 |
 
 ## 存储里有什么
 
@@ -107,8 +87,6 @@ SELECT * FROM work.notes WHERE row_id = :row LIMIT 1   -- 只有 SELECT 是事�
 | `history_<table_id>` | 该表每一次原地修改的完整版本；`SHOW HISTORY`、`AS OF` 读这里 |
 | `routes_<table_id>` | 语义树节点：`parent_id` + `child_ids`，叶子挂 `row_id`；删除只置 `deprecated` 并记接替者 |
 | `mem_changes` | 已提交事务的变更信封（谁、为什么、改了什么） |
-| `mem_postings` | 词法倒排（召回门待重写） |
-| `mem_vectors`（vec0）+ `mem_vector_items` | 行与语义节点的向量 |
 | `mem_config` / `mem_traces` / `mem_kv` | 配置版本、路由轨迹、宿主工作流状态 |
 
 写入串行，读取总是看到最近一次提交，不做 MVCC。拆分/合并数据行时，旧行标记为
@@ -118,8 +96,8 @@ superseded 并记录 `successor_ids`；引用按需跟随接替者（懒更新�
 
 - 删除：自研 Page / B+ 树 / WAL / Buffer Pool / MVCC、Page Store 迁移链、实例升级与迁移、
   数据库打包与 Wiki 导出、评测与 benchmark 设施、`SHOW ROUTE CANDIDATES` /
-  `SHOW LEXICAL LOCATIONS` / `RELATE`。
-- 新增：`internal/sqlstore`（SQLite 后端）、`internal/embedding`（OpenAI 兼容嵌入）。
+  `SHOW LEXICAL LOCATIONS` / `RELATE`、词法/向量召回内核（postings、sqlite-vec、embedding、`REBUILD` / `reindex`）。
+- 新增：`internal/sqlstore`（SQLite 后端）。
 - 暂不提供：`export` / `pack` / `open` / `install` / `move` / `upgrade` / `service` 命令。
 
 ## 许可

@@ -37,6 +37,28 @@ func (t *tx) routeTableOf(ctx context.Context, routeID string) (string, error) {
 	return tableID, err
 }
 
+func (t *tx) tableRouteNodes(ctx context.Context, tableID string) ([]routeNode, error) {
+	rows, err := t.q().QueryContext(ctx, `SELECT body FROM `+routeTable(tableID)+` WHERE deprecated = 0`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	nodes := []routeNode{}
+	for rows.Next() {
+		var body string
+		if err := rows.Scan(&body); err != nil {
+			return nil, err
+		}
+		var node routeNode
+		if err := decodeJSON(body, &node); err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	sort.Slice(nodes, func(left, right int) bool { return nodes[left].ID < nodes[right].ID })
+	return nodes, rows.Err()
+}
+
 func (t *tx) readRoute(ctx context.Context, tableID, routeID string) (routeNode, error) {
 	var body string
 	err := t.q().QueryRowContext(ctx, `SELECT body FROM `+routeTable(tableID)+` WHERE route_id = ?`, routeID).Scan(&body)
@@ -103,10 +125,7 @@ func (t *tx) saveRoute(ctx context.Context, table catalog.Table, node routeNode,
 		ObjectKind: change.ObjectRouteNode, DatabaseID: table.DatabaseID, TableID: table.ID, ObjectID: node.ID,
 		Operation: operation, BeforeRevision: node.Revision - 1, AfterRevision: node.Revision,
 	}, change.Metadata{Actor: "system:router", Source: "msql", Reason: "Route mutation"})
-	if node.Deprecated {
-		return t.unindex(ctx, "route", node.ID)
-	}
-	return t.indexRoute(ctx, table, node)
+	return nil
 }
 
 // withPath fills the computed path by walking parent_id to the root.
@@ -470,8 +489,8 @@ func (t *tx) updateAliases(ctx context.Context, routeID string, aliases []string
 	return t.withPath(ctx, node)
 }
 
-// allNodes lists every live node. It is the input to lexical route candidates,
-// which rank the whole tree; the tree is metadata-sized.
+// allNodes lists every live node. Mutation Plan and scans need the whole tree;
+// the tree is metadata-sized.
 func (t *tx) allNodes(ctx context.Context) ([]router.Node, error) {
 	rows, err := t.q().QueryContext(ctx, `SELECT id FROM mem_tables WHERE role = 'data'`)
 	if err != nil {

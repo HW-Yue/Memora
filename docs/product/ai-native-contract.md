@@ -89,7 +89,7 @@ v0 的 AI 来自 Codex/Claude Code 等外部宿主；未来若增加内置 Runti
 引擎决定：
 
 - SQL 语法、类型、约束和 Policy；
-- 哪些表存在、角色标记，以及词法 postings / vec0 何时更新；
+- 哪些表存在、角色标记；召回索引的维护时机随架构规划；
 - 写串行与读看最后一次提交（无自研 MVCC）；
 - revision 冲突、引用完整性和输出预算执行；
 - Data Dictionary 版本。

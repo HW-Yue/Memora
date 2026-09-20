@@ -1,6 +1,7 @@
 # ADR-0008：当前 Row 与语义索引进入倒排索引
 
 状态：Accepted，2026-08-02；实现按 F170 以后的小 Feature 分阶段交付。
+2026-09-20：当时的 posting 内核已删，产品仍要关键词召回，架构待规划。
 
 ## 背景
 
@@ -63,7 +64,7 @@ phrase、stemming、停用词、snippet 和历史检索均需独立证据与 Fea
 ## 分阶段交付
 
 1. F170：冻结并实现全内容 lexical surface、token、posting 与 reference model；
-2. F171：持久化 posting 表（现役为 `mem_postings`）与 reopen/corruption 证据；
+2. F171：持久化 posting 表与 reopen/corruption 证据（该实现已于 2026-09-20 删除）；
 3. F172：把 live Row 写入、修改和删除接入同一 SQLite 事务；
 4. F173：把 Catalog、Route 和 rebuild 接入同一事务边界；
 5. F174：增加权限隔离、有界结果和 SQL 回表约束的 MSQL location 查询。

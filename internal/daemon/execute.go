@@ -319,12 +319,6 @@ func (handler *databaseHandler) Handle(
 	if request.Method == "route_trace.record" {
 		return handler.handleRouteTraceRecord(ctx, request)
 	}
-	if request.Method == "reindex" {
-		if err := handler.database.Reindex(ctx); err != nil {
-			return nil, err
-		}
-		return json.Marshal(struct{}{})
-	}
 	if request.Method != "msql.execute" {
 		return handleRequest(ctx, session, request)
 	}
@@ -715,19 +709,4 @@ func (handler *databaseHandler) Close() error {
 func (handler *databaseHandler) session(id string) (*msqlservice.Session, bool) {
 	session, err := handler.msql.OpenSession(id)
 	return session, err == nil
-}
-
-// Reindex rebuilds the lexical postings and refills the vector index.
-func Reindex(ctx context.Context, dataDir string) error {
-	path, err := SocketPath(dataDir)
-	if err != nil {
-		return err
-	}
-	client, err := ipc.Dial(ctx, path)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = client.Close() }()
-	var receipt struct{}
-	return client.Call(ctx, "reindex", nil, &receipt)
 }

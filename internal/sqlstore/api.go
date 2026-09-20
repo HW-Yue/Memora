@@ -174,7 +174,7 @@ func (o operations) Merge(ctx context.Context, databaseName, tableName string, s
 
 // Rows is the autocommit executor.Rows backed by db, together with the
 // optional surfaces the executor discovers by type assertion (configuration,
-// committed changes, route traces, lexical and vector search).
+// committed changes, route traces).
 type Rows struct {
 	operations
 	*DB
@@ -314,9 +314,6 @@ func (t *tx) reshape(ctx context.Context, databaseName, tableName string, source
 			kind = change.OperationMerge
 		}
 		t.rowChange(table, value, kind, metadata, successorIDs)
-		if err := t.unindex(ctx, "row", value.ID); err != nil {
-			return nil, err
-		}
 	}
 	return created, nil
 }

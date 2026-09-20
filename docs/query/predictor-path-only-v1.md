@@ -124,14 +124,11 @@
 **本设计不替这个决定拍板**，但要求实现前先定，且与
 `protocol/msql/protocol.go` 的支持窗口一起定。
 
-## 6. 顺带记两个缺陷（不在本设计范围内解决）
+## 6. 现役内核
 
-1. **vec0 混装 route 与 row，kind 过滤在 KNN 之后。** 见
-   [检索路线](./retrieval-routes-jev.md) 与执行计划 Q0。
-2. **向量 embedding 在提交后异步计算**，词法 postings 在事务内同步，
-   融合面必须显式声明可见性。
-
-现役实现是 `internal/sqlstore` + sqlite-vec，不是已删除的 `routevector` 包。
+召回内核已删。路径-only 契约在重写后仍然适用，见
+[查询形态](../product/query-model.md)。现役实现是 `internal/sqlstore` 的
+Catalog / 行 / 语义树。旧 vec0 混装与异步 embedding 不再是现役缺陷。
 
 ## 7. 分阶段与验证门
 

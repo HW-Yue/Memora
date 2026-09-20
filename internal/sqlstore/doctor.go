@@ -7,21 +7,18 @@ type Report struct {
 	Status        string `json:"status"`
 	Engine        string `json:"engine"`
 	SQLiteVersion string `json:"sqlite_version"`
-	VecVersion    string `json:"vec_version"`
 	Integrity     string `json:"integrity"`
 	Databases     int    `json:"databases"`
 	Tables        int    `json:"tables"`
 	Rows          int    `json:"rows"`
 	RouteNodes    int    `json:"route_nodes"`
 	Changes       int    `json:"changes"`
-	Vectors       int    `json:"vectors"`
-	VectorSearch  bool   `json:"vector_search"`
 }
 
 func (db *DB) Doctor(ctx context.Context) (Report, error) {
-	report := Report{Engine: "sqlite", VectorSearch: db.embedder != nil}
+	report := Report{Engine: "sqlite"}
 	err := db.view(ctx, func(t *tx) error {
-		if err := t.q().QueryRowContext(ctx, `SELECT sqlite_version(), vec_version()`).Scan(&report.SQLiteVersion, &report.VecVersion); err != nil {
+		if err := t.q().QueryRowContext(ctx, `SELECT sqlite_version()`).Scan(&report.SQLiteVersion); err != nil {
 			return err
 		}
 		if err := t.q().QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&report.Integrity); err != nil {
@@ -46,10 +43,7 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 				report.RouteNodes += nodes
 			}
 		}
-		if err := t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_changes`).Scan(&report.Changes); err != nil {
-			return err
-		}
-		return t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_vector_items`).Scan(&report.Vectors)
+		return t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_changes`).Scan(&report.Changes)
 	})
 	report.Status = "healthy"
 	if err != nil || report.Integrity != "ok" {

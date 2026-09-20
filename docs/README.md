@@ -3,7 +3,8 @@
 当前有效设计只在这里。历史规格、完成门、被取代方案一律在
 [`archive/`](./archive/README.md)，**不是设计依据，日常不要整篇读取**。
 
-持久化基座是 **SQLite + sqlite-vec**。Page、WAL、B+ Tree、自研恢复都不是本项目对象。
+持久化基座是 **SQLite**。Page、WAL、B+ Tree、自研恢复都不是本项目对象。
+词法/向量召回内核已删，架构待规划。
 
 ## 最高产品参考规范
 
@@ -21,15 +22,15 @@
 
 ## 派发工作
 
-- [执行计划](./planning/execution-plan.md) — **当前唯一工作队列**（Q0 vec0 隔离 → F224 → 召回面重写）
+- [执行计划](./planning/execution-plan.md) — **当前唯一工作队列**（召回内核已删，架构待规划）
 - [TDD 协议](./planning/feature-tdd-protocol.md) · [Feature 产品门](./planning/feature-product-gate.md)
 
 ## 现行内核
 
-- [存储层](./storage/README.md) — SQLite + sqlite-vec，一切都是普通表
+- [存储层](./storage/README.md) — SQLite 普通表；召回内核已删
 - [检索路线](./query/retrieval-routes-jev.md) · [jev 选择器](./query/jev-branch-selection.md)
 - [预测器只给路径](./query/predictor-path-only-v1.md) ·
-  [词法位置（MSQL 门已删）](./query/lexical-locations-v1.md)
+  [词法位置（门与内核均已删）](./query/lexical-locations-v1.md)
 - [MSQL](./query/msql.md) · [语义 Router](./query/semantic-routing.md)
 - [Route 配套表](./product/route-companion-table.md) ·
   [行生命周期](./product/row-lifecycle-successor.md) ·

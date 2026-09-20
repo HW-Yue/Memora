@@ -115,8 +115,6 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		}
 	case parser.matchWord("OPEN"):
 		statement, err = parser.parseOpenRoute()
-	case parser.matchWord("REBUILD"):
-		statement, err = parser.parseRebuildLexicalIndex()
 	case parser.matchWord("REVIEW"):
 		statement, err = parser.parseReviewAssimilation()
 	case parser.matchWord("SUBMIT"):
@@ -188,17 +186,6 @@ func (parser *parser) parseSubmitAssimilation() (ast.Statement, error) {
 	return ast.Statement{Kind: "SUBMIT_ASSIMILATION", Assimilation: &ast.AssimilationStatement{
 		Action: "SUBMIT", Database: database, Value: &value,
 	}}, nil
-}
-
-func (parser *parser) parseRebuildLexicalIndex() (ast.Statement, error) {
-	for _, word := range []string{"LEXICAL", "INDEX"} {
-		if _, err := parser.expectWord(word); err != nil {
-			return ast.Statement{}, err
-		}
-	}
-	return ast.Statement{
-		Kind: "REBUILD_LEXICAL_INDEX", Rebuild: &ast.RebuildStatement{Object: "LEXICAL_INDEX"},
-	}, nil
 }
 
 func transactionStatement(action string) ast.Statement {

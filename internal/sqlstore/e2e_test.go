@@ -3,8 +3,6 @@ package sqlstore_test
 import (
 	"context"
 	"encoding/json"
-	"hash/fnv"
-	"math"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,38 +14,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
-// bagOfWords is a deterministic embedder: each word lights one dimension, so
-// texts sharing words are near each other.
-type bagOfWords struct{}
-
-func (bagOfWords) Dimensions() int { return 256 }
-
-func (bagOfWords) Embed(_ context.Context, texts []string) ([][]float32, error) {
-	vectors := make([][]float32, len(texts))
-	for index, text := range texts {
-		vector := make([]float32, 256)
-		for _, word := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
-			return !(r >= 'a' && r <= 'z')
-		}) {
-			hash := fnv.New32a()
-			_, _ = hash.Write([]byte(word))
-			vector[hash.Sum32()%256]++
-		}
-		var norm float64
-		for _, value := range vector {
-			norm += float64(value * value)
-		}
-		if norm == 0 {
-			vector[0], norm = 1, 1
-		}
-		for i := range vector {
-			vector[i] /= float32(math.Sqrt(norm))
-		}
-		vectors[index] = vector
-	}
-	return vectors, nil
-}
-
 type harness struct {
 	t       *testing.T
 	db      *sqlstore.DB
@@ -57,7 +23,7 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	db, err := sqlstore.Open(filepath.Join(t.TempDir(), "memora.db"), sqlstore.Options{Embedder: bagOfWords{}})
+	db, err := sqlstore.Open(filepath.Join(t.TempDir(), "memora.db"), sqlstore.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +130,7 @@ func TestAgentJourneyOnSQLite(t *testing.T) {
 	mutation.ExpectedSchemaVersion = expected
 	mutation.RouteLeafIDs = []string{leafID}
 	inserted := h.run(`INSERT INTO work.notes (title, body) VALUES (:title, :body)`,
-		map[string]any{"title": "Use SQLite", "body": "SQLite with vec0 replaces the native engine"}, mutation)
+		map[string]any{"title": "Use SQLite", "body": "SQLite replaces the native engine"}, mutation)
 	if inserted.AffectedRows != 1 {
 		t.Fatalf("insert affected %d", inserted.AffectedRows)
 	}
@@ -191,13 +157,13 @@ func TestAgentJourneyOnSQLite(t *testing.T) {
 	// Update in place writes history; AS OF reads it back.
 	update := write("refine")
 	update.ExpectedRevision = 1
-	h.run(`UPDATE work.notes SET body = :body WHERE row_id = :row`, map[string]any{"body": "SQLite + vec0", "row": rowID}, update)
+	h.run(`UPDATE work.notes SET body = :body WHERE row_id = :row`, map[string]any{"body": "SQLite WAL", "row": rowID}, update)
 	historyRows := h.run(`SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 20`, map[string]any{"row": rowID}, executor.MutationOptions{})
 	if len(historyRows.Rows) != 2 {
 		t.Fatalf("history = %v", historyRows.Rows)
 	}
 	before := h.run(`SELECT * FROM work.notes AS OF REVISION 1 WHERE row_id = :row LIMIT 1`, map[string]any{"row": rowID}, executor.MutationOptions{})
-	if text(before.Rows[0]["body"]) != "SQLite with vec0 replaces the native engine" {
+	if text(before.Rows[0]["body"]) != "SQLite replaces the native engine" {
 		t.Fatalf("as of = %v", before.Rows)
 	}
 	stale := write("stale")
