@@ -166,6 +166,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [Route Branch Fan-out 策略](./query/route-branch-fanout-policy.md) — Database 自治目标与
   Agent 语义重构规则；「无默认值、可带理由超限」两条已被 F223 取代；
 - [检索质量链路](./query/retrieval-quality.md)
+- [检索路线与 jev 逐层选择](./query/retrieval-routes-jev.md) — 讨论稿；融合发现与逐层导航
+  两个正交内核面、路径带节点类型、三项前置缺陷；基于 `rewrite/adr0011` 的 SQLite 内核；
 - [投机 Route 预取](./query/speculative-route-prefetch.md)
 - [CPU 精确 Route Match](./query/cpu-exact-route-match-v1.md)
 - [Skill 写入](./agent/skill-write-v1.md)
