@@ -1,0 +1,735 @@
+# 执行计划
+
+状态：**已归档**（2026-09-20）。这是 2026-08 的引擎侧工作队列，依据自研
+Page/WAL/B+ Tree，代码已删除。**当前队列**见
+[执行计划](../../planning/execution-plan.md)。
+
+原状态：2026-08-22 重排生效，2026-09-02 清理与裁定。这是当时唯一的工作队列。
+战略层理由见[路线 v3](../../planning/roadmap-v3.md)，问题依据见[已知风险](../../development/known-risks.md)
+与[架构审计](../../development/architecture-audit-2026-08.md)。
+
+每项都是可独立派发的工单：有前置、改动范围、RED 和完成判据。
+**按编号顺序执行**，除非标注「可并行」。所有项仍须按
+[TDD 协议](../../planning/feature-tdd-protocol.md)逐项 Review 与授权后实现。
+
+## 这次重排改了什么
+
+上一版（2026-08-11）的 14 项工单**没有一项**来自三份最高准则——因为准则是
+2026-08-22 才确立的。本版把 **E 阶段（引擎侧准则符合性）** 插到最前，
+Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。理由见路线 v3。
+
+## 已就地定下的决定
+
+沿用上一版，并补充本轮已裁定的：
+
+| 决定 | 结论 | 依据 |
+| --- | --- | --- |
+| F185b 死锁怎么解 | **Policy v2**：保留三 arm 矩阵与身份校验，替换度量与阈值 | [F222](../../planning/f222-release-gate-policy-v2.md) |
+| 确定性指标阈值定多少 | **首轮不定**，`report` 模式产出分布后再冻结 | F222 |
+| 语义重建不对称性 | **先执行 B**（吸收 Agent 偏向多写），A 列为 A12 | [讨论稿](../../data/semantic-rebuild-asymmetry.md) |
+| 工作集淘汰策略 | v1 冻结为 LRU + Pinned 最后淘汰 | [F220](../../planning/f220-query-working-set.md) |
+| 行→叶子怎么反查 | **Row 加 `route_leaf_ids` 默认字段**，不另建结构；写入时挂载已确定 | [叶子直挂 RowID](../storage/leaf-rowid-v1.md) §5 |
+| 语义树路径存不存 | **不存，顺 `ParentID` 实时算**；树会被频繁重构，存下来必然过期 | 同上 §5.1 |
+| 向量检索 | **整条链删掉**（2026-09-02，`3ff6136`）；重做时必须是盘上索引 | S3 |
+| 记录文件的权威地位 | **聚簇转正**：页文件 + redo = 数据库本身，记录文件退出正确性路径 | E8、[记录文件的索引与权威](../storage/record-index-and-authority-v1.md) |
+| fork／merge／upgrade | **删掉**（2026-09-02，`27f8164`），无任何可达调用方 | 清理台账 |
+| 导出面对已删 Row 的过滤 | **可接受，只记不改**——契约是可达性，不是物理擦除 | 审计 §1.5 |
+| `EXPORT WIKI`／`INSTALL PACKAGE` | **改判为删**（2026-09-02）。原判「接线缺失」，但要接的那一头是已死的 legacy 栈，接 = 重写 | S1、清理台账 |
+
+---
+
+## E 阶段：引擎侧准则符合性（当前优先）
+
+出口判据：三份最高准则逐条可核对为「已做到」，
+[存储层总览「已知偏差」](../storage/README.md)清空 A–D 组。
+
+### E7. 物理索引:干掉全部常驻内存索引 ✅(阶段 1–4;阶段 5 由 E8 完成)
+
+- **前置**:无。B+ 树、treecommit、`objectindex`、游标模式**全部就绪**
+- **依据**:[架构原则](../../product/architecture-principles.md) **第四条**
+  (2026-08-31 新增)——一切都要有物理存储,启动只给钩子,查的时候按需去文件里取
+- **规格**:[物理索引](../storage/physical-index-v1.md)(5 阶段)
+- **为什么是队头**:`File.records` 命中第四条判据第 3 条(**没有容量、没有淘汰,
+  却是唯一的索引**),是四条准则里唯一一条**会随时间自动恶化**的违反。
+  它随「历史上写过多少次」增长,一行改 100 次就是 100 个永不释放的条目
+- **关键事实**:**要用的东西全都已经写好了**。`internal/store/objectindex`
+  是专为此造的通用聚簇对象树,包注释里写明目标是消除
+  「no process-resident directory of every record that ever existed」——
+  **写好、测好、零生产调用方**。与 `Roll`／`PublishCheckpoint`／`Reclaim`
+  当初的情况完全一样(那三个在 E0 阶段 4 接上,风险 7a 随之关闭)。
+  **这一项是接线与迁移,不是造新结构**
+- **`File.records` 干四件事**,四件都要有去处才删得掉:
+  ① `(kind,id)`→字节在哪 ② 拒绝重复 ID ③ 枚举某个 kind ④ 恢复时判归属。
+  只把读改成按偏移取**只解决了①**
+- **阶段**:1 接上 objects 树 ✅ → 2 Route 迁入 ✅ → 4 Catalog 正文进 objects 树 ✅
+  → 3 Relation 迁入、Configuration 改顺链读 ✅
+  → 5 `File.records` 删除 ✅(转 E8，2026-09-13 `887c652` 完成)
+- **进度**:generation 升到 v8、多一棵 objects 树;`objectindex` 支持有版本的
+  更新(compare-and-set)、按 kind 整体替换、以及组提交;Route、Relation 与
+  Catalog 正文都已迁入,读面全部切换,`nativecatalog.IndexedReader` 连记录文件
+  句柄都不再持有;Configuration 改成顺 revision 链点读
+- **阶段 4 与原设计不同**:正文放进 objects 树而不是 catalog 树自己的叶子,
+  理由见[物理索引](../storage/physical-index-v1.md)§4;主要是 catalog 树的
+  `readEntries` 每次写都把整棵树读进内存做 diff,正文塞进去正是要消灭的形状
+- **开库之后的活路径上已无全扫**。门是 `TestALiveWorkloadNeverSweepsTheRecordFile`：
+  四次写加九个读面，`Enumerations()` 增量为零。剩下的 `IDs()` 调用点全部不在
+  活路径上（无 generation 时的回退、重建路径、快照导出、零调用方），逐条核对见
+  [物理索引](../storage/physical-index-v1.md)「全表扫描清点」
+- **commit 序号已改为持久分配器**：原先每次写要扫两遍全库取最大值。
+  现在是 versions 树的 high-water，Relation 通过 commit floor 一起算进去；
+  分配失败烧掉一个号是可接受的（要求连续的是 change 序号，另一个分配器）
+- **顺带修出的两个既存漏报**:①`stageLeafMounts` 写的叶子侧 Route revision
+  从来没报给权威;②`reconcile` 重开时只重建 catalog 树,不管 objects 树、
+  也完全没有 Route 那一步。两个都是新的跨树检查抓出来的
+- **阶段 5 转出**:原本写的「游标 + 增量扫」只是两条路里的一条,
+  而选哪条取决于一个还没定的产品问题(要不要 compaction)。转 E8
+
+### E8. 记录文件退出正确性路径 ✅（2026-09-13，阶段 0–3 全完成）
+
+- **前置**：E7 阶段 1–4 ✅
+- **规格**：[记录文件的索引与权威](../storage/record-index-and-authority-v1.md)
+- **要解决的**（已量，每条 400 字节）：开库全扫 + 常驻表，20 万次历史写入 =
+  **1.34 s / 27.5 MiB**，两者都随「写过多少次」而不是「有多少数据」增长
+- **结果**（同样条件复量，`887c652`）：**53 µs / 1.4 KB**。两个数现在都不随
+  任何东西增长。门是 `TestOpeningDoesNotGrowWithHowOftenTheDatabaseWasWritten`
+- **原来的形态**：聚簇树（叶子存正文）**加**记录文件里一份完整重复——
+  数据存了两遍，开库还要全扫。三种形态里最差的一格
+- **2026-09-02 裁定：走聚簇转正。** 页文件（B+ 树）+ redo 日志 = 数据库本身，
+  记录文件在正确性上变成多余的；binlog + 快照是灾难恢复的底
+- **裁定的理由是空间回收，而它不是「多一个功能」的差别，是能不能做的差别**：
+  - 聚簇下删一行 = 叶子里少一条 entry，页过疏就地合并
+    （`btree/rebalance.go` `RebalanceMerged`），腾出的页 ID 进 redo
+    （`wal/tree_redo.go` `RetiredPageIDs`）、恢复时回放
+    （`tree_recovery.go:307`），之后 `Runtime.FreePageIDs()` 交回复用。
+    局部、增量、崩溃安全，**而且这条链今天就在五个索引包里跑着**；
+  - 只追加 + 偏移索引下删一行 = 一条墓碑，字节永远留着。要回收就得重写整个
+    文件，而**记录一移动，索引里每个偏移全部失效**，连带重建整个索引。
+    全局、停世界、不可增量，**且一行都还没写**
+- **原先并排的「非聚簇」那条路作废**（文档里保留作比较依据，不是备选项）。
+  之前把它当成「改动小可逆」的稳妥选项，是把「放弃 compaction」记成了限制，
+  实际是把已经实现的日常动作降级成一个不存在的停世界批处理
+- **代价照记，不藏**（做完之后逐条复核）：
+  - ① 失去「树坏了整个删掉重建」这层保险。**如期发生**，底换成了阶段 0 那条链；
+  - ② generation 升版语义改掉。**如期发生**，比预计小——改成拒绝打开加一条显式
+    命令，而不是写就地迁移；
+  - ③ 不可逆。**如期**；
+  - ④ **计划里没写到的一条**：group commit 与归档标记之间崩溃，那笔变更的
+    change 记录留在被丢弃的 prepare 段里，该 revision 取不到归属信息（History
+    退到 legacy 记录）。change index 有自己的 WAL，进不了同一个组提交，所以这个
+    窗口是结构性的。已由 `Authority.ArchiveError()` 报出来；
+  - ⑤ **另一条**：跨文件的重复 ID 拒绝没了——那个检查就是被删掉的那张 map，
+    没有便宜版本。事务内的拒绝保留，跨库身份改由树的 compare-and-set 管，
+    它既是提交点又是原子的，而原先那个「读一下再拒绝」从来不是
+- **阶段 0（硬门）✅**（`988ab7e`）：整个 `databases` 目录删掉——记录文件与
+  页文件一起，只留 binlog 且从副本回放——恢复后逻辑哈希逐字一致，并且能通过
+  重建出来的树把 Row 读出来。门是 `internal/disasterrecovery` 四个测试。
+  **只删页文件证明不了什么**：那样兜底的还是记录文件，而那正是转正要放弃的
+  东西，所以门按「库整个没了」来验
+- **阶段 0 推翻了本计划写的一件事**：全量那一半**不是** `nativesnapshot`。
+  逻辑导入走正常写路径重放历史，变更序号从 1 重新分配、目录对象只留当前版本；
+  binlog 里带的是当时真正写下的记录 ID 与序号。两边接不上——基底停在变更 2，
+  日志从 5 续，`changeindex` 的 `Bootstrap` 拒绝这个洞。这是两种格式的性质，
+  不是能修的 bug，已钉成 `TestALogicalSnapshotIsNotARollforwardBase`。
+  逻辑快照仍是迁移与跨引擎比对的正确工具，**只是不能当前滚的基底**
+- **全量改成记录日志的字节前缀**：日志只追加，提交边界以下的字节此后不再变，
+  所以备份可以在库开着、还在写的时候直接取，拿到的就是日志的一个前缀。
+  转正之后同一条链换成页文件的物理备份，形状不变（InnoDB 物理备份 + binlog）
+- **阶段 1 ✅**（`6c45f10`）：一次写现在是「记录日志 prepare → 三棵树一次 WAL
+  提交 ← 提交点 → 记录日志写提交标记」。换掉的是一个**说不清的状态**：原先树
+  那一步失败会留下「一个存储里发生了、另一个里没发生」，报 ErrOutcomeUnknown、
+  把库围起来、下次开库重读整个记录日志把树顶上去。现在树那一步失败就是写失败。
+  开库时的 reconcile 整轮删除——它有害而不只是多余：树比归档新是故障后的**正常**
+  形态，推回去就是丢掉一次已提交的写，这一条有测试为证
+- **阶段 2 ✅**（`708df8b`）：旧 generation 开库报 `ErrUpgradeRequired` 并写明
+  要跑哪条命令；重建保留为显式一步 `memora upgrade --pages --yes`（守护进程必须
+  停）。静默 COW 重建同时是两件事——一次迁移，和一次「读完整个记录日志来决定库里
+  有什么」；保留前者、拒绝后者
+- **阶段 3 ✅**（`887c652`）：`File.records` 与开库全扫删除。开库只读文件头加一个
+  16 字节的 commit hint。尾巴仍然要切（崩溃留下的半条记录一旦被埋进中间，之后每次
+  读都会停在那里），但从 hint 往前走一小段而不是从头读完；hint 不单独 sync、
+  可过期、可丢失，丢了就退回整条走一遍
+- **顺带订正**：第四条准则里「记录文件要有它自己的持久索引」这个结论没错，
+  错的是它那句循环依赖的论证——那个圈只在索引树住在 generation 里面时才存在
+
+### E9. 内存索引全删,改成盘上索引 ← **进行中**
+
+- **前置**:E7 阶段 1–4 ✅
+- **裁定(2026-09-02)**:**进程里的常驻索引一个不留**,点查一律走盘上的 B+ 树。
+  这不是 E8 的一部分,**E8 的硬门不挡它**——它只动内存结构与读写路径,
+  不动盘上格式、不动权威归属、可逆
+
+**先量再改。** 拆开量过之后,「开库全扫」与「全量常驻」是**两件代价完全不同的事**,
+必须分开处理:
+
+| 记录条数 | 全量开库 | 常驻堆 | 只走文件不建表 | 建表占多少时间 |
+| --- | --- | --- | --- | --- |
+| 50,000 | 255 ms | 4.3 MiB | 264 ms | **~0%** |
+| 200,000 | 1.215 s | 17.1 MiB | 1.182 s | **3%** |
+
+- **常驻那 17 MiB,几乎不花时间,只花内存** → 删掉是净赚,**本项负责**;
+- **开库那 1.2 秒,全在走文件本身**(每条读 header、读 ID、读完整 payload、
+  算 CRC32)。崩溃尾巴目前只能靠走到底找到 → **绕不开,归 E8**。
+
+**第二个测量决定了做法。** 给 `File.Get` 加临时计数器,跑八个读面
+(Get／ListPage／AsOfRevision／HistoryPage／ListRouterChildren／ListRouterNodes／
+DescribeTable／SnapshotCatalog),记录文件只被点读了**一个 kind**:
+
+```
+读面点读记录文件 kind=CommittedChange  2 次
+```
+
+Row、History、Route、Relation、Database、Table、Column **一次都没有**——
+正文都在树里了,`File.records` 里那些条目在读路径上是**纯废重**。
+所以剩下的活只针对还没搬家的三个 kind,不是重造一套索引。
+
+**阶段**(编号即执行顺序;第 5 项因为按请求付费,实际排在 2 之前):
+
+1. **枚举不再依赖常驻表** ✅ ——`IDs`／`Records` 改成按需走一遍日志
+   (`walkCommitted`),只读 header 与 ID、不读 payload、不重算 CRC
+   (Open 已经验过,两个调用方随后都会经 `Get` 再验一次)。
+   门:`TestEnumerationReadsTheFileNotAResidentIndex` 把 `f.records` 清空后
+   两个枚举面仍答对;`TestEnumerationDropsAnUncommittedTail` 盯住未提交尾巴;
+2. **点读不再依赖常驻表** ← 当前。给还在被点读的 kind 找盘上的家,
+   **办法是搬进已有的树,不是给记录文件另建一套偏移索引**——后者正是
+   [记录文件的索引与权威](../storage/record-index-and-authority-v1.md)§5 否掉的路 B:
+   - `CommittedChange` 正文进 changeindex 树叶子(今天叶子只存 Locator,
+     正文仍 `tree.source.Get(sequence)` 回记录文件);
+   - `Configuration` 正文进 objects 树(照 E7 阶段 4 的做法);
+   - `SnapshotMeta` 只有导出／导入两处用,非活路径,走按需扫;
+   - **迁移路径改走物理地址**:`Records()` 走一遍时把 `Location` 一起带出来,
+     之后按偏移读(`File.Location`／`ReadAtLocation`,当初就是为此留的),
+     否则「按需扫的 `Get`」会让迁移变成 O(n²);
+3. **写入侧的重复 ID 拒绝不再依赖常驻表**。`Put`／`Transaction.Put`／`Commit`
+   三处都查 `f.records`;树里已有 16 处 `ErrConflict` 做同一件事,
+   记录文件那层是重复的防御,收敛到树侧;
+4. **删掉 `File.records` 字段本身**。此时 `scan()` 只剩崩溃尾巴一件事,
+   常驻归零。门:开 5 万条记录的库,常驻堆增量 < 1 MiB,且**不随记录数增长**;
+5. **`nativekv` 的那张表**(`nativekv.go:43`)——辅助文件被整个解码进
+   `values map[string]value`。同样是无上界常驻,**之前漏记了**。
+   分两半,**因为它比记录文件那张更急**:
+   - **5a. 每事务的全量深拷贝** ✅ ——`Begin` 原先对**每一个事务**
+     (只读事务也算)把整张表连同每条 payload 深拷贝一份当快照。
+     记录文件那张是开库一次性的,这张是**每个事务一次**,而
+     security、hostinput、routetrace 每次调用都 `Begin`,routetrace 还随
+     使用无限增长。**实测 4000 条时每个 `Begin` 分配 1.81 MB**。
+     改成写时复制:已发布的 map 视为不可变,`Begin` 按引用拿,`Commit` 造新
+     map 再换上去。**1,810,925 字节 → 96 字节,且不随条目数变化。**
+     `Scan` 顺带不再先合并出第三张 map。
+     隔离性是这个快照存在的理由,也是这个改动最可能弄坏的东西,
+     所以配了 `TestAnOpenTransactionDoesNotSeeALaterCommit`:
+     在提交前开的事务,读改过的键、新增的键、删掉的键,三种都不能串;
+   - **5b. 那张常驻表本身** ✅ ——`values` 整个删掉,committed 状态搬进
+     日志旁边的盘上 B+ 树(`wal` + `page` + `treecommit` + `objectindex`,
+     就是 `openTreeWALTree` 那三行配方)。
+     **日志仍是权威**,树是派生的,树里存一个「已索引到日志第几个字节」的标记:
+     正常开库就是两个数字相等、什么都不读;崩在「日志已提交、树还没提交」
+     之间,下次开库只重放那一小段尾巴。删掉整个索引目录是同一件事的极端,
+     必须从日志重建而不是丢数据(有门)
+   - **归因是分层量的**,因为底下的记录日志还有它自己那张 `File.records`:
+
+     | | `nativestore.Open` 自己 | 整个 `Open` | **本包自己那份** |
+     | --- | --- | --- | --- |
+     | 200 条 | 23 KB | 93 KB | **55,384 字节** |
+     | 6000 条 | **1,025,728 字节** | 1,071,640 字节 | **55,256 字节** |
+
+     30 倍数据量,本包自己那份**完全持平**。剩下那 1.03 MB 是
+     `File.records`,归 E9 阶段 2–4。门写成「整个 `Open` 减去
+     `nativestore.Open`」而不是断言总量:把日志那张表算到这个包头上,
+     会让门为一件它既不拥有也修不了的事失败
+   - **隔离性降级了,这一条必须记明白**。老的 map 靠在 `Begin` 时整份拷贝
+     换来「事务从头到尾看到同一份状态」。影子分页的树**没东西可拷**——
+     一次提交 `Retired` 的页下一次就能 `Reused`,`treecommit` 没有读者登记表,
+     所以攥着旧根不等于攥着快照。**没有那张表,就只能二选一**:
+     要么靠拷贝换稳定快照(那正是要删的代价),要么不拷贝、读到运行那一刻的状态。
+     **本项选后者**:每个操作独占一次锁,所以绝不会读到被回收的页;
+     但同一个事务里的两次读**可能跨过别人的一次提交**(读已提交,不是快照)。
+     事务仍然总能看见自己未提交的写,提交仍然是全有或全无
+   - **为什么不能用「事务持锁到结束」把强保证换回来**:`store.Tx` 的契约
+     明确允许调用方把事务握在手里跨越其他工作——MSQL 的 `BEGIN`/`COMMIT`
+     就是这么用的。第一次做 5b 时我把锁的持有时间绑到了事务生命周期,
+     `TestExecuteHandlerKeepsTransactionPerConnection...`(`BEGIN; INSERT`
+     握着事务跨 IPC,紧接着第二个请求 `SELECT` 要再开一个)当场死等。
+     **我第二次做的时候又绑了一遍、又撞了同一堵墙**,这次改对了
+   - **值大小的上限也得处理**。叶子记录卡在 8 KiB(`objectindex` 拒绝更大的,
+     因为一条记录与邻居共享一个 16 KiB 页,而溢出页还没做——存储总览偏差 13)。
+     **老的 map 没有这个限制**,所以直接搬会让本来存得下的值开始失败:
+     遗留 Catalog 把整份快照存在一个键下,普通 schema 就越过 8 KiB
+     (`TestCatalogMetadataReadAppliesDefaultAndMaximumLimit` 当场变红),
+     route trace 更是没有上界。
+     **做法是把超限的值切片存进自己的 kind**(`chunkKind`),
+     所以枚举条目的遍历永远看不见它们。门覆盖 40 KiB 的值、
+     改小再改大(不能读到上一版的残片)、`Scan` 也要拼回来、以及重开后仍完整
+   - **要把快照换回来**,正路是给 `treecommit` 一张读者登记表(LMDB 那种),
+     让旧根在有读者时不被回收。那是独立一项,先出规格
+
+### E10. 树层开库不再全扫页文件 ✅
+
+- **前置**:无
+- **起因**:做 E9 时量到的。我此前跟产品侧说过「树层开库已经是 InnoDB 的形状:
+  只读一页 + 重放 redo + 按需取页」——**那句话是错的**。我当时只查了
+  `page.Open`,没查 `treecommit.OpenRuntime`
+- **缺陷**:`scanFreePages`(`treecommit/runtime.go:177`)在每次开树时
+  **从 `FirstDataPageID` 读到 `NextPageID`,一页不落**,只为重建可复用页集合。
+  这是**引擎里每一棵树都在付的全表扫描**——四棵 generation 树、change index、
+  以及任何建在 Runtime 上的东西,代价随**页文件大小**而不是数据量增长
+- **而且通常纯属白干**:只增不删的树一个空闲页都没有,于是它读完整个文件
+  建出一个空集合。实测 1785 页时占开树总耗时的 **34%**(1.06 s → 0.70 s)
+- **裁定**:可复用页集合是树的状态,**应该跟其余状态一起写在控制页里**,
+  而不是每次开库靠读遍全文件重新发现
+- **做法**:控制页格式升到 v3。空闲页号顺序存在 40 字节定长头之后,
+  `MaxFreePageIDs` = (16 KiB − 64 − 40) / 8 = **2035 个**。
+  `materializeBatch` 每次提交算出「原集合 − Reused + Retired」写进控制页;
+  控制页本来就走 WAL 的 root 记录,所以**恢复自动跟着走,没有新的持久化路径**
+- **装不下怎么办**:**记为"未记录",不截断**。丢 ID 会让那些页永远没人交回来,
+  文件明明拥有的空间却再也用不上——那正是要消灭的东西。
+  未记录就回退到老的扫描:慢,但一页都不会丢
+- **老库怎么办**:v2 控制页照常解码,报告集合"未记录",于是**扫描一次**;
+  下一次提交就写成 v3,之后再也不扫。没有 generation 升版,没有迁移步骤
+- **`State` 保持可比较**:两处 `!=` 直接比 State,所以空闲表**不进 State**,
+  走 `EncodeWithFreePages`／`DecodeFreePages` 两个新接口
+- **门**:`TestOpeningATreeDoesNotReadEveryPage` 数的是**页读次数**不是耗时
+  ——次数才是"不是扫描"的定义。224 页的树,**重开从读 566 页降到读 2 页**
+  (夹具照生产的样子先 roll／checkpoint／reclaim,否则 WAL 重放会盖住被测的量)
+- **顺带**:`treecontrol` 补了四组测试——往返、溢出记为未记录、v2 兼容、
+  以及集合与状态不一致时拒绝
+
+### E0. 共享循环 redo log ✅
+
+- **前置**：无。**五个阶段全部完成。**
+- **规格**：[共享循环 redo log](../storage/shared-circular-redo-v1.md)（5 阶段）
+- **进度**：阶段 1（一套共享 redo log）、阶段 2（跨树提交合并为一次 WAL 提交）
+  **已完成**；阶段 3 核实后**无可拆**——phase checkpoint 是纯测试接缝，
+  poison 补的是「原生文件 ↔ generation」这个阶段 2 没动的事务域（收口在 E4／E6）；
+  阶段 4（barrier + checkpoint + 回收接线）**已完成**，
+  [已知风险](../../development/known-risks.md) 7a 随之关闭；
+  阶段 5（固定环）**已完成**：环的单元是 Segment 文件而不是单文件字节偏移——
+  性质相同而不必重写恢复；容量检查在写之前、按「已用」判，所以最多超出一个
+  事务；容量不写进文件，换容量重开没有迁移。change index 那套日志一并上环。
+  三处裁定与「背压在哪一层证明」见规格
+- **依据**：[已知风险](../../development/known-risks.md) 7a、
+  [架构原则](../../product/architecture-principles.md) §1、写入形态 §3／§5／§6
+- **改动**：`internal/pagestoremigration/{generation,manifest,authority}.go`、
+  `internal/store/treecommit/runtime.go`（接受共享 log + 多 space）、
+  阶段 5 才动 `internal/store/wal` 的物理层
+- **RED**：
+  1. 证明段**没有容量上限也不自动滚**，`LatestCheckpoint()` 恒为 false；
+  2. **证明跨树不原子**——在 versions／fulltext／current 三次写入之间注入崩溃，
+     重开后三棵树不一致。这条是本项的核心证据
+- **完成**：一个 generation 一套 redo log；跨树提交是**一次** WAL 提交；
+  四个 phase checkpoint 与 poison 补偿拆除；固定环 + 双指针，
+  **持续写入下磁盘恒定不涨**，写满时背压报错而不是覆盖
+- **恢复是硬门**：每一阶段都要验「重开后逐字一致」。改错是静默的数据丢失
+
+**为什么从「接段式回收」改成这个**（2026-08-22）：
+
+- 段式回收把磁盘占用**交给 checkpoint 策略去防**；固定环让它**结构上不可能涨**。
+  循环不替代 checkpoint——腾出环空间的正是它——但把**静默的无限增长**
+  换成**响亮的背压**；
+- 查证发现日志层**本来就支持多 space**（`Record.SpaceID`，
+  `RecoverSegmentSet(spaces map)`，`recovery.go:197` 按 space 路由），
+  只是 `OpenRuntime` 传了个单条目 map（`runtime.go:61`）。
+  「每棵树一套」是接线选择，不是限制；
+- **顺带堵上一个更要紧的洞**：`PublishMutation` 现在往三套 WAL 各提交一次，
+  崩在中间三棵树就不一致——那四个 phase checkpoint 与 poison 标记正是在补这个。
+  一套日志 = 一次提交 = 跨树原子，补丁可整个拿掉；
+- 固定大小 × 每棵树一套 = 磁盘正比于树数，而每表一棵树后正比于表数。
+  **必须先合并，环才是全局硬上界**
+
+### E1. 候选预测器只给路径 ✅
+
+- **前置**：无。可与 E0 并行
+- **规格**：[候选预测器只给路径](../../query/predictor-path-only-v1.md)（4 阶段）
+- **改动**：`internal/discovery/frame.go`、`internal/routelexical/search.go`、
+  `internal/msql/executor/{route_candidates,lexical_locations}.go`、
+  `internal/result/envelope.go`
+- **RED**：证明两个语句当前返回 score／reason／matched_fields 且**不返回路径**
+- **完成**：只返回 `database` + `table` + 完整语义树路径；排序仍在内部做但不外露；
+  对外按路径字典序稳定输出
+- **已定**：旧字段**删掉**、版本号提到 `memora.discovery-frame/v2`，不保留不填——
+  永远为空的字段是个会被下游当真的谎
+- **进度**：**四个阶段全部完成**。阶段 4 在 E3 之后落地：Row 自带
+  `route_leaf_ids`，所以「行 → 叶子」是一次点读加一次映射，不是反查。
+  `row` 命中带 `paths`（每个叶子一条），`column` 带「Table 根路径 + 列名」；
+  挂在零个叶子上的 Row、或所属 Table 没有 Route 根的 Column，
+  **不给字段而不是给空值**——空列表读起来像「在根上」。三处裁定见规格 §7
+- **为什么第二**：设计已写、小而独立，一次拿下一整条准则；
+  `routelexical` 甚至已经读到路径又丢掉（`search.go:281` 读、`:285` 丢）
+
+### E2. 派生索引解耦 ✅
+
+- **前置**：无。但**排在 E3–E6 之前**
+- **依据**：[架构原则](../../product/architecture-principles.md) §1；审计 §2.1、§2.2
+- **改动**：`internal/pagestoremigration/authority.go`（`PublishMutation`）、
+  `apply.go`（投影时机）
+- **模板**：`authorityChangeTree.reconcile`（`change_index.go:269`）——
+  变更日志驱动、游标推进、批量、读时惰性触发。**照它做，不另起炉灶**
+- **RED**：证明一次 INSERT 跨两个无原子性事务域，且 fulltext 失败会以两种形态出现
+  （投影失败 ⇒ 写入被拒；提交后索引失败 ⇒ 发布中毒）
+- **完成**：`PublishMutation` 不再同批写 fulltext；四个 phase checkpoint 相应减少；
+  写入事务只写自己的数据
+- **已定**：读一致性不成问题——追平**跟在写入后面立刻跑**（在它的事务之外），
+  读路径再兜一次底，所以没有可见滞后。「解耦」解的是事务，不是时机
+- **已定**：游标存在 fulltext 树自己里（第四个 key 前缀 `keyKindMetadata`），
+  与文档同事务落盘。备选是 `treecontrol`（为一棵树改所有树的页格式）或单独
+  文件（放 generation 里撞内容摘要校验，放外面就没法原子）
+- **完成（2026-08-25）**：`PublishMutation` 与 `publishCatalog` 都不再写 fulltext；
+  追平由 `fulltext_catchup.go` 按变更日志增量做
+- **为什么在结构改动之前**：先做它，后面每一项要动的树就少一棵
+
+### E3. 语义索引叶子直挂 RowID ✅
+
+- **前置**：E2
+- **规格**：[叶子直挂 RowID](../storage/leaf-rowid-v1.md)（7 阶段）
+- **改动**：`internal/router/model.go`（Node 加 RowID）、`internal/row/model.go`
+  （Row 加 `route_leaf_ids`）、`internal/nativerouter/repository.go`（编解码）、
+  以及约 310 处 membership 引用散在 21 个非测试文件
+- **RED**：证明 `router.Node` 上没有能放 RowID 的字段，叶子→行必须另查一处
+- **完成**：membership 两个 object kind（9／13）**退役**（编号不回收、
+  `ObjectKindMax` 不下调，理由见规格 §7.1）；变更日志 `route_membership` entry
+  并入 `route_node`；三类语义健康问题
+  （`stale_membership`／`invalid_membership_scope`／`multi_row_leaf`）**结构性消失**
+- **对外可见的能力减少**：语义健康少三项，外加 Route revision 会被数据写入推高；
+  两条都已记入[待发布的对外可见变化](../../development/release-notes-pending.md)
+- **阶段 7 的结论：不删 `Node.Path`**（量测见规格 §7.3）。量测顺带挖出真正的
+  瓶颈——`nativerouter.Get` 枚举整库找最新 revision，一页 SELECT 结果就是一页
+  全库扫描；改成有界点探后 1555 节点的树从 247 µs 降到 1.03 µs 且不再随树长。
+  删 `Path` 的原定收益（RENAME 只写一个节点）不成立：全文／向量／词法三个
+  派生索引也物化了同一条路径
+
+### E3.5. 共享 buffer pool ✅
+
+- **前置**：无。但**是 E4／E5 的硬前置**
+- **依据**：[每表一棵树](../storage/per-table-tree-v1.md) §5.5
+- **现状**：与 InnoDB 不同，这里**每棵树一个 buffer pool**——`buffer.New` 全仓只有
+  一个调用点（`treecommit/runtime.go:90`，在 `OpenRuntime` 内），每棵树调一次；
+  loader 闭包把 `SpaceID` 写死，结构上无法共享
+- **为什么是硬前置**：E4/E5 让树数正比于表数，于是内存变成 **16 MiB/表**
+  （每表业务树 + history 树）。10 张表 160 MiB，100 张表 1.6 GB——
+  「常驻内存有上界」这条准则会被直接推翻
+- **RED**：证明开 N 棵树就有 N 个 pool、常驻内存随树数线性增长
+- **已完成**：`buffer.Router` 按 `SpaceID` 分派 loader 与 writer；
+  generation 开一个 pool 服务所有树，容量是一份总量。
+  `RuntimeConfig.Pool` 给了就用共享的、不给就自建，单树调用方不受影响。
+  change index 那棵树仍自带 pool——它一棵、固定、不随表数增长
+
+### E4. 每表一棵独立 B+ 树 + RowID 按表递增 ✅
+
+- **前置**：E2、**E3.5**
+- **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 1–3
+- **已完成**：generation 升 v5，固定树三棵 + 每表一棵；聚簇键收缩为 `row_id`；
+  表树里一个保留键做 RowID 计数器，与拿号的行同一次提交落盘
+- **两处订正**（见规格 §5.6）：
+  1. **RowID 保持全局唯一**，号段前带表的 space。原生存储按裸 RowID 给行记录
+     做键，两张表都从 1 起会撞车——RED 抓到的。改那个记录身份是对真相之源
+     文件的迁移，原生文件没有 COW 重建路径，得单独出设计；
+  2. 计数器参数是**下界**不是赋值，否则改老行的写入全被拒
+- **没做**：`IDSource` 的 8 处重复定义没有收敛。它们服务的是不同对象
+  （catalog／relation／router／row 各自的 ID），只有 row 那一个需要表参数；
+  把 8 个同名接口并成一个是审计里「同一个小接口抄很多遍」的独立条目，
+  不该塞进本项
+
+### E5. history 独立成表 ✅
+
+- **前置**：E4 ✅（同一套机制，**分开做等于写两遍**）
+- **规格**：[每表一棵树](../storage/per-table-tree-v1.md) 阶段 4–6，
+  落地形态与裁定见该文 §5.7、§5.8
+- **已完成**：每表一棵 history 树（键 `(row_id, revision)`，读完整历史一次
+  范围扫）；行版本按表与共享 `versions` 树在同一 WAL 事务里双写；
+  **归属收敛到变更日志一处**——四条普通写入路径与 RESTORE 都记在那里，
+  第 6 号 kind 无生产写入方；版本树叶子里那份从没人读的归属拷贝删掉
+- **裁定一**：**不加 `Row.history_id`**——history 键里的序号就是行自己的
+  `Revision`，加上它是把同一个事实存两遍，而且会漂移
+- **裁定二**：history 树就是按表开一个 `rowversionindex` 实例，不另造一套
+- **裁定三**：RESTORE 把重放的归属记成变更封套（一版本一条，序号另行分配，
+  不借用快照的提交序号）
+- **原计划两处不成立**：
+  1. **不需要 generation 升版**——归属长度占定长头的固定槽位，现在恒写 0，
+     老叶子照数照跳，是字段安静下来而不是格式变更；
+  2. **第 6 号 kind 不做硬拒绝**（kind 9／13 是硬拒的）——硬拒之后
+     `internal/store/native` 之外没人造得出这种记录，「更早的库仍报得出归属」
+     这条契约就无法被测。测不了的契约就是会坏的契约
+- **`Row.ChangeSequence` 裁定**：**保留并升格**。计划原本预期它回退，
+  实际它现在是归属 join 的唯一钥匙
+- **回归**：每阶段重跑「已删除 Row 从任何面都拿不到」
+  （`internal/daemon/f227_row_relation_archive_test.go`）——已跑，全绿
+
+### E6. 三份日志与恢复 ✅（阶段 3 裁定不做，理由充分）
+
+- **前置**：E4 ✅、E5 ✅
+- **规格**：[三份日志](../storage/three-logs-v1.md)（4 阶段，2026-08-30 编写）
+- **进度**：阶段 1（binlog 独立成日志）**已完成**——挂在记录存储的提交点上
+  （`Transaction.Commit` 的记录 sync 之后、COMMIT 记录之前），一个钩子覆盖
+  九处封套写入方，构造上不可能与记录文件不一致。
+  阶段 2（两阶段与 binlog 对齐）**已完成**——核实后**不需要新增标记**，
+  记录文件的成帧本来就是两阶段，两个门分别测「帧没写成」与「帧写成了但
+  提交标记没写」两侧的窗口。阶段 3 **已裁定不做**（见下）。**剩阶段 4**
+- **阶段 2 的裁定**：**redo WAL 不参与这个协议**。它提交的是 generation
+  那几棵**派生**树，而派生树与记录文件不一致时本来就会被重建。
+  把它拉进恢复协议，等于让一个可重建的结构参与判定「什么算已提交」，
+  与「派生索引可重建」相反。它自己那份跨树原子性仍然需要，也已经有了
+- **阶段 4 已完成（2026-08-31）**：**PITR／复制／备份进范围**，规格 §6 的
+  「明确不做」随之改判，于是 1.9 倍磁盘买到了东西——一份能单独运走的、
+  完整的变更序列，而那正是记录文件给不了的。binlog 接进
+  `nativemigration.OpenDefault`（生产开库的唯一入口）。
+  量到的数：300 行写入后记录文件 327,623 字节、binlog 293,869 字节
+- **闸门测的是可分离本身**：把记录文件**删掉**，只凭日志重建，
+  再逐条比对 kind／ID／schema 版本／长度与**正文字节**。
+  已验证会咬（摘掉 attach，重建出 0 条）
+- **滚动与保留已落地**：按大小滚成序号文件（默认段 16 MiB），
+  **保留窗口默认 30 天**，与 MySQL 8.0 的 `binlog_expire_logs_seconds` 一致。
+  这与风险 7a 不是同一条判据——redo 的旧记录在 checkpoint 之后是浪费，
+  binlog 的旧记录**就是它存在的理由**，所以是「留够、但有界」
+- **裁剪只删前缀**：从最老往新走，碰到第一个还在窗口内的就停。
+  日志变短 = 能回溯的时间变少，那正是窗口的意思；
+  而从中间挖掉一个文件，重放出来的是一个**从未存在过的库**。
+  有专门的门钉这一条，且已验证会咬
+- **必须与快照保留对齐**：窗口 30 天意味着**比它更老的基准快照再也推不上来**，
+  留着一份恢复不了的快照比不留更糟——它看起来像退路，实际不是
+- **替代路线（仍然对，但现在是优化不是前置）**：binlog 存字节、
+  记录文件退成 `(kind,id) → 偏移` 索引，一份数据两种访问。
+  它是对存储层中心文件的重写，**要自己的设计文档与分阶段**
+- **阶段 1 的发现**：两阶段标记在记录文件里**已经存在**——
+  `objectKindTransactionBegin` 是 prepare、`objectKindTransactionCommit`
+  是 commit，中间那段正是写 binlog 的位置。所以阶段 2 大概率不是「加标记」，
+  而是把 redo WAL 的提交与这两个已有标记对齐
+- **范围**：binlog 独立成日志且为唯一恢复依据；redo WAL 加
+  `prepare`/`commit` 两阶段标记；change log 收窄为事务回滚 undo 依据
+- **为什么最后**：风险最高（动恢复），且 binlog 应当记录定型后的结构
+- **规格编写时查到的两件事**：
+  1. `redo/`、`undo/`、`binlog/` 三个目录**每个实例都建、从来没人写**
+     （`instance/instance.go:39-41`）。真正在用的 redo WAL 住在 generation
+     目录里，与那个 `redo/` 无关；
+  2. **阶段顺序与写入形态列举的流程顺序不同**：流程是
+     change log → prepare → binlog → commit，而两阶段标记的用途是判断
+     「binlog 那一步写完没有」——没有 binlog 时它无事可判。
+     所以 binlog 在前、标记在后，否则是造一个没有对手方的机制
+- **裁定：change log 不加 undo**（规格 §4）。写入形态给它的职责是事务回滚的
+  undo 依据，但逐条读代码后这条**无事可做**：`Transaction.Put` 把记录攒在
+  内存里（`store/native/file.go:328`），`Commit()` 之前一个字节不落盘，
+  `Rollback()` 只是丢缓冲；树那侧 buffer pool 是 no-steal。
+  磁盘上根本不存在「改了一半」的状态。undo 日志是给会把未提交数据写盘的
+  引擎（steal 策略）准备的。**失效条件已写明**：事务大到不能整个缓冲在内存里，
+  就必须允许未提交页落盘，那时 undo 才有工作
+- **顺带订正**：封套**已经带 `BeforeRevision`**（`change/model.go:77`）。
+  即便将来要 undo，也不必存整份前像——每个版本都留着，「退回版本 N-1」
+  是一次定位而不是一份新拷贝
+
+---
+
+## S 阶段：工程稳态（可并行，不阻塞 E）
+
+### S1. `EXPORT WIKI`／`INSTALL PACKAGE` ← **改判为删，已执行**
+
+原判（风险 7c）是「功能保留，属接线缺失」，把 `Packages`／`Wiki` 注入生产
+handler 即可。**这个判断是错的**，核实如下：
+
+- 要注入的那两个实现（`internal/dbpackage`、`internal/wikiexport`）只接受
+  legacy 的 `store.Store`，而生产走的是 native 栈；
+- 它们唯一的注入点 `daemon.newDatabaseHandlerWithSecurity`（`execute.go:69`）
+  **本身零可达调用方**，生产用的是 `newNativeDatabaseHandler`，那里
+  `Packages`／`Wiki` 恒为 nil；
+- CLI 的 `memora export --wiki` 与 package 子命令确实存在，但它们发的是
+  MSQL 语句，落到生产 handler 上返回不支持——**整条链端到端是死的**。
+
+所以「接线」的实际内容是拿 native 栈重写这两个功能，不是注入一个已有实现。
+按「不用的先删，要的时候重新开发」处理：**`internal/dbpackage` 与
+`internal/wikiexport` 整包已删**（本轮，约 −2200 行），executor／msqlservice／
+daemon 的接线一并摘掉。**语法与 CLI 子命令保留**，固定返回 not implemented。
+产品文档降为设计记录。详见下方清理台账。
+
+### S2. schema／route 对象锁的去留 ✅
+
+**已裁定：删。** 对象锁在串行写入之上只多买到一件事——同一对象快速失败
+而不是排队。这在 Row 热路径上值得有，在 schema／Route 变更上不值得：
+它们稀少、结构性，且已有 `EXPECTED REVISION` 这道更精确的乐观并发闸。
+`SchemaKey`／`RouteKey`／`Kind` 枚举一并删除，`Key` 收敛为三段。
+
+### S3. 向量检索 ✅ **已删除**
+
+**2026-09-02 裁定：整条链删掉**（`3ff6136`，−2539 行）。
+
+原先记为「未启用」——发布方是产品问题（需要 embedding 提供方与重算策略），
+在那之前造发布方是先造结构去满足洁癖。但**留着它比删掉更糟**：
+`routevector.Generation.vectors` 把全部 Route 向量常驻内存，没有上界也没有淘汰
+——一个不设上界的常驻结构，为一个到不了的功能服务，正是第四条准则的靶子。
+
+删掉 `internal/routevector`、`internal/routeexact` 与 executor／daemon 的接线。
+`SHOW ROUTE CANDIDATES ... USING VECTOR` **仍然解析**，返回
+「vector retrieval is not implemented」——语句还在、拒绝理由变准确了。
+`USING LEXICAL` 不受影响。
+
+**重新开发时**：按第四条准则做成盘上索引（DiskANN／mmap／走 buffer pool），
+不要再装一次内存。开启条件仍见[已知风险](../../development/known-risks.md) 7d。
+
+### S4. CI 增加 Linux runner ✅
+
+`test` job 改成 `os: [macos-latest, ubuntu-latest]` 的 matrix，`fail-fast: false`。
+Linux 侧的全套八道门已在容器里实测通过（本仓库的开发容器就是 Linux）。
+
+### S5. 引入 lint stage ✅
+
+`scripts/ci.sh` 新增 `lint` stage，跑 staticcheck、errcheck、ineffassign
+三个检查器，版本各自钉死。**没有基线文件也没有豁免清单**：
+引入时把存量 130 余条一次修完，所以之后报出来的都是新增的。
+
+- **没用 golangci-lint**，直接跑三个上游工具：少一层版本适配，
+  钉版本更直接，`go run` 就能跑，不需要装二进制；
+- **工具链也钉**（`GOTOOLCHAIN=go<go.mod 的版本>`）。第一版没钉，
+  于是 `go run` 在开发机上悄悄下了个更新的工具链、本地全绿，
+  而 CI 的 `GOTOOLCHAIN: local` 不许下载，两个平台都红。
+  钉住之后本地会以**同样的方式**失败，这才叫验证过；
+- staticcheck 关掉 style 组。`ST1005` 要求错误串小写，而本产品的错误是
+  面向用户的文本、里面是领域对象名（Row、Tree、Page index generation）——
+  那是有意偏离 Go 惯例，不是疏漏；
+- errcheck 跳过测试文件：测试里忽略的错误下一句断言就会炸出来，
+  为 `t.Cleanup` 闭包套壳没有收益；
+- 存量修法：`defer x.Close()` 一律改成 `defer func() { _ = x.Close() }()`，
+  与仓库本来就在用的写法统一；另外真修了四处 `defer tx.Rollback()`。
+
+### S6. 文档解析内存回归门 ✅
+
+- **EPUB／DOCX**：`TestDocumentParsePeakHeapStaysWithinItsBudget` 量的是
+  **解析后仍持有的活堆／正文字节**，实测 2.4–2.7，闸设在 12。
+  刻意换了指标：风险 4 记的 7 倍是**峰值**堆（含解析途中churn），
+  活堆是同一性质里便宜且稳定的那一半，测试能测准；
+- **PDF**：`TestPDFRefusesAnOversizedFileBeforeReadingIt`。PDF 适配器
+  **先把整个文件读进内存**再解析，所以对这个格式文件上界就是内存上界，
+  而它只有在读之前检查才算上界。比例量测在两页的 fixture 上说明不了什么；
+- 三个配置上界已下调（512 MiB → 64 MiB 等），记入
+  [待发布的对外可见变化](../../development/release-notes-pending.md)。
+
+### S7. 读路径与 Session 边界 ✅
+
+- `ListCommittedChanges`／`GetCommittedChange` 摘除 `BeginWrite` 耦合，
+  或加注释说明为何必须序列化（风险 6）；
+- `msqlservice.OpenSession` 增加会话数上限（风险 7）；
+- `treecontrol.EncodeBootstrap` 改为返回 error，使「生产代码零 panic」成为
+  可断言不变量（风险 11）；
+- `parser.go:28` 空分支改为直接调用或删除（风险 10）。
+
+**已全部完成。** 第一条（A10 的硬前置）的落地形态是：读变更日志时先在读锁下
+做两次 high-water 比较，索引当前就直接读完，落后才升级到写锁去追平。
+
+---
+
+## 代码库清理台账（2026-09-02）
+
+起因是一句诊断：**路线老是跑偏**。跑偏的一个具体机制是仓库里躺着几条
+「写完了、没接上、也没人删」的链——它们不报错，但每次做架构判断时都要
+被当成活的一起考虑，于是判断被它们带歪（S1 就是一例：把「重写」误记成「接线」，
+在计划里挂了一版）。
+
+台账用 `go run golang.org/x/tools/cmd/deadcode@latest ./cmd/...` 起底：
+**从任何 `cmd/` 入口都不可达的函数：本轮开始 694 条，现 609 条。**
+这个数字不能直接当「待删量」读，得先分成三类。
+
+### 已删（本轮）
+
+| 内容 | 提交 | 行数 |
+| --- | --- | --- |
+| 向量检索整条链（`routevector`／`routeexact`／executor 与 daemon 接线） | `3ff6136` | −2539 |
+| `dbpackage` 的 fork／merge／upgrade 与 `snapshot` 的 fork／merge | `27f8164` | −1136 |
+| `internal/dbpackage`、`internal/wikiexport` 整包，与 executor／msqlservice／daemon 的接线 | 本轮 | −2200 |
+
+判据都一样：**结构常驻内存或零可达调用方，且服务的功能到不了用户手里。**
+
+`PACK DATABASE`／`OPEN PACKAGE`／`INSTALL PACKAGE`／`EXPORT WIKI` 与对应的
+CLI 子命令**语法保留**，固定返回 not implemented——与 `USING VECTOR` 同一处理。
+产品文档降为设计记录，重写时以它们为规格。
+
+**为什么这次敢删，上一轮不敢**：上一轮我看到 `internal/cli` 里有 `runWikiExport`
+与 `runDatabasePackage` 两个真实子命令，就收手了。这轮把链走到底才发现，
+子命令发的是 MSQL 语句，落到生产 handler 上返回不支持——**CLI 测试全绿是因为
+它们打的是 `dependencies.ExecuteMSQL` 假实现**，从没跑过真引擎。
+「有调用方」和「能走通」是两件事，这次的教训记在这里。
+
+### 待删：legacy `store.Store` 那条链的剩余部分
+
+生产走的是 native 栈（`newNativeDatabaseHandler`）。legacy 那条从
+`daemon.newDatabaseHandler` 起、经 `catalog.Service`、`row.Service` 到
+`snapshot.Service` 的链**整条从 `cmd/` 不可达**，但它现在是一批测试的夹具：
+
+| 包／符号 | 生产行数 | 卡在哪 |
+| --- | --- | --- |
+| `catalog.Service`（`catalog/{catalog,columns}.go`） | 675 | 39 个测试文件、8201 行拿它当夹具；同包 `model.go` 的类型是活的，不能连坐 |
+| `snapshot.Service`（`snapshot/service.go`） | 298 | 同上，legacy handler 的 `export` 用它 |
+| `daemon.newDatabaseHandler` | 30 | 8 个 daemon 测试文件用它建 handler |
+
+**卡点说清楚：这是一次测试夹具迁移，不是一次删除，也不是技术阻塞。**
+其中 daemon 那 8 个文件应该迁到 `daemon.Execute` 或
+`newNativeDatabaseHandler`（`native_transaction_test.go:328` 已有配方）——
+**那本身就是覆盖率的改善**：它们测的是活代码，只是跑在已死的栈上。
+`msql/executor` 的 12 个与 `row` 的 6 个同理。三批都迁完，legacy 链才整条可删。
+
+### 不是死代码，别混进来
+
+- **`internal/agent` 的 435 条**：内置 Agent 的能力面，由评测口
+  （`cmd/run-answer-benchmark` 等）与测试驱动，`deadcode` 从 `cmd/` 看不到
+  是因为调用发生在数据驱动的分派里。这是 **A 阶段还没接上的工作，不是垃圾**；
+- **`skilldiscovery`／`skillconflict` 的 56 条**：同上，技能面的规格已实现、
+  产品口未开。
+
+### 规矩（防止再攒一批）
+
+1. **写完必须接上，或者当场记进本台账并给出开启条件**——两者取其一，
+   不许有第三种状态；
+2. **不设上界的常驻内存结构一律不许新增**（第四条准则），
+   已有的按 E7／E8 清；
+3. **「留着以后可能用」不是理由。** 删掉的东西 git 里都在，要时重写一遍
+   比养着一条没人跑的链便宜——`routevector` 就是这么删的。
+
+---
+
+## A 阶段：Agent 侧（转后，一项未删）
+
+前置：**E 阶段出口判据达成**。理由见[路线 v3](../../planning/roadmap-v3.md)「为什么引擎优先」——
+简言之，这些工作全部建立在 Row 结构、挂载方式与 history 存法之上，
+顺序反过来要返工两遍。
+
+出口判据：A5 产出三组可复现对照结论，且 A1、A2 修复前后的同题对照显示
+导航深度实际变化。
+
+| # | 工单 | 前置 | 要点 |
+| --- | --- | --- | --- |
+| A1 | [F221](../../planning/f221-evidence-sufficiency.md) Evidence 充分性与导航终止 | E 阶段 | 零行 SELECT 不终止导航；无 `substantive` 证据时拒绝作答；预算放宽到 8/6 |
+| A2 | [F220](../../planning/f220-query-working-set.md) Query Working Set Stage 1 | A1 | 正向条目带完整 Route 链路；保守失效；LRU + Pinned 最后淘汰 |
+| A3 | [F219](../../planning/f219-deterministic-answer-scoring.md) 确定性答案评分 | A2 | 主指标 `route_hit`／`field_hit`／`retrieval_correct`；transcript 不支持时判未命中 |
+| A4 | [F222](../../planning/f222-release-gate-policy-v2.md) Release Gate Policy v2 | A3 | `report`/`gate` 双模式；阈值未冻结时 `gate` 拒绝运行 |
+| A5 | 三组小规模对照 | A1–A4 | 三 arm／强弱模型建索引／工作集冷启动；产出物之一是冻结 `gate` 阈值 |
+| A6 | [F224](../../planning/f224-mandatory-row-route.md) Row 必须可导航 | **E3** | **判据要重写**：从「有没有 live membership」改为「有没有叶子指向它」，读 `route_leaf_ids` |
+| A7 | [F225](../../planning/f225-mandatory-row-summary.md) Row 必须可展示 | E 阶段 | summary role 列非空；引擎只判定非空不判定质量。SKILL.md 侧已落地 |
+| A10 | F220 Stage 2 | A5、S7 | 负向记忆、相关性淘汰、精确失效 |
+| A11 | 跨 Session topic 身份与有界恢复 | A10 | 需先出独立规格 |
+| A12 | 原文可恢复性：候选 A | — | 引用但不拥有外部原文归档；需先出独立规格 |
+| A13 | 写入反馈回路 | — | 检索失败与人工修正回流到建模决策；需先出独立规格 |
+| A14 | Route 自治维护 | E3 | 初始 fan-out 已由 F223 交付；剩余是超量时自动提拆分/合并提案与批量重构 |
+
+**A6 的重排是本次唯一改变依赖关系的地方**：它原本无前置，现在必须等 E3。
+
+---
+
+## 不在当前路线
+
+保留设施、不再投入，恢复条件见各自文档：F226 Stage 2 物理文件按 Database 拆分
+（2026-08-20 已评估并延后）、大语料批量评测（F212–F215、候选 F216–F218）、
+OCR/视觉运行时（候选 F209）、内置 `memora ask` 产品化、
+Compaction／Secondary Index／Advanced MVCC／Replication／PITR／多设备同步／
+Apple Accelerate／HNSW。
+
+**Compaction 的措辞订正**：它仍然不在路线上（不排期做），但 E8 的裁定
+**保住了将来能做它的可能**——聚簇下的页合并与页 ID 回收今天就在跑，
+所以「不做」是排期选择，不再是形态上的做不到。
+
+## 立即生效的策略变更（无需工单）
+
+**吸收 Agent 的 worthiness 默认偏向多写。** 理由：过度抽取可恢复（删 Row），
+抽取不足不可恢复（原文在 Job 释放后回收）。在 A12 完成前，默认必须偏向多写。
+
+## 关联
+
+- [路线 v3](../../planning/roadmap-v3.md) — 为什么是这个顺序
+- [写入形态](../../product/write-model.md)、[查询形态](../../product/query-model.md)、
+  [架构原则](../../product/architecture-principles.md) — E 阶段的依据
+- [已知风险](../../development/known-risks.md)、
+  [架构审计](../../development/architecture-audit-2026-08.md) — S 阶段的依据
+- [Feature 产品门](../../planning/feature-product-gate.md)、[TDD 协议](../../planning/feature-tdd-protocol.md)

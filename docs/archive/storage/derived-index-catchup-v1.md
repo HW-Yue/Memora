@@ -2,7 +2,7 @@
 
 状态：**已实现**（2026-08-25）。落实
 [架构原则](../../product/architecture-principles.md) §1（高内聚低耦合），
-是[执行计划](../../planning/execution-plan.md) E2。
+是[执行计划](../planning/execution-plan-2026-08.md) E2。
 
 编写原则同[存储层总览](./README.md)：每条「现状」断言都能指到具体文件与行。
 
@@ -100,5 +100,5 @@ fulltext 的键是 `(kind, object_id)` 和 `(term, ...)`，
 ## 关联
 
 - [架构原则](../../product/architecture-principles.md) §1（上位）
-- [存储层总览](./README.md)、[执行计划](../../planning/execution-plan.md) E2
+- [存储层总览](./README.md)、[执行计划](../planning/execution-plan-2026-08.md) E2
 - [候选预测器只给路径](../../query/predictor-path-only-v1.md)（同一批收窄里的另一半）

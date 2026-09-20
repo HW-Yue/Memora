@@ -290,7 +290,7 @@ Change Log 叫做 "Binlog"，而写入形态里 change log / redolog / binlog �
 
 现役实现与[写入形态](../../product/write-model.md)的差距，按该规范的四个结构性要求分组。
 **A、B、C 三组已清空**（E3／E4／E5），D 组的规格已编写、实施排在
-[执行计划](../../planning/execution-plan.md) E6。
+[执行计划](../planning/execution-plan-2026-08.md) E6。
 
 ### A. 每张表一棵独立 B+ 树（写入形态 §1）✅
 

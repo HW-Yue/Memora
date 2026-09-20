@@ -318,4 +318,4 @@ Catalog Atlas 与逻辑快照哈希。
 - [写入形态](../../product/write-model.md) §3／§5（上位规范）
 - [共享循环 redo log](./shared-circular-redo-v1.md)（redolog 的现状与环）
 - [每表一棵树](./per-table-tree-v1.md)（binlog 要记录的、已定型的结构）
-- [存储层总览](./README.md)、[执行计划](../../planning/execution-plan.md) E6
+- [存储层总览](./README.md)、[执行计划](../planning/execution-plan-2026-08.md) E6

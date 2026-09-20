@@ -2,6 +2,12 @@
 
 状态：**某一时点的实测清单**（2026-08-22，`e5134f7` 之后）。
 
+> **2026-09-20：整份已过期。** 扫描对象是已删除的自研引擎
+> （`pagestoremigration`、`nativerow`、`nativemutation`、`routevector`、`objectlock`）。
+> 不要按本文改代码。当前形态见 [存储层](../storage/README.md) 与
+> [执行计划](../planning/execution-plan.md)。需要新清单时按文末命令对 `internal/sqlstore`
+> 重扫。
+
 ## 怎么读这份文档
 
 **它不是规格，是一次扫描的结果。** 每条都给 `文件:行` 与"调用方计数"这类
@@ -62,7 +68,7 @@
 接进生产 handler」是错的——要接的那一头（`dbpackage`／`wikiexport`）只接受
 legacy 的 `store.Store`，唯一注入点本身零可达调用方，「接线」的实际内容是重写。
 两个包整包已删，**语法与 CLI 子命令保留**并固定返回 not implemented，
-产品文档降为设计记录。见[执行计划](../planning/execution-plan.md)清理台账。
+产品文档降为设计记录。见[2026-08 执行计划](../archive/planning/execution-plan-2026-08.md)清理台账。
 
 ### 1.3 schema 与 route 变更不加对象锁
 
@@ -202,7 +208,7 @@ manager 的树（versions／fulltext／current），加四次 phase checkpoint
 `snapshot.Service`／`daemon.newDatabaseHandler` **只剩测试夹具这一个用途**——
 39 个测试文件、8201 行。所以剩余工作是一次**测试夹具迁移**，
 不是一次删除；daemon 那 8 个文件迁到 native 栈本身就是覆盖率的改善。
-排期见[执行计划](../planning/execution-plan.md)清理台账。
+排期见[2026-08 执行计划](../archive/planning/execution-plan-2026-08.md)清理台账。
 
 ### 3.2 同一个小接口抄很多遍
 

@@ -1,14 +1,17 @@
 # Route Vector Generation v1
 
-状态：F124c 已冻结并实现；只包含可重建 generation，不包含候选查询。
+状态：**已归档**（2026-09-20）。`routevector` 包已删除；现役向量在 sqlite-vec
+`mem_vectors`。见 [ADR-0012](../../decisions/0012-row-vector-leaf-path.md)。
+
+原状态：F124c 已冻结并实现；只包含可重建 generation，不包含候选查询。
 
 > **返回值已收窄（2026-08-25）。** 候选同样只给完整语义树路径。
 > 另外：Frame 不再带预测器回执，所以「向量预测器不可用」没地方放进一个成功的
 > 回答里了——返回零个候选等于宣称「搜过了，树里没有」，是假话。
 > 现在直接报错（`not_found`）。
 > 本文描述的 generation **仍然没有生产发布方**（`routevector.Service.Publish`
-> 只有测试在调），见[已知风险](../development/known-risks.md) §7d。
-> 见[候选预测器只给路径](./predictor-path-only-v1.md)。
+> 只有测试在调），见[已知风险](../../development/known-risks.md) §7d。
+> 见[候选预测器只给路径](../../query/predictor-path-only-v1.md)。
 
 ## 目的
 
@@ -73,7 +76,7 @@ staging、未知目录和权威 Database 文件永不由该路径删除。
 
 ## 关联
 
-- [ADR-0007](../decisions/0007-route-predictor-arsenal.md)
-- [语义路由投机预取](./speculative-route-prefetch.md)
-- [Route Predictor 历史 Feature 计划](../archive/planning/route-predictor-feature-plan.md)
-- [F124c 开工与完成门](../archive/planning/f124c-route-vector-generation-gate.md)
+- [ADR-0007](../../decisions/0007-route-predictor-arsenal.md)
+- [语义路由投机预取](../../query/speculative-route-prefetch.md)
+- [Route Predictor 历史 Feature 计划](../planning/route-predictor-feature-plan.md)
+- [F124c 开工与完成门](../planning/f124c-route-vector-generation-gate.md)

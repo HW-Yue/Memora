@@ -98,5 +98,5 @@ F173b2、F173c、F174 承担。
 ## 关联
 
 - [F173a](./f173a-catalog-posting-publication.md)
-- [Route Vector semantic surface](../query/route-vector-generation-v1.md)
+- [Route Vector semantic surface](../archive/query/route-vector-generation-v1.md)
 - [TDD 协议](./feature-tdd-protocol.md)

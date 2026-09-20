@@ -25,9 +25,10 @@
 6. [架构审计 2026-08](./development/architecture-audit-2026-08.md) — 某一时点的**实测清单**：
    缺陷、耦合、重复与半迁移逐条列出，每条带 `文件:行` 与调用方计数。
    **不是规格**，过期请按文末命令重扫；
-7. [路线 v3](./planning/roadmap-v3.md) — 两条轨道、引擎优先，以及**为什么是这个顺序**；
-8. [执行计划](./planning/execution-plan.md) — **当前唯一的工作队列**，编号工单，
-   每项带前置、改动范围、RED 和完成判据。派发实现从这里取。
+7. [路线 v3](./planning/roadmap-v3.md) — 历史排序理由；引擎轨道已随 SQLite 基座结束，
+   派发工作看下一份；
+8. [执行计划](./planning/execution-plan.md) — **当前唯一的工作队列**（Q0 vec0 隔离 →
+   F224 → 融合发现面）。旧的引擎侧 E 阶段已归档。
 
 配套的最高层原则与规则：
 
@@ -36,9 +37,9 @@
 - [Feature 产品门](./planning/feature-product-gate.md)与
   [TDD 协议](./planning/feature-tdd-protocol.md) — 新开发的拆分、授权和验收规则。
 
-> **注意**：写入与查询形态规范于 2026-08-22 确立，仓库里相当一部分存储与查询文档
-> 早于它。凡头部带「**目标形态已改**」注记的，只如实描述**当前代码**，
-> 可以照它读代码，但**不能作为新开发的设计依据**。
+> **注意**：凡头部带「**目标形态已改**」或「**Superseded**」的文档，只用于追溯。
+> 自研 Page/WAL/B+ Tree 规格在 [`archive/storage/`](./archive/storage/)，
+> 不是设计依据。当前基座是 SQLite + sqlite-vec。
 
 ## Feature 账本（按编号回溯用，不是导航入口）
 
@@ -120,8 +121,8 @@ F 编号按时间顺序记录开发过程，累计两百多项。它用于单项
 - [ADR-0011：存储引擎只做数据库，其余一切建表](./decisions/0011-pure-storage-engine-tables-everything.md) — history、语义树等全部是引擎上的普通表；不做 MVCC；全文索引归属 Deferred。
 - [ADR-0012：Row 向量命中直接返回叶子路径](./decisions/0012-row-vector-leaf-path.md) — 修订 ADR-0007
   的向量持久化边界；融合发现成为检索主路径，逐层导航退为兜底；F224 升级为硬前置。
-- [清理计划：ADR-0011 之后的删除](./planning/cleanup-2026-09-adr0011.md) — A 组明确废弃直接删，
-  B 组（老库兼容链、冻结评测设施）待裁定；
+- [清理计划：ADR-0011 之后的删除](./archive/planning/cleanup-2026-09-adr0011.md) — 针对旧自研引擎代码库，
+  **已过期**；当前队列见[执行计划](./planning/execution-plan.md)。
 - [F228：语义配套表同生](./planning/f228-route-companion-table.md) — 实现计划；ADR-0011 第 1 步，
   建数据表时自动建隐藏的语义表，角色进 Catalog，Agent 面不可见；
 - [F219：确定性答案评分](./planning/f219-deterministic-answer-scoring.md) — 候选；不依赖模型的检索命中主判定与

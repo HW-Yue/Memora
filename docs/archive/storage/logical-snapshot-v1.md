@@ -48,5 +48,5 @@ Row 定位、History revision、Relation 正反向定位、Agent、Router、机�
 - [Catalog v1](../../data/catalog-v1.md)
 - [Row Store v1](../../data/row-store-v1.md)
 - [History Store v1](../../data/history-store-v1.md)
-- [Relationship Store v1](../../data/relationship-store-v1.md)
+- [Relationship Store v1](../data/relationship-store-v1.md)
 - [原生极简 Store ADR](../../decisions/0003-native-minimal-store-first.md)

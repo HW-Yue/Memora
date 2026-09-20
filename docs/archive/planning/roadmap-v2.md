@@ -18,7 +18,7 @@
 前置阅读：[系统能力](../../product/system-capabilities.md)（现在有什么）、
 [已知风险](../../development/known-risks.md)（哪里有问题）。
 
-> **要派发工作请用[执行计划](../../planning/execution-plan.md)。** 本文档说明为什么是这个顺序；
+> **要派发工作请用[执行计划](../planning/execution-plan-2026-08.md)。** 本文档说明为什么是这个顺序；
 > 执行计划是编号工作队列，每项带前置、改动范围、RED 和完成判据。
 
 ## 为什么要重排
@@ -34,7 +34,7 @@
 | [系统能力](../../product/system-capabilities.md) | 现在是什么 | 能力交付或移除时 |
 | [已知风险](../../development/known-risks.md) | 哪里有问题 | 发现或修复问题时 |
 | 本文档 | 接下来做什么、**为什么是这个顺序** | 阶段完成或方向变化时 |
-| [执行计划](../../planning/execution-plan.md) | **派发什么工单**、前置与完成判据 | 每项工单完成时 |
+| [执行计划](../planning/execution-plan-2026-08.md) | **派发什么工单**、前置与完成判据 | 每项工单完成时 |
 | [Feature 状态](../../planning/feature-status.md) | 某能力的历史证据 | 仅追加，不再作为导航入口 |
 
 F 编号继续用于单项开发的 TDD 与授权，但**不再是理解系统的入口**。
@@ -100,7 +100,7 @@ A1 采用 [F220](../../planning/f220-query-working-set.md) 的语义工作集，
 中间产物——它就是 F220 的 Stage 1。朴素累积则会在实现工作集时整个作废。
 
 **出口判据**：A4 三组对照给出可复现结论，且 A1/A2 修复前后的同题对照显示导航深度实际变化。
-在此之前不开新能力。逐项工单、改动范围与完成判据见[执行计划](../../planning/execution-plan.md)第 1–5 项。
+在此之前不开新能力。逐项工单、改动范围与完成判据见[执行计划](../planning/execution-plan-2026-08.md)第 1–5 项。
 
 ### 阶段 B：把 AI-native 主张补实
 
@@ -111,7 +111,7 @@ A1 采用 [F220](../../planning/f220-query-working-set.md) 的语义工作集，
   精确失效前必须先修[已知风险](../../development/known-risks.md)第 6 条；
 - B2 写入反馈回路：检索失败与人工修正回流到建模决策，形成可观测信号（差距 3）；
 - B3 原文可恢复性：候选 B（worthiness 默认偏向多写）已于 2026-08-11 立即生效，
-  候选 A（外部原文归档 + 重吸收 diff）为[执行计划](../../planning/execution-plan.md)第 12 项（差距 3）；
+  候选 A（外部原文归档 + 重吸收 diff）为[执行计划](../planning/execution-plan-2026-08.md)第 12 项（差距 3）；
 - B4 Route 自治维护：初始 fan-out、超量拆分、合并，由 AI 判断并留 revision/理由（差距 4）。
 
 **出口判据**：一个真实用户的真实资料，连续使用两周以上，追问可用、Route 未退化。

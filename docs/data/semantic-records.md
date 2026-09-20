@@ -50,7 +50,7 @@ description, revision, status
 ```
 
 AI 决定 `depends_on`、`contradicts`、`part_of` 等关系语义；引擎负责正反向索引、引用完整性和 MVCC。
-记录信封、revision 和事务边界见 [Relationship Store v1](./relationship-store-v1.md)。
+记录信封、revision 和事务边界见 [Relationship Store v1](../archive/data/relationship-store-v1.md)。
 
 ## 修改能力
 

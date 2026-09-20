@@ -8,10 +8,12 @@
 - [早期 Wiki 导出设计](./WIKI_EXPORT_DESIGN_2026-07-29.md)
 - [F00–F163 历史计划与完成证据](./planning/README.md)
 - [被取代的设计与实现规格](./design/README.md)
-- [被取代的存储规格](./storage/) — 含
-  [聚簇行存储 v1](./storage/clustered-row-storage-v1.md)：2026-08-22 前的存储设计终点，
-  已被[写入形态](../product/write-model.md)取代（history 从"顺物理指针链回溯"
-  改为"独立成表、按 `(row_id, 序号)` 范围扫"）；
+- [被取代的存储规格](./storage/) — 自研 Page、Buffer Pool、WAL/三份日志、B+ Tree、
+  COW generation、MVCC、Instance 物理格式等 63+ 份，2026-09-20 整批移入。
+  当前形态见[存储层](../storage/README.md)；
+- [被取代的数据/查询专文](./data/relationship-store-v1.md)与
+  [Route 向量 generation](./query/route-vector-generation-v1.md)；
+- [2026-08 执行计划](./planning/execution-plan-2026-08.md) — 引擎侧 E 阶段队列；
 - [F42 AI-native v1 冻结题库](./benchmarks/ai-native-v1.json)
 
 归档用途：

@@ -27,7 +27,7 @@
   39 个测试文件、8201 行拿 `catalog.New`／`row.New` 建被测对象。
   所以这几个包的删除条件已经收敛成一件事——**把那批测试迁到 native 栈**，
   而不是等某个功能先解耦。注意 `model.go` 里的类型是活的，删除只针对 Service 层。
-  排期见[执行计划](../planning/execution-plan.md)清理台账；
+  排期见[2026-08 执行计划](../archive/planning/execution-plan-2026-08.md)清理台账；
   - 补充（2026-08-22）：`internal/router/service.go` 的 **membership 部分**
     （`ReplaceMembershipsIn`、`MembershipsForRowIn`、`router_leaf_members` 与
     `router_row_memberships` 两个 bucket）对 daemon **已是死代码**——生产只构造

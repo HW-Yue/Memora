@@ -12,7 +12,7 @@
 > 「接线」的实际内容是拿 native 栈重写。
 >
 > **重新开发时以本文为规格**，包格式与确定性要求不变。
-> 裁定见[执行计划](../planning/execution-plan.md)清理台账。
+> 裁定见[2026-08 执行计划](../archive/planning/execution-plan-2026-08.md)清理台账。
 > 见[已知风险](../development/known-risks.md) §7c 与
 > [架构审计](../development/architecture-audit-2026-08.md) §1.2。
 

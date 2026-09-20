@@ -1,9 +1,11 @@
 # 路线 v3：按最高准则重排
 
-状态：**2026-08-22 生效**。取代[路线 v2](../archive/planning/roadmap-v2.md)。
+状态：**2026-08-22 生效；2026-09-20 引擎轨道关闭。**
+取代[路线 v2](../archive/planning/roadmap-v2.md)。
 
-> **要派发工作请用[执行计划](./execution-plan.md)。** 本文说明**为什么是这个顺序**；
-> 执行计划是编号工作队列，每项带前置、改动范围、RED 与完成判据。
+> **要派发工作请用[执行计划](./execution-plan.md)（Q0–Q3）。**
+> 本文的「引擎侧轨道」针对的是已删除的自研 Page/WAL/B+ Tree，**不再执行**。
+> Agent 轨道（有界导航、证据充分性、Skill）仍然有效，但排序以新队列为准。
 
 前置阅读：[写入形态](../product/write-model.md)、[查询形态](../product/query-model.md)、
 [架构原则](../product/architecture-principles.md)——这三份是最高准则，本文的依据。

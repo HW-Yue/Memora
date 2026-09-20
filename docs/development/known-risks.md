@@ -1,9 +1,13 @@
 # 已知风险
 
-状态：2026-08-11 建立。收录已确认存在、但未被现有 Feature 文档记录的问题。
-按严重度排序。每条给出代码位置和判断依据，不写推测。
+状态：2026-08-11 建立。**2026-09-20：主体过期。** 多数条目指向已删除的自研引擎
+（`pagestoremigration`、`poisonPublication`、`objectlock`、`routevector`）。
+当前仍有效、且挡住检索主路径的缺陷见
+[执行计划 Q0](../planning/execution-plan.md)（vec0 kind 后过滤）与
+[检索路线](../query/retrieval-routes-jev.md)。
 
 修好一条就从这里移除并写进[系统能力](../product/system-capabilities.md)。
+不要按过期条目去找已删包。
 
 ## 已修复（保留一轮供追溯）
 
@@ -206,7 +210,7 @@ CLI 的 `memora export --wiki` 与 package 子命令确实存在，但发的是 
 测试还绿」而收的手。**「有调用方」和「能走通」是两件事。**
 
 legacy handler 本身没删——它现在是 8 个 daemon 测试文件的夹具。
-剩余卡点见[执行计划](../planning/execution-plan.md)清理台账。
+剩余卡点见[2026-08 执行计划](../archive/planning/execution-plan-2026-08.md)清理台账。
 
 ### 7d. 向量检索没有生产发布方 —— **已裁定：整条链删除（2026-09-02）**
 

@@ -59,7 +59,7 @@ UNRELATE :relation_id;
 
 ## 关联
 
-- [Relationship Store v1](../data/relationship-store-v1.md)
+- [Relationship Store v1](../archive/data/relationship-store-v1.md)
 - [MSQL Batch 与事务边界 v1](./msql-batch-transactions.md)
 - [MSQL 参数与表达式 v1](./msql-expressions.md)
 - [MSQL Result Envelope v1](./result-envelope.md)
