@@ -73,7 +73,7 @@ MERGE work.notes ROWS (:first, :second)
 
 mutation options 同时提交来源 revision、每个目标的完整 Route snapshot、需要更新的
 上层 Route purpose。引擎不猜拆分边界，只在一个原生事务里发布 superseded 来源、
-新目标、History、上层 Route revision 和 memberships。
+新目标、History、上层 Route revision 和叶子挂载。
 
 Route 树自身需要局部 split/merge/move 时：
 
@@ -122,7 +122,7 @@ RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision;
 - 查询必须有结果和输出预算；
 - 更新应带 expected revision；
 - Row 必须能按稳定 `row_id` 使用 SELECT、UPDATE 和 DELETE 精确操作；
-- Row 与 Router membership 的变更必须在同一事务中原子可见；
+- Row 与叶子挂载的变更必须在同一事务中原子可见；
 - Parser/AST 验证完整 SQL；
 - 响应使用稳定 JSON envelope 和错误码。
 
@@ -133,7 +133,7 @@ request 的结构化 mutation options。见 [MSQL Mutation Executor v1](./msql-m
 文本 Column 启动默认上限为 1200 个字符。引擎不自动截断。
 
 逻辑 DELETE 默认保留 revision 和 History；删除是终态。普通 UPDATE 未提供 Route
-snapshot 时保留现有 membership；改变语义边界时必须提供新 snapshot。
+snapshot 时保留现有叶子挂载；改变语义边界时必须提供新 snapshot。
 
 ## 统一响应与多语句
 

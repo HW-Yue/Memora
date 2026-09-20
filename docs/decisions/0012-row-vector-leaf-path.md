@@ -9,7 +9,7 @@ jev 只在 Skill。Row 向量允许，命中只给叶子路径。当前没有向
 向量命中一条 Row 之后应返回它的语义路径，让模型据此直接读到那一行。
 禁令要挡住的是「融合评分直接产出事实候选」——不是挡住 Row 语义向量本身。
 
-关键事实：[一叶一行](../planning/single-row-route-leaf.md) 冻结「一个 Leaf 最多一个活跃 Row」，`open_locators` 基数为 `0..1`。
+关键事实：[写入形态](../product/write-model.md) §4.4 冻结「一个 Leaf 最多一个活跃 Row」，`open_locators` 基数为 `0..1`。
 因此**一条 Row 的叶子路径唯一指向那一行**——「只返回路径，不返回事实」这道防火墙
 在 Row 命中这条线上不提供任何实际约束。与其维持一个名义上的约束，不如把边界挪到
 它真正该在的位置并写明代价。
@@ -31,7 +31,7 @@ jev 只在 Skill。Row 向量允许，命中只给叶子路径。当前没有向
 - 语义树仍是唯一的位置表示，但不是到达 Row 的唯一路径。
 - 逐层导航用于：召回失败时的兜底；一个语义区域内的探索或聚合；
   模型判定命中叶子不足时取兄弟与上下文。
-- **[行必须可导航](../planning/mandatory-row-route.md) 是硬前置。**
+- **[行必须可导航](../planning/row-navigable.md) 是硬前置。**
   零 Route 归属的孤儿 Row 没有叶子路径可返回。
 - Row 向量随 Row 修改需重算；与关键词召回的可见性差异随实现一起裁定。
 
@@ -50,5 +50,5 @@ jev 只在 Skill。Row 向量允许，命中只给叶子路径。当前没有向
 - [检索路线与内核面](../query/retrieval-routes-jev.md)
 - [jev 作为逐层分支选择器](../query/jev-branch-selection.md)
 - [ADR-0007：Router 权威，候选预测器可组合](./0007-route-predictor-arsenal.md)
-- [行必须可导航](../planning/mandatory-row-route.md)
+- [行必须可导航](../planning/row-navigable.md)
 - [F221：Evidence 充分性与导航终止](../archive/planning/f221-evidence-sufficiency.md)

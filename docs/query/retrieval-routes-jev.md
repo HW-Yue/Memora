@@ -49,7 +49,7 @@ jev 是 Skill 层可选选择器，走同一套逐层面，不进内核。
 
 **裁定**见 [ADR-0012](../decisions/0012-row-vector-leaf-path.md)：允许 Row 语义向量，
 命中直接给叶子路径。当前没有向量实现。
-[行必须可导航](../planning/mandatory-row-route.md) 仍是产品硬前置。
+[行必须可导航](../planning/row-navigable.md) 仍是产品硬前置。
 
 ## 5. 可见性
 

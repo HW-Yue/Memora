@@ -8,7 +8,7 @@ Memora 是什么、什么不能做。[写入形态](./write-model.md)与[查询�
 管**数据怎么落库、怎么被找到**，是这两件事的最高参考规范。判断时：
 方向与边界看本文，写入与查询的具体形态看那两份。两者目前不冲突——本文
 「每个 Leaf 只保存零个或一个 RowID/locator」与写入形态「叶子直接挂 RowID」
-是同一个结论，是实现漂移成了独立 membership 关系，不是规范之间打架。
+是同一个结论。
 
 ## 最终产品是什么
 
@@ -56,7 +56,7 @@ SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 1. **发现与读取**：发现库 → 选择表 → 读取 Schema 与顶层 Route → 逐层导航 → 获得 RowID → SQL 回表 → 引用 revision 回答。
 2. **新增**：先发现和查重 → 决定复用/新增 Schema → 写完整 Row → 建立关系 → 放入一个或多个语义叶子 → 验证可重新找到。
 3. **修改**：精确读取当前 revision → 判断 revise/merge/split → 带 expected revision 写入 → 原子更新关系和索引 → 回读验证。
-4. **删除**：确认范围和影响 → 逻辑删除 → 失效所有 Route membership 和其他索引 → 保留可审计历史与补偿能力。
+4. **删除**：确认范围和影响 → 逻辑删除 → 摘掉叶子挂载 → 保留可审计历史。
 5. **Schema 演化**：先读 Data Dictionary → 预览影响 → 用受限 DDL 修改 → 迁移/补齐 → 重建受影响索引 → 验证旧查询。
 6. **语义索引优化**：依据访问失败、分支拥挤、歧义和维护成本提出局部调整；优先拆分/合并局部节点，不因少量变化重建整库。
 7. **Row 拆分/合并**：保持语义完整性而不是机械按字数切割，并同步改变上层语义索引。
@@ -65,10 +65,10 @@ SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 
 当一个知识项已包含两个可独立修改的主题，1200 字不足而完整表达需约 3000 字时，AI 不截断，也不把 Column 上限盲目调大：
 
-1. 读取原 Row 的 revision、关系、来源和全部 Route membership；
+1. 读取原 Row 的 revision、来源和全部叶子挂载；
 2. 生成两个或多个各自完整的新 Row，并明确它们之间的关系；
 3. 将原 Row 标为被替代，保留历史和可追溯映射；
-4. 重分配关系、来源锚点和叶子 membership；
+4. 重分配来源锚点和叶子挂载；
 5. 必要时拆分或改写 Table 的上层 Route 节点；
 6. 在一个 Mutation Plan 中提交，失败则不留下半套结构；
 7. 从顶层重新导航，确认每个新 Row 都能被正确找到。
@@ -80,12 +80,12 @@ SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;
 - **US-HUMAN**：作为普通用户，我只需表达目标、交付资料和纠正错误，不需学习建表、索引或数据库运维；只有语义冲突、高风险、越权和不可恢复操作打断我。
 - **US-COLD**：作为第一次接管的 AI，我能在有界输出内发现库、表、Schema 和顶层 Route，无需旧聊天或长期索引 prompt。
 - **US-READ**：作为查询 AI，我能只靠逐层 SQL 导航获得 RowID，再回表读取有 revision 的事实；中间结果不泄露正文。
-- **US-INSERT**：作为写入 AI，我能先查重，再新增完整 Row、关系与 Route membership，并在提交后从顶层验证可发现。
+- **US-INSERT**：作为写入 AI，我能先查重，再新增完整 Row 与叶子挂载，并在提交后从顶层验证可发现。
 - **US-UPDATE**：作为维护 AI，我能精确读取目标 revision，只修改目标 Row，并同步修订关系、历史和语义定位。
 - **US-DELETE**：作为删除 AI，我能预览影响、逻辑删除目标、失效全部索引引用，并保留审计与补偿路径。
 - **US-CORRECT**：作为收到纠正的 AI，我能定位旧事实、保存历史、修订所有相关结构，并说明实际改变了什么。
 - **US-SCHEMA**：作为建模 AI，我能发现同义定义、创建或演化 Schema、迁移受影响 Row，并证明旧数据仍可查询。
-- **US-DBA**：作为 AI DBA，我能发现分支拥挤、错误归类、陈旧 membership 和 Schema 债务，生成有界、可回滚的优化计划。
+- **US-DBA**：作为 AI DBA，我能发现分支拥挤、错误归类、陈旧挂载和 Schema 债务，生成有界、可回滚的优化计划。
 - **US-OPTIMIZE**：作为优化 AI，我能依据真实导航失败和访问成本局部优化语义树，同时证明质量改善且事实未改变。
 - **US-SPLIT**：作为维护超大或多主题 Row 的 AI，我能语义拆分内容，并在同一次计划中重构关系和上层 Route。
 - **US-CONFLICT**：作为遇到多来源冲突的 AI，我会并列证据并请求用户裁决，不让引擎猜测哪条语义为真。

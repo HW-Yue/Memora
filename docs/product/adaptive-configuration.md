@@ -83,8 +83,7 @@ RESTORE CONFIGURATION ROUTE_POLICY TO REVISION :revision;
 `branch_fanout` 的启动默认值是 12，取值范围 `2..100`。它同样归为「允许显式运行时
 修改」：Agent 在 Route branch 越界失败后自行判断重构子树还是提高本库上限，两条出路
 都写在失败信封里。降低上限不回溯，既有超限子树保持可读可维护。规则见
-[fan-out 硬上限](../planning/route-branch-fanout-limit.md)与
-[Route Branch Fan-out 策略](../query/route-branch-fanout-policy.md)。
+[写入形态](./write-model.md) §4.3。
 
 裸 `SHOW CONFIGURATION` 仍返回 `query_budgets`；两个键不接受对方的字段，也不能因为
 某次目标恰好等于读取预算就复用成一个含义含混的开关。

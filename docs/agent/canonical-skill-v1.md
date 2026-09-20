@@ -1,6 +1,6 @@
 # Canonical Skill v1
 
-状态：F28 已冻结基础宿主契约；稳定规则只维护在
+状态：稳定规则只维护在
 [`skills/memora/SKILL.md`](../../skills/memora/SKILL.md)。
 
 ## 唯一来源

@@ -74,7 +74,7 @@
 
 ### 挂载关系
 
-- 一个叶子最多挂一个活跃 Row（沿用 [一叶一行](../planning/single-row-route-leaf.md)）；
+- 一个叶子最多挂一个活跃 Row（[写入形态](./write-model.md) §4.4）；
 - 一行可以挂在多个叶子下（`route_leaf_ids` 是列表）。
 
 ### 废弃行暂不回收
@@ -85,4 +85,4 @@
 
 - [ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)、
   [Route 配套表](./route-companion-table.md)、[写入形态](./write-model.md)
-- [一叶一行](../planning/single-row-route-leaf.md)
+- [写入形态](./write-model.md)

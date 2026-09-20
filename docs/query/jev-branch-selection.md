@@ -24,7 +24,7 @@ option 集**不含 route_id**——模型对随机 hex 无法推理，ID 由脚�
 从「LLM 单层提示准确率」变为「一次 `Choice` 能可靠区分多少 option，以及愿为此付多少 token」。
 
 写入路径本轮不动，判断者仍是原有 Agent，因此
-[结构 fan-out 硬上限](../planning/route-branch-fanout-limit.md)原样保留，
+结构上限见 [写入形态](../product/write-model.md) §4.3，原样保留，
 默认值 12 的原始理由完好。
 
 ## no-match 出口
@@ -67,4 +67,4 @@ option 集**不含 route_id**——模型对随机 hex 无法推理，ID 由脚�
 - [检索路线与内核面](./retrieval-routes-jev.md)
 - [Route 读取协议](./route-read-v1.md)
 - [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)
-- [fan-out 硬上限](../planning/route-branch-fanout-limit.md)
+- [写入形态](../product/write-model.md) §4.3

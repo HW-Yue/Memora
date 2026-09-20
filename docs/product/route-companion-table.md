@@ -150,7 +150,3 @@ objects 树若还在，只可能暂存 Catalog／Relation 等尚未表化的东�
 
 - [写入形态](./write-model.md)、[查询形态](./query-model.md)、
   [架构原则](./architecture-principles.md) 第二条
-- [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)、
-  [每表一棵树](../archive/storage/per-table-tree-v1.md)
-- [一叶一行](../planning/single-row-route-leaf.md)、
-  [fan-out 硬上限](../planning/route-branch-fanout-limit.md)

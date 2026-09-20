@@ -1,6 +1,7 @@
 # Fan-out 硬上限
 
-曾用名：F223（旧引擎 Feature 流水号，已停用）。
+归档。旧引擎 Feature 稿（曾用名 F223）。规则仍有效，现行写法见
+[写入形态](../../product/write-model.md) §4.3。
 
 状态：已实现（2026-08-16）。取代 [Route Branch Fan-out 策略](../query/route-branch-fanout-policy.md)
 中「不设产品默认值、允许带理由的受控超限」的方向。

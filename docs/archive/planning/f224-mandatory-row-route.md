@@ -1,5 +1,8 @@
 # 行必须可导航
 
+归档。旧引擎候选（曾用名 F224），membership 判据。现行规格见
+[行必须可导航](../../planning/row-navigable.md)。
+
 曾用名：F224（旧引擎 Feature 流水号，已停用）。
 状态：候选，2026-08-11 提出；尚未 Review、尚未获得实现授权。
 沿用 [fan-out 硬上限](./route-branch-fanout-limit.md) 的处理形状：越界不是警告，是写入失败。

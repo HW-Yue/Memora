@@ -53,11 +53,8 @@ failure matrix，随后可逐条转绿。
 | Feature 类型 | 强制测试 |
 | --- | --- |
 | SQLite 表 / 事务 | reopen、中断、错误注入、串行写与读最新提交 |
-| 词法 postings | 写入同事务可见、删除不可达、分词边界 |
-| 向量 / vec0 | kind 隔离、提交后异步可见性、embedding 失败 fail-closed |
 | MSQL/API | parser/binder/executor contract、golden envelope、权限/预算 |
 | Admin | 组件状态、API contract、浏览器旅程、空/错/截断/权限状态 |
-| AI Benchmark | 固定 suite、真实模型 receipt、原始计数、重跑与缺失标记 |
 
 随机测试必须保存 seed；时间、ID、I/O 和调度必须可注入。Fuzz target 的 seed corpus
 进入普通测试，长时间 fuzz 在专门任务运行。
@@ -79,7 +76,7 @@ feature-specific fault, fuzz-seed or browser suite
 package 执行 race；不能静默跳过。
 
 完成证据包含测试命令、关键 case、用户故事/内部不变量、实际结果、未覆盖项和
-commit。没有 reopen/中断证据的持久化 Feature、没有真实模型 receipt 的 AI Benchmark，一律 `INCOMPLETE`。
+commit。没有 reopen/中断证据的持久化 Feature 一律 `INCOMPLETE`。
 
 ## 执行顺序
 
@@ -101,6 +98,3 @@ Milestone 只组织顺序，不允许把多个 Feature 合成一次无法定位�
 ## 关联
 
 - [Feature 产品与用户故事门禁](./feature-product-gate.md)
-- [历史 TDD 开发总计划](../archive/planning/tdd-development-plan.md)
-- [当前 Feature 状态](../archive/planning/feature-status.md)
-- [后续路线](../archive/planning/future-roadmap.md)

@@ -24,7 +24,7 @@ Feature 分支和实现计划必须先回答：
 1. 它改善哪些用户故事（使用 `US-*` ID）？AI 或人将少做什么、多得到什么？
 2. AI 从冷启动到完成目标的标准 SQL transcript 是什么？
 3. 它作用于 Database、Table、Row、关系、Route Tree、Schema 还是物理引擎？边界是否混淆？
-4. 它怎样影响 Row revision、Route membership、历史、事务和失败恢复？
+4. 它怎样影响 Row revision、叶子挂载、历史、事务和失败恢复？
 5. AI 每一步最多看到多少节点、RowID 和正文？Route Frame 如何保持有界？
 6. 是否把 Row/chunk/正文向量、相似度结果或全库 prompt 扫描当作事实权威？若使用
    Route predictor，是否只返回有界位置并保留 provenance、snapshot 和 Router 回退？
@@ -55,7 +55,7 @@ SQLite 一类实现选择不能隐藏在 Feature 列表里，也不能因 ADR �
 1. 从 Canonical Skill/宿主入口开始的真实 AI 用户旅程证据；
 2. 实际执行的 MSQL、每步有界结果、最终 Row/Schema/Route 状态；
 3. 对开工前每个 `US-*` 的逐项验收结果；
-4. split/merge/update/delete 后没有陈旧 Route membership 或关系的完整性证据；
+4. split/merge/update/delete 后没有陈旧叶子挂载的完整性证据；
 5. 权限、冲突、超限、中断和重试路径的结构化错误证据；
 6. 无 Row/chunk 向量权威、无隐藏旁路、predictor 可回退且存储后端不泄漏到产品协议的审计；
 7. 文档、测试、实现和当前 Feature 状态同步；
