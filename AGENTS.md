@@ -16,9 +16,17 @@
 ## 当前产品原则
 
 - Memora 是由 AI 自主建模、通过标准化语言读写的个人数据库。
-- Agent 只表达逻辑数据库操作；Page、索引、事务、Redo Log 和恢复由引擎自动完成。
-- 存储引擎只做数据库，不做 MVCC；history、语义树等产品结构都是引擎上的普通表（ADR-0011）。
-- 实际数据读取和修改通过 MSQL/SQL；语义 Router 只负责发现和导航。
+- **持久化基座是 SQLite + sqlite-vec，不自研存储引擎。** Page、Buffer Pool、WAL/Redo Log、
+  B+ Tree、页格式、generation、COW 与恢复都由 SQLite 承担，不是本项目的实现对象。
+  凡描述自研引擎内核的文档一律已归档，不作为设计依据。
+- **一切都是普通 SQLite 表**（ADR-0011）：Catalog、数据表、history 表、语义配套表、
+  变更日志、配置、向量索引（vec0）。不做自己的 MVCC——写串行，读看最后一次提交。
+- Agent 只表达逻辑数据库操作；表、索引、事务与恢复由基座完成。
+- 实际数据读取和修改通过 MSQL/SQL。语义树是**位置的唯一表示**，但按 ADR-0012
+  不再是到达数据的唯一通道：融合发现（关键词 + 向量，RRF，只出语义路径）是检索主路径，
+  逐层语义导航是兜底与区域探索。
+- 向量只用于定位，从不产出事实：不返回分数、距离或排名，事实一律由 SQL 回表产生。
+  允许 Route 与 Row 的语义向量（ADR-0012），仍禁止文档 chunk、PDF、图片的向量。
 - 不将完整大文档、PDF、图片或机械 chunk 作为 Memora 的持久化内容；AI 吸收外部资料后写入完整、可修改的语义模块。
 - 动态数据库索引不写入长期 system prompt；模型上下文只保留紧凑的当前 Route Frame。
 - Markdown/Obsidian Wiki 是数据库快照的确定性导出，不是第一阶段的真相源。
@@ -46,6 +54,8 @@
 - 一个 Feature 只允许一个主要结果；出现两个独立故障域、协议或验收旅程时，开工前拆分。
 - 所有 Feature 默认逐项 Review、授权、实现、验收和合入；Milestone 不构成整批实现授权。
 - 严格执行 RED → GREEN → REFACTOR：先确认测试因缺少目标能力失败，再写最小实现。
-- Page/WAL/B+ Tree/事务等内核 Feature 必须有 corruption、reopen、fault injection、reference model 或 race 证据，不能只测 happy path。
+- 涉及持久化、事务边界、索引维护或恢复路径的 Feature 必须有 reopen、中断、错误注入、
+  参考模型或 race 证据，不能只测 happy path。SQLite 自身的页格式、校验和与崩溃恢复
+  不在本项目的测试范围。
 - 故意失败的测试不进入 `main`；每项完成时必须独立全绿、可构建、可回滚。
 - 详细规则见 `docs/planning/feature-tdd-protocol.md`。
