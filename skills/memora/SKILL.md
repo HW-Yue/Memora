@@ -139,31 +139,26 @@ memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authoriz
 
 Use `memora.speculative-discovery/v2` when a new question can benefit from
 fewer model continuations. In the same model turn, dispatch independent bounded
-calls for one flat Catalog Atlas page, lexical Route candidates, an optional
-vector candidate query, and at
+calls for one flat Catalog Atlas page and at
 most two root Route prefetches from the current same-topic Route Frame. Run the
 independent calls in parallel when the host supports it; do not wait for a model
 decision between their millisecond-scale results.
 
 Use this profile for at most 32 exact authorized Databases. The Atlas page has
-at most 64 entries and 8,192 UTF-8 row JSON bytes. Across all
-predictors allow at most 8 candidates and 4,096 candidate UTF-8 bytes; when both
-Lexical and Vector run, allocate 4 candidates and 2,048 bytes to each. Prefetch
+at most 64 entries and 8,192 UTF-8 row JSON bytes. Prefetch
 at most two Table roots with at most 12 Routes each, issue at most 10 tool calls,
 and keep the total working context within 12,000 UTF-8 bytes. Record topic ID,
-exact calls, output bytes, truncation, each predictor snapshot/catalog revision
-and each root page snapshot. Keep different predictor snapshots separate and
-require their Catalog revisions to agree.
+exact calls, output bytes, truncation, catalog revision
+and each root page snapshot.
 
 Track Atlas snapshot, pages, entries seen, `complete`, and next cursor. If
 coverage is partial, follow the cursor without asking the model to choose a
 Database. Do not claim a cold Database/Table is absent until coverage is
-complete. A predictor may point to a Table outside the current Atlas page; use
-normal Router fallback while deterministic Atlas continuation remains available.
+complete.
 
-Keyword and vector recall doors are deleted; rewrite later. Until then, locate
-Rows with `SHOW ROUTES` (the Agent's main path) and `SELECT` for facts. jev is
-an optional Skill-side chooser on the same layer-by-layer surface.
+Locate Rows with `SHOW ROUTES` (the Agent's main path) and `SELECT` for facts.
+Keyword and vector recall are additional product paths still to implement.
+jev is an optional Skill-side chooser on the same layer-by-layer surface.
 
 Treat Route results as `navigation_only`. They are neither answers nor evidence.
 Explicitly choose one or more Tables from the compact Atlas. For a selected
@@ -270,7 +265,7 @@ document, submit a Schema change to widen the Column first (see
 
 Build one `memora.mutation-plan/v1` object. Every decision includes at least one
 read-only preflight with explicit Row expectations. IGNORE has no steps. INSERT,
-REVISE, MOVE, and RELATE have one step; MERGE is one UPDATE plus DELETE steps;
+REVISE, and MOVE have one step; MERGE is one UPDATE plus DELETE steps;
 SPLIT is one UPDATE plus INSERT steps. Keep at most eight steps. Every INSERT or
 UPDATE supplies the complete `route_leaf_ids` snapshot with at least one leaf.
 A Row with no Route membership can never be reached by semantic navigation, so

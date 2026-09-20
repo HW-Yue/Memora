@@ -41,9 +41,8 @@ A 链到 B 时，**一个事务内**同时写两面：
 
 ## 当前实现
 
-`RELATE` / `UNRELATE` / `SHOW RELATIONS` 与独立关系对象（`mem_links` 读写）
-**已删**。行上仍有 `links` 字段（`setLinks` / `RowLinks` / `summarize`）。
-字段读写的 MSQL 后面重写；在此之前不要走旁路 API 造关系。
+行上已有 `links` 字段（`setLinks` / `RowLinks` / `summarize`）。
+字段的 MSQL 读写待实现。
 
 ## 摘要懒更新
 

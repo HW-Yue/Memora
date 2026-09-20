@@ -1,19 +1,14 @@
 # Canonical Skill v1
 
-状态：F28 已冻结基础宿主契约；F30–F41、F124e 与 F133–F134 已扩展稳定流程，并由同一来源生成
-Codex/Claude Code 适配层。
+状态：F28 已冻结基础宿主契约；稳定规则只维护在
+[`skills/memora/SKILL.md`](../../skills/memora/SKILL.md)。
 
 ## 唯一来源
 
-宿主稳定规则只维护在 [`skills/memora/SKILL.md`](../../skills/memora/SKILL.md)；面向独立
-Agent 安装的同步发布仓库是 [HW-Yue/memora-skill](https://github.com/HW-Yue/memora-skill)，
-其中的 Skill bundle 与 Memora Release 绑定。
-产品定位、端到端架构、读取/写入流程和 Admin 操作说明按需维护在
+面向独立 Agent 安装的同步发布仓库是 [HW-Yue/memora-skill](https://github.com/HW-Yue/memora-skill)。
+产品定位与读写流程按需维护在
 [`skills/memora/references/product-manual.md`](../../skills/memora/references/product-manual.md)，
 不包含任何动态 Database 状态。
-相邻 `contract.json` 是机器可读 lint 清单；F123 新增的 `host-contract.json` 只冻结
-真实模型同题 Task、预算和脱敏收据。两者都不是第二份行为说明，也不保存任何动态
-Database、Schema、Router 或候选。
 
 契约绑定：
 
@@ -21,85 +16,39 @@ Database、Schema、Router 或候选。
 - `memora.msql.ast/v1`；
 - `memora.result/v1`；
 - `memora.semantic-conflict/v1` 和 `memora.conflict-resolution/v1`；
-- `memora.assimilation-event/v1` 和 `memora.assimilation-receipt/v1`；
-- `memora.assimilation-submission/v1`、`memora.assimilation-review/v1` 和 `memora.source-receipt/v1`；
-- `memora.semantic-health/v2`、`memora.maintenance-request/v1` 和 `memora.maintenance-receipt/v1`；
 - `memora.route-mutation-proposal/v1` 和 `memora.route-mutation-plan/v1`；
-- `memora.host-input/v1` 和 `memora.host-input-receipt/v1`；
-- `memora.worthiness-decision/v1` 和 `memora.worthiness-receipt/v1`；
-- `memora.feedback-event/v1`、`memora.feedback-receipt/v1`、`memora.feedback-confirmation/v1` 和确认收据；
-- `memora.speculative-discovery/v2` 的 Catalog Atlas 覆盖、同回合候选、全局预算与 Router fallback；
-- `memora assimilate/capture/decide/doctor/query/exec/feedback/maintain/mutate/schema/reflect` 十一个逻辑入口。
-- `memora.real-host-task/v1`、invocation/receipt 及 Codex/Claude/Kimi 同题矩阵。
+- `memora doctor/query/exec/mutate/schema`。
 
-每次 CI 都解析契约中的 MSQL 示例，并校验 Skill 中出现的是同一组命令。
-版本或语法变化必须显式更新契约和 golden，不能让宿主提示静默漂移。
-首次安装例外只允许相邻 `scripts/install.sh`；必须先获得用户授权，并在替换
-binary 前校验 Release checksum 和版本，安装后通过 doctor。
+每次 CI 都解析契约中的 MSQL 示例。版本或语法变化必须显式更新契约和 golden。
+首次安装例外只允许相邻 `scripts/install.sh`；必须先获得用户授权。
 
 ## 稳定流程
 
-Canonical Skill 定义七个阶段：
-
 ```text
-capture → discover → query → summarize
+discover → query → summarize
          → write → receipt
-         → decide → receipt
-         → assimilate → receipt
          → request_user（发生语义冲突或越过风险边界）
 ```
 
-发现阶段可在一个模型回合并行发出有界 Catalog、Lexical、可选 Vector 和最多两个
-同主题根 Route 调用；这减少的是 LLM 续推，不把策略藏进引擎。不同 predictor 保留
-各自 snapshot 并要求 Catalog revision 一致，错误预取确定性回到普通 Router。
+发现阶段逐层 `SHOW ROUTES`。关键词与向量召回是产品上的另外两条路，入口待实现。
+Router 只返回定位，宿主必须 SELECT 回表后才能回答。写入先查已有 Row，再选择
+IGNORE、INSERT、REVISE、MERGE、SPLIT 或 MOVE。
 
-发现结果、Router/Discovery 候选和 SELECT Row 有不同语义。Router/Discovery 只返回
-定位，宿主必须 SELECT 回表后才能回答或总结。写入先查已有 Row，再选择
-IGNORE、INSERT、REVISE、MERGE、SPLIT、MOVE 或 RELATE。
-
-资料只由宿主临时读取；覆盖、复核未完成时不得报告吸收成功。语义冲突只
-展示双方来源、revision 和差异，必须等用户决定后才生成 mutation。
-冲突 View 不持久化也不包含 SQL；用户决议通过新 event 绑定已展示
-Row/revision，再转换为 IGNORE、REVISE 或 MERGE Plan。
-资料 inventory、coverage 和 checkpoint 只保存有界元数据、范围与指纹；
-coverage_complete 不等于语义吸收成功。
-资料提交还必须通过隔离复核、完整 anchor、关键事实和未决冲突门禁；只有
-committed Source Receipt 才表示吸收成功，中断写入必须按 in_doubt 恢复。
-健康维护当前不自动修复；所有报告候选必须复核，不能静默改事实、Schema 或 Router。
-质量反馈本身不修改事实；stale、wrong、incomplete 只有绑定新的用户确认和当前
-revision 后才可修订。逻辑 Undo 追加 COMPENSATE revision，不删除 History。
-短 Host Input 先进入最多 12,000 bytes 的 auxiliary pending inbox；capture receipt
-不回显正文且不等于 worthiness 决策。完整资料仍走 assimilation。
-IGNORE/WRITE/REVISE 只有绑定匹配的 verified Mutation Receipt 后才用 `decide` 终结
-pending；decision API 不执行 MSQL，也不能接受 `committed_unverified`。
+语义冲突只展示双方来源、revision 和差异，必须等用户决定后才生成 mutation。
 
 ## 安全与上下文预算
 
-Skill 禁止读取或修改物理数据库、索引、日志、Page 和 Instance 文件，
-数据库真相只来自版本化 MSQL Result。v1 宿主侧硬上限为：
+Skill 禁止读取或修改物理数据库文件。数据库真相只来自版本化 MSQL Result。
+v1 宿主侧硬上限为：
 
 - Router 12 行；
-- 候选定位 24 行；
-- 投机 profile 合计 8 个候选、4,096 candidate bytes、2 个根 Table 和 10 次 tool calls；
 - SELECT 10 行；
 - Mutation Receipt 2,000 字符；
 - 单任务工作上下文 12,000 字符。
 
 这些值是版本化宿主协议的保守上限，不代替数据库内可演化的质量配置。
-后续修改需要新契约证据、测试和兼容说明。
 
 ## 关联
 
 - [AI-native 产品契约](../product/ai-native-contract.md)
-- [AI 自主权与约束](../archive/agent/autonomy.md)
-- [上下文生命周期](../archive/query/context-lifecycle.md)
-- [Skill 语义冲突交互 v1](../archive/agent/skill-conflict-v1.md)
-- [资料清单与覆盖 v1](../archive/agent/assimilation-coverage-v1.md)
-- [Host Input Capture v1](../archive/agent/host-input-capture-v1.md)
-- [Worthiness Decision v1](../archive/agent/worthiness-decision-v1.md)
-- [资料独立复核与提交 v1](../archive/agent/assimilation-review-v1.md)
-- [语义数据库健康维护 v1（历史）](../archive/design/semantic-health-v1.md)
-- [反馈、修订与逻辑 Undo v1](../archive/agent/feedback-revision-v1.md)
-- [Skill 首次安全安装 v1](../archive/agent/safe-bootstrap-v1.md)
-- [Codex Adapter v1](../archive/development/codex-adapter-v1.md)
-- [Claude Code Adapter v1](../archive/development/claude-code-adapter-v1.md)
+- [Skill 写入](./skill-write-v1.md)

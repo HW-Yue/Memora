@@ -102,4 +102,3 @@ root 与 branch 共用同一个 `N`。Leaf 不能成为 parent，这条不变量
 - [Route Branch Fan-out 策略](../query/route-branch-fanout-policy.md)（被本文取代的部分已就地标注）
 - [AI-native 可演化配置](../product/adaptive-configuration.md)
 - [语义 Router](../query/semantic-routing.md)
-- [Semantic Health v2](../agent/semantic-health-v2.md)

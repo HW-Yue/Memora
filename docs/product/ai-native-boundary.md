@@ -40,7 +40,7 @@ AI 不能操作 SQLite 页、offset 或数据库文件。
 
 - 不是文档仓库或 PDF 阅读器；
 - 不是传统 RAG 的 chunk + embedding 管线；
-- 不采用 Embedding、向量数据库、余弦/距离相似度或其伪装形式；
+- 向量只用于定位，不产出事实，也不对 PDF / 图片 / 机械 chunk 建向量；
 - 不是让 AI 直接读写数据库物理文件；
 - 不是只能 `add/search/delete` 的记忆投递箱。
 
@@ -49,6 +49,5 @@ AI 不能操作 SQLite 页、offset 或数据库文件。
 - [AI-native 产品宪章](./ai-native-product-charter.md)
 - [AI-native 产品契约](./ai-native-contract.md)
 - [质量模型与验收](../archive/product/quality-model.md)
-- [资料吸收](../archive/data/assimilation.md)
 - [AI 自主权与约束](../archive/agent/autonomy.md)
 - [MSQL](../query/msql.md)

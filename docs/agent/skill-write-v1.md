@@ -19,11 +19,9 @@ scope + actor + source_event_id + reason
 + preflight[] + steps[] + verify[]
 ```
 
-Plan 的 decision 为 IGNORE、INSERT、REVISE、MERGE、SPLIT、MOVE 或 RELATE。
-IGNORE 没有写步骤；INSERT/REVISE/MOVE/RELATE 各有一个；MERGE/SPLIT 各使用
-一条原子 `MERGE ... ROWS ...` / `SPLIT ... ROW ...`，不再由 Skill 拼接普通
-UPDATE/DELETE/INSERT。
-SUPERSEDE 在 v1 由具体 Schema 下的 REVISE/RELATE 表达，不新增物理动作。
+Plan 的 decision 为 IGNORE、INSERT、REVISE、MERGE、SPLIT 或 MOVE。
+IGNORE 没有写步骤；INSERT/REVISE/MOVE 各有一个；MERGE/SPLIT 各使用
+一条原子 `MERGE ... ROWS ...` / `SPLIT ... ROW ...`。
 
 每个 Plan 至少有一条带明确 Row 预期的只读 preflight。非 IGNORE Plan 还
 必须有 verify。宿主通过：

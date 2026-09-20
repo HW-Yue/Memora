@@ -48,7 +48,7 @@ Database 只负责将 AI 导向 Table；Table 的 Data Dictionary 说明一条 R
 aliases 是有界语义面：最多 8 项、每项 1–64 个 Unicode 字符、规范化后合计最多 512 UTF-8
 bytes。MSQL 以 `ALTER ROUTE :route SET ALIASES :aliases` 完整替换并校验 expected revision；
 rename 继续保留旧 name，但同样受上限约束。`SHOW`/`DESCRIBE` 返回非 null `TEXT_LIST`，alias
-进入 lexical postings，但仍只是导航信号，不是事实答案。
+进入导航面，但仍只是导航信号，不是事实答案。
 
 叶子把子分支替换为零个或一个活跃 locator：
 
@@ -135,12 +135,11 @@ generation N 继续查询
 
 split/merge 只改正文而不改上层 Route，属于完整性失败。
 
-F65 已将 Row、History、Relation、上层 Route revision 和 membership revision
+F65 已将 Row、History、上层 Route revision 和 membership revision
 纳入同一原生事务。AI 必须显式给出目标 Row 和结构调整；引擎不使用相似度或
 隐藏规则代替语义决策。
 
-F71 已删除旧 Database Route、MATCH、query terms、向量和相似度 fallback；
-Table Router、稳定 RowID、revision、cursor 与公开 SPLIT/MERGE 是当前唯一主路。
+Table Router、稳定 RowID、revision、cursor 与公开 SPLIT/MERGE 是当前主路。
 
 ## 关联
 

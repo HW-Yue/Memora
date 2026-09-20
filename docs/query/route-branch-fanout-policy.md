@@ -67,5 +67,4 @@ Leaf 不能成为其他 Route 节点的 parent。若两个不同 Row 对应的 L
 - [F223：Route Branch Fan-out 硬上限](../planning/f223-route-branch-fanout-limit.md)
 - [语义 Router](./semantic-routing.md)
 - [Route Mutation Plan v1](./route-mutation-plan-v1.md)
-- [Semantic Health v2](../agent/semantic-health-v2.md)
 - [AI-native 可演化配置](../product/adaptive-configuration.md)

@@ -58,7 +58,7 @@ Frame 截断必须传播到 statement 和顶层。
 
 **预测器不可用现在是 statement error，不再是成功回执**：Frame 里已经没有回执可放，
 而返回零个候选会宣称「搜过了，树里没有」。契约见
-[候选预测器只给路径](./predictor-path-only-v1.md)；
+[查询形态](../product/query-model.md) §6；
 v1 的历史形态见 [Discovery Frame v1](../archive/query/discovery-frame-v1.md)。
 
 状态固定为：

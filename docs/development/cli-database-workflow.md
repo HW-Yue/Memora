@@ -58,7 +58,7 @@ Origin、Cookie 与 CSRF 契约见 [Local Read API v1](../archive/development/lo
 
 - Catalog Binder：CREATE/ALTER/SHOW/DESCRIBE Database、Table、Column；
 - Row Executor：INSERT/UPDATE/DELETE/RESTORE；
-- Query：SELECT、History、Relation、Router。
+- Query：SELECT、History、Router。
 
 DDL 与数据操作共享 Lexer、Parser、stable result envelope 和 daemon 持久 Store，不存在 CLI-only DDL 或测试专用写入接口。
 
@@ -71,7 +71,7 @@ status, snapshot_version, snapshot_hash,
 databases, rows, history, relations
 ```
 
-Catalog 或权威记录损坏时 doctor 失败，不伪装为 healthy。当前计数只针对权威逻辑对象；派生索引质量由重建与 Phase B 退出测试单独验证。
+Catalog 或权威记录损坏时 doctor 失败，不伪装为 healthy。当前计数只针对权威逻辑对象。
 
 ## 关联
 

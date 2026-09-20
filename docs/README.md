@@ -1,10 +1,9 @@
 # Memora 文档入口
 
-当前有效设计只在这里。历史规格、完成门、被取代方案一律在
-[`archive/`](./archive/README.md)，**不是设计依据，日常不要整篇读取**。
+当前有效设计只在这里。历史规格在 [`archive/`](./archive/README.md)，
+日常不要整篇读取。
 
 持久化基座是 **SQLite**。Page、WAL、B+ Tree、自研恢复都不是本项目对象。
-词法/向量召回内核已删，架构待规划。
 
 ## 最高产品参考规范
 
@@ -22,15 +21,13 @@
 
 ## 派发工作
 
-- [执行计划](./planning/execution-plan.md) — **当前唯一工作队列**（召回内核已删，架构待规划）
+- [执行计划](./planning/execution-plan.md) — **当前唯一工作队列**
 - [TDD 协议](./planning/feature-tdd-protocol.md) · [Feature 产品门](./planning/feature-product-gate.md)
 
-## 现行内核
+## 现行内核与规格
 
-- [存储层](./storage/README.md) — SQLite 普通表；召回内核已删
+- [存储层](./storage/README.md) — SQLite 普通表
 - [检索路线](./query/retrieval-routes-jev.md) · [jev 选择器](./query/jev-branch-selection.md)
-- [预测器只给路径](./query/predictor-path-only-v1.md) ·
-  [词法位置（门与内核均已删）](./query/lexical-locations-v1.md)
 - [MSQL](./query/msql.md) · [语义 Router](./query/semantic-routing.md)
 - [Route 配套表](./product/route-companion-table.md) ·
   [行生命周期](./product/row-lifecycle-successor.md) ·
@@ -47,7 +44,6 @@
 - [ADR-0007 预测器可组合](./decisions/0007-route-predictor-arsenal.md)（向量边界被 0012 修订）
 - [ADR-0008 全内容倒排](./decisions/0008-full-content-inverted-index.md)
 - [ADR-0009 薄 Agent Loop](./decisions/0009-memora-owned-agent-loop.md)
-- [ADR-0010 小规模评测优先](./decisions/0010-small-scale-high-quality-evaluation.md)
 - [ADR-0011 一切建表](./decisions/0011-pure-storage-engine-tables-everything.md)
 - [ADR-0012 Row 向量直给叶子路径](./decisions/0012-row-vector-leaf-path.md)
 - [ADR-0002 延后内置 Agent](./decisions/0002-defer-embedded-agent.md)

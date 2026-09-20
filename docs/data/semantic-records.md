@@ -42,8 +42,8 @@ F14 冻结的基础类型和输入规范见 [逻辑类型与字段预算 v1](./l
 
 ## 关系
 
-独立关系对象与 `RELATE` 已删。行上仍有 `links` 字段，读写后面重写，见
-[行链接](../product/row-links.md)。
+行与行之间通过数据行上的 `links` 字段相连，见
+[行链接](../product/row-links.md)。字段已在行上；读写语句待实现。
 
 ## 修改能力
 
@@ -54,10 +54,10 @@ F14 冻结的基础类型和输入规范见 [逻辑类型与字段预算 v1](./l
 - revise、supersede；
 - merge、split；
 - move、retype、rename；
-- relation add/remove；
+- `links` 增删（待实现）；
 - 历史查询和补偿式撤销。
 
-所有修改都必须通过 MSQL/SQL 进入统一事务执行器。`row_id` 永不因正文、Schema、Router 归属或索引重建而改变；UPDATE 创建新语义 revision，逻辑 DELETE 将当前状态改为 deleted 并默认保留历史。物理清除使用单独的高风险 PURGE。
+所有修改都必须通过 MSQL/SQL 进入统一事务执行器。`row_id` 永不因正文、Schema、Router 归属而改变；UPDATE 创建新语义 revision，逻辑 DELETE 将当前状态改为 deleted 并默认保留历史。删除是终态。
 
 Row 修改或删除时，引擎必须在同一事务中更新当前 Record、物理索引、关系引用、
 Route locator 和 Change Log。普通 UPDATE 未改变语义边界时可以保留现有 Route
@@ -69,11 +69,9 @@ MSQL 提交完整叶子快照。DELETE 原子清除可见 membership。
 - 是否需要限制每条记录最多关系数？
 - AI 如何识别一条记录混入多个主题并主动 split？
 - 默认查询怎样结合当前 revision 和现实有效时间排除已过期内容？
-- Source Receipt 应挂在 Row、字段，还是具体 claim 上？
 
 ## 关联
 
 - [AI 自主权与约束](../archive/agent/autonomy.md)
 - [语义路由](../query/semantic-routing.md)
-- [Wiki 导出](../archive/export/obsidian-wiki.md)
 - [自描述 Data Dictionary](./self-describing-data-dictionary.md)

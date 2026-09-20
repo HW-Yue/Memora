@@ -8,11 +8,10 @@ import (
 	"unicode/utf8"
 )
 
-// Version is v2 because v1 carried scores, reasons, matched fields, predictor
-// receipts and a four-part budget. Retrieval answers one question — where in
-// the semantic tree the hit is — so all of that is gone rather than left
-// present and unfilled: a field that is always empty is a lie a caller will
-// eventually build on. See docs/query/predictor-path-only-v1.md.
+// Version is v2 because a candidate carries only a location in the semantic
+// tree: database, table, and path. Scores, reasons, matched fields and
+// predictor receipts are not part of the contract. See
+// docs/product/query-model.md §6.
 const Version = "memora.discovery-frame/v2"
 
 const UsageNavigationOnly = "navigation_only"

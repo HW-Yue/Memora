@@ -1,8 +1,7 @@
 # ADR-0011：存储引擎只做数据库，其余一切在它上面建表
 
 状态：Accepted，2026-09-13；2026-09-20 明确基座为 **SQLite**。
-同日删除当时的词法/向量召回内核（`mem_postings` / vec0 / embedding）；
-召回仍是产品四条路之一，架构待规划。
+关键词与向量召回是产品四条路里的两条，实现待规划。
 取代 [ADR-0004](../archive/decisions/0004-fast-row-directory-minimal-mvcc.md)
 与 [MVCC、Undo 与 Redo 边界](../archive/storage/mvcc-undo-redo.md)。
 语义树的表形态见 [Route 配套表](../product/route-companion-table.md)。
@@ -61,7 +60,7 @@ Agent 改语义树 → 内部生成参数化 SQL，在一个事务内改语义�
 | 变更日志 | 普通表 `mem_changes`，与数据、history 同一事务写 |
 | 配置 | 普通表 |
 | Catalog | 普通表；表的角色标记是它的字段 |
-| 词法 / 向量索引 | 当前内核已删；产品仍要这两条召回路，架构待规划 |
+| 词法 / 向量索引 | 产品要这两条召回路；存储形态待实现 |
 
 对 Agent 可见哪些表（只有数据表），由产品层按 Catalog 标记过滤。
 

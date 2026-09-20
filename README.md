@@ -1,7 +1,7 @@
 # Memora（SQLite 原型分支）
 
-> 分支 `rewrite/adr0011`：底层换成 **SQLite**。词法/向量召回内核已删，架构待规划。
-> 现役是 Catalog、数据表、语义树与 `SHOW ROUTES` / `SELECT`。设计依据见
+> 分支 `rewrite/adr0011`：底层是 **SQLite**。现役是 Catalog、数据表、语义树与
+> `SHOW ROUTES` / `SELECT`。设计依据见
 > [ADR-0011](./docs/decisions/0011-pure-storage-engine-tables-everything.md)。
 
 Memora 是一个给 AI Agent 用的本地个人数据库：Agent 自己建模、用 MSQL 读写，
@@ -49,7 +49,7 @@ bin/memora exec --input "{\"parameters\":{\"named\":{\"p\":\"All work knowledge\
 bin/memora exec --input "{\"parameters\":{\"named\":{\"parent\":\"<root route_id>\",\"name\":\"architecture\",\"kind\":\"leaf\",\"purpose\":\"Architecture decisions\"}},$M,$AUTH}" "CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose"
 ```
 
-Agent 的查询路径（语义索引是现役主路；关键词 / 向量召回内核已删）：
+Agent 的查询路径（语义索引是现役主路）：
 
 ```text
 SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12
@@ -58,9 +58,12 @@ OPEN ROUTE :leaf LIMIT 1                       -- 得到 row_id
 SELECT * FROM work.notes WHERE row_id = :row LIMIT 1   -- 只有 SELECT 是事实
 ```
 
+产品上还有关键词召回、向量召回和 Skill 层 jev，见
+[查询形态](./docs/product/query-model.md)。
+
 ## 接入 Agent
 
-- **Skill**：`skills/memora`，安装方式与 main 相同（`skills/memora/scripts/install.sh`）。
+- **Skill**：`skills/memora`，安装方式见 `skills/memora/scripts/install.sh`。
 - **MCP**：`memora mcp` 提供单一工具 `memora_execute`，接 Claude Code / Codex。
 - **Admin 控制台**：`memora admin --scope work` 打开本地只读控制台（目录、语义树画布、变更时间线、路由轨迹）。
 
@@ -88,14 +91,6 @@ SELECT * FROM work.notes WHERE row_id = :row LIMIT 1   -- 只有 SELECT 是事�
 
 写入串行，读取总是看到最近一次提交，不做 MVCC。拆分/合并数据行时，旧行标记为
 superseded 并记录 `successor_ids`；引用按需跟随接替者（懒更新）。
-
-## 与 main 的差异
-
-- 删除：自研 Page / B+ 树 / WAL / Buffer Pool / MVCC、Page Store 迁移链、实例升级与迁移、
-  数据库打包与 Wiki 导出、评测与 benchmark 设施、`SHOW ROUTE CANDIDATES` /
-  `SHOW LEXICAL LOCATIONS` / `RELATE`、词法/向量召回内核（postings、sqlite-vec、embedding、`REBUILD` / `reindex`）。
-- 新增：`internal/sqlstore`（SQLite 后端）。
-- 暂不提供：`export` / `pack` / `open` / `install` / `move` / `upgrade` / `service` 命令。
 
 ## 许可
 

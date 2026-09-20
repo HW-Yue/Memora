@@ -10,10 +10,8 @@
 
 ## 证据
 
-F30–F42 已经通过 Canonical Skill 和统一 MSQL 覆盖 query、write、Schema、
-conversation、conflict、assimilation、maintenance、feedback、installation 与
-benchmark；Codex 和 Claude Code adapter 绑定相同 Skill/contract digest，并跑
-同一数据与 revision 结果。当前覆盖审计没有 Skill-first 功能缺口。
+F30 以后通过 Canonical Skill 和统一 MSQL 覆盖 query、write、Schema 与
+installation；Codex 和 Claude Code adapter 绑定相同 Skill。模型继续由宿主提供。
 
 尚无独立使用需求的 benchmark 或用户证据；Provider 凭据/隐私规格与 token、
 延迟、费用、步数、mutation 预算也未冻结。此时内置模型只会重复宿主能力，
