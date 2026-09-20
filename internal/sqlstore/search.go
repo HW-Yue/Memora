@@ -146,7 +146,8 @@ func (db *DB) PostingsInDatabases(ctx context.Context, terms, databaseIDs []stri
 	return postings, err
 }
 
-// SearchLexicalLocations implements executor.LexicalLocationReader.
+// SearchLexicalLocations reads the posting table. The MSQL door was deleted;
+// this stays as the internal keyword-recall API for the rewrite.
 func (db *DB) SearchLexicalLocations(ctx context.Context, request lexicallocation.Request) (lexicallocation.Page, error) {
 	return lexicallocation.Search(ctx, db, request)
 }

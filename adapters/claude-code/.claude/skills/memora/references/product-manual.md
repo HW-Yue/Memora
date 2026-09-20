@@ -70,16 +70,14 @@ Row 可以挂在多个语义 Leaf；正文只保存一份。
 检查安装 → 确认 daemon → 绑定授权 scope
   → SHOW CATALOG ATLAS（必要时继续 cursor）
   → 选 Database/Table 与 Schema
-  → lexical / optional vector 预测候选（可跳过）
-  → SHOW ROUTES 根节点
+  → SHOW ROUTES 根节点（语义索引是 Agent 主路；关键词 / 向量召回门待重写）
   → 每次只选一层并读取下一层
   → OPEN ROUTE（得到唯一 Row locator）
   → SELECT RowID + projection + revision
   → 只根据 SELECT 事实回答并引用来源
 ```
 
-候选预测失败、零命中、过期或缺少向量编码器都不是事实查询失败；回到确定性 Route
-导航。每个 query 使用有界 Route Frame，不把动态索引写入长期 system prompt，也不把
+每个 query 使用有界 Route Frame，不把动态索引写入长期 system prompt，也不把
 整个目录或全文塞进上下文。发生 revision 冲突时丢弃旧 Frame，刷新一次并重新读取。
 
 ## 写入与资料吸收
@@ -87,9 +85,9 @@ Row 可以挂在多个语义 Leaf；正文只保存一份。
 短文本或对话陈述按以下顺序处理：
 
 ```text
-capture pending → 发现现有 Row → IGNORE / INSERT / REVISE / MERGE / SPLIT / MOVE / RELATE
+发现现有 Row → IGNORE / INSERT / REVISE / MERGE / SPLIT / MOVE
 → 生成 hash-bound Mutation Plan → Policy preflight → 短事务 MSQL 提交
-→ SELECT 回读 → 检查 Row revision、Relation、Route membership → decide / receipt
+→ SELECT 回读 → 检查 Row revision、Route membership
 ```
 
 所有写入都必须带 expected schema/revision、授权 scope、最大影响行数和完整 Route

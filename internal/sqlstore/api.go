@@ -9,7 +9,6 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
-	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -90,37 +89,6 @@ func (o operations) Restore(ctx context.Context, databaseName, tableName, rowID 
 		value, err = t.restore(ctx, databaseName, tableName, rowID, revision, options)
 		return err
 	})
-	return
-}
-
-func (o operations) Relate(ctx context.Context, definition row.RelationDefinition) (value relation.Relation, err error) {
-	err = o.run(ctx, true, func(t *tx) error { value, err = t.relate(ctx, definition); return err })
-	return
-}
-
-func (o operations) GetRelation(ctx context.Context, id string) (value relation.Relation, err error) {
-	err = o.run(ctx, false, func(t *tx) error {
-		value, err = t.loadRelation(ctx, id)
-		if err == nil && value.State != relation.StateLive {
-			err = fail(result.CodeNotFound, "relation %q was not found", id)
-		}
-		return err
-	})
-	return
-}
-
-func (o operations) DeleteRelation(ctx context.Context, id string, expected uint64) (value relation.Relation, err error) {
-	err = o.run(ctx, true, func(t *tx) error { value, err = t.deleteRelation(ctx, id, expected); return err })
-	return
-}
-
-func (o operations) ListOutgoingRelations(ctx context.Context, endpoint row.RelationEndpoint) (values []relation.Relation, err error) {
-	err = o.run(ctx, false, func(t *tx) error { values, err = t.listRelations(ctx, endpoint, "outgoing"); return err })
-	return
-}
-
-func (o operations) ListIncomingRelations(ctx context.Context, endpoint row.RelationEndpoint) (values []relation.Relation, err error) {
-	err = o.run(ctx, false, func(t *tx) error { values, err = t.listRelations(ctx, endpoint, "incoming"); return err })
 	return
 }
 

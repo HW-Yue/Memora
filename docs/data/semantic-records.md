@@ -42,15 +42,8 @@ F14 冻结的基础类型和输入规范见 [逻辑类型与字段预算 v1](./l
 
 ## 关系
 
-关系必须由统一的系统 Relationship Store 结构化保存，不能只隐含在正文，也不要求每个业务库自行设计关系表：
-
-```text
-source_id, relation_type, target_id,
-description, revision, status
-```
-
-AI 决定 `depends_on`、`contradicts`、`part_of` 等关系语义；引擎负责正反向索引、引用完整性和 MVCC。
-记录信封、revision 和事务边界见 [Relationship Store v1](../archive/data/relationship-store-v1.md)。
+独立关系对象与 `RELATE` 已删。行上仍有 `links` 字段，读写后面重写，见
+[行链接](../product/row-links.md)。
 
 ## 修改能力
 

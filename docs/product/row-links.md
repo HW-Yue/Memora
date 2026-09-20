@@ -39,11 +39,11 @@ A 链到 B 时，**一个事务内**同时写两面：
 对方行被拆分或合并后，链接按[生命周期](./row-lifecycle-successor.md)懒更新：
 改指全部接替者，两面一起改，每个接替者的摘要取自接替者本身。
 
-## 取代现役 Relation
+## 当前实现
 
-现役 Relation 是 objects 树里的独立对象（`relation/model.go`：source、target、
-relation_type、description、revision）。本文取代它：链接进数据行字段，
-objects 树里的 Relation 族随 ADR-0011 第 4 步退役。
+`RELATE` / `UNRELATE` / `SHOW RELATIONS` 与独立关系对象（`mem_links` 读写）
+**已删**。行上仍有 `links` 字段（`setLinks` / `RowLinks` / `summarize`）。
+字段读写的 MSQL 后面重写；在此之前不要走旁路 API 造关系。
 
 ## 摘要懒更新
 

@@ -21,7 +21,6 @@ const (
 	DecisionMerge  Decision = "MERGE"
 	DecisionSplit  Decision = "SPLIT"
 	DecisionMove   Decision = "MOVE"
-	DecisionRelate Decision = "RELATE"
 )
 
 type Plan struct {

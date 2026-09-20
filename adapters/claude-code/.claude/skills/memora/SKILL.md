@@ -163,35 +163,15 @@ Database. Do not claim a cold Database/Table is absent until coverage is
 complete. A predictor may point to a Table outside the current Atlas page; use
 normal Router fallback while deterministic Atlas continuation remains available.
 
-Always pass the lexical question as a parameter. Add Vector only when the host
-already has a normalized query vector and the exact generation space digest;
-split the global predictor budget before issuing either call. Missing encoder,
-unavailable/stale generation, zero hits, or a failed prefetch are normal
-navigation outcomes, not query failures.
+Keyword and vector recall doors are deleted; rewrite later. Until then, locate
+Rows with `SHOW ROUTES` (the Agent's main path) and `SELECT` for facts. jev is
+an optional Skill-side chooser on the same layer-by-layer surface.
 
-```sh
-memora query --input '{"parameters":{"named":{"lexical_query":"crash recovery","lexical_limit":8,"lexical_bytes":4096}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :lexical_query LIMIT :lexical_limit BYTES :lexical_bytes"
-```
+Treat Route results as `navigation_only`. They are neither answers nor evidence.
+Explicitly choose one or more Tables from the compact Atlas. For a selected
+Table, issue the ordinary Router root and continue the normal layer-by-layer
+state machine.
 
-`SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query` is the full-content inverted index: it returns every object matching the query in one bounded page, with `kind` one of `database | table | column | route | row`. Use it when a keyword must locate both the semantic index (route) and a concrete Row, instead of the route-only `SHOW ROUTE CANDIDATES`. A Row hit returns `database_id/table_id/object_id/revision`; follow it with `SELECT ... WHERE row_id = :row` to read the Row, whose own `route_paths` already carries its semantic path, so membership need not be reverse-resolved.
-
-```sh
-memora query --input '{"parameters":{"named":{"query":"crash recovery","location_limit":10,"utf8_byte_limit":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW LEXICAL LOCATIONS FROM ALL TABLES USING :query LIMIT :location_limit BYTES :utf8_byte_limit"
-```
-
-Treat every Discovery candidate and prefetched Route as `navigation_only`.
-They are neither answers nor evidence, and scores with different kinds are not
-comparable. Explicitly choose one or more Tables from the compact Atlas; a
-zero-hit Table remains selectable, and partial Atlas coverage is never an
-exclusion filter. Reuse a prefetched root only when
-its topic, Table, Catalog revision, page snapshot and Route revisions are still
-current. For a selected Table without a valid prefetch, issue the ordinary Router root fallback
-and continue the normal layer-by-layer state machine.
-
-Discard the speculative Frame when the question has a different topic, a
-revision is stale, the context ceiling is crossed, or the task ends. A wrong
-prediction may waste bounded context but must never exclude a Table, widen
-authorization, persist in a system prompt, or change the visible Row set.
 Answer only from revision-matched SELECT rows after normal Route navigation and
 RowID lookup.
 

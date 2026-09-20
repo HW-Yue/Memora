@@ -1,8 +1,10 @@
 # ADR-0012：Row 向量命中直接返回叶子路径
 
 状态：Accepted，2026-09-20。修订 [ADR-0007](./0007-route-predictor-arsenal.md) 的向量
-持久化边界，以及 confirmed-directions 第 10 条对「检索主路径」的表述。
-形态见 [检索路线与内核面](../query/retrieval-routes-jev.md)。
+持久化边界。第 4 条「融合发现是主路径」已被
+[查询形态](../product/query-model.md) 的四条路取代：语义索引是 Agent 主路，
+关键词与向量是双路召回（当前 MSQL 门已删，待重写），jev 只在 Skill。
+Row 向量仍允许，命中仍只给叶子路径。
 
 ## 背景
 

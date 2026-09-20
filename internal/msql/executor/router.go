@@ -529,6 +529,26 @@ func routerString(
 	return relationshipString(expression, catalog.Table{}, bound, label)
 }
 
+func relationshipString(
+	expression *ast.Expression,
+	table catalog.Table,
+	bound bindings,
+	label string,
+) (string, error) {
+	if expression == nil || containsIdentifier(expression) {
+		return "", executeError(result.CodeValidation, label+" must be a literal or parameter")
+	}
+	value, err := evaluate(expression, table, nil, bound)
+	if err != nil {
+		return "", err
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", executeError(result.CodeValidation, label+" must be TEXT")
+	}
+	return text, nil
+}
+
 func (engine *Engine) routerLimit(
 	_ context.Context,
 	expression *ast.Expression,

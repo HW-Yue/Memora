@@ -14,7 +14,9 @@
 | 决定 | 结论 |
 | --- | --- |
 | 存储基座 | SQLite + sqlite-vec，不自研引擎（[ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)） |
-| 检索主路径 | 融合发现；逐层导航是兜底与区域探索（[ADR-0012](../decisions/0012-row-vector-leaf-path.md)） |
+| 检索四条路 | 语义索引是 Agent 主路；关键词 + 向量是双路召回（当前 MSQL 门已删，待重写）；jev 只在 Skill |
+| 行关系 | 只留行上 `links` 字段；`RELATE` / `UNRELATE` / `SHOW RELATIONS` 及独立关系对象已删，读写后面重写 |
+| Route / Schema Mutation Plan | **本轮不改**，下一轮再讲 |
 | Row 向量 | 允许，命中直接返回叶子路径，逐段带 `route_id` |
 | 写入侧 | 本轮不动；`branch_fanout` 硬上限保留 |
 | jev | Skill 侧选择器，不进内核（[jev 选择器](../query/jev-branch-selection.md)） |
@@ -38,7 +40,7 @@ ADR-0012 之后两种 kind 都是主路径，互相挤。
 
 **改动**：按 kind 分表，或用 vec0 metadata / partition 做**预**过滤。
 
-**RED**：一个 Row 远多于 Route 的库，`USING VECTOR` 的 route 候选现在接近空；
+**RED**：一个 Row 远多于 Route 的库，向量召回不能把 route 挤成空；
 修好后 route 与 row 各自按自身空间取 top-K。
 
 **完成**：两种 kind 互不挤掉；reopen 后索引仍按 kind 隔离。
@@ -50,19 +52,17 @@ ADR-0012 之后两种 kind 都是主路径，互相挤。
 
 **完成**：写入无 Route 归属时失败；存量孤儿有可执行出路（补挂或拒绝召回并说明）。
 
-### Q2. 融合发现面 `USING FUSED`
+### Q2. 关键词 / 向量召回面重写
 
-形态见 [检索路线](../query/retrieval-routes-jev.md)。新增
-`SHOW ROUTE CANDIDATES … USING FUSED`，引擎内 RRF，只出逐段带 ID 的语义路径。
-不新增「选哪条路线」概念。
+当前 `SHOW ROUTE CANDIDATES` / `SHOW LEXICAL LOCATIONS` / 内存 `routelexical` **已删**。
+内核表 `mem_postings` 与 `mem_vectors` 保留。新 MSQL 门按四条路重写：只出路径，
+事实回表。jev 不进内核。
 
-**开工前必须裁定**（现为讨论稿待决）：词法同步 vs 向量异步的可见性语义。
-
-**完成**：只返回路径 + 末端 kind；无分数；失败即 `not_found`；LIMIT 受回表成本约束。
+**开工前必须裁定**：词法同步 vs 向量异步的可见性语义。
 
 ### Q3. 查询 Skill 编排（内核之后）
 
-路线 A/B/C 的选择与「全部都走」在 Skill 侧。jev 逐层 `Choice` 不改内核。
+四条路怎么单走或组合，在 Skill 侧。jev 逐层 `Choice` 不改内核。
 不与 Q0–Q2 并行开工。
 
 ## 刻意不在本队列

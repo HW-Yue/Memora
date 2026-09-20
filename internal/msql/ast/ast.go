@@ -27,8 +27,6 @@ type Statement struct {
 	Delete        *DeleteStatement             `json:"delete,omitempty"`
 	Restore       *RestoreStatement            `json:"restore,omitempty"`
 	Reshape       *ReshapeStatement            `json:"reshape,omitempty"`
-	Relate        *RelateStatement             `json:"relate,omitempty"`
-	Unrelate      *UnrelateStatement           `json:"unrelate,omitempty"`
 	CreateRoute   *CreateRouteStatement        `json:"create_route,omitempty"`
 	RenameRoute   *RenameRouteStatement        `json:"rename_route,omitempty"`
 	UpdateRoute   *UpdateRouteStatement        `json:"update_route,omitempty"`
@@ -167,19 +165,6 @@ type ReshapeStatement struct {
 	Sources []Expression   `json:"sources"`
 	Columns []Identifier   `json:"columns"`
 	Values  [][]Expression `json:"values"`
-}
-
-type RelateStatement struct {
-	SourceTable Name        `json:"source_table"`
-	SourceRow   *Expression `json:"source_row"`
-	TargetTable Name        `json:"target_table"`
-	TargetRow   *Expression `json:"target_row"`
-	Type        *Expression `json:"relation_type"`
-	Description *Expression `json:"description,omitempty"`
-}
-
-type UnrelateStatement struct {
-	Relation *Expression `json:"relation"`
 }
 
 type CreateRouteStatement struct {
@@ -333,19 +318,6 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.After)
 		appendExpression(statement.Show.Cursor)
 		appendExpression(statement.Show.Limit)
-	case statement.Show != nil && statement.Show.Object == "ROUTE_CANDIDATES":
-		appendExpression(statement.Show.Query)
-		appendExpression(statement.Show.Space)
-		appendExpression(statement.Show.Limit)
-		appendExpression(statement.Show.ByteLimit)
-	case statement.Show != nil && statement.Show.Object == "LEXICAL_LOCATIONS":
-		appendExpression(statement.Show.Query)
-		appendExpression(statement.Show.Cursor)
-		appendExpression(statement.Show.Limit)
-		appendExpression(statement.Show.ByteLimit)
-	case statement.Show != nil && statement.Show.Object == "RELATIONS":
-		appendExpression(statement.Show.Row)
-		appendExpression(statement.Show.Limit)
 	case statement.Insert != nil:
 		for row := range statement.Insert.Values {
 			for column := range statement.Insert.Values[row] {
@@ -371,13 +343,6 @@ func (document Document) Parameters() []Parameter {
 				appendExpression(&statement.Reshape.Values[row][column])
 			}
 		}
-	case statement.Relate != nil:
-		appendExpression(statement.Relate.SourceRow)
-		appendExpression(statement.Relate.TargetRow)
-		appendExpression(statement.Relate.Type)
-		appendExpression(statement.Relate.Description)
-	case statement.Unrelate != nil:
-		appendExpression(statement.Unrelate.Relation)
 	case statement.CreateRoute != nil:
 		appendExpression(statement.CreateRoute.Parent)
 		appendExpression(statement.CreateRoute.Name)

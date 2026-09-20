@@ -1,9 +1,10 @@
 # 候选预测器只给路径：检索返回值的收窄
 
-状态：**迁移设计**（2026-08-22，2026-08-25 更新进度）。落实
+状态：**原则仍有效**（2026-08-22；2026-09-20 注：
+`SHOW ROUTE CANDIDATES` / `SHOW LEXICAL LOCATIONS` 已删，召回面待重写。
+只给路径、不给分数这条约束继续约束新门）。落实
 [查询形态](../product/query-model.md) §6 与
-[架构原则](../product/architecture-principles.md) §3，不是独立规范——
-与上位规范冲突时以上位为准。
+[架构原则](../product/architecture-principles.md) §3。
 
 **四个阶段均已完成。** 阶段 4 的落地形态见 §7「阶段 4 的三处裁定」。
 

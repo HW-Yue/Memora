@@ -102,7 +102,7 @@ func validateStep(step Step, plan Plan) (string, []string, error) {
 	if statement.Kind != kind {
 		return "", nil, fmt.Errorf("declared kind %q does not match MSQL kind %q", kind, statement.Kind)
 	}
-	if kind != "INSERT" && kind != "UPDATE" && kind != "DELETE" && kind != "RELATE" &&
+	if kind != "INSERT" && kind != "UPDATE" && kind != "DELETE" &&
 		kind != "SPLIT" && kind != "MERGE" {
 		return "", nil, fmt.Errorf("unsupported mutation kind %q", kind)
 	}
@@ -185,8 +185,6 @@ func validateDecisionShape(decision Decision, kinds map[string]int, steps int) e
 	case DecisionSplit:
 		valid = (steps == 1 && kinds["SPLIT"] == 1) ||
 			(steps >= 2 && kinds["UPDATE"] == 1 && kinds["INSERT"] == steps-1)
-	case DecisionRelate:
-		valid = steps == 1 && kinds["RELATE"] == 1
 	}
 	if !valid {
 		return mutationError(result.CodeValidation, "decision %q does not match its mutation step shape", decision)
@@ -203,8 +201,6 @@ func statementDatabases(statement ast.Statement) []string {
 		names = append(names, statement.Update.Table)
 	case statement.Delete != nil:
 		names = append(names, statement.Delete.Table)
-	case statement.Relate != nil:
-		names = append(names, statement.Relate.SourceTable, statement.Relate.TargetTable)
 	case statement.Reshape != nil:
 		names = append(names, statement.Reshape.Table)
 	}

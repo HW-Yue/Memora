@@ -12,20 +12,22 @@
    指引，不是数据本身；答案来自最后对业务表的点查。
 3. **每一步有界**：返回有界条数、稳定 ID、快照与结构化错误，AI 不需要把全库目录
    装进上下文。
-4. **语义树是位置的唯一表示，但按 [ADR-0012](../decisions/0012-row-vector-leaf-path.md)
-   不再是到达 Row 的唯一通道。** 融合发现（关键词 + 向量，RRF，只出语义路径）是
-   检索主路径；逐层语义导航是兜底与区域探索。写入仍把 RowID 挂到叶子，查询无论
-   从哪条路进来，最终都用 RowID 回表。
+4. **四条路，不是一扇门。** Agent 最重要的是语义索引（逐层 `SHOW ROUTES`）。
+   关键词召回与向量召回是双路召回，内核表还在（`mem_postings` / `mem_vectors`），
+   当前 MSQL 门已删，后面按路径重写。jev 是 Skill 层可选的第四条路，走同一套
+   逐层导航面，不进内核。无论哪条路，事实一律 `SELECT` 回表。
 
 ## 2. 查询路线（从问题到答案）
 
 ```text
 问题/意图
 → ① 发现：定位库和表
-→ ② 定位（二选一或都走，Skill 编排）：
-     A 融合发现：关键词 + 向量 → 语义路径（主路径）
-     B 逐层导航：SHOW ROUTES 走到叶子（兜底 / 区域探索）
-→ ③ 叶子路径 → RowID（OPEN ROUTE，或 Row 命中时路径已带 object_id）
+→ ② 定位（四条路，可单走或组合；Skill 编排）：
+     语义索引（Agent 主路）：SHOW ROUTES 走到叶子
+     关键词召回：mem_postings（MSQL 门待重写）
+     向量召回：mem_vectors（MSQL 门待重写）
+     jev（可选）：把一层 child 交给 jev Choice，内核仍是 SHOW ROUTES
+→ ③ 叶子路径 → RowID（OPEN ROUTE）
 → ④ 回表取值：SELECT WHERE row_id = …
 →（可选）⑤ 查历史：history 表 (row_id, revision) 范围扫
 ```
@@ -78,7 +80,7 @@
 | 步骤 | 找到 | 拿它找 | 存储 |
 |------|------|--------|------|
 | ① 发现 | database_id / table_id + 用途 | 选表 → DESCRIBE | Catalog |
-| ② 定位 | 语义路径（逐段带 ID） | 叶子 → RowID | 融合发现 或 语义配套表 |
+| ② 定位 | 语义路径（逐段带 ID） | 叶子 → RowID | 语义配套表；召回面待重写 |
 | ③ 定位行 | row_id | row_id → 数据表 | 叶子挂 RowID；Row 命中可带 object_id |
 | ④ 回表取值 | 真实数据 + revision | 答案 | 数据表（SQLite） |
 | ⑤ 查历史 | 变更记录 | 历史 | history 表 `(row_id, revision)` |
@@ -92,13 +94,14 @@
 | 数据 | 写数据表 + revision | 读数据表 |
 | 历史 | 写 history 表 | 读 history 表 `(row_id, revision)` |
 
-语义树是同一套位置坐标系：写入把 RowID 挂到叶子，查询无论融合还是逐层，
-最终都用 RowID 回表，不维护两套定位。
+语义树是同一套位置坐标系：写入把 RowID 挂到叶子，查询无论语义索引还是召回，
+最终都用 RowID 回表。
 
-## 6. 候选预测器只给路径
+## 6. 召回只给路径
 
-关键词检索与向量检索按 ADR-0012 是**检索主路径**，不是逐层导航的附属提示。
-它们**只回答一件事**：命中的数据项在语义树的哪个位置——仍然只给路径，不给事实。
+关键词与向量是双路召回，不是语义树的附属提示，也**不是**当前那套
+`SHOW ROUTE CANDIDATES` / `SHOW LEXICAL LOCATIONS`（已删，待重写）。
+它们仍然**只回答一件事**：命中的数据项在语义树的哪个位置——只给路径，不给事实。
 
 ### 返回什么
 

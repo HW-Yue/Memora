@@ -267,9 +267,6 @@ func receiptBase(plan protocolmsql.AssimilationPlan, status string) protocolmsql
 
 func assimilationStatementObjectIDs(statement protocolmsql.StatementResult) ([]string, error) {
 	key := "row_id"
-	if statement.Statement == "RELATE" || statement.Statement == "UNRELATE" {
-		key = "relation_id"
-	}
 	if uint64(len(statement.Rows)) != statement.AffectedRows {
 		return nil, commitError(result.CodeInternal, "transaction statement object inventory is incomplete")
 	}

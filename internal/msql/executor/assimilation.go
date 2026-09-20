@@ -162,10 +162,6 @@ func validateAssimilationMutationGuards(statement ast.Statement, options Mutatio
 		return validateMutationOptions(options, false)
 	case statement.Update != nil, statement.Delete != nil, statement.Restore != nil:
 		return validateMutationOptions(options, true)
-	case statement.Relate != nil:
-		return validateRelationshipMutationOptions(options, false)
-	case statement.Unrelate != nil:
-		return validateRelationshipMutationOptions(options, true)
 	default:
 		return executeError(result.CodeValidation, "assimilation mutation guard policy is undefined")
 	}

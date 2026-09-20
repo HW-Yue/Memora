@@ -49,7 +49,7 @@ export MEMORA_EMBEDDING_DIMENSIONS=1536
 bin/memora reindex
 ```
 
-不配置时一切照常工作，只有 `USING VECTOR` 会返回「未配置向量模型」。
+不配置时一切照常工作：语义索引与关键词倒排不受影响；向量写入在后台补，召回门待重写。
 
 ## 第一次写入与查询
 
@@ -69,10 +69,9 @@ bin/memora exec --input "{\"parameters\":{\"named\":{\"p\":\"All work knowledge\
 bin/memora exec --input "{\"parameters\":{\"named\":{\"parent\":\"<root route_id>\",\"name\":\"architecture\",\"kind\":\"leaf\",\"purpose\":\"Architecture decisions\"}},$M,$AUTH}" "CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose"
 ```
 
-Agent 的查询路径（与 Skill 文档一致）：
+Agent 的查询路径（语义索引是主路；关键词 / 向量召回门待重写）：
 
 ```text
-SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :q LIMIT 8 BYTES 4096   -- 或 USING VECTOR
 SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12
 SHOW ROUTES UNDER :branch LIMIT 12
 OPEN ROUTE :leaf LIMIT 1                       -- 得到 row_id
@@ -108,7 +107,7 @@ SELECT * FROM work.notes WHERE row_id = :row LIMIT 1   -- 只有 SELECT 是事�
 | `history_<table_id>` | 该表每一次原地修改的完整版本；`SHOW HISTORY`、`AS OF` 读这里 |
 | `routes_<table_id>` | 语义树节点：`parent_id` + `child_ids`，叶子挂 `row_id`；删除只置 `deprecated` 并记接替者 |
 | `mem_changes` | 已提交事务的变更信封（谁、为什么、改了什么） |
-| `mem_postings` | 词法倒排（`LEXICAL` 候选与 `SHOW LEXICAL LOCATIONS`） |
+| `mem_postings` | 词法倒排（召回门待重写） |
 | `mem_vectors`（vec0）+ `mem_vector_items` | 行与语义节点的向量 |
 | `mem_config` / `mem_traces` / `mem_kv` | 配置版本、路由轨迹、宿主工作流状态 |
 
@@ -118,9 +117,9 @@ superseded 并记录 `successor_ids`；引用按需跟随接替者（懒更新�
 ## 与 main 的差异
 
 - 删除：自研 Page / B+ 树 / WAL / Buffer Pool / MVCC、Page Store 迁移链、实例升级与迁移、
-  数据库打包与 Wiki 导出、评测与 benchmark 设施。
-- 新增：`internal/sqlstore`（SQLite 后端）、`internal/embedding`（OpenAI 兼容嵌入）、
-  `SHOW ROUTE CANDIDATES ... USING VECTOR` 的实际实现（`SPACE` 子句可省略）。
+  数据库打包与 Wiki 导出、评测与 benchmark 设施、`SHOW ROUTE CANDIDATES` /
+  `SHOW LEXICAL LOCATIONS` / `RELATE`。
+- 新增：`internal/sqlstore`（SQLite 后端）、`internal/embedding`（OpenAI 兼容嵌入）。
 - 暂不提供：`export` / `pack` / `open` / `install` / `move` / `upgrade` / `service` 命令。
 
 ## 许可

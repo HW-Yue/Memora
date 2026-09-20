@@ -51,15 +51,14 @@ MSQL v0 使用 `SHOW` / `DESCRIBE` 作为 Database、Table、Route 和 Data Dict
 - 发现：SHOW INSTANCE/DATABASES/TABLES；
 - 描述：DESCRIBE DATABASE/TABLE；
 - 路由：SHOW ROUTES、OPEN ROUTE、PLAN/APPLY ROUTE MUTATION；
-- 位置：SHOW LEXICAL LOCATIONS；
+- 召回：关键词 / 向量 MSQL 门已删，待按四条路重写；内核表 `mem_postings` / `mem_vectors` 保留；
 - 数据：SELECT、INSERT、UPDATE、DELETE、SPLIT、MERGE；
 - Schema：CREATE/ALTER、PLAN SCHEMA CHANGE 与 APPLY SCHEMA CHANGE；
 - 事务：BEGIN、COMMIT、ROLLBACK、SET TRANSACTION ISOLATION LEVEL；
 - 历史：SHOW HISTORY、AS OF REVISION/COMMIT_SEQUENCE、RESTORE 补偿；
-- 关系：RELATE、SHOW RELATIONS、UNRELATE；
+- 行链接：只留行上 `links` 字段；`RELATE` / `UNRELATE` / `SHOW RELATIONS` 已删，读写后面重写；
 - 管理：REBUILD LEXICAL INDEX；
 - 配置：SHOW CONFIGURATION/HISTORY、ALTER CONFIGURATION、RESTORE CONFIGURATION；
-- 吸收：REVIEW/SUBMIT ASSIMILATION、SHOW ASSIMILATION RECEIPT；
 
 Memora 专有管理能力采用独立的声明式语句，并解析为明确的 AST 节点；不使用 `CALL memora.*(...)` 形式的通用过程调用。`PACK DATABASE`、`OPEN PACKAGE`、`INSTALL PACKAGE` 与 `EXPORT WIKI` 已从 Grammar 删除，Parser 直接拒绝。
 
@@ -73,18 +72,8 @@ REBUILD LEXICAL INDEX;
 结果返回 generation/epoch、source/plan digest、规范 snapshot SHA-256、
 `parity`、`verified` 与 `reused`，不返回 posting 或 Row 内容。
 
-F174 冻结全内容倒排位置语句：
-
-```sql
-SHOW LEXICAL LOCATIONS FROM ALL TABLES
-USING :query [CURSOR :cursor]
-LIMIT :location_limit BYTES :utf8_byte_limit;
-```
-
-它只返回当前授权 Database 内的 Database/Table/Column/Route/Row identity、revision 和可解释
-命中计数，不返回正文或答案。Executor 在物理 posting read 前解析授权 database_id；Row 命中必须
-再用 `SELECT ... AS OF REVISION ... WHERE row_id = ...` 回表。完整契约见
-[Lexical Locations v1](./lexical-locations-v1.md)。
+F174 的 `SHOW LEXICAL LOCATIONS` **已从 Grammar 删除**。全内容倒排内核表仍由
+`REBUILD LEXICAL INDEX` 维护。新召回语法见 [查询形态](../product/query-model.md)。
 
 F195 冻结资料吸收提交面：
 
@@ -199,7 +188,8 @@ revision。首批配置只控制查询/上下文预算，不覆盖权限、事�
 
 F15 已把 `expected_schema_version`、`expected_revision` 和 `max_affected_rows` 冻结为 MSQL request 的结构化 mutation options，而不是拼进 SQL 文本。语法、预算和精确 mutation 边界见 [MSQL Mutation Executor v1](./msql-mutation.md)。
 
-F18 已冻结参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`。关系结果只返回结构化边与稳定 Row 定位；业务内容仍必须使用 SELECT 回表。语法和事务边界见 [MSQL Relationships v1](../archive/query/msql-relationships.md)。
+F18 的 `RELATE` / `SHOW RELATIONS` / `UNRELATE` **已从 Grammar 删除**。行上仍有 `links`
+字段，读写后面重写。旧协议见 [MSQL Relationships v1](../archive/query/msql-relationships.md)。
 
 F21 的 `MATCH database.table QUERY ... TERMS ...` 是已撤销并删除的历史语法，
 Parser、Policy 和只读 Host 均拒绝它。F22 已实现参数化 Router 管理与遍历，但 root 仍是
@@ -223,28 +213,8 @@ Route Mutation Plan，不复用该维护语句。少量索引修改走在线增�
 
 所有语句使用 [MSQL Result Envelope v1](./result-envelope.md)。`SELECT`、`SHOW`、`DESCRIBE`、写入和管理语句只改变 statement result 的字段取值，不各自定义顶层结构。单语句也进入 `results[]`；错误、warning、截断、batch 顺序和未知字段兼容规则已经冻结。
 
-F124b 增加参数化 Route 候选原语：
-
-```sql
-SHOW ROUTE CANDIDATES FROM ALL TABLES
-USING LEXICAL :query LIMIT :candidate_limit BYTES :utf8_byte_limit;
-```
-
-它只在 `discovery` 返回授权范围内的 Database/Table/Route 位置，`rows[]` 为空；零命中
-成功且不能排除其他 Table。词法、snapshot 与预算见
-[Lexical Route Locations v1](../archive/query/lexical-route-locations-v1.md)。
-
-F124d 增加同 embedding space 的 CPU exact 候选原语：
-
-```sql
-SHOW ROUTE CANDIDATES FROM ALL TABLES
-USING VECTOR :query_vector SPACE :space_digest
-LIMIT :candidate_limit BYTES :utf8_byte_limit;
-```
-
-授权范围在打开 generation 和点积前确定；generation 缺失、stale 或 space 不兼容时
-`discovery` 返回 unavailable receipt，普通 Router 不受影响。详见
-[CPU Exact Route Match v1](../archive/query/cpu-exact-route-match-v1.md)。
+F124b / F124d 的 `SHOW ROUTE CANDIDATES … USING LEXICAL|VECTOR` **已从 Grammar 删除**。
+内核表 `mem_postings` / `mem_vectors` 保留，召回面按四条路重写。
 
 ## 多语句请求
 

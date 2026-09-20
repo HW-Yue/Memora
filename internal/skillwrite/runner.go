@@ -217,11 +217,7 @@ func mutationChanges(plan Plan, envelope result.Envelope) ([]Change, error) {
 		}
 		objectID := step.Target
 		if len(statement.Rows) == 1 {
-			field := "row_id"
-			if step.Kind == "RELATE" {
-				field = "relation_id"
-			}
-			if value, ok := statement.Rows[0][field].(string); ok && strings.TrimSpace(value) != "" {
+			if value, ok := statement.Rows[0]["row_id"].(string); ok && strings.TrimSpace(value) != "" {
 				objectID = value
 			}
 		}

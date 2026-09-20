@@ -212,20 +212,6 @@ func TestAgentJourneyOnSQLite(t *testing.T) {
 		t.Fatal("no committed changes recorded")
 	}
 
-	// Lexical and vector discovery.
-	lexicalCandidates := h.run(`SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :q LIMIT 5 BYTES 4096`, map[string]any{"q": "sqlite"}, executor.MutationOptions{})
-	if lexicalCandidates.Discovery == nil || len(lexicalCandidates.Discovery.Candidates) == 0 {
-		t.Fatalf("lexical candidates = %+v", lexicalCandidates.Discovery)
-	}
-	h.db.WaitIndexing()
-	vectorCandidates := h.run(`SHOW ROUTE CANDIDATES FROM ALL TABLES USING VECTOR :q LIMIT 5 BYTES 4096`, map[string]any{"q": "storage engine sqlite"}, executor.MutationOptions{})
-	if vectorCandidates.Discovery == nil || len(vectorCandidates.Discovery.Candidates) == 0 {
-		t.Fatalf("vector candidates = %+v", vectorCandidates.Discovery)
-	}
-	if got := vectorCandidates.Discovery.Candidates[0].Path; got != "/architecture/sqlite" && got != "/architecture" {
-		t.Fatalf("nearest route = %q", got)
-	}
-
 	// Explicit transaction: rollback leaves nothing behind.
 	h.run(`BEGIN`, nil, executor.MutationOptions{})
 	tx := write("rolled back")

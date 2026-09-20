@@ -133,9 +133,9 @@ history 是一张真的表，而表默认可查，所以这条必须明写：删
 
 ## 7. 读取路径
 
-- **读真实数据**：定位到 RowID，再回数据表点查取当前值。定位有两条路——
-  融合发现（关键词 + 向量，只出语义路径）与逐层语义导航，
-  见 [ADR-0012](../decisions/0012-row-vector-leaf-path.md) 与
+- **读真实数据**：定位到 RowID，再回数据表点查取当前值。定位四条路——
+  语义索引（Agent 主路）、关键词召回、向量召回、Skill 层 jev，
+  见 [查询形态](./query-model.md) 与
   [检索路线](../query/retrieval-routes-jev.md)；
 - **读历史**：拿 `row_id` 在 history 表按 `(row_id, *)` 范围扫，一次拿到全部变更，
   按 revision 有序。

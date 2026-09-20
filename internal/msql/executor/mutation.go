@@ -60,10 +60,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.showRouteTraces(ctx, statement.Show, bound)
 	case statement.Show != nil && statement.Show.Object == "ROUTE_TRACE":
 		return engine.showRouteTrace(ctx, statement.Show, bound)
-	case statement.Show != nil && statement.Show.Object == "ROUTE_CANDIDATES":
-		return engine.showRouteCandidates(ctx, statement.Show, bound)
-	case statement.Show != nil && statement.Show.Object == "LEXICAL_LOCATIONS":
-		return engine.showLexicalLocations(ctx, statement.Show, bound)
 	case statement.Show != nil && statement.Show.Object == "CHANGES":
 		return engine.showCommittedChanges(ctx, statement.Show, bound)
 	case statement.Show != nil && statement.Show.Object == "CHANGE":
@@ -78,8 +74,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.describeRoute(ctx, statement.Describe, bound)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		return engine.showHistory(ctx, statement, bound)
-	case statement.Show != nil && statement.Show.Object == "RELATIONS":
-		return engine.showRelations(ctx, statement, bound)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
 		return engine.showRoutes(ctx, statement, bound)
 	case statement.CreateRoute != nil:
@@ -115,10 +109,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.restore(ctx, statement.Restore, bound, options)
 	case statement.Reshape != nil:
 		return engine.reshape(ctx, statement.Reshape, bound, options)
-	case statement.Relate != nil:
-		return engine.relate(ctx, statement.Relate, bound, options)
-	case statement.Unrelate != nil:
-		return engine.unrelate(ctx, statement.Unrelate, bound, options)
 	default:
 		return Output{}, unsupported(statement)
 	}

@@ -8,10 +8,8 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/history"
-	"github.com/HW-Yue/Memora/internal/lexicallocation"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/binder"
-	"github.com/HW-Yue/Memora/internal/relation"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -36,11 +34,6 @@ type Rows interface {
 	AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error)
 	HistoryPage(context.Context, string, string, string, string, int) ([]history.Record, history.ReadPage, error)
 	Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error)
-	Relate(context.Context, row.RelationDefinition) (relation.Relation, error)
-	GetRelation(context.Context, string) (relation.Relation, error)
-	DeleteRelation(context.Context, string, uint64) (relation.Relation, error)
-	ListOutgoingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
-	ListIncomingRelations(context.Context, row.RelationEndpoint) ([]relation.Relation, error)
 	CreateRouterNode(context.Context, string, router.NodeDefinition) (router.Node, error)
 	RenameRouterNode(context.Context, string, string, uint64) (router.Node, error)
 	DeleteRouterNode(context.Context, string, uint64) (uint64, error)
@@ -65,14 +58,12 @@ type Reshaper interface {
 }
 
 type Engine struct {
-	catalog          Catalog
-	catalogBinder    *binder.Catalog
-	candidateCatalog routeCandidateCatalog
-	rows             Rows
-	points           PointReads
-	lexical          LexicalIndexMaintenance
-	lexicalLocations LexicalLocationReader
-	assimilation     AssimilationCommitter
+	catalog       Catalog
+	catalogBinder *binder.Catalog
+	rows          Rows
+	points        PointReads
+	lexical       LexicalIndexMaintenance
+	assimilation  AssimilationCommitter
 }
 
 type LexicalRebuildReceipt struct {
@@ -90,10 +81,6 @@ type LexicalRebuildReceipt struct {
 
 type LexicalIndexMaintenance interface {
 	RebuildLexicalIndex(context.Context) (LexicalRebuildReceipt, error)
-}
-
-type LexicalLocationReader interface {
-	SearchLexicalLocations(context.Context, lexicallocation.Request) (lexicallocation.Page, error)
 }
 
 type AssimilationCommitter interface {
@@ -199,14 +186,8 @@ func New(dictionary Catalog, rows Rows) *Engine {
 	if service, ok := dictionary.(binder.CatalogService); ok {
 		engine.catalogBinder = binder.NewCatalog(service)
 	}
-	if service, ok := dictionary.(routeCandidateCatalog); ok {
-		engine.candidateCatalog = service
-	}
 	if maintenance, ok := rows.(LexicalIndexMaintenance); ok {
 		engine.lexical = maintenance
-	}
-	if locations, ok := rows.(LexicalLocationReader); ok {
-		engine.lexicalLocations = locations
 	}
 	return engine
 }
@@ -217,9 +198,6 @@ func NewWithPointReads(dictionary Catalog, rows Rows, points PointReads) *Engine
 	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
 		engine.lexical = maintenance
 	}
-	if locations, ok := points.(LexicalLocationReader); ok {
-		engine.lexicalLocations = locations
-	}
 	return engine
 }
 
@@ -228,14 +206,6 @@ func NewWithLexicalIndexMaintenance(
 ) *Engine {
 	engine := New(dictionary, rows)
 	engine.lexical = maintenance
-	return engine
-}
-
-func NewWithLexicalLocations(
-	dictionary Catalog, rows Rows, locations LexicalLocationReader,
-) *Engine {
-	engine := New(dictionary, rows)
-	engine.lexicalLocations = locations
 	return engine
 }
 
@@ -250,9 +220,6 @@ func NewWithCapabilities(
 	engine.assimilation = assimilation
 	if maintenance, ok := points.(LexicalIndexMaintenance); ok {
 		engine.lexical = maintenance
-	}
-	if locations, ok := points.(LexicalLocationReader); ok {
-		engine.lexicalLocations = locations
 	}
 	return engine
 }

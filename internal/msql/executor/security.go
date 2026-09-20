@@ -80,11 +80,7 @@ func (engine *Engine) authorizeDatabaseReferenceAtLevel(ctx context.Context, lev
 func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 	switch {
 	case statement.Insert != nil, statement.Update != nil, statement.Delete != nil,
-		statement.Restore != nil, statement.Relate != nil, statement.Unrelate != nil,
-		// Archiving a Row or a Relation is a bounded, reversible write on one
-		// object; archiving a container hides everything beneath it and is
-		// classified with structural DDL below.
-		statement.Archive != nil && (statement.Archive.Object == "ROW" || statement.Archive.Object == "RELATION"),
+		statement.Restore != nil, statement.Archive != nil && (statement.Archive.Object == "ROW" || statement.Archive.Object == "RELATION"),
 		statement.Assimilation != nil && statement.Assimilation.Action == "SUBMIT":
 		return security.LevelWrite
 	case statement.Create != nil, statement.Alter != nil, statement.Reshape != nil,
@@ -161,9 +157,6 @@ func statementDatabaseNames(statement ast.Statement) []string {
 		appendQualifiedTable(statement.ApplyRoute.Table)
 	case statement.ApplySchema != nil:
 		appendQualifiedTable(statement.ApplySchema.Table)
-	case statement.Relate != nil:
-		appendQualifiedTable(statement.Relate.SourceTable)
-		appendQualifiedTable(statement.Relate.TargetTable)
 	case statement.CreateRoute != nil && statement.CreateRoute.Table != nil:
 		appendQualifiedTable(*statement.CreateRoute.Table)
 	case statement.Assimilation != nil:

@@ -1,6 +1,17 @@
 # Lexical Locations v1
 
-状态：F174 已批准实现；这是全内容倒排索引的第一个用户可见查询协议。
+状态：**MSQL 门已删**（2026-09-20）。`SHOW LEXICAL LOCATIONS` 不再解析。
+内核表 `mem_postings` 与 `sqlstore.SearchLexicalLocations` 保留，召回面按
+[查询形态](../product/query-model.md) 四条路重写。下文是旧协议，不是现役语法。
+
+> **返回列已收窄（2026-08-25）。** `revision`／`matched_term_count`／
+> `matched_field_count`／`frequency`／`matched_field_ids` 全部去掉——
+> 它们是换了名字的分数，给出去调用方就会照着排序和过滤。
+> 现在返回 `kind`／`database_id`／`table_id`／`object_id`，
+> 外加 route 与 table 命中的 `path`。
+> **row 与 column 的 path 还没有**：它要「行 → 叶子」反查，
+> 见[叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)。在那之前它们只给身份，
+> 不给猜出来的路径。本文其余部分（游标、快照、边界）仍然有效。
 
 > **返回列已收窄（2026-08-25）。** `revision`／`matched_term_count`／
 > `matched_field_count`／`frequency`／`matched_field_ids` 全部去掉——
@@ -64,8 +75,8 @@ query 使用全内容索引唯一 tokenizer。posting 按对象 identity 聚合�
 
 ## 边界
 
-这是候选位置武器，不是答案接口；不改变 Router 的语义导航职责，不建立 Row Embedding，也不把
-动态索引写入长期 system prompt。F124b 的 `SHOW ROUTE CANDIDATES ... USING LEXICAL` 保持原协议。
+这是候选位置武器，不是答案接口；不改变 Router 的语义导航职责。该 MSQL 门已删，
+内核 posting 表保留，见 [查询形态](../product/query-model.md)。
 
 ## 关联
 

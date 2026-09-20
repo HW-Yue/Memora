@@ -35,15 +35,12 @@ func TestReviewedLongFormSubmissionWritesModulesRelationsAndCompactSourceReceipt
 		receipt.Source.ID != "book" || receipt.Source.ContentHash != digest("b") ||
 		receipt.SourceStrength != "reviewed_source" ||
 		receipt.ReviewArtifactDigest != submission.Review.ArtifactDigest ||
-		len(receipt.Impacts) != 3 || len(receipt.KeyFacts) != 1 {
+		len(receipt.Impacts) != 2 || len(receipt.KeyFacts) != 1 {
 		t.Fatalf("source receipt = %#v", receipt)
 	}
 	if receipt.Impacts[0].Changes[0].ObjectID != "row-created-1" ||
-		receipt.Impacts[2].Changes[0].ObjectID != "relation-supports" {
+		receipt.Impacts[1].Changes[0].ObjectID != "row-created-2" {
 		t.Fatalf("receipt object IDs = %#v", receipt.Impacts)
-	}
-	if tool.relationSource != "row-created-1" || tool.relationTarget != "row-created-2" {
-		t.Fatalf("resolved relationship endpoints = %q -> %q", tool.relationSource, tool.relationTarget)
 	}
 	if got := receipt.KeyFacts[0]; got.ModuleID != "module-retention" || got.Field != "retention_days" ||
 		got.Anchor.UnitID != "chapter" || got.Anchor.Start != 1 || got.Anchor.End != 2 {
@@ -59,8 +56,8 @@ func TestReviewedLongFormSubmissionWritesModulesRelationsAndCompactSourceReceipt
 		}
 	}
 	firstCalls := len(tool.calls)
-	if firstCalls != 9 {
-		t.Fatalf("tool calls = %d, want 9", firstCalls)
+	if firstCalls != 6 {
+		t.Fatalf("tool calls = %d, want 6", firstCalls)
 	}
 	for _, call := range tool.calls {
 		if call.Phase != skillwrite.PhaseMutation {
@@ -291,16 +288,11 @@ func reviewedSubmission(revision uint64, challenge string) assimilation.Submissi
 		{ID: "module-routing", Anchors: []assimilation.SourceAnchor{{UnitID: "chapter", Start: 0, End: 1}}, Plan: submissionPlan(submissionID, "plan-routing", skillwrite.DecisionInsert, "row-routing")},
 		{ID: "module-retention", Anchors: []assimilation.SourceAnchor{{UnitID: "chapter", Start: 1, End: 2}}, Plan: submissionPlan(submissionID, "plan-retention", skillwrite.DecisionInsert, "row-retention")},
 	}
-	relationships := []assimilation.SemanticRelationship{{
-		ID: "relationship-supports", SourceModuleID: "module-routing", TargetModuleID: "module-retention",
-		Anchors: []assimilation.SourceAnchor{{UnitID: "chapter", Start: 0, End: 2}},
-		Plan:    submissionPlan(submissionID, "plan-supports", skillwrite.DecisionRelate, "row-routing->row-retention"),
-	}}
 	submission := assimilation.Submission{
 		Version: assimilation.SubmissionVersion, SubmissionID: submissionID,
 		TaskID: "book-task", Workspace: "project-memora", CoverageRevision: revision,
 		Author: "agent:host", DraftContextID: "draft-context", DraftDigest: digest("e"),
-		Modules: modules, Relationships: relationships,
+		Modules: modules,
 		KeyFacts: []assimilation.KeyFact{{
 			ID: "fact-retention", ModuleID: "module-retention", Field: "retention_days",
 			ValueDigest: digest("f"), Anchor: assimilation.SourceAnchor{UnitID: "chapter", Start: 1, End: 2},
@@ -309,7 +301,7 @@ func reviewedSubmission(revision uint64, challenge string) assimilation.Submissi
 			Version: assimilation.ReviewVersion, Reviewer: "agent:reviewer", ContextID: "review-context",
 			DraftDigest: digest("e"), CoverageRevision: revision, Verdict: assimilation.ReviewAccepted,
 			CheckedModuleIDs:       []string{"module-routing", "module-retention"},
-			CheckedRelationshipIDs: []string{"relationship-supports"}, CheckedKeyFactIDs: []string{"fact-retention"},
+			CheckedRelationshipIDs: []string{}, CheckedKeyFactIDs: []string{"fact-retention"},
 			AnchorsVerified: true, KeyFactsVerified: true, ConflictsChecked: true, RawContentAbsent: true,
 			Challenge: challenge, FindingsDigest: digest("7"),
 		},
@@ -331,25 +323,13 @@ func submissionPlan(sourceEventID, id string, decision skillwrite.Decision, targ
 		ExpectedSchemaVersion: 1, MaxAffectedRows: 1, Actor: plan.Actor,
 		Source: sourceEventID, Reason: plan.Reason, RouteLeafIDs: []string{},
 	}
-	if decision == skillwrite.DecisionRelate {
-		mutation.ExpectedSchemaVersion = 0
-		mutation.RouteLeafIDs = nil
-		plan.Steps = []skillwrite.Step{{
-			ID: "relate", Kind: "RELATE", Target: target,
-			MSQL: "RELATE work.notes ROW :source TO work.notes ROW :target TYPE :type",
-			Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
-				"source": "module-routing", "target": "module-retention", "type": "supports",
-			}}, Mutation: mutation},
-		}}
-	} else {
-		plan.Steps = []skillwrite.Step{{
-			ID: "insert", Kind: "INSERT", Target: target,
-			MSQL: "INSERT INTO work.notes (title) VALUES (:title)",
-			Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
-				"title": "Semantic module one",
-			}}, Mutation: mutation},
-		}}
-	}
+	plan.Steps = []skillwrite.Step{{
+		ID: "insert", Kind: "INSERT", Target: target,
+		MSQL: "INSERT INTO work.notes (title) VALUES (:title)",
+		Input: executor.StatementInput{Parameters: executor.Parameters{Named: map[string]any{
+			"title": "Semantic module one",
+		}}, Mutation: mutation},
+	}}
 	return plan
 }
 
@@ -392,13 +372,7 @@ func (tool *submissionTool) Invoke(_ context.Context, call skillwrite.Call) (res
 			if statement.Kind != "BEGIN" && statement.Kind != "COMMIT" {
 				revision, sequence := uint64(1), uint64(tool.mutations)
 				item.AffectedRows, item.Revision, item.CommitSequence = 1, &revision, &sequence
-				if statement.Kind == "RELATE" {
-					tool.relationSource, _ = call.Request.Statements[0].Parameters.Named["source"].(string)
-					tool.relationTarget, _ = call.Request.Statements[0].Parameters.Named["target"].(string)
-					item.Rows = []result.Row{{"relation_id": "relation-supports"}}
-				} else {
-					item.Rows = []result.Row{{"row_id": fmt.Sprintf("row-created-%d", tool.mutations)}}
-				}
+				item.Rows = []result.Row{{"row_id": fmt.Sprintf("row-created-%d", tool.mutations)}}
 			}
 		}
 		results[index] = item

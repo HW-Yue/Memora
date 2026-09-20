@@ -11,9 +11,8 @@
 
 1. **[写入形态](./product/write-model.md)** — 数据表 + history 表 + 语义配套表，
    一次写入一个 SQLite 事务；叶子直接挂 RowID。
-2. **[查询形态](./product/query-model.md)** — 融合发现是检索主路径
-   （[ADR-0012](./decisions/0012-row-vector-leaf-path.md)），逐层导航是兜底；
-   预测器只给语义路径，事实一律 SQL 回表。
+2. **[查询形态](./product/query-model.md)** — 四条路：语义索引（Agent 主路）、
+   关键词召回、向量召回、Skill 层 jev；召回只给语义路径，事实一律 SQL 回表。
 3. **[架构原则](./product/architecture-principles.md)** — 能用一张表就别造复杂逻辑。
 
 宪章与边界：[产品宪章](./product/ai-native-product-charter.md)、
@@ -22,14 +21,15 @@
 
 ## 派发工作
 
-- [执行计划](./planning/execution-plan.md) — **当前唯一工作队列**（Q0 vec0 隔离 → F224 → 融合发现）
+- [执行计划](./planning/execution-plan.md) — **当前唯一工作队列**（Q0 vec0 隔离 → F224 → 召回面重写）
 - [TDD 协议](./planning/feature-tdd-protocol.md) · [Feature 产品门](./planning/feature-product-gate.md)
 
 ## 现行内核
 
 - [存储层](./storage/README.md) — SQLite + sqlite-vec，一切都是普通表
 - [检索路线](./query/retrieval-routes-jev.md) · [jev 选择器](./query/jev-branch-selection.md)
-- [词法位置](./query/lexical-locations-v1.md) · [预测器只给路径](./query/predictor-path-only-v1.md)
+- [预测器只给路径](./query/predictor-path-only-v1.md) ·
+  [词法位置（MSQL 门已删）](./query/lexical-locations-v1.md)
 - [MSQL](./query/msql.md) · [语义 Router](./query/semantic-routing.md)
 - [Route 配套表](./product/route-companion-table.md) ·
   [行生命周期](./product/row-lifecycle-successor.md) ·

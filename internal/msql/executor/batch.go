@@ -454,7 +454,7 @@ func retryable(code result.Code) bool {
 
 func mutationStatement(statement ast.Statement) bool {
 	return statement.Insert != nil || statement.Update != nil || statement.Delete != nil ||
-		statement.Restore != nil || statement.Reshape != nil || statement.Relate != nil || statement.Unrelate != nil ||
+		statement.Restore != nil || statement.Reshape != nil ||
 		statement.CreateRoute != nil || statement.RenameRoute != nil || statement.UpdateRoute != nil || statement.DeleteRoute != nil ||
 		statement.Archive != nil ||
 		statement.ApplyRoute != nil || statement.ApplySchema != nil ||
@@ -490,7 +490,7 @@ func parserResultCode(err *parser.Error) result.Code {
 func mutationKind(kind string) bool {
 	return kind == "INSERT" || kind == "UPDATE" || kind == "DELETE" || kind == "RESTORE" ||
 		kind == "SPLIT" || kind == "MERGE" ||
-		kind == "RELATE" || kind == "UNRELATE" || kind == "CREATE_ROUTE" ||
+		kind == "CREATE_ROUTE" ||
 		kind == "RENAME_ROUTE" || kind == "UPDATE_ROUTE" || kind == "DELETE_ROUTE" ||
 		kind == "APPLY_ROUTE_MUTATION" || kind == "APPLY_SCHEMA_CHANGE" ||
 		kind == "SUBMIT_ASSIMILATION" ||

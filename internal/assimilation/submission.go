@@ -20,7 +20,6 @@ const (
 	submissionBucket          = "assimilation.submissions.v1"
 	sourceReceiptBucket       = "assimilation.source-receipts.v1"
 	maximumModules            = 64
-	maximumRelationships      = 128
 	maximumKeyFacts           = 256
 	maximumSubmissionBytes    = 512 * 1024
 	maximumSourceReceiptBytes = 64 * 1024
@@ -203,8 +202,11 @@ func validateSubmission(submission Submission, snapshot coverageSnapshot) error 
 		return submissionError(result.CodeRevisionConflict, "coverage revision = %d, current = %d", submission.CoverageRevision, snapshot.Revision)
 	}
 	if len(submission.Modules) == 0 || len(submission.Modules) > maximumModules ||
-		len(submission.Relationships) > maximumRelationships || len(submission.KeyFacts) > maximumKeyFacts {
-		return submissionError(result.CodeValidation, "submission module, relationship, or key-fact count exceeds policy")
+		len(submission.KeyFacts) > maximumKeyFacts {
+		return submissionError(result.CodeValidation, "submission module or key-fact count exceeds policy")
+	}
+	if len(submission.Relationships) > 0 {
+		return submissionError(result.CodeValidation, "submission relationships are not supported")
 	}
 	moduleIDs, relationshipIDs, factIDs := []string{}, []string{}, []string{}
 	seenIDs, seenPlans := map[string]bool{}, map[string]bool{}
@@ -212,40 +214,9 @@ func validateSubmission(submission Submission, snapshot coverageSnapshot) error 
 		if err := validateSubmissionItem("module", index, module.ID, module.Anchors, module.Plan, submission, snapshot, seenIDs, seenPlans); err != nil {
 			return err
 		}
-		if module.Plan.Decision == skillwrite.DecisionRelate {
-			return submissionError(result.CodeValidation, "module %q cannot use RELATE", module.ID)
-		}
 		moduleIDs = append(moduleIDs, module.ID)
 	}
-	for index, relationship := range submission.Relationships {
-		if err := validateSubmissionItem("relationship", index, relationship.ID, relationship.Anchors, relationship.Plan, submission, snapshot, seenIDs, seenPlans); err != nil {
-			return err
-		}
-		if relationship.Plan.Decision != skillwrite.DecisionRelate {
-			return submissionError(result.CodeValidation, "relationship %q requires RELATE", relationship.ID)
-		}
-		relationshipIDs = append(relationshipIDs, relationship.ID)
-	}
 	moduleSet := stringSet(moduleIDs)
-	moduleDecisions := make(map[string]skillwrite.Decision, len(submission.Modules))
-	for _, module := range submission.Modules {
-		moduleDecisions[module.ID] = module.Plan.Decision
-	}
-	for _, relationship := range submission.Relationships {
-		if !moduleSet[relationship.SourceModuleID] || !moduleSet[relationship.TargetModuleID] {
-			return submissionError(result.CodeValidation, "relationship %q must reference submitted source and target modules", relationship.ID)
-		}
-		for _, moduleID := range []string{relationship.SourceModuleID, relationship.TargetModuleID} {
-			decision := moduleDecisions[moduleID]
-			if decision != skillwrite.DecisionInsert && decision != skillwrite.DecisionRevise && decision != skillwrite.DecisionMove {
-				return submissionError(result.CodeValidation,
-					"relationship %q endpoint module %q must produce one logical object", relationship.ID, moduleID)
-			}
-		}
-		if err := validateRelationshipPlanBindings(relationship); err != nil {
-			return err
-		}
-	}
 	for index, fact := range submission.KeyFacts {
 		if !validShort(fact.ID, 200) || seenIDs[fact.ID] || !moduleSet[fact.ModuleID] ||
 			!validShort(fact.Field, 200) || !validDigest(fact.ValueDigest) {
