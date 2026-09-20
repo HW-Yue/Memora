@@ -22,17 +22,37 @@
 
 B 与 C 用同一个内核面，差别只在 Agent 侧的选择器是 LLM 还是 jev。
 
-## 2. 返回值形态：路径 + 节点类型
+## 2. 返回值形态：每段带 ID 的路径
 
 融合发现面返回的每条候选至少是：
 
-- **完整语义树路径**（表内相对，取自 `router.Node.Path`，不重算）；
+- **完整语义树路径，逐段带 `route_id`**——路径是 `[{name, route_id}, ...]` 序列，
+  不是单个字符串。名字供模型判断，ID 供脚本发下一条语句；
 - `database_id` / `table_id`（路径是表内相对的）；
-- **节点类型**：`leaf` 或 `branch`；
+- **末端节点类型**：`leaf` 或 `branch`。中间段必然是 root/branch
+  （Leaf 不能成为 parent），因此 kind 只给末端，不逐段重复；
 - `object_id`：仅当命中对象是 Row 时给出（即 RowID）。
 
 分数、理由、命中字段、预测器回执一律不返回，沿用
-[候选预测器只给路径](./predictor-path-only-v1.md)。
+[候选预测器只给路径](./predictor-path-only-v1.md)。逐段带 ID 不违反该设计删去
+`route_id` 的本意——那条的理由是「有路径就能导航」，而现役导航语句只接受 ID
+（`SHOW ROUTES UNDER :parent_id`、`OPEN ROUTE :leaf_id`），parser 无按 path 寻址入口。
+逐段带 ID 让那句断言**真正成立**，且无需新增 MSQL 语法。
+
+**逐段而非只给末端**，是因为叶子不满足时要退回上层继续走（见第 3 节）；
+只给命中节点一个 ID 的话，退到祖父还得先 `DESCRIBE` 查父节点。
+
+### 两处实现讲究
+
+ID 是 `route_` + 32 位 hex，38 字符。深度 5 的路径 × 5 个候选约 950 字节纯 ID，
+会实际挤占语句的 `BYTES` 预算，融合面默认值要按这个算。
+
+**喂给 jev 的 option 集应剥掉 ID**，只留 name 与 purpose：模型靠文本判断，
+对随机 hex 无法推理，带上只是浪费 token。脚本按下标把选择映射回 ID。
+
+ID 不是授权凭据。`SHOW ROUTES UNDER` 与 `OPEN ROUTE` 仍须独立执行 database
+authorization（[Route 读取协议](./route-read-v1.md)已有此条），不能因为 ID 出自
+本引擎发出的候选列表就跳过。
 
 ### 类型决定后续动作
 
@@ -50,7 +70,7 @@ B 与 C 用同一个内核面，差别只在 Agent 侧的选择器是 LLM 还是
 成本账：判断「够不够」必须真读到内容，所以每个 `leaf` 候选都带一次回表。
 top-5 全试即 5 次 `SELECT`。融合面的 `LIMIT` 应按这个账取值，不是越大越好。
 
-## 4. 三项前置缺陷（未修不能开工）
+## 4. 两项前置缺陷（未修不能开工）
 
 ### 4.1 route 与 row 向量混在一张 vec0 表里
 
@@ -61,16 +81,7 @@ top-5 全试即 5 次 `SELECT`。融合面的 `LIMIT` 应按这个账取值，�
 
 修法在 sqlite-vec 这一层：按 kind 分表，或用 vec0 的 metadata / partition key 做**预**过滤。
 
-### 4.2 没有按路径寻址的导航入口
-
-现役导航语句只接受 ID：`SHOW ROUTES UNDER :parent_id`、`OPEN ROUTE :leaf_id`。
-Parser 里没有任何按 path 寻址的入口。于是「只返回路径」的候选**无法被用于导航**，
-模型只能看。
-
-候选修法：新增 `SHOW ROUTES UNDER PATH :path` 与 `OPEN ROUTE AT PATH :path`
-（倾向此条：路径对人和模型都可读），或把 `route_id` 加回候选。
-
-### 4.3 Row 向量需要一次产品裁定
+### 4.2 Row 向量需要一次产品裁定
 
 `indexRow`（`internal/sqlstore/search.go:90-91`）把表名 + row semantics + 全部列值
 送去做 embedding，即
@@ -122,25 +133,19 @@ OPEN ROUTE / 只读 PLAN。脚本可循环：解析 JSON → 取 child → 填�
 逐层 5 次即 5 次进程启动，叠在 jev 的 5 次 RTT 上。若实测过慢，出路是 `internal/ipc`
 长连接或单进程内多语句，不是改内核。
 
-## 8. jev 的定位
+## 8. jev
 
-jev 是 TypeSafe 的托管 System One 模型，走 HTTP API，返回带校准概率的类型化判断
-（`Choice` / `Noul` / `Score`）。候选集**放进请求**发送并计入 token，因此
-「一层有多少 child」仍然直接换算成请求体、成本与延迟——**它不取消 fan-out 上限，
-只是把上限的来源从「LLM 单层提示准确率」换成「一次 `Choice` 能可靠区分多少 option」**。
+路线 C 的选择器设计、它为何不取消 fan-out 上限、以及 no-match 出口与分页歧义，
+见 [jev 作为逐层分支选择器](./jev-branch-selection.md)。
 
 写入路径本轮**不动**，判断者仍是原有 Agent，因此
 [F223 的结构 fan-out 硬上限](../planning/f223-route-branch-fanout-limit.md)原样保留。
 
-jev 在 Skill 侧（host 侧）调用，不进引擎，符合 ADR-0007「引擎不内置供应商调用」。
-
 ## 待决
 
-- 4.3 的红线位置（直给叶子路径 vs 上卷到 branch）；
+- 4.2 的红线位置（直给叶子路径 vs 上卷到 branch）；
 - 第 5 节的可见性语义三选一；
-- 4.2 选按路径寻址还是恢复 `route_id`；
-- 融合面 `LIMIT` 的默认值（受第 3 节回表成本约束）；
-- jev 的 `Choice` 在多少 option 下仍可靠，以及是否引入 no-match 出口。
+- 融合面 `LIMIT` 与 `BYTES` 的默认值（受第 3 节回表成本与第 2 节 ID 开销约束）。
 
 ## 关联
 
