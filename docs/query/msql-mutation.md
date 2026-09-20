@@ -98,5 +98,5 @@ Executor 只遍历 Parser AST、绑定参数并调用 Catalog/Row 契约。它�
 
 - [MSQL 参数与表达式 v1](./msql-expressions.md)
 - [MSQL SELECT Planner v1](./msql-select.md)
-- [Row Store v1](../data/row-store-v1.md)
-- [数据库 Mutation Agent](../agent/database-mutation-agent.md)
+- [Row Store v1](../archive/data/row-store-v1.md)
+- [数据库 Mutation Agent](../archive/agent/database-mutation-agent.md)

@@ -51,11 +51,11 @@ AI 定义 `depends_on`、`contradicts`、`part_of` 等 type 的业务语义；�
 
 同库跨表默认允许；跨库默认拒绝，只有显式注入的 Relation Policy 可以放行。自定义 Policy 也可以进一步收紧同库关系。普通 Row UPDATE 不失效关系；逻辑 DELETE 才级联失效引用。
 
-MSQL 使用参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`；详见 [MSQL Relationships v1](../../query/msql-relationships.md)。
+MSQL 使用参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`；详见 [MSQL Relationships v1](../query/msql-relationships.md)。
 
 ## 关联
 
 - [语义记录模型](../../data/semantic-records.md)
-- [Row Store v1](../../data/row-store-v1.md)
-- [History Store v1](../../data/history-store-v1.md)
+- [Row Store v1](./row-store-v1.md)
+- [History Store v1](./history-store-v1.md)
 - [物理与检索索引](../storage/indexing.md)

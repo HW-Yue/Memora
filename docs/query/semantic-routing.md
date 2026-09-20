@@ -81,7 +81,7 @@ prompt，也不等同于物理 Buffer Pool。
 
 默认 `SHOW ROUTES` 不携带较长 synopsis。只有相邻 purpose 无法稳定区分时，AI
 才执行 `DESCRIBE ROUTE :route_id` 按需读取；详细预算和内容边界见
-[中间 Route Synopsis](./route-synopsis.md)。
+[中间 Route Synopsis](../archive/query/route-synopsis.md)。
 
 Router/OPEN 只返回节点或 locator，不能返回正文、生成答案或自动退化为
 Row/chunk Embedding、全库正文扫描和混合相似度答案。
@@ -145,6 +145,6 @@ Table Router、稳定 RowID、revision、cursor 与公开 SPLIT/MERGE 是当前�
 ## 关联
 
 - [AI-native 产品宪章](../product/ai-native-product-charter.md)
-- [语义树检索质量链路](./retrieval-quality.md)
+- [语义树检索质量链路](../archive/query/retrieval-quality.md)
 - [Router Tree v1 历史实现](../archive/design/router-tree-v1.md)
 - [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)

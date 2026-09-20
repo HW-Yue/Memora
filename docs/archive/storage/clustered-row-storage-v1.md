@@ -106,7 +106,7 @@ SHOW HISTORY / AS OF / MVCC 可见性
 下降一棵被历史撑肿的树。稀疏跳点索引（每 N 版一个锚点）是独立候选项，
 需先有基准证据再引入。
 
-删除的 Row 带走自己的历史，见 [F227](../../planning/f227-object-archive.md)：
+删除的 Row 带走自己的历史，见 [F227](../planning/f227-object-archive.md)：
 `SHOW HISTORY` 只按 row_id 寻址，而删除的 Row 不出现在任何列表里。
 
 ## 兼容
@@ -154,4 +154,4 @@ SHOW HISTORY / AS OF / MVCC 可见性
 - [Page Store Authority v1](../storage/page-store-authority-v1.md)（过渡形态）
 - [Buffer Pool](../storage/buffer-pool.md)
 - [MVCC、Undo 与 Redo 边界](../storage/mvcc-undo-redo.md)
-- [ADR-0006：MySQL 式 Page/Buffer Pool/WAL](../../decisions/0006-mysql-page-buffer-wal-cow.md)
+- [ADR-0006：MySQL 式 Page/Buffer Pool/WAL](../decisions/0006-mysql-page-buffer-wal-cow.md)

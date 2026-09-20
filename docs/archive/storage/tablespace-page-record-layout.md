@@ -1,7 +1,7 @@
 # Tablespace、Page 与 Record 布局
 
 状态：B+ Tree、16 KiB Page、单实例 Buffer Pool 与 Redo WAL 已确认为 F81–F108
-逐项必做。见 [ADR-0006](../../decisions/0006-mysql-page-buffer-wal-cow.md)。
+逐项必做。见 [ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 > **目标形态已改，本文一处判断需要订正。** 原状态行把"完整 per-table
 > Tablespace/Extent"标为**后置候选**——[写入形态](../../product/write-model.md)把它变成了
@@ -126,4 +126,4 @@ Tablespace、Data File、Page、Slot、Segment 和 Record 地址都不得进入 
 - [存储引擎术语](./terminology.md)
 - [物理与检索索引](./indexing.md)
 - [语义记录模型](../../data/semantic-records.md)
-- [Obsidian Wiki 导出](../../export/obsidian-wiki.md)
+- [Obsidian Wiki 导出](../export/obsidian-wiki.md)

@@ -34,7 +34,7 @@ F81 以后不继续扩充本节编号，权威顺序统一维护在
 [F81 之后的 Feature 规划](./next-feature-plan.md)。
 
 SQLite 已进入退出流程，只作为迁移来源临时保留，不再新增依赖或能力。具体顺序
-见 [ADR-0003](../../decisions/0003-native-minimal-store-first.md)。MSQL、Data
+见 [ADR-0003](../decisions/0003-native-minimal-store-first.md)。MSQL、Data
 Dictionary、稳定 ID、revision、Router 和 Result Envelope 不因后端迁移改变。
 
 详细 feature：

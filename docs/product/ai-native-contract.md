@@ -132,6 +132,6 @@ Row 命中后必须用命中的当前 revision 执行 SQL 回表；缺失或误�
 
 - [AI-native 产品宪章](./ai-native-product-charter.md)
 - [AI-native 产品边界](./ai-native-boundary.md)
-- [Mutation Agent](../agent/database-mutation-agent.md)
-- [质量模型与验收](./quality-model.md)
+- [Mutation Agent](../archive/agent/database-mutation-agent.md)
+- [质量模型与验收](../archive/product/quality-model.md)
 - [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)

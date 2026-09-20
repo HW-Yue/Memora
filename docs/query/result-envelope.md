@@ -42,7 +42,7 @@
 `statement` 是稳定的大写 AST kind，不是 SQLite 或内核名称。`source` 是可定位失败语句的有界原文，参数值不得插值回显。`columns` 描述名称、逻辑 MSQL 类型和 nullable；`rows` 使用 Column 名到 JSON value 的对象。写入可以返回 `affected_rows`、对象 `revision` 和本次事务的 `commit_sequence`。
 
 有界列表可以额外返回 `page`；其 version、limit、输入 cursor、snapshot、truncated 和
-next cursor 契约见 [Metadata Read v1](./metadata-read-v1.md)。`page.truncated` 和
+next cursor 契约见 [Metadata Read v1](../archive/query/metadata-read-v1.md)。`page.truncated` 和
 `page.next_cursor` 必须与 statement 既有字段一致。
 
 精确 RowID SELECT 可以额外返回 `row_detail`；`memora.row-detail/v1` 携带当前
@@ -59,7 +59,7 @@ Frame 截断必须传播到 statement 和顶层。
 **预测器不可用现在是 statement error，不再是成功回执**：Frame 里已经没有回执可放，
 而返回零个候选会宣称「搜过了，树里没有」。契约见
 [候选预测器只给路径](./predictor-path-only-v1.md)；
-v1 的历史形态见 [Discovery Frame v1](./discovery-frame-v1.md)。
+v1 的历史形态见 [Discovery Frame v1](../archive/query/discovery-frame-v1.md)。
 
 状态固定为：
 

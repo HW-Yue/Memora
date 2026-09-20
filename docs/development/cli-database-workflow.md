@@ -50,7 +50,7 @@ batch 和 verify。MERGE/SPLIT 的不同 StatementInput 由 Plan 编译进同一
 展示当前 Instance 的完整 Catalog；显式 `--scope` 时才把固定白名单注入每条 MSQL。
 两种模式都通过 daemon Unix socket 执行，并监听固定的 `127.0.0.1:3888`；
 SIGINT/SIGTERM 后释放端口。默认打开内嵌 Admin Shell；`--no-open` 只打印 descriptor。HTTP session、
-Origin、Cookie 与 CSRF 契约见 [Local Read API v1](./local-read-api-v1.md)。
+Origin、Cookie 与 CSRF 契约见 [Local Read API v1](../archive/development/local-read-api-v1.md)。
 
 ## 统一执行
 

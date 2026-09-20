@@ -1,6 +1,6 @@
 # 小 Feature TDD 与合入协议
 
-状态：已确认；适用于 F81 以后所有 Feature、修复和架构迁移。
+状态：已确认；适用于当前 SQLite 基座上的所有 Feature、修复和架构迁移。
 
 ## 分支隔离
 
@@ -18,7 +18,7 @@
 - 有一个独立 RED 测试入口；
 - 可以在不依赖下一 Feature 的情况下验收；
 - 可以单独 revert，不留下第二套半成品路径；
-- 不同时跨越两个独立故障域，例如“WAL recovery + B+ Tree split”。
+- 不同时跨越两个独立故障域，例如「向量索引重建 + 词法 posting 事务」。
 
 出现以下任一情况，编码前拆分：两个独立用户旅程、两个持久化协议、两个恢复
 算法、必须用“以及/顺便”才能描述目标，或测试无法指出究竟哪项能力失败。
@@ -52,14 +52,11 @@ failure matrix，随后可逐条转绿。
 
 | Feature 类型 | 强制测试 |
 | --- | --- |
-| Page/codec | golden、round-trip、边界、seed corpus、corruption |
-| WAL/recovery | 每个 write/fsync fault point、truncate、bit flip、幂等重放 |
-| Buffer Pool | fake pager、淘汰模型、pin/latch、WAL 顺序、`-race` |
-| B+ Tree | reference model、随机状态序列、不变量、reopen、corruption |
-| MVCC/locks | 可控调度、多 reader/writer、snapshot、rollback、`-race` |
+| SQLite 表 / 事务 | reopen、中断、错误注入、串行写与读最新提交 |
+| 词法 postings | 写入同事务可见、删除不可达、分词边界 |
+| 向量 / vec0 | kind 隔离、提交后异步可见性、embedding 失败 fail-closed |
 | MSQL/API | parser/binder/executor contract、golden envelope、权限/预算 |
 | Admin | 组件状态、API contract、浏览器旅程、空/错/截断/权限状态 |
-| Migration | 旧 fixture、plan/apply/rollback、parity、重复执行和中断恢复 |
 | AI Benchmark | 固定 suite、真实模型 receipt、原始计数、重跑与缺失标记 |
 
 随机测试必须保存 seed；时间、ID、I/O 和调度必须可注入。Fuzz target 的 seed corpus
@@ -82,8 +79,7 @@ feature-specific fault, fuzz-seed or browser suite
 package 执行 race；不能静默跳过。
 
 完成证据包含测试命令、关键 case、用户故事/内部不变量、实际结果、未覆盖项和
-commit。没有故障证据的恢复 Feature、没有 reference-model 对拍的 B+ Tree Feature、
-没有真实模型 receipt 的 AI Benchmark，一律 `INCOMPLETE`。
+commit。没有 reopen/中断证据的持久化 Feature、没有真实模型 receipt 的 AI Benchmark，一律 `INCOMPLETE`。
 
 ## 执行顺序
 
@@ -106,5 +102,5 @@ Milestone 只组织顺序，不允许把多个 Feature 合成一次无法定位�
 
 - [Feature 产品与用户故事门禁](./feature-product-gate.md)
 - [历史 TDD 开发总计划](../archive/planning/tdd-development-plan.md)
-- [当前 Feature 状态](./feature-status.md)
-- [后续路线](./future-roadmap.md)
+- [当前 Feature 状态](../archive/planning/feature-status.md)
+- [后续路线](../archive/planning/future-roadmap.md)

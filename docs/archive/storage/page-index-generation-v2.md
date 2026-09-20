@@ -39,5 +39,5 @@ replacement 生成四树 generation 并原子切 marker；当前新 build 写 v3
 ## 关联
 
 - [Generation v1](./page-index-generation-v1.md)
-- [F172a](../../planning/f172a-row-posting-generation.md)
-- [F171 Posting Store](../../planning/f171-persistent-posting-store.md)
+- [F172a](../planning/f172a-row-posting-generation.md)
+- [F171 Posting Store](../planning/f171-persistent-posting-store.md)

@@ -1,7 +1,7 @@
 # macOS Release 制品 v1
 
 状态：F47 历史兼容规格；正式签名集合已由
-[macOS Signed Release Artifacts v2](../../development/macos-signed-release-artifacts-v2.md) 取代。
+[macOS Signed Release Artifacts v2](../development/macos-signed-release-artifacts-v2.md) 取代。
 
 ## 目标与平台
 

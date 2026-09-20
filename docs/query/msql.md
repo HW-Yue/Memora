@@ -28,7 +28,7 @@ F195 之后，新 Agent 使用正式 assimilation MSQL surface；Job、SourceSto
 是 Agent-owned 状态。早期 `assimilation.record/submit/receipt` IPC 仅保留外部兼容，新 Agent 禁止
 依赖，也不得把它们包装成新的内部工具。
 
-宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。直接使用内部 Go API 或本地用户运行的普通 SQL 可走可信本地操作员路径，但 `PACK DATABASE`、`EXPORT WIKI` 和 `INSTALL PACKAGE` 没有无 scope/approval 降级。完整边界见 [Policy Enforcement v2](../development/policy-enforcement-v2.md)。
+宿主 Agent 的每个结构化 statement input 必须携带 `memora.authorization/v2`，声明 actor 与本次允许访问的 Database 名称或稳定 ID。Policy 同时检查静态限定名、参数化 Route、关系端点和管理操作；`SHOW DATABASES` 只返回 scope 内对象。直接使用内部 Go API 或本地用户运行的普通 SQL 可走可信本地操作员路径，但 `PACK DATABASE`、`EXPORT WIKI` 和 `INSTALL PACKAGE` 没有无 scope/approval 降级。完整边界见 [Policy Enforcement v2](../archive/development/policy-enforcement-v2.md)。
 
 ## 标准进入流程
 
@@ -70,7 +70,7 @@ INSTALL PACKAGE :package TRUSTED;
 ```
 
 包内容通过参数绑定进入执行器。`READ ONLY` 和 `TRUSTED` 是强制安全子句；这些语句只能
-autocommit，显式事务中不直接执行。返回格式见 [Database Package v1](../product/database-package-v1.md)。
+autocommit，显式事务中不直接执行。返回格式见 [Database Package v1](../archive/product/database-package-v1.md)。
 
 > **实现已于 2026-09-02 删除**，语法保留。这三条语句现在固定返回
 > `unsupported`，理由是它们端到端从来没通过（原实现只接受已死的 legacy 栈）。
@@ -82,7 +82,7 @@ F45 已冻结单向 Wiki 导出：
 EXPORT WIKI TO :path PROFILE :profile;
 ```
 
-CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得插值进 MSQL；目标必须是绝对规范化路径。语句只允许 autocommit，不读取或回流 Vault 中的人类编辑。投影、稳定路径、manifest 与增量规则见 [Obsidian Wiki 导出](../export/obsidian-wiki.md)。
+CLI 通过参数绑定传入路径和 Profile JSON，Profile 等长文本不得插值进 MSQL；目标必须是绝对规范化路径。语句只允许 autocommit，不读取或回流 Vault 中的人类编辑。投影、稳定路径、manifest 与增量规则见 [Obsidian Wiki 导出](../archive/export/obsidian-wiki.md)。
 
 > **实现已于 2026-09-02 删除**，语法保留，固定返回 `unsupported`。同上。
 
@@ -122,7 +122,7 @@ Schema/revision/affected-row guard 和 document source provenance；结果是规
 SUBMIT 要求同库 L1 scope 和 `SUBMIT_ASSIMILATION` 精确 approval，在独立 Session 中执行
 `BEGIN → statements → COMMIT`。Receipt 不保存 MSQL、参数或正文。结构审阅不等于事实正确性；F196 已增加有锚点的
 claim ledger 与候选语句，F197–F199 继续增加问题交互、独立语义复核与回读对账。完整契约见
-[F195 规格](../planning/f195-msql-assimilation-surface.md)和 [F196 规格](../planning/f196-draft-claim-ledger.md)。
+[F195 规格](../archive/planning/f195-msql-assimilation-surface.md)和 [F196 规格](../archive/planning/f196-draft-claim-ledger.md)。
 
 语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
 所选 Table 的短 Route 节点，直到 Leaf 得到唯一 RowID。一个 Leaf 最多一个活跃 Row，
@@ -222,7 +222,7 @@ revision。首批配置只控制查询/上下文预算，不覆盖权限、事�
 
 F15 已把 `expected_schema_version`、`expected_revision` 和 `max_affected_rows` 冻结为 MSQL request 的结构化 mutation options，而不是拼进 SQL 文本。语法、预算和精确 mutation 边界见 [MSQL Mutation Executor v1](./msql-mutation.md)。
 
-F18 已冻结参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`。关系结果只返回结构化边与稳定 Row 定位；业务内容仍必须使用 SELECT 回表。语法和事务边界见 [MSQL Relationships v1](./msql-relationships.md)。
+F18 已冻结参数化 `RELATE`、有界 `SHOW RELATIONS` 和 revision-guarded `UNRELATE`。关系结果只返回结构化边与稳定 Row 定位；业务内容仍必须使用 SELECT 回表。语法和事务边界见 [MSQL Relationships v1](../archive/query/msql-relationships.md)。
 
 F21 的 `MATCH database.table QUERY ... TERMS ...` 是已撤销并删除的历史语法，
 Parser、Policy 和只读 Host 均拒绝它。F22 已实现参数化 Router 管理与遍历，但 root 仍是
@@ -255,7 +255,7 @@ USING LEXICAL :query LIMIT :candidate_limit BYTES :utf8_byte_limit;
 
 它只在 `discovery` 返回授权范围内的 Database/Table/Route 位置，`rows[]` 为空；零命中
 成功且不能排除其他 Table。词法、snapshot 与预算见
-[Lexical Route Locations v1](./lexical-route-locations-v1.md)。
+[Lexical Route Locations v1](../archive/query/lexical-route-locations-v1.md)。
 
 F124d 增加同 embedding space 的 CPU exact 候选原语：
 
@@ -267,7 +267,7 @@ LIMIT :candidate_limit BYTES :utf8_byte_limit;
 
 授权范围在打开 generation 和点积前确定；generation 缺失、stale 或 space 不兼容时
 `discovery` 返回 unavailable receipt，普通 Router 不受影响。详见
-[CPU Exact Route Match v1](./cpu-exact-route-match-v1.md)。
+[CPU Exact Route Match v1](../archive/query/cpu-exact-route-match-v1.md)。
 
 ## 多语句请求
 
@@ -308,4 +308,4 @@ Skill 不是安全边界，Parser、Policy 和 MVCC 才是。
 - [MSQL Parser Core v1](./msql-parser.md)
 - [MSQL Batch 与事务边界 v1](./msql-batch-transactions.md)
 - [语义路由](./semantic-routing.md)
-- [上下文生命周期](./context-lifecycle.md)
+- [上下文生命周期](../archive/query/context-lifecycle.md)

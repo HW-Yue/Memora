@@ -73,5 +73,5 @@ Database 级树提供显式转换或拒绝路径。
 ## 关联
 
 - [Agent 语义目录索引](../../query/semantic-routing.md)
-- [上下文生命周期](../../query/context-lifecycle.md)
-- [Row Store v1](../../data/row-store-v1.md)
+- [上下文生命周期](../query/context-lifecycle.md)
+- [Row Store v1](../data/row-store-v1.md)

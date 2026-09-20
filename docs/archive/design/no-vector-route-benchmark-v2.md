@@ -1,6 +1,6 @@
 # 无向量语义 Route Benchmark v2
 
-状态：已由 [Route Retrieval Benchmark v3](../../development/route-retrieval-benchmark-v3.md)取代；
+状态：已由 [Route Retrieval Benchmark v3](../development/route-retrieval-benchmark-v3.md)取代；
 本文只保留 Router-only 实验臂的历史设计，不再约束全部检索 Benchmark。
 
 ## 核心问题
@@ -98,6 +98,6 @@ Benchmark 只提供证据，不自动修改配置。Router fanout 变更仍要�
 
 ## 关联
 
-- [语义树检索质量链路](../../query/retrieval-quality.md)
-- [AI-native 质量模型](../../product/quality-model.md)
-- [宿主模型与 CC Switch 兼容边界](../../agent/host-provider-compatibility.md)
+- [语义树检索质量链路](../query/retrieval-quality.md)
+- [AI-native 质量模型](../product/quality-model.md)
+- [宿主模型与 CC Switch 兼容边界](../agent/host-provider-compatibility.md)

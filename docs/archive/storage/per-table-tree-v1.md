@@ -70,7 +70,7 @@ generation 目前固定开四棵树（`pagestoremigration/generation.go:34-37`�
 
 `IDSource`（`nativerow/service.go:39`）现在是 `Next() (string, error)`，
 **不接受表参数**——按表递增就无从谈起。这个 1 方法接口在仓库里
-**被重复定义 8 次**（见[架构审计](../../development/architecture-audit-2026-08.md) §3.2），
+**被重复定义 8 次**（见[架构审计](../development/architecture-audit-2026-08.md) §3.2），
 `type uuidSource` 一行实现被声明 20 次。
 
 改造时一并收敛：签名加表标识，实现收进一个共享小包。这是审计里
@@ -348,4 +348,4 @@ if key.SpaceID != config.SpaceID { return page.Page{}, ...ErrInvalid }
 - [写入形态](../../product/write-model.md)（上位规范）、[查询形态](../../product/query-model.md)
 - [架构原则](../../product/architecture-principles.md) §2（能用一张表就用表）
 - [叶子直挂 RowID](./leaf-rowid-v1.md)、[存储层总览](./README.md)「已知偏差」A/B 组
-- [架构审计](../../development/architecture-audit-2026-08.md) §2.1（耦合）、§3.2（接口重复）
+- [架构审计](../development/architecture-audit-2026-08.md) §2.1（耦合）、§3.2（接口重复）

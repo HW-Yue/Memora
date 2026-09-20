@@ -50,7 +50,7 @@ AI 不能操作 Page、offset、物理索引或 Redo Log。
 
 - [AI-native 产品宪章](./ai-native-product-charter.md)
 - [AI-native 产品契约](./ai-native-contract.md)
-- [质量模型与验收](./quality-model.md)
-- [资料吸收](../data/assimilation.md)
-- [AI 自主权与约束](../agent/autonomy.md)
+- [质量模型与验收](../archive/product/quality-model.md)
+- [资料吸收](../archive/data/assimilation.md)
+- [AI 自主权与约束](../archive/agent/autonomy.md)
 - [MSQL](../query/msql.md)

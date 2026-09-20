@@ -49,5 +49,5 @@ WAL 事务。
 ## 关联
 
 - [Generation v2](../storage/page-index-generation-v2.md)
-- [F173b1](../../planning/f173b1-route-posting-generation.md)
-- [F171 Posting Store](../../planning/f171-persistent-posting-store.md)
+- [F173b1](../planning/f173b1-route-posting-generation.md)
+- [F171 Posting Store](../planning/f171-persistent-posting-store.md)

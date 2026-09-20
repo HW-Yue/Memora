@@ -153,6 +153,6 @@ scope、actor 与 mutation guards，生成 proposal digest，并在收到 hash-b
 ## 关联
 
 - [MSQL](../query/msql.md)
-- [可选内置 Agent Runtime](./embedded-agent-runtime.md)
-- [内置评测 Agent 与外置 Hook](../development/evaluation-agent-observability.md)
-- [F169 后开发计划](../planning/post-f169-development-plan.md)
+- [可选内置 Agent Runtime](../archive/agent/embedded-agent-runtime.md)
+- [内置评测 Agent 与外置 Hook](../archive/development/evaluation-agent-observability.md)
+- [F169 后开发计划](../archive/planning/post-f169-development-plan.md)

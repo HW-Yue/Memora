@@ -64,7 +64,7 @@ authorization（[Route 读取协议](./route-read-v1.md)已有此条），不能
 ## 3. 终止与裁决（Skill 侧）
 
 模型自己判断当前叶子是否满足需求；不满足则退回 `branch` 候选往下走。
-方向与 [F221 Evidence 充分性](../planning/f221-evidence-sufficiency.md)一致：
+方向与 [F221 Evidence 充分性](../archive/planning/f221-evidence-sufficiency.md)一致：
 零行或不足的读取**不终止导航**，无证据时拒绝作答。
 
 成本账：判断「够不够」必须真读到内容，所以每个 `leaf` 候选都带一次回表。
@@ -140,4 +140,4 @@ OPEN ROUTE / 只读 PLAN。脚本可循环：解析 JSON → 取 child → 填�
 - [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)
 - [ADR-0011：存储引擎只做数据库](../decisions/0011-pure-storage-engine-tables-everything.md)
 - [F223：Route Branch Fan-out 硬上限](../planning/f223-route-branch-fanout-limit.md)
-- [F221：Evidence 充分性与导航终止](../planning/f221-evidence-sufficiency.md)
+- [F221：Evidence 充分性与导航终止](../archive/planning/f221-evidence-sufficiency.md)

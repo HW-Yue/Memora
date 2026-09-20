@@ -65,4 +65,4 @@ embedding——正是 ADR-0007 与[存储索引边界](../archive/storage/indexi
 - [jev 作为逐层分支选择器](../query/jev-branch-selection.md)
 - [ADR-0007：Router 权威，候选预测器可组合](./0007-route-predictor-arsenal.md)
 - [F224：Row 必须可导航](../planning/f224-mandatory-row-route.md)
-- [F221：Evidence 充分性与导航终止](../planning/f221-evidence-sufficiency.md)
+- [F221：Evidence 充分性与导航终止](../archive/planning/f221-evidence-sufficiency.md)

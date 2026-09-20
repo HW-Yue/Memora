@@ -87,5 +87,5 @@
 ## 下一步
 
 先解决 Gate 0～2 并执行按用户故事重做的
-[质量 benchmark](../../product/quality-model.md)，再决定是否冻结 Page 格式。
+[质量 benchmark](../product/quality-model.md)，再决定是否冻结 Page 格式。
 底层参数不是当前最大风险。

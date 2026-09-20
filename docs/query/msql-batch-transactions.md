@@ -101,7 +101,7 @@ production native daemon 通过 executor 注入的 backend-neutral transaction f
 `COMMIT` 才交给 Coordinator，以一个 native store transaction 和一个 Page publication 写入 Row、
 History、Relation、Route Membership 与 committed-change envelope。native 显式事务不开放 Catalog/Route
 结构变更、配置、RESHAPE 或 ASSIMILATION 控制语句；这些语句继续使用各自的 capability/提交路径。
-F205 的正式范围与故障证据见 [F205 规格](../planning/f205-native-multistatement-transaction.md)。
+F205 的正式范围与故障证据见 [F205 规格](../archive/planning/f205-native-multistatement-transaction.md)。
 
 ## 关联
 

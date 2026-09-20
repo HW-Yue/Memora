@@ -156,7 +156,7 @@ SHOW ROUTES/UNDER → OPEN ROUTE → SELECT by RowID`；MSQL 是 Memora 的 SQL
 98. 原生底座顺序改为 F52 Record Put/Get → F53 Catalog/Row Put/Get → F54
 MSQL INSERT/SELECT → F55 接宽对象 → F56 事务/恢复 → F57 迁移/切默认 →
 F58 删除 SQLite → F59 Table Router → F60 产品门；详见
-[ADR-0003](../../decisions/0003-native-minimal-store-first.md)。
+[ADR-0003](../decisions/0003-native-minimal-store-first.md)。
 99. SQLite 只作为迁移来源临时保留；原生 snapshot 等价、回读和回滚证据完成后，
 删除 driver、`internal/store/sqlite`、`.sqlite` 文件名和测试耦合。Unix socket/IPC
 是否删除属于另一决策，在用户明确确认前不能与 SQLite 清理混为一件事。

@@ -51,7 +51,7 @@ native 侧它是**两个** object kind（`internal/store/native/file.go:56-65`�
 `internal/router/service.go` 那套 bucket 实现（`router_leaf_members`／
 `router_row_memberships`，文件 24-25 行）只能经 `row.New`
 （`internal/row/service.go:73`）到达，而 **`row.New(` 的调用方全部是测试**。
-按[旧代码清理边界](../../development/legacy-code-boundary.md)，`internal/router`
+按[旧代码清理边界](../development/legacy-code-boundary.md)，`internal/router`
 作为迁移、package、逻辑快照与 native 对拍的参考模型保留，
 「不是生产存储 authority」——与代码一致。
 
@@ -221,7 +221,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 阶段 7 **有一道前置量测**：先测真实语义树深度与 `route_paths` 的读代价。
 量测已做完，结论与原设想不同，见 §7.3。
 
-阶段 6 受[旧代码清理边界](../../development/legacy-code-boundary.md)的删除规则约束：
+阶段 6 受[旧代码清理边界](../development/legacy-code-boundary.md)的删除规则约束：
 删除前必须证明目标不在 `cmd/...` 生产依赖图中，并先增加「旧路径不得重新出现」的 RED。
 
 **跨阶段的逐字一致基线**：切换前后比对 `OPEN ROUTE`、`SHOW ROUTES`、
@@ -263,7 +263,7 @@ bucket 版的 `putNode`／`getNodeAny`（`internal/router/service.go`）作为�
 > 下文的量测数字仍有效，结论不再适用。
 
 量测代码在 `internal/nativerouter/path_cost_test.go`，树形取自
-[路由评测语料](../../development/route-benchmark-corpus-v1.md)：depth ≤ 6、
+[路由评测语料](../development/route-benchmark-corpus-v1.md)：depth ≤ 6、
 fanout ≤ 12（F223）。量出三件事，其中两件推翻了原设想。
 
 **一、真正的瓶颈不是 `Path`，是节点点查。**
@@ -286,7 +286,7 @@ revision。每条 SELECT 的每行每叶子都走一次，一页结果就是一�
 
 原设想的收益是「RENAME 退化成改一个节点」。不成立：`Path` **不是唯一一份
 物化的 trace**。同一条路径还被物化在三个派生结构里——
-[Route 倒排生成](../../planning/f173b1-route-posting-generation.md)的全文索引
+[Route 倒排生成](../planning/f173b1-route-posting-generation.md)的全文索引
 把它当作可检索字段（`routefulltext/project.go` 的 `textField("path", …)`）、
 向量面（`routevector/surface.go`）、词法检索（`routelexical/search.go`）。
 
@@ -325,4 +325,4 @@ revision。每条 SELECT 的每行每叶子都走一次，一页结果就是一�
 - [Route Mutation Plan v1](../../query/route-mutation-plan-v1.md)、
   [Route Mutation Execution v1](../../query/route-mutation-execution-v1.md)
 - [F169：Leaf 单 Row 不变量](../../planning/f169-single-row-route-leaf.md)（不变量保留）
-- [语义健康 v2](../../agent/semantic-health-v2.md)、[旧代码清理边界](../../development/legacy-code-boundary.md)
+- [语义健康 v2](../../agent/semantic-health-v2.md)、[旧代码清理边界](../development/legacy-code-boundary.md)

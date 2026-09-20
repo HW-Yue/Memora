@@ -70,5 +70,5 @@ query 使用全内容索引唯一 tokenizer。posting 按对象 identity 聚合�
 ## 关联
 
 - [ADR-0008](../decisions/0008-full-content-inverted-index.md)
-- [F174 实现门](../planning/f174-bounded-lexical-locations.md)
-- [Lexical Route Locations v1](./lexical-route-locations-v1.md)
+- [F174 实现门](../archive/planning/f174-bounded-lexical-locations.md)
+- [Lexical Route Locations v1](../archive/query/lexical-route-locations-v1.md)

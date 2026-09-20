@@ -80,4 +80,4 @@ high-water 原子前进到其中最大值；因此捕获后的 Append 不会改�
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)
 - [Row Version Index v1](./row-version-index-v1.md)
 - [Table Row Cursor v1](./table-row-cursor-v1.md)
-- [MSQL Indexed Point-Get v1](../../query/msql-point-get-v1.md)
+- [MSQL Indexed Point-Get v1](../query/msql-point-get-v1.md)

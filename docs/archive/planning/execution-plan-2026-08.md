@@ -5,8 +5,8 @@ Page/WAL/B+ Tree，代码已删除。**当前队列**见
 [执行计划](../../planning/execution-plan.md)。
 
 原状态：2026-08-22 重排生效，2026-09-02 清理与裁定。这是当时唯一的工作队列。
-战略层理由见[路线 v3](../../planning/roadmap-v3.md)，问题依据见[已知风险](../../development/known-risks.md)
-与[架构审计](../../development/architecture-audit-2026-08.md)。
+战略层理由见[路线 v3](./roadmap-v3.md)，问题依据见[已知风险](../development/known-risks.md)
+与[架构审计](../development/architecture-audit-2026-08.md)。
 
 每项都是可独立派发的工单：有前置、改动范围、RED 和完成判据。
 **按编号顺序执行**，除非标注「可并行」。所有项仍须按
@@ -24,10 +24,10 @@ Agent 侧原样承接为 A 阶段，**一项不删，只改前置与顺序**。�
 
 | 决定 | 结论 | 依据 |
 | --- | --- | --- |
-| F185b 死锁怎么解 | **Policy v2**：保留三 arm 矩阵与身份校验，替换度量与阈值 | [F222](../../planning/f222-release-gate-policy-v2.md) |
+| F185b 死锁怎么解 | **Policy v2**：保留三 arm 矩阵与身份校验，替换度量与阈值 | [F222](./f222-release-gate-policy-v2.md) |
 | 确定性指标阈值定多少 | **首轮不定**，`report` 模式产出分布后再冻结 | F222 |
-| 语义重建不对称性 | **先执行 B**（吸收 Agent 偏向多写），A 列为 A12 | [讨论稿](../../data/semantic-rebuild-asymmetry.md) |
-| 工作集淘汰策略 | v1 冻结为 LRU + Pinned 最后淘汰 | [F220](../../planning/f220-query-working-set.md) |
+| 语义重建不对称性 | **先执行 B**（吸收 Agent 偏向多写），A 列为 A12 | [讨论稿](../data/semantic-rebuild-asymmetry.md) |
+| 工作集淘汰策略 | v1 冻结为 LRU + Pinned 最后淘汰 | [F220](./f220-query-working-set.md) |
 | 行→叶子怎么反查 | **Row 加 `route_leaf_ids` 默认字段**，不另建结构；写入时挂载已确定 | [叶子直挂 RowID](../storage/leaf-rowid-v1.md) §5 |
 | 语义树路径存不存 | **不存，顺 `ParentID` 实时算**；树会被频繁重构，存下来必然过期 | 同上 §5.1 |
 | 向量检索 | **整条链删掉**（2026-09-02，`3ff6136`）；重做时必须是盘上索引 | S3 |
@@ -301,12 +301,12 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
   **已完成**；阶段 3 核实后**无可拆**——phase checkpoint 是纯测试接缝，
   poison 补的是「原生文件 ↔ generation」这个阶段 2 没动的事务域（收口在 E4／E6）；
   阶段 4（barrier + checkpoint + 回收接线）**已完成**，
-  [已知风险](../../development/known-risks.md) 7a 随之关闭；
+  [已知风险](../development/known-risks.md) 7a 随之关闭；
   阶段 5（固定环）**已完成**：环的单元是 Segment 文件而不是单文件字节偏移——
   性质相同而不必重写恢复；容量检查在写之前、按「已用」判，所以最多超出一个
   事务；容量不写进文件，换容量重开没有迁移。change index 那套日志一并上环。
   三处裁定与「背压在哪一层证明」见规格
-- **依据**：[已知风险](../../development/known-risks.md) 7a、
+- **依据**：[已知风险](../development/known-risks.md) 7a、
   [架构原则](../../product/architecture-principles.md) §1、写入形态 §3／§5／§6
 - **改动**：`internal/pagestoremigration/{generation,manifest,authority}.go`、
   `internal/store/treecommit/runtime.go`（接受共享 log + 多 space）、
@@ -389,7 +389,7 @@ Row、History、Route、Relation、Database、Table、Column **一次都没有**
   并入 `route_node`；三类语义健康问题
   （`stale_membership`／`invalid_membership_scope`／`multi_row_leaf`）**结构性消失**
 - **对外可见的能力减少**：语义健康少三项，外加 Route revision 会被数据写入推高；
-  两条都已记入[待发布的对外可见变化](../../development/release-notes-pending.md)
+  两条都已记入[待发布的对外可见变化](../development/release-notes-pending.md)
 - **阶段 7 的结论：不删 `Node.Path`**（量测见规格 §7.3）。量测顺带挖出真正的
   瓶颈——`nativerouter.Get` 枚举整库找最新 revision，一页 SELECT 结果就是一页
   全库扫描；改成有界点探后 1555 节点的树从 247 µs 降到 1.03 µs 且不再随树长。
@@ -559,7 +559,7 @@ daemon 的接线一并摘掉。**语法与 CLI 子命令保留**，固定返回 
 `USING LEXICAL` 不受影响。
 
 **重新开发时**：按第四条准则做成盘上索引（DiskANN／mmap／走 buffer pool），
-不要再装一次内存。开启条件仍见[已知风险](../../development/known-risks.md) 7d。
+不要再装一次内存。开启条件仍见[已知风险](../development/known-risks.md) 7d。
 
 ### S4. CI 增加 Linux runner ✅
 
@@ -596,7 +596,7 @@ Linux 侧的全套八道门已在容器里实测通过（本仓库的开发容�
   **先把整个文件读进内存**再解析，所以对这个格式文件上界就是内存上界，
   而它只有在读之前检查才算上界。比例量测在两页的 fixture 上说明不了什么；
 - 三个配置上界已下调（512 MiB → 64 MiB 等），记入
-  [待发布的对外可见变化](../../development/release-notes-pending.md)。
+  [待发布的对外可见变化](../development/release-notes-pending.md)。
 
 ### S7. 读路径与 Session 边界 ✅
 
@@ -682,7 +682,7 @@ CLI 子命令**语法保留**，固定返回 not implemented——与 `USING VEC
 
 ## A 阶段：Agent 侧（转后，一项未删）
 
-前置：**E 阶段出口判据达成**。理由见[路线 v3](../../planning/roadmap-v3.md)「为什么引擎优先」——
+前置：**E 阶段出口判据达成**。理由见[路线 v3](./roadmap-v3.md)「为什么引擎优先」——
 简言之，这些工作全部建立在 Row 结构、挂载方式与 history 存法之上，
 顺序反过来要返工两遍。
 
@@ -691,13 +691,13 @@ CLI 子命令**语法保留**，固定返回 not implemented——与 `USING VEC
 
 | # | 工单 | 前置 | 要点 |
 | --- | --- | --- | --- |
-| A1 | [F221](../../planning/f221-evidence-sufficiency.md) Evidence 充分性与导航终止 | E 阶段 | 零行 SELECT 不终止导航；无 `substantive` 证据时拒绝作答；预算放宽到 8/6 |
-| A2 | [F220](../../planning/f220-query-working-set.md) Query Working Set Stage 1 | A1 | 正向条目带完整 Route 链路；保守失效；LRU + Pinned 最后淘汰 |
-| A3 | [F219](../../planning/f219-deterministic-answer-scoring.md) 确定性答案评分 | A2 | 主指标 `route_hit`／`field_hit`／`retrieval_correct`；transcript 不支持时判未命中 |
-| A4 | [F222](../../planning/f222-release-gate-policy-v2.md) Release Gate Policy v2 | A3 | `report`/`gate` 双模式；阈值未冻结时 `gate` 拒绝运行 |
+| A1 | [F221](./f221-evidence-sufficiency.md) Evidence 充分性与导航终止 | E 阶段 | 零行 SELECT 不终止导航；无 `substantive` 证据时拒绝作答；预算放宽到 8/6 |
+| A2 | [F220](./f220-query-working-set.md) Query Working Set Stage 1 | A1 | 正向条目带完整 Route 链路；保守失效；LRU + Pinned 最后淘汰 |
+| A3 | [F219](./f219-deterministic-answer-scoring.md) 确定性答案评分 | A2 | 主指标 `route_hit`／`field_hit`／`retrieval_correct`；transcript 不支持时判未命中 |
+| A4 | [F222](./f222-release-gate-policy-v2.md) Release Gate Policy v2 | A3 | `report`/`gate` 双模式；阈值未冻结时 `gate` 拒绝运行 |
 | A5 | 三组小规模对照 | A1–A4 | 三 arm／强弱模型建索引／工作集冷启动；产出物之一是冻结 `gate` 阈值 |
 | A6 | [F224](../../planning/f224-mandatory-row-route.md) Row 必须可导航 | **E3** | **判据要重写**：从「有没有 live membership」改为「有没有叶子指向它」，读 `route_leaf_ids` |
-| A7 | [F225](../../planning/f225-mandatory-row-summary.md) Row 必须可展示 | E 阶段 | summary role 列非空；引擎只判定非空不判定质量。SKILL.md 侧已落地 |
+| A7 | [F225](./f225-mandatory-row-summary.md) Row 必须可展示 | E 阶段 | summary role 列非空；引擎只判定非空不判定质量。SKILL.md 侧已落地 |
 | A10 | F220 Stage 2 | A5、S7 | 负向记忆、相关性淘汰、精确失效 |
 | A11 | 跨 Session topic 身份与有界恢复 | A10 | 需先出独立规格 |
 | A12 | 原文可恢复性：候选 A | — | 引用但不拥有外部原文归档；需先出独立规格 |
@@ -727,9 +727,9 @@ Apple Accelerate／HNSW。
 
 ## 关联
 
-- [路线 v3](../../planning/roadmap-v3.md) — 为什么是这个顺序
+- [路线 v3](./roadmap-v3.md) — 为什么是这个顺序
 - [写入形态](../../product/write-model.md)、[查询形态](../../product/query-model.md)、
   [架构原则](../../product/architecture-principles.md) — E 阶段的依据
-- [已知风险](../../development/known-risks.md)、
-  [架构审计](../../development/architecture-audit-2026-08.md) — S 阶段的依据
+- [已知风险](../development/known-risks.md)、
+  [架构审计](../development/architecture-audit-2026-08.md) — S 阶段的依据
 - [Feature 产品门](../../planning/feature-product-gate.md)、[TDD 协议](../../planning/feature-tdd-protocol.md)

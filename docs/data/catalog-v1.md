@@ -56,6 +56,6 @@ F14 后 Column 的 `type` 保存规范名称，文本字段另存当前 `max_cha
 ## 关联
 
 - [自描述 Data Dictionary](./self-describing-data-dictionary.md)
-- [SQLite 原型 Store](../decisions/0001-prototype-store.md)
+- [SQLite 原型 Store](../archive/decisions/0001-prototype-store.md)
 - [历史 Phase B TDD 计划](../archive/planning/tdd-phase-b-database.md)
 - [MSQL Catalog DDL v1](../query/catalog-ddl.md)

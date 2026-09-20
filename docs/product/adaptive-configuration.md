@@ -126,4 +126,4 @@ AI-native 表示语义策略可持续学习，不表示物理正确性可以动�
 - [AI-native 产品契约](./ai-native-contract.md)
 - [自描述 Data Dictionary](../data/self-describing-data-dictionary.md)
 - [MSQL](../query/msql.md)
-- [AI 自主权与约束](../agent/autonomy.md)
+- [AI 自主权与约束](../archive/agent/autonomy.md)

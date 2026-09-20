@@ -40,6 +40,6 @@ v0 用户无需另配模型 API Key，Release 与安全门不承担 Provider 风
 
 ## 关联
 
-- [可选内置 Agent Runtime](../agent/embedded-agent-runtime.md)
+- [可选内置 Agent Runtime](../archive/agent/embedded-agent-runtime.md)
 - [进程配置与宿主边界](../development/process-configuration.md)
 - [AI-native Benchmark v1（历史）](../archive/design/ai-native-benchmark-v1.md)

@@ -12,8 +12,8 @@
 重建：COW generation → validate → root swap
 ```
 
-物理决策见 [ADR-0005](../../decisions/0005-btree-mandatory-primary-index.md)和
-[ADR-0006](../../decisions/0006-mysql-page-buffer-wal-cow.md)。
+物理决策见 [ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)和
+[ADR-0006](../decisions/0006-mysql-page-buffer-wal-cow.md)。
 
 ## Page 与 WAL
 

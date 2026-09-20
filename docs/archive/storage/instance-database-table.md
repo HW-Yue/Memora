@@ -67,6 +67,6 @@ Database 提供语义和治理边界，Table 负责一个边界内部的结构�
 ## 关联
 
 - [存储引擎术语](./terminology.md)
-- [AI 自主权与约束](../../agent/autonomy.md)
-- [工作集与 LRU 缓存](../../query/working-set-cache.md)
+- [AI 自主权与约束](../agent/autonomy.md)
+- [工作集与 LRU 缓存](../query/working-set-cache.md)
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)

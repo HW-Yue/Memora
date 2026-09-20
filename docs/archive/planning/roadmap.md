@@ -105,5 +105,5 @@ B+ Tree、16 KiB Page、单实例 Buffer Pool 和 Redo WAL 已确认为 F81–F1
 
 - [TDD 开发总计划](./tdd-development-plan.md)
 - [尚未确认的问题](./open-questions.md)
-- [质量模型与验收](../../product/quality-model.md)
+- [质量模型与验收](../product/quality-model.md)
 - [市场空白与定位](../../research/market-positioning.md)

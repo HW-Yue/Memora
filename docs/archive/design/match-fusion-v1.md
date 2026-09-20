@@ -59,4 +59,4 @@ Executor 在一个 Row transaction snapshot 中读取两套 posting，并按绑�
 
 - [Agent Inverted Index v1](./agent-index-v1.md)
 - [Mechanical Inverted Index v1](./mechanical-index-v1.md)
-- [无向量检索质量链路](../../query/retrieval-quality.md)
+- [无向量检索质量链路](../query/retrieval-quality.md)

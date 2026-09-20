@@ -92,5 +92,5 @@ OPEN ROUTE FROM DATABASE <name> AT '<path>'
 ## 关联
 
 - [AI-native 产品契约](../product/ai-native-contract.md)
-- [AI 自主权与约束](../agent/autonomy.md)
+- [AI 自主权与约束](../archive/agent/autonomy.md)
 - [语义路由](../query/semantic-routing.md)

@@ -80,7 +80,7 @@ MSQL 提交完整叶子快照。DELETE 原子清除可见 membership。
 
 ## 关联
 
-- [AI 自主权与约束](../agent/autonomy.md)
+- [AI 自主权与约束](../archive/agent/autonomy.md)
 - [语义路由](../query/semantic-routing.md)
-- [Wiki 导出](../export/obsidian-wiki.md)
+- [Wiki 导出](../archive/export/obsidian-wiki.md)
 - [自描述 Data Dictionary](./self-describing-data-dictionary.md)

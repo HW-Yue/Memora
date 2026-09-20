@@ -1,7 +1,7 @@
 # Index Discovery v1
 
 状态：历史实现，产品方向已撤销。full path、query_terms、MATCH 与关系融合不再
-是查询主路径；目标见[语义树检索质量链路](../../query/retrieval-quality.md)。
+是查询主路径；目标见[语义树检索质量链路](../query/retrieval-quality.md)。
 
 ## 输入与边界
 
@@ -52,4 +52,4 @@ Route 或关系预算耗尽、底层 MATCH/leaf 截断、或最终 LIMIT 截断�
 
 - [Router Tree v1](./router-tree-v1.md)
 - [MATCH Fusion v1](./match-fusion-v1.md)
-- [MSQL Relationships v1](../../query/msql-relationships.md)
+- [MSQL Relationships v1](../query/msql-relationships.md)

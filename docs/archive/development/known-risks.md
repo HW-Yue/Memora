@@ -1,0 +1,299 @@
+# 已知风险
+
+状态：2026-08-11 建立。**2026-09-20：主体过期。** 多数条目指向已删除的自研引擎
+（`pagestoremigration`、`poisonPublication`、`objectlock`、`routevector`）。
+当前仍有效、且挡住检索主路径的缺陷见
+[执行计划 Q0](../../planning/execution-plan.md)（vec0 kind 后过滤）与
+[检索路线](../../query/retrieval-routes-jev.md)。
+
+修好一条就从这里移除并写进[系统能力](../product/system-capabilities.md)。
+不要按过期条目去找已删包。
+
+## 已修复（保留一轮供追溯）
+
+### 0. 一个 Database 出错，所有 Database 读写全停 —— **Stage 1 已修复**
+
+`internal/pagestoremigration/authority.go` 的 `poisonPublication`（`:541`）只做
+`authority.poisoned = true`——全实例单一布尔，没有任何 Database 或对象作用域。
+`healthyLocked`（`:568`）见到它就返回 `ErrAuthorityPoisoned`，而
+`BeginWrite`（`:199`）**和 `lockRead`（`:554`）都查它**。
+
+后果：任一 Database 的一次 Page 发布失败，整个 Instance 的全部 Database
+既写不了也**读不了**。读被连带阻断尤其没必要——已提交的旧 generation 完好，
+读它是安全的。
+
+叠加成因：所有 Database 共用一套物理文件（实测 `databases/page-index-v1/` 下
+单套 Page/WAL，没有按库分目录），所以物理故障域也等于整个 Instance。
+这与 [原生 Store](../storage/native-minimal-store.md) 第 21 行声称的
+`databases/db_<stable-id>/database.memora` 不一致——实现漂移了。
+
+**2026-08-11 [F226](../planning/f226-per-database-fault-isolation.md) Stage 1 已实现**：
+读不再受 poison 影响；poison 按 Database 收敛（Row/Route 按受影响库，Catalog 按
+实际变更的库，generation 替换保持 Instance 级）；`BeginRowWrite` 早失败并在错误里
+点名受影响 Database。
+
+物理文件仍是全 Instance 共用，**这是 2026-08-20 评估后的有意选择，不是遗留缺口**：
+最热读路径本来就跨 Database，拆分会给它加上常态 fan-out，而主导的损坏模式是共享
+引擎代码缺陷，拆文件对其零作用。评估、替代方案与重新评估的触发条件见 F226 Stage 2。
+
+## 严重：会导致产品主张不成立
+
+### 1. Query Agent 只有一步记忆，多跳导航结构上不可能
+
+`internal/agent/query_agent_wire.go:42` 的 `makeQueryProviderRequest` 每轮最多构造 4 条消息：
+system prompt、user（问题 + Bootstrap Frame）、assistant（**上一次**工具调用）、
+tool（**上一次**结果）。`query_agent.go` 循环里 `previousCall` 与 `previousResult` 是
+**覆盖**而非追加。
+
+后果：第 3 轮看不到第 1 轮的调用与结果。需要「OPEN ROUTE → 收窄 → SELECT」的多跳查询
+在结构上无法完成，模型也会重复已经失败过的查询，因为它没有尝试过的记录。
+
+这直接解释了 `post-f204-development-plan.md` 里那句「下一步不是扩大样本，而是先修正
+Query Agent 的多轮导航/SQL 选择行为」，也解释了真实运行 9/12 与 3/12 的结果。
+这不是模型能力问题，是循环实现问题。
+
+### 2. 第一条 SELECT 就终止导航，哪怕它返回零行
+
+`query_agent.go` 的 `if len(result.Evidence) > 0 { choice = ProviderToolChoiceNone }`：
+一旦 `result.Evidence` 非空，工具调用被强制关闭，模型必须立即作答。
+
+而 `selectEvidence()`（`query_agent.go:346`）只要求 `Statement == "SELECT"` 且
+`Status == succeeded` 且 `Error == nil`——**不检查行数**。一条返回零行的 SELECT
+同样算作 evidence，同样立刻锁死后续导航，逼模型凭空作答。
+
+第 1、2 条叠加后，Query Agent 实际可用的推理深度接近一次性猜测。默认预算
+（`MaxProviderCalls: 4`、`MaxToolCalls: 3`）在这两条约束下形同虚设。
+
+### 3. AI-native 的全部主张压在最薄的一层上
+
+约 14 万行是工程扎实的常规数据库；差异化主张（AI 自主语义建模优于 chunk + embedding）
+完全落在 `internal/agent` 的约 2.3 万行里，而这一层既有第 1、2 条的结构缺陷，
+也从未产出过可用的质量数字。
+
+这不是代码缺陷，是投入结构问题，记在这里是为了不让它被 F 编号的完成度掩盖。
+
+## 中等：会在真实使用中暴露
+
+### 4. 文档解析的配置上界与实现能力差约 50 倍 —— **已修复（S6）**
+
+实测放大倍率为峰值堆 ≈ 正文 7 倍（约 2.6 KB 堆／IR 节点）。而配置默认：
+
+- `DefaultEPUBAdapterConfig`：`MaxTotalUncompressedBytes: 512 MiB`；
+- `DefaultPDFAdapterConfig`：`MaxFileBytes: 128 MiB`、`MaxDecompressedBytes: 512 MiB`。
+
+按 7 倍推算，一个刚好卡在上界的文档需要约 3.5 GB 堆。上界没有拦住会打爆 daemon 的输入，
+它**允许**这类输入。典型文档（正文 1–5 MiB）完全没问题，问题只在上界本身没意义。
+
+**已修**：EPUB／DOCX 的 `MaxTotalUncompressedBytes` 与 PDF 的
+`MaxDecompressedBytes` 下调到 64 MiB，PDF 的 `MaxFileBytes` 到 32 MiB。
+比例本身由 `internal/agent/parse_memory_test.go` 钉住——量的是解析后仍持有的
+活堆，实测 2.4–2.7，闸设在 12。这是对外可见的能力缩减，已记入发布说明。
+
+### 5. 解析未流式化，抵消了 SourceStore 的流式设计
+
+F191 明确「上传全程流式处理，不把整本书读进内存」，用 32 KiB buffer 写盘。
+但解析阶段：
+
+- `pdf_adapter.go:147` 把整个 PDF 一次 `io.ReadAll` 进内存；
+- `epub_adapter.go:283`／`docx_adapter.go` 的 `archive.cache[locator]` 缓存每个读过的条目，
+  **无淘汰、无上限**（只受归档声明总量约束）。
+
+流式纪律止步于存储边界，解析阶段全部退化为整载。
+
+### 6. 两个读路径去抢单写者门
+
+`internal/pagestoremigration/authority.go` 的 `writeGate` 是容量 1 的信号量（`:133`），
+全实例写串行——对本地单用户这是合理取舍。但 `ListCommittedChanges`（`:237`）与
+`GetCommittedChange`（`:271`）这两个**读**操作也调 `BeginWrite`，会被任意写阻塞；
+其余读路径走的是 `lockRead` 的 RWMutex。若是有意为之（change log 需序列化读），
+应加注释说明；否则是可摘除的耦合。
+
+⚠️ [F220](../planning/f220-query-working-set.md) 的精确失效方案依赖
+`ListCommittedChanges`，**必须先修这条**，否则工作集每 turn 校验都会与写入竞争。
+F220 Stage 1 因此采用保守全丢，绕开该依赖。
+
+### 7. MSQL Session 无数量上限与空闲回收
+
+`internal/msql/service/service.go:66` 的 `OpenSession` 对同一 id 复用，对新 id 无条件创建，
+`sessions` map 没有容量上限，也没有空闲超时。正常断连由
+`databaseHandler.SessionClosed`（`daemon/execute.go:789`）回收，所以常规使用不泄漏。
+但长连接内轮换 session id 的调用方会让 map 单调增长。当前是本地单用户，风险低，
+属于"应加上界"而非"正在出问题"。
+
+### 7a. redo WAL 永不回收，无界增长 —— **已修复（2026-08-25）**
+
+> 按本文件惯例保留一轮供追溯。修复：`pagestoremigration.maintainRedoLog` 在每次
+> 成功写入之后跑一轮——活跃段超过 4 MiB 就 `Roll` → `PublishCheckpoint` →
+> `Reclaim`；生产 barrier 是 `redoBarrier`。门是
+> `TestRedoLogRollsCheckpointsAndReclaims`，量的是**磁盘字节不随写入次数增长**。
+>
+> **2026-08-27 补上后一半（E0 阶段 5）**：上面那道修复只在 checkpoint 推得动时
+> 有界，而 checkpoint 要刷脏页，刷不动尾指针就不动——**一条策略推不动时会静默
+> 失效的界不是界**。现在日志有硬容量（`wal.ErrRingFull`）：在用区间
+> （checkpoint 恢复 LSN → 写指针）不许超过环，超了就报错而不是覆盖，
+> 因为覆盖的是**页文件里还没有的改动**。写之前先跑一轮 relief 争取腾空间，
+> 腾不出来才背压。change index 那套独立日志一并上环。
+>
+> 下面是修复前的原文。
+
+`internal/store/wal/` 的 `SegmentSet.Roll`（`segment_set.go:397`）、
+`PublishCheckpoint` 与 `LatestCheckpoint`（`checkpoint.go:32`）、
+`Reclaim`（`reclaim.go:39`）**四个都是零生产调用方**（各有 12–52 处测试引用）。
+生产对 `wal` 包只用 `OpenSegmentSet`／`CreateSegmentSet`／`RecoverSegmentSet`。
+
+后果：WAL 从不滚段、从不 checkpoint、从不回收，随写入量单调增长；
+恢复起点也永远是最初那一段，重启重放时间随库龄增长。
+
+代码已写、已测、文档已冻结（`docs/storage/{wal-segment-set,checkpoint-publish,
+wal-segment-reclaim}-v1.md` 三份都写「F86a/b/c 已完成」），**缺的只是接线**——
+主要待决的是触发时机（按段数？按字节？按 checkpoint 间隔？）。
+三份文档已加"已实现但未接线"注记。
+
+**2026-08-22 已排期为[执行计划](../../planning/execution-plan.md) E0，是当前队头**——
+它是本文件里唯一随时间持续恶化的一条。
+
+方案已从「给段式日志接上回收」改为
+[共享循环 redo log](../storage/shared-circular-redo-v1.md)：全实例一套日志、
+固定大小、循环使用。段式把磁盘占用交给 checkpoint 策略去防，固定环让它
+**结构上不可能涨**——不 checkpoint 的后果从"磁盘静默涨到天上"变成"写入背压报错"。
+同一改动顺带堵上跨树提交不原子的洞（见该文档 §2.1）。
+
+**进度**：阶段 1、2（一个 generation 一套 redo log、跨树发布一次提交）与
+阶段 4（barrier + checkpoint + 回收接线）均已完成，**本条到此关闭**。
+剩下的阶段 5（固定环 + 双指针）不再是缺陷修复，而是把「靠策略防增长」
+换成「结构上不可能增长」，作为改进留在
+[执行计划](../../planning/execution-plan.md) E0。
+
+### 7b. schema 与 route 变更不加对象锁
+
+`internal/store/objectlock/objectlock.go` 的 `SchemaKey`（`:46`）与
+`RouteKey`（`:50`）非测试调用方均为 **0**，只有 `RowKey` 有 1 个调用方。
+锁机制设计成三级，实际只用一级。
+
+**已裁定（S2）：删掉那两个 Key，锁收敛为只有 Row 一级。**
+
+判据是「对象锁在串行写入之上多买到什么」：只多买到一件事——
+两个请求要同一个对象时**快速失败**而不是排队。这件事在 Row 这条
+用户驱动的热路径上值得有；在 schema 与 Route 变更上不值得——它们稀少、
+结构性，而且**本来就有 `EXPECTED REVISION` 这道乐观并发闸**，
+报冲突比锁错误更精确（它能说清是哪个 revision 变了）。
+
+`Kind` 枚举随之消失：键只剩一种，`Key` 就是 `(database, table, row)` 三段。
+
+### 7c. `EXPORT WIKI` / `INSTALL PACKAGE` 能解析、执行必失败 —— **改判为删（2026-09-02）**
+
+**原文（保留供追溯）**：词法（`msql/lexer/token.go:54-55`）与解析
+（`parser.go:1699,1734`）齐全，执行时判空后固定返回 `CodeUnsupported`——
+生产的 `newNativeDatabaseHandler` 不注入 `Packages`/`Wiki`，
+只有 `newDatabaseHandler` 注入。
+
+Database Package 有 7 份产品文档，读文档会以为能用。
+
+**2026-08-22 的裁定（功能保留，属接线缺失）作废。** 核实之后，
+`daemon/execute.go:58,69` 这两个注入点**本身从任何 `cmd/` 入口都不可达**，
+`internal/dbpackage`／`internal/wikiexport` **整包不可达**，
+`snapshot.Service` 亦然（同包的编解码与 `CanonicalHash` 是活的，不能连坐）
+——它们只接受 legacy 的 `store.Store`，而生产走 native 栈。
+CLI 的 `memora export --wiki` 与 package 子命令确实存在，但发的是 MSQL 语句，
+落到生产 handler 上照样返回不支持：**整条链端到端是死的**。
+
+所以「接线」的实际内容是拿 native 栈重写这两个功能。按
+「不用的先删，要的时候重新开发」处理：**`internal/dbpackage` 与
+`internal/wikiexport` 整包已删**，executor／msqlservice／daemon 的接线一并摘掉。
+
+**语法与 CLI 子命令保留**，固定返回 not implemented——与 `USING VECTOR` 同一
+处理。产品文档（[Database Package v1](../product/database-package-v1.md)、
+[Obsidian Wiki 导出](../export/obsidian-wiki.md)）降为设计记录，重写时以它们为规格。
+
+**顺带记一条教训**：CLI 那两个子命令的测试一直是绿的，因为它们打的是
+`dependencies.ExecuteMSQL` 假实现，从没跑过真引擎。上一轮就是看见「有子命令、
+测试还绿」而收的手。**「有调用方」和「能走通」是两件事。**
+
+legacy handler 本身没删——它现在是 8 个 daemon 测试文件的夹具。
+剩余卡点见[2026-08 执行计划](../planning/execution-plan-2026-08.md)清理台账。
+
+### 7d. 向量检索没有生产发布方 —— **已裁定：整条链删除（2026-09-02）**
+
+原裁定（2026-08-22）是「记为未启用」：发布方不是接线问题而是产品问题
+（需要 embedding 提供方与重算策略），在那之前造发布方等于先造结构去满足洁癖。
+那半句仍然对。
+
+**错的是另一半：留着比删掉更糟。** `routevector.Generation.vectors` 把整个
+generation 的全部 Route 向量常驻内存，没有上界也没有淘汰——一个不设上界的
+常驻结构，为一个到不了用户手里的功能服务，正是
+[架构原则](../../product/architecture-principles.md)第四条的靶子。
+
+**已删**（`3ff6136`，−2539 行）：`internal/routevector`、`internal/routeexact`
+与 executor／daemon 的接线。`SHOW ROUTE CANDIDATES ... USING VECTOR` **仍然解析**，
+返回「vector retrieval is not implemented」——语句还在，拒绝理由变准确了。
+`USING LEXICAL` 不受影响。
+
+**重新开发的条件不变**：先定 embedding 提供方与重算策略。
+**并且必须做成盘上索引**（DiskANN／mmap／走 buffer pool），不要再装一次内存。
+方向另见[候选预测器只给路径](../../query/predictor-path-only-v1.md)。
+
+### 7e. `SELECT ... AS OF` 曾能读回已删除 Row 的完整内容 —— **已修复**
+
+**先澄清判据**，因为本条最初写错过一次：删除的契约是
+**语义上不可达且不可逆**，**不是物理擦除**。F227
+（[f227-object-archive.md](../planning/f227-object-archive.md) §「存储层的真相」）
+明说磁盘上的字节还在、要等 Compaction 才谈得上回收，并要求
+「**不要对用户承诺"数据已被抹除"**」。所以"逻辑快照里还留着已删行的字节"
+**本身不是缺陷**——本条最初据此判定"规则漏了"，是误判，已订正。
+
+按「可达性」这个正确判据复查七条读路径，查出一处真漏：
+**`SELECT ... AS OF REVISION|COMMIT_SEQUENCE` 没有任何删除态检查**。
+`IndexedReader.AsOfRevision`／`AsOfCommit` 从 locator 直接 `readBody` → `project`
+返回，而同一文件的 `Get` 有检查。放大它的两点：`Delete` 是 `deleted := current`，
+**保留了 Values**；row_id 与前后 revision 可以从不设防的 `SHOW CHANGES` 拿到。
+于是任何留着 ID 的人都能点名任一版本，把每一列的值读回来——
+正是 `HistoryPage` 注释里写明并堵上的那个威胁，隔壁没堵。
+
+**2026-08-22 已修复**：`IndexedReader.refuseDeleted` 与
+`Service.refuseDeleted` 覆盖 authority 与 repository 两条路径，
+按 Row 的**当前**状态判断（不是目标版本的——读 superseded 旧版本正是 AS OF 的本职），
+返回 `CodeNotFound`，与 `SHOW HISTORY` 一致。`Restore` 的删除检查同时提前到读取
+目标版本之前，以免报错退化成裸的 not found。
+契约与全部把关面已写进[查询形态 §7](../../product/query-model.md)。
+
+**仍然接受、只作记录的**：已删除 Row 的正文与归属会随逻辑快照与 Database Package
+交给第三方（`wikiexport` 过滤，`nativesnapshot`／`dbpackage` 不过滤）。
+已核实导入后仍不可达——`Import` 从 history 重建状态并保留墓碑，所有读面照样拒绝——
+所以不违反契约。三者不一致这一事实记在
+[架构审计](./architecture-audit-2026-08.md)。
+
+## 轻微：工程卫生
+
+### 8. CI 只有 macOS runner
+
+`.github/workflows/ci.yml` 只跑 `macos-latest`。项目在 Linux 上可编译、全测试通过
+（本次已验证），但没有 Linux CI 保护，darwin-only 假设会静默漏过。
+加 `ubuntu-latest` 到 matrix 成本接近零。
+
+### 9. 没有 linter
+
+只有 `gofmt -l` 与 `go vet`。16 万行代码建议加 `golangci-lint`，至少
+staticcheck／errcheck／ineffassign 三项。全库 `panic()` 仅 1 处、`TODO/FIXME` 为 0，
+基线很干净，正适合上 linter 保持。
+
+### 10. 单文件过大与占位分支
+
+`cli/cli.go` 1,820 行、`msql/parser/parser.go` 1,759 行、`agent/pdf_adapter.go` 1,300 行。
+AGENTS.md 对文档定了约 150 行上限，对代码没有对等约束。
+
+`parser.go:28` 有一个空的 `if parser.matchKind(lexer.KindSemicolon) {}`，
+块内只有一句「F12 将会…」的注释。行为正确（消费尾随分号后要求 EOF），但写法会误导，
+应改为直接调用或删除。
+
+### 11. 唯一的 panic 在可达路径上
+
+`internal/store/treecontrol/control.go:44` 的 `EncodeBootstrap` 在 `Encode` 失败时
+`panic(err)`。当前调用方传的都是合法 spaceID，实际不可达；但它是全库唯一的 panic，
+改成返回 error 可以让「生产代码零 panic」成为可断言的不变量。
+
+## 关联
+
+- [系统能力](../product/system-capabilities.md)
+- [路线 v3](../planning/roadmap-v3.md)
+- [语义重建的不对称性](../data/semantic-rebuild-asymmetry.md)
+- [ADR-0010 小规模高质量评测](../../decisions/0010-small-scale-high-quality-evaluation.md)

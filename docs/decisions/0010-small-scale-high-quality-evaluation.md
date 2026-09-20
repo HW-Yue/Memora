@@ -58,7 +58,7 @@ F215 已加入单指标有限重试，仍是 6/9 失败，说明卡点不是重�
 
    2026-08-11 补充：Policy v1 要求四项 judge 指标 100% 有效，与本 ADR 第 3 条
    「允许指标部分缺失」直接矛盾——照原样保留会使该门在新体系下永远输出 `incomplete`，
-   即一个死锁而非一个标准。已由 [F222](../planning/f222-release-gate-policy-v2.md) 解除：
+   即一个死锁而非一个标准。已由 [F222](../archive/planning/f222-release-gate-policy-v2.md) 解除：
    保留三 arm 矩阵与身份校验，替换度量与阈值；阈值不预先编造，由首轮 `report` 模式的
    实际分布冻结后才启用 `gate`。
 
@@ -75,15 +75,15 @@ F215 已加入单指标有限重试，仍是 6/9 失败，说明卡点不是重�
 
 ## 结果
 
-- 新增候选 [F219](../planning/f219-deterministic-answer-scoring.md)：确定性主评分与部分指标评分表示；
+- 新增候选 [F219](../archive/planning/f219-deterministic-answer-scoring.md)：确定性主评分与部分指标评分表示；
   它是恢复任何评测运行前的前置项。
-- F212–F215 文档与 [Feature 状态](../planning/feature-status.md)同步标记 Deferred。
+- F212–F215 文档与 [Feature 状态](../archive/planning/feature-status.md)同步标记 Deferred。
 - 不因为改向小规模就放宽结论口径：没有通过的质量门仍写 `INCOMPLETE`，不得从对照实验外推出
   Recall/MRR 或答案质量承诺。
 
 ## 关联
 
-- [F185b Query Agent Release Gate](../planning/f185b-query-release-gate.md)
-- [F219 确定性答案评分](../planning/f219-deterministic-answer-scoring.md)
-- [F204 之后的开发计划](../planning/post-f204-development-plan.md)
-- [质量模型](../product/quality-model.md)
+- [F185b Query Agent Release Gate](../archive/planning/f185b-query-release-gate.md)
+- [F219 确定性答案评分](../archive/planning/f219-deterministic-answer-scoring.md)
+- [F204 之后的开发计划](../archive/planning/post-f204-development-plan.md)
+- [质量模型](../archive/product/quality-model.md)

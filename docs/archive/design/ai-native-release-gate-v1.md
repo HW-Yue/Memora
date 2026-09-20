@@ -76,5 +76,5 @@ go run ./cmd/verify-ai-native-benchmark
 ## 关联
 
 - [AI-native Benchmark v1](./ai-native-benchmark-v1.md)
-- [质量模型与验收](../../product/quality-model.md)
+- [质量模型与验收](../product/quality-model.md)
 - [进程配置与宿主边界](../../development/process-configuration.md)

@@ -4,7 +4,7 @@
 
 上一份队列（[2026-08 引擎侧 E 阶段](../archive/planning/execution-plan-2026-08.md)）
 依据的是自研 Page/WAL/B+ Tree，代码已删除，**不再派发**。战略理由见
-[路线 v3](./roadmap-v3.md)（引擎轨道已结束，见该文头部注记）。
+[路线 v3](../archive/planning/roadmap-v3.md)（引擎轨道已结束，见该文头部注记）。
 
 每项仍须按 [TDD 协议](./feature-tdd-protocol.md) 独立 Review、授权、实现、验收。
 持久化相关项测 reopen / 中断 / 错误注入即可；SQLite 自己的页格式与崩溃恢复不测。

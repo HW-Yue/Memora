@@ -96,5 +96,5 @@ tokenizer、runtime、license、digest 和兼容版本的可选本地 Route Enco
 ## 关联
 
 - [ADR-0007](../../decisions/0007-route-predictor-arsenal.md)
-- [Route Retrieval Benchmark v3](../../development/route-retrieval-benchmark-v3.md)
-- [语义路由投机预取](../../query/speculative-route-prefetch.md)
+- [Route Retrieval Benchmark v3](../development/route-retrieval-benchmark-v3.md)
+- [语义路由投机预取](../query/speculative-route-prefetch.md)

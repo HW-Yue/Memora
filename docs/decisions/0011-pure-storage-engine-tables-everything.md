@@ -1,6 +1,6 @@
 # ADR-0011：存储引擎只做数据库，其余一切在它上面建表
 
-状态：Accepted，2026-09-13。取代 [ADR-0004](./0004-fast-row-directory-minimal-mvcc.md)
+状态：Accepted，2026-09-13。取代 [ADR-0004](../archive/decisions/0004-fast-row-directory-minimal-mvcc.md)
 中仍有效的 MVCC 部分与 [MVCC、Undo 与 Redo 边界](../archive/storage/mvcc-undo-redo.md)。
 语义树的表形态见 [Route 配套表](../product/route-companion-table.md)。
 

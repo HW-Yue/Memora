@@ -7,7 +7,7 @@
 
 一个语义索引节点下面挂多少个子节点，直接决定 Agent 单层选择的准确率。当前实现里：
 
-- `nativerouter.prepareChild` **完全不检查子节点数**，`CREATE ROUTE ... CHILD` 可以无限追加；
+- `sqlstore` 创建第 13 个 live child **完全不检查子节点数**，`CREATE ROUTE ... CHILD` 可以无限追加；
 - `routemutationplan` 把 12 写死成常量，只覆盖 split/merge/move，绕过它即可越界；
 - `semantichealth` 在 12 个 child 时报 `route_capacity`，但只是事后报告；
 - Admin 前端全量渲染，超限在界面上看不出异常。
@@ -56,7 +56,7 @@ RESTORE CONFIGURATION ROUTE_POLICY TO REVISION :revision;
 
 | 路径 | 位置 |
 | --- | --- |
-| `CREATE ROUTE ... CHILD` | `nativerouter.prepareChild` |
+| `CREATE ROUTE ... CHILD` | `sqlstore` 创建 child |
 | Route Mutation Plan 的 split / merge / move | `routemutationplan.Build` |
 | Plan apply 阶段的 planned create / move | `nativemutation` reshape 提交 |
 

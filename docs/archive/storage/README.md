@@ -53,7 +53,7 @@
 （`Roll` → `PublishCheckpoint` → `Reclaim`），而在用区间
 （checkpoint 恢复 LSN → 写指针）不许超过环：超了报 `wal.ErrRingFull` 背压，
 **不覆盖**——那段字节是页文件里还没有的改动的唯一副本。
-[已知风险](../../development/known-risks.md) 7a 随之关闭。
+[已知风险](../development/known-risks.md) 7a 随之关闭。
 
 **fulltext 是派生索引，不在写入事务里**：写入只写权威数据，fulltext 从提交的
 变更日志追平（追平跟在写入后面立刻跑，但在它的事务之外，所以没有可见滞后）。
@@ -337,7 +337,7 @@ membership 两个 object kind（9／13）退役，三类语义健康问题结构
 ### E. 与规范无关的既有欠账
 
 存储层之外还有若干缺陷、耦合与重复（含 **redo WAL 从不 checkpoint／回收**
-这一条），逐条证据见[架构审计 2026-08](../../development/architecture-audit-2026-08.md)，
+这一条），逐条证据见[架构审计 2026-08](../development/architecture-audit-2026-08.md)，
 不在此重复。
 
 11. **`File.records` 常驻表 ✅ 已删除**（2026-09-13 `887c652`，E8 阶段 3）。

@@ -51,7 +51,7 @@ DESCRIBE COLUMN work.notes.title [COMPACT];
 ```
 
 `SHOW` 始终是有界列表：Database 不嵌套 Table，Table 不嵌套 Column，并按
-[Metadata Read v1](./metadata-read-v1.md) 返回 list page envelope。`DESCRIBE ... COMPACT`
+[Metadata Read v1](../archive/query/metadata-read-v1.md) 返回 list page envelope。`DESCRIBE ... COMPACT`
 同样不展开下一层；不带 `COMPACT` 的 `DESCRIBE` 可以返回该对象的完整当前 Schema，
 但不能作为 Admin 的分页列表入口。
 

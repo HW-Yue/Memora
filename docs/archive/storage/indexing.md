@@ -91,11 +91,11 @@ Catalog name/id → current Schema revision locator
 
 精确 RowID Get 沿根到叶定位，Table cursor 沿叶链有序前进。内存 Catalog/Page Map
 只作为缓存；重启从已提交 root/manifest 打开，不能全量扫描 Row Record 重建索引。
-详见 [ADR-0005](../../decisions/0005-btree-mandatory-primary-index.md)。
+详见 [ADR-0005](../decisions/0005-btree-mandatory-primary-index.md)。
 
 最小 MVCC 使用 immutable Row revision、commit marker 和 snapshot sequence；
 不预设“最新 Record + 物理 Undo chain”。长期 History 仍独立保存语义 revision。
-见 [ADR-0004](../../decisions/0004-fast-row-directory-minimal-mvcc.md)。
+见 [ADR-0004](../decisions/0004-fast-row-directory-minimal-mvcc.md)。
 
 语义 Row 的字符预算属于 Schema/Column 约束；Page 的字节容量属于物理存储。
 Row split 由 AI 按语义完成，Page split 由引擎自动完成，二者不能混淆。

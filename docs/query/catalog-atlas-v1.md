@@ -35,5 +35,5 @@ Atlas 不展开 Column，不返回 Route、RowID、正文或事实。扁平形�
 ## 关联
 
 - [MSQL Catalog DDL v1](./catalog-ddl.md)
-- [Speculative Discovery Skill v1](../agent/speculative-discovery-skill-v1.md)
-- [Catalog Navigation v1](../development/catalog-navigation-v1.md)
+- [Speculative Discovery Skill v1](../archive/agent/speculative-discovery-skill-v1.md)
+- [Catalog Navigation v1](../archive/development/catalog-navigation-v1.md)

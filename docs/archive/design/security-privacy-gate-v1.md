@@ -1,7 +1,7 @@
 # 安全与隐私门 v1
 
 状态：F46 历史实现规格；Authorization 的 scope-only 部分已被
-[Policy Enforcement v2](../../development/policy-enforcement-v2.md) 取代，其余路径、脱敏和威胁模型仍有效。
+[Policy Enforcement v2](../development/policy-enforcement-v2.md) 取代，其余路径、脱敏和威胁模型仍有效。
 
 ## 威胁模型
 

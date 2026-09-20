@@ -70,6 +70,6 @@ AS OF、SHOW HISTORY 和 RESTORE 的 row ID、revision、sequence、LIMIT 都是
 
 ## 关联
 
-- [History Store v1](../data/history-store-v1.md)
+- [History Store v1](../archive/data/history-store-v1.md)
 - [MSQL Batch 与事务边界 v1](./msql-batch-transactions.md)
 - [MSQL Result Envelope v1](./result-envelope.md)

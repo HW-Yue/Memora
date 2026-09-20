@@ -137,4 +137,4 @@ delta 或混合重放格式，在同步 Feature Review 时再决定。
 
 - [MVCC、Undo Log 与 Redo Log](./mvcc-undo-redo.md)
 - [历史数据可视化与本地观察接口计划](../planning/visual-inspection-feature-plan.md)
-- [History Store v1](../../data/history-store-v1.md)
+- [History Store v1](../data/history-store-v1.md)

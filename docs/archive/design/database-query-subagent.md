@@ -86,7 +86,7 @@ Query Agent：
 持续复用 Query Agent 可以减少重复发现，但会重新产生上下文膨胀和旧 Schema 污染，只应作为经过测量的可选优化。
 
 未来可选的内置方案可由 Runtime 保存可重建的 Query Workspace，但不属于 v0 依赖。详见
-[可选内置 Agent Runtime](../../agent/embedded-agent-runtime.md)。
+[可选内置 Agent Runtime](../agent/embedded-agent-runtime.md)。
 
 当前默认两阶段链路见 [索引发现 Sub-agent](./index-discovery-subagent.md)：发现阶段只返回数据项定位，主 Agent 再用 SQL 读取正文。本文保留的 Context Pack 方式仅供无法采用该链路的宿主兼容。
 

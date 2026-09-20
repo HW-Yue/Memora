@@ -80,6 +80,6 @@ commit sequence、ignored 数、verify 状态和 warnings。状态为：
 
 ## 关联
 
-- [数据库 Mutation Agent](./database-mutation-agent.md)
+- [数据库 Mutation Agent](../archive/agent/database-mutation-agent.md)
 - [MSQL Mutation Executor v1](../query/msql-mutation.md)
 - [Canonical Skill v1](./canonical-skill-v1.md)

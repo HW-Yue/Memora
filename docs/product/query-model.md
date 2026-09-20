@@ -166,7 +166,7 @@
    而它返回的是**完整列值**，`SHOW HISTORY` 早堵上了它没有。
 
 背景与全部把关点见
-[F227：能重建的真删，不能重建的归档](../planning/f227-object-archive.md)。
+[F227：能重建的真删，不能重建的归档](../archive/planning/f227-object-archive.md)。
 
 ## 8. 边界
 

@@ -2,7 +2,7 @@
 
 状态：F42 的场景与评分器仍可作历史测试资产；F51 证据已撤销。当前 Adapter
 把字符 Vector/cosine 混入事实候选，不能产生产品发布证据，需按产品宪章重做。
-当前继任规格见 [Route Retrieval Benchmark v3](../../development/route-retrieval-benchmark-v3.md)。
+当前继任规格见 [Route Retrieval Benchmark v3](../development/route-retrieval-benchmark-v3.md)。
 
 ## 数据集
 
@@ -47,7 +47,7 @@ Table 级语义树逐层 SQL 旅程，按 `US-COLD`、`US-READ`、`US-SPLIT` 等
 
 ## 关联
 
-- [AI-native 质量模型与验收](../../product/quality-model.md)
-- [Scripted Host Harness v1](../../development/scripted-host-harness-v1.md)
-- [Codex Adapter v1](../../development/codex-adapter-v1.md)
-- [Claude Code Adapter v1](../../development/claude-code-adapter-v1.md)
+- [AI-native 质量模型与验收](../product/quality-model.md)
+- [Scripted Host Harness v1](../development/scripted-host-harness-v1.md)
+- [Codex Adapter v1](../development/codex-adapter-v1.md)
+- [Claude Code Adapter v1](../development/claude-code-adapter-v1.md)

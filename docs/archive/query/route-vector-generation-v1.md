@@ -10,7 +10,7 @@
 > 回答里了——返回零个候选等于宣称「搜过了，树里没有」，是假话。
 > 现在直接报错（`not_found`）。
 > 本文描述的 generation **仍然没有生产发布方**（`routevector.Service.Publish`
-> 只有测试在调），见[已知风险](../../development/known-risks.md) §7d。
+> 只有测试在调），见[已知风险](../development/known-risks.md) §7d。
 > 见[候选预测器只给路径](../../query/predictor-path-only-v1.md)。
 
 ## 目的
@@ -77,6 +77,6 @@ staging、未知目录和权威 Database 文件永不由该路径删除。
 ## 关联
 
 - [ADR-0007](../../decisions/0007-route-predictor-arsenal.md)
-- [语义路由投机预取](../../query/speculative-route-prefetch.md)
+- [语义路由投机预取](./speculative-route-prefetch.md)
 - [Route Predictor 历史 Feature 计划](../planning/route-predictor-feature-plan.md)
 - [F124c 开工与完成门](../planning/f124c-route-vector-generation-gate.md)

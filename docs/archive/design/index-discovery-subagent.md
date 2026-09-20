@@ -42,5 +42,5 @@
 ## 关联
 
 - [MSQL](../../query/msql.md)
-- [无向量检索质量链路](../../query/retrieval-quality.md)
-- [可选内置 Agent Runtime](../../agent/embedded-agent-runtime.md)
+- [无向量检索质量链路](../query/retrieval-quality.md)
+- [可选内置 Agent Runtime](../agent/embedded-agent-runtime.md)

@@ -5,9 +5,9 @@
 
 当前权威入口：
 
-- [当前产品基线](../../product/current-product.md)
-- [Feature 状态](../../planning/feature-status.md)
-- [后续路线](../../planning/future-roadmap.md)
+- [当前产品基线](../product/current-product.md)
+- [Feature 状态](./feature-status.md)
+- [后续路线](./future-roadmap.md)
 - [Feature 产品门](../../planning/feature-product-gate.md)
 - [TDD 协议](../../planning/feature-tdd-protocol.md)
 

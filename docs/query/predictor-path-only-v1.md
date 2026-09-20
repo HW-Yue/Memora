@@ -135,8 +135,8 @@
    （`model.go:125`）把一个 generation 的全部 route 向量装进内存，
    且 `OpenActive` 每次查询重新加载并重新校验，无缓存。
 
-两条都记入[架构审计](../development/architecture-audit-2026-08.md)与
-[已知风险](../development/known-risks.md)。
+两条都记入[架构审计](../archive/development/architecture-audit-2026-08.md)与
+[已知风险](../archive/development/known-risks.md)。
 
 ## 7. 分阶段与验证门
 
@@ -197,4 +197,4 @@ Frame 不再带 `PredictorReceipt`，「向量预测器没有可用 generation�
 - [叶子直挂 RowID](../archive/storage/leaf-rowid-v1.md)（`row` 的反查在那边定）
 - [ADR-0007：Router 权威，候选预测器可组合](../decisions/0007-route-predictor-arsenal.md)
 - [ADR-0008：全内容倒排索引](../decisions/0008-full-content-inverted-index.md)
-- [架构审计](../development/architecture-audit-2026-08.md)
+- [架构审计](../archive/development/architecture-audit-2026-08.md)

@@ -53,5 +53,5 @@ Planner 返回 Result Envelope 可直接采用的 Column metadata 和 Row maps�
 ## 关联
 
 - [MSQL 参数与表达式 v1](./msql-expressions.md)
-- [Row Store v1](../data/row-store-v1.md)
+- [Row Store v1](../archive/data/row-store-v1.md)
 - [MSQL Result Envelope v1](./result-envelope.md)

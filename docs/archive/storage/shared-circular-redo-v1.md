@@ -263,7 +263,7 @@ reconcile 无事可做——**唯一的缺陷是结构性的**：日志分家就
 - [写入形态](../../product/write-model.md) §3／§5／§6（三份日志与恢复）
 - [架构原则](../../product/architecture-principles.md) §1（高内聚低耦合）
 - [每表一棵树](./per-table-tree-v1.md) §5.5（共享 buffer pool，同一根因）
-- [存储层总览](./README.md) 第 2 节、[已知风险](../../development/known-risks.md) 7a
+- [存储层总览](./README.md) 第 2 节、[已知风险](../development/known-risks.md) 7a
 - 现有冻结规格：[Segment Set](./wal-segment-set-v1.md)、
   [Checkpoint Publish](./checkpoint-publish-v1.md)、
   [Segment Reclaim](./wal-segment-reclaim-v1.md)——
