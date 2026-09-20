@@ -13,3 +13,6 @@ coverage.*
 # Local runtime state and secrets
 /.memora/
 /tmp/
+
+# 本地构建产物
+/memora
