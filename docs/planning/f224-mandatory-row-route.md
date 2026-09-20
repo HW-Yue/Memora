@@ -26,7 +26,7 @@ Catalog、字面位置和 Route-only Vector「只能预测导航候选，不能�
 | Wire | `protocol/msql/protocol.go:83` | `route_leaf_ids` 为 `omitempty`，完全可选 |
 | skillwrite policy | `internal/skillwrite/policy.go:124` | 只拒绝 `nil`；`validateSnapshot`（`:160`）只校验**上界**，空数组 `[]string{}` 通过 |
 | `msql.execute` 直连 | `internal/daemon/execute.go:409` | **没有任何 policy**——而这正是 Canonical Skill 唯一的入口 |
-| 引擎 | `internal/nativerow/service.go:165` | 空切片 → 空 memberships → 循环不执行 → 直接提交 |
+| 引擎 | `internal/sqlstore` 写入路径 | 空 Route 归属仍可能提交（本 Feature 要拦） |
 
 `internal/msql/executor/mutation.go:512` 的 `validateMutationOptions` 校验
 schema version、`max_affected_rows` 和 expected revision，**从不看 `RouteLeafIDs`**。

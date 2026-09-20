@@ -33,7 +33,7 @@
 
 - 根节点行、`RouterRootID` 赋值、任何 Route 语义与 `SHOW ROUTES` 切换 → 第 2 步；
 - 语义表不写 history → 第 3 步（本步现役引擎仍会为语义表行写版本树，本步没有行，无影响）；
-- 删除 `nativerouter`、objects 树里的 Route → 第 2 步；
+- 删除旧 Route 专用引擎包（已在 `rewrite/adr0011` 完成，现役是 `sqlstore` 语义表）；
 - 全文索引是否收录语义表 → Deferred。
 
 ## 协议与格式

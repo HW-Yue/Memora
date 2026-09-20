@@ -58,7 +58,7 @@ RESTORE CONFIGURATION ROUTE_POLICY TO REVISION :revision;
 | --- | --- |
 | `CREATE ROUTE ... CHILD` | `sqlstore` 创建 child |
 | Route Mutation Plan 的 split / merge / move | `routemutationplan.Build` |
-| Plan apply 阶段的 planned create / move | `nativemutation` reshape 提交 |
+| Plan apply 阶段的 planned create / move | `sqlstore` reshape 提交 |
 
 root 与 branch 共用同一个 `N`。Leaf 不能成为 parent，这条不变量不受本 Feature 影响。
 

@@ -125,18 +125,12 @@
 
 ## 6. 顺带记两个缺陷（不在本设计范围内解决）
 
-1. **向量检索没有生产发布方。** `routevector.Service.Publish`
-   （`service.go:27`）只有测试在调；生产只经 `OpenActive` 读。
-   所以 `USING VECTOR` 实际返回 `PredictorUnavailable`。
-   已裁定保留向量方向，但"发布方缺失"是缺陷，不是设计；
-2. **两处每查询重建全量。** `routelexical.Search` 每次调用重建整个倒排 map
-   （`search.go:124`），外加对整个 catalog+route 视图做一次 SHA-256
-   （`search.go:175-297`）；`routevector` 的 `Generation.vectors`
-   （`model.go:125`）把一个 generation 的全部 route 向量装进内存，
-   且 `OpenActive` 每次查询重新加载并重新校验，无缓存。
+1. **vec0 混装 route 与 row，kind 过滤在 KNN 之后。** 见
+   [检索路线](./retrieval-routes-jev.md) 与执行计划 Q0。
+2. **向量 embedding 在提交后异步计算**，词法 postings 在事务内同步，
+   融合面必须显式声明可见性。
 
-两条都记入[架构审计](../archive/development/architecture-audit-2026-08.md)与
-[已知风险](../archive/development/known-risks.md)。
+现役实现是 `internal/sqlstore` + sqlite-vec，不是已删除的 `routevector` 包。
 
 ## 7. 分阶段与验证门
 
