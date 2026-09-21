@@ -186,6 +186,21 @@ F6 在 F5 之前落地，索引先于生产者存在。"从 `mem_recall_units` �
 `vec_version()`；断言失败就**拒绝打开数据库**并说明原因。`CGO_ENABLED=0` 的 vet／lint stage
 走兜底文件，两个 `GOOS` 都已实测通过。
 
+**为什么 vendor 上游的 C，而不是依赖它的 Go 包**：上游那个包无条件 `#include "sqlite3.h"`，
+于是"能不能编"取决于宿主机装没装 C 的 SQLite 开发包，而且它找到的头文件与我们所链的库
+不是一回事——macOS 上碰巧拿到 SDK 的 **3.43.2** 头去编 **3.50.4** 的库（静默版本错配），
+Linux 容器上直接没有这个头，构建死在 `fatal error: sqlite3.h`。所以把 `sqlite-vec.c/.h`
+抄进 `internal/sqlstore/vecext`，再把驱动的 `sqlite3-binding.h` **生成**成包内的
+`include/sqlite3.h`（与所链库**严格同版本**），用
+`#cgo CFLAGS: -I${SRCDIR}/include -DSQLITE_CORE`。生成物由 `format` stage 重跑生成器并
+`git diff --exit-code` 看住：驱动一升级、漏了重生成就当场红。代价是自己跟上游 sqlite-vec
+的版本——它还在 0.1.x、我们只用 vec0，单文件 diff 可审。
+
+**跨平台验证的补丁**：宿主门禁编不到 Linux 的 C（两个 `GOOS` 的 vet/lint 都跑
+`CGO_ENABLED=0`，走的是兜底文件），所以补了 `scripts/ci-linux.sh`——在 Docker 里跑 Linux 的
+cgo 构建，加上所有开真库的测试。**CI 的 ubuntu job 仍是权威**，本地脚本只是让人在开 PR
+之前就能看见同类问题。
+
 ### 已定的四个形状
 
 1. **两个入口，都不是临时物**：写入语句的可选向量字段（最快路径），**加上**一条一等的
