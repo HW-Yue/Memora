@@ -29,7 +29,10 @@ import (
 const skillPath = "../../skills/memora/SKILL.md"
 
 var (
-	fencePattern     = regexp.MustCompile("(?s)```sh\n(.*?)```")
+	// Every fenced block, whatever its language tag: an example that lands in a
+	// bare fence is still an example, and scanning only ```sh would let a 33rd
+	// command escape the check by being fenced differently.
+	fencePattern     = regexp.MustCompile("(?s)```[a-zA-Z]*\n(.*?)```")
 	parameterPattern = regexp.MustCompile(`:([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
