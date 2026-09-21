@@ -730,13 +730,25 @@ func TestSearchViewModuleRecallsPositionsAndLinksIntoTheTree(t *testing.T) {
 		}
 	}
 	// The keyword index is a pair stream, so two characters is a word and one is
-	// not. The copy the page shows has to say that, or it will keep telling the
-	// reader to type three characters for an index that no longer needs them.
+	// not. The minimum lives in three places at once — the input's own
+	// minLength, the submit guard, and the one message that explains a refusal —
+	// and a browser bubble reading "3 个字符或更多" is what a stale minLength
+	// looks like to the reader.
+	if !strings.Contains(javascript, "input.minLength = 2") {
+		t.Error("Search input still enforces a minimum the index does not have")
+	}
 	if !strings.Contains(javascript, "至少 2 个字符") {
 		t.Error("Search module does not state the two-character minimum")
 	}
-	if strings.Contains(javascript, "3 个字符") {
-		t.Error("Search module still repeats the trigram minimum")
+	// No how-to-write-it copy: the box is named for screen readers and says
+	// nothing about how to phrase a query.
+	for _, forbidden := range []string{"placeholder", "用一句话", "3 个字符"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Search module still carries instruction copy (%q)", forbidden)
+		}
+	}
+	if !strings.Contains(javascript, `setAttribute("aria-label"`) {
+		t.Error("Search input has no accessible name now that it has no placeholder")
 	}
 	for _, forbidden := range []string{
 		"innerHTML", "SELECT ", "SHOW HISTORY", "SHOW CHANGE", "INSERT ", "UPDATE ",

@@ -267,10 +267,11 @@ function searchForm(databases, selected, query) {
   const input = element("input", "search-input");
   input.type = "search";
   input.name = "query";
-  input.placeholder = "用一句话描述你要找的东西（至少 2 个字符）";
+  // 输入框不给操作说明：它的名字留给读屏（aria-label），页面上不写"该怎么描述"。
+  input.setAttribute("aria-label", "搜索");
   input.value = query;
   input.autocomplete = "off";
-  input.minLength = 3;
+  input.minLength = 2;
   const button = element("button", "search-button", "搜索");
   button.type = "submit";
   form.append(select, input, button);
@@ -314,7 +315,14 @@ export async function renderSearch(root, options) {
       renderSearch(root, options);
     });
 
-    if (query.length < 2) {
+    // 空框不讲课：没有查询就没有要解释的东西，只留表单。一个字是唯一需要说明的
+    // 情况——浏览器已挡下它的提交，只有手改 URL 才会走到这里。
+    if (query.length === 0) {
+      root.dataset.pageState = "empty";
+      root.replaceChildren(view);
+      return;
+    }
+    if (query.length === 1) {
       view.append(stateNode("empty", "输入至少 2 个字符",
         "索引按两个字一组切分，一个字短到会被引擎拒绝；更短的查询不会返回空结果。"));
       root.dataset.pageState = "empty";
