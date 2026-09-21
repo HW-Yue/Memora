@@ -66,7 +66,9 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		return Output{}, err
 	}
 	if !ok || limit < 1 || limit > int64(budgets.SelectRows) {
-		return Output{}, executeError(result.CodeValidation, fmt.Sprintf("LIMIT must be between 1 and configured select_rows %d", budgets.SelectRows))
+		return Output{}, executeError(result.CodeValidation, fmt.Sprintf(
+			"LIMIT must be between 1 and configured select_rows %d (read the budgets with SHOW CONFIGURATION; "+
+				"raise SELECT_ROWS with ALTER CONFIGURATION QUERY_BUDGETS SET … when a Table genuinely has more live Rows)", budgets.SelectRows))
 	}
 	projections, err := bindProjections(table, selectStatement.Projections)
 	if err != nil {
@@ -264,7 +266,7 @@ func bindProjections(table catalog.Table, expressions []ast.Expression) ([]proje
 		}
 		column, found := findColumn(table, name)
 		if !found {
-			return nil, executeError(result.CodeValidation, fmt.Sprintf("unknown column %q", name))
+			return nil, executeError(result.CodeValidation, unknownReadColumn(name))
 		}
 		projections = append(projections, projection{
 			name: column.Name,
@@ -385,7 +387,7 @@ func validateIdentifiers(table catalog.Table, expression *ast.Expression) error 
 		name := expression.Name.Parts[0].Value
 		if _, system := systemProjection(name); !system {
 			if _, found := findColumn(table, name); !found {
-				return executeError(result.CodeValidation, fmt.Sprintf("unknown column %q", name))
+				return executeError(result.CodeValidation, unknownReadColumn(name))
 			}
 		}
 	}
@@ -444,4 +446,19 @@ func containsIdentifier(expression *ast.Expression) bool {
 		containsIdentifier(expression.Left) ||
 		containsIdentifier(expression.Right) ||
 		containsIdentifier(expression.Operand)
+}
+
+// unknownReadColumn explains the columns a caller cannot name. `route_paths` and
+// `links` ride along on every returned Row and are deliberately not projectable:
+// an agent that lists them in its projection is asking for something it already
+// has, and "unknown column" alone reads as if the field did not exist.
+func unknownReadColumn(name string) string {
+	switch name {
+	case "route_paths":
+		return fmt.Sprintf("unknown column %q: route_paths is attached to every returned Row and cannot be projected "+
+			"(read it from the Row itself; the %q array lists only the fields you asked for)", name, "columns")
+	case "links":
+		return fmt.Sprintf("unknown column %q: links is attached to every returned Row and cannot be projected", name)
+	}
+	return fmt.Sprintf("unknown column %q", name)
 }

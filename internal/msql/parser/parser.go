@@ -953,6 +953,17 @@ func (parser *parser) parseSelect() (ast.Statement, error) {
 		}
 		selectStatement.Where = &where
 	}
+	// A read is a chain of point reads: the WHERE surface is one equality on
+	// row_id, optionally joined by AND. `IN (…)` is exactly what an agent reaches
+	// for when it wants several Rows at once, and the generic "unexpected token"
+	// it used to get said nothing about what to do instead.
+	for _, unsupported := range []string{"IN", "OR", "JOIN"} {
+		if parser.matchWord(unsupported) {
+			return ast.Statement{}, parser.errorAt(parser.peek(),
+				"a single equality on row_id (AND may join more); "+unsupported+
+					" is not part of the read surface — read one Row per statement, or send several statements in one --input array")
+		}
+	}
 	if parser.matchWord("LIMIT") {
 		limit, err := parser.parseExpression(1)
 		if err != nil {
