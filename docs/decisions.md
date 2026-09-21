@@ -827,3 +827,29 @@ schema change），所以四张表仍写着旧的「一行是…」——它会�
 **待定（下一块）**：引擎侧强制「agent 不得定义列」+ 宪章/ADR 修订（今天的约定靠 Skill 自觉）；
 `row_semantics` 撤掉或引擎写常数；库/表描述的 amend 路径；树的「实习/正式」分层
 （要 `PLAN/APPLY ROUTE MUTATION`，需要新的批准）。
+
+## 2026-09-21 · 两个库从零重建（取代"归档旧列"）
+
+**结论（用户指示）**：不做就地修补，**整个实例重建**。旧的 `default` 目录整体封存为
+`instances/default.before-rewrite-2026-09-21`（内含 `old-product-docs-export.txt`：重建前把
+`memora.modules` + `memora.decisions` 共 67 行旧产品文档**全量导出**的纯文本，是那份推理唯一的
+副本）；新实例在 `instances/rebuild` 里建好、验证通过后目录换名成 `default`。
+
+**新实例的组成**（全部走 MSQL：`memora schema --plan` 建表 + `CREATE ROUTE ROOT` + 带
+`route_path` 的 `INSERT`）：
+
+- `me`：4 张表 9 行，文档是上一轮折进旧列事实后的自足正文原样迁入；树为
+  `experiences → 实习 → {悠悠有品, OPPO}`、`projects → {实习项目, 个人与科研} → 叶`、
+  `applications → 阿里巴巴`、`profile → 身份档案`。
+- `memora`：**旧产品文档不迁移**，按现行仓库文档重写为 **19 个 modules + 13 个 decisions**，
+  分 `产品 / 架构 / 接口与检索 / 运行与宿主 / 当前状态` 与
+  `引擎与存储 / 检索 / 宿主与评测 / 工作方式` 两套树。旧的 `status` 列取消，状态写进正文第一行。
+- 六张表形状一致：只有 `title` + `summary`；`row_semantics` 是引擎常量文案。
+
+**验证**：`doctor` healthy，`databases 2 / tables 6 / rows 41 / route_nodes 59`，
+`orphan_rows`/`multi_leaf_rows`/`mismatched_mounts`/`broken_links`/`broken_recall_units`/
+`vector_index_drift` 全 0；关键词召回两库都命中（`me` 的 `Redisson` → `root/实习/悠悠有品`，
+`memora` 的 `rekey` → `root/检索/向量身份 rekey` 等 5 条）。CLI ≡ daemon ≡ `0.3.0-dev`，无 skew。
+
+**顾问提醒并已执行**：重建产品文档最大的风险是"旧文档一封存就凭印象编造"，所以先全量导出存档，
+新内容逐条来自现行仓库文档与本轮决策；没有出处的一律不写。旧目录保留到用户明确说可以删。
