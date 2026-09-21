@@ -77,6 +77,38 @@ func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
 
 // defaultExecute is the daemon round trip, with the read-only policy asked of the
 // daemon rather than decided here.
+// ensureDaemon starts the daemon for an instance when nothing is serving it.
+//
+// The line is deliberate: nobody running → start (idempotent, safe); somebody
+// running → leave it alone. Restarting a live daemon would kill other sessions'
+// in-flight work, and a version mismatch is not a reason to do that — it is a
+// reason to say so.
+func ensureDaemon(ctx context.Context, dataDir string, stderr io.Writer, dependencies Dependencies) error {
+	state, err := daemon.Inspect(dataDir)
+	if err != nil {
+		return err
+	}
+	if state.Running {
+		return nil
+	}
+	resolve := dependencies.Executable
+	if resolve == nil {
+		resolve = os.Executable
+	}
+	executable, err := resolve()
+	if err != nil {
+		return fmt.Errorf("resolve executable: %w", err)
+	}
+	started, err := daemon.Start(ctx, executable, dataDir)
+	if err != nil && !errors.Is(err, daemon.ErrAlreadyRunning) {
+		return fmt.Errorf("start daemon: %w", err)
+	}
+	if _, err := fmt.Fprintf(stderr, "memora: started the instance's daemon (pid %d); it was not running\n", started.PID); err != nil {
+		return err
+	}
+	return nil
+}
+
 func defaultExecute(ctx context.Context, dataDir, source string, inputs []executor.StatementInput, readOnly bool) (result.Envelope, error) {
 	if readOnly {
 		return daemon.ExecuteReadOnly(ctx, dataDir, source, inputs)
@@ -186,6 +218,9 @@ func runSchema(
 	if code != ExitOK {
 		return code
 	}
+	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+		return commandError(stderr, "reach the instance", err)
+	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
 		execute = defaultExecute
@@ -261,6 +296,9 @@ func runExecute(
 	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
 	if code != ExitOK {
 		return code
+	}
+	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+		return commandError(stderr, "reach the instance", err)
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
@@ -357,6 +395,9 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
 	if code != ExitOK {
 		return code
+	}
+	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+		return commandError(stderr, "reach the instance", err)
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
@@ -457,6 +498,9 @@ func runMutate(
 	if code != ExitOK {
 		return code
 	}
+	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+		return commandError(stderr, "reach the instance", err)
+	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
 		execute = defaultExecute
@@ -485,6 +529,9 @@ func runDoctor(
 	dataDir, code := daemonDataDir(args, stderr, dependencies)
 	if code != ExitOK {
 		return code
+	}
+	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+		return commandError(stderr, "reach the instance", err)
 	}
 	report, err := daemon.Doctor(context.Background(), dataDir)
 	if err != nil {
@@ -523,6 +570,9 @@ func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	if code != ExitOK {
 		return code
 	}
+	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+		return commandError(stderr, "reach the instance", err)
+	}
 	response, err := daemon.Parse(context.Background(), dataDir, source)
 	if err != nil {
 		return commandError(stderr, "parse MSQL", err)
@@ -540,6 +590,9 @@ func runMCP(args []string, stdout, stderr io.Writer, build BuildInfo, dependenci
 	dataDir, code := daemonDataDir(args, stderr, dependencies)
 	if code != ExitOK {
 		return code
+	}
+	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+		return commandError(stderr, "reach the instance", err)
 	}
 	input := dependencies.Stdin
 	if input == nil {

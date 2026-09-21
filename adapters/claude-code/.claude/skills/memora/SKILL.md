@@ -41,7 +41,10 @@ flows through the engine, or how to use/troubleshoot the local Admin, read
 [`references/product-manual.md`](references/product-manual.md). It is the
 stable product and operations guide; it must not be used as a substitute for
 live MSQL discovery. Admin is a local, read-only observer on `127.0.0.1:3888`;
-all facts and all mutations still come from the scoped daemon through MSQL.
+all facts and all mutations still come from the scoped daemon through MSQL. If the
+instance's daemon is not running, the CLI starts it and says so on stderr — one
+daemon per instance, so a running one is never restarted. You do not need to run
+`daemon start` yourself before a query.
 
 ## Install once
 
