@@ -35,6 +35,7 @@ func (h *harness) failsAuthorized(auth security.Authorization, source string, na
 			Parameters: executor.Parameters{Named: named}, Mutation: mutation, Authorization: auth,
 		}},
 	})
+	requireDeliverable(h.t, source, envelope)
 	if envelope.Error != nil {
 		return envelope.Error.Code
 	}
@@ -91,6 +92,35 @@ func TestShowArchiveListsMetadataUnderABoundedScope(t *testing.T) {
 	filtered := h.showArchive(`SHOW ARCHIVE FROM work.notes FOR ROW :row LIMIT 5`, map[string]any{"row": first})
 	if len(filtered.Rows) != 1 || text(filtered.Rows[0]["row_id"]) != first {
 		t.Fatalf("filtered = %v", filtered.Rows)
+	}
+}
+
+func TestShowArchiveKeepsOneStableViewIdentity(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	first := h.insertAlongPath("first", pathOf("architecture", "sqlite"))
+	second := h.insertAlongPath("second", pathOf("architecture", "wal"))
+	third := h.insertAlongPath("third", pathOf("architecture", "btree"))
+	h.deleteRow(first, 1)
+	h.deleteRow(second, 1)
+
+	page := h.showArchive(`SHOW ARCHIVE FROM work.notes LIMIT 1`, nil)
+	if page.Page == nil || page.Page.Snapshot == "" {
+		t.Fatalf("a list page must identify its view: %+v", page.Page)
+	}
+	// A deletion between two pages lands above the cursor, so the walk still
+	// covers exactly the same records and the view identity must not move: a
+	// high-water mark here would report a change that never happened.
+	h.deleteRow(third, 1)
+	next := h.showArchive(`SHOW ARCHIVE FROM work.notes CURSOR :cursor LIMIT 1`,
+		map[string]any{"cursor": page.Page.NextCursor})
+	if next.Page == nil || next.Page.Snapshot != page.Page.Snapshot {
+		t.Fatalf("the same walk changed its view: %q then %+v", page.Page.Snapshot, next.Page)
+	}
+	// A different scope is a different walk, and says so.
+	filtered := h.showArchive(`SHOW ARCHIVE FROM work.notes FOR ROW :row LIMIT 5`, map[string]any{"row": first})
+	if filtered.Page == nil || filtered.Page.Snapshot == page.Page.Snapshot {
+		t.Fatalf("a narrower scope reported the wider view: %+v", filtered.Page)
 	}
 }
 

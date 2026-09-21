@@ -61,8 +61,11 @@ type Summary struct {
 	Path       string `json:"path"`
 }
 
-// Page reports how a bounded listing ended.
+// Page reports how a bounded listing ended. Snapshot identifies the view this
+// walk faced: the archive is append-only, so for one scope that identity never
+// changes and every page of a walk reports the same value.
 type Page struct {
+	Snapshot   string
 	NextCursor string
 	Truncated  bool
 }

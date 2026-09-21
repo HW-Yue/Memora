@@ -24,8 +24,9 @@ type (
 )
 
 const (
-	archiveCursorVersion = "memora.archive-cursor/v1"
-	maxArchivePageLimit  = 1000
+	archiveCursorVersion   = "memora.archive-cursor/v1"
+	archiveSnapshotVersion = "memora.archive-snapshot/v1"
+	maxArchivePageLimit    = 1000
 )
 
 // archiveCursor is a keyset cursor over the append-only sequence. The archive is
@@ -39,6 +40,17 @@ type archiveCursor struct {
 }
 
 func archiveScope(tableID, rowID string) string { return tableID + "|" + rowID }
+
+// archiveSnapshot names the view a listing walks. The envelope requires every
+// page to carry one, and for an append-only scope it must not move: a keyset
+// cursor only ever walks towards older sequence numbers, so a later deletion
+// cannot enter a walk already in progress. Reporting a high-water mark instead
+// would make every concurrent write look like a changed view while the two
+// pages still cover exactly the same records.
+func archiveSnapshot(scope string) string {
+	digest := sha256.Sum256([]byte(archiveSnapshotVersion + "|" + scope))
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
 
 func archiveCursorChecksum(core archiveCursor) string {
 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", core.Version, core.Scope, core.After)))
@@ -117,7 +129,7 @@ func (t *tx) archivePage(ctx context.Context, databaseName, tableName, rowID, cu
 	defer func() { _ = rows.Close() }()
 
 	values := []ArchiveSummary{}
-	page := ArchivePage{}
+	page := ArchivePage{Snapshot: archiveSnapshot(scope)}
 	last := int64(0)
 	for rows.Next() {
 		var sequence int64

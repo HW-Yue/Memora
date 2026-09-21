@@ -42,6 +42,13 @@ GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workfl
 所以运维看到的和写入被要求的是同一件事。新路径写歪了会当场炸在它自己的提交上，而不是
 拖到别人想起来跑 doctor 时才发现。
 
+## 信封必须可投递
+
+测试夹具拿到 `ExecuteBatch` 的结构体后**必须再序列化一次**（`requireDeliverable`）：
+信封校验只在序列化时跑，进程内拿到 `StatementResult` 是看不出问题的。`SHOW ARCHIVE`
+就因此带着一个空的必需页字段上线了——它的测试全绿，而真实调用每次都在客户端报
+`invalid list page metadata`。直连结构体的断言证明不了读面可用。
+
 ## TDD 证据
 
 每个 feature 在本地先观察目标测试因缺少行为而失败，再写最小实现。最终合入的单一 commit 同时包含测试、实现和必要文档，并保持所有门禁为绿；不向主线分支提交故意失败的 RED 状态。

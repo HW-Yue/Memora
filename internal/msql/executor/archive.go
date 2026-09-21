@@ -69,6 +69,7 @@ func (engine *Engine) showArchive(ctx context.Context, statement ast.Statement, 
 		Truncated: page.Truncated, NextCursor: page.NextCursor,
 		Page: &result.ListPage{
 			Version: result.ListPageVersion, Limit: limit, Cursor: cursor,
+			Snapshot:  page.Snapshot,
 			Truncated: page.Truncated, NextCursor: page.NextCursor,
 		},
 	}

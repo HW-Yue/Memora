@@ -47,6 +47,18 @@ var authorization = security.Authorization{
 	AuthorizedDatabases: []string{"work"}, DefaultLevel: security.LevelStructural,
 }
 
+// requireDeliverable serializes the envelope the way a real client receives it.
+// ExecuteBatch hands back a struct, so only serialization runs the envelope's
+// own validation: a read face that leaves a required page field empty is
+// perfectly healthy in-process and undeliverable on the wire. Marshalling here
+// means every statement a test runs also proves it can actually be sent.
+func requireDeliverable(t *testing.T, source string, envelope result.Envelope) {
+	t.Helper()
+	if _, err := json.Marshal(envelope); err != nil {
+		t.Fatalf("%s: envelope is not deliverable: %v", source, err)
+	}
+}
+
 func (h *harness) run(source string, named map[string]any, mutation executor.MutationOptions) result.StatementResult {
 	h.t.Helper()
 	h.seq++
@@ -57,6 +69,7 @@ func (h *harness) run(source string, named map[string]any, mutation executor.Mut
 			Parameters: executor.Parameters{Named: named}, Mutation: mutation, Authorization: authorization,
 		}},
 	})
+	requireDeliverable(h.t, source, envelope)
 	if envelope.Error != nil {
 		h.t.Fatalf("%s: request error %s: %s", source, envelope.Error.Code, envelope.Error.Message)
 	}
@@ -74,6 +87,7 @@ func (h *harness) fails(source string, named map[string]any, mutation executor.M
 		RequestID: "f" + strings.Repeat("y", h.seq), Source: source,
 		Statements: []executor.StatementInput{{Parameters: executor.Parameters{Named: named}, Mutation: mutation, Authorization: authorization}},
 	})
+	requireDeliverable(h.t, source, envelope)
 	if envelope.Error != nil {
 		return envelope.Error.Code
 	}

@@ -382,3 +382,26 @@ CI 的基线之上，等于把两处风险叠在同一提交里。
 **结论**：`docs/planning/` 只留队列、TDD、产品门和「行必须可导航」讨论稿。
 F 时代 Feature 稿与过程稿进 archive。现役规格去掉「目标形态已改 / 不能当设计依据」横幅。
 一叶一行和 fan-out 写在 [写入形态](./product/write-model.md)，不再单开 planning 文件。
+
+## 2026-09-21 · 归档页的 Snapshot 补法
+
+**对象**：`SHOW ARCHIVE` 的 `ListPage.Snapshot`。信封校验要求任何带 `Page` 的结果
+`Snapshot` 非空，而 `archive.Page` 只有 `NextCursor`／`Truncated`，所以这个读面
+**上线以来每次调用都在序列化时失败**——真实调用路径上完全不可用；单元测试直连
+executor 取 `Output`，不过信封，因此零告警。
+
+**结论**：给 `archive.Page` 加按 scope 恒定的摘要（`sha256("memora.archive-snapshot/v1|" + scope)`），
+作为 `archiveSnapshot(scope)` helper 放在 `changeSnapshot` 同一家族里。
+
+**理由**：`Snapshot` 的契约是「这次分页走查所面对的视图身份」，客户端只拿它跨页比对。
+归档 append-only + `sequence < after` 降序 keyset，新写入只落在更高 sequence，
+永远进不了已开始的窗口——视图身份本就恒定，恒定摘要不是占位符，而是这个面唯一正确的答案。
+带版本前缀，将来排序或 schema 变了就 bump v2，旧游标自然作废。
+
+**弃选**：用时序高水位（第 1、2 页之间任何写入都会让 snapshot 变化，而两页数据窗口逐字节
+相同——纯假阳性，还会打爆按 snapshot 做的客户端缓存）；放宽 `validate.go`（协议层就得维护
+「哪些面是 append-only」的分类表，且会让下一个忘记填 `Snapshot` 的新读面变成合法，
+正是这次的 bug 本身）。
+
+**附带根因修复**：补一个走**完整信封序列化 + Validate** 的表驱动测试覆盖全部读面，
+否则同类 bug 还会再来。

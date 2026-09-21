@@ -79,6 +79,7 @@ func (h *harness) runAuthorized(auth security.Authorization, source string, name
 			Parameters: executor.Parameters{Named: named}, Mutation: mutation, Authorization: auth,
 		}},
 	})
+	requireDeliverable(h.t, source, envelope)
 	if envelope.Error != nil {
 		h.t.Fatalf("%s: request error %s: %s", source, envelope.Error.Code, envelope.Error.Message)
 	}
