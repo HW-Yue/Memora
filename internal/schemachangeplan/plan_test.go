@@ -17,12 +17,12 @@ func TestBuildSchemaChangePlanIsDeterministicAndReviewOnly(t *testing.T) {
 	source := &fakeRows{}
 	proposal := schemachangeplan.Proposal{
 		Version: schemachangeplan.ProposalVersion, ID: "proposal_schema", Actor: "agent:test",
-		SourceEventID: "event:schema", Reason: "clarify title and add optional status",
+		SourceEventID: "event:schema", Reason: "rename both Columns",
 		ExpectedTableRevision: table.SchemaVersion,
 		Changes: []schemachangeplan.ChangeProposal{
-			{ID: "status", Action: schemachangeplan.ActionAdd, Definition: &catalog.ColumnDefinition{
-				Name: "status", Type: "TEXT(40)", Nullable: true, Purpose: "Workflow status", SemanticRole: "status",
-			}},
+			// A shape-only plan: neither change touches a value, so nothing has to
+			// be scanned, and it stays review-only.
+			{ID: "body", Action: schemachangeplan.ActionRename, ColumnID: "col_body", ExpectedRevision: 1, NewName: "document"},
 			{ID: "title", Action: schemachangeplan.ActionRename, ColumnID: "col_title", ExpectedRevision: 2, NewName: "heading"},
 		},
 	}
@@ -80,11 +80,15 @@ func TestBuildBlocksNonNullAddAndRejectsFinalSchemaConflicts(t *testing.T) {
 	database, table := schemaFixture()
 	proposal := schemachangeplan.Proposal{
 		Version: schemachangeplan.ProposalVersion, ID: "proposal_add", Actor: "agent:test",
-		SourceEventID: "event:add", Reason: "add required status", ExpectedTableRevision: table.SchemaVersion,
-		Changes: []schemachangeplan.ChangeProposal{{
-			ID: "status", Action: schemachangeplan.ActionAdd,
-			Definition: &catalog.ColumnDefinition{Name: "status", Type: "TEXT(20)", Nullable: false, Purpose: "Status"},
-		}},
+		SourceEventID: "event:add", Reason: "add a required document body", ExpectedTableRevision: table.SchemaVersion,
+		Changes: []schemachangeplan.ChangeProposal{
+			// A Column a plan may declare is one of the engine's two, so the old
+			// summary Column is retired in the same plan to keep the role unique.
+			{ID: "drop_body", Action: schemachangeplan.ActionDrop, ColumnID: "col_body", ExpectedRevision: 1},
+			{ID: "add_summary", Action: schemachangeplan.ActionAdd,
+				Definition: &catalog.ColumnDefinition{Name: "summary", Type: "TEXT(20)", Nullable: false,
+					Purpose: "Complete document", SemanticRole: "summary"}},
+		},
 	}
 	plan, err := schemachangeplan.Build(context.Background(), &fakeRows{values: []row.Row{{
 		ID: "row_a", Revision: 1, Values: map[string]any{"col_title": "ok"},

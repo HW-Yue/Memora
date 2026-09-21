@@ -193,6 +193,9 @@ func buildActions(
 			if err != nil {
 				return nil, nil, false, err
 			}
+			if err := requireEngineColumn(after.SemanticRole, change.ID); err != nil {
+				return nil, nil, false, err
+			}
 			if final[after.ColumnID].ColumnID != "" {
 				return nil, nil, false, planError(result.CodeAlreadyExists, "derived Column ID already exists")
 			}

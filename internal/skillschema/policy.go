@@ -100,6 +100,18 @@ func validatePlan(plan Plan) error {
 		if strings.TrimSpace(column.Name) == "" || strings.TrimSpace(column.Purpose) == "" {
 			return schemaError(result.CodeValidation, "column name, type, and purpose are required")
 		}
+		// The shape is the engine's, so a plan may only carry the two Columns the
+		// engine owns. Refusing here — rather than after synthesizing the
+		// statement — gives the caller the rule while it still has the plan in
+		// hand.
+		switch strings.ToLower(strings.TrimSpace(column.SemanticRole)) {
+		case "title", "summary":
+		default:
+			return schemaError(result.CodeValidation,
+				"column %q must declare ROLE title or ROLE summary: a Table's shape is the engine's "+
+					"(title + summary), so classification, status and dates belong in the semantic tree "+
+					"or the document", column.Name)
+		}
 		if _, err := logical.ParseDeclaration(column.Type); err != nil {
 			return schemaError(result.CodeValidation, "column %q has invalid type: %v", column.Name, err)
 		}

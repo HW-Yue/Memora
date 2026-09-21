@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
+	msqlservice "github.com/HW-Yue/Memora/internal/msql/service"
 	"github.com/HW-Yue/Memora/internal/recall"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
@@ -238,6 +239,21 @@ func (h *harness) reopen() {
 	}
 	h.t.Cleanup(func() { _ = db.Close() })
 	h.db = db
+	// A statement session is bound to the handle it was opened on, so the reopened
+	// Instance needs one of its own; otherwise a later statement fails on a
+	// closed handle and looks like a database problem.
+	service := msqlservice.New(context.Background(), msqlservice.Config{
+		Catalog: db, Rows: db.Rows(),
+		Transactions: func(ctx context.Context) (executor.ExplicitTransaction, error) {
+			return db.BeginTransaction(ctx)
+		},
+	})
+	h.t.Cleanup(func() { _ = service.Close() })
+	session, err := service.OpenSession("test")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.session = session
 }
 
 // A rekey window has to survive a restart: it is the one state where the derived

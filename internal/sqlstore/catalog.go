@@ -383,10 +383,18 @@ func validateColumnDefinition(definition catalog.ColumnDefinition) error {
 			return err
 		}
 	}
+	// A Table's shape is the engine's. A client names knowledge and writes
+	// documents; it does not decide what a Row is made of, so the only Columns it
+	// may declare are the two the engine knows how to display and search. The
+	// refusal carries the rule itself, because a caller that has to guess at the
+	// boundary will keep guessing at it.
 	switch canonical(definition.SemanticRole) {
-	case "", "title", "summary", "identity", "status", "fact", "rationale":
+	case "title", "summary":
 	default:
-		return catalogError(catalog.CodeValidation, "column", definition.Name, "a supported semantic role")
+		return catalogError(catalog.CodeValidation, "column", definition.Name,
+			"a title or summary role — a Table's shape is the engine's: declare a title "+
+				"(ROLE title) and a summary (ROLE summary), and put classification, status and "+
+				"dates in the semantic tree or the document, not in a Column")
 	}
 	_, err := logical.ParseDeclaration(definition.Type)
 	return err

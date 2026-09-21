@@ -2,6 +2,7 @@ package schemachangeplan_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,8 +68,11 @@ func TestApplyToSnapshotMaterializesAddAlterAndDropAsOneRevision(t *testing.T) {
 		Version: schemachangeplan.ProposalVersion, ID: "proposal_mixed", Actor: "agent:test",
 		SourceEventID: "event:mixed", Reason: "reshape fields", ExpectedTableRevision: table.SchemaVersion,
 		Changes: []schemachangeplan.ChangeProposal{
-			{ID: "add_status", Action: schemachangeplan.ActionAdd, Definition: &catalog.ColumnDefinition{
-				Name: "status", Type: "TEXT(20)", Nullable: true, Purpose: "Workflow status", SemanticRole: "status"}},
+			// The only Columns a plan may declare are the engine's two. The old
+			// summary Column is dropped in the same plan, so adding the new one
+			// leaves the Table with exactly one title and one summary.
+			{ID: "add_summary", Action: schemachangeplan.ActionAdd, Definition: &catalog.ColumnDefinition{
+				Name: "summary", Type: "TEXT(2000)", Nullable: true, Purpose: "Complete document", SemanticRole: "summary"}},
 			{ID: "alter_title", Action: schemachangeplan.ActionAlter, ColumnID: "col_title", ExpectedRevision: 2,
 				Definition: &catalog.ColumnDefinition{Name: "title", Type: "TEXT(100)", Purpose: "Primary heading", SemanticRole: "title"}},
 			{ID: "drop_body", Action: schemachangeplan.ActionDrop, ColumnID: "col_body", ExpectedRevision: 1},
@@ -90,7 +94,7 @@ func TestApplyToSnapshotMaterializesAddAlterAndDropAsOneRevision(t *testing.T) {
 	if updatedDatabase.SchemaVersion != database.SchemaVersion+1 || updatedTable.SchemaVersion != table.SchemaVersion+1 ||
 		len(updatedTable.Columns) != 3 || len(live) != 2 ||
 		live[0].Purpose != "Primary heading" || live[0].SchemaVersion != 3 ||
-		live[1].Name != "status" || live[1].SchemaVersion != 1 ||
+		live[1].Name != "summary" || live[1].SchemaVersion != 1 ||
 		!plan.Impact.Destructive || !plan.Impact.Reversible {
 		t.Fatalf("updated snapshot = %#v / %#v", updatedDatabase, updatedTable)
 	}
@@ -122,4 +126,26 @@ func validationRenameProposal(table catalog.Table) schemachangeplan.Proposal {
 			ID: "rename", Action: schemachangeplan.ActionRename, ColumnID: "col_title",
 			ExpectedRevision: 2, NewName: "heading",
 		}}}
+}
+
+// A Schema-change plan is a declaration path too: it writes a Column straight
+// into the snapshot, so without the same cap it would be the way around the
+// catalog's rule.
+func TestAPlanCannotAddAColumnOutsideTheShape(t *testing.T) {
+	t.Parallel()
+	database, table := schemaFixture()
+	_, err := schemachangeplan.Build(context.Background(), &fakeRows{}, database, table, schemachangeplan.Proposal{
+		Version: schemachangeplan.ProposalVersion, ID: "proposal_invented", Actor: "agent:test",
+		SourceEventID: "event:invented", Reason: "add a field", ExpectedTableRevision: table.SchemaVersion,
+		Changes: []schemachangeplan.ChangeProposal{
+			{ID: "add_company", Action: schemachangeplan.ActionAdd, Definition: &catalog.ColumnDefinition{
+				Name: "company", Type: "TEXT(120)", Nullable: true, Purpose: "Company", SemanticRole: "status"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("a plan must not declare a Column outside the engine's shape")
+	}
+	if !strings.Contains(err.Error(), "title") || !strings.Contains(err.Error(), "summary") {
+		t.Fatalf("the refusal must name the shape: %v", err)
+	}
 }

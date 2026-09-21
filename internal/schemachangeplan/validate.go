@@ -54,6 +54,9 @@ func Validate(plan Plan) error {
 			if err := validateShape(*action.After); err != nil {
 				return err
 			}
+			if err := requireEngineColumn(action.After.SemanticRole, action.ChangeID); err != nil {
+				return err
+			}
 			final[action.After.ColumnID] = *cloneShape(*action.After)
 			requiresRows = requiresRows || !action.After.Nullable
 		case ActionRename, ActionAlter, ActionDrop:
@@ -252,6 +255,21 @@ func CompensationProposal(plan Plan, expectedTableRevision uint64) (Proposal, bo
 	return Proposal{Version: ProposalVersion, ID: "compensate_" + plan.PlanID, Actor: plan.Actor,
 		SourceEventID: "schema-compensation:" + plan.PlanID, Reason: "Compensate Schema plan " + plan.PlanID,
 		ExpectedTableRevision: expectedTableRevision, Changes: changes}, true
+}
+
+// requireEngineColumn enforces the shape cap on an ADD_COLUMN, which is a
+// declaration: a plan writes the Column straight into the snapshot, so without
+// this it would be the way around the catalog's rule. Both the builder and the
+// validator call it, because a plan that can never execute should not be built.
+func requireEngineColumn(role, changeID string) error {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "title", "summary":
+		return nil
+	}
+	return planError(result.CodeValidation,
+		"ADD_COLUMN %q must declare a title or summary role: a Table's shape is the engine's "+
+			"(title + summary), so classification, status and dates belong in the semantic tree "+
+			"or the document", changeID)
 }
 
 func validateShape(shape ColumnShape) error {

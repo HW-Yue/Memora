@@ -3,8 +3,10 @@
 状态：**部分落地**（2026-09-21）。**Skill 层约定已生效**并已装到三处安装位（`656d63c`：固定
 `title` + `summary` 模板、不再教列设计、`Evolve schemas` 只留「加宽上限」与「经批准归档旧列」），
 个人库 `me` 也已按此重写（9 行文档折进旧列事实，23 个旧列经审查后归档，回执 `verified=true`，
-现在四张表都只剩 `title` + `summary`）。**引擎侧强制「agent 不得定义列」尚未实现**——今天的
-约定靠 Skill 自觉，那是下一块。
+现在四张表都只剩 `title` + `summary`）。**引擎侧强制已落地**（2026-09-21，见
+[ADR-0014](../decisions/0014-the-engine-gives-the-row-shape.md)）：声明的列必须带 title/summary
+role，`CREATE TABLE` / `ADD COLUMN` / `PLAN SCHEMA CHANGE` 三条路径都拒绝其余列，读取与旧实例
+加载路径不校验。
 
 ## 提议
 

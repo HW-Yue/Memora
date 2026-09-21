@@ -405,7 +405,10 @@ from large to small scope and only create when reuse is impossible:
    not add a field because a value looks structured, and do not widen a Column
    except to hold a longer document (see "Evolve schemas"). Classification,
    status, dates, names and relationships belong in the Route tree, in the
-   `summary` prose, or in `links` — never in a new Column.
+   `summary` prose, or in `links` — never in a new Column. The engine enforces
+   this: a Column that declares anything other than `ROLE title` or
+   `ROLE summary` is refused, with the shape quoted back at you, on `CREATE
+   TABLE`, on `ADD COLUMN` and in a Schema-change plan.
 
 ### The one Table shape
 

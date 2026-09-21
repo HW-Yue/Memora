@@ -46,6 +46,7 @@
 ## ADR
 
 [0011 一切建表](./decisions/0011-pure-storage-engine-tables-everything.md) ·
+[0014 行形状归引擎](./decisions/0014-the-engine-gives-the-row-shape.md) ·
 [0013 两路召回按名次融合](./decisions/0013-recall-fusion-by-rank.md) ·
 [0012 Row 向量给叶子路径](./decisions/0012-row-vector-leaf-path.md) ·
 [0008 关键词倒排](./decisions/0008-full-content-inverted-index.md) ·
