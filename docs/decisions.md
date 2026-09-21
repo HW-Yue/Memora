@@ -34,7 +34,7 @@
 状态：**方向性结论**（用户在讨论中定），两处未决见下。
 
 **结论一 · 删除 = 归档后物理删除**。一个事务里：① 删除前的完整语义树路径与节点/行内容
-写进**归档表**；② 主表整行删除（含 `route_leaf_ids`）；③ 删掉它占用的叶子；④ 自底向上剪枝
+写进**归档表**；② 主表整行删除（含 `route_leaf_id`）；③ 删掉它那一个叶子；④ 自底向上剪枝
 ——父节点摘掉这个子节点后**没有其它子节点才连父一起删**，还有其它子节点就只摘 `child_ids`
 里的这一项；⑤ 该行 history 全部删除，不归档。**恢复不由引擎做**：归档表是引擎逻辑的终点，
 Agent 读归档自己重建。
@@ -49,11 +49,40 @@ history 只承载「这一行被改过什么」，身份变化用指针表达，
 **弃选**：① 只置 `deprecated` 留墓碑（现状）——主表与树上长期堆死节点，恢复也没有自足快照；
 ② 引擎提供 RESTORE——恢复的判断属于 Agent，引擎只保证归档自足。
 
-**未决**（下次定）：一行多叶时删全部叶子还是只删指定语义索引；别的行 `links` 指着被删行时
-怎么处理；history 指针字段的位置；它与 `successor_ids` 是否重复（[架构原则 §2](./product/architecture-principles.md)）。
+**未决**（下次定）：别的行 `links` 指着被删行时怎么处理；history 指针字段的位置；
+它与 `successor_ids` 是否重复（[架构原则 §2](./product/architecture-principles.md)）。
 
 **落盘**：[行删除](./product/row-delete-archive.md)、[history 谱系](./product/history-lineage.md)；
 已修订 `write-model` §1.2、`query-model` §7、`row-lifecycle-successor`、`msql-mutation`。
+
+## 2026-09-21 · 挂载定为 1:1：一行只占一个叶子
+
+对象：叶子与数据行的挂载基数，以及这份挂载事实存哪边。
+状态：**方向性结论**（用户在讨论中定），字段改名待契约变更。
+
+**结论**：**一行只占一个叶子**，取代「同一 Row 可属于多个 Leaf」。挂载存**两边**
+（叶子上的 `row_id` + 行上的单值 `route_leaf_id`），不改结构；字段名单数化，未挂载用空串。
+
+**理由**（顾问判断，当场采纳）
+
+- 1:1 之后两边的代价从「列表同步」降为「两个标量互指」，收益不变：`OPEN ROUTE` 与
+  `SELECT` 带路径仍是 O(1)。只存一边就要给 `row_id` 建索引做反查——那仍是冗余结构，
+  只是改名叫索引，还多一次 B-tree 查找与跨表 join；让最热的导航路径去数据表里扫更差。
+- 例外的正当性因此**从性能换成可判定性**：两边都是标量，一致性成为一条可断言的等式
+  `leaf.row_id = r` 且 `row.route_leaf_id = leaf`，而不是一份要同步的列表关系。
+- **迁移零 schema 改动**：字段本来就是 TEXT 里的 JSON，读时取首元素、写时写单值；
+  一次性校验扫出 `len > 1` 的行，报错让人手工拆。
+
+**副作用**：一次删除只对应一条叶子路径（[行删除](./product/row-delete-archive.md) 的
+「删哪些叶子」问题随之消失）；`route-mutation-plan` 里「多个 Leaf 定位同一 Row 才能合并」
+不再是合法状态。
+
+**待办**：`route_leaf_ids` 是**已发布的外部契约名**（Skill、`contract.json`、两个适配器副本）。
+改名是一次契约变更，要与契约版本一起动；现行 option 名暂留在解释器与 Skill 里。
+
+**落盘**：已修订 `write-model` §1.3／§4.4、`query-model` §3、`route-companion-table`、
+`row-lifecycle-successor`、`charter`、`semantic-routing`、`msql`、`msql-mutation`、
+`row-navigable`、`skill-write-v1`、Skill 与两个适配器副本。
 
 ## 2026-09-20 · 落地顺序：先修 CI，再压基线，再补核心包回归
 

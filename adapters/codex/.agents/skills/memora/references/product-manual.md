@@ -54,8 +54,8 @@ Memora daemon
 ```
 
 Route 是导航层。它返回位置或 RowID，不能直接返回事实；
-最终答案必须来自 revision 匹配的 `SELECT`。一个 Leaf 最多挂一个活跃 Row，同一个
-Row 可以挂在多个语义 Leaf；正文只保存一份。
+最终答案必须来自 revision 匹配的 `SELECT`。一个 Leaf 最多挂一个活跃 Row，
+**一行也只占一个 Leaf**（1:1）；正文只保存一份。
 
 模型 Provider 属于宿主，不属于 Memora。API key、base URL 和完整模型上下文不能写入
 数据库、日志、收据或 MSQL input。
@@ -86,7 +86,7 @@ Row 可以挂在多个语义 Leaf；正文只保存一份。
 ```
 
 所有写入都必须带 expected schema/revision、授权 scope、最大影响行数和完整 Route
-membership snapshot。已占用 Leaf 不能再挂第二个 Row。
+membership snapshot。已占用 Leaf 不能再挂第二个 Row，一行也只占一个 Leaf（1:1）。
 语义冲突必须展示证据并请求用户裁决。不要把原文、机械 chunk 或 PDF 写进 Memora。
 
 ## Admin 观察面

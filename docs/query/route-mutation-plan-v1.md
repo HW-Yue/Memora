@@ -19,8 +19,9 @@ AI 负责命名目标节点、说明 purpose/synopsis，并明确每个 child Ro
 
 - source、parent、child 与 locator 都属于已绑定 Table 且仍为当前 revision；
 - SPLIT 只用于 Branch，并完整、不重不漏地覆盖 direct children；单 Row Leaf 不做容量 split；
-- MERGE 只合并同 parent、同 kind 的至少两个非 root sibling；多个 Leaf 只有都定位
-  同一个 Row 时才能合并为新 Leaf；
+- MERGE 只合并同 parent、同 kind 的至少两个非 root sibling。一行只占一个 Leaf
+  （1:1，2026-09-21 修订），所以「两个 Leaf 指向同一 Row」不再是合法状态，
+  合并后每个 Leaf 各自 locator ≤1 且互不重叠；
 - MOVE 不把节点移入自身子树，目标 parent 不是 leaf；
 - 结果没有 sibling name 冲突，fan-out ≤12、每个 Leaf locator ≤1；
 - 扫描有 cursor、数量和总预算上限；任何截断都拒绝生成计划。

@@ -49,7 +49,7 @@ SQLite    表、索引、事务、WAL、恢复
 ### 4. 语义树是配套普通表
 
 Agent 改语义树 → 内部生成参数化 SQL，在一个事务内改语义配套表
-（以及需要时业务行上的 `route_leaf_ids`）。细节见
+（以及需要时业务行上的 `route_leaf_id`）。细节见
 [Route 配套表](../product/route-companion-table.md)。
 
 ### 5. 其余结构

@@ -47,6 +47,10 @@ revision、History、Route locator 和 Change Log 原子提交。
 和它的 history 一并删除，删除前的语义路径与内容先进归档表，见
 [行删除](../product/row-delete-archive.md)。
 
+**挂载已定为 1:1**（2026-09-21）：一行只占一个叶子，快照里恰好一个 leaf id。
+字段与其单数名 `route_leaf_id` 的改名是一次外部契约变更（现行 option 名与 Skill／
+适配器里的写法仍是 `route_leaf_ids`），待契约版本一起动。
+
 普通 UPDATE 缺少 `route_leaf_ids` 时保留当前 membership，并把 locator revision
 推进到新 Row revision；这只适用于语义边界没有改变的修改。INSERT 由 Skill 提交完整
 快照，RESTORE 到 live Row 也强制要求完整快照。当前没有 Row 级 Agent posting 或

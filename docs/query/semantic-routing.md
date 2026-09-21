@@ -13,7 +13,7 @@ Database
     └── 查询流程          (branch)
 ```
 
-叶子最多挂一个活跃 Row；同一 Row 可以挂在多个叶子上，正文只存一份。
+叶子最多挂一个活跃 Row，一行也只占一个叶子（1:1，2026-09-21 修订），正文只存一份。
 `OPEN ROUTE` 的结果是 0 或 1 条 locator，不是候选桶。
 
 ## 导航
@@ -39,6 +39,7 @@ Router 与 `OPEN ROUTE` 只给位置，不给正文。
 
 ## 写入时的树
 
-INSERT / SPLIT 必须让每个 live 行挂在至少一个叶子上（[行必须可导航](../planning/row-navigable.md)，待做）。
-UPDATE 缺省 `route_leaf_ids` 表示保留挂载；DELETE 清掉挂载。
+INSERT / SPLIT 必须让每个 live 行挂在**恰好一个**叶子上（[行必须可导航](../planning/row-navigable.md)，待做）。
+UPDATE 缺省 `route_leaf_id` 表示保留挂载；DELETE 改为[归档后物理删除](../product/row-delete-archive.md)，
+行与它那个叶子一起没了。
 改树用 `CREATE ROUTE` / `PLAN ROUTE MUTATION`，带 expected revision。引擎不替 Agent 起名字。

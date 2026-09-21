@@ -50,7 +50,7 @@ SELECT ... WHERE row_id = :row_id LIMIT 1;
 
 语义发现不把自然语言交给评分器。AI 先读取 Database/Table 的用途，再逐层读取
 所选 Table 的短 Route 节点，直到 Leaf 得到唯一 RowID。一个 Leaf 最多一个活跃 Row，
-同一 Row 可以属于多个 Leaf。`SHOW ROUTES` 默认只返回短 purpose；可选的 0–1000
+**一行也只占一个 Leaf**（1:1，2026-09-21 修订）。`SHOW ROUTES` 默认只返回短 purpose；可选的 0–1000
 字符 synopsis 只通过 `DESCRIBE ROUTE` 按需读取。
 
 Route alias 使用完整替换：

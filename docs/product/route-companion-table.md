@@ -50,12 +50,14 @@ notes_routes     这张表的语义索引（普通表）
 约束沿用现役产品门，不另开口子：
 
 - 一个叶子最多挂一个活跃 Row；
+- **一行只占一个叶子**（1:1，2026-09-21 修订）；
 - 一个节点最多 `route_policy.branch_fanout` 个活孩子（默认 12，天花板 100）；
 - 路径不存，要完整路径就从叶子顺 `parent_id` 往上算。
 
 往上靠 `parent_id`，往下靠 `child_ids`，两个方向都不需要额外索引。
 二者是同一份父子关系的两面，必须在同一次提交里一起落。
-业务行上的 `route_leaf_ids` 仍然指向叶子节点的 RowID。
+业务行上的 `route_leaf_id` 仍然指向叶子节点的 RowID；1:1 之后它与此处叶子上的
+`row_id` 是同一件事实的两面，一致性是一条可判定的等式。
 
 配套表对 Agent **不可见**：不能 `SELECT`，也不能直接写。Agent 的查询方式不变，
 渐进式展示语义树是引擎自己沿配套表点查做的；写只经 Route 语句，
@@ -91,7 +93,7 @@ notes_routes     这张表的语义索引（普通表）
 | 从 | 到 | 用什么 |
 |---|---|---|
 | 叶子 | `notes` 的正文 | 叶子上的 `row_id` |
-| 正文 | 挂着它的叶子 | 业务行上的 `route_leaf_ids` |
+| 正文 | 挂着它的叶子 | 业务行上的 `route_leaf_id` |
 | 父节点 | 子节点 | `child_ids` |
 | 子节点 | 父节点 | `parent_id` |
 | 表 | 语义树根 | Catalog 里该 Table 的 `router_root_id` |
@@ -143,7 +145,7 @@ objects 树若还在，只可能暂存 Catalog／Relation 等尚未表化的东�
 `router_root_id`，不靠 tableID 推导根的身份。
 
 迁移要点：节点 ID 从 `route_<uuid>` 换成配套表 RowID，老库升级时
-同批重写每条业务行的 `route_leaf_ids`；Catalog 新增 `router_root_id`；
+同批重写每条业务行的 `route_leaf_id`；Catalog 新增 `router_root_id`；
 `Node.Path` 与全文 `path` 字段删除。
 
 ## 关联

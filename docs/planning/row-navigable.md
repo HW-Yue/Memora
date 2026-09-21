@@ -2,7 +2,7 @@
 
 状态：讨论稿，待授权。
 
-live 行提交后，必须至少被一个活跃叶子指向。零叶子的行写进去了，语义树上永远走不到，等于静默丢失。
+live 行提交后，必须被**恰好一个**活跃叶子指向。零叶子的行写进去了，语义树上永远走不到，等于静默丢失。
 
 判据是叶子上的 RowID，不是独立 membership。`exec` 直连和 Mutation Plan 走同一条 `sqlstore` 提交路径，都要拦。
 
@@ -10,9 +10,9 @@ live 行提交后，必须至少被一个活跃叶子指向。零叶子的行写
 
 | 操作 | 约束 |
 | --- | --- |
-| INSERT | 结果 live 行 ≥ 1 个活跃叶子 |
-| UPDATE | 缺省 `route_leaf_ids` 表示保留；显式清空则失败 |
-| DELETE / 软删 | 豁免 |
+| INSERT | 结果 live 行**恰好 1 个**活跃叶子（1:1，2026-09-21 修订） |
+| UPDATE | 缺省 `route_leaf_id` 表示保留；显式清空则失败 |
+| DELETE | 改为[归档后物理删除](../product/row-delete-archive.md)，行与叶子一起删，豁免本约束 |
 | SPLIT / MERGE | 每个仍 live 的目标各自满足 |
 | 摘叶子（DELETE ROUTE / MOVE） | 不能把某 live 行打成零叶子，除非同事务重挂 |
 | history / `AS OF` | 豁免 |

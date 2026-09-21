@@ -155,7 +155,7 @@ until a leaf is reached. Every leaf locates at most one active Row, and
 `OPEN ROUTE` returns only that Row's locator; never answer from the locator.
 Select projected semantic fields by Row ID, then summarize only the returned
 Row. Every SELECT Row already carries its own `route_paths` — the full
-semantic-index paths of the leaves that locate it — so the host need not
+semantic-index path of the single leaf that locates it — so the host need not
 reverse-resolve membership after the fact. Report empty, stale, or
 permission-limited results instead of inventing a fallback.
 
@@ -246,7 +246,8 @@ Build one `memora.mutation-plan/v1` object. Every decision includes at least one
 read-only preflight with explicit Row expectations. IGNORE has no steps. INSERT,
 REVISE, and MOVE have one step; MERGE is one UPDATE plus DELETE steps;
 SPLIT is one UPDATE plus INSERT steps. Keep at most eight steps. Every INSERT or
-UPDATE supplies the complete `route_leaf_ids` snapshot with at least one leaf.
+UPDATE supplies the complete `route_leaf_ids` snapshot naming exactly one leaf:
+a Row occupies exactly one Leaf, and a Leaf holds at most one live Row.
 A Row with no Route membership can never be reached by semantic navigation, so
 an empty array is not a valid snapshot: attach an existing empty leaf, or create
 the leaf first.
@@ -314,9 +315,9 @@ This bootstrap is ordinary Router construction, not a Route mutation plan.
 it cannot create the first root, and it is not the path for adding a leaf to
 hold a new Row.
 
-Before attaching a new Row, verify that every target leaf is empty;
-an occupied leaf requires a new semantic leaf, while the same Row may still use
-multiple distinct leaves. Submit the plan through `mutate` so
+Before attaching a new Row, verify that the target leaf is empty;
+an occupied leaf requires a new semantic leaf, because a Row occupies exactly one
+leaf and cannot also be reached through a second one. Submit the plan through `mutate` so
 Policy validation occurs before any Tool call and multi-step changes share one
 short transaction.
 

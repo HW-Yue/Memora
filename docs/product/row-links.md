@@ -11,7 +11,7 @@
 
 ## 字段
 
-数据表的每一行带一个默认字段 `links`（与 `route_leaf_ids` 同类，先存为 TEXT 里的 JSON）：
+数据表的每一行带一个默认字段 `links`（与 `route_leaf_id` 同类，先存为 TEXT 里的 JSON）：
 
 ```text
 links: [
