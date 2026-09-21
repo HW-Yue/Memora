@@ -402,6 +402,8 @@ const DOCUMENT_NODE_MIN_HEIGHT = 120;
 const DOCUMENT_COLUMN_GAP = 72;
 const DOCUMENT_VERTICAL_GAP = 72;
 const CANVAS_FOCUS_MAX_ZOOM = 1.25;
+// 空白处的一次按下既可能是"拖画布"，也可能是"点节点"。移动没超过这个像素数就按点击放行。
+const CANVAS_DRAG_THRESHOLD = 3;
 const SYSTEM_COLUMNS = ["row_id", "revision", "commit_sequence", "row_state", "schema_version"];
 
 function displayValue(value) {
@@ -781,8 +783,15 @@ async function expandToRoute(graph, tree, routeID, executeMSQL, databaseID, tabl
   return findTreeNode(tree, routeID);
 }
 
+// The floating controls sit above the canvas and are buttons, not canvas: a drag
+// that starts on them must not move the view.
+function isCanvasControl(target) {
+  return target instanceof Element && !!target.closest(".semantic-canvas-controls");
+}
+
 function installCanvasGestureBridge(graph, container) {
   let pan = null;
+  let pendingPress = null;
   let selecting = null;
   // A trackpad sends pointermove at up to 120Hz and a two-finger scroll sends a
   // stream of wheel events; calling translateBy/zoomBy for each one asks the
@@ -830,9 +839,21 @@ function installCanvasGestureBridge(graph, container) {
     selecting = null;
   };
   const onPointerDown = (event) => {
+    if (event.button !== 0) return;
     const target = event.target instanceof Element ?
       event.target.closest(".semantic-document-node") : null;
-    if (!target || event.button !== 0) return;
+    if (!target) {
+      // 画布空白处也要能拖。这里原来直接 return，把空白处的平移交给了 G6 的
+      // drag-canvas；实测它在真实鼠标下不动——在空白处按下、拖过 25 次 pointermove、
+      // 松开，相机坐标一模一样，而同一手势落在卡片上或触控板滚轮上都有效。
+      //
+      // 但按下这一刻什么都不做：语义节点就画在空白处，一按下就 setPointerCapture 会把
+      // pointerup/click 重定向到容器，G6 再也收不到节点点击，展开与收起会整体失效。
+      // 所以先只记住起点，等 pointermove 超过阈值才真的开始平移（见 onPointerMove）。
+      if (event.pointerType === "touch" || event.altKey || isCanvasControl(event.target)) return;
+      if (!pan) pendingPress = { pointerID: event.pointerId, x: event.clientX, y: event.clientY };
+      return;
+    }
     if (event.altKey) {
       cleanupSelection();
       const caret = caretAtPoint(event.clientX, event.clientY);
@@ -869,6 +890,23 @@ function installCanvasGestureBridge(graph, container) {
       event.stopPropagation();
       return;
     }
+    if (pan && pan.pointerID === event.pointerId && event.buttons === 0) {
+      // 画布外的松开、丢掉的 pointerup、切走的应用，都能让 pan 留在原地；之后鼠标
+      // 一动画布就跟着跑（用户看到的"鼠标到哪它到哪，退不出来"）。实测抓到过：15 次
+      // pointerdown 只有 14 次 pointerup，而此后每一次 pointermove 都在"没按键"的
+      // 情况下继续平移。所以只要有一次没按键的移动到达，就认定这次拖动结束了。
+      pan = null;
+    }
+    if (pendingPress && pendingPress.pointerID === event.pointerId) {
+      const movedX = event.clientX - pendingPress.x;
+      const movedY = event.clientY - pendingPress.y;
+      if (Math.abs(movedX) < CANVAS_DRAG_THRESHOLD && Math.abs(movedY) < CANVAS_DRAG_THRESHOLD) {
+        return;
+      }
+      pan = { pointerID: event.pointerId, x: pendingPress.x, y: pendingPress.y };
+      pendingPress = null;
+      container.setPointerCapture?.(event.pointerId);
+    }
     if (!pan || pan.pointerID !== event.pointerId) return;
     const dx = event.clientX - pan.x;
     const dy = event.clientY - pan.y;
@@ -882,6 +920,12 @@ function installCanvasGestureBridge(graph, container) {
     event.stopPropagation();
   };
   const onPointerUp = (event) => {
+    if (pendingPress && pendingPress.pointerID === event.pointerId) {
+      // 没超过阈值：这是一次点击，不抢指针、不拦事件，交给 G6 的 click-select /
+      // node:click / collapse-expand。
+      pendingPress = null;
+      return;
+    }
     if (pan && pan.pointerID === event.pointerId) {
       container.releasePointerCapture?.(event.pointerId);
       pan = null;
@@ -924,6 +968,13 @@ function installCanvasGestureBridge(graph, container) {
       scheduleGesture();
     }
   };
+  const abandonGesture = () => {
+    pendingPress = null;
+    pan = null;
+  };
+  // 窗口失焦、指针被系统取消时，容器拿不到 pointerup；不留下一个还在"拖"的状态。
+  window.addEventListener("blur", abandonGesture);
+  window.addEventListener("pointercancel", abandonGesture, true);
   container.addEventListener("pointerdown", onPointerDown, true);
   container.addEventListener("pointermove", onPointerMove, true);
   container.addEventListener("pointerup", onPointerUp, true);
@@ -985,7 +1036,8 @@ function createSemanticGraph(container, tree, onNodeClick) {
       getVGap: () => 22,
     },
     behaviors: [
-      "drag-canvas",
+      // 鼠标平移由 installCanvasGestureBridge 统一接管（卡片与空白处都要能拖）；
+      // G6 的 drag-canvas 在这里对空白处无效，留着只会在它复活时造成双份平移。
       {
         type: "scroll-canvas",
         key: "trackpad-pan",

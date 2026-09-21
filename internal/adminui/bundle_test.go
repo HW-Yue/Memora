@@ -414,7 +414,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	}
 	routeText := string(routes)
 	for _, required := range []string{
-		"window.G6", "compact-box", "drag-canvas", "scroll-canvas", "collapse-expand",
+		"window.G6", "compact-box", "scroll-canvas", "collapse-expand",
 		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "MEMORA ROW", "documentNode",
 		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"",
 		"DOCUMENT_NODE_WIDTH", "documentWidth", "translateElementTo", "focusElement",
@@ -422,6 +422,14 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"innerHTML: documentNodeHTML", "markdownit({ html: false", "DOMPurify.sanitize",
 		"semantic-document-node", "semantic-document-reading",
 		"trackpad-pan", "trackpad-zoom", "event.ctrlKey", "event.metaKey",
+		// 空白处的鼠标拖拽也必须平移：G6 的 drag-canvas 实测对空白处无效，所以
+		// 画布上任何左键按下都走这条桥，只有浮层控件除外。
+		"isCanvasControl", "画布空白处也要能拖",
+		// 空白处按下不能立刻抢指针：节点就画在空白处，抢了指针 G6 就收不到点击，
+		// 展开/收起会整体失效。先记起点，超过阈值才算拖动。
+		"CANVAS_DRAG_THRESHOLD", "pendingPress", "event.pointerType === \"touch\"",
+		// 丢掉 pointerup 之后画布会一直跟着鼠标跑：没按键的移动必须结束这次拖动。
+		"event.buttons === 0", "abandonGesture",
 		"zoomRange: [0.25, 2]", "sensitivity: 0.2",
 		"autoFit: false", "animation: false,\n    zoomRange: [0.25, 2]", "node.childrenLoaded === true",
 		"animation: false,\n        align: true",
@@ -454,6 +462,8 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		// The fade used to call updateNodeData + await graph.draw() every frame for
 		// 140ms, which re-rendered every HTML node on each of those frames.
 		"localMotion", "animateNodes", "motionOpacity", "BRANCH_ENTER_MS",
+		// The behavior that was supposed to pan the background and did not.
+		"\"drag-canvas\",",
 	} {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
