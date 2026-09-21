@@ -42,9 +42,11 @@
 
 ## 待定
 
-- 空分支自动清理的触发面：任何让它变空的操作（删行、MOVE、`APPLY ROUTE MUTATION`）都做，
-  还是只在删行路径上做；
 - 两项表面变更都要动 MSQL 与 Skill，需与契约版本一起走。
+
+**空分支清理的触发面已定**（2026-09-21）：**任何让它变空的操作都做**——删行、换挂载、
+MOVE、`APPLY ROUTE MUTATION`，同一事务内递归向上剪枝；根变空一并删除、`router_root_id`
+置空。规则与例外见 [Route 配套表](../product/route-companion-table.md)「重构与废弃节点」。
 
 ## 关联
 

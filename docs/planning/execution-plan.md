@@ -42,6 +42,8 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 
 [分界](../query/agent-engine-boundary.md)：判据是「语义由谁决定」。两项表面变更——`DELETE ROUTE`
 退役、INSERT 允许隐式建路径——都要动 MSQL 与 Skill，需与契约版本一起走。
+空分支清理的触发面已定（所有让它变空的操作都做），见
+[Route 配套表](../product/route-companion-table.md)「重构与废弃节点」。
 
 ### 召回架构
 
