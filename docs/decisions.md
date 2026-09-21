@@ -794,3 +794,36 @@ INDEX` 同族）：第一次调用标记中间态 + drop 派生层 + 清至多 `
 `internal/devgate/statements_test.go`（每个 statement kind 有样品、只读传输按分类拒绝）。
 
 **待定**：多进程真实并发压测；要不要给窗口一个独立读面（`SHOW VECTOR STATUS`）；Admin 是否露出窗口。
+
+## 2026-09-21 · Skill 约定生效，`me` 库已按新形状重写
+
+**结论（用户授权执行）**：
+
+1. **Skill 已按新规范重写**（`656d63c`）：表形状固定为 `title` + `summary`，模板要求照抄，
+   不再教列设计；`row_semantics` 定为常量文案；`Evolve schemas` 只保留「加宽 `summary` 上限」
+   与「经用户批准后归档旧列」；新增 REKEY 一节（含「不给目标＝逃生口」）；
+   `references/product-manual.md` 的「AI 设计 Column」改成「行的形状由引擎给定」。
+   两个 adapter 副本与 manifest 已同步（`sync-skill.sh --check` 全绿），并装进
+   `~/.agents/skills/memora`、`~/.claude/skills/memora`、`~/.codex/skills/memora`。
+2. **`me` 库已重写**：9 行文档全部重写为自足正文——把只存在于旧列里的事实折进散文，逐行核对
+   过（例如 experiences 折进 4200+/Redisson/0CD 细节，projects 折进 outcomes/status/period，
+   applications 折进投递渠道 URL，profile 折进完整求职意向）。随后四张表各走一次
+   `PLAN SCHEMA CHANGE` + `APPLY`（hash 绑定批准），归档旧列共 **23 列**：
+   applications 6、experiences 4、profile 9、projects 4；四份计划都是
+   `review_required`、**零 blocker**、`reversible=true`、回执 `verified=true`。
+   现在四张表都只剩 `title` + `summary`，`SELECT *` 只回行长成的固定七项
+   （系统列 + `title` + `summary` + `links` + `route_paths`）。
+3. **本地二进制换成开发版 `0.3.0-dev`**（commit `656d63c`），CLI 与 daemon 同版本、无 skew；
+   旧版留在 `~/.local/bin/memora-0.2.0.bak`。**没有开 PR、没有打 tag、没有触发发布 CI。**
+
+**验证**：`doctor` healthy，`broken_links`/`broken_recall_units`/`orphan_rows`/`multi_leaf_rows`/
+`vector_index_drift` 全 0；关键词召回能用折进正文的新事实命中（`Redisson` → `experiences`）。
+`me` 有 74 个单元没有向量——本机没配 `MEMORA_EMBEDDING*`，补齐路径是配好后任意一次 `exec`
+触发的排干（每次最多 1024 个单元），第一条 `ACCEPT` 会给库上锁。
+
+**顺带确认的两个只读事实**：`row_semantics` 与表的 `purpose` 建表后**没有任何语句能改**（只有列级
+schema change），所以四张表仍写着旧的「一行是…」——它会在引擎接管形状时一并消失。
+
+**待定（下一块）**：引擎侧强制「agent 不得定义列」+ 宪章/ADR 修订（今天的约定靠 Skill 自觉）；
+`row_semantics` 撤掉或引擎写常数；库/表描述的 amend 路径；树的「实习/正式」分层
+（要 `PLAN/APPLY ROUTE MUTATION`，需要新的批准）。
