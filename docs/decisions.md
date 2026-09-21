@@ -569,3 +569,33 @@ schema 写了表**（实例里多出 `mem_postings`/`mem_vectors`/`mem_vector_it
 **边界（要诚实）**：守卫只能保护**带它的二进制**，已经发布的旧版本教不会——它买到的是"从现在
 起每个二进制都拒绝退化"，不是"修复历史"。这也是 D13 那次事故（落后 253 个提交的 release 把
 自己的表写进更新的实例）在机制上被关掉的方式。
+
+## 2026-09-21 · Admin 的显示槽位：文档居中，且整页只出现一次
+
+**对象**：Admin（Go 内嵌冻结 bundle）里 `purpose` / `row_semantics` / `ROLE summary` 三者各自渲染在哪。
+
+**结论（一条规则）**：`ROLE summary` 的那份文档占据视觉正中，且**整页只渲染一次**；其余一切
+（`purpose`、`row_semantics`、系统列、其他业务列）都是元数据或属性，放周边并明确标注。
+
+- Table 卡片中间那句改用 `purpose`（这张表装什么，人话）。表详情页 heading 现在就是 purpose，
+  顺手消掉卡片与详情页不一致。
+- `row_semantics` 是**表级建模约束**，只在**表详情页出现一次**并带标签；卡片不做主文案，
+  语义索引文档节点标题下那行小字也撤掉。**不进 Row 页属性区**——每行重复同一句「一行是…」
+  对读者零信息，只是把怪观感换个位置。
+- Row 页主块改成 `title` + `summary` 文档（Markdown），其余列进属性区。
+
+**理由**：真正的缺陷不是文案怪，是两处槽位错位。卡片用 `row_semantics || purpose` 把一个
+1:1 约束当说明文案（`me` 库四张表全部以「一行是…」开头）；Row 页把同一份 summary 渲染两遍
+（heading 里纯文本一次、字段列表里 Markdown 一次），直接违反「文档只存在一份」。`row_semantics`
+写成「一行是…」本身没错，它是定义；错的是把它摆在正文位。
+
+**弃选**：不为好看去改 `row_semantics` 的措辞约定（`docs/query/catalog-ddl.md` 的示例继续用
+「一行是…」）；不把 `row_semantics` 放进 Row 页属性区；不在卡片上并列两个语义字段。
+
+**代价与待定**：卡片不再提示行的粒度，信息量压到 `purpose` 的写作质量上（待定：是否回头校
+`me` 四张表的 purpose）。Admin 是完整性冻结的 bundle——`internal/adminui/bundle.go` 写死
+sha256 与 size，`bundle_test.go` 断言——改 UI 必须同步 dist 资源、清单哈希与测试。
+**方向已定，未授权开工。**
+
+**另记一条独立发现（待定）**：`me.experiences` 有个业务列叫 `role`，与 Catalog 的 `ROLE`
+概念撞名，早晚会咬人。
