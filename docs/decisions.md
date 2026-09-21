@@ -638,10 +638,23 @@ sha256 与 size，`bundle_test.go` 断言——改 UI 必须同步 dist 资源�
 
 **对象**：agent 与引擎在建模上的分界。
 
-**结论（待拍板）**：收窄到**只收回表结构（列）的定义权**。agent 保留：**库名、表名、表的描述
-语句（purpose）、语义索引树、row 的 title、row 的正文、`links` 的值**。引擎拥有：**每张表的列
-集合固定为 `title` + `summary`**（TEXT 上限按 ~1000 CJK 文档 + Markdown 一次定死），加系统列、
-每行 `links`、只读 `route_paths`；agent 不得定义或新增列。
+**结论（待拍板）**：收窄到**只收回表结构（列）的定义权**。agent 保留：**库名、库的描述
+（`purpose`/`scope`/`anti_scope`）、表名、表的描述（`purpose`）、语义索引树、row 的 title、
+row 的正文、`links` 的值**。引擎拥有：**每张表的列集合固定为 `title` + `summary`**（TEXT 上限
+按 ~1000 CJK 文档 + Markdown 一次定死），加系统列、每行 `links`、只读 `route_paths`；agent
+不得定义或新增列。
+
+**本方案不触及语义索引**：树完全归 agent（节点名、层级、叶子挂哪一行），引擎只负责存、索引与
+导航。把「位置算不算 agent 的输入」列成待定是错的，已从稿中删除；也不给库/表划分加约束。
+
+**三个描述字段**（都归 agent）：`purpose` = 装什么（库、表都必填）；`scope` = 收哪些的范围
+（库必填、表可选）；`anti_scope` = 明确不收什么（可选）。`DESCRIBE` 返回三者，`SHOW DATABASES`
+返回 purpose+scope，`SHOW TABLES` 只返回 purpose，表级 scope/anti_scope 只有 Atlas 摊平——
+「写了但常见读面看不到」是待定。
+
+**`row_semantics`**（即四张卡上「一行是…」的来源）：建表时声明的「一行代表什么」，Binder 与
+`row-detail/v1` 都强制必填。形状统一后它对每张表都相同、信息量为零，**建议撤掉**（契约级改动：
+catalog-ddl、parser/binder、`catalog.Table`、`row-detail/v1`、Admin bundle 非空断言）。
 
 **结论（第二问：要不要全局封闭字段集）**：**不要**。每行严格 `{title, summary}` + 系统列 +
 `links`。理由：全局字段只有在能被过滤或排序时才有价值，而数据获取只有三条路（向量、关键词、
@@ -663,6 +676,6 @@ sha256 与 size，`bundle_test.go` 断言——改 UI 必须同步 dist 资源�
 动作，L2 审批是否还挂在建表上要重定。现存 `me.experiences` 的四个列折进正文与树后走
 `DROP_COLUMN` 归档（归档不是删除）。
 
-**待定**：`row_semantics` 还留不留（形状统一后是常数）；库的 `purpose`/`scope`/`anti_scope`
-是否同样保留给 agent；人（L2）能否例外扩展形状；库与表怎么划分要不要给约束；现存实例先迁移
-还是并行。全稿见[引擎拥有形状](../planning/engine-owned-shape.md)。**未授权开工、未改宪章。**
+**待定**：`row_semantics` 撤掉还是引擎写常数；表级 `scope`/`anti_scope` 是否在 `SHOW TABLES`
+露出；人（L2）能否例外扩展形状；现存实例先迁移还是并行。全稿见
+[引擎拥有形状](../planning/engine-owned-shape.md)。**未授权开工、未改宪章。**
