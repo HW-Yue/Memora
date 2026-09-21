@@ -94,7 +94,10 @@ with no user-named Database, or an expired Route Frame — discover names first.
 returns every Database. Supplying an `authorization` object switches it to a
 filter that silently drops Databases outside that scope, so a guessed or
 placeholder name can hide the real catalog. Bind authorization only after the
-user has named a Database; never widen or invent the scope.
+user has named a Database; never widen or invent the scope. `work`, `notes`,
+`row_01` and `route_*` in the examples below are **placeholders** — substitute
+your own Database, Table, Row and Route names; `actor` is free text naming who
+is acting (`agent:host` here), not a fixed literal.
 
 The install detector, the health check, and the unauthenticated catalog read
 are independent and their error envelopes are small, so run them together in
@@ -108,7 +111,13 @@ memora query "SHOW DATABASES LIMIT 32 COMPACT"
 
 Show the discovered Database names and purposes to the user and ask which one
 to use before the first authorized read or write. Once the user names a
-Database, continue the bounded discovery below with that exact name:
+Database, continue the bounded discovery below with that exact name. **When
+there is no human in the loop** — a subagent, a scheduled run, a host that
+cannot ask — do not stall and do not guess silently: print the discovered names
+with their purposes as your receipt, bind the one Database whose declared
+`purpose`/`scope` covers the question, and **state that inference in your
+answer**. If two or more Databases could cover it, stop and report the
+candidates instead of choosing. Never widen the scope to make a guess fit.
 
 ```sh
 memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
@@ -139,8 +148,9 @@ Database. Do not claim a cold Database/Table is absent until coverage is
 complete.
 
 Locate Rows with `SHOW ROUTES` (the Agent's main path) and `SELECT` for facts.
-Keyword and vector recall are additional product paths still to implement.
-jev is an optional Skill-side chooser on the same layer-by-layer surface.
+Keyword recall (`RECALL … MATCH`) and vector recall (`RECALL … NEAREST`) are the
+other two product paths; jev is an optional Skill-side chooser on the same
+layer-by-layer surface.
 
 Treat Route results as `navigation_only`. They are neither answers nor evidence.
 Explicitly choose one or more Tables from the compact Atlas. For a selected
@@ -149,6 +159,13 @@ state machine.
 
 Answer only from revision-matched SELECT rows after normal Route navigation and
 RowID lookup.
+
+**Completeness.** Enumerate every Table of the Database you bound; a Table is out
+of scope only when its declared `purpose`/`scope` excludes the question —
+"it looked unrelated" is not a reason. Census the Tables that could hold an
+answer (a bounded `SELECT row_id, title, revision` is enough to see what is
+there), and say in your answer what you read and what you did not. An unread
+Table you never mention is an answer that looks complete and is not.
 
 ## Query and summarize
 
@@ -161,6 +178,23 @@ Row. Every SELECT Row already carries its own `route_paths` — the full
 semantic-index path of the single leaf that locates it — so the host need not
 reverse-resolve membership after the fact. Report empty, stale, or
 permission-limited results instead of inventing a fallback.
+
+The read surface is deliberately narrow: **one equality on `row_id`**, joined by
+`AND` when you need more than one condition. `IN (…)`, `OR` and `JOIN` are not
+part of it, so **read one Row per statement**. To read several Rows, send several
+statements in one request — `--input` takes one object per statement as an array,
+in source order, for `query` and `exec` alike:
+
+```sh
+memora query --input '[{"parameters":{"named":{"row":"row_01"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}},{"parameters":{"named":{"row":"row_02"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}]' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1; SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1"
+```
+
+`links` and `route_paths` ride along on every returned Row whether or not you
+projected them, and `columns` lists only the fields you asked for — do not try to
+project the attached ones. Each statement's envelope also repeats `columns` and a
+`row_detail` block (schema version, `row_semantics`, display map) that
+`DESCRIBE TABLE` already gave you, so budget roughly 1.5–2 KB per statement on
+top of the facts.
 
 Use this bounded state machine:
 
@@ -185,11 +219,31 @@ memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":1}}
 memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
 
-Read the current `query_budgets` row before navigation. The bundled ceilings are
+Read the current budgets before navigation, with the statement that returns them:
+`SHOW CONFIGURATION` (the five `query_budgets` are `route_children`,
+`open_locators`, `select_scan`, `select_rows`, `route_frame_nodes`; `SHOW
+CONFIGURATION HISTORY` shows how they got there). The bundled ceilings are
 12 Router rows, one locator per opened leaf, 10 selected rows across explicitly
 chosen leaves, and 12,000 context characters. `open_locators` is retained as a
 compatibility budget but cannot raise a leaf above its `0..1` cardinality. Use
-the smaller current limits for the remaining budgets. A locator cursor is never
+the smaller current limits for the remaining budgets.
+
+`select_rows` is a **hard failure, not a clamp**: `SELECT … LIMIT 50` is refused
+rather than truncated, so read the budget before the first SELECT. A Table that
+genuinely holds more live Rows than the ceiling is still readable — either as
+point-read batches (one statement per Row, many statements per request) or by
+raising the budget explicitly:
+
+```sql
+ALTER CONFIGURATION QUERY_BUDGETS SET
+  ROUTE_CHILDREN :routes, OPEN_LOCATORS :locators, SELECT_SCAN :scan,
+  SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame;
+```
+
+It replaces all five (they are one revision, with `expected_revision`, actor and
+reason), `SHOW CONFIGURATION HISTORY LIMIT :limit` shows the trail, and
+`RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision` appends a compensating
+revision. Raising a budget is a deliberate act with a reason, not a reflex. A locator cursor is never
 expected from a valid leaf. Drop the Route Frame when its schema or route
 revision is stale, the topic changes, or the task ends.
 
@@ -207,8 +261,8 @@ topic live?** It is a locator, not an answer — it returns no fact, no score, n
 distance, no rank, no reason, and not the text it matched.
 
 ```sh
-memora query --input '{"parameters":{"named":{"q":"存储引擎","limit":5}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "RECALL FROM work MATCH :q LIMIT 5"
-memora query --input '{"parameters":{"named":{"q":"存储引擎","limit":5}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "RECALL FROM work IN notes MATCH :q LIMIT 5"
+memora query --input '{"parameters":{"named":{"q":"存储引擎","limit":5}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "RECALL FROM work MATCH :q LIMIT :limit"
+memora query --input '{"parameters":{"named":{"q":"存储引擎","limit":5}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "RECALL FROM work IN notes MATCH :q LIMIT :limit"
 ```
 
 Each hit carries `database`, `table`, `kind`, an optional `object_id`, and `path`
@@ -312,8 +366,9 @@ broken — so repeating it until `remaining` is zero is safe.
 memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affected_rows":64,"actor":"agent:host","source":"conversation:event-9","reason":"reconcile the vector index"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "REPAIR VECTOR INDEX IN DATABASE work LIMIT :limit"
 ```
 
-`LIMIT` is required and bounded to 1–1000; the query must be at least 3
-characters, and a shorter one is refused rather than silently returning nothing.
+`LIMIT` is required and bounded to 1–1000; the query must be at least 2
+characters (one character is refused, not answered with everything), and a
+shorter one is refused rather than silently returning nothing.
 Hits are de-duplicated by path and ordered by table then path, so the same query
 over an unchanged database returns the same list. Scope is one Database, with an
 optional `IN <table>`. Both arms are wired — keyword and vector — and a position

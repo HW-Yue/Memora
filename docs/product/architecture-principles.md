@@ -8,7 +8,7 @@
 四条原则。每条给出**判据**——怎么算违反——因为没有判据的原则等于没有原则。
 
 持久化基座是 SQLite（[ADR-0011](../decisions/0011-pure-storage-engine-tables-everything.md)）。
-实例一律按 `internal/sqlstore` 采集。关键词与向量召回待实现，形态见查询规范。
+实例一律按 `internal/sqlstore` 采集。关键词与向量召回已实现，形态见查询规范。
 
 ## 一、高内聚低耦合，整体简洁清晰
 
