@@ -84,6 +84,7 @@ type MutationOptions struct {
 	SourceContentHash      string               `json:"source_content_hash,omitempty"`
 	RouteLeafIDs           []string             `json:"route_leaf_ids,omitempty"`
 	RoutePath              []router.PathSegment `json:"route_path,omitempty"`
+	Links                  []row.LinkRef        `json:"links,omitempty"`
 	TargetRouteLeafIDs     [][]string           `json:"target_route_leaf_ids,omitempty"`
 	RelationTargetOrdinals map[string]int       `json:"relation_target_ordinals,omitempty"`
 	RouteUpdates           []row.RouteUpdate    `json:"route_updates,omitempty"`
@@ -106,6 +107,7 @@ func (options MutationOptions) MarshalJSON() ([]byte, error) {
 		SourceContentHash      string               `json:"source_content_hash,omitempty"`
 		RouteLeafIDs           *[]string            `json:"route_leaf_ids,omitempty"`
 		RoutePath              []router.PathSegment `json:"route_path,omitempty"`
+		Links                  *[]row.LinkRef       `json:"links,omitempty"`
 		TargetRouteLeafIDs     *[][]string          `json:"target_route_leaf_ids,omitempty"`
 		RelationTargetOrdinals map[string]int       `json:"relation_target_ordinals,omitempty"`
 		RouteUpdates           []row.RouteUpdate    `json:"route_updates,omitempty"`
@@ -131,6 +133,9 @@ func (options MutationOptions) MarshalJSON() ([]byte, error) {
 	}
 	if options.TargetRouteLeafIDs != nil {
 		wire.TargetRouteLeafIDs = &options.TargetRouteLeafIDs
+	}
+	if options.Links != nil {
+		wire.Links = &options.Links
 	}
 	return json.Marshal(wire)
 }

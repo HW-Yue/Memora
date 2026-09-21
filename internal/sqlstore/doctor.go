@@ -20,6 +20,9 @@ type Report struct {
 	OrphanRows       int `json:"orphan_rows"`
 	MultiLeafRows    int `json:"multi_leaf_rows"`
 	MismatchedMounts int `json:"mismatched_mounts"`
+	// BrokenLinks counts entries that are dangling or one-sided: links are the
+	// one place the same fact is stored twice, so they get a count too.
+	BrokenLinks int `json:"broken_links"`
 }
 
 func (db *DB) Doctor(ctx context.Context) (Report, error) {
@@ -55,6 +58,11 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 				report.OrphanRows += violations.OrphanRows
 				report.MultiLeafRows += violations.MultiLeafRows
 				report.MismatchedMounts += violations.MismatchedMounts
+				broken, err := t.brokenLinks(ctx, table)
+				if err != nil {
+					return err
+				}
+				report.BrokenLinks += broken
 			}
 		}
 		return t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_changes`).Scan(&report.Changes)

@@ -167,6 +167,10 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		}
 		projected := projectRow(candidate, projections)
 		projected["route_paths"] = engine.routePathsForRow(ctx, candidate)
+		// The link entries ride along like route_paths: what each one points at,
+		// its summary, and the revision that summary came from, so a reader does
+		// not have to point-read the other side just to know what it is.
+		projected["links"] = candidate.Links
 		output.Rows = append(output.Rows, projected)
 		if len(output.Rows) == int(limit) {
 			return output, nil

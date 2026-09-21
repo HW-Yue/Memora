@@ -72,6 +72,18 @@ func TestCommitRefusesAMountViolation(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 
+	// A link entry with no live counterpart is broken for the same reason, and
+	// the same commit point refuses it.
+	err = db.update(ctx, func(t *tx) error {
+		_, err := t.q().ExecContext(ctx,
+			`UPDATE `+dataTable(table.ID)+` SET links = ? WHERE row_id = ?`,
+			`[{"row_id":"row_missing","table_id":"`+table.ID+`","summary":"gone","revision":1}]`, inserted.ID)
+		return err
+	})
+	if err == nil || !strings.Contains(err.Error(), "link invariant violated") {
+		t.Fatalf("a one-sided link must not commit: %v", err)
+	}
+
 	// And the refused transaction left nothing behind.
 	stored, err := db.Rows().Get(ctx, "work", "notes", inserted.ID)
 	if err != nil {

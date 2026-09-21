@@ -8,23 +8,15 @@ import (
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
-	"github.com/HW-Yue/Memora/internal/row"
+	rowmodel "github.com/HW-Yue/Memora/internal/row"
 )
 
-// Link is one entry of a row's links field (docs/product/row-links.md): which
-// row it points at, that row's summary, and the revision the summary was taken
-// from. Both ends of a link carry it, written in one transaction.
-type Link struct {
-	RelationID  string `json:"relation_id,omitempty"`
-	Direction   string `json:"direction,omitempty"`
-	RowID       string `json:"row_id"`
-	DatabaseID  string `json:"database_id,omitempty"`
-	TableID     string `json:"table_id,omitempty"`
-	Summary     string `json:"summary"`
-	Revision    uint64 `json:"revision"`
-	Type        string `json:"type,omitempty"`
-	Description string `json:"description,omitempty"`
-}
+// Link and LinkRef are the Row model's own types; the storage layer keeps its
+// names for them because that is what its callers and tests use.
+type (
+	Link    = rowmodel.Link
+	LinkRef = rowmodel.LinkRef
+)
 
 const maxSummaryRunes = 280
 
@@ -68,7 +60,7 @@ func (t *tx) endpointRow(ctx context.Context, databaseName, tableName, rowID str
 	if err != nil {
 		return catalog.Table{}, storedRow{}, err
 	}
-	if value.State != row.StateLive {
+	if value.State != rowmodel.StateLive {
 		return catalog.Table{}, storedRow{}, fail(result.CodeNotFound, "row %q was not found", rowID)
 	}
 	return table, value, nil
@@ -136,7 +128,7 @@ func (t *tx) detachCounterpartLinks(ctx context.Context, table catalog.Table, va
 			target = resolved
 		}
 		counterpart, err := t.readRow(ctx, target, link.RowID)
-		if err != nil || counterpart.State != row.StateLive {
+		if err != nil || counterpart.State != rowmodel.StateLive {
 			continue
 		}
 		remaining := make([]Link, 0, len(counterpart.Links))
@@ -157,10 +149,175 @@ func (t *tx) detachCounterpartLinks(ctx context.Context, table catalog.Table, va
 		if err := t.writeRow(ctx, target, counterpart, false); err != nil {
 			return nil, err
 		}
-		if err := t.appendHistory(ctx, target, counterpart, history.OperationUpdate, row.WriteMetadata{}, nil); err != nil {
+		if err := t.appendHistory(ctx, target, counterpart, history.OperationUpdate, rowmodel.WriteMetadata{}, nil); err != nil {
 			return nil, err
 		}
 		detached = append(detached, counterpart.ID)
 	}
 	return detached, nil
+}
+
+// linkTarget is one resolved link reference: where the other Row lives and what
+// it currently holds, read once so both directions describe the same revision.
+type linkTarget struct {
+	Table catalog.Table
+	Row   storedRow
+}
+
+func linkKey(tableID, rowID string) string { return tableID + "|" + rowID }
+
+// resolveLinks turns references into live Rows. A bare RowID resolves inside the
+// Row's own Table first: a RowID is unique Instance-wide, but uniqueness is not
+// addressability, so an ID that resolves nowhere is refused with a hint to name
+// the Table rather than guessed at. Links stay inside one Database, because the
+// caller's authorization is per Database.
+func (t *tx) resolveLinks(ctx context.Context, databaseName string, table catalog.Table, actingRowID string, refs []rowmodel.LinkRef) ([]linkTarget, error) {
+	targets := []linkTarget{}
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		if strings.TrimSpace(ref.RowID) == "" {
+			return nil, fail(result.CodeValidation, "a link needs the RowID it points at")
+		}
+		if ref.RowID == actingRowID {
+			return nil, fail(result.CodeValidation, "a Row cannot link to itself")
+		}
+		target := table
+		if ref.Table != "" && !strings.EqualFold(strings.TrimSpace(ref.Table), table.Name) {
+			resolved, err := t.liveTable(ctx, databaseName, strings.TrimSpace(ref.Table))
+			if err != nil {
+				return nil, err
+			}
+			target = resolved
+		}
+		if target.DatabaseID != table.DatabaseID {
+			return nil, fail(result.CodeValidation,
+				"links stay inside one Database: %q is in another", target.Name)
+		}
+		row, err := t.readRow(ctx, target, ref.RowID)
+		if err != nil {
+			if ref.Table == "" {
+				return nil, fail(result.CodeNotFound,
+					"no Row %q in %s: name its Table to link across Tables", ref.RowID, table.Name)
+			}
+			return nil, fail(result.CodeNotFound, "Row %q was not found in %s", ref.RowID, target.Name)
+		}
+		if row.State != rowmodel.StateLive {
+			return nil, fail(result.CodeConstraint, "Row %q is not live, so nothing can link to it", ref.RowID)
+		}
+		if seen[linkKey(target.ID, row.ID)] {
+			continue
+		}
+		seen[linkKey(target.ID, row.ID)] = true
+		targets = append(targets, linkTarget{Table: target, Row: row})
+	}
+	return targets, nil
+}
+
+// syncLinks makes a Row's link membership match the references it was given.
+//
+// A link lives at both ends, so every addition and removal is written twice in
+// the caller's transaction. The other Row's list is edited in place rather than
+// recomputed from this snapshot, or this write would wipe the links it holds to
+// everyone else. Summaries and revisions are written at the moment of the write;
+// they are staleness markers, never refreshed in cascade here.
+func (t *tx) syncLinks(ctx context.Context, databaseName string, table catalog.Table, value *storedRow, refs []rowmodel.LinkRef) error {
+	if refs == nil {
+		return nil
+	}
+	targets, err := t.resolveLinks(ctx, databaseName, table, value.ID, refs)
+	if err != nil {
+		return err
+	}
+	current := map[string]Link{}
+	for _, link := range value.Links {
+		current[linkKey(link.TableID, link.RowID)] = link
+	}
+	keep := map[string]bool{}
+	linked := []Link{}
+	for _, target := range targets {
+		key := linkKey(target.Table.ID, target.Row.ID)
+		keep[key] = true
+		if existing, present := current[key]; present {
+			linked = append(linked, existing)
+			continue
+		}
+		revision, err := t.attachCounterpart(ctx, table, *value, target)
+		if err != nil {
+			return err
+		}
+		linked = append(linked, Link{
+			RowID: target.Row.ID, DatabaseID: target.Table.DatabaseID, TableID: target.Table.ID,
+			Table: target.Table.Name, Summary: summarize(target.Table, target.Row), Revision: revision,
+		})
+	}
+	for key, link := range current {
+		if keep[key] {
+			continue
+		}
+		if err := t.detachOneLink(ctx, table, *value, link); err != nil {
+			return err
+		}
+	}
+	value.Links = linked
+	return nil
+}
+
+// attachCounterpart adds this Row's side to the other Row and returns the
+// revision that Row now sits at, which is what the summary here describes.
+func (t *tx) attachCounterpart(ctx context.Context, table catalog.Table, value storedRow, target linkTarget) (uint64, error) {
+	counterpart := target.Row
+	counterpart.Links = append(withoutLink(counterpart.Links, table.ID, value.ID), Link{
+		RowID: value.ID, DatabaseID: table.DatabaseID, TableID: table.ID, Table: table.Name,
+		Summary: summarize(table, value), Revision: value.Revision,
+	})
+	if err := t.advance(ctx, target.Table, &counterpart); err != nil {
+		return 0, err
+	}
+	if err := t.writeRow(ctx, target.Table, counterpart, false); err != nil {
+		return 0, err
+	}
+	if err := t.appendHistory(ctx, target.Table, counterpart, history.OperationUpdate, rowmodel.WriteMetadata{}, nil); err != nil {
+		return 0, err
+	}
+	return counterpart.Revision, nil
+}
+
+// detachOneLink removes the other end of one link. A counterpart that is gone or
+// no longer live has nothing left to detach.
+func (t *tx) detachOneLink(ctx context.Context, table catalog.Table, value storedRow, link Link) error {
+	target := table
+	if link.TableID != "" && link.TableID != table.ID {
+		resolved, err := t.tableByID(ctx, link.TableID)
+		if err != nil {
+			return nil
+		}
+		target = resolved
+	}
+	counterpart, err := t.readRow(ctx, target, link.RowID)
+	if err != nil || counterpart.State != rowmodel.StateLive {
+		return nil
+	}
+	remaining := withoutLink(counterpart.Links, table.ID, value.ID)
+	if len(remaining) == len(counterpart.Links) {
+		return nil
+	}
+	counterpart.Links = remaining
+	if err := t.advance(ctx, target, &counterpart); err != nil {
+		return err
+	}
+	if err := t.writeRow(ctx, target, counterpart, false); err != nil {
+		return err
+	}
+	return t.appendHistory(ctx, target, counterpart, history.OperationUpdate, rowmodel.WriteMetadata{}, nil)
+}
+
+func withoutLink(links []Link, tableID, rowID string) []Link {
+	remaining := make([]Link, 0, len(links))
+	for _, link := range links {
+		if link.RowID == rowID && (link.TableID == "" || link.TableID == tableID) {
+			continue
+		}
+		remaining = append(remaining, link)
+	}
+	return remaining
 }

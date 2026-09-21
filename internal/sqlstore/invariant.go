@@ -5,6 +5,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/result"
+	rowmodel "github.com/HW-Yue/Memora/internal/row"
 )
 
 // MountViolations counts the three ways the mount invariant can be broken: a
@@ -60,6 +61,78 @@ func (t *tx) mountViolations(ctx context.Context, table catalog.Table) (MountVio
 	return violations, nil
 }
 
+// linkScanPage bounds how many Rows the link check holds at once. The scan reads
+// a page, closes its cursor, then point-reads the counterparts: holding one
+// cursor open while opening another is how this kind of check deadlocks itself.
+const linkScanPage = 200
+
+// brokenLinks counts link entries that no longer hold: the target is gone or not
+// live, or the target does not point back. Links are the one place this kernel
+// stores the same fact twice, which is exactly why the one assertion site covers
+// them too.
+func (t *tx) brokenLinks(ctx context.Context, table catalog.Table) (int, error) {
+	broken := 0
+	after := ""
+	for {
+		rows, err := t.q().QueryContext(ctx, `SELECT row_id, links FROM `+dataTable(table.ID)+
+			` WHERE row_state = 'live' AND row_id > ? ORDER BY row_id LIMIT ?`, after, linkScanPage)
+		if err != nil {
+			return 0, err
+		}
+		type pageRow struct{ id, links string }
+		page := []pageRow{}
+		for rows.Next() {
+			entry := pageRow{}
+			if err := rows.Scan(&entry.id, &entry.links); err != nil {
+				_ = rows.Close()
+				return 0, err
+			}
+			page = append(page, entry)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		_ = rows.Close()
+		if len(page) == 0 {
+			return broken, nil
+		}
+		after = page[len(page)-1].id
+		for _, entry := range page {
+			links := []Link{}
+			if err := decodeJSON(entry.links, &links); err != nil {
+				return 0, err
+			}
+			for _, link := range links {
+				counterpartTable := table
+				if link.TableID != "" && link.TableID != table.ID {
+					resolved, err := t.tableByID(ctx, link.TableID)
+					if err != nil {
+						broken++
+						continue
+					}
+					counterpartTable = resolved
+				}
+				counterpart, err := t.readRow(ctx, counterpartTable, link.RowID)
+				if err != nil || counterpart.State != rowmodel.StateLive {
+					broken++
+					continue
+				}
+				answered := false
+				for _, reverse := range counterpart.Links {
+					if reverse.RowID == entry.id &&
+						(reverse.TableID == "" || reverse.TableID == table.ID) {
+						answered = true
+					}
+				}
+				if !answered {
+					broken++
+				}
+			}
+		}
+	}
+}
+
 // requireMountInvariant is the single place the mount invariant is asserted on a
 // write, at the one commit point both autocommit and explicit transactions pass
 // through. A test Instance opens with it on, so a path that leaves a live Row
@@ -81,6 +154,15 @@ func (t *tx) requireMountInvariant(ctx context.Context) error {
 				return fail(result.CodeInternal,
 					"mount invariant violated in %s.%s: %d live rows with no leaf, %d with several, %d whose leaf points elsewhere",
 					database.Name, table.Name, violations.OrphanRows, violations.MultiLeafRows, violations.MismatchedMounts)
+			}
+			broken, err := t.brokenLinks(ctx, table)
+			if err != nil {
+				return err
+			}
+			if broken > 0 {
+				return fail(result.CodeInternal,
+					"link invariant violated in %s.%s: %d entries are dangling or one-sided",
+					database.Name, table.Name, broken)
 			}
 		}
 	}

@@ -277,6 +277,7 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 		Metadata:              mutationMetadata(options),
 		RouteLeafIDs:          options.RouteLeafIDs,
 		RoutePath:             options.RoutePath,
+		Links:                 linksOrNil(options.Links),
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -323,6 +324,7 @@ func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, b
 		ExpectedRevision:      options.ExpectedRevision,
 		Metadata:              mutationMetadata(options),
 		RouteLeafIDs:          options.RouteLeafIDs,
+		Links:                 linksOrNil(options.Links),
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -549,4 +551,13 @@ func withAttribution(ctx context.Context, statement ast.Statement, options Mutat
 		metadata.Reason = strings.ToLower(strings.ReplaceAll(statement.Kind, "_", " "))
 	}
 	return change.WithMetadata(ctx, metadata)
+}
+
+// linksOrNil keeps the difference between "no link option" (leave the membership
+// alone) and "an empty list" (clear it).
+func linksOrNil(links []datarow.LinkRef) []datarow.LinkRef {
+	if links == nil {
+		return nil
+	}
+	return links
 }

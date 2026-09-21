@@ -72,7 +72,12 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
   （revision／commit_sequence／updated_at 不动，也不追加 history），新行首条 history 带
   `origins` 列表指向每个来源行与其 revision；`SHOW HISTORY` 新增 `origins` 列。
   **M5 完成。**
-- **下一件**：**M6 行链接读写**（`links` 开放读写、双向一致、摘要懒更新）。
+- **M6a · 链接读写 ✓**（2026-09-21）：`links` 快照 option（nil 不动／`[]` 清空）、本表优先解析、
+  跨表须带 `table`、不跨 Database、拒绝自链与不存在的目标；引擎 diff 后**同一事务两面都写**，
+  对面是**增量追加**绝不重算；`SELECT` 带 `links`；**两面一致进了不变量断言**，`doctor` 报
+  `broken_links`。
+- **下一件**：**M6b 摘要懒更新队列**（存下的 revision ≠ 对面当前 revision 时返回并排队修复；
+  与 `successor_ids` 的懒修复共用一个队列）。
 
 ## M2 的 Feature 切分（已完成）
 

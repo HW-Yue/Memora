@@ -34,6 +34,10 @@ func toMutationOptions(options protocolmsql.MutationOptions) executor.MutationOp
 			Name: segment.Name, Kind: router.Kind(segment.Kind), Purpose: segment.Purpose,
 		}
 	}
+	links := make([]row.LinkRef, len(options.Links))
+	for index, link := range options.Links {
+		links[index] = row.LinkRef{RowID: link.RowID, Table: link.Table}
+	}
 	routeUpdates := make([]row.RouteUpdate, len(options.RouteUpdates))
 	for index, update := range options.RouteUpdates {
 		routeUpdates[index] = row.RouteUpdate{
@@ -55,6 +59,7 @@ func toMutationOptions(options protocolmsql.MutationOptions) executor.MutationOp
 		SourceContentHash:      options.SourceContentHash,
 		RouteLeafIDs:           cloneSlice(options.RouteLeafIDs),
 		RoutePath:              routePath,
+		Links:                  links,
 		TargetRouteLeafIDs:     cloneNestedStrings(options.TargetRouteLeafIDs),
 		RelationTargetOrdinals: cloneMap(options.RelationTargetOrdinals),
 		RouteUpdates:           routeUpdates,

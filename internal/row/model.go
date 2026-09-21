@@ -7,6 +7,33 @@ import (
 	"github.com/HW-Yue/Memora/internal/router"
 )
 
+// Link is one entry of a Row's links field (docs/product/row-links.md): which
+// Row it points at, where that Row lives, its summary, and the revision the
+// summary was taken from. Table and Database are persisted rather than derived —
+// a RowID is unique Instance-wide, but uniqueness is not addressability, and a
+// reader that only holds an ID would have nowhere to point-read.
+type Link struct {
+	RelationID  string `json:"relation_id,omitempty"`
+	Direction   string `json:"direction,omitempty"`
+	RowID       string `json:"row_id"`
+	DatabaseID  string `json:"database_id,omitempty"`
+	TableID     string `json:"table_id,omitempty"`
+	Table       string `json:"table,omitempty"`
+	Summary     string `json:"summary"`
+	Revision    uint64 `json:"revision"`
+	Type        string `json:"type,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// LinkRef names the Row a write wants to link to. Table is only needed when the
+// target lives in another Table of the same Database: a bare ID resolves inside
+// the Row's own Table first, and an ID that resolves nowhere is refused rather
+// than guessed at.
+type LinkRef struct {
+	RowID string `json:"row_id"`
+	Table string `json:"table,omitempty"`
+}
+
 type State string
 
 const (
@@ -50,6 +77,7 @@ type Row struct {
 	// write-time-known question with a separate structure is the structure that
 	// can go stale. See docs/storage/leaf-rowid-v1.md §5.
 	RouteLeafIDs []string `json:"route_leaf_ids,omitempty"`
+	Links        []Link   `json:"links,omitempty"`
 }
 
 type WriteOptions struct {
@@ -62,6 +90,9 @@ type WriteOptions struct {
 	RoutePath    []router.PathSegment
 	// Origins carries the history this Row continues, set by a reshape.
 	Origins []history.Origin
+	// Links is the Row's complete link membership: nil leaves it untouched and
+	// an empty list clears it, the same distinction the mount snapshot makes.
+	Links []LinkRef
 }
 
 type WriteMetadata struct {

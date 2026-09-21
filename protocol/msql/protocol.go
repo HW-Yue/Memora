@@ -76,6 +76,13 @@ type PathSegment struct {
 	Purpose string `json:"purpose"`
 }
 
+// LinkRef names the Row a write wants to link to. Table is only needed when the
+// target lives in another Table of the same Database.
+type LinkRef struct {
+	RowID string `json:"row_id"`
+	Table string `json:"table,omitempty"`
+}
+
 type MutationOptions struct {
 	ExpectedSchemaVersion  uint64            `json:"expected_schema_version,omitempty"`
 	ExpectedRevision       uint64            `json:"expected_revision,omitempty"`
@@ -90,6 +97,7 @@ type MutationOptions struct {
 	SourceContentHash      string            `json:"source_content_hash,omitempty"`
 	RouteLeafIDs           []string          `json:"route_leaf_ids,omitempty"`
 	RoutePath              []PathSegment     `json:"route_path,omitempty"`
+	Links                  []LinkRef         `json:"links,omitempty"`
 	TargetRouteLeafIDs     [][]string        `json:"target_route_leaf_ids,omitempty"`
 	RelationTargetOrdinals map[string]int    `json:"relation_target_ordinals,omitempty"`
 	RouteUpdates           []RouteUpdate     `json:"route_updates,omitempty"`

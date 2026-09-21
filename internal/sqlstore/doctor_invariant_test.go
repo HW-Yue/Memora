@@ -95,3 +95,26 @@ func TestDoctorCountsMountViolations(t *testing.T) {
 		t.Fatalf("counting violations must not change integrity reporting: %+v", report)
 	}
 }
+
+func TestDoctorCountsBrokenLinks(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	a := h.insertAlongPath("a", pathOf("one"))
+	b := h.insertAlongPath("b", pathOf("two"))
+
+	if report := h.doctor(); report.BrokenLinks != 0 {
+		t.Fatalf("a healthy instance must report no broken links: %+v", report)
+	}
+
+	// One-sided: A points at B and B says nothing back.
+	h.setLinks(a, []sqlstore.Link{{RowID: b, TableID: h.notesTableID(), Summary: "b", Revision: 1}})
+	if report := h.doctor(); report.BrokenLinks != 1 {
+		t.Fatalf("one-sided link count = %d", report.BrokenLinks)
+	}
+
+	// Dangling: the target is gone.
+	h.setLinks(a, []sqlstore.Link{{RowID: "row_missing", TableID: h.notesTableID(), Summary: "gone", Revision: 1}})
+	if report := h.doctor(); report.BrokenLinks != 1 {
+		t.Fatalf("dangling link count = %d", report.BrokenLinks)
+	}
+}

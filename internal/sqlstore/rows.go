@@ -103,6 +103,7 @@ func project(table catalog.Table, value storedRow) row.Row {
 		ID: value.ID, DatabaseID: table.DatabaseID, TableID: table.ID, SchemaVersion: value.SchemaVersion,
 		Revision: value.Revision, CommitSequence: value.CommitSequence, State: value.State,
 		Values: make(map[string]any, len(table.Columns)), RouteLeafIDs: value.RouteLeafIDs,
+		Links: value.Links,
 	}
 	projected.CreatedAt = parseTime(value.CreatedAt)
 	projected.UpdatedAt = parseTime(value.UpdatedAt)
@@ -271,6 +272,9 @@ func (t *tx) insert(ctx context.Context, databaseName, tableName string, values 
 	if err := requireSingleLeaf(value); err != nil {
 		return row.Row{}, err
 	}
+	if err := t.syncLinks(ctx, databaseName, table, &value, options.Links); err != nil {
+		return row.Row{}, err
+	}
 	if err := t.writeRow(ctx, table, value, true); err != nil {
 		return row.Row{}, err
 	}
@@ -374,6 +378,14 @@ func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID strin
 	if err := requireComplete(table, value.Values); err != nil {
 		return row.Row{}, err
 	}
+	// The revision moves before the links are written: a link entry records the
+	// revision its summary was taken from, so it has to be the final one.
+	if err := t.advance(ctx, table, &value); err != nil {
+		return row.Row{}, err
+	}
+	if err := t.syncLinks(ctx, databaseName, table, &value, options.Links); err != nil {
+		return row.Row{}, err
+	}
 	related := []string{}
 	if options.RouteLeafIDs != nil {
 		// The snapshot is the Row's complete membership, so this replaces rather
@@ -396,9 +408,6 @@ func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID strin
 		value.RouteLeafIDs = leaves
 	}
 	if err := requireSingleLeaf(value); err != nil {
-		return row.Row{}, err
-	}
-	if err := t.advance(ctx, table, &value); err != nil {
 		return row.Row{}, err
 	}
 	if err := t.writeRow(ctx, table, value, false); err != nil {
