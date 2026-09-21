@@ -29,6 +29,7 @@
 - [M7 召回详细计划](./planning/m7-recall-plan.md) — 七个 Feature、两次闭环、风险
 - [执行计划](./planning/execution-plan.md) — 唯一队列。先落地基座（CI → baseline → 核心回归），
   再[行必须可导航](./planning/row-navigable.md)
+- [Admin 显示槽位](./planning/admin-display-slots.md) — 文档居中且只渲染一次
 - [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
 - [决策日志](./decisions.md) — 运行中的判断；规范级结论进 ADR
 

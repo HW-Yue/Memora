@@ -599,3 +599,8 @@ sha256 与 size，`bundle_test.go` 断言——改 UI 必须同步 dist 资源�
 
 **另记一条独立发现（待定）**：`me.experiences` 有个业务列叫 `role`，与 Catalog 的 `ROLE`
 概念撞名，早晚会咬人。
+
+**开做前的判断（已核对）**：方向无偏差，最大风险是**没有 summary 列的表**——`row-detail/v1`
+允许 `display.summary_column` 为空，`routes.js` 有兜底文案而 `rows.js` 没有；改造后这类表的
+正中主块会空白。所以**先写兜底，再动渲染**，并且每改一次 JS 就同步一次 bundle 哈希与测试。
+落地顺序与坑见 [Admin 显示槽位](../planning/admin-display-slots.md)。
