@@ -21,7 +21,7 @@
     },
     {
       "path": ".agents/skills/memora/agents/openai.yaml",
-      "sha256": "14faf50003d219b45c395be97391189303d99f64552d7d82ede56c67bf2c43bc",
+      "sha256": "78b6dd1b01bbc16a91f50482f88a64c315c7570cb5ea2db57ebe7bc679d2d6dd",
       "mode": "0644"
     },
     {
@@ -41,7 +41,7 @@
     },
     {
       "path": ".agents/skills/memora/scripts/check.sh",
-      "sha256": "8e2c8420b17586f6694ede54228f08e50a07b744f5c6839204c1f2d096fe5ceb",
+      "sha256": "557548e9d71a3647674bc9cd26761a98aa9a77436ee12212ec2a1b319027049b",
       "mode": "0755"
     },
     {

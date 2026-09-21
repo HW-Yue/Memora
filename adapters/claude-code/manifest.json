@@ -20,6 +20,11 @@
       "mode": "0644"
     },
     {
+      "path": ".claude/skills/memora/agents/openai.yaml",
+      "sha256": "78b6dd1b01bbc16a91f50482f88a64c315c7570cb5ea2db57ebe7bc679d2d6dd",
+      "mode": "0644"
+    },
+    {
       "path": ".claude/skills/memora/contract.json",
       "sha256": "beff394c6c4794e881de8b36c04d1fccf025ad9d4da1701f386733ffa7f7a60b",
       "mode": "0644"
@@ -36,7 +41,7 @@
     },
     {
       "path": ".claude/skills/memora/scripts/check.sh",
-      "sha256": "8e2c8420b17586f6694ede54228f08e50a07b744f5c6839204c1f2d096fe5ceb",
+      "sha256": "557548e9d71a3647674bc9cd26761a98aa9a77436ee12212ec2a1b319027049b",
       "mode": "0755"
     },
     {
