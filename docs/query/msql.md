@@ -34,6 +34,8 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
   只回答位置，不返回分数／距离／排名／正文。范围里有单元没有可用向量时，结果带
   `vectors_not_ready` **通知**（聚合计数，不改 `rows`）。详见 [召回的形状](#召回的形状)
 - 归档：`SHOW ARCHIVE`、`OPEN ARCHIVE`（删除后唯一的读面，见[行删除](../product/row-delete-archive.md)）
+- 向量：`ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE :db MODEL :model HASH :hash`
+  （宿主把算好的嵌入交回来；一条语句一个单元，批量＝一批语句）
 - 修复：`REPAIR LINKS IN DATABASE :database LIMIT :limit`（出队一批懒修复，见[行链接](../product/row-links.md)）
   与 `REPAIR VECTOR INDEX IN DATABASE :database LIMIT :limit`（把派生向量索引修到与真相一致，
   重复执行直到 `remaining` 为 0；它**不重算向量**）
@@ -58,6 +60,10 @@ Database 已锁定的维度。写法固定的理由：**解错端序得到的是
 **`LIMIT` 是输出截断，不是召回强度。** 两路各自的内部候选数（向量路的 `k+m`）是实现细节；
 并集去重后按已有的"表名 + 路径"字典序截断到 `n`。这样 `LIMIT` 的含义在单臂与并集里一致，
 也不需要引入分数或权重——那会与「向量只用于定位，从不产出事实」冲突。
+
+**提交嵌入**用同一份编码：`ACCEPT VECTOR` 带的 `HASH` 是宿主**嵌入的那段文本**的哈希，
+引擎按自己的载荷规则重算、不匹配即拒——否则一条针对旧修订的向量会贴到当前修订上，
+而召回不返回分数，谁都看不出来。引擎从不自己算向量、不发网络请求。
 
 `MATCH :q NEAREST :v` 同时给出＝两路并集，语法现在就定死（`MATCH` 在前，不接受乱序）；
 执行期在融合步骤落地前返回 `unsupported_statement`，而不是只用一路作答。

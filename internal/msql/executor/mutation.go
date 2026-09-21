@@ -69,6 +69,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.repairLinks(ctx, statement.RepairLinks, bound, options)
 	case statement.RepairVector != nil:
 		return engine.repairVectorIndex(ctx, statement.RepairVector, bound, options)
+	case statement.AcceptVector != nil:
+		return engine.acceptVector(ctx, statement.AcceptVector, bound)
 	case statement.Recall != nil:
 		return engine.recall(ctx, statement.Recall, bound)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":

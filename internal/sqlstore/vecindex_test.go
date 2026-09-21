@@ -327,3 +327,50 @@ func TestRecallNearestAnswersThroughTheLanguage(t *testing.T) {
 		t.Fatal("a malformed query vector must be refused")
 	}
 }
+
+// The entry a client drains its backlog through: a Row is written, its unit is
+// not ready, and the host's embedding makes it answerable.
+func TestAcceptVectorMakesAUnitAnswerableThroughTheLanguage(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	rowID := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	unitNo, contentHash := h.recallUnit(rowID)
+	encoded, err := recall.EncodeVector([]float32{1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := map[string]any{"v": encoded, "unit": unitNo, "model": "text-embedding-v4", "hash": contentHash}
+
+	accepted := h.run(`ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash`,
+		named, write("attach an embedding"))
+	if accepted.AffectedRows != 1 || text(accepted.Rows[0]["model"]) != "text-embedding-v4" {
+		t.Fatalf("receipt = %+v", accepted)
+	}
+	if status, err := h.db.Rows().VectorStatus(context.Background(), "work", ""); err != nil || status.NotReady != 0 {
+		t.Fatalf("the unit must be ready now: %+v, %v", status, err)
+	}
+	hits := h.recallFrom(`RECALL FROM work NEAREST :v LIMIT 5`, map[string]any{"v": encoded})
+	if len(hits.Rows) != 1 || text(hits.Rows[0]["object_id"]) != rowID {
+		t.Fatalf("the accepted vector must recall the Row: %+v", hits.Rows)
+	}
+
+	// An embedding of some other text cannot be attached to this unit: that is
+	// the whole point of carrying the hash.
+	wrong := map[string]any{"v": encoded, "unit": unitNo, "model": "text-embedding-v4", "hash": "sha256:older-revision"}
+	if code := h.fails(`ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash`,
+		wrong, write("stale embedding")); code == "" {
+		t.Fatal("an embedding for different text must be refused")
+	}
+	// A different model cannot join the Database's index either.
+	other := map[string]any{"v": encoded, "unit": unitNo, "model": "text-embedding-v3", "hash": contentHash}
+	if code := h.fails(`ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash`,
+		other, write("another model")); code == "" {
+		t.Fatal("a second model must be refused once the identity is locked")
+	}
+	// A unit number from nowhere is refused rather than silently ignored.
+	missing := map[string]any{"v": encoded, "unit": unitNo + 999, "model": "text-embedding-v4", "hash": contentHash}
+	if code := h.fails(`ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash`,
+		missing, write("unknown unit")); code == "" {
+		t.Fatal("an unknown unit must be refused")
+	}
+}

@@ -34,6 +34,7 @@ type Statement struct {
 	OpenArchive   *OpenArchiveStatement        `json:"open_archive,omitempty"`
 	RepairLinks   *RepairLinksStatement        `json:"repair_links,omitempty"`
 	RepairVector  *RepairVectorStatement       `json:"repair_vector,omitempty"`
+	AcceptVector  *AcceptVectorStatement       `json:"accept_vector,omitempty"`
 	Recall        *RecallStatement             `json:"recall,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
@@ -203,6 +204,18 @@ type RecallStatement struct {
 type RepairLinksStatement struct {
 	Database *Name       `json:"database"`
 	Limit    *Expression `json:"limit"`
+}
+
+// AcceptVectorStatement records one host-computed embedding for one unit. The
+// engine never computes a vector: a host does, and offers it here. The content
+// hash names the text it was computed from, so an embedding of the previous
+// revision cannot be attached to the current one.
+type AcceptVectorStatement struct {
+	Values      *Expression `json:"values"`
+	Unit        *Expression `json:"unit"`
+	Database    *Name       `json:"database"`
+	Model       *Expression `json:"model"`
+	ContentHash *Expression `json:"content_hash"`
 }
 
 // RepairVectorStatement reconciles a Database's vector indexes with the truth
@@ -377,6 +390,11 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.RepairLinks.Limit)
 	case statement.RepairVector != nil:
 		appendExpression(statement.RepairVector.Limit)
+	case statement.AcceptVector != nil:
+		appendExpression(statement.AcceptVector.Values)
+		appendExpression(statement.AcceptVector.Unit)
+		appendExpression(statement.AcceptVector.Model)
+		appendExpression(statement.AcceptVector.ContentHash)
 	case statement.Recall != nil:
 		appendExpression(statement.Recall.Query)
 		appendExpression(statement.Recall.Vector)

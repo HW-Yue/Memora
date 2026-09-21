@@ -222,6 +222,19 @@ paths you got are real but the list may be incomplete. Read `not_ready_units`
 exhaustive. Do not retry hoping for more — `RECALL` never waits for embeddings;
 `memora doctor` reports the same count for the whole instance.
 
+If you compute embeddings yourself, you can offer one to a unit — that is how a
+backlog gets drained, one statement per unit, as many statements as you like in
+one request:
+
+```sh
+memora exec --input '{"parameters":{"named":{"v":"<base64>","unit":42,"model":"text-embedding-v4","hash":"sha256:..."}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embedding"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash"
+```
+
+`HASH` is the hash of the text you embedded, not of the Row: the engine recomputes
+it and refuses a mismatch, so an embedding of a previous revision cannot land on
+the current one. A unit the engine has no vector for simply stays not-ready —
+`RECALL` reports it, and nothing pretends it was attached.
+
 When you already have a query embedding — for instance the one you just computed
 for the text the user asked about — you can search by position instead of words:
 `RECALL FROM <db> [IN <table>] NEAREST :v LIMIT :n`. The vector travels as

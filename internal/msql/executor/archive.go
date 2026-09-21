@@ -269,6 +269,74 @@ func (engine *Engine) recall(ctx context.Context, statement *ast.RecallStatement
 	return engine.recallKeywords(ctx, statement, bound, databaseName, tableName, limit)
 }
 
+// acceptVector records one host-computed embedding for one unit. It is a write,
+// and it is the entry a client drains its backlog through: the language has no
+// array type, so one statement carries one embedding and a client that has many
+// sends a batch of statements.
+//
+// The engine does not compute vectors and does not judge them; it only refuses
+// to attach an embedding that does not describe what the unit currently holds.
+func (engine *Engine) acceptVector(ctx context.Context, statement *ast.AcceptVectorStatement, bound bindings) (Output, error) {
+	if statement == nil || statement.Values == nil || statement.Unit == nil || statement.Database == nil ||
+		statement.Model == nil || statement.ContentHash == nil {
+		return Output{}, executeError(result.CodeValidation,
+			"ACCEPT VECTOR needs values, FOR UNIT, IN DATABASE, MODEL and HASH")
+	}
+	if len(statement.Database.Parts) != 1 {
+		return Output{}, executeError(result.CodeValidation, "ACCEPT VECTOR takes a Database name, not a dotted name")
+	}
+	databaseName := statement.Database.Parts[0].Value
+	if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
+		return Output{}, err
+	}
+	unitNo, err := historyPositiveInteger(statement.Unit, catalog.Table{}, bound, "ACCEPT VECTOR unit number")
+	if err != nil {
+		return Output{}, err
+	}
+	model, err := relationshipString(statement.Model, catalog.Table{}, bound, "ACCEPT VECTOR model")
+	if err != nil {
+		return Output{}, err
+	}
+	contentHash, err := relationshipString(statement.ContentHash, catalog.Table{}, bound, "ACCEPT VECTOR content hash")
+	if err != nil {
+		return Output{}, err
+	}
+	if statement.Values == nil || containsIdentifier(statement.Values) {
+		return Output{}, executeError(result.CodeValidation, "ACCEPT VECTOR values must be a literal or parameter")
+	}
+	value, err := evaluate(statement.Values, catalog.Table{}, nil, bound)
+	if err != nil {
+		return Output{}, err
+	}
+	text, ok := value.(string)
+	if !ok {
+		return Output{}, executeError(result.CodeValidation,
+			"ACCEPT VECTOR values must be "+recall.VectorEncoding+" as TEXT")
+	}
+	vector, err := recall.DecodeVector(text)
+	if err != nil {
+		return Output{}, executeError(result.CodeValidation, err.Error())
+	}
+	identity, err := engine.rows.AcceptVector(ctx, databaseName, recall.VectorRecord{
+		UnitNo: int64(unitNo), ContentHash: contentHash, Model: model,
+		Dimensions: len(vector), Vector: vector,
+	})
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return Output{
+		Columns: []result.Column{
+			{Name: "unit_no", Type: "INTEGER"},
+			{Name: "model", Type: "TEXT"},
+			{Name: "dimensions", Type: "INTEGER"},
+		},
+		Rows: []result.Row{{
+			"unit_no": unitNo, "model": identity.Model, "dimensions": identity.Dimensions,
+		}},
+		AffectedRows: 1,
+	}, nil
+}
+
 // recallVectorQuery decodes the NEAREST arm: base64 of little-endian float32,
 // the one wire form a vector has. The contract is fixed rather than left to the
 // implementation because a wrong decode yields a *valid* vector — it would come

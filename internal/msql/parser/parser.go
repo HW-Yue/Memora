@@ -121,6 +121,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement = transactionStatement("COMMIT")
 	case parser.matchWord("RECALL"):
 		statement, err = parser.parseRecall()
+	case parser.matchWord("ACCEPT"):
+		return parser.parseAcceptVector()
 	case parser.matchWord("REPAIR"):
 		statement, err = parser.parseRepair()
 	case parser.matchWord("ROLLBACK"):
@@ -1489,6 +1491,57 @@ func (parser *parser) parseRepair() (ast.Statement, error) {
 	}
 	return ast.Statement{Kind: "REPAIR_LINKS", RepairLinks: &ast.RepairLinksStatement{
 		Database: &database, Limit: &limit,
+	}}, nil
+}
+
+// parseAcceptVector reads
+// ACCEPT VECTOR <values> FOR UNIT <n> IN DATABASE <name> MODEL <model> HASH <hash>.
+// One statement carries one embedding: the language has no array type, so a
+// batch is a batch of statements, which the client can send in one request.
+func (parser *parser) parseAcceptVector() (ast.Statement, error) {
+	if _, err := parser.expectWord("VECTOR"); err != nil {
+		return ast.Statement{}, err
+	}
+	values, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("FOR"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("UNIT"); err != nil {
+		return ast.Statement{}, err
+	}
+	unit, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("IN"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("DATABASE"); err != nil {
+		return ast.Statement{}, err
+	}
+	database, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("MODEL"); err != nil {
+		return ast.Statement{}, err
+	}
+	model, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("HASH"); err != nil {
+		return ast.Statement{}, err
+	}
+	hash, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "ACCEPT_VECTOR", AcceptVector: &ast.AcceptVectorStatement{
+		Values: &values, Unit: &unit, Database: &database, Model: &model, ContentHash: &hash,
 	}}, nil
 }
 

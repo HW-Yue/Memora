@@ -40,6 +40,7 @@ type Rows interface {
 	VectorStatus(context.Context, string, string) (recall.VectorStatus, error)
 	RepairLinks(context.Context, string, int) (repair.Receipt, error)
 	RepairVectorIndex(context.Context, string, int) (repair.VectorReceipt, error)
+	AcceptVector(context.Context, string, recall.VectorRecord) (recall.VectorIdentity, error)
 	ArchivePage(context.Context, string, string, string, string, int) ([]archive.Summary, archive.Page, error)
 	ArchiveRecord(context.Context, string) (archive.Record, error)
 	Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error)

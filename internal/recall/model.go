@@ -36,3 +36,24 @@ type VectorStatus struct {
 	Model          string
 	Dimensions     int
 }
+
+// VectorIdentity is the (model, dimensions) pair a Database commits to the first
+// time it accepts an embedding. Vectors from another model are not lower
+// quality, they are incomparable, and recall returns paths with no scores, so a
+// mixed index would be silently wrong rather than visibly bad.
+type VectorIdentity struct {
+	Model      string
+	Dimensions int
+	LockedAt   string
+}
+
+// VectorRecord is one embedding a host computed, offered for one unit. The
+// content hash is the handshake: it is the hash of the text the host embedded,
+// and the engine recomputes it from what the unit actually holds.
+type VectorRecord struct {
+	UnitNo      int64
+	ContentHash string
+	Model       string
+	Dimensions  int
+	Vector      []float32
+}

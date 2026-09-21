@@ -23,20 +23,13 @@ import (
 //     accepts a vector ("first use locks it"). Vectors from another model are
 //     not lower quality, they are incomparable; mixing them in one index is
 //     silent pollution rather than visible degradation.
-type VectorIdentity struct {
-	Model      string
-	Dimensions int
-	LockedAt   string
-}
-
-// VectorRecord is one embedding a host computed, offered for one unit.
-type VectorRecord struct {
-	UnitNo      int64
-	ContentHash string
-	Model       string
-	Dimensions  int
-	Vector      []float32
-}
+//
+// The vocabulary is shared with the executor, which speaks it without the
+// storage layer; these aliases are what the storage layer calls it.
+type (
+	VectorIdentity = recall.VectorIdentity
+	VectorRecord   = recall.VectorRecord
+)
 
 type recallUnit struct {
 	unitNo      int64
