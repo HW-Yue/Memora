@@ -1541,14 +1541,26 @@ func (parser *parser) parseRecall() (ast.Statement, error) {
 		}
 		recall.Table = &table
 	}
-	if _, err := parser.expectWord("MATCH"); err != nil {
-		return ast.Statement{}, err
+	// One arm at least, and MATCH always first: allowing either order would need
+	// a normalization step for no gain. Both together is the union, which the
+	// executor refuses until the fusion step lands.
+	if parser.matchWord("MATCH") {
+		query, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		recall.Query = &query
 	}
-	query, err := parser.parseExpression(1)
-	if err != nil {
-		return ast.Statement{}, err
+	if parser.matchWord("NEAREST") {
+		vector, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		recall.Vector = &vector
 	}
-	recall.Query = &query
+	if recall.Query == nil && recall.Vector == nil {
+		return ast.Statement{}, parser.errorAt(parser.peek(), "MATCH <text> or NEAREST <vector>")
+	}
 	if _, err := parser.expectWord("LIMIT"); err != nil {
 		return ast.Statement{}, err
 	}

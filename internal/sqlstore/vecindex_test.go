@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/msql/executor"
+	"github.com/HW-Yue/Memora/internal/recall"
 	"github.com/HW-Yue/Memora/internal/sqlstore"
 	"github.com/HW-Yue/Memora/internal/sqlstore/vecext"
 )
@@ -285,5 +287,43 @@ func TestVectorRecallRefusesAQueryItCannotAnswer(t *testing.T) {
 	h.acceptUnitVector(rowID, []float32{1, 0})
 	if _, err := h.db.Rows().RecallNearest(ctx, "work", "", []float32{1, 0, 0}, 5); err == nil {
 		t.Fatal("a query of the wrong width must be refused")
+	}
+}
+
+// The statement is the only way a caller reaches the vector arm, so it is tested
+// through the language rather than the store call it wraps.
+func TestRecallNearestAnswersThroughTheLanguage(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	rowID := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	h.acceptUnitVector(rowID, []float32{1, 0})
+	query, err := recall.EncodeVector([]float32{1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := h.recallFrom(`RECALL FROM work NEAREST :v LIMIT 5`, map[string]any{"v": query})
+	if len(result.Rows) != 1 {
+		t.Fatalf("the vector arm must answer with the position: %+v", result.Rows)
+	}
+	if got := text(result.Rows[0]["object_id"]); got != rowID {
+		t.Fatalf("object_id = %q, want %q", got, rowID)
+	}
+	for _, forbidden := range []string{"score", "distance", "rank", "reason", "content"} {
+		if _, present := result.Rows[0][forbidden]; present {
+			t.Fatalf("the vector arm must not return %q: %v", forbidden, result.Rows[0])
+		}
+	}
+
+	// Both arms at once is the union, which is specified but lands with the
+	// fusion step; until then it is refused rather than half-answered. And a
+	// query the engine cannot decode is refused rather than guessed at.
+	if code := h.fails(`RECALL FROM work MATCH :q NEAREST :v LIMIT 5`,
+		map[string]any{"q": "storage engine", "v": query}, executor.MutationOptions{}); code == "" {
+		t.Fatal("the union must be refused until it is implemented")
+	}
+	if code := h.fails(`RECALL FROM work NEAREST :v LIMIT 5`,
+		map[string]any{"v": "not base64!"}, executor.MutationOptions{}); code == "" {
+		t.Fatal("a malformed query vector must be refused")
 	}
 }

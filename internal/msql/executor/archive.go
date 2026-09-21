@@ -10,6 +10,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
+	"github.com/HW-Yue/Memora/internal/recall"
 	"github.com/HW-Yue/Memora/internal/result"
 )
 
@@ -227,12 +228,14 @@ func (engine *Engine) repairVectorIndex(ctx context.Context, statement *ast.Repa
 	}, nil
 }
 
-// recallKeywords answers a keyword query with semantic paths. What it does not
-// answer is just as much of the contract: no score, no reason, no matched field
-// and no content leave here, so a caller can only navigate with the result.
-func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallStatement, bound bindings) (Output, error) {
-	if statement == nil || statement.Database == nil || statement.Query == nil || statement.Limit == nil {
-		return Output{}, executeError(result.CodeValidation, "RECALL needs FROM, MATCH and LIMIT")
+// recall answers RECALL in either of its arms. Both name one intent — where does
+// this sit in the tree — and answer with the same shape, so they share one
+// statement, one permission check, one bound, one stable ordering. What the
+// answer never carries is just as much of the contract: no score, no distance,
+// no reason, no matched field and no content, so a caller can only navigate.
+func (engine *Engine) recall(ctx context.Context, statement *ast.RecallStatement, bound bindings) (Output, error) {
+	if statement == nil || statement.Database == nil || statement.Limit == nil {
+		return Output{}, executeError(result.CodeValidation, "RECALL needs FROM, an arm and LIMIT")
 	}
 	if len(statement.Database.Parts) != 1 || statement.Table != nil && len(statement.Table.Parts) != 1 {
 		return Output{}, executeError(result.CodeValidation, "RECALL takes a Database name and an optional Table name")
@@ -252,6 +255,57 @@ func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallS
 	if limit > maxQueryScan {
 		return Output{}, executeError(result.CodeValidation, "RECALL LIMIT must be between 1 and 1000")
 	}
+	switch {
+	case statement.Query != nil && statement.Vector != nil:
+		// The union is specified (LIMIT truncates the merged, de-duplicated
+		// output; the two arms' internal candidate counts are implementation
+		// detail) but not implemented until the fusion step lands. Refusing is
+		// honest; answering from one arm while ignoring the other is not.
+		return Output{}, executeError(result.CodeUnsupported,
+			"RECALL with both MATCH and NEAREST is not implemented yet")
+	case statement.Vector != nil:
+		return engine.recallNearest(ctx, statement, bound, databaseName, tableName, limit)
+	}
+	return engine.recallKeywords(ctx, statement, bound, databaseName, tableName, limit)
+}
+
+// recallVectorQuery decodes the NEAREST arm: base64 of little-endian float32,
+// the one wire form a vector has. The contract is fixed rather than left to the
+// implementation because a wrong decode yields a *valid* vector — it would come
+// back with valid paths for the wrong places and nothing in the answer to show
+// it. Dimensions are checked against the Database's identity in the store.
+func recallVectorQuery(value any) ([]float32, error) {
+	text, ok := value.(string)
+	if !ok || text == "" {
+		return nil, executeError(result.CodeValidation, "RECALL NEAREST needs the query vector as base64 TEXT")
+	}
+	query, err := recall.DecodeVector(text)
+	if err != nil {
+		return nil, executeError(result.CodeValidation, err.Error())
+	}
+	return query, nil
+}
+
+func (engine *Engine) recallNearest(ctx context.Context, statement *ast.RecallStatement, bound bindings, databaseName, tableName string, limit uint64) (Output, error) {
+	if statement.Vector == nil || containsIdentifier(statement.Vector) {
+		return Output{}, executeError(result.CodeValidation, "RECALL vector must be a literal or parameter")
+	}
+	value, err := evaluate(statement.Vector, catalog.Table{}, nil, bound)
+	if err != nil {
+		return Output{}, err
+	}
+	query, err := recallVectorQuery(value)
+	if err != nil {
+		return Output{}, err
+	}
+	hits, err := engine.rows.RecallNearest(ctx, databaseName, tableName, query, int(limit))
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return engine.recallOutput(ctx, hits, databaseName, tableName, limit)
+}
+
+func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallStatement, bound bindings, databaseName, tableName string, limit uint64) (Output, error) {
 	text, err := relationshipString(statement.Query, catalog.Table{}, bound, "RECALL query")
 	if err != nil {
 		return Output{}, err
@@ -269,6 +323,12 @@ func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallS
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
+	return engine.recallOutput(ctx, hits, databaseName, tableName, limit)
+}
+
+// recallOutput is the one place a recall answer is shaped, so both arms keep the
+// same columns, the same stable order and the same notice.
+func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, databaseName, tableName string, limit uint64) (Output, error) {
 	output := Output{
 		Columns: []result.Column{
 			{Name: "database", Type: "TEXT"},

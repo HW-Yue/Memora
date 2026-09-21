@@ -70,7 +70,7 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	case statement.RepairVector != nil:
 		return engine.repairVectorIndex(ctx, statement.RepairVector, bound, options)
 	case statement.Recall != nil:
-		return engine.recallKeywords(ctx, statement.Recall, bound)
+		return engine.recall(ctx, statement.Recall, bound)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
 		return engine.showRoutes(ctx, statement, bound)
 	case statement.CreateRoute != nil:

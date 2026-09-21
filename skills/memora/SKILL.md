@@ -222,6 +222,15 @@ paths you got are real but the list may be incomplete. Read `not_ready_units`
 exhaustive. Do not retry hoping for more — `RECALL` never waits for embeddings;
 `memora doctor` reports the same count for the whole instance.
 
+When you already have a query embedding — for instance the one you just computed
+for the text the user asked about — you can search by position instead of words:
+`RECALL FROM <db> [IN <table>] NEAREST :v LIMIT :n`. The vector travels as
+**base64 (raw URL-safe) of little-endian float32, no padding**, and must match the
+Database's locked width; a vector of the wrong width, or one carrying NaN, is
+refused rather than rounded. The answer has exactly the same shape as a keyword
+recall — so navigate the same way — and `LIMIT` means the same thing in both:
+it truncates the listing, it is not a recall strength.
+
 The vector index is derived from the units, and you can reconcile it without
 guessing: a bounded pass repairs index rows so they hold exactly what the units
 hold. It never recomputes a vector — a unit whose text moved on is stale, not

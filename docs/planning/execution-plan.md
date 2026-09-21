@@ -99,8 +99,9 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
   S1′ 向量真相两列 + 每库 (模型,维度) 身份锁 + 接受/拒收 ✓；S2′ 未就绪上报
   （`vectors_not_ready` 通知 + `doctor` 计数）✓；S3′ 每 (库,表) vec0 索引、
   同事务增量维护 ✓；S4 `REPAIR VECTOR INDEX IN DATABASE <db> LIMIT <n>`（reconcile，
-  重复到 `remaining` 为 0）✓。**下一件**：S5 向量召回接入 `RECALL`。
-- **M7 剩余**：F6 S5–S6 → F5（向量队列与回填）→ F7（融合闭环）。
+  重复到 `remaining` 为 0）✓；S5 向量召回接进 `RECALL`（`NEAREST :v` + 查询向量线上契约）✓。
+  **下一件**：S6（确定性与幂等验收套件）与两个提交入口。
+- **M7 剩余**：F6 S6 + 提交入口 → F5（向量队列与回填）→ F7（融合闭环）。
   向量由宿主侧算好交回，Memora 不发网络请求、不持有 base URL 与 key。
 - **下一件**：**M7 · F6**——详细方案见 [M7 召回：详细实施计划](./m7-recall-plan.md)。
   判定标准是「Agent 能不能找到东西」。**归档读面与修复队列冻结**：不再加面，

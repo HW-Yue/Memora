@@ -29,9 +29,10 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
 - Schema：`CREATE` / `ALTER`、`PLAN SCHEMA CHANGE` / `APPLY SCHEMA CHANGE`
 - 事务：`BEGIN`、`COMMIT`、`ROLLBACK`
 - 历史：`SHOW HISTORY`、`AS OF REVISION` / `COMMIT_SEQUENCE`
-- 召回：`RECALL FROM <database> [IN <table>] MATCH :q LIMIT :n`（关键词定位语义路径，
-  只回答"在哪"，不返回分数与正文；向量路见 [M7 召回](../planning/m7-recall-plan.md)）。
-  范围里有单元没有可用向量时，结果带 `vectors_not_ready` **通知**（聚合计数，不改 `rows`）
+- 召回：`RECALL FROM <database> [IN <table>] (MATCH :q | NEAREST :v) LIMIT :n`
+  —— 两条路说同一件事（"在哪"），所以同一条语句、同一个信封、同一套权限与稳定排序，
+  只回答位置，不返回分数／距离／排名／正文。范围里有单元没有可用向量时，结果带
+  `vectors_not_ready` **通知**（聚合计数，不改 `rows`）。详见 [召回的形状](#召回的形状)
 - 归档：`SHOW ARCHIVE`、`OPEN ARCHIVE`（删除后唯一的读面，见[行删除](../product/row-delete-archive.md)）
 - 修复：`REPAIR LINKS IN DATABASE :database LIMIT :limit`（出队一批懒修复，见[行链接](../product/row-links.md)）
   与 `REPAIR VECTOR INDEX IN DATABASE :database LIMIT :limit`（把派生向量索引修到与真相一致，
@@ -40,6 +41,26 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
   `RESTORE CONFIGURATION`
 
 专有能力用独立声明式语句，解析为明确的 AST 节点。
+
+## 召回的形状
+
+```sql
+RECALL FROM project_memora IN notes MATCH :q LIMIT 10;   -- 关键词
+RECALL FROM project_memora NEAREST :v LIMIT 10;          -- 向量
+```
+
+**查询向量的线上形式（契约，不是实现选择）**：`base64.RawURLEncoding`（无填充）编码的
+**小端 IEEE-754 float32 紧凑排列**，长度须是 4 的倍数，**不得含 NaN／Inf**，维度必须等于该
+Database 已锁定的维度。写法固定的理由：**解错端序得到的是一个合法向量**——它会返回一批
+合法但错误的路径，而召回不返回分数，答案里没有任何东西能显示这件事。MSQL 也没有数组类型，
+数字数组会让 `[]any` 变成一等参数值，牵连整个求值器。
+
+**`LIMIT` 是输出截断，不是召回强度。** 两路各自的内部候选数（向量路的 `k+m`）是实现细节；
+并集去重后按已有的"表名 + 路径"字典序截断到 `n`。这样 `LIMIT` 的含义在单臂与并集里一致，
+也不需要引入分数或权重——那会与「向量只用于定位，从不产出事实」冲突。
+
+`MATCH :q NEAREST :v` 同时给出＝两路并集，语法现在就定死（`MATCH` 在前，不接受乱序）；
+执行期在融合步骤落地前返回 `unsupported_statement`，而不是只用一路作答。
 
 ## 标准进入流程
 

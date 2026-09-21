@@ -36,6 +36,7 @@ type Rows interface {
 	AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error)
 	HistoryPage(context.Context, string, string, string, string, int) ([]history.Record, history.ReadPage, error)
 	RecallKeywords(context.Context, string, string, string, int) ([]recall.Hit, error)
+	RecallNearest(context.Context, string, string, []float32, int) ([]recall.Hit, error)
 	VectorStatus(context.Context, string, string) (recall.VectorStatus, error)
 	RepairLinks(context.Context, string, int) (repair.Receipt, error)
 	RepairVectorIndex(context.Context, string, int) (repair.VectorReceipt, error)

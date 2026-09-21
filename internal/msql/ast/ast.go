@@ -187,10 +187,15 @@ type UpdateRouteStatement struct {
 // RecallStatement asks where a keyword match sits in the semantic tree. It
 // answers with paths, never with matches: no score, no reason, no content.
 type RecallStatement struct {
-	Database *Name       `json:"database"`
-	Table    *Name       `json:"table,omitempty"`
-	Query    *Expression `json:"query"`
-	Limit    *Expression `json:"limit"`
+	Database *Name `json:"database"`
+	Table    *Name `json:"table,omitempty"`
+	// Query is the lexical arm: the text to match. Vector is the vector arm: the
+	// query embedding, base64 of little-endian float32 (see docs/query/msql.md).
+	// Both name the same intent — where does this sit in the tree — and answer
+	// with the same shape, so they share one statement rather than two.
+	Query  *Expression `json:"query,omitempty"`
+	Vector *Expression `json:"vector,omitempty"`
+	Limit  *Expression `json:"limit"`
 }
 
 // RepairLinksStatement drains a bounded batch of queued link repairs. It is a
@@ -374,6 +379,7 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.RepairVector.Limit)
 	case statement.Recall != nil:
 		appendExpression(statement.Recall.Query)
+		appendExpression(statement.Recall.Vector)
 		appendExpression(statement.Recall.Limit)
 	case statement.PlanRoute != nil:
 		appendExpression(statement.PlanRoute.Proposal)
