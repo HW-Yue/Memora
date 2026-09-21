@@ -314,9 +314,14 @@ Two rules that matter more than the call itself:
   repository's own tree: a clear intent came back `1.0`, a deliberately vague one
   (`嗯……那个东西`) came back `0.58` — treat that neighbourhood as unresolved.
 
+The fallback is mechanical if you want it to be: pass `--min-confidence 0.8` and a
+weaker answer comes back as exit `5` with its confidence, so you choose the child
+yourself or ask the user instead of acting on a coin flip.
+
 Exit codes tell you what happened: `0` answered, `2` no key configured (choose
 yourself — this is not an error), `3` the provider refused or answered something
-that is not one of the options, `4` the request was malformed. `--dry-run` prints
+that is not one of the options, `4` the request was malformed, `5` the answer was
+below `--min-confidence`. `--dry-run` prints
 the request without sending it, which is the cheap way to see what would travel.
 
 ## Decide where knowledge lives

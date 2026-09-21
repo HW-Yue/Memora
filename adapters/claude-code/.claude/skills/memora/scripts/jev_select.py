@@ -44,6 +44,7 @@ EXIT_ANSWERED = 0
 EXIT_NOT_CONFIGURED = 2
 EXIT_PROVIDER_REFUSED = 3
 EXIT_BAD_INPUT = 4
+EXIT_BELOW_THRESHOLD = 5
 
 
 def from_environment(name):
@@ -139,6 +140,8 @@ def main():
     parser = argparse.ArgumentParser(description="Choose a layer's child with jev")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the request that would be sent, send nothing")
+    parser.add_argument("--min-confidence", type=float, default=None,
+                        help="refuse an answer below this confidence instead of returning it")
     arguments = parser.parse_args()
 
     intent, criteria = read_request()
@@ -165,7 +168,17 @@ def main():
     choice = chosen.get("choice")
     if not choice or choice not in criteria:
         fail(EXIT_PROVIDER_REFUSED, "the provider answered with something that is not one of the options")
-    json.dump({"choice": choice, "confidence": chosen.get("confidence"),
+    confidence = chosen.get("confidence")
+    # The fallback has to be a decision the caller can act on, not a number it has
+    # to interpret: given a threshold, a weak answer is refused here, and the
+    # caller chooses the child itself or asks the user.
+    if arguments.min_confidence is not None and (confidence is None or confidence < arguments.min_confidence):
+        json.dump({"error": "confidence %s is below the requested minimum %s"
+                            % (confidence, arguments.min_confidence),
+                   "choice": choice, "confidence": confidence}, sys.stdout)
+        sys.stdout.write("\n")
+        return EXIT_BELOW_THRESHOLD
+    json.dump({"choice": choice, "confidence": confidence,
                "probabilities": chosen.get("probabilities", {}), "model": answer.get("model")},
               sys.stdout)
     sys.stdout.write("\n")
