@@ -36,8 +36,13 @@
 **结论一 · 删除 = 归档后物理删除**。一个事务里：① 删除前的完整语义树路径与节点/行内容
 写进**归档表**；② 主表整行删除（含 `route_leaf_id`）；③ 删掉它那一个叶子；④ 自底向上剪枝
 ——父节点摘掉这个子节点后**没有其它子节点才连父一起删**，还有其它子节点就只摘 `child_ids`
-里的这一项；⑤ 该行 history 全部删除，不归档。**恢复不由引擎做**：归档表是引擎逻辑的终点，
-Agent 读归档自己重建。
+里的这一项；⑤ **摘链接**：链接两面都存，被删行自己的 `links` 就是「谁指向我」的清单，
+逐个到对面行里把这一条删掉，对面行照常 `revision + 1`、写 history；⑥ 该行 history 全部删除，
+不归档。**恢复不由引擎做**：归档表是引擎逻辑的终点，Agent 读归档自己重建。
+
+**补定（2026-09-21）· 入向链接同步摘掉，不走懒更新**。理由：两面都已经在库里，
+被删行的 `links` 就是反向索引，倒推即得，不需要扫全库找悬空链接；留着悬空就违反了
+[行链接](./product/row-links.md)「两面必须一致」。
 
 **结论二 · history 只记原地修改**。SPLIT 时源行 history 不动，两个新行各建自己的 history
 并**指向源行 history**；MERGE 的新行 history 指向多个来源（所以指针是列表）。源行仍留主表，
@@ -49,11 +54,12 @@ history 只承载「这一行被改过什么」，身份变化用指针表达，
 **弃选**：① 只置 `deprecated` 留墓碑（现状）——主表与树上长期堆死节点，恢复也没有自足快照；
 ② 引擎提供 RESTORE——恢复的判断属于 Agent，引擎只保证归档自足。
 
-**未决**（下次定）：别的行 `links` 指着被删行时怎么处理；history 指针字段的位置；
-它与 `successor_ids` 是否重复（[架构原则 §2](./product/architecture-principles.md)）。
+**未决**（下次定）：history 指针字段的位置；它与 `successor_ids` 是否重复
+（[架构原则 §2](./product/architecture-principles.md)）；级联摘链接的写预算口径
+（`max_affected_rows` 现在只算目标行）。
 
 **落盘**：[行删除](./product/row-delete-archive.md)、[history 谱系](./product/history-lineage.md)；
-已修订 `write-model` §1.2、`query-model` §7、`row-lifecycle-successor`、`msql-mutation`。
+已修订 `write-model` §1.2、`query-model` §7、`row-lifecycle-successor`、`row-links`、`msql-mutation`。
 
 ## 2026-09-21 · 挂载定为 1:1：一行只占一个叶子
 

@@ -34,8 +34,9 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 ### 归档式删除 + history 谱系（新规格，待排期）
 
 [行删除](../product/row-delete-archive.md) 与 [history 谱系](../product/history-lineage.md)。
-未决先定：入向链接怎么办、history 指针字段的位置与 `successor_ids` 的关系。
-挂载 1:1 已在 [写入形态](../product/write-model.md) §1.3 定案。
+未决先定：history 指针字段的位置与 `successor_ids` 的关系、级联摘链接的写预算口径。
+挂载 1:1 已在 [写入形态](../product/write-model.md) §1.3 定案；
+入向链接由删除事务倒推摘掉，见[行链接](../product/row-links.md) §与删除。
 
 ### 召回架构
 
