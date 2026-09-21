@@ -39,7 +39,8 @@ Router 与 `OPEN ROUTE` 只给位置，不给正文。
 
 ## 写入时的树
 
-INSERT / SPLIT 必须让每个 live 行挂在**恰好一个**叶子上（[行必须可导航](../planning/row-navigable.md)，待做）。
+INSERT / SPLIT 必须让每个 live 行挂在**恰好一个**叶子上，已在提交路径强制
+（[行必须可导航](../planning/row-navigable.md)）。
 UPDATE 缺省 `route_leaf_id` 表示保留挂载；DELETE 改为[归档后物理删除](../product/row-delete-archive.md)，
 行与它那个叶子一起没了。
 改树用 `CREATE ROUTE` / `PLAN ROUTE MUTATION`，带 expected revision。引擎不替 Agent 起名字。

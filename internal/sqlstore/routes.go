@@ -402,6 +402,22 @@ func (t *tx) unmountRow(ctx context.Context, table catalog.Table, rowID, leafID 
 	return err
 }
 
+// unmountLeaf frees a leaf whose Row has moved on. The Row is the authority on
+// which leaf it hangs under, so leaving the leaf's row_id behind would make the
+// two directions disagree — and would keep the leaf from ever taking another
+// Row. A leaf with no Row is a normal empty leaf, not a node to prune.
+func (t *tx) unmountLeaf(ctx context.Context, table catalog.Table, rowID, leafID string) error {
+	node, err := t.readRoute(ctx, table.ID, leafID)
+	if err != nil {
+		return err
+	}
+	if node.RowID != rowID {
+		return nil
+	}
+	node.RowID = ""
+	return t.saveRoute(ctx, table, node, change.OperationUpdate)
+}
+
 func without(values []string, drop string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {

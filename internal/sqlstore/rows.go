@@ -251,6 +251,9 @@ func (t *tx) insert(ctx context.Context, databaseName, tableName string, values 
 		return row.Row{}, err
 	}
 	value.RouteLeafIDs = leaves
+	if err := requireSingleLeaf(value); err != nil {
+		return row.Row{}, err
+	}
 	if err := t.writeRow(ctx, table, value, true); err != nil {
 		return row.Row{}, err
 	}
@@ -356,12 +359,27 @@ func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID strin
 	}
 	related := []string{}
 	if options.RouteLeafIDs != nil {
+		// The snapshot is the Row's complete membership, so this replaces rather
+		// than adds. A Row that names another leaf moves, and the leaf it left
+		// must stop pointing at it — otherwise the two directions disagree and
+		// that leaf could never take another Row.
 		leaves, err := t.mountLeaves(ctx, table, value.ID, options.RouteLeafIDs)
 		if err != nil {
 			return row.Row{}, err
 		}
+		for _, previous := range value.RouteLeafIDs {
+			if contains(leaves, previous) {
+				continue
+			}
+			if err := t.unmountLeaf(ctx, table, value.ID, previous); err != nil {
+				return row.Row{}, err
+			}
+		}
 		related = append(related, leaves...)
-		value.RouteLeafIDs = mergeLeaves(value.RouteLeafIDs, leaves)
+		value.RouteLeafIDs = leaves
+	}
+	if err := requireSingleLeaf(value); err != nil {
+		return row.Row{}, err
 	}
 	if err := t.advance(ctx, table, &value); err != nil {
 		return row.Row{}, err
@@ -518,8 +536,31 @@ func (t *tx) restore(ctx context.Context, databaseName, tableName, rowID string,
 
 // ---- leaf mounting ----
 
+// requireSingleLeaf keeps the mount one-to-one. A live Row with no leaf can
+// never be navigated to, and one with several breaks the equality between the
+// leaf's row_id and the Row's own mount (docs/product/write-model.md §1.3).
+// It runs before anything is written, so a refusal leaves nothing half-applied.
+func requireSingleLeaf(value storedRow) error {
+	if value.State != row.StateLive || len(value.RouteLeafIDs) == 1 {
+		return nil
+	}
+	return fail(result.CodeConstraint,
+		"a live Row needs exactly one leaf, got %d: attach an empty leaf, or create one first",
+		len(value.RouteLeafIDs))
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 // mountLeaves points each named leaf at rowID. A leaf holds at most one live
-// row; a row may hang under many leaves.
+// row and a live Row hangs under exactly one leaf; requireSingleLeaf enforces
+// the second half at the call sites that write a Row.
 func (t *tx) mountLeaves(ctx context.Context, table catalog.Table, rowID string, leafIDs []string) ([]string, error) {
 	leaves := dedupe(append([]string{}, leafIDs...))
 	for _, leafID := range leaves {

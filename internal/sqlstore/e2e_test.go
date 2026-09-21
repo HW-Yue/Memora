@@ -178,10 +178,14 @@ func TestAgentJourneyOnSQLite(t *testing.T) {
 		t.Fatal("no committed changes recorded")
 	}
 
-	// Explicit transaction: rollback leaves nothing behind.
+	// Explicit transaction: rollback leaves nothing behind. The probe Row needs
+	// its own leaf, because the one above already holds the first Row.
+	spare := text(h.run(`CREATE ROUTE UNDER :parent NAME 'spare' KIND 'leaf' PURPOSE 'Rollback probe'`,
+		map[string]any{"parent": branchID}, write("spare")).Rows[0]["route_id"])
 	h.run(`BEGIN`, nil, executor.MutationOptions{})
 	tx := write("rolled back")
 	tx.ExpectedSchemaVersion = expected
+	tx.RouteLeafIDs = []string{spare}
 	h.run(`INSERT INTO work.notes (title) VALUES ('temporary')`, nil, tx)
 	h.run(`ROLLBACK`, nil, executor.MutationOptions{})
 	report, err := h.db.Doctor(context.Background())
@@ -233,11 +237,20 @@ func TestSplitSupersedesTheSourceWithSuccessors(t *testing.T) {
 	h := newHarness(t)
 	h.run(`CREATE DATABASE work PURPOSE 'p' SCOPE 's'`, nil, executor.MutationOptions{})
 	h.run(`CREATE TABLE work.notes PURPOSE 'p' ROW SEMANTICS 'r' (title TEXT NOT NULL PURPOSE 'title' ROLE title)`, nil, executor.MutationOptions{})
-	row := text(h.run(`INSERT INTO work.notes (title) VALUES ('both facts')`, nil, write("seed")).Rows[0]["row_id"])
+	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'root'`, nil, write("root")).Rows[0]["route_id"])
+	leaves := []string{}
+	for _, name := range []string{"seed", "first", "second"} {
+		leaves = append(leaves, text(h.run(`CREATE ROUTE UNDER :p NAME :name KIND 'leaf' PURPOSE 'leaf'`,
+			map[string]any{"p": root, "name": name}, write(name)).Rows[0]["route_id"]))
+	}
+	seed := write("seed")
+	seed.RouteLeafIDs = []string{leaves[0]}
+	row := text(h.run(`INSERT INTO work.notes (title) VALUES ('both facts')`, nil, seed).Rows[0]["row_id"])
+
 	split := write("split")
 	split.ExpectedRevision = 1
 	split.MaxAffectedRows = 3
-	split.TargetRouteLeafIDs = [][]string{{}, {}}
+	split.TargetRouteLeafIDs = [][]string{{leaves[1]}, {leaves[2]}}
 	h.run(`SPLIT work.notes ROW :row INTO (title) VALUES ('fact one'), ('fact two')`, map[string]any{"row": row}, split)
 	successors, err := h.db.Successors(context.Background(), "work", "notes", row)
 	if err != nil || len(successors) != 2 {

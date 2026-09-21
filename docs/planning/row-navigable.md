@@ -1,8 +1,12 @@
 # 行必须可导航
 
-状态：讨论稿，待授权。
+状态：讨论稿，待授权；**写入侧已实现**（2026-09-21，见下）。
 
 live 行提交后，必须被**恰好一个**活跃叶子指向。零叶子的行写进去了，语义树上永远走不到，等于静默丢失。
+
+**进度**：INSERT／UPDATE／SPLIT-MERGE 目标已在 `sqlstore` 提交路径强制（长度 ≠ 1 即
+`constraint_violation`，零写入），UPDATE 的挂载同时改为替换语义；`DELETE ROUTE` 那条
+（摘叶子不能把 live 行打成零叶子）留给节点生命周期那一块。
 
 判据是叶子上的 RowID，不是独立 membership。`exec` 直连和 Mutation Plan 走同一条 `sqlstore` 提交路径，都要拦。
 

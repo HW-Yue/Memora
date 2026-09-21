@@ -41,21 +41,17 @@ INSERT 要求非零 `expected_schema_version` 和 1–1000 的 `max_affected_row
 F17a 的 `actor`、`source` 和 `reason` 也属于结构化 options，并原样进入已提交 History provenance；它们不参与 Parser、predicate 或 value expression。
 
 `route_leaf_ids` 是提交后完整 Router membership 快照，位于结构化 option 而不是
-SQL source。非 nil 空数组**本意**是显式清空；目标必须是同一 Database 的 leaf。快照、Row
+SQL source。目标必须是同一 Database 的 leaf。快照、Row
 revision、History、Route locator 和 Change Log 原子提交。
 **DELETE 已改为归档后物理删除**（2026-09-21）：行、它占用的叶子、因此变空的父节点
 和它的 history 一并删除，删除前的语义路径与内容先进归档表，见
 [行删除](../product/row-delete-archive.md)。
 
-**挂载已定为 1:1**（2026-09-21）：一行只占一个叶子，快照里恰好一个 leaf id。
-字段与其单数名 `route_leaf_id` 的改名是一次外部契约变更（现行 option 名与 Skill／
-适配器里的写法仍是 `route_leaf_ids`），待契约版本一起动。
-
-**实现现状与目标不一致（2026-09-21 实测）**：行级 UPDATE 的挂载是**并集**语义
-（`mergeLeaves`），不是快照替换——`[]` 是空操作而非清空，给第二个 leaf 会**累加**成两个。
-上面那句「非 nil 空数组显式清空」在行级路径上**不成立**。1:1 要求替换语义，
-须随模块 2 的「挂载必须恰好一个」一起改；已由
-`internal/sqlstore/write_path_test.go` 的 `TestUpdateMountIsAUnionNotAReplacement` 钉住。
+**挂载已定为 1:1 并已实现**（2026-09-21）：一行只占一个叶子，快照里恰好一个 leaf id；
+提交时长度 ≠ 1（含 `[]`）整事务拒绝、零写入。行级 UPDATE 的挂载是**替换**语义
+（不再是并集）：快照就是这行的完整 membership，换叶子即移动，被离开的叶子当场清空行
+指针、可以立刻被别的行使用。字段与其单数名 `route_leaf_id` 的改名仍是外部契约变更
+（现行 option 名与 Skill／适配器里的写法还是 `route_leaf_ids`），待契约版本一起动。
 
 普通 UPDATE 缺少 `route_leaf_ids` 时保留当前 membership，并把 locator revision
 推进到新 Row revision；这只适用于语义边界没有改变的修改。INSERT 由 Skill 提交完整

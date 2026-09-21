@@ -102,21 +102,6 @@ func (h *harness) insertTitle(title string, leaves []string) string {
 	return text(result.Rows[0]["row_id"])
 }
 
-// Today an INSERT without any leaf commits. The Row then exists, is live, and
-// can never be reached by navigation — the hole the invariant layer closes.
-func TestInsertWithoutALeafCommitsAnUnreachableRow(t *testing.T) {
-	h := newHarness(t)
-	h.seedNotes()
-
-	rowID := h.insertTitle("orphan", nil)
-	if leaves := h.storedLeaves(rowID); len(leaves) != 0 {
-		t.Fatalf("leaves = %v", leaves)
-	}
-	if h.liveRows() != 1 {
-		t.Fatalf("live rows = %d", h.liveRows())
-	}
-}
-
 func TestInsertMountsTheRowOnItsLeaf(t *testing.T) {
 	h := newHarness(t)
 	_, leaf := h.seedNotes()
@@ -186,40 +171,6 @@ func TestInsertReassignsALeafWhoseHolderIsNoLongerLive(t *testing.T) {
 	opened := h.run(`OPEN ROUTE :leaf LIMIT 1`, map[string]any{"leaf": leaf}, executor.MutationOptions{})
 	if len(opened.Rows) != 1 || text(opened.Rows[0]["row_id"]) != second {
 		t.Fatalf("open route = %v", opened.Rows)
-	}
-}
-
-// The mount option on UPDATE is a UNION, not a replacement: omitting it keeps
-// what is there, an explicit empty array is a no-op rather than a clear, and
-// naming another leaf adds it. Both of the last two are what 1:1 has to stop.
-func TestUpdateMountIsAUnionNotAReplacement(t *testing.T) {
-	h := newHarness(t)
-	root, leaf := h.seedNotes()
-	rowID := h.insertTitle("first", []string{leaf})
-
-	keep := write("refine")
-	keep.ExpectedRevision = 1
-	h.run(`UPDATE work.notes SET title = 'kept' WHERE row_id = :row`, map[string]any{"row": rowID}, keep)
-	if leaves := h.storedLeaves(rowID); len(leaves) != 1 || leaves[0] != leaf {
-		t.Fatalf("an UPDATE without a mount must keep it: %v", leaves)
-	}
-
-	clear := write("clear")
-	clear.ExpectedRevision = 2
-	clear.RouteLeafIDs = []string{}
-	h.run(`UPDATE work.notes SET title = 'still mounted' WHERE row_id = :row`, map[string]any{"row": rowID}, clear)
-	if leaves := h.storedLeaves(rowID); len(leaves) != 1 || leaves[0] != leaf {
-		t.Fatalf("an empty mount is a no-op today, not a clear: %v", leaves)
-	}
-
-	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'Second leaf'`,
-		map[string]any{"p": root}, write("second")).Rows[0]["route_id"])
-	add := write("add")
-	add.ExpectedRevision = 3
-	add.RouteLeafIDs = []string{second}
-	h.run(`UPDATE work.notes SET title = 'two leaves' WHERE row_id = :row`, map[string]any{"row": rowID}, add)
-	if leaves := h.storedLeaves(rowID); len(leaves) != 2 {
-		t.Fatalf("naming a second leaf must add it today: %v", leaves)
 	}
 }
 

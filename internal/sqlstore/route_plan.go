@@ -230,6 +230,11 @@ func (t *tx) moveMembership(ctx context.Context, table catalog.Table, move route
 		return err
 	}
 	value.RouteLeafIDs = mergeLeaves(value.RouteLeafIDs, []string{target.ID})
+	// A plan that would leave the Row under no leaf, or under more than one, is
+	// refused like any other write: the Row is live and the mount is one-to-one.
+	if err := requireSingleLeaf(value); err != nil {
+		return err
+	}
 	_, err = t.q().ExecContext(ctx, `UPDATE `+dataTable(table.ID)+` SET route_leaf_ids = ? WHERE row_id = ?`,
 		encodeJSON(value.RouteLeafIDs), value.ID)
 	return err
