@@ -987,3 +987,11 @@ Admin 搜索页仍是关键词单臂 + 跨库交错，第二阶段接向量臂�
 并在 stderr 点名）；`internal/embedding` 的配置测试补了 `MEMORA_EMBEDDING_BATCH` 的取值与非法值。
 原有"provider 挂了不许假装做完"的测试保持通过。判据达成：**32 个单元、provider 每次只收 10 个也
 能一次排干**。
+
+## 2026-09-21 · D17 已修：`memora exec --input` 能装一批语句
+
+`--input` 现在接受**一个 `StatementInput` 对象，或一个对象数组**：数组里一条对象对应一条语句、
+按源码顺序，数量由引擎校验（必须与语句数一致，或整体省略）；两种形状都保持严格——未知字段、
+尾部内容、空数组都拒绝。Skill 的向量一节补上批量写法（并说明 provider 的批上限属于宿主，
+`MEMORA_EMBEDDING_BATCH` 声明、宿主的排干会自己拆被拒的批）。证据：`internal/cli/input_test.go`
+（RED 是缺 `decodeStatementInputs` 时的编译失败，GREEN 是同一测试通过）。

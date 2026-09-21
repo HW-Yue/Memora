@@ -257,6 +257,17 @@ one request:
 memora exec --input '{"parameters":{"named":{"v":"<base64>","unit":42,"model":"text-embedding-v4","hash":"sha256:..."}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embedding"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash"
 ```
 
+A batch is several statements in one request, and `--input` takes **one object per
+statement as an array** — one `ACCEPT VECTOR`, one input, in source order:
+
+```sh
+memora exec --input '[{"parameters":{"named":{"v":"<b64>","unit":42,"model":"text-embedding-v4","hash":"sha256:a"}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embeddings"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}},{"parameters":{"named":{"v":"<b64>","unit":43,"model":"text-embedding-v4","hash":"sha256:b"}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embeddings"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}]' "ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash; ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash"
+```
+
+Your provider may cap how many texts one embedding request may carry; that is the
+host's business, not the language's (`MEMORA_EMBEDDING_BATCH` declares the cap, and
+the CLI splits a refused batch on its own).
+
 `HASH` is the hash of the text you embedded, not of the Row: the engine recomputes
 it and refuses a mismatch, so an embedding of a previous revision cannot land on
 the current one. A unit the engine has no vector for simply stays not-ready —

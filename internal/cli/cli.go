@@ -120,6 +120,49 @@ func defaultExecute(ctx context.Context, dataDir, source string, inputs []execut
 
 // withoutReadOnly adapts the daemon round trip to transports that decide their own
 // policy (the admin API validates reads itself) and therefore carry no mode.
+// decodeStatementInputs accepts one StatementInput object or a list of them.
+//
+// The language carries a batch as several statements, and each statement may need
+// its own parameters, mutation and authorization — the Admin gateway has always
+// sent them as an array. Refusing the array here made "batch = a batch of
+// statements" unreachable from the CLI, so the only way to offer N vectors was N
+// round trips. Both shapes stay strict: unknown fields and trailing content are
+// rejected either way.
+func decodeStatementInputs(source string) ([]executor.StatementInput, error) {
+	trimmed := bytes.TrimSpace([]byte(source))
+	if len(trimmed) == 0 {
+		return nil, errors.New("the input is empty")
+	}
+	if trimmed[0] == '[' {
+		inputs := []executor.StatementInput{}
+		if err := decodeStrict(source, &inputs); err != nil {
+			return nil, err
+		}
+		if len(inputs) == 0 {
+			return nil, errors.New("an input array must carry at least one statement input")
+		}
+		return inputs, nil
+	}
+	input := executor.StatementInput{}
+	if err := decodeStrict(source, &input); err != nil {
+		return nil, err
+	}
+	return []executor.StatementInput{input}, nil
+}
+
+func decodeStrict(source string, target any) error {
+	decoder := json.NewDecoder(bytes.NewBufferString(source))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return errors.New("the input carries trailing content")
+	}
+	return nil
+}
+
 func withoutReadOnly(execute ExecuteMSQL) func(context.Context, string, string, []executor.StatementInput) (result.Envelope, error) {
 	return func(ctx context.Context, dataDir, source string, inputs []executor.StatementInput) (result.Envelope, error) {
 		return execute(ctx, dataDir, source, inputs, false)
@@ -287,15 +330,12 @@ func runExecute(
 	}
 	statements := []executor.StatementInput{}
 	if inputJSON != "" {
-		var input executor.StatementInput
-		decoder := json.NewDecoder(bytes.NewBufferString(inputJSON))
-		decoder.DisallowUnknownFields()
-		decoder.UseNumber()
-		if err := decoder.Decode(&input); err != nil ||
-			decoder.Decode(&struct{}{}) != io.EOF {
-			return usageError(stderr, "--input must be one strict StatementInput JSON object")
+		inputs, err := decodeStatementInputs(inputJSON)
+		if err != nil {
+			return usageError(stderr,
+				"--input must be one strict StatementInput JSON object, or an array of them: "+err.Error())
 		}
-		statements = append(statements, input)
+		statements = inputs
 	}
 	dataDir, code := daemonDataDir(daemonArgs, stderr, dependencies)
 	if code != ExitOK {
