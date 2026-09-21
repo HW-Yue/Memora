@@ -34,6 +34,7 @@ type executePayload struct {
 
 type databaseHandler struct {
 	context   context.Context
+	identity  Identity
 	database  *sqlstore.DB
 	security  *security.Service
 	msql      *msqlservice.Service
@@ -41,12 +42,13 @@ type databaseHandler struct {
 	closeErr  error
 }
 
-func newHandler(ctx context.Context, database *sqlstore.DB) *databaseHandler {
+func newHandler(ctx context.Context, database *sqlstore.DB, identity Identity) *databaseHandler {
 	rows := database.Rows()
 	handler := &databaseHandler{
 		context:  ctx,
 		database: database,
 		security: security.New(database.KV("security"), security.Options{}),
+		identity: identity,
 	}
 	handler.msql = msqlservice.New(ctx, msqlservice.Config{
 		Catalog: database, Rows: rows,
@@ -140,6 +142,11 @@ func (handler *databaseHandler) Handle(
 			response, responseErr = nil, err
 		}
 	}()
+	if request.Method == "build" {
+		// The daemon's own identity, so a client can tell whether it is talking to
+		// the same build it is running.
+		return json.Marshal(handler.identity)
+	}
 	if request.Method == "doctor" {
 		report, err := handler.doctor(ctx)
 		if err != nil {

@@ -121,7 +121,7 @@ func Inspect(dataDir string) (State, error) {
 }
 
 // Run serves one Instance until ctx is cancelled.
-func Run(ctx context.Context, dataDir string, ready chan<- State) error {
+func Run(ctx context.Context, dataDir string, identity Identity, ready chan<- State) error {
 	lease, err := Acquire(dataDir)
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func Run(ctx context.Context, dataDir string, ready chan<- State) error {
 	if err != nil {
 		return err
 	}
-	handler := newHandler(ctx, database)
+	handler := newHandler(ctx, database, identity)
 	server := ipc.NewServer(handler)
 	if ready != nil {
 		select {

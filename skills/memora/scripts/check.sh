@@ -12,7 +12,21 @@ if ! command -v memora >/dev/null 2>&1; then
 fi
 
 if version=$(memora version --json 2>/dev/null); then
-  printf '{"status":"ready","version":%s}\n' "$version"
+  # The CLI's own version says nothing about the daemon serving the instance, and
+  # one instance has exactly one daemon — so ask it too. A daemon that cannot
+  # answer is not agreement, it is an unknown, which is why the comparison is a
+  # refusal to say "ready" rather than a warning.
+  instance=$(memora daemon status --json 2>/dev/null || true)
+  state=ready
+  case "$instance" in
+    *'"skewed":true'*) state=skewed ;;
+    "") state=unknown ;;
+  esac
+  if [ -z "$instance" ]; then
+    printf '{"status":"%s","version":%s,"install_url":"%s"}\n' "$state" "$version" "$install_url"
+  else
+    printf '{"status":"%s","version":%s,"instance":%s}\n' "$state" "$version" "$instance"
+  fi
   exit 0
 fi
 

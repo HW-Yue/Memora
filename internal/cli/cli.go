@@ -150,7 +150,7 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		}
 		return writeText(stdout, stderr, helpText)
 	case "daemon":
-		return runDaemon(args[1:], stdout, stderr, dependencies)
+		return runDaemon(args[1:], stdout, stderr, build, dependencies)
 	case "admin":
 		return runAdmin(args[1:], stdout, stderr, dependencies)
 	case "doctor":
@@ -607,12 +607,80 @@ func runMCP(args []string, stdout, stderr io.Writer, build BuildInfo, dependenci
 	return ExitOK
 }
 
-func runDaemon(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {
+// daemonStatus answers "which build is serving this instance, and is it the one
+// asking?". It asks the daemon itself: an instance directory outlives the process
+// that wrote it, so anything recorded on disk is stale after a restart or after a
+// binary swapped in place. A daemon that cannot even answer is treated as
+// unconfirmed, which is not the same as agreement.
+func daemonStatus(ctx context.Context, dataDir string, build BuildInfo, state daemon.State) (map[string]any, error) {
+	report := map[string]any{
+		"running": state.Running,
+		"pid":     state.PID,
+		"cli": map[string]any{
+			"version": build.Version, "commit": build.Commit, "built_at": build.BuiltAt,
+			"engine_protocol": ipc.EngineProtocol,
+		},
+		"skewed": false,
+	}
+	if !state.Running {
+		return report, nil
+	}
+	identity, err := daemonIdentity(ctx, dataDir)
+	if err != nil {
+		report["skewed"] = true
+		report["daemon_error"] = security.Redact(err.Error())
+		return report, nil
+	}
+	report["daemon"] = map[string]any{
+		"version": identity.Version, "commit": identity.Commit, "built_at": identity.BuiltAt,
+		"engine_protocol": identity.EngineProtocol,
+	}
+	report["skewed"] = identity.Commit != build.Commit || identity.EngineProtocol != ipc.EngineProtocol
+	return report, nil
+}
+
+// daemonIdentity asks the running daemon what it is.
+func daemonIdentity(ctx context.Context, dataDir string) (daemon.Identity, error) {
+	path, err := daemon.SocketPath(dataDir)
+	if err != nil {
+		return daemon.Identity{}, err
+	}
+	client, err := ipc.Dial(ctx, path)
+	if err != nil {
+		return daemon.Identity{}, err
+	}
+	defer func() { _ = client.Close() }()
+	identity := daemon.Identity{}
+	if err := client.Call(ctx, "build", nil, &identity); err != nil {
+		return daemon.Identity{}, err
+	}
+	return identity, nil
+}
+
+func skewNote(report map[string]any) string {
+	if skewed, _ := report["skewed"].(bool); skewed {
+		return " (SKEWED: the daemon is a different build; restart it with the binary you are running)"
+	}
+	return ""
+}
+
+func runDaemon(args []string, stdout, stderr io.Writer, build BuildInfo, dependencies Dependencies) int {
 	if len(args) == 0 {
 		return usageError(stderr, "daemon requires start, run, status, ping, or stop")
 	}
 	action := args[0]
-	dataDir, code := daemonDataDir(args[1:], stderr, dependencies)
+	// --json is a flag of the command, not of the data-dir parser, so it is taken
+	// out before that parser sees it.
+	rest := make([]string, 0, len(args))
+	jsonOutput := false
+	for _, argument := range args[1:] {
+		if argument == "--json" {
+			jsonOutput = true
+			continue
+		}
+		rest = append(rest, argument)
+	}
+	dataDir, code := daemonDataDir(rest, stderr, dependencies)
 	if code != ExitOK {
 		return code
 	}
@@ -636,7 +704,10 @@ func runDaemon(args []string, stdout, stderr io.Writer, dependencies Dependencie
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		if err := daemon.Run(ctx, dataDir, nil); err != nil {
+		if err := daemon.Run(ctx, dataDir, daemon.Identity{
+			Version: build.Version, Commit: build.Commit, BuiltAt: build.BuiltAt,
+			EngineProtocol: ipc.EngineProtocol,
+		}, nil); err != nil {
 			return commandError(stderr, "run daemon", err)
 		}
 		return ExitOK
@@ -645,8 +716,16 @@ func runDaemon(args []string, stdout, stderr io.Writer, dependencies Dependencie
 		if err != nil {
 			return commandError(stderr, "inspect daemon", err)
 		}
+		report, err := daemonStatus(context.Background(), dataDir, build, state)
+		if err != nil {
+			return commandError(stderr, "inspect daemon", err)
+		}
+		if jsonOutput {
+			return writeJSON(stdout, stderr, report)
+		}
 		if state.Running {
-			return writeText(stdout, stderr, fmt.Sprintf("Memora daemon is running with PID %d\n", state.PID))
+			return writeText(stdout, stderr, fmt.Sprintf("Memora daemon is running with PID %d%s\n",
+				state.PID, skewNote(report)))
 		}
 		return writeText(stdout, stderr, "Memora daemon is stopped\n")
 	case "ping":
@@ -872,6 +951,17 @@ func commandError(stderr io.Writer, action string, err error) int {
 		return ExitFailure
 	}
 	return ExitFailure
+}
+
+// writeJSON prints one JSON value on stdout, which is what a tool reads; the
+// human reading is left to the caller's other path.
+func writeJSON(stdout, stderr io.Writer, value any) int {
+	encoder := json.NewEncoder(stdout)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return writeFailure(stderr, err)
+	}
+	return ExitOK
 }
 
 func writeText(stdout, stderr io.Writer, value string) int {

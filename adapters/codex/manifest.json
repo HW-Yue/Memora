@@ -41,7 +41,7 @@
     },
     {
       "path": ".agents/skills/memora/scripts/check.sh",
-      "sha256": "557548e9d71a3647674bc9cd26761a98aa9a77436ee12212ec2a1b319027049b",
+      "sha256": "dcf9cda75baae8564007137d24bc735e94deaea476fb8176d3565b638fec5814",
       "mode": "0755"
     },
     {
