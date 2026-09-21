@@ -7,10 +7,10 @@
 // never invents an order it cannot justify: with more than one Database in scope
 // the results are interleaved, not sorted by a number nobody measured.
 //
-// The vector arm is not wired here yet: a query embedding has to be computed by
-// a host with a configured Provider, and the Admin deliberately stays a plain
-// read-only MSQL client. When it lands, its hits will interleave with these and
-// carry their own source label.
+// The two arms are fused by the engine, not by this page: the gateway embeds the
+// query with the host's provider, asks for one RECALL that runs both arms, and
+// hands back the RRF listing untouched. The page therefore does not sort, and it
+// says per Database whether the vector arm actually ran.
 
 const SEARCH_LIMIT = 10;
 const DATABASE_LIMIT = 32;
@@ -131,16 +131,39 @@ function validateHits(result) {
   return hits;
 }
 
-async function recallKeywords(executeMSQL, databaseName, query) {
-  const quoted = `"${databaseName.replaceAll('"', '""')}"`;
-  const result = resultsFrom(await executeMSQL(
-    `RECALL FROM ${quoted} MATCH :query LIMIT :limit`,
-    [statementInput({ query, limit: SEARCH_LIMIT })]), 1)[0];
-  return {
-    hits: validateHits(result),
-    truncated: result.truncated === true,
-    warnings: Array.isArray(result.warnings) ? result.warnings : [],
-  };
+// The gateway's search receipt: the same positions a RECALL returns, plus what
+// the vector arm did and the exact statement that was run.
+function validateReceipt(payload, databaseName) {
+  if (!payload || payload.version !== "memora.admin-search/v1" || payload.database !== databaseName ||
+      typeof payload.source !== "string" || payload.source.length === 0 ||
+      !payload.vector || typeof payload.vector.ran !== "boolean" ||
+      !Array.isArray(payload.rows)) {
+    throw new SearchViewError("corrupt", "Search receipt is invalid");
+  }
+  return payload;
+}
+
+async function searchDatabase(search, databaseName, query) {
+  return validateReceipt(await search(databaseName, query), databaseName);
+}
+
+function vectorNote(databaseName, vector) {
+  if (vector.ran) return null;
+  switch (vector.reason) {
+    case "not_configured":
+      return "本机没有配置 MEMORA_EMBEDDING_*：整页只走关键词路，配好之后这一页会自动带上向量。";
+    case "embedding_timeout":
+      return `${databaseName}：向量路这次超时了（${vector.detail || "provider timeout"}）；` +
+        "结果仍然完整地来自关键词路，重试一次就能带上向量。";
+    case "provider_unavailable":
+      return `${databaseName}：向量路这次没答上（${vector.detail || "provider error"}）；` +
+        "关键词结果照常，重试一次即可。";
+    case "vector_not_ready":
+      return `${databaseName}：这个库还不能回答向量查询（还没锁向量身份，或正在 rekey）：` +
+        "这一库只走了关键词。";
+    default:
+      return `${databaseName}：向量路没有运行（${vector.reason || "unknown"}）。`;
+  }
 }
 
 // Interleaving, not ordering. The two arms and the Databases are not comparable:
@@ -160,7 +183,7 @@ function interleave(groups, limit) {
       const key = `${group.database}/${hit.table}/${hit.path[hit.path.length - 1].route_id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      merged.push({ ...hit, source: group.source, databaseID: group.databaseID });
+      merged.push({ ...hit, source: group.source, vectorRan: group.vectorRan, databaseID: group.databaseID });
       if (merged.length >= limit) break;
     }
     round += 1;
@@ -173,6 +196,9 @@ function pathLabel(hit) {
 }
 
 function resultCard(hit, tableIDs) {
+  // The label says which arms produced this Database's listing, because once the
+  // engine has fused them there is no per-row provenance left to show — and there
+  // never was a score to show instead.
   const leaf = hit.path[hit.path.length - 1];
   const tableID = tableIDs.get(hit.table);
   const card = element("article", "search-result");
@@ -191,6 +217,7 @@ function resultCard(hit, tableIDs) {
   badges.append(element("span", "schema-badge", hit.database));
   badges.append(element("span", "schema-badge", hit.table));
   badges.append(element("span", "schema-badge search-source", hit.source));
+  if (hit.vectorRan === undefined) throw new SearchViewError("corrupt", "Result source is unknown");
   heading.append(badges);
   link.append(heading);
   const meta = element("p", "search-result-meta", tableID
@@ -211,12 +238,13 @@ function resultSection(hits, tableIDs, truncatedDatabases, noticeLines) {
   section.append(list);
   const notes = element("div", "search-notes");
   notes.append(element("p", "", "召回只回答「在哪」：结果是语义位置，不是事实；点进去之后回表读正文。"));
-  notes.append(element("p", "", "顺序是关键词与 Database 交错合并的结果，不是相似度排名——召回不返回分数。"));
+  notes.append(element("p", "", "同一个 Database 内是引擎按名次融合后的顺序（RRF），跨 Database 才是交错；" +
+    "召回不返回分数、距离或名次，所以没有可展示的相似度。"));
+  for (const line of noticeLines) notes.append(element("p", "", line));
   if (truncatedDatabases.length) {
     notes.append(element("p", "", `这些 Database 的命中被 LIMIT ${SEARCH_LIMIT} 截断：` +
       truncatedDatabases.join("、") + "。要更全就缩小范围或换更精确的词。"));
   }
-  for (const line of noticeLines) notes.append(element("p", "", line));
   section.append(notes);
   return section;
 }
@@ -258,7 +286,7 @@ function updateLocation(selected, query) {
 }
 
 export async function renderSearch(root, options) {
-  showState(root, "loading", "正在读取语义索引", "只读取 Catalog 与关键词召回，不读取任何正文…");
+  showState(root, "loading", "正在读取语义索引", "关键词与向量两路由引擎融合；只读取位置，不读取任何正文…");
   try {
     const parameters = new URLSearchParams(window.location.search);
     const selected = parameters.get("db") || "";
@@ -274,7 +302,7 @@ export async function renderSearch(root, options) {
     const heading = view.querySelector(".search-heading");
     const headingText = element("div");
     headingText.append(element("h2", "", "搜索"));
-    headingText.append(element("p", "", "关键词召回当前位置；结果点进去直接在语义索引里展开到那一片叶子。"));
+    headingText.append(element("p", "", "两路召回融合后的位置；结果点进去直接在语义索引里展开到那一片叶子。"));
     heading.append(headingText);
     view.append(searchForm(databases, selected, query));
     const form = view.querySelector(".search-form");
@@ -307,15 +335,23 @@ export async function renderSearch(root, options) {
     const truncated = [];
     const noticeLines = [];
     for (const scope of scopes) {
-      const found = await recallKeywords(options.executeMSQL, scope.name, query);
+      const receipt = await searchDatabase(options.search, scope.name, query);
       if (!options.isCurrent()) return;
-      groups.push({ database: scope.name, databaseID: scope.database_id, source: "关键词", hits: found.hits });
-      if (found.truncated) truncated.push(scope.name);
-      for (const warning of found.warnings) {
+      const hits = validateHits({ rows: receipt.rows });
+      groups.push({
+        database: scope.name, databaseID: scope.database_id, hits,
+        source: receipt.vector.ran ? "两臂融合（RRF）" : "关键词",
+        vectorRan: receipt.vector.ran, source_statement: receipt.source,
+      });
+      if (receipt.truncated) truncated.push(scope.name);
+      const note = vectorNote(scope.name, receipt.vector);
+      if (note) noticeLines.push(note);
+      for (const warning of receipt.warnings || []) {
         if (warning && warning.code === "vectors_not_ready") {
-          noticeLines.push(`${scope.name}：向量索引还有未就绪的单元，这一页只走了关键词路。`);
+          noticeLines.push(`${scope.name}：向量索引还有未就绪的单元，这一库的列表可能不完整。`);
         }
       }
+      noticeLines.push(`发给引擎的语句（${scope.name}）：${receipt.source}`);
       const tables = await loadTables(options.executeMSQL, scope.database_id);
       for (const [name, id] of tables) tableIDs.set(name, id);
     }

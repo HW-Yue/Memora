@@ -238,8 +238,8 @@ function markdownValue(value) {
   const rendered = element("div", "markdown-body");
   const fragment = markdownFragment(value);
   if (fragment) rendered.append(fragment);
-  else rendered.append(element("pre", "row-field-value", displayValue(value)));
-  const source = element("pre", "row-field-value markdown-source");
+  else rendered.append(element("pre", "row-value", displayValue(value)));
+  const source = element("pre", "row-value markdown-source");
   source.textContent = displayValue(value);
   source.hidden = true;
   const toggle = element("button", "markdown-toggle", "查看 Markdown 原文");
@@ -261,35 +261,23 @@ function heading(current, rowID) {
     current.row ? `${rowID} · revision ${current.row.revision}` : rowID;
   const wrapper = element("header", "catalog-heading row-heading");
   const content = element("div");
+  // The title labels the Row; the document below is the Row. Neither the table's
+  // row semantics nor a plain-text copy of the body belongs in between.
   content.append(element("h2", "", title));
-  if (detail.row_semantics) content.append(element("p", "", detail.row_semantics));
-  if (current.row && detail.display.summary_column) {
-    content.append(element("p", "row-summary", displayValue(current.row[detail.display.summary_column])));
-  }
   wrapper.append(content);
   return wrapper;
 }
 
-function fieldSection(column, value) {
-  const section = element("section", "row-field");
-  const header = element("div", "row-field-heading");
-  const identity = element("div");
-  identity.append(element("h3", "", column.name));
-  const badges = element("div", "row-field-badges");
-  badges.append(element("span", "schema-badge", column.type));
-  if (column.semantic_role) badges.append(element("span", "schema-badge", column.semantic_role));
-  header.append(identity, badges);
-  section.append(header, element("p", "row-field-purpose", column.purpose));
-  if (typeof value === "string") section.append(markdownValue(value));
-  else section.append(element("pre", "row-field-value", displayValue(value)));
-  return section;
-}
-
+// The document is the Row's body, rendered once. A Row has no other business
+// Column to show: the engine refuses any beyond the shape it owns.
 function documentSection(current) {
   const section = element("section", "row-document");
-  for (const column of current.columns.slice(SYSTEM_COLUMNS.length)) {
-    section.append(fieldSection(column, current.row[column.name]));
+  const summaryColumn = current.detail.display.summary_column || "";
+  if (!summaryColumn) {
+    section.append(element("p", "semantic-document-empty", "这张表没有配置 summary 字段。"));
+    return section;
   }
+  section.append(markdownValue(current.row[summaryColumn]));
   return section;
 }
 

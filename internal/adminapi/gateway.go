@@ -39,10 +39,20 @@ type ExecuteFunc func(
 	[]executor.StatementInput,
 ) (result.Envelope, error)
 
+// Embedder turns a query into a vector. The provider belongs to the host, so the
+// Admin only gets one when the host configured it; without one the search page
+// runs the keyword arm and says so.
+type Embedder interface {
+	Embed(ctx context.Context, texts []string) ([][]float32, error)
+	Model() string
+	Dimensions() int
+}
+
 type Config struct {
 	DataDir    string
 	Scopes     []string
 	Execute    ExecuteFunc
+	Embedder   Embedder
 	Random     io.Reader
 	Now        func() time.Time
 	Listen     func(network, address string) (net.Listener, error)
@@ -67,6 +77,7 @@ type Gateway struct {
 	dataDir    string
 	scopes     []string
 	execute    ExecuteFunc
+	embedder   Embedder
 	now        func() time.Time
 
 	mu                sync.Mutex
@@ -160,6 +171,7 @@ func Start(ctx context.Context, config Config) (*Gateway, error) {
 		dataDir:       config.DataDir,
 		scopes:        append([]string(nil), config.Scopes...),
 		execute:       config.Execute,
+		embedder:      config.Embedder,
 		now:           now,
 		bootstrapHash: sha256.Sum256([]byte(bootstrap)),
 		sessionHash:   sha256.Sum256([]byte(session)),
@@ -172,6 +184,7 @@ func Start(ctx context.Context, config Config) (*Gateway, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/session", gateway.handleSession)
 	mux.HandleFunc("/api/v1/msql", gateway.handleMSQL)
+	mux.HandleFunc("/api/v1/search", gateway.handleSearch)
 	mux.HandleFunc("/api/", gateway.handleUnknownAPI)
 	mux.Handle("/", gateway.shellHandler(shell))
 	gateway.server = &http.Server{

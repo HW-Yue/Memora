@@ -56,6 +56,31 @@ async function bootstrapSession() {
   }
 }
 
+// The search page's data face. It is a separate endpoint because a vector query
+// has to be embedded, and that is the host's business: the page sends words, the
+// gateway (a host, with the host's provider) turns them into a vector and asks
+// the engine for the rank-fused listing.
+export async function searchDatabase(database, query) {
+  if (!csrfToken) throw new Error("admin session is not ready");
+  const response = await fetch("/api/v1/search", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Memora-CSRF": csrfToken
+    },
+    body: JSON.stringify({ database, query })
+  });
+  if (response.status === 401) {
+    csrfToken = "";
+    sessionReady = false;
+    setStatus("expired", "本地会话已过期", "请重新运行 memora admin 获取新的临时会话。");
+    throw new Error("admin session expired");
+  }
+  if (!response.ok) throw new Error("admin search failed");
+  return response.json();
+}
+
 export async function executeMSQL(source, statements = []) {
   if (!csrfToken) throw new Error("admin session is not ready");
   const response = await fetch("/api/v1/msql", {
@@ -153,6 +178,7 @@ async function renderCurrentRoute() {
     await renderSearch(routeOutlet, {
       path: window.location.pathname,
       executeMSQL,
+      search: searchDatabase,
       isCurrent: () => window.location.pathname === "/search"
     });
     return;

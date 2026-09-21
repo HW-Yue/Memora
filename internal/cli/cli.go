@@ -457,10 +457,20 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	// The search page needs a provider to search by meaning. The Admin is a host,
+	// so it may have one — but a missing or broken one only costs the page its
+	// vector arm, never the page itself.
+	var embedder adminapi.Embedder
+	if configured, _, err := embedding.NewFromEnv(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "embeddings: %v; the Admin search page will use keywords only\n", err)
+	} else if configured != nil {
+		embedder = configured
+	}
 	err := serve(ctx, adminapi.Config{
-		DataDir: dataDir,
-		Scopes:  append([]string(nil), scopes...),
-		Execute: withoutReadOnly(execute),
+		DataDir:  dataDir,
+		Scopes:   append([]string(nil), scopes...),
+		Execute:  withoutReadOnly(execute),
+		Embedder: embedder,
 	}, func(descriptor adminapi.Descriptor) error {
 		if err := json.NewEncoder(stdout).Encode(descriptor); err != nil {
 			return err

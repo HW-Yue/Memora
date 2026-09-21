@@ -410,7 +410,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"DOCUMENT_NODE_WIDTH", "documentWidth", "translateElementTo", "focusElement",
 		"type: (data) => data.kind === \"document\" ? \"html\" : \"rect\"",
 		"innerHTML: documentNodeHTML", "markdownit({ html: false", "DOMPurify.sanitize",
-		"semantic-document-node", "semantic-document-reading", "semantic-document-properties",
+		"semantic-document-node", "semantic-document-reading",
 		"trackpad-pan", "trackpad-zoom", "event.ctrlKey", "event.metaKey",
 		"zoomRange: [0.25, 2]", "sensitivity: 0.2",
 		"autoFit: false", "animation: false,\n    zoomRange: [0.25, 2]", "node.childrenLoaded === true",
@@ -449,10 +449,18 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	rowText := string(rows)
 	for _, required := range []string{
 		"markdownit", "html: false", "DOMPurify.sanitize", "DOMParser", "查看 Markdown 原文",
-		"row-document-paper", "row-side-panel",
+		"row-document-paper", "row-side-panel", "documentSection", "summary_column",
 	} {
 		if !strings.Contains(rowText, required) {
 			t.Errorf("Row document view is missing %q", required)
+		}
+	}
+	// A Row is a title and a document: the Record-fields area and every
+	// per-Column field block are gone, because the engine refuses any Column
+	// beyond the shape it owns. Nothing may quietly reintroduce them.
+	for _, forbidden := range []string{"记录字段", "semantic-document-properties", "fieldSection", "row-summary"} {
+		if strings.Contains(rowText, forbidden) {
+			t.Errorf("Row document view still renders %q", forbidden)
 		}
 	}
 
@@ -466,7 +474,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		".route-rows .route-outlet { max-width: none; padding: 0; border: 0; background: transparent;",
 		"grid-template-columns: minmax(0, 920px) minmax(240px, 290px)",
 		".semantic-document-node", "width: 900px", ".semantic-document-reading",
-		".semantic-document-metadata", ".semantic-document-properties",
+		".semantic-document-metadata", ".row-value",
 		"user-select: none", "touch-action: none", "overscroll-behavior: contain",
 		"@keyframes semantic-document-enter", "prefers-reduced-motion: reduce",
 		".route-semantic-detail .topbar", ".route-semantic-detail .sidebar",
@@ -656,6 +664,7 @@ func TestSearchViewModuleRecallsPositionsAndLinksIntoTheTree(t *testing.T) {
 	appText := string(app)
 	for _, required := range []string{
 		`from "./search.js?v=4"`, `path === "/search"`, `path.startsWith("/search/")`,
+		"export async function searchDatabase", `fetch("/api/v1/search"`,
 	} {
 		if !strings.Contains(appText, required) {
 			t.Errorf("Admin shell does not route the Search module: missing %q", required)
@@ -668,15 +677,28 @@ func TestSearchViewModuleRecallsPositionsAndLinksIntoTheTree(t *testing.T) {
 	}
 	javascript := string(search)
 	for _, required := range []string{
-		"SHOW DATABASES LIMIT", "COMPACT", "SHOW TABLES FROM", "RECALL FROM",
-		"MATCH :query LIMIT :limit", "statementInput", "parameters", "named",
+		"SHOW DATABASES LIMIT", "COMPACT", "SHOW TABLES FROM",
+		"memora.admin-search/v1", "vector.ran", "vectorNote",
+		"not_configured", "embedding_timeout", "provider_unavailable", "vector_not_ready",
 		"route_id", "database_id", "table_id", "object_id",
-		"vectors_not_ready", "truncated", "revision_conflict", "permission_denied",
+		"truncated", "revision_conflict", "permission_denied",
 		"loading", "empty", "ready",
 		"/routes/", "dataset.route", "encodeURIComponent",
 	} {
 		if !strings.Contains(javascript, required) {
 			t.Errorf("Search module is missing %q", required)
+		}
+	}
+	// The page does not talk MSQL for recall any more: the engine fuses within a
+	// Database, and the page only interleaves across Databases (which have no
+	// common rank to fuse) — a second per-arm ordering here would be a second
+	// opinion about relevance.
+	if !strings.Contains(javascript, "跨 Database 才是交错") {
+		t.Error("Search module must say that only the cross-Database listing is interleaved")
+	}
+	for _, forbidden := range []string{"RECALL FROM", "MATCH :query", "NEAREST :"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Search module still does %q", forbidden)
 		}
 	}
 	for _, forbidden := range []string{

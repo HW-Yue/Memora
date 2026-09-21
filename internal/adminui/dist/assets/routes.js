@@ -473,8 +473,7 @@ function documentNodeElement(locator, preview, state) {
     return finish();
   }
 
-  header.append(element("h2", "", documentTitle(locator, preview)),
-    element("p", "semantic-document-semantics", preview.detail.row_semantics || "当前语义记录"));
+  header.append(element("h2", "", documentTitle(locator, preview)));
 
   const metadata = element("dl", "semantic-document-metadata");
   for (const column of preview.columns) {
@@ -494,21 +493,9 @@ function documentNodeElement(locator, preview, state) {
   else body.append(element("p", "semantic-document-empty", "这张表没有配置 summary 字段。"));
   article.append(body);
 
-  const properties = element("footer", "semantic-document-properties");
-  properties.append(element("h3", "", "记录字段"));
-  const list = element("dl", "semantic-document-property-list");
-  for (const column of preview.columns) {
-    if (SYSTEM_COLUMNS.includes(column.name) || column.name === titleColumn ||
-        column.name === summaryColumn) continue;
-    const item = element("div", "semantic-document-property");
-    const term = element("dt", "", column.name);
-    term.append(element("span", "", column.type));
-    item.append(term, element("dd", "", displayValue(preview.row[column.name])));
-    list.append(item);
-  }
-  if (list.childElementCount) properties.append(list);
-  else properties.append(element("p", "semantic-document-empty", "没有其他业务字段。"));
-  article.append(properties);
+  // A Row is a title and a document. There is no third place for a field: the
+  // engine refuses any Column beyond the two it owns, so an empty "record
+  // fields" area would be permanent furniture rather than metadata.
   return finish();
 }
 
