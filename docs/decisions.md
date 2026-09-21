@@ -80,6 +80,32 @@
 [行删除](./product/row-delete-archive.md) 第 4 步、[行生命周期](./product/row-lifecycle-successor.md)
 的拆分叶子例外、[Agent 与引擎的分界](./query/agent-engine-boundary.md)。
 
+## 2026-09-21 · history 指针写在 history 表；与 successor_ids 是同一条边的两面
+
+对象：拆分／合并后新行 history 的来源指针放哪，以及它与源行 `successor_ids` 的关系。
+状态：**方向性结论**（用户定），本条把 `history 谱系` 的未决项结清。
+
+**结论**
+
+1. **指针写在 history 表里**：落在**新行 history 的首条记录**（它创建的那一条）上；
+   MERGE 指向多个来源，所以是列表。
+2. **`successor_ids` 与 history 指针同时存在**，不合并、不二选一。它们是同一条身份边的
+   **两个方向**：`successor_ids` 在源行上（旧 → 新，供读路径立刻解析出当前行），
+   history 指针在 history 表里（新 → 旧，供回溯不断链）。都只存稳定 ID，同事务落盘，
+   两个方向都 O(1)——两边都不能省，省一个就得扫表，而两个都是读路径。
+   这是「同一份事实存两遍」的**写明例外**（[架构原则 §2](./product/architecture-principles.md)），
+   与「叶子 `row_id` ↔ 行 `route_leaf_id`」同一个模式。
+   （`successor_ids` 现状：源行上的字段，reshape 发布时写入全部接替者；`DB.Successors` 沿链解析、
+   设跳数上限防环。语义树节点上另有同名机制管废弃 route 节点的接替，是另一套对象。）
+3. **源行 revision 不推进。** 身份变化不是这一行的内容版本——推进却不写 history 会在
+   `(row_id, revision)` 上留一个没有记录的空洞，破坏「读一行完整历史是一次范围扫」。
+   `superseded` 由**状态 + `successor_ids`** 表达。
+
+**弃选**：只留一个方向（省一份指针）——省哪个都得让读路径扫表。
+
+**落盘**：[history 谱系](./product/history-lineage.md) 定稿；已修订
+[行生命周期](./product/row-lifecycle-successor.md) 的两类变化表（`superseded` 用词 + revision 口径）。
+
 ## 2026-09-21 · 删除改为归档式物理删除；history 只记原地修改
 
 对象：DELETE 的语义，以及 SPLIT／MERGE 后 history 的归属。

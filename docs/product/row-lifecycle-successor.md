@@ -17,9 +17,12 @@
 | 场景 | RowID | 做法 |
 |---|---|---|
 | 改字段值 | 不变 | 一个事务内：原地 UPDATE 主表（revision +1），追加 history 表 |
-| 拆分（一变多） | 变 | 一个事务内：写入新行，旧行置 `deprecated`，`successor_ids` 列出全部新行 |
-| 合并（多变一） | 变 | 一个事务内：写入新行，各旧行置 `deprecated`，`successor_ids` 指向新行 |
+| 拆分（一变多） | 变 | 一个事务内：写入新行，旧行置 `superseded`、**revision 不推进**，`successor_ids` 列出全部新行；新行 history 指向旧行 history |
+| 合并（多变一） | 变 | 一个事务内：写入新行，各旧行置 `superseded`、**revision 不推进**，`successor_ids` 指向新行；新行 history 指向各旧行 history |
 | 删除 | — | **已改**：归档后物理删除行、叶子、剪掉变空的父节点与 history，见[行删除](./row-delete-archive.md) |
+
+身份变化的 history 与 revision 口径见 [history 谱系](./history-lineage.md)：源行 revision 不推进，
+`(row_id, revision)` 不留空洞；`superseded` 状态与 `successor_ids` 同时存在。
 
 **不做**「每次修改都新写一行、旧行废弃」：那会让每次编辑都换 RowID，
 所有引用每次都过期，接替链无限变长。懒更新只服务于低频的身份变化。
