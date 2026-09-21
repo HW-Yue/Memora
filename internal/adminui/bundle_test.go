@@ -425,10 +425,17 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"zoomRange: [0.25, 2]", "sensitivity: 0.2",
 		"autoFit: false", "animation: false,\n    zoomRange: [0.25, 2]", "node.childrenLoaded === true",
 		"animation: false,\n        align: true",
-		"requestAnimationFrame", "prefers-reduced-motion", "semantic-document-enter",
-		"BRANCH_ENTER_MS", "DOCUMENT_ENTER_MS", "cancelAnimationFrame", "motionOpacity", "getNodeData",
+		"requestAnimationFrame", "semantic-document-enter",
+		"DOCUMENT_ENTER_MS", "cancelAnimationFrame", "getNodeData",
 		"height > 0 ? height : DOCUMENT_NODE_MIN_HEIGHT",
-		"graph.localMotion", "graph.draw()", "__semanticGraph", "localMotion?.cancel",
+		"__semanticGraph",
+		// A Route name is prose, so the box is measured and the label wraps; the
+		// layout reads the same numbers, which is what keeps edges on the boxes.
+		"routeNodeLayout", "labelWordWrap: true", "labelMaxLines:", "labelTextOverflow:",
+		"labelWordWrapWidth:",
+		// Trackpad input is coalesced into one transform per frame; the per-frame
+		// fade that redrew the whole canvas is gone with it.
+		"requestAnimationFrame(applyGesture)", "pendingPan", "pendingZoom", "flushGesture",
 		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
 		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
 		"semantic-canvas-fullscreen", "semantic-canvas-controls", "返回表",
@@ -442,8 +449,11 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"route-canvas-inspector", "canvas-inline-preview", "canvas-inline-close",
-		"打开完整文档", "preview.columns.slice", "documentText", "labelWordWrap",
+		"打开完整文档", "preview.columns.slice", "documentText",
 		"\"drag-canvas\", \"zoom-canvas\"", "placeDocumentAfterLeaf",
+		// The fade used to call updateNodeData + await graph.draw() every frame for
+		// 140ms, which re-rendered every HTML node on each of those frames.
+		"localMotion", "animateNodes", "motionOpacity", "BRANCH_ENTER_MS",
 	} {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
@@ -504,6 +514,16 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	for _, forbidden := range []string{".canvas-inline-preview", ".canvas-inline-close", ".route-canvas-inspector"} {
 		if strings.Contains(styleText, forbidden) {
 			t.Errorf("Semantic canvas stylesheet still contains floating preview %q", forbidden)
+		}
+	}
+	// Panning and zooming re-rasterize the card subtree, so the card may not ask
+	// for a 72px-blur shadow or a permanent compositor layer per document.
+	if !strings.Contains(styleText, "contain: paint") {
+		t.Error("Document cards do not contain their paint")
+	}
+	for _, forbidden := range []string{"box-shadow: 0 28px 72px", "will-change: transform, opacity"} {
+		if strings.Contains(styleText, forbidden) {
+			t.Errorf("Document cards still pay for %q on every camera change", forbidden)
 		}
 	}
 

@@ -35,7 +35,6 @@ async function drainPages(first, limit, fetchPage, rowsOf) {
   }
   return { rows, page };
 }
-const BRANCH_ENTER_MS = 140;
 const DOCUMENT_ENTER_MS = 180;
 
 class RouteViewError extends Error {
@@ -383,6 +382,18 @@ async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
   return data;
 }
 
+// A Route name is Agent-written prose. 220px held "Admin 搜索页" and let
+// "Admin 显示槽位：文档居中且只渲染一次" run out of its box and across the
+// neighbouring node, so the box is measured from the same CSS font the canvas
+// draws with and the label wraps to at most two lines. The layout reads the same
+// numbers (getWidth/getHeight below), which is what keeps edges on the boxes.
+const ROUTE_NODE_MIN_WIDTH = 220;
+const ROUTE_NODE_MAX_WIDTH = 360;
+const ROUTE_NODE_HEIGHT = 72;
+const ROUTE_NODE_LINE_HEIGHT = 22;
+const ROUTE_NODE_PADDING = 16;
+const ROUTE_NODE_MAX_LINES = 2;
+const ROUTE_LABEL_FONT = '700 14px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 const DOCUMENT_NODE_WIDTH = 900;
 // A measured height sets the card; this is only the floor for the degenerate case
 // where measurement returns nothing (a hidden or not-yet-laid-out node). It used
@@ -536,11 +547,57 @@ function findDocumentNode(node) {
   return (node.children || []).find((child) => child.kind === "document") || null;
 }
 
+let routeLabelContext = null;
+
+function routeLabelMetrics() {
+  if (routeLabelContext === null) {
+    routeLabelContext = document.createElement("canvas").getContext("2d");
+  }
+  if (routeLabelContext) routeLabelContext.font = ROUTE_LABEL_FONT;
+  return routeLabelContext;
+}
+
+// routeNodeLayout wraps a name the way the canvas will wrap it (the font is the
+// one in ROUTE_LABEL_FONT, one character at a time — Chinese has no spaces) and
+// returns the box that fits the wrapped result.
+function routeNodeLayout(name) {
+  const text = String(name ?? "");
+  const context = routeLabelMetrics();
+  const available = ROUTE_NODE_MAX_WIDTH - ROUTE_NODE_PADDING * 2;
+  if (!context || text === "") {
+    return { width: ROUTE_NODE_MIN_WIDTH, height: ROUTE_NODE_HEIGHT, lines: 1, wrapWidth: available };
+  }
+  const lines = [];
+  let line = "";
+  for (const character of text) {
+    const candidate = line + character;
+    if (line !== "" && context.measureText(candidate).width > available) {
+      lines.push(line);
+      line = character;
+      if (lines.length === ROUTE_NODE_MAX_LINES) break;
+    } else {
+      line = candidate;
+    }
+  }
+  if (lines.length < ROUTE_NODE_MAX_LINES && line !== "") lines.push(line);
+  const longest = lines.reduce((widest, current) =>
+    Math.max(widest, context.measureText(current).width), 0);
+  const width = Math.min(ROUTE_NODE_MAX_WIDTH,
+    Math.max(ROUTE_NODE_MIN_WIDTH, Math.ceil(longest) + ROUTE_NODE_PADDING * 2));
+  return {
+    width,
+    height: ROUTE_NODE_HEIGHT + (lines.length - 1) * ROUTE_NODE_LINE_HEIGHT,
+    lines: lines.length,
+    wrapWidth: width - ROUTE_NODE_PADDING * 2,
+  };
+}
+
 function graphNodeSize(data) {
   if (data?.kind === "document") {
     return [data.documentWidth || DOCUMENT_NODE_WIDTH, data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT];
   }
-  return [220, 72];
+  const layout = routeNodeLayout(data?.name);
+  return [layout.width, layout.height];
 }
 
 function layoutNodeData(node) {
@@ -554,12 +611,14 @@ function isDocumentLayoutNode(node) {
 
 function graphNodeWidth(node) {
   const data = layoutNodeData(node);
-  return isDocumentLayoutNode(node) ? data.documentWidth || DOCUMENT_NODE_WIDTH : 220;
+  if (isDocumentLayoutNode(node)) return data.documentWidth || DOCUMENT_NODE_WIDTH;
+  return routeNodeLayout(data.name).width;
 }
 
 function graphNodeHeight(node) {
   const data = layoutNodeData(node);
-  return isDocumentLayoutNode(node) ? data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT : 72;
+  if (isDocumentLayoutNode(node)) return data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT;
+  return routeNodeLayout(data.name).height;
 }
 
 function treeNode(row) {
@@ -604,59 +663,10 @@ function graphData(tree) {
   return window.G6.treeToGraphData(tree, {
     getNodeData: (node, depth) => {
       node.depth = depth;
-      const data = node.children ?
+      return node.children ?
         { ...node, children: node.children.map((child) => child.id) } : node;
-      if (node.motionOpacity !== undefined) {
-        data.style = { ...(node.style || {}), opacity: node.motionOpacity };
-      }
-      return data;
     },
   });
-}
-
-function reducedMotionPreferred() {
-  return typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-function localMotionController(graph) {
-  let generation = 0;
-  let frame = 0;
-  const cancel = () => {
-    generation += 1;
-    if (frame) cancelAnimationFrame(frame);
-    frame = 0;
-  };
-  const animateNodes = async (ids, duration = BRANCH_ENTER_MS) => {
-    const nodeIDs = [...new Set(ids)].filter(Boolean);
-    cancel();
-    if (!nodeIDs.length) return;
-    if (reducedMotionPreferred()) {
-      graph.updateNodeData(nodeIDs.map((id) => ({ id, style: { opacity: 1 } })));
-      await Promise.resolve(graph.draw());
-      return;
-    }
-    const token = generation;
-    await new Promise((resolve) => {
-      const started = performance.now();
-      const step = (now) => {
-        if (token !== generation) return resolve();
-        const progress = Math.min(1, (now - started) / duration);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        graph.updateNodeData(nodeIDs.map((id) => ({ id, style: { opacity: eased } })));
-        Promise.resolve(graph.draw()).then(() => {
-          if (progress >= 1 || token !== generation) {
-            frame = 0;
-            resolve();
-          } else {
-            frame = requestAnimationFrame(step);
-          }
-        });
-      };
-      frame = requestAnimationFrame(step);
-    });
-  };
-  return { cancel, animateNodes };
 }
 
 function setCanvasState(stage, kind, title, detail) {
@@ -739,8 +749,6 @@ async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableI
   const next = await loadChildren(executeMSQL, databaseID, tableID, node.route_id);
   const existing = [];
   const added = next.rows.map(treeNode);
-  const addedIDs = added.map((child) => child.id);
-  if (!reducedMotionPreferred()) added.forEach((child) => { child.motionOpacity = 0; });
   node.children = existing.concat(added);
   node.childrenLoaded = true;
   node.page = next.page;
@@ -749,8 +757,6 @@ async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableI
   await graph.render();
   if (graph.expandElement) await graph.expandElement(selected, { animation: false });
   await alignDocumentColumn(graph, tree);
-  await graph.localMotion?.animateNodes(addedIDs);
-  added.forEach((child) => { delete child.motionOpacity; });
 }
 
 // expandToRoute walks the ancestor chain of a deep-linked node and expands each
@@ -778,6 +784,38 @@ async function expandToRoute(graph, tree, routeID, executeMSQL, databaseID, tabl
 function installCanvasGestureBridge(graph, container) {
   let pan = null;
   let selecting = null;
+  // A trackpad sends pointermove at up to 120Hz and a two-finger scroll sends a
+  // stream of wheel events; calling translateBy/zoomBy for each one asks the
+  // canvas to transform a DOM subtree more often than the screen refreshes. The
+  // deltas are accumulated here and applied at most once per frame instead.
+  let pendingPan = null;
+  let pendingZoom = null;
+  let gestureFrame = 0;
+  const applyGesture = () => {
+    gestureFrame = 0;
+    if (!container.isConnected) {
+      pendingPan = null;
+      pendingZoom = null;
+      return;
+    }
+    if (pendingPan) {
+      const [dx, dy] = pendingPan;
+      pendingPan = null;
+      if (dx || dy) graph.translateBy?.([dx, dy], false);
+    }
+    if (pendingZoom) {
+      const { ratio, x, y } = pendingZoom;
+      pendingZoom = null;
+      if (ratio !== 1) graph.zoomBy?.(ratio, false, [x, y]);
+    }
+  };
+  const scheduleGesture = () => {
+    if (!gestureFrame) gestureFrame = requestAnimationFrame(applyGesture);
+  };
+  const flushGesture = () => {
+    if (gestureFrame) cancelAnimationFrame(gestureFrame);
+    applyGesture();
+  };
   const caretAtPoint = (x, y) => {
     const position = document.caretPositionFromPoint?.(x, y);
     if (position) return { node: position.offsetNode, offset: position.offset };
@@ -836,7 +874,10 @@ function installCanvasGestureBridge(graph, container) {
     const dy = event.clientY - pan.y;
     pan.x = event.clientX;
     pan.y = event.clientY;
-    if (dx || dy) graph.translateBy?.([dx, dy], false);
+    if (dx || dy) {
+      pendingPan = [(pendingPan ? pendingPan[0] : 0) + dx, (pendingPan ? pendingPan[1] : 0) + dy];
+      scheduleGesture();
+    }
     event.preventDefault();
     event.stopPropagation();
   };
@@ -844,6 +885,8 @@ function installCanvasGestureBridge(graph, container) {
     if (pan && pan.pointerID === event.pointerId) {
       container.releasePointerCapture?.(event.pointerId);
       pan = null;
+      // The last movement must not wait for a frame that will never come.
+      flushGesture();
       event.preventDefault();
       event.stopPropagation();
     }
@@ -866,10 +909,20 @@ function installCanvasGestureBridge(graph, container) {
       const origin = container.getBoundingClientRect();
       const delta = Number(event.deltaY) || Number(event.deltaX) || 0;
       const ratio = Math.pow(1.001, -delta);
-      graph.zoomBy?.(ratio, false, [event.clientX - origin.left, event.clientY - origin.top]);
+      pendingZoom = {
+        ratio: (pendingZoom?.ratio || 1) * ratio,
+        x: event.clientX - origin.left,
+        y: event.clientY - origin.top,
+      };
+      scheduleGesture();
       return;
     }
-    graph.translateBy?.([-(Number(event.deltaX) || 0), -(Number(event.deltaY) || 0)], false);
+    const dx = -(Number(event.deltaX) || 0);
+    const dy = -(Number(event.deltaY) || 0);
+    if (dx || dy) {
+      pendingPan = [(pendingPan ? pendingPan[0] : 0) + dx, (pendingPan ? pendingPan[1] : 0) + dy];
+      scheduleGesture();
+    }
   };
   container.addEventListener("pointerdown", onPointerDown, true);
   container.addEventListener("pointermove", onPointerMove, true);
@@ -906,6 +959,11 @@ function createSemanticGraph(container, tree, onNodeClick) {
           data.kind === "leaf" ? "#b6a56d" : "#7c9e8b",
         lineWidth: (data) => data.kind === "document" ? 2.5 : 1.5,
         labelText: (data) => data.kind === "document" ? "" : data.name,
+        labelWordWrap: true,
+        labelWordWrapWidth: (data) => routeNodeLayout(data.name).wrapWidth,
+        labelMaxLines: (data) => routeNodeLayout(data.name).lines,
+        labelTextOverflow: "…",
+        labelLineHeight: ROUTE_NODE_LINE_HEIGHT,
         labelPlacement: "center",
         labelTextAlign: "center",
         labelTextBaseline: "middle",
@@ -955,7 +1013,6 @@ function createSemanticGraph(container, tree, onNodeClick) {
       },
     ],
   });
-  graph.localMotion = localMotionController(graph);
   container.__semanticGraph = graph;
   installCanvasGestureBridge(graph, container);
   graph.on("node:click", (event) => onNodeClick(graph, event.target.id));
@@ -1049,7 +1106,6 @@ function landingView() {
 
 export async function renderRoutes(root, options) {
   const previousCanvas = root.querySelector(".semantic-canvas");
-  previousCanvas?.__semanticGraph?.localMotion?.cancel();
   previousCanvas?.__semanticGraph?.destroy?.();
   showState(root, "loading", "正在读取语义索引", "加载根节点；展开分支时按需读取下一层…");
   try {
