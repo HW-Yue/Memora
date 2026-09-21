@@ -99,7 +99,15 @@ const schema = `
 CREATE TABLE IF NOT EXISTS mem_databases (
 	id TEXT PRIMARY KEY,
 	name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-	body TEXT NOT NULL
+	body TEXT NOT NULL,
+	-- The vector identity of this Database, set by the first embedding it
+	-- accepts and never changed in place afterwards. It is a column here rather
+	-- than a row in mem_config because it is an identity, not a setting: the
+	-- config table is a revisioned channel for things that may change, and an
+	-- identity that can be edited in place is one that will be.
+	embedding_model TEXT NOT NULL DEFAULT '',
+	embedding_dimensions INTEGER NOT NULL DEFAULT 0,
+	embedding_locked_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS mem_tables (
 	id TEXT PRIMARY KEY,
@@ -151,6 +159,13 @@ CREATE TABLE IF NOT EXISTS mem_recall_units (
 	embedding_model TEXT NOT NULL DEFAULT '',
 	embedding_dimensions INTEGER NOT NULL DEFAULT 0,
 	embedded_at TEXT NOT NULL DEFAULT '',
+	-- The truth: the bytes a host computed, and the hash of the text it
+	-- computed them from. The second is what separates "this unit has a vector"
+	-- from "this unit has a vector for the text it currently holds" — without
+	-- it, embedded_at could only say a vector was once made, and comparing it
+	-- with updated_at would be a clock-dependent guess.
+	embedding BLOB,
+	embedded_content_hash TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mem_recall_units_row ON mem_recall_units(table_id, row_id);
@@ -199,7 +214,48 @@ func (db *DB) migrate(ctx context.Context) error {
 	if _, err := db.sql.ExecContext(ctx, schema+";"+kvSchema); err != nil {
 		return fmt.Errorf("create Memora schema: %w", err)
 	}
+	// CREATE TABLE IF NOT EXISTS leaves an Instance created by an earlier
+	// version with the earlier columns, so additive columns are added here.
+	// Only additive changes belong in this list: anything that would have to
+	// rewrite rows is a rebuild, not a migration.
+	additive := []struct{ table, column, ddl string }{
+		{"mem_databases", "embedding_model", "ALTER TABLE mem_databases ADD COLUMN embedding_model TEXT NOT NULL DEFAULT ''"},
+		{"mem_databases", "embedding_dimensions", "ALTER TABLE mem_databases ADD COLUMN embedding_dimensions INTEGER NOT NULL DEFAULT 0"},
+		{"mem_databases", "embedding_locked_at", "ALTER TABLE mem_databases ADD COLUMN embedding_locked_at TEXT NOT NULL DEFAULT ''"},
+		{"mem_recall_units", "embedding", "ALTER TABLE mem_recall_units ADD COLUMN embedding BLOB"},
+		{"mem_recall_units", "embedded_content_hash", "ALTER TABLE mem_recall_units ADD COLUMN embedded_content_hash TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, change := range additive {
+		present, err := db.hasColumn(ctx, change.table, change.column)
+		if err != nil {
+			return err
+		}
+		if present {
+			continue
+		}
+		if _, err := db.sql.ExecContext(ctx, change.ddl); err != nil {
+			return fmt.Errorf("add %s.%s: %w", change.table, change.column, err)
+		}
+	}
 	return nil
+}
+
+func (db *DB) hasColumn(ctx context.Context, table, column string) (bool, error) {
+	rows, err := db.sql.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		name := ""
+		if err := rows.Scan(&name); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // tx is one serialised write transaction, or a read over the last commit.

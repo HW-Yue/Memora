@@ -38,6 +38,27 @@ func (o operations) RecallKeywords(ctx context.Context, databaseName, tableName,
 	return
 }
 
+// AcceptVector offers one host-computed embedding to one unit. It is a write:
+// accepting a vector is what locks the Database's identity, so it belongs to the
+// same serialised transaction domain as the data it describes.
+func (o operations) AcceptVector(ctx context.Context, databaseName string, record VectorRecord) (identity VectorIdentity, err error) {
+	err = o.run(ctx, true, func(t *tx) error {
+		identity, err = t.acceptVector(ctx, databaseName, record)
+		return err
+	})
+	return
+}
+
+// NotReadyUnits counts the units in a Database that a vector path cannot answer
+// for. It is derived from the truth columns, so it stays a read.
+func (o operations) NotReadyUnits(ctx context.Context, databaseName, tableName string) (count int, err error) {
+	err = o.run(ctx, false, func(t *tx) error {
+		count, err = t.notReadyUnits(ctx, databaseName, tableName)
+		return err
+	})
+	return
+}
+
 func (o operations) RepairLinks(ctx context.Context, databaseName string, limit int) (receipt RepairReceipt, err error) {
 	err = o.run(ctx, true, func(t *tx) error {
 		receipt, err = t.repairLinks(ctx, databaseName, limit)
