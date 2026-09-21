@@ -23,7 +23,11 @@ if version=$(memora version --json 2>/dev/null); then
     "") state=unknown ;;
   esac
   if [ -z "$instance" ]; then
-    printf '{"status":"%s","version":%s,"install_url":"%s"}\n' "$state" "$version" "$install_url"
+    # Why the daemon could not answer, not just that it did not: "unknown" alone
+    # reads like a mystery and hides the ordinary causes (a file sandbox that
+    # cannot read the instance's lock file, a daemon that is still starting).
+    reason=$(memora daemon status --json 2>&1 >/dev/null | tr '\n\t' '  ' | tr -d '"\\' | cut -c1-200 || true)
+    printf '{"status":"%s","version":%s,"install_url":"%s","reason":"%s"}\n' "$state" "$version" "$install_url" "$reason"
   else
     printf '{"status":"%s","version":%s,"instance":%s}\n' "$state" "$version" "$instance"
   fi

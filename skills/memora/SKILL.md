@@ -55,6 +55,21 @@ and run its read-only detector:
 /bin/sh "<skill-directory>/scripts/check.sh"
 ```
 
+The detector has five states, and only the first means "go ahead":
+
+- `ready` — the CLI and the daemon serving the Instance agree. Use it.
+- `skewed` — the CLI and the running daemon are **different builds**. The daemon
+  is what answers your statements, so you would be reading through an engine you
+  did not choose: restart it (`memora daemon stop`, then any command — the CLI
+  starts the matching daemon and says so on stderr) and re-run the detector
+  before your first read.
+- `unknown` — the daemon could not answer at all; the envelope carries `reason`
+  (a file sandbox that cannot read the instance's lock file is the usual cause).
+  Treat it as *not verified*, not as fine: re-run the detector with the access
+  the daemon needs, and if it stays unknown, say so where you report the answer
+  instead of presenting the reads as verified.
+- `missing` and `unhealthy` — as described next.
+
 If it reports `ready`, use the detected executable. If it reports `missing`,
 do not download or install anything yet. Tell the user that the latest Memora
 release is available from `https://github.com/HW-Yue/Memora/releases/latest`
