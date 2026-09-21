@@ -244,3 +244,42 @@ func (t *tx) attachVectorForRow(ctx context.Context, table catalog.Table, rowID 
 	})
 	return err
 }
+
+// unitVectorState answers for one Row: does it have a recallable unit, and is
+// that unit's vector one the vector path can use. The identity join is part of
+// it for the same reason it is everywhere else — readiness is a property of a
+// unit *against its Database's identity*.
+func (t *tx) unitVectorState(ctx context.Context, databaseName, tableName, rowID string) (recall.UnitVectorState, error) {
+	table, err := t.liveTable(ctx, databaseName, tableName)
+	if err != nil {
+		return recall.UnitVectorState{}, err
+	}
+	state := recall.UnitVectorState{}
+	var embeddedHash, unitModel string
+	var unitDimensions int
+	err = t.q().QueryRowContext(ctx, `SELECT u.unit_no, u.content_hash, u.embedded_content_hash,
+			u.embedding IS NOT NULL AND LENGTH(u.embedding) > 0, d.embedding_model, d.embedding_dimensions
+		FROM mem_recall_units u JOIN mem_databases d ON d.id = u.database_id
+		WHERE u.database_id = ? AND u.table_id = ? AND u.row_id = ?`,
+		table.DatabaseID, table.ID, rowID).
+		Scan(&state.UnitNo, &state.ContentHash, &embeddedHash, &state.Ready, &state.Model, &state.Dimensions)
+	if errors.Is(err, sql.ErrNoRows) {
+		return state, nil
+	}
+	if err != nil {
+		return state, err
+	}
+	state.HasUnit = true
+	state.Ready = state.Ready && embeddedHash == state.ContentHash &&
+		unitModel == "" && unitDimensions == 0
+	// The unit's own provenance must name the Database's identity; a unit whose
+	// bytes came from another model is not usable even though it has bytes.
+	if state.Ready {
+		if err := t.q().QueryRowContext(ctx, `SELECT embedding_model, embedding_dimensions FROM mem_recall_units
+			WHERE unit_no = ?`, state.UnitNo).Scan(&unitModel, &unitDimensions); err != nil {
+			return state, err
+		}
+		state.Ready = unitModel == state.Model && unitDimensions == state.Dimensions
+	}
+	return state, nil
+}

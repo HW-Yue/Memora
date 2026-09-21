@@ -298,7 +298,7 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 		return Output{}, normalizeError(err)
 	}
 	output := mutationOutput(inserted)
-	return engine.warnIfVectorDidNotLand(ctx, output, options.Vector, databaseName, tableName)
+	return engine.warnIfVectorDidNotLand(ctx, output, attachment, databaseName, tableName, inserted.ID)
 }
 
 func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, bound bindings, options MutationOptions) (Output, error) {
@@ -351,7 +351,7 @@ func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, b
 		return Output{}, normalizeError(err)
 	}
 	output := mutationOutput(updated)
-	return engine.warnIfVectorDidNotLand(ctx, output, options.Vector, databaseName, tableName)
+	return engine.warnIfVectorDidNotLand(ctx, output, attachment, databaseName, tableName, updated.ID)
 }
 
 type boundAssignment struct {

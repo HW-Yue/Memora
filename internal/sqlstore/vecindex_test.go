@@ -531,13 +531,18 @@ func TestAWriteCanCarryItsOwnVector(t *testing.T) {
 	}
 
 	// A hash for different text is refused, the write still happens, and the
-	// result says so rather than leaving the caller to discover it later.
+	// result says so — about *this* Row, with a reason, rather than leaving the
+	// caller to discover it later.
 	wrong := write("write with an embedding of some other text")
 	wrong.RoutePath = pathOf("architecture", "wal")
 	wrong.Vector = &executor.VectorInput{Model: "text-embedding-v4", ContentHash: "sha256:older-revision", Values: encoded}
 	written := h.run(`INSERT INTO work.notes (title) VALUES ('a second fact')`, nil, wrong)
 	if len(written.Warnings) != 1 || written.Warnings[0].Code != result.CodeVectorsNotReady {
 		t.Fatalf("a refused attachment must be visible: %+v", written.Warnings)
+	}
+	details := written.Warnings[0].Details
+	if details["reason"] != "text_changed" || details["row_id"] == nil || details["row_id"] == "" {
+		t.Fatalf("the notice must name the Row and the reason: %+v", details)
 	}
 	if count := len(h.run(`SELECT row_id FROM work.notes LIMIT 10`, nil, executor.MutationOptions{}).Rows); count != 2 {
 		t.Fatalf("the write must still have happened: %d rows", count)
@@ -651,5 +656,33 @@ func TestAFailedIndexWriteRollsBackTheAcceptedVector(t *testing.T) {
 	// things on purpose, and this is where that shows.
 	if drift := h.doctor().VectorIndexDrift; drift != 1 {
 		t.Fatalf("the sabotaged index is drift: %d", drift)
+	}
+}
+
+// The notice is about the Row the write touched. An unrelated unit in the same
+// Table owing a vector is not news about this write, and a warning that fired
+// for it would be noise the caller learns to ignore.
+func TestARefusedAttachmentDoesNotReportUnrelatedPendingUnits(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	// One Row is left without any vector at all: no provider ever saw it.
+	h.insertAlongPath("never embedded", pathOf("architecture", "btree"))
+
+	encoded, err := recall.EncodeVector([]float32{1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := write("write with the embedding already in hand")
+	options.RoutePath = pathOf("architecture", "sqlite")
+	options.Vector = &executor.VectorInput{
+		Model: "text-embedding-v4", ContentHash: payloadHash("landed anyway"), Values: encoded,
+	}
+	written := h.run(`INSERT INTO work.notes (title) VALUES ('landed anyway')`, nil, options)
+	if len(written.Warnings) != 0 {
+		t.Fatalf("a vector that landed must not warn about another unit: %+v", written.Warnings)
+	}
+	// The unrelated unit is still visible as work, just not as a warning here.
+	if status, err := h.db.Rows().VectorStatus(context.Background(), "work", ""); err != nil || status.NotReady != 1 {
+		t.Fatalf("the other unit is still pending: %+v, %v", status, err)
 	}
 }

@@ -59,6 +59,16 @@ func (o operations) PendingVectors(ctx context.Context, databaseName string, lim
 	return
 }
 
+// UnitVectorState reports what happened to one written Row's vector, so a write
+// that offered one can say something exact about it.
+func (o operations) UnitVectorState(ctx context.Context, databaseName, tableName, rowID string) (state recall.UnitVectorState, err error) {
+	err = o.run(ctx, false, func(t *tx) error {
+		state, err = t.unitVectorState(ctx, databaseName, tableName, rowID)
+		return err
+	})
+	return
+}
+
 // AcceptVector offers one host-computed embedding to one unit. It is a write:
 // accepting a vector is what locks the Database's identity, so it belongs to the
 // same serialised transaction domain as the data it describes.

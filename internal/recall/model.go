@@ -70,3 +70,17 @@ type PendingUnit struct {
 	ContentHash string
 	Payload     string
 }
+
+// UnitVectorState is what happened to one written Row's vector: whether the Row
+// has a recallable unit at all, and whether that unit holds a vector the vector
+// path can answer with. It is per Row on purpose — a write that attached a
+// vector must be able to say what became of *that* Row's vector, not how many
+// units somewhere in the scope are missing one.
+type UnitVectorState struct {
+	HasUnit     bool
+	UnitNo      int64
+	Ready       bool
+	ContentHash string
+	Model       string
+	Dimensions  int
+}
