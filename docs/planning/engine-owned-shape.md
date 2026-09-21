@@ -34,10 +34,19 @@ agent **不得定义、不得新增列**；也**不设**引擎级全局附加字
 | `scope` | 装进去的**范围**（收哪些） | 「当前有效的个人档案、实习、项目与秋招投递」 | 库必填，表可选 |
 | `anti_scope` | **明确不收什么**（排除项，防止错放） | 未写（空） | 可选 |
 
-读数：`DESCRIBE DATABASE` / `DESCRIBE TABLE` 返回三者；`SHOW DATABASES` 返回 purpose+scope；
-`SHOW TABLES` 只返回 `purpose`（和 `row_semantics`），**不返回表级 scope/anti_scope**；只有
-`SHOW CATALOG ATLAS` 把表级的三者都摊平。表级 scope/anti_scope 因此是「写了但常见读面看不到」
-的半截表面——**要不要保留、要不要在 `SHOW TABLES` 里露出来，是个待定**。
+读数（**已实测，勿再凭印象**）：`DESCRIBE DATABASE` / `DESCRIBE TABLE` 返回三者；`SHOW DATABASES`
+与 `SHOW TABLES` 返回的是整个对象结构，`scope` 常在、`anti_scope` 带 `omitempty`——**设了就会返回**，
+`me` 只是没写所以看不到；`SHOW CATALOG ATLAS` 把表级三者摊平。写入侧 likewise：`CREATE DATABASE`/
+`CREATE TABLE` 支持 `SCOPE`/`ANTI SCOPE`，Skill 的 ensure 计划也把它们合成为 DDL
+（`internal/skillschema/runner.go`）。
+
+**已定（2026-09-21，用户）**：库级 `purpose`/`scope`/`anti_scope` **保留给 agent 写**，建库时写一次，
+之后每次写入都作为 agent 的放置参考。
+
+**缺口**：`ALTER DATABASE` 只有 `RENAME`（`internal/msql/parser/parser.go` 的 `ADD COLUMN`/`RENAME`），
+**没有 amend 路径**。一个「每次写入都要参考」的字段改不动，`scope` 里那句「当前有效」迟早烂掉。
+候选：加 `ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`（有界的元数据写，走 L2）；或冻结、要改就
+新建库。待定。
 
 ## `row_semantics` 是什么，以及建议
 
@@ -88,6 +97,9 @@ row_id → 点查），没有按字段过滤，`status`/`when` 填了也没人�
 ## 待定
 
 - `row_semantics`：撤掉、引擎写常数、还是原样留给 agent 写。
-- 表级 `scope`/`anti_scope`：保留但只在 DESCRIBE/Atlas 可见，还是也在 `SHOW TABLES` 露出来。
+- 表级 `scope`/`anti_scope`：跟库级一样保留，还是表只留 `purpose`。
+- 库级描述的 **amend 路径**：加 `ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`，还是冻结。
 - 人（L2）能否例外扩展形状，还是连人也不能。
 - 现存实例先迁移，还是新旧形状并行一段时间。
+- Skill 的写入流程要不要显式加一句「先读目标库的 purpose/scope/anti_scope 再决定放哪」
+  （改了 `skills/memora/` 就要跑 `scripts/sync-skill.sh --check`）。

@@ -679,3 +679,18 @@ catalog-ddl、parser/binder、`catalog.Table`、`row-detail/v1`、Admin bundle �
 **待定**：`row_semantics` 撤掉还是引擎写常数；表级 `scope`/`anti_scope` 是否在 `SHOW TABLES`
 露出；人（L2）能否例外扩展形状；现存实例先迁移还是并行。全稿见
 [引擎拥有形状](../planning/engine-owned-shape.md)。**未授权开工、未改宪章。**
+
+## 2026-09-21 · 库级 purpose/scope/anti_scope 保留，作为每次写入的参考
+
+**结论（用户已定）**：库级 `purpose`/`scope`/`anti_scope` **留给 agent 写**——建库时写一次，之后
+每次写入都作为放置参考。收回的仍然只有表结构（列）。
+
+**实测修正我上一轮的错话**：我说「表级 scope/anti_scope 写了但常见读面看不到」——**错**。
+`SHOW DATABASES` / `SHOW TABLES` 返回的是整个对象结构，`scope` 常在、`anti_scope` 带
+`omitempty`，**设了就会返回**；`me` 只是没写所以看不到。`DESCRIBE` 返回三者，Atlas 摊平表级三者；
+写入侧 `CREATE DATABASE`/`CREATE TABLE` 与 Skill 的 ensure 计划都支持三者
+（`internal/skillschema/runner.go`）。
+
+**新发现的缺口（待定）**：`ALTER DATABASE` 只有 `RENAME`，**没有改描述的路径**。一个「每次写入
+都要参考」的字段改不动，`scope` 里「当前有效」这类话迟早烂掉。候选：加
+`ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`（有界元数据写、走 L2），或冻结、要改就新建库。
