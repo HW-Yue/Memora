@@ -603,3 +603,53 @@ func TestDoctorSeesAWholeIndexGoMissing(t *testing.T) {
 		t.Fatalf("a dropped index is drift for every unit with bytes: %d", drift)
 	}
 }
+
+// Error injection at our own boundary: if the derived index cannot take the
+// bytes, the truth must not keep half of the write. The whole acceptance is one
+// transaction, so a failing index write has to roll the unit row back with it —
+// otherwise a unit would claim a vector that no index can answer with.
+func TestAFailedIndexWriteRollsBackTheAcceptedVector(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	first := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	second := h.insertAlongPath("write ahead log", pathOf("architecture", "wal"))
+	h.acceptUnitVector(first, []float32{1, 0}) // locks the Database to two dimensions
+
+	// Sabotage the derived index so the next insert cannot possibly succeed: an
+	// index three wide cannot hold a two-wide vector. The registry still says the
+	// index is there, which is exactly the state a repaired-from-backup instance
+	// can be in.
+	index := h.vectorIndexName()
+	if _, err := h.db.SQL().Exec(`DROP TABLE ` + index); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.db.SQL().Exec(`CREATE VIRTUAL TABLE ` + index + ` USING vec0(embedding float[3])`); err != nil {
+		t.Fatal(err)
+	}
+
+	unitNo, contentHash := h.recallUnit(second)
+	if _, err := h.db.Rows().AcceptVector(context.Background(), "work", sqlstore.VectorRecord{
+		UnitNo: unitNo, ContentHash: contentHash,
+		Model: "text-embedding-v4", Dimensions: 2, Vector: []float32{0, 1},
+	}); err == nil {
+		t.Fatal("an index that cannot take the bytes must fail the acceptance")
+	}
+
+	// The unit row came back with it: no bytes, no provenance, still not-ready.
+	hash, model, dimensions, hasBytes := h.storedVector(unitNo)
+	if hasBytes || hash != "" || model != "" || dimensions != 0 {
+		t.Fatalf("the accepted vector outlived its rolled-back index write: %q/%s/%d bytes=%v",
+			hash, model, dimensions, hasBytes)
+	}
+	// Readiness is a property of the truth columns, so only the rolled-back unit
+	// owes a vector — the first one still holds its bytes and counts as ready.
+	if status, err := h.db.Rows().VectorStatus(context.Background(), "work", ""); err != nil || status.NotReady != 1 {
+		t.Fatalf("only the rolled-back unit is not-ready: %+v, %v", status, err)
+	}
+	// What the sabotage did to the first unit is drift, not readiness: its bytes
+	// are in the truth and no longer in the index. The two counts say different
+	// things on purpose, and this is where that shows.
+	if drift := h.doctor().VectorIndexDrift; drift != 1 {
+		t.Fatalf("the sabotaged index is drift: %d", drift)
+	}
+}
