@@ -62,7 +62,10 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 - **M3 · INSERT 隐式建路径 ✓**（2026-09-21）：新增与 `route_leaf_ids` 互斥的 `route_path`
   （每段自带 name／kind／purpose），引擎在同一事务里复用已有段、补齐缺失段；表无 root、
   中途遇 leaf、末段是 branch、purpose 不符、占用叶一律拒。**M3 完成。**
-- **下一件**：**M4 归档式删除**（六步单事务，恢复交给 Agent）。
+- **M4a · 归档式删除（写侧）✓**（2026-09-21）：新增 `mem_archive`；删除改为六步单事务——
+  归档（含 root 的完整路径 + 行内容 + 删前双向链接）、物理删行、删叶、剪空壳、倒推摘掉
+  对面链接（界 1000，级联行进 `mem_changes`）、删 history。两个墓碑时代的测试随之重写。
+- **下一件**：**M4b 归档读面**（`SHOW ARCHIVE` / `OPEN ARCHIVE`，顾问已判形）。
 
 ## M2 的 Feature 切分（已完成）
 

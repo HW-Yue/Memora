@@ -415,25 +415,48 @@ func mergeLeaves(existing, added []string) []string {
 	return dedupe(append(append([]string{}, existing...), added...))
 }
 
-// deleteRow deprecates the row. Nothing is physically removed: references to
-// it resolve lazily (docs/product/row-lifecycle-successor.md).
+// deleteRow archives the Row and then physically removes it: the Row, the leaf
+// it occupied, its history, and the other end of every link pointing at it.
+// Archiving comes first because it is the only copy that survives; the archive
+// is where an Agent rebuilds from, and the engine does no more than write it.
+// See docs/product/row-delete-archive.md.
 func (t *tx) deleteRow(ctx context.Context, databaseName, tableName, rowID string, options row.WriteOptions) (row.Row, error) {
 	table, value, err := t.liveRowForWrite(ctx, databaseName, tableName, rowID, options.ExpectedRevision)
 	if err != nil {
 		return row.Row{}, err
 	}
-	if err := t.advance(ctx, table, &value); err != nil {
+	path, err := t.archivedPath(ctx, table, value)
+	if err != nil {
 		return row.Row{}, err
 	}
-	value.State = row.StateDeleted
-	if err := t.writeRow(ctx, table, value, false); err != nil {
+	if err := t.archiveRow(ctx, table, value, path, options.Metadata); err != nil {
 		return row.Row{}, err
 	}
-	if err := t.appendHistory(ctx, table, value, history.OperationDelete, options.Metadata); err != nil {
+	detached, err := t.detachCounterpartLinks(ctx, table, value)
+	if err != nil {
 		return row.Row{}, err
 	}
-	t.rowChange(table, value, change.OperationDelete, options.Metadata, nil)
-	return project(table, value), nil
+
+	deleted := project(table, value)
+	if _, err := t.q().ExecContext(ctx, `DELETE FROM `+dataTable(table.ID)+` WHERE row_id = ?`, rowID); err != nil {
+		return row.Row{}, err
+	}
+	for _, leafID := range value.RouteLeafIDs {
+		if err := t.removeNode(ctx, table, leafID); err != nil {
+			return row.Row{}, err
+		}
+	}
+	if _, err := t.q().ExecContext(ctx, `DELETE FROM `+historyTable(table.ID)+` WHERE row_id = ?`, rowID); err != nil {
+		return row.Row{}, err
+	}
+	// The leaf's departure may have left a branch with no children at all.
+	if err := t.pruneEmptyBranches(ctx, table); err != nil {
+		return row.Row{}, err
+	}
+	// The audit trail keeps reporting the deletion, and names the Rows whose
+	// link this detach changed.
+	t.rowChange(table, value, change.OperationDelete, options.Metadata, detached)
+	return deleted, nil
 }
 
 func (t *tx) historyRecords(ctx context.Context, table catalog.Table, rowID string) ([]history.Record, error) {

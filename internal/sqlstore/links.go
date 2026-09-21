@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/row"
 )
@@ -98,4 +99,68 @@ func (db *DB) RowLinks(ctx context.Context, databaseName, tableName, rowID strin
 		return nil
 	})
 	return links, err
+}
+
+// maxCascadeDetach bounds how many Rows one delete may detach a link from. The
+// mount invariant got its bound from the write path; links have none of their
+// own, so a delete needs one of its own rather than borrowing the target-Row
+// budget — see docs/product/row-delete-archive.md「级联写的预算口径」.
+const maxCascadeDetach = 1000
+
+// detachCounterpartLinks removes the other end of every link the deleted Row
+// carried. A link is stored at both ends, so the Row's own list names everyone
+// pointing at it; walking it is the reverse index, and doing it here is what
+// keeps the two directions equal once the Row is gone. The Rows that lose an
+// entry are ordinary in-place modifications: revision up, history appended.
+func (t *tx) detachCounterpartLinks(ctx context.Context, table catalog.Table, value storedRow) ([]string, error) {
+	if len(value.Links) == 0 {
+		return nil, nil
+	}
+	if len(value.Links) > maxCascadeDetach {
+		return nil, fail(result.CodeConstraint,
+			"deleting this Row would detach %d links; the limit is %d", len(value.Links), maxCascadeDetach)
+	}
+	detached := []string{}
+	for _, link := range value.Links {
+		if link.RowID == "" || link.RowID == value.ID {
+			continue
+		}
+		target := table
+		if link.TableID != "" && link.TableID != table.ID {
+			// A link may cross tables: RowIDs are unique Instance-wide. A table
+			// that no longer exists simply has nothing left to detach.
+			resolved, err := t.tableByID(ctx, link.TableID)
+			if err != nil {
+				continue
+			}
+			target = resolved
+		}
+		counterpart, err := t.readRow(ctx, target, link.RowID)
+		if err != nil || counterpart.State != row.StateLive {
+			continue
+		}
+		remaining := make([]Link, 0, len(counterpart.Links))
+		for _, candidate := range counterpart.Links {
+			if candidate.RowID == value.ID &&
+				(candidate.TableID == "" || candidate.TableID == table.ID) {
+				continue
+			}
+			remaining = append(remaining, candidate)
+		}
+		if len(remaining) == len(counterpart.Links) {
+			continue
+		}
+		counterpart.Links = remaining
+		if err := t.advance(ctx, target, &counterpart); err != nil {
+			return nil, err
+		}
+		if err := t.writeRow(ctx, target, counterpart, false); err != nil {
+			return nil, err
+		}
+		if err := t.appendHistory(ctx, target, counterpart, history.OperationUpdate, row.WriteMetadata{}); err != nil {
+			return nil, err
+		}
+		detached = append(detached, counterpart.ID)
+	}
+	return detached, nil
 }

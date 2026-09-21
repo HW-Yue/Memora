@@ -158,16 +158,14 @@ func TestInsertRejectsLeavesThatCannotHoldTheRow(t *testing.T) {
 	}
 }
 
-// A leaf whose holder is no longer live is free again. This is how a Deleted
-// Row's leaf gets reused without any detach step.
-func TestInsertReassignsALeafWhoseHolderIsNoLongerLive(t *testing.T) {
+// A leaf whose holder is no longer live is free again. A superseded Row is what
+// a SPLIT leaves behind, and deleting a Row takes its leaf away entirely, so
+// this fabricates the state a reshape leaves rather than deleting to reach it.
+func TestInsertReassignsALeafWhoseHolderIsSuperseded(t *testing.T) {
 	h := newHarness(t)
 	_, leaf := h.seedNotes()
 	first := h.insertTitle("first", []string{leaf})
-
-	remove := write("delete")
-	remove.ExpectedRevision = 1
-	h.run(`DELETE FROM work.notes WHERE row_id = :row`, map[string]any{"row": first}, remove)
+	h.supersede(first)
 
 	second := h.insertTitle("second", []string{leaf})
 	if holder := h.leafHolder(leaf); holder != second {
@@ -179,10 +177,10 @@ func TestInsertReassignsALeafWhoseHolderIsNoLongerLive(t *testing.T) {
 	}
 }
 
-// Deleting a Row leaves its leaf pointing at it; reachability is decided when
-// the leaf is read, not by detaching it. The whole delete path is replaced by
-// the archive feature later, which is why this is pinned now.
-func TestDeleteKeepsTheLeafPointingButStopsNavigating(t *testing.T) {
+// Deleting physically removes the Row and the leaf it occupied, so neither the
+// point read nor navigation finds anything (docs/product/row-delete-archive.md).
+// What survives is the archive record.
+func TestDeleteRemovesTheRowAndItsLeaf(t *testing.T) {
 	h := newHarness(t)
 	_, leaf := h.seedNotes()
 	rowID := h.insertTitle("doomed", []string{leaf})
@@ -191,18 +189,18 @@ func TestDeleteKeepsTheLeafPointingButStopsNavigating(t *testing.T) {
 	remove.ExpectedRevision = 1
 	h.run(`DELETE FROM work.notes WHERE row_id = :row`, map[string]any{"row": rowID}, remove)
 
-	if leaves := h.storedLeaves(rowID); len(leaves) != 1 || leaves[0] != leaf {
-		t.Fatalf("stored leaves after delete = %v", leaves)
+	if h.rawRowCount() != 0 {
+		t.Fatalf("the Row must be physically gone: %d rows", h.rawRowCount())
 	}
-	if holder := h.leafHolder(leaf); holder != rowID {
-		t.Fatalf("leaf holder after delete = %q", holder)
-	}
-	if opened := h.run(`OPEN ROUTE :leaf LIMIT 1`, map[string]any{"leaf": leaf}, executor.MutationOptions{}); len(opened.Rows) != 0 {
-		t.Fatalf("a deleted row must not be navigable: %v", opened.Rows)
+	if code := h.fails(`DESCRIBE ROUTE :r`, map[string]any{"r": leaf}, executor.MutationOptions{}); code != result.CodeNotFound {
+		t.Fatalf("the leaf must be gone too: %s", code)
 	}
 	selected := h.run("SELECT * FROM `work`.`notes` WHERE row_id = :row LIMIT 1", map[string]any{"row": rowID}, executor.MutationOptions{})
 	if len(selected.Rows) != 0 {
-		t.Fatalf("a deleted row must not read: %v", selected.Rows)
+		t.Fatalf("a deleted Row must not read: %v", selected.Rows)
+	}
+	if h.archiveCount(rowID) != 1 {
+		t.Fatalf("the delete must leave one archive record, got %d", h.archiveCount(rowID))
 	}
 }
 
