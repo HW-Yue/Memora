@@ -347,58 +347,67 @@ func (t *tx) renameNode(ctx context.Context, routeID, name string, expected uint
 	return t.withPath(ctx, node)
 }
 
-// deprecateNode retires a node. Children must be moved or retired first, so the
-// tree never has a live node under a deprecated parent.
-func (t *tx) deprecateNode(ctx context.Context, routeID string, expected uint64) (uint64, error) {
-	table, node, err := t.liveRouteForWrite(ctx, routeID, expected)
-	if err != nil {
-		return 0, err
+// pruneEmptyBranches removes branches that no longer carry a live child, and
+// keeps going while each removal empties its own parent. See
+// docs/product/route-companion-table.md「致空场景清单」.
+//
+// Two things are deliberately never pruned. A leaf, because an empty leaf is
+// where the next Row is mounted — it is the resource the mount refusal points
+// at, not a shell. And a retired node, because it exists so that a route_id
+// still held outside the tree can be followed to its successors.
+func (t *tx) pruneEmptyBranches(ctx context.Context, table catalog.Table) error {
+	for {
+		nodes, err := t.tableRouteNodes(ctx, table.ID)
+		if err != nil {
+			return err
+		}
+		victim := ""
+		for _, node := range nodes {
+			if node.Deprecated || node.Kind == router.KindLeaf {
+				continue
+			}
+			children, err := t.liveChildren(ctx, node)
+			if err != nil {
+				return err
+			}
+			if len(children) == 0 {
+				victim = node.ID
+				break
+			}
+		}
+		if victim == "" {
+			return nil
+		}
+		if err := t.removeNode(ctx, table, victim); err != nil {
+			return err
+		}
 	}
-	children, err := t.liveChildren(ctx, node)
+}
+
+// removeNode drops one node and its index entry. Detaching an empty root leaves
+// the Table with no router at all, which is the legal "no semantic tree yet"
+// state: SHOW ROUTES AT ROOT answers with an empty page.
+func (t *tx) removeNode(ctx context.Context, table catalog.Table, routeID string) error {
+	node, err := t.readRoute(ctx, table.ID, routeID)
 	if err != nil {
-		return 0, err
-	}
-	if len(children) > 0 {
-		return 0, fail(result.CodeConstraint, "route %q still has %d live children", routeID, len(children))
+		return err
 	}
 	if node.ParentID != "" {
 		parent, err := t.readRoute(ctx, table.ID, node.ParentID)
 		if err != nil {
-			return 0, err
+			return err
 		}
 		parent.ChildIDs = without(parent.ChildIDs, node.ID)
 		if err := t.saveRoute(ctx, table, parent, change.OperationUpdate); err != nil {
-			return 0, err
+			return err
 		}
-	} else {
-		if _, err := t.q().ExecContext(ctx, `UPDATE mem_tables SET router_root_id = NULL WHERE id = ?`, table.ID); err != nil {
-			return 0, err
-		}
+	} else if _, err := t.q().ExecContext(ctx, `UPDATE mem_tables SET router_root_id = NULL WHERE id = ?`, table.ID); err != nil {
+		return err
 	}
-	if node.RowID != "" {
-		if err := t.unmountRow(ctx, table, node.RowID, node.ID); err != nil {
-			return 0, err
-		}
+	if _, err := t.q().ExecContext(ctx, `DELETE FROM `+routeTable(table.ID)+` WHERE route_id = ?`, routeID); err != nil {
+		return err
 	}
-	node.Deprecated = true
-	if err := t.saveRoute(ctx, table, node, change.OperationDelete); err != nil {
-		return 0, err
-	}
-	return node.Revision + 1, nil
-}
-
-func (t *tx) unmountRow(ctx context.Context, table catalog.Table, rowID, leafID string) error {
-	value, err := t.readRow(ctx, table, rowID)
-	if err != nil {
-		return nil
-	}
-	remaining := without(value.RouteLeafIDs, leafID)
-	if len(remaining) == len(value.RouteLeafIDs) {
-		return nil
-	}
-	value.RouteLeafIDs = remaining
-	_, err = t.q().ExecContext(ctx, `UPDATE `+dataTable(table.ID)+` SET route_leaf_ids = ? WHERE row_id = ?`,
-		encodeJSON(remaining), rowID)
+	_, err = t.q().ExecContext(ctx, `DELETE FROM mem_route_index WHERE route_id = ?`, routeID)
 	return err
 }
 

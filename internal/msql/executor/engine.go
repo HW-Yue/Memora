@@ -35,7 +35,6 @@ type Rows interface {
 	Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error)
 	CreateRouterNode(context.Context, string, router.NodeDefinition) (router.Node, error)
 	RenameRouterNode(context.Context, string, string, uint64) (router.Node, error)
-	DeleteRouterNode(context.Context, string, uint64) (uint64, error)
 	GetRouterNode(context.Context, string) (router.Node, error)
 	ListRouterChildrenPage(context.Context, string, string, int) ([]router.Node, router.ReadPage, error)
 	ListRouterLeafPage(context.Context, string, string, int) ([]router.Locator, router.ReadPage, error)

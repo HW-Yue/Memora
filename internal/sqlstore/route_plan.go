@@ -145,6 +145,12 @@ func (db *DB) ApplyRouteMutationPlan(ctx context.Context, databaseName, tableNam
 			}
 			receipt.DeletedNodes++
 		}
+		// Moving or retiring the last child of a branch leaves a shell behind;
+		// the engine clears it here rather than handing the Agent a second way
+		// to remove nodes.
+		if err := t.pruneEmptyBranches(ctx, table); err != nil {
+			return err
+		}
 		if err := t.checkTreeShape(ctx, table); err != nil {
 			return err
 		}

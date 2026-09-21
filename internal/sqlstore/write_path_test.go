@@ -56,6 +56,31 @@ func (h *harness) leafHolder(leafID string) string {
 	return stored.RowID
 }
 
+// deprecateLeaf retires a leaf the way a route-mutation plan does. Plans are the
+// only remaining producer of a retired node, so the fixture writes the stored
+// shape directly instead of driving a whole plan.
+func (h *harness) deprecateLeaf(leafID string) {
+	h.t.Helper()
+	var body string
+	query := `SELECT body FROM "routes_` + h.notesTableID() + `" WHERE route_id = ?`
+	if err := h.db.SQL().QueryRow(query, leafID).Scan(&body); err != nil {
+		h.t.Fatal(err)
+	}
+	fields := map[string]any{}
+	if err := json.Unmarshal([]byte(body), &fields); err != nil {
+		h.t.Fatal(err)
+	}
+	fields["deprecated"] = true
+	encoded, err := json.Marshal(fields)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	update := `UPDATE "routes_` + h.notesTableID() + `" SET body = ?, deprecated = 1 WHERE route_id = ?`
+	if _, err := h.db.SQL().Exec(update, string(encoded), leafID); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
 func (h *harness) liveRows() int {
 	h.t.Helper()
 	var count int
@@ -64,24 +89,6 @@ func (h *harness) liveRows() int {
 		h.t.Fatal(err)
 	}
 	return count
-}
-
-// routeRevision is what DELETE ROUTE and the other route writes guard on.
-// Mounting a Row bumps the leaf's revision, so a caller cannot assume one.
-func (h *harness) routeRevision(routeID string) uint64 {
-	h.t.Helper()
-	var body string
-	query := `SELECT body FROM "routes_` + h.notesTableID() + `" WHERE route_id = ?`
-	if err := h.db.SQL().QueryRow(query, routeID).Scan(&body); err != nil {
-		h.t.Fatal(err)
-	}
-	var stored struct {
-		Revision uint64 `json:"revision"`
-	}
-	if err := json.Unmarshal([]byte(body), &stored); err != nil {
-		h.t.Fatal(err)
-	}
-	return stored.Revision
 }
 
 func (h *harness) seedNotes() (string, string) {
@@ -126,9 +133,7 @@ func TestInsertRejectsLeavesThatCannotHoldTheRow(t *testing.T) {
 		map[string]any{"p": root}, write("branch")).Rows[0]["route_id"])
 	retired := text(h.run(`CREATE ROUTE UNDER :p NAME 'retired' KIND 'leaf' PURPOSE 'Retired'`,
 		map[string]any{"p": root}, write("retired")).Rows[0]["route_id"])
-	retire := write("retire")
-	retire.ExpectedRevision = 1
-	h.run(`DELETE ROUTE :r`, map[string]any{"r": retired}, retire)
+	h.deprecateLeaf(retired)
 	h.insertTitle("first", []string{leaf})
 
 	cases := []struct {
@@ -201,26 +206,18 @@ func TestDeleteKeepsTheLeafPointingButStopsNavigating(t *testing.T) {
 	}
 }
 
-// DELETing the leaf itself detaches the Row and leaves it live with no way
-// back. That is the second hole the invariant layer closes.
-func TestDeleteRouteUnmountsALiveRowAndOrphansIt(t *testing.T) {
+// DELETE ROUTE is retired from the Agent surface: removing a node is a
+// consequence of whatever emptied it, and the engine prunes empty branches
+// itself. The diagnostic is specific rather than a generic syntax error.
+func TestDeleteRouteIsRetired(t *testing.T) {
 	h := newHarness(t)
 	_, leaf := h.seedNotes()
-	rowID := h.insertTitle("stranded", []string{leaf})
 
-	retire := write("retire")
-	retire.ExpectedRevision = h.routeRevision(leaf)
-	h.run(`DELETE ROUTE :r`, map[string]any{"r": leaf}, retire)
-
-	if leaves := h.storedLeaves(rowID); len(leaves) != 0 {
-		t.Fatalf("stored leaves after DELETE ROUTE = %v", leaves)
+	if code := h.fails(`DELETE ROUTE :r`, map[string]any{"r": leaf}, write("retire")); code != result.CodeUnsupported {
+		t.Fatalf("code = %s", code)
 	}
-	if h.liveRows() != 1 {
-		t.Fatalf("live rows = %d", h.liveRows())
-	}
-	selected := h.run("SELECT * FROM `work`.`notes` WHERE row_id = :row LIMIT 1", map[string]any{"row": rowID}, executor.MutationOptions{})
-	if len(selected.Rows) != 1 {
-		t.Fatalf("the row is live and only unreachable: %v", selected.Rows)
+	if holder := h.leafHolder(leaf); holder != "" {
+		t.Fatalf("the refused statement must change nothing: leaf holds %q", holder)
 	}
 }
 

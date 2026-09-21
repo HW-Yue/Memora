@@ -194,22 +194,19 @@ func TestAgentJourneyOnSQLite(t *testing.T) {
 	}
 }
 
-func TestRouteNodeKeepsChildIDsAndDeprecatesInsteadOfDeleting(t *testing.T) {
+func TestRouteNodeKeepsItsChildIDs(t *testing.T) {
 	h := newHarness(t)
 	h.run(`CREATE DATABASE work PURPOSE 'p' SCOPE 's'`, nil, executor.MutationOptions{})
 	h.run(`CREATE TABLE work.notes PURPOSE 'p' ROW SEMANTICS 'r' (title TEXT NOT NULL PURPOSE 'title' ROLE title)`, nil, executor.MutationOptions{})
 	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'root'`, nil, write("root")).Rows[0]["route_id"])
-	a := text(h.run(`CREATE ROUTE UNDER :p NAME 'a' KIND 'leaf' PURPOSE 'a'`, map[string]any{"p": root}, write("a")).Rows[0]["route_id"])
+	h.run(`CREATE ROUTE UNDER :p NAME 'a' KIND 'leaf' PURPOSE 'a'`, map[string]any{"p": root}, write("a"))
 	h.run(`CREATE ROUTE UNDER :p NAME 'b' KIND 'leaf' PURPOSE 'b'`, map[string]any{"p": root}, write("b"))
 
-	var body string
-	if err := h.db.SQL().QueryRow(`SELECT body FROM mem_route_index i JOIN mem_tables t ON t.id = i.table_id WHERE i.route_id = ?`, root).Scan(&body); err != nil {
-		t.Fatal(err)
-	}
 	var tableID string
 	if err := h.db.SQL().QueryRow(`SELECT table_id FROM mem_route_index WHERE route_id = ?`, root).Scan(&tableID); err != nil {
 		t.Fatal(err)
 	}
+	var body string
 	if err := h.db.SQL().QueryRow(`SELECT body FROM "routes_`+tableID+`" WHERE route_id = ?`, root).Scan(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -218,18 +215,6 @@ func TestRouteNodeKeepsChildIDsAndDeprecatesInsteadOfDeleting(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(body), &stored); err != nil || len(stored.ChildIDs) != 2 {
 		t.Fatalf("root child_ids = %v (%v)", stored.ChildIDs, err)
-	}
-
-	retire := write("retire")
-	retire.ExpectedRevision = 1
-	h.run(`DELETE ROUTE :r`, map[string]any{"r": a}, retire)
-	var deprecated int
-	if err := h.db.SQL().QueryRow(`SELECT deprecated FROM "routes_`+tableID+`" WHERE route_id = ?`, a).Scan(&deprecated); err != nil || deprecated != 1 {
-		t.Fatalf("deleted route must remain as deprecated, got %d (%v)", deprecated, err)
-	}
-	children := h.run(`SHOW ROUTES UNDER :p LIMIT 12`, map[string]any{"p": root}, executor.MutationOptions{})
-	if len(children.Rows) != 1 || text(children.Rows[0]["name"]) != "b" {
-		t.Fatalf("children after retire = %v", children.Rows)
 	}
 }
 

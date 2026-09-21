@@ -30,7 +30,6 @@ type Statement struct {
 	CreateRoute   *CreateRouteStatement        `json:"create_route,omitempty"`
 	RenameRoute   *RenameRouteStatement        `json:"rename_route,omitempty"`
 	UpdateRoute   *UpdateRouteStatement        `json:"update_route,omitempty"`
-	DeleteRoute   *DeleteRouteStatement        `json:"delete_route,omitempty"`
 	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
@@ -181,10 +180,6 @@ type UpdateRouteStatement struct {
 	Aliases  *Expression `json:"aliases,omitempty"`
 }
 
-type DeleteRouteStatement struct {
-	Route *Expression `json:"route"`
-}
-
 type OpenRouteStatement struct {
 	Mode   string      `json:"mode"`
 	Route  *Expression `json:"route"`
@@ -327,8 +322,6 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.UpdateRoute.Route)
 		appendExpression(statement.UpdateRoute.Synopsis)
 		appendExpression(statement.UpdateRoute.Aliases)
-	case statement.DeleteRoute != nil:
-		appendExpression(statement.DeleteRoute.Route)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
 		appendExpression(statement.Show.Route)
 		appendExpression(statement.Show.Cursor)

@@ -72,8 +72,6 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 			return engine.updateRouteAliases(ctx, statement.UpdateRoute, bound, options)
 		}
 		return engine.updateRouteSynopsis(ctx, statement.UpdateRoute, bound, options)
-	case statement.DeleteRoute != nil:
-		return engine.deleteRoute(ctx, statement.DeleteRoute, bound, options)
 	case statement.OpenRoute != nil:
 		return engine.openRoute(ctx, statement.OpenRoute, bound)
 	case statement.PlanRoute != nil:

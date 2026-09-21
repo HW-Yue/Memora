@@ -41,11 +41,6 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			parameters: 1,
 		},
 		{
-			source:     "DELETE ROUTE :route",
-			kind:       "DELETE_ROUTE",
-			parameters: 1,
-		},
-		{
 			source:     "SHOW ROUTES UNDER :parent CURSOR :cursor LIMIT :limit",
 			kind:       "SHOW",
 			parameters: 3,
@@ -120,7 +115,6 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 		"ALTER ROUTE :route RENAME",
 		"ALTER ROUTE :route SET ALIASES",
 		"ALTER ROUTE :route SET UNKNOWN :value",
-		"DELETE ROUTE",
 		"ARCHIVE ROUTE :route REASON :reason",
 		"UNARCHIVE ROUTE :route",
 		"ARCHIVE ROW work.notes :row REASON :reason",

@@ -209,29 +209,6 @@ func (engine *Engine) renameRoute(
 	return routerNodeMutationOutput(renamed), nil
 }
 
-func (engine *Engine) deleteRoute(
-	ctx context.Context,
-	statement *ast.DeleteRouteStatement,
-	bound bindings,
-	options MutationOptions,
-) (Output, error) {
-	if err := validateRouterMutationOptions(options, true); err != nil {
-		return Output{}, err
-	}
-	routeID, err := routerString(statement.Route, bound, "Router node ID")
-	if err != nil {
-		return Output{}, err
-	}
-	if err := engine.authorizeRouterIDAtLevel(ctx, security.LevelStructural, routeID); err != nil {
-		return Output{}, err
-	}
-	revision, err := engine.rows.DeleteRouterNode(ctx, routeID, options.ExpectedRevision)
-	if err != nil {
-		return Output{}, normalizeError(err)
-	}
-	return routerRevisionMutationOutput(revision), nil
-}
-
 func (engine *Engine) showRoutes(
 	ctx context.Context,
 	statement ast.Statement,
@@ -579,12 +556,5 @@ func routerNodeMutationOutput(node router.Node) Output {
 		Rows:         []result.Row{routeResult(node)},
 		AffectedRows: 1,
 		Revision:     &revision,
-	}
-}
-
-func routerRevisionMutationOutput(revision uint64) Output {
-	return Output{
-		Columns: []result.Column{}, Rows: []result.Row{},
-		AffectedRows: 1, Revision: &revision,
 	}
 }

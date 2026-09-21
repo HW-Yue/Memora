@@ -46,13 +46,16 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 
 - **M1 · CI 修复 ✓**（2026-09-21）：各 stage 自己决定 `CGO_ENABLED`；真实 CI 在主线分支
   两个平台全绿（run `35563180634`）；三个 devgate 门锁住这条规则。
-- **M1 · 三包回归 ✓**（2026-09-21）→ 并入 M2 的 Feature 1，已完成。
+- **M1 · 三包回归 ✓**（2026-09-21）→ 并入 M2 的 Feature 1。
 - **M1 · baseline 落 `main` ✗** 作废：`main` 是另一条路（见 [`AGENTS.md`](../../AGENTS.md)「分支主线」）。
 - **M2 · Feature 1 ✓**（2026-09-21）：`catalog`／`row`／`instance` 与写入路径有了回归网，
   两个变异检验证明它会咬人。
 - **M2 · Feature 2 ✓**（2026-09-21）：挂载必须恰好一个——提交时长度 ≠ 1 即拒绝、零写入；
-  UPDATE 的挂载由并集改为替换，被离开的叶子当场清空行指针。剩余 Feature 3（致空剪枝 +
-  `DELETE ROUTE` 退役）、Feature 4（`doctor` 报违例）。
+  UPDATE 的挂载由并集改为替换，被离开的叶子当场清空行指针。
+- **M2 · Feature 3 ✓**（2026-09-21）：`DELETE ROUTE` 整条退役（parser 给指路诊断，AST／
+  executor／安全分类／`deprecateNode` 一并移除）；引擎在 route mutation 应用后剪掉空壳分支
+  并递归向上，空叶子与带 `successor_ids` 的废弃节点不剪。
+- **下一件**：M2 Feature 4（`doctor` 报不变量违例）。
 
 ## M2 的 Feature 切分（下一件）
 

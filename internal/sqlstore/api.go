@@ -102,11 +102,6 @@ func (o operations) RenameRouterNode(ctx context.Context, routeID, name string, 
 	return
 }
 
-func (o operations) DeleteRouterNode(ctx context.Context, routeID string, expected uint64) (revision uint64, err error) {
-	err = o.run(ctx, true, func(t *tx) error { revision, err = t.deprecateNode(ctx, routeID, expected); return err })
-	return
-}
-
 func (o operations) GetRouterNode(ctx context.Context, routeID string) (value router.Node, err error) {
 	err = o.run(ctx, false, func(t *tx) error { value, err = t.getNode(ctx, routeID); return err })
 	return

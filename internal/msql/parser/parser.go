@@ -985,13 +985,14 @@ func (parser *parser) parseUpdate() (ast.Statement, error) {
 
 func (parser *parser) parseDelete() (ast.Statement, error) {
 	if parser.matchWord("ROUTE") {
-		route, err := parser.parseExpression(1)
-		if err != nil {
-			return ast.Statement{}, err
+		// Retired: removing a node is a consequence of whatever emptied it, so
+		// the engine prunes empty branches itself and restructuring goes through
+		// PLAN ROUTE MUTATION. The diagnostic names the replacement rather than
+		// falling through to a generic syntax error.
+		return ast.Statement{}, &Error{
+			Code: ErrorUnsupportedStatement, Span: parser.previous().Span, Found: "DELETE ROUTE",
+			Expected: "DELETE FROM <table> (DELETE ROUTE is retired)",
 		}
-		return ast.Statement{Kind: "DELETE_ROUTE", DeleteRoute: &ast.DeleteRouteStatement{
-			Route: &route,
-		}}, nil
 	}
 	if _, err := parser.expectWord("FROM"); err != nil {
 		return ast.Statement{}, err

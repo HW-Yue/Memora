@@ -115,6 +115,9 @@ func TestParseReportsPreciseErrors(t *testing.T) {
 		{"missing from", "SELECT * notes", ErrorUnexpectedToken, 1, 10},
 		{"missing expression", "SELECT (1 + ) FROM notes", ErrorUnexpectedToken, 1, 13},
 		{"unsupported", "DROP TABLE notes", ErrorUnsupportedStatement, 1, 1},
+		// Retiring DELETE ROUTE keeps the diagnostic specific: an Agent that
+		// still sends it is told the statement is gone, not that it mis-typed.
+		{"retired delete route", "DELETE ROUTE :route", ErrorUnsupportedStatement, 1, 8},
 		{"second statement", "SHOW DATABASES; SHOW TABLES", ErrorUnexpectedToken, 1, 17},
 	}
 	for _, test := range tests {
