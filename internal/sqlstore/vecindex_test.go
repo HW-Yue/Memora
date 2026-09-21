@@ -202,3 +202,88 @@ func TestRepairIsBoundedAndReportsWhatIsLeft(t *testing.T) {
 	// And the statement refuses a limit its caller has not budgeted for.
 	h.fails(`REPAIR VECTOR INDEX IN DATABASE work LIMIT 8`, nil, write("over budget"))
 }
+
+func TestVectorRecallAnswersWithAPositionAndNothingElse(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	near := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	other := h.insertAlongPath("unrelated", pathOf("architecture", "wal"))
+	h.acceptUnitVector(near, []float32{1, 0})
+	h.acceptUnitVector(other, []float32{0, 1})
+
+	hits, err := h.db.Rows().RecallNearest(context.Background(), "work", "", []float32{1, 0}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("both units are within k: %+v", hits)
+	}
+	// The nearest comes first internally, but the listing is lexicographic like
+	// the keyword arm: the answer is a position, not a ranking.
+	if len(hits[0].Path) == 0 || hits[0].Path[len(hits[0].Path)-1].RouteID == "" {
+		t.Fatalf("a hit must carry the path navigation needs: %+v", hits[0])
+	}
+	if hits[0].ObjectID == "" || hits[0].Kind != "leaf" || hits[0].Database != "work" {
+		t.Fatalf("hit = %+v", hits[0])
+	}
+	// Nothing beyond the frozen shape: a score would be a ranking in disguise.
+	if hits[0].Table == "" || hits[0].Database == "" {
+		t.Fatalf("hit = %+v", hits[0])
+	}
+}
+
+func TestVectorRecallSkipsAVectorThatNoLongerDescribesTheText(t *testing.T) {
+	h := newHarness(t)
+	_, leaf := h.seedNotes()
+	rowID := h.insertTitle("storage engine", []string{leaf})
+	h.acceptUnitVector(rowID, []float32{1, 0})
+	if hits, err := h.db.Rows().RecallNearest(context.Background(), "work", "", []float32{1, 0}, 5); err != nil || len(hits) != 1 {
+		t.Fatalf("the fresh vector must be found: %+v, %v", hits, err)
+	}
+
+	refine := write("edit the text the vector was computed from")
+	refine.ExpectedRevision = 1
+	h.run(`UPDATE work.notes SET title = 'storage engine, reconsidered' WHERE row_id = :row`,
+		map[string]any{"row": rowID}, refine)
+
+	// The bytes are still in the index, and they describe a sentence the unit no
+	// longer holds. Recall has no scores, so returning it would be a wrong answer
+	// that looks exactly like a right one.
+	hits, err := h.db.Rows().RecallNearest(context.Background(), "work", "", []float32{1, 0}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("a stale vector must not answer: %+v", hits)
+	}
+
+	// Re-embedding the current text makes it answerable again.
+	_, currentHash := h.recallUnit(rowID)
+	unitNo, _ := h.recallUnit(rowID)
+	if _, err := h.db.Rows().AcceptVector(context.Background(), "work", sqlstore.VectorRecord{
+		UnitNo: unitNo, ContentHash: currentHash,
+		Model: "text-embedding-v4", Dimensions: 2, Vector: []float32{1, 0},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if hits, err := h.db.Rows().RecallNearest(context.Background(), "work", "", []float32{1, 0}, 5); err != nil || len(hits) != 1 {
+		t.Fatalf("a re-embedded unit answers again: %+v, %v", hits, err)
+	}
+}
+
+func TestVectorRecallRefusesAQueryItCannotAnswer(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	rowID := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	ctx := context.Background()
+
+	// Before any vector is accepted the Database has no identity: a vector query
+	// has nothing to search, which is a different answer from "no match".
+	if _, err := h.db.Rows().RecallNearest(ctx, "work", "", []float32{1, 0}, 5); err == nil {
+		t.Fatal("a vector query without a locked identity must be refused")
+	}
+	h.acceptUnitVector(rowID, []float32{1, 0})
+	if _, err := h.db.Rows().RecallNearest(ctx, "work", "", []float32{1, 0, 0}, 5); err == nil {
+		t.Fatal("a query of the wrong width must be refused")
+	}
+}

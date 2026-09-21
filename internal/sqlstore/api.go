@@ -39,6 +39,16 @@ func (o operations) RecallKeywords(ctx context.Context, databaseName, tableName,
 	return
 }
 
+// RecallNearest answers a vector query with semantic paths. The query vector is
+// computed by the host; the engine only reads the index it already holds.
+func (o operations) RecallNearest(ctx context.Context, databaseName, tableName string, query []float32, limit int) (hits []recall.Hit, err error) {
+	err = o.run(ctx, false, func(t *tx) error {
+		hits, err = t.recallNearest(ctx, databaseName, tableName, query, limit)
+		return err
+	})
+	return
+}
+
 // AcceptVector offers one host-computed embedding to one unit. It is a write:
 // accepting a vector is what locks the Database's identity, so it belongs to the
 // same serialised transaction domain as the data it describes.

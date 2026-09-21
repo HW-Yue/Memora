@@ -49,3 +49,16 @@ func SerializeFloat32(vector []float32) ([]byte, error) {
 	}
 	return buffer.Bytes(), nil
 }
+
+// DeserializeFloat32 reads back a vector a host sent. A caller that hands over
+// bytes of the wrong width gets a refusal rather than a truncated vector.
+func DeserializeFloat32(raw []byte) ([]float32, error) {
+	if len(raw) == 0 || len(raw)%4 != 0 {
+		return nil, fmt.Errorf("a vector must be a whole number of float32 values, got %d bytes", len(raw))
+	}
+	vector := make([]float32, len(raw)/4)
+	if err := binary.Read(bytes.NewReader(raw), binary.LittleEndian, vector); err != nil {
+		return nil, fmt.Errorf("read vector: %w", err)
+	}
+	return vector, nil
+}
