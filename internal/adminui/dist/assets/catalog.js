@@ -171,7 +171,7 @@ function objectCard(row, href, kind) {
 		link.dataset.route = "";
 		link.setAttribute("aria-label", `查看 ${row.name} 表信息`);
 		link.append(element("strong", "", row.name));
-		link.append(element("p", "", row.row_semantics || row.purpose));
+		link.append(element("p", "", row.purpose));
 		const actions = element("div", "table-card-actions");
 		const schema = element("a", "table-action", "查看表结构");
 		schema.href = href;
@@ -189,7 +189,7 @@ function objectCard(row, href, kind) {
   card.href = href;
   card.dataset.route = "";
   card.append(element("strong", "", row.name));
-  const detail = kind === "table" ? row.row_semantics || row.purpose : row.purpose;
+  const detail = row.purpose;
   card.append(element("p", "", detail));
   return card;
 }

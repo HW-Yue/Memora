@@ -232,8 +232,7 @@ function titleFor(snapshot, rowID) {
 function heading(before, after, rowID) {
   const wrapper = element("header", "catalog-heading diff-heading");
   const content = element("div");
-  content.append(element("h2", "", titleFor(after, rowID)),
-    element("p", "", before.detail.row_semantics));
+  content.append(element("h2", "", titleFor(after, rowID)));
   const meta = element("div", "catalog-meta");
   meta.append(element("span", "schema-badge", `revision ${before.row.revision} → ${after.row.revision}`),
     element("span", "schema-badge", `${before.row.row_state} → ${after.row.row_state}`));

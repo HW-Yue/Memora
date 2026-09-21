@@ -1,6 +1,7 @@
 # Admin 显示槽位改造
 
-状态：讨论稿。方向已定（见[决策日志](../decisions.md) 2026-09-21 条），**未授权开工**。
+状态：**已实现**（2026-09-21）。`row_semantics` 不再出现在任何展示槽位；表卡与语义索引
+根节点显示该表自己的 `purpose`；`purpose` 写入质量已核对。
 
 ## 规则
 
@@ -45,10 +46,21 @@
 - `dist/` 里是手写 JS，仓库没有 TS 构建链；它既是源也是产物。
 - 复用现成样式（`.row-document-layout`、`.semantic-document-*`），不新增布局体系。
 
-## 待定
+## 落地记录（2026-09-21）
 
-- 是否现在动手——**未授权**。
-- 卡片不再提示行的粒度，信息量压到 `purpose` 的写作质量上；`me` 四张表现值合格
-  （秋招投递与进展 / 实习与工作经历 / 当前有效的个人身份与求职意向 / 可对外陈述的关键项目），
-  是否回头校一遍。
-- 独立发现：`me.experiences` 的业务列 `role` 与 Catalog 的 `ROLE` 撞名，早晚会咬人。
+- 表卡 `catalog.js`：中间那句改为 `row.purpose`；`row_semantics ||` 与其在通用分支里的
+  孪生表达式一起删掉——`||` 是死代码（`validateRows` 已强制 `row_semantics` 非空），
+  它掩盖的正是两个字段被塞进同一槽位。表详情页 heading 原本就用 `purpose`，现在一致了。
+- 语义索引根节点 `routes.js`（`treeRoot`）：`purpose` 取自 `table.purpose`。
+- Row 修订对比 `diffs.js`：标题下那行 `row_semantics` 删除（标题已经点名了这一 Row）。
+- Row 页标题下的小字此前随文档槽位改造一并删除，`rows.js` 只剩协议校验。
+- `row_semantics` 仍留在 wire 协议里（`result` 的 row-detail 形状），页面对它做**校验**、
+  不再做**展示**；bundle 断言把"再拿它当描述用"写成了 forbidden。
+- `purpose` 现值核对：`profile` 当前有效的个人身份与求职意向 / `applications` 秋招投递与进展 /
+  `experiences` 实习与工作经历 / `projects` 可对外陈述的关键项目 / `modules` 现行可独立修改的
+  产品知识模块 / `decisions` 本仓库的架构决策记录。六张表都写的是"是什么"，合格。
+
+## 仍待定
+
+- 独立发现：`me.experiences` 的业务列 `role` 与 Catalog 的 `ROLE` 撞名，早晚会咬人
+  （引擎已不再允许自定义列，这条只对改造前写入的旧实例成立）。

@@ -181,6 +181,9 @@ func TestRowRevisionDiffModuleUsesTwoBoundedParameterizedAsOfPointReads(t *testi
 	for _, forbidden := range []string{
 		"innerHTML", "SHOW HISTORY", "SHOW CHANGE", "DESCRIBE ROUTE", "INSERT ", "UPDATE ",
 		"DELETE ", "RESTORE ", "CREATE ", "localStorage", "sessionStorage",
+		// The heading names the Row; the engine's row-semantics sentence is not
+		// a description of it and was the same line on every revision.
+		"before.detail.row_semantics",
 	} {
 		if strings.Contains(javascript, forbidden) {
 			t.Errorf("Row revision diff module contains forbidden %q", forbidden)
@@ -326,10 +329,17 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	for _, forbidden := range []string{
 		"INSERT ", "UPDATE ", "DELETE ", "CREATE ",
 		"localStorage", "sessionStorage", "OPEN ROUTE :route CURSOR",
+		// The tree is rooted in a Table, and the root's sentence is that
+		// Table's purpose — not the engine's row semantics, which says the same
+		// thing under every Table.
+		"purpose: table.row_semantics",
 	} {
 		if strings.Contains(javascript, forbidden) {
 			t.Errorf("Route Tree module contains forbidden %q", forbidden)
 		}
+	}
+	if !strings.Contains(javascript, "purpose: table.purpose") {
+		t.Error("Route Tree root does not carry the Table's own purpose")
 	}
 }
 
@@ -546,6 +556,18 @@ func TestCatalogModuleUsesBoundedStableIDMSQLAndDefinesEveryPageState(t *testing
 	for _, forbidden := range []string{"innerHTML", "INSERT ", "UPDATE ", "DELETE ", "CREATE ", "localStorage", "sessionStorage"} {
 		if strings.Contains(javascript, forbidden) {
 			t.Errorf("Catalog module contains forbidden %q", forbidden)
+		}
+	}
+	// A Table card says what that Table holds. `row_semantics` is the engine's
+	// statement about what a *Row* is — the same sentence in every Table — so
+	// showing it as the Table's description put one piece of boilerplate on
+	// every card and hid the purpose that was written for each one.
+	if !strings.Contains(javascript, `element("p", "", row.purpose)`) {
+		t.Error("Catalog module does not describe a Table with its own purpose")
+	}
+	for _, forbidden := range []string{"row_semantics || row.purpose", "? row.row_semantics"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Catalog module still prints the engine's row semantics as a Table description (%q)", forbidden)
 		}
 	}
 }

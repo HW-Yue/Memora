@@ -584,7 +584,7 @@ function treeRoot(table, rows, page) {
     id: "table-root",
     name: table.name,
     kind: "root",
-    purpose: table.row_semantics,
+    purpose: table.purpose,
     children: rows.map(treeNode),
     childrenLoaded: true,
     page
