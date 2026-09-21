@@ -117,7 +117,7 @@ jev 不进内核。见 [查询形态](../product/query-model.md) §6、[检索�
 
 ## 六、工作方式
 
-- 不在默认分支开发；一个 Feature 一个主要结果，独立分支、独立 Review 与授权；
+- 不在主线分支直接开发；一个 Feature 一个主要结果，独立分支、独立 Review 与授权；
 - RED → GREEN → REFACTOR；碰持久化／事务／索引的必须有 reopen、中断、错误注入或 race 证据；
 - 出库格式与契约的变更（`route_leaf_ids` 单数化、`DELETE ROUTE` 退役、INSERT 隐式建路径）
   要与契约版本一起走；
