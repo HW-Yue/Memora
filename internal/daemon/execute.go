@@ -14,6 +14,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
+	"github.com/HW-Yue/Memora/internal/msql/readquery"
 	msqlservice "github.com/HW-Yue/Memora/internal/msql/service"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/routetrace"
@@ -24,6 +25,11 @@ import (
 type executePayload struct {
 	Source     string                    `json:"source"`
 	Statements []executor.StatementInput `json:"statements,omitempty"`
+	// ReadOnly marks a request that must not mutate anything. The transport that
+	// owns the policy is the daemon: a client that kept its own list of allowed
+	// statements would refuse a statement it had never heard of, which reads as
+	// "this feature does not exist" rather than "your client is older".
+	ReadOnly bool `json:"read_only,omitempty"`
 }
 
 type databaseHandler struct {
@@ -56,10 +62,31 @@ type routeTraceRecordPayload struct {
 	Authorization security.Authorization `json:"authorization,omitempty"`
 }
 
+// Execute runs a batch that may write.
 func Execute(
 	ctx context.Context,
 	dataDir, source string,
 	statements []executor.StatementInput,
+) (result.Envelope, error) {
+	return execute(ctx, dataDir, source, statements, false)
+}
+
+// ExecuteReadOnly runs a batch the daemon must refuse if it would write. The
+// decision lives here rather than in the caller so that every client — including
+// one older than the statement being sent — is held to the same policy.
+func ExecuteReadOnly(
+	ctx context.Context,
+	dataDir, source string,
+	statements []executor.StatementInput,
+) (result.Envelope, error) {
+	return execute(ctx, dataDir, source, statements, true)
+}
+
+func execute(
+	ctx context.Context,
+	dataDir, source string,
+	statements []executor.StatementInput,
+	readOnly bool,
 ) (result.Envelope, error) {
 	path, err := SocketPath(dataDir)
 	if err != nil {
@@ -72,7 +99,7 @@ func Execute(
 	defer func() { _ = client.Close() }()
 	var envelope result.Envelope
 	err = client.Call(ctx, "msql.execute", executePayload{
-		Source: source, Statements: statements,
+		Source: source, Statements: statements, ReadOnly: readOnly,
 	}, &envelope)
 	return envelope, err
 }
@@ -133,6 +160,12 @@ func (handler *databaseHandler) Handle(
 		return json.Marshal(result.FailedRequest(
 			request.RequestID, result.CodeInvalidRequest, "MSQL execute payload is invalid", false,
 		))
+	}
+	if payload.ReadOnly {
+		if _, err := readquery.Validate(payload.Source); err != nil {
+			return json.Marshal(result.FailedRequest(request.RequestID, result.CodeUnsupported,
+				"this transport is read-only: "+err.Error(), false))
+		}
 	}
 	batch, ok := handler.session(session.ID)
 	if !ok {

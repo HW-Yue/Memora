@@ -20,7 +20,6 @@ import (
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/mcpadapter"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
-	"github.com/HW-Yue/Memora/internal/msql/readquery"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
 	"github.com/HW-Yue/Memora/internal/skillschema"
@@ -76,6 +75,23 @@ func Run(args []string, stdout, stderr io.Writer, build BuildInfo) int {
 	})
 }
 
+// defaultExecute is the daemon round trip, with the read-only policy asked of the
+// daemon rather than decided here.
+func defaultExecute(ctx context.Context, dataDir, source string, inputs []executor.StatementInput, readOnly bool) (result.Envelope, error) {
+	if readOnly {
+		return daemon.ExecuteReadOnly(ctx, dataDir, source, inputs)
+	}
+	return daemon.Execute(ctx, dataDir, source, inputs)
+}
+
+// withoutReadOnly adapts the daemon round trip to transports that decide their own
+// policy (the admin API validates reads itself) and therefore carry no mode.
+func withoutReadOnly(execute ExecuteMSQL) func(context.Context, string, string, []executor.StatementInput) (result.Envelope, error) {
+	return func(ctx context.Context, dataDir, source string, inputs []executor.StatementInput) (result.Envelope, error) {
+		return execute(ctx, dataDir, source, inputs, false)
+	}
+}
+
 type Dependencies struct {
 	HomeDir     func() (string, error)
 	LookupEnv   func(string) (string, bool)
@@ -83,12 +99,7 @@ type Dependencies struct {
 	UserID      func() int
 	Clock       instance.Clock
 	IDs         instance.IDSource
-	ExecuteMSQL func(
-		context.Context,
-		string,
-		string,
-		[]executor.StatementInput,
-	) (result.Envelope, error)
+	ExecuteMSQL ExecuteMSQL
 	ServeAdmin  func(context.Context, adminapi.Config, func(adminapi.Descriptor) error) error
 	OpenBrowser func(string) error
 	Executable  func() (string, error)
@@ -177,10 +188,10 @@ func runSchema(
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
-		execute = daemon.Execute
+		execute = defaultExecute
 	}
 	tool := skillschema.ToolFunc(func(ctx context.Context, call skillschema.Call) (result.Envelope, error) {
-		return execute(ctx, dataDir, call.Request.Source, call.Request.Statements)
+		return execute(ctx, dataDir, call.Request.Source, call.Request.Statements, false)
 	})
 	report, err := skillschema.New(tool).Run(context.Background(), plan)
 	if err != nil {
@@ -235,14 +246,6 @@ func runExecute(
 	if source == "" {
 		return usageError(stderr, command+" requires an MSQL source argument")
 	}
-	if command == "query" {
-		if _, err := readquery.Validate(source); err != nil {
-			return usageError(
-				stderr,
-				"query only accepts SHOW, DESCRIBE, SELECT, OPEN ROUTE, or read-only PLAN statements",
-			)
-		}
-	}
 	statements := []executor.StatementInput{}
 	if inputJSON != "" {
 		var input executor.StatementInput
@@ -261,9 +264,9 @@ func runExecute(
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
-		execute = daemon.Execute
+		execute = defaultExecute
 	}
-	envelope, err := execute(context.Background(), dataDir, source, statements)
+	envelope, err := execute(context.Background(), dataDir, source, statements, command == "query")
 	if err != nil {
 		return commandError(stderr, command+" MSQL", err)
 	}
@@ -357,7 +360,7 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
-		execute = daemon.Execute
+		execute = defaultExecute
 	}
 	serve := dependencies.ServeAdmin
 	if serve == nil {
@@ -372,7 +375,7 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	err := serve(ctx, adminapi.Config{
 		DataDir: dataDir,
 		Scopes:  append([]string(nil), scopes...),
-		Execute: execute,
+		Execute: withoutReadOnly(execute),
 	}, func(descriptor adminapi.Descriptor) error {
 		if err := json.NewEncoder(stdout).Encode(descriptor); err != nil {
 			return err
@@ -456,10 +459,10 @@ func runMutate(
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
-		execute = daemon.Execute
+		execute = defaultExecute
 	}
 	tool := skillwrite.ToolFunc(func(ctx context.Context, call skillwrite.Call) (result.Envelope, error) {
-		return execute(ctx, dataDir, call.Request.Source, call.Request.Statements)
+		return execute(ctx, dataDir, call.Request.Source, call.Request.Statements, false)
 	})
 	report, err := skillwrite.New(tool).Run(context.Background(), plan)
 	if err != nil {
@@ -543,7 +546,7 @@ func runMCP(args []string, stdout, stderr io.Writer, build BuildInfo, dependenci
 		input = os.Stdin
 	}
 	execute := dependencies.ExecuteMSQL
-	server := mcpadapter.New(mcpadapter.Config{DataDir: dataDir, Version: build.Version, Execute: execute})
+	server := mcpadapter.New(mcpadapter.Config{DataDir: dataDir, Version: build.Version, Execute: withoutReadOnly(execute)})
 	if err := server.Serve(context.Background(), input, stdout); err != nil {
 		return commandError(stderr, "serve MCP stdio", err)
 	}

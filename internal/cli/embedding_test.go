@@ -64,7 +64,11 @@ func TestDrainAttachesEveryPendingVector(t *testing.T) {
 		source     string
 		statements []executor.StatementInput
 	}{}
-	execute := func(_ context.Context, _, source string, statements []executor.StatementInput) (result.Envelope, error) {
+	execute := func(_ context.Context, _, source string, statements []executor.StatementInput, readOnly bool) (result.Envelope, error) {
+		// The work list is a read and must travel as one; the offers are writes.
+		if strings.HasPrefix(source, "SHOW PENDING VECTORS") != readOnly {
+			t.Errorf("read-only mode %v does not match %q", readOnly, source)
+		}
 		requests = append(requests, struct {
 			source     string
 			statements []executor.StatementInput
@@ -116,7 +120,7 @@ func TestDrainAttachesEveryPendingVector(t *testing.T) {
 // A provider that is down must not stop the host from recording what the user
 // asked for, and must not pretend the work was done either.
 func TestDrainReportsAFailedProviderAndKeepsTheWorkPending(t *testing.T) {
-	execute := func(_ context.Context, _, source string, _ []executor.StatementInput) (result.Envelope, error) {
+	execute := func(_ context.Context, _, source string, _ []executor.StatementInput, _ bool) (result.Envelope, error) {
 		if strings.HasPrefix(source, "SHOW PENDING VECTORS") {
 			return successfulEnvelope(pageResult(source, []result.Row{
 				{"unit_no": int64(7), "table": "notes", "content_hash": "sha256:one", "payload": "storage engine"},

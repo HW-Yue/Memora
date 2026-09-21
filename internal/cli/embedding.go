@@ -103,7 +103,9 @@ func drainDatabase(
 
 // ExecuteMSQL is the daemon round trip the CLI already depends on; the drain
 // uses the same one, so a test can watch the whole exchange without a daemon.
-type ExecuteMSQL func(context.Context, string, string, []executor.StatementInput) (result.Envelope, error)
+// ExecuteMSQL is the daemon round trip. readOnly asks the daemon to hold the
+// request to the read policy — the client does not decide that for itself.
+type ExecuteMSQL func(context.Context, string, string, []executor.StatementInput, bool) (result.Envelope, error)
 
 func pendingPage(
 	ctx context.Context,
@@ -117,7 +119,7 @@ func pendingPage(
 	read.Parameters = executor.Parameters{Named: map[string]any{"limit": drainBatch}}
 	envelope, err := execute(ctx, dataDir,
 		"SHOW PENDING VECTORS IN DATABASE "+database+" LIMIT :limit",
-		[]executor.StatementInput{read})
+		[]executor.StatementInput{read}, true)
 	if err != nil {
 		return nil, requestError(err)
 	}
@@ -160,7 +162,7 @@ func attachVectors(
 	}
 	// One request, one transaction: a batch of statements is how the language
 	// carries several embeddings, since it has no array type.
-	envelope, err := execute(ctx, dataDir, strings.Join(sources, "; "), inputs)
+	envelope, err := execute(ctx, dataDir, strings.Join(sources, "; "), inputs, false)
 	if err != nil {
 		return requestError(err)
 	}
