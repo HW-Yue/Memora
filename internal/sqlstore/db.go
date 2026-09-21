@@ -30,6 +30,21 @@ import (
 // FileName is the single SQLite file an Instance keeps under its data directory.
 const FileName = "memora.db"
 
+// fileSchemaVersion is the shape of the file itself, recorded in SQLite's own
+// user_version so it survives everything and is written atomically with the
+// change it describes.
+//
+// The guard it enables only protects binaries that have it: one released before
+// this cannot be taught to look. What it buys is that every binary from now on
+// refuses to open an Instance a newer one has written, instead of migrating it
+// back to its own shape — which is not a parse error but a silent rewrite. It was
+// measured: a release 253 commits old ran init and doctor against a newer
+// Instance and wrote its own tables into it without complaint.
+//
+// Additive columns do not need a bump (the additive migration handles them); this
+// moves when an older binary could no longer read the file correctly.
+const fileSchemaVersion = 1
+
 type Options struct {
 	Now func() time.Time
 	// CheckInvariants asserts the mount invariant before every write commits.
@@ -223,6 +238,17 @@ CREATE TABLE IF NOT EXISTS mem_traces (
 `
 
 func (db *DB) migrate(ctx context.Context) error {
+	// Before anything is created or altered: an Instance written by a newer
+	// binary is not ours to migrate backwards.
+	found := 0
+	if err := db.sql.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&found); err != nil {
+		return fmt.Errorf("read file schema version: %w", err)
+	}
+	if found > fileSchemaVersion {
+		return fmt.Errorf(
+			"this instance was written by a newer Memora (file schema %d, this binary understands %d): "+
+				"upgrade the binary instead of opening it with this one", found, fileSchemaVersion)
+	}
 	if _, err := db.sql.ExecContext(ctx, schema+";"+kvSchema); err != nil {
 		return fmt.Errorf("create Memora schema: %w", err)
 	}
@@ -248,6 +274,9 @@ func (db *DB) migrate(ctx context.Context) error {
 		if _, err := db.sql.ExecContext(ctx, change.ddl); err != nil {
 			return fmt.Errorf("add %s.%s: %w", change.table, change.column, err)
 		}
+	}
+	if _, err := db.sql.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", fileSchemaVersion)); err != nil {
+		return fmt.Errorf("record file schema version: %w", err)
 	}
 	return nil
 }
