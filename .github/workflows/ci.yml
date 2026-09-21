@@ -36,8 +36,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # CGO_ENABLED is deliberately not set at this level. The gate run sweeps
+      # both supported platforms, and Go turns cgo off by itself for a
+      # cross-compile only while the variable is unset — so a job-level
+      # CGO_ENABLED=1 made the GOOS=linux sweep build the linux cgo runtime
+      # with the macOS compiler and failed every run. Each stage in
+      # scripts/ci.sh owns its cgo decision instead; see the devgate test
+      # TestCICGOBelongsToStages.
       - name: Run CI gates
         env:
-          CGO_ENABLED: "1"
           CGO_CFLAGS: "-Wno-deprecated-declarations"
         run: ./scripts/ci.sh

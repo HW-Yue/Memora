@@ -40,9 +40,15 @@ run_stage() {
       # run the stage. A file behind //go:build darwin is invisible to a Linux
       # sweep, so a host-only vet reports a clean tree while the macOS job
       # fails on code the sweep never compiled.
+      #
+      # CGO_ENABLED=0 is set here rather than inherited: Go turns cgo off by
+      # itself for a cross-compile only while the variable is unset, so an
+      # exported CGO_ENABLED=1 makes the linux sweep build the linux cgo
+      # runtime with the host compiler and fail. Each stage owns its cgo
+      # decision — the other half is in unit, race and cgo-build.
       for goos in "${supported_platforms[@]}"; do
         printf 'ci: vet GOOS=%s\n' "$goos"
-        GOOS="$goos" "$go_command" vet ./...
+        CGO_ENABLED=0 GOOS="$goos" "$go_command" vet ./...
       done
       ;;
     lint)
@@ -95,21 +101,26 @@ run_stage() {
       # run reported the tree clean.
       for goos in "${supported_platforms[@]}"; do
         printf 'ci: lint GOOS=%s\n' "$goos"
-        GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/staticcheck" \
+        # CGO_ENABLED=0 for the same reason as the vet sweep: these read the
+        # packages of another platform and must not inherit a cgo setting that
+        # only makes sense on this one.
+        CGO_ENABLED=0 GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/staticcheck" \
           -checks 'all,-ST1000,-ST1003,-ST1005,-ST1020,-ST1021,-ST1022' ./...
         # Tests are excluded from errcheck: a test that ignores an error fails
         # loudly on the next assertion anyway, and t.Cleanup closures would
         # otherwise need wrapping for no gain.
-        GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/errcheck" -ignoretests ./...
-        GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/ineffassign" ./...
+        CGO_ENABLED=0 GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/errcheck" -ignoretests ./...
+        CGO_ENABLED=0 GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/ineffassign" ./...
       done
       )
       ;;
     unit)
-      "$go_command" test ./...
+      # CGO_ENABLED=1 rather than inherited: these stages open real database
+      # files, and go-sqlite3 with CGO_ENABLED=0 links a mock that cannot.
+      CGO_ENABLED=1 "$go_command" test ./...
       ;;
     race)
-      "$go_command" test -race ./...
+      CGO_ENABLED=1 "$go_command" test -race ./...
       ;;
     cgo-build)
       # go-sqlite3 with CGO_ENABLED=0 links static_mock.go and cannot open a

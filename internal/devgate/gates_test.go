@@ -50,11 +50,110 @@ func TestCIScriptDoesNotDisableCGO(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(body, []byte("CGO_ENABLED=0 GOOS=")) || bytes.Contains(body, []byte("CGO_ENABLED=0 \"$go_command\" build")) {
+	if bytes.Contains(body, []byte("CGO_ENABLED=0 \"$go_command\" build")) {
 		t.Fatal("ci.sh still builds with CGO_ENABLED=0; go-sqlite3 would link a mock that cannot open a database")
 	}
 	if !bytes.Contains(body, []byte("cgo-build")) {
 		t.Fatal("ci.sh has no cgo-build stage")
+	}
+}
+
+// ciStage returns the executable lines of one case arm of scripts/ci.sh.
+// Comment lines are dropped: the assertions are about what the stage runs.
+func ciStage(t *testing.T, name string) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(repoRoot(t), "scripts/ci.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(body), "\n")
+	start := -1
+	for index, line := range lines {
+		if line == "    "+name+")" {
+			start = index + 1
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatalf("scripts/ci.sh has no %s stage", name)
+	}
+	for index := start; index < len(lines); index++ {
+		if strings.TrimSpace(lines[index]) == ";;" {
+			end := index
+			kept := []string{}
+			for _, line := range lines[start:end] {
+				if trimmed := strings.TrimSpace(line); trimmed == "" || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+				kept = append(kept, line)
+			}
+			return strings.Join(kept, "\n")
+		}
+	}
+	t.Fatalf("stage %s is not terminated", name)
+	return ""
+}
+
+// The cgo decision belongs to each stage, not to the caller's environment.
+//
+// Go auto-disables cgo for a cross-compile only while CGO_ENABLED is unset, so
+// a job-level CGO_ENABLED=1 turns the GOOS sweep into a linux cgo runtime built
+// by the host compiler — that is how this gate shipped red once. Conversely the
+// stages that really run the kernel must keep cgo on, because go-sqlite3 with
+// CGO_ENABLED=0 links a mock that cannot open a database.
+func TestCICGOBelongsToStages(t *testing.T) {
+	for _, name := range []string{"vet", "lint"} {
+		if body := ciStage(t, name); !strings.Contains(body, "CGO_ENABLED=0") {
+			t.Errorf("%s sweeps every supported platform and must disable cgo itself", name)
+		}
+	}
+	// cgo-build has its own behavioural test below; these two are the stages
+	// that run the kernel without also refusing a disabled cgo themselves.
+	for _, name := range []string{"unit", "race"} {
+		body := ciStage(t, name)
+		if strings.Contains(body, "CGO_ENABLED=0") {
+			t.Errorf("%s runs the kernel and must not disable cgo", name)
+		}
+		if !strings.Contains(body, "CGO_ENABLED=1") {
+			t.Errorf("%s must set CGO_ENABLED=1 instead of inheriting it", name)
+		}
+	}
+}
+
+// TestCIScriptSurvivesAmbientCGOEnabled is the behavioural half of the same
+// rule: whatever CGO_ENABLED the caller exports, the platform sweep must pass.
+func TestCIScriptSurvivesAmbientCGOEnabled(t *testing.T) {
+	cmd := exec.Command("bash", "scripts/ci.sh", "--stage", "vet")
+	cmd.Dir = repoRoot(t)
+	env := []string{}
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "CGO_ENABLED=") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	cmd.Env = append(env, "CGO_ENABLED=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("vet stage with ambient CGO_ENABLED=1: %v\n%s", err, out)
+	}
+}
+
+// TestCIWorkflowLeavesCGOToStages keeps the workflow from re-introducing the
+// job-level variable that this rule exists to prevent. Comments may name it —
+// an env key may not.
+func TestCIWorkflowLeavesCGOToStages(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		if comment := strings.Index(line, "#"); comment >= 0 {
+			line = line[:comment]
+		}
+		if strings.Contains(line, "CGO_ENABLED:") {
+			t.Fatal("ci.yml sets CGO_ENABLED; the multi-platform sweep needs each stage to decide cgo itself")
+		}
 	}
 }
 
