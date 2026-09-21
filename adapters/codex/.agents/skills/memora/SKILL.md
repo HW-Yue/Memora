@@ -387,8 +387,17 @@ CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose [SYNOPSIS :syn
 ```
 
 `KIND` is `'branch'` for a grouping node and `'leaf'` for a node that locates a
-Row. Both forms return the new `route_id`; pass that id in the Row write's
-`route_leaf_ids`. A Table needs its root once, then one leaf per Row.
+Row. Both forms return the new `route_id`. A Row write mounts on exactly one
+leaf, and it says so one of two ways — never at the top level of the request,
+always inside `mutation`:
+
+- `route_path`: name the path and let the engine reuse or create the segments.
+  This is the one the INSERT example below uses, and the one to prefer when the
+  leaf may not exist yet.
+- `route_leaf_ids`: hand over the `route_id` you just created, as the UPDATE
+  example does.
+
+A Table needs its root once, then one leaf per Row.
 
 A leaf holds at most one live Row, so a new Row needs its own leaf: check the
 target leaf is empty with `OPEN ROUTE`, and create a sibling when it is taken.
