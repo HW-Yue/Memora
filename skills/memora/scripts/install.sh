@@ -15,8 +15,28 @@ fail() {
   exit 1
 }
 
+# An installer that only says "unknown option" tells a reader nothing about how
+# to run it — and the flags are not guessable (which build, which directory,
+# whether it may touch anything).
+usage() {
+  cat <<'USAGE'
+usage: install.sh [--yes] [--version <v>] [--install-dir <absolute path>]
+                  [--data-dir <absolute path>] [--source-dir <absolute path>]
+                  [--os <linux|darwin>] [--arch <x86_64|arm64>]
+
+  --yes           confirm the changes this installer makes (required)
+  --version       release version to install; omit for the latest
+  --install-dir   where the binary goes (default: ~/.local/bin)
+  --data-dir      instance directory to initialise (omit to skip)
+  --source-dir    build from a local checkout instead of a release archive
+
+Building from source needs cgo and the sqlite_fts5 tag; this script passes both.
+USAGE
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -h|--help) usage; exit 0 ;;
     --yes) authorized=true; shift ;;
     --version) [ "$#" -ge 2 ] || fail "--version requires a value"; version=${2#v}; shift 2 ;;
     --install-dir) [ "$#" -ge 2 ] || fail "--install-dir requires a path"; install_dir=$2; shift 2 ;;
