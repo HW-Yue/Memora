@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -257,16 +258,77 @@ func (engine *Engine) recall(ctx context.Context, statement *ast.RecallStatement
 	}
 	switch {
 	case statement.Query != nil && statement.Vector != nil:
-		// The union is specified (LIMIT truncates the merged, de-duplicated
-		// output; the two arms' internal candidate counts are implementation
-		// detail) but not implemented until the fusion step lands. Refusing is
-		// honest; answering from one arm while ignoring the other is not.
-		return Output{}, executeError(result.CodeUnsupported,
-			"RECALL with both MATCH and NEAREST is not implemented yet")
+		return engine.recallUnion(ctx, statement, bound, databaseName, tableName, limit)
 	case statement.Vector != nil:
 		return engine.recallNearest(ctx, statement, bound, databaseName, tableName, limit)
 	}
 	return engine.recallKeywords(ctx, statement, bound, databaseName, tableName, limit)
+}
+
+// recallUnion answers with both arms and merges what they found.
+//
+// There is nothing to weigh the two against each other: recall returns no
+// scores, so a merge has no common scale to rank on, and inventing one would
+// make relevance a number the contract deliberately withholds. So each arm
+// brings back its own candidates (how many is its business), the union is
+// de-duplicated by position, and LIMIT truncates the listing — exactly what
+// LIMIT means for a single arm, which is what keeps one statement's LIMIT from
+// meaning two different things.
+func (engine *Engine) recallUnion(ctx context.Context, statement *ast.RecallStatement, bound bindings, databaseName, tableName string, limit uint64) (Output, error) {
+	keywordHits, err := engine.recallKeywords(ctx, statement, bound, databaseName, tableName, limit)
+	if err != nil {
+		return Output{}, err
+	}
+	// A vector arm that cannot answer at all (no identity, or a query that does
+	// not decode) must not silently degrade the answer to keywords only: the
+	// caller asked for both, and half an answer that looks whole is the one
+	// outcome recall must never produce.
+	vectorHits, err := engine.recallNearest(ctx, statement, bound, databaseName, tableName, limit)
+	if err != nil {
+		return Output{}, err
+	}
+	merged := mergeRecallRows(keywordHits.Rows, vectorHits.Rows)
+	merged = merged[:min(len(merged), int(limit))]
+	output := keywordHits
+	output.Rows = merged
+	output.Truncated = len(merged) == int(limit)
+	return output, nil
+}
+
+func rowText(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case json.RawMessage:
+		return string(typed)
+	}
+	return ""
+}
+
+// mergeRecallRows unions two listings by position and returns them in the stable
+// order both arms already promise: Table, then path. Two arms finding the same
+// position is one position.
+func mergeRecallRows(left, right []result.Row) []result.Row {
+	seen := map[string]bool{}
+	merged := make([]result.Row, 0, len(left)+len(right))
+	for _, rows := range [][]result.Row{left, right} {
+		for _, row := range rows {
+			key := rowText(row["table"]) + "|" + rowText(row["path"])
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			merged = append(merged, row)
+		}
+	}
+	sort.Slice(merged, func(first, second int) bool {
+		leftTable, rightTable := rowText(merged[first]["table"]), rowText(merged[second]["table"])
+		if leftTable != rightTable {
+			return leftTable < rightTable
+		}
+		return rowText(merged[first]["path"]) < rowText(merged[second]["path"])
+	})
+	return merged
 }
 
 // acceptVector records one host-computed embedding for one unit. It is a write,

@@ -315,13 +315,7 @@ func TestRecallNearestAnswersThroughTheLanguage(t *testing.T) {
 		}
 	}
 
-	// Both arms at once is the union, which is specified but lands with the
-	// fusion step; until then it is refused rather than half-answered. And a
-	// query the engine cannot decode is refused rather than guessed at.
-	if code := h.fails(`RECALL FROM work MATCH :q NEAREST :v LIMIT 5`,
-		map[string]any{"q": "storage engine", "v": query}, executor.MutationOptions{}); code == "" {
-		t.Fatal("the union must be refused until it is implemented")
-	}
+	// A query the engine cannot decode is refused rather than guessed at.
 	if code := h.fails(`RECALL FROM work NEAREST :v LIMIT 5`,
 		map[string]any{"v": "not base64!"}, executor.MutationOptions{}); code == "" {
 		t.Fatal("a malformed query vector must be refused")
@@ -372,5 +366,70 @@ func TestAcceptVectorMakesAUnitAnswerableThroughTheLanguage(t *testing.T) {
 	if code := h.fails(`ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash`,
 		missing, write("unknown unit")); code == "" {
 		t.Fatal("an unknown unit must be refused")
+	}
+}
+
+// The two arms answer one statement together: each brings back its own
+// candidates, a position found twice is one position, and LIMIT truncates the
+// merged listing — the same thing it means for a single arm.
+func TestRecallUnionsBothArms(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	both := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	keywordOnly := h.insertAlongPath("storage engine notes", pathOf("architecture", "wal"))
+	vectorOnly := h.insertAlongPath("unrelated words", pathOf("architecture", "btree"))
+	h.acceptUnitVector(both, []float32{1, 0})
+	h.acceptUnitVector(vectorOnly, []float32{1, 0})
+	query, err := recall.EncodeVector([]float32{1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	union := h.recallFrom(`RECALL FROM work MATCH :q NEAREST :v LIMIT 10`,
+		map[string]any{"q": "storage engine", "v": query})
+	paths := []string{}
+	for _, row := range union.Rows {
+		paths = append(paths, text(row["table"])+":"+text(row["object_id"]))
+	}
+	if len(paths) != 3 {
+		t.Fatalf("the union must carry every position once: %v", paths)
+	}
+	found := map[string]bool{}
+	for _, entry := range paths {
+		if found[entry] {
+			t.Fatalf("a position found by both arms must appear once: %v", paths)
+		}
+		found[entry] = true
+	}
+	for _, rowID := range []string{both, keywordOnly, vectorOnly} {
+		if !found["notes:"+rowID] {
+			t.Fatalf("the union is missing %s: %v", rowID, paths)
+		}
+	}
+
+	// A limit below the union's size truncates it, and it truncates the merged
+	// listing rather than either arm's own top.
+	truncated := h.recallFrom(`RECALL FROM work MATCH :q NEAREST :v LIMIT 2`,
+		map[string]any{"q": "storage engine", "v": query})
+	if len(truncated.Rows) != 2 {
+		t.Fatalf("LIMIT must truncate the union: %d", len(truncated.Rows))
+	}
+}
+
+// Half an answer that looks whole is the one outcome recall must not produce: an
+// arm that cannot answer at all fails the statement instead of being dropped.
+func TestRecallUnionRefusesWhenTheVectorArmCannotAnswer(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	query, err := recall.EncodeVector([]float32{1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No vector was ever accepted here, so the Database has no identity and the
+	// vector arm cannot run.
+	if code := h.fails(`RECALL FROM work MATCH :q NEAREST :v LIMIT 10`,
+		map[string]any{"q": "storage engine", "v": query}, executor.MutationOptions{}); code == "" {
+		t.Fatal("the union must fail when one of its arms cannot answer")
 	}
 }

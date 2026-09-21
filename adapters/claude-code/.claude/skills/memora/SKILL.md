@@ -242,7 +242,10 @@ for the text the user asked about — you can search by position instead of word
 Database's locked width; a vector of the wrong width, or one carrying NaN, is
 refused rather than rounded. The answer has exactly the same shape as a keyword
 recall — so navigate the same way — and `LIMIT` means the same thing in both:
-it truncates the listing, it is not a recall strength.
+it truncates the listing, it is not a recall strength. Asking for both arms at
+once (`MATCH :q NEAREST :v`) merges what each found, counts a position found
+twice once, and still truncates by that same rule; if either arm cannot answer,
+the statement fails rather than quietly returning the half it could.
 
 The vector index is derived from the units, and you can reconcile it without
 guessing: a bounded pass repairs index rows so they hold exactly what the units
