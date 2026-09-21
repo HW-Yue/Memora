@@ -604,3 +604,29 @@ sha256 与 size，`bundle_test.go` 断言——改 UI 必须同步 dist 资源�
 允许 `display.summary_column` 为空，`routes.js` 有兜底文案而 `rows.js` 没有；改造后这类表的
 正中主块会空白。所以**先写兜底，再动渲染**，并且每改一次 JS 就同步一次 bundle 哈希与测试。
 落地顺序与坑见 [Admin 显示槽位](../planning/admin-display-slots.md)。
+
+## 2026-09-21 · 引擎拥有形状，agent 只给位置与正文（讨论稿）
+
+**对象**：Schema 形状（Database/Table/Column 及其元数据）归 agent 还是归引擎。
+
+**结论（待拍板）**：agent 写入只提供 **数据库名、表名、语义位置、row 正文**；Schema 形状由
+引擎决定——每张表固定为 `title` + `summary` + 系统列，另加**一套引擎级封闭可选字段**
+（候选 `status`/`when`/`link`），所有表同一语义、同一渲染，agent 只能给值、不能定义字段。
+**语义树的位置仍由 agent 判断**——收回它等于取消语义导航。
+
+**理由**：损害来自 agent 自由造列，不来自列的存在。实测三处：`me.experiences` 的
+`company`/`role`/`period`/`highlights` 与正文和叶子名重复；四张表 `row_semantics` 全写成
+「一行是…」；业务列 `role` 与 Catalog 的 `ROLE` 撞名。封闭全局字段集由引擎定义后，撞名、
+重复正文、废话元数据都消失，而 `when`/`status` 这类恰是引擎自己要用的（排序、失效过滤、
+回链），从正文里抽比留字段更脆。
+
+**弃选**：不退回「只剩 title + summary」——那会把精确检索全部推给近似召回路；
+也不保留 agent 可自由增删的每表私有列。
+
+**代价**：放弃 US-SCHEMA（agent 不再自己演化 Schema，宪章「AI 决定 Column」那句要随 ADR
+修订）；按字段的精确检索只能等引擎扩封闭集，节奏由人不由 agent；现存实例需要一次迁移
+（`DROP_COLUMN` 是归档不是删除，`me.experiences` 四个业务列可先折进正文与树再归档）。
+
+**待定**：封闭字段集的名单与填值方；`title` 从正文首个标题派生还是另设字段；人（L2）能否
+例外扩展形状；表名是否还承担语义；现存实例先迁移还是并行。全稿见
+[引擎拥有形状](../planning/engine-owned-shape.md)。**与宪章现表述冲突，未授权开工、未改宪章。**
