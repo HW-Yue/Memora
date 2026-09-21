@@ -14,14 +14,6 @@ import (
 // it. The other Row's own links are edited in place, so this write never wipes
 // what that Row holds to anyone else.
 
-func (h *harness) insertLinked(title string, leaf string, links []sqlstore.LinkRef) string {
-	h.t.Helper()
-	mutation := write("insert with links")
-	mutation.RouteLeafIDs = []string{leaf}
-	mutation.Links = links
-	return text(h.run(`INSERT INTO work.notes (title) VALUES (:title)`, map[string]any{"title": title}, mutation).Rows[0]["row_id"])
-}
-
 func (h *harness) setRowLinks(rowID string, revision uint64, links []sqlstore.LinkRef) {
 	h.t.Helper()
 	mutation := write("relink")
