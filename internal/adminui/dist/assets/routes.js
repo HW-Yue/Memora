@@ -760,6 +760,28 @@ async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableI
   added.forEach((child) => { delete child.motionOpacity; });
 }
 
+// expandToRoute walks the ancestor chain of a deep-linked node and expands each
+// branch on the way down, so a link into an unloaded leaf lands where it says it
+// does instead of asking the reader to expand the tree by hand. The chain comes
+// from DESCRIBE ROUTE, one hop at a time, and the walk stops at the Table root.
+async function expandToRoute(graph, tree, routeID, executeMSQL, databaseID, tableID) {
+  const chain = [];
+  let current = routeID;
+  for (let hop = 0; hop < 64 && current; hop += 1) {
+    const node = await describeRoute(executeMSQL, databaseID, tableID, current);
+    chain.push(node);
+    if (node.parent_id === "" || node.parent_id === node.route_id) break;
+    current = node.parent_id;
+  }
+  chain.reverse();
+  for (const node of chain) {
+    const loaded = findTreeNode(tree, node.route_id);
+    if (!loaded || loaded.kind !== "branch" || loaded.childrenLoaded) continue;
+    await appendChildren(graph, tree, loaded, executeMSQL, databaseID, tableID);
+  }
+  return findTreeNode(tree, routeID);
+}
+
 function installCanvasGestureBridge(graph, container) {
   let pan = null;
   let selecting = null;
@@ -1097,11 +1119,18 @@ export async function renderRoutes(root, options) {
     await focusSemanticGraph(graph);
     if (parts.length === 3) {
       const routeID = stableID(parts[2], "route_", "Route");
-      const selected = findTreeNode(tree, routeID);
+      let selected = findTreeNode(tree, routeID);
+      if (!selected) {
+        selected = await expandToRoute(graph, tree, routeID, options.executeMSQL, databaseID, tableID);
+        if (!options.isCurrent()) return;
+      }
       if (selected) {
+        clearCanvasState(stage);
+        graph.setElementState(routeID, "selected");
         await graph.focusElement?.(routeID, { duration: 250 });
       } else {
-        setCanvasState(stage, "empty", "节点尚未展开", "这个深链路节点位于未加载的语义分支，请从根节点逐层展开。");
+        setCanvasState(stage, "empty", "找不到这个节点",
+          "深链路指向的 Route 不在这个 Table 里，或已经被移除。");
       }
     }
   } catch (error) {

@@ -17,7 +17,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := bundle.Manifest()
-	if manifest.Version != BundleVersion || len(manifest.Assets) != 12 {
+	if manifest.Version != BundleVersion || len(manifest.Assets) != 13 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	for _, asset := range manifest.Assets {
@@ -35,7 +35,7 @@ func TestEmbeddedBundleHasFrozenOfflineAssets(t *testing.T) {
 			t.Fatalf("index contains forbidden %q", forbidden)
 		}
 	}
-	if !strings.Contains(text, `src="/assets/app.js?v=3"`) || !strings.Contains(text, `href="/assets/app.css?v=3"`) {
+	if !strings.Contains(text, `src="/assets/app.js?v=4"`) || !strings.Contains(text, `href="/assets/app.css?v=4"`) {
 		t.Fatalf("index does not use embedded assets: %s", text)
 	}
 	script, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
@@ -107,7 +107,7 @@ func TestRouteTraceViewModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./traces.js?v=3"`) ||
+	if !strings.Contains(string(app), `from "./traces.js?v=4"`) ||
 		!strings.Contains(string(app), `path === "/traces"`) ||
 		!strings.Contains(string(app), `path.startsWith("/traces/")`) {
 		t.Fatal("Admin shell does not route the Route Trace module")
@@ -147,7 +147,7 @@ func TestRowRevisionDiffModuleUsesTwoBoundedParameterizedAsOfPointReads(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./diffs.js?v=3"`) ||
+	if !strings.Contains(string(app), `from "./diffs.js?v=4"`) ||
 		!strings.Contains(string(app), `path.startsWith("/diffs/")`) {
 		t.Fatal("Admin shell does not route the Row revision diff module")
 	}
@@ -202,7 +202,7 @@ func TestChangeTimelineModuleUsesScopedBoundedParameterizedMSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./changes.js?v=3"`) ||
+	if !strings.Contains(string(app), `from "./changes.js?v=4"`) ||
 		!strings.Contains(string(app), `path === "/changes"`) ||
 		!strings.Contains(string(app), `path.startsWith("/changes/")`) {
 		t.Fatal("Admin shell does not route the Change timeline module")
@@ -241,7 +241,7 @@ func TestRowDocumentModuleUsesDictionaryMetadataAndBoundedParameterizedMSQL(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./rows.js?v=3"`) ||
+	if !strings.Contains(string(app), `from "./rows.js?v=4"`) ||
 		!strings.Contains(string(app), `path.startsWith("/rows/")`) {
 		t.Fatal("Admin shell does not route the Row document module")
 	}
@@ -292,7 +292,7 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./routes.js?v=3"`) ||
+	if !strings.Contains(string(app), `from "./routes.js?v=4"`) ||
 		!strings.Contains(string(app), `path.startsWith("/routes/")`) {
 		t.Fatal("Admin shell does not route the Route Tree module")
 	}
@@ -506,7 +506,7 @@ func TestCatalogModuleUsesBoundedStableIDMSQLAndDefinesEveryPageState(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(app), `from "./catalog.js?v=3"`) ||
+	if !strings.Contains(string(app), `from "./catalog.js?v=4"`) ||
 		!strings.Contains(string(app), "popstate") {
 		t.Fatal("Admin shell does not route Catalog or browser history")
 	}
@@ -632,4 +632,73 @@ func copyEmbeddedFiles(t *testing.T) fstest.MapFS {
 		t.Fatal(err)
 	}
 	return files
+}
+
+// The search page is a read-only MSQL client like the rest of the Admin: it may
+// recall positions, it may not read facts. Phase one runs the keyword arm only —
+// the vector arm needs a query embedding, and the Admin deliberately has no
+// Provider — so the test pins both what it does and what it must not pretend to
+// do yet.
+func TestSearchViewModuleRecallsPositionsAndLinksIntoTheTree(t *testing.T) {
+	t.Parallel()
+
+	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), `href="/search" data-route data-nav="search"`) {
+		t.Fatal("Admin shell does not expose the Search navigation")
+	}
+	app, err := fs.ReadFile(embeddedFiles, "dist/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appText := string(app)
+	for _, required := range []string{
+		`from "./search.js?v=4"`, `path === "/search"`, `path.startsWith("/search/")`,
+	} {
+		if !strings.Contains(appText, required) {
+			t.Errorf("Admin shell does not route the Search module: missing %q", required)
+		}
+	}
+
+	search, err := fs.ReadFile(embeddedFiles, "dist/assets/search.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	javascript := string(search)
+	for _, required := range []string{
+		"SHOW DATABASES LIMIT", "COMPACT", "SHOW TABLES FROM", "RECALL FROM",
+		"MATCH :query LIMIT :limit", "statementInput", "parameters", "named",
+		"route_id", "database_id", "table_id", "object_id",
+		"vectors_not_ready", "truncated", "revision_conflict", "permission_denied",
+		"loading", "empty", "ready",
+		"/routes/", "dataset.route", "encodeURIComponent",
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Search module is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"innerHTML", "SELECT ", "SHOW HISTORY", "SHOW CHANGE", "INSERT ", "UPDATE ",
+		"DELETE ", "CREATE ", "localStorage", "sessionStorage", "console.",
+		"NEAREST", "innerHTML",
+	} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Search module contains forbidden %q", forbidden)
+		}
+	}
+
+	// A deep link into an unloaded branch has to expand its ancestors rather than
+	// tell the reader to walk the tree by hand.
+	routes, err := fs.ReadFile(embeddedFiles, "dist/assets/routes.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	routesText := string(routes)
+	for _, required := range []string{"expandToRoute", "DESCRIBE ROUTE :route", "focusElement"} {
+		if !strings.Contains(routesText, required) {
+			t.Errorf("route tree view does not expand a deep link: missing %q", required)
+		}
+	}
 }

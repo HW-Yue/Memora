@@ -1,9 +1,10 @@
-import { renderCatalog } from "./catalog.js?v=3";
-import { renderChanges } from "./changes.js?v=3";
-import { renderDiff } from "./diffs.js?v=3";
-import { renderRoutes } from "./routes.js?v=3";
-import { renderRow } from "./rows.js?v=3";
-import { renderTraces } from "./traces.js?v=3";
+import { renderCatalog } from "./catalog.js?v=4";
+import { renderChanges } from "./changes.js?v=4";
+import { renderDiff } from "./diffs.js?v=4";
+import { renderRoutes } from "./routes.js?v=4";
+import { renderSearch } from "./search.js?v=4";
+import { renderRow } from "./rows.js?v=4";
+import { renderTraces } from "./traces.js?v=4";
 
 let csrfToken = "";
 let sessionReady = false;
@@ -137,6 +138,22 @@ async function renderCurrentRoute() {
       path,
       executeMSQL,
       isCurrent: () => window.location.pathname === path
+    });
+    return;
+  }
+  if (path === "/search" || path.startsWith("/search/")) {
+    document.body.classList.remove("route-catalog");
+    document.body.classList.remove("route-routes");
+    document.body.classList.remove("route-rows");
+    document.body.classList.remove("route-changes");
+    document.body.classList.remove("route-diffs");
+    document.body.classList.remove("route-traces");
+    document.body.classList.add("route-search");
+    updateNavigation("search");
+    await renderSearch(routeOutlet, {
+      path: window.location.pathname,
+      executeMSQL,
+      isCurrent: () => window.location.pathname === "/search"
     });
     return;
   }

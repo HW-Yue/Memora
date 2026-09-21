@@ -29,8 +29,8 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
 .route-outlet { margin-top: 26px; max-width: 620px; padding: 16px 20px; border: 1px dashed #c4ccc5; border-radius: 12px; color: #77817c; background: rgb(247 248 244 / 60%); }
 .route-outlet p { margin: 0 0 6px; font-size: 13px; font-weight: 650; }
 .route-outlet small { font-family: ui-monospace, "SFMono-Regular", monospace; }
-.route-catalog .session-card[data-session-state="ready"], .route-routes .session-card[data-session-state="ready"], .route-rows .session-card[data-session-state="ready"], .route-changes .session-card[data-session-state="ready"], .route-diffs .session-card[data-session-state="ready"], .route-traces .session-card[data-session-state="ready"] { display: none; }
-.route-catalog .content, .route-rows .content, .route-changes .content, .route-diffs .content, .route-traces .content { padding-top: 34px; }
+.route-catalog .session-card[data-session-state="ready"], .route-routes .session-card[data-session-state="ready"], .route-rows .session-card[data-session-state="ready"], .route-changes .session-card[data-session-state="ready"], .route-diffs .session-card[data-session-state="ready"], .route-traces .session-card[data-session-state="ready"], .route-search .session-card[data-session-state="ready"] { display: none; }
+.route-catalog .content, .route-rows .content, .route-changes .content, .route-diffs .content, .route-traces .content, .route-search .content { padding-top: 34px; }
 .route-routes .content { width: 100%; max-width: none; padding-top: 28px; }
 .route-rows .content { width: 100%; max-width: none; }
 .route-routes .route-outlet { max-width: none; padding: 0; border: 0; background: transparent; }
@@ -282,3 +282,26 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
   .markdown-body pre, .markdown-body code { background: #223229; }
   .diff-value { color: #e7efe9; }
 }
+
+/* Search: a question in words, answered with positions. Nothing here shows a
+   score, because recall does not return one; the source badge says which arm
+   found the position and the notes say how the list was merged. */
+.search-view { display: grid; gap: 18px; }
+.search-heading p { margin: 6px 0 0; color: #637168; font-size: 13px; }
+.search-form { display: grid; grid-template-columns: minmax(150px, 200px) minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 14px 16px; border: 1px solid #d6dcd6; border-radius: 12px; background: rgb(255 255 252 / 78%); }
+.search-select, .search-input { width: 100%; min-width: 0; border: 1px solid #cfd8cf; border-radius: 8px; padding: 9px 11px; color: #26352c; background: #fffefa; font: inherit; font-size: 14px; }
+.search-input:focus, .search-select:focus { outline: 2px solid #789786; outline-offset: 1px; }
+.search-button { border: 1px solid #4f6d5b; border-radius: 8px; padding: 9px 20px; color: #f7faf5; background: #4f6d5b; font: inherit; font-size: 14px; font-weight: 650; cursor: pointer; }
+.search-button:hover { background: #43604f; }
+.search-result-list { display: grid; gap: 10px; }
+.search-result { border: 1px solid #d6dcd6; border-radius: 11px; background: rgb(255 255 252 / 72%); }
+.search-result-link { display: grid; gap: 8px; padding: 14px 16px; color: inherit; text-decoration: none; }
+.search-result-link:hover { background: rgb(244 248 243 / 92%); }
+.search-result-heading { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
+.search-result-heading strong { color: #22322a; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.search-result-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.search-source { border-color: #b9cdbe; background: #eef4ee; color: #33513f; }
+.search-result-meta { margin: 0; color: #6c7a72; font-size: 12px; }
+.search-notes { display: grid; gap: 6px; padding: 14px 16px; border: 1px dashed #cfd8cf; border-radius: 11px; color: #637168; font-size: 12px; line-height: 1.7; }
+.search-notes p { margin: 0; }
+@media (max-width: 720px) { .search-form { grid-template-columns: 1fr; } }
