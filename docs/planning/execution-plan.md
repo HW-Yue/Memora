@@ -38,6 +38,11 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 挂载 1:1 已在 [写入形态](../product/write-model.md) §1.3 定案；
 入向链接由删除事务倒推摘掉，见[行链接](../product/row-links.md) §与删除。
 
+### Agent/引擎分界落地（新规格，待授权）
+
+[分界](../query/agent-engine-boundary.md)：判据是「语义由谁决定」。两项表面变更——`DELETE ROUTE`
+退役、INSERT 允许隐式建路径——都要动 MSQL 与 Skill，需与契约版本一起走。
+
 ### 召回架构
 
 关键词与向量只出路径、事实回表。方案未定，不写代码。

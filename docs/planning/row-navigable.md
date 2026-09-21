@@ -14,7 +14,7 @@ live 行提交后，必须被**恰好一个**活跃叶子指向。零叶子的�
 | UPDATE | 缺省 `route_leaf_id` 表示保留；显式清空则失败 |
 | DELETE | 改为[归档后物理删除](../product/row-delete-archive.md)，行与叶子一起删，豁免本约束 |
 | SPLIT / MERGE | 每个仍 live 的目标各自满足 |
-| 摘叶子（DELETE ROUTE / MOVE） | 不能把某 live 行打成零叶子，除非同事务重挂 |
+| 摘叶子（引擎内部：删行、重构） | 不能把某 live 行打成零叶子，除非同事务重挂。`DELETE ROUTE` 已从 Agent 表面退役，见[分界](../query/agent-engine-boundary.md) |
 | history / `AS OF` | 豁免 |
 
 引擎不替 Agent 选叶子。失败用 `constraint_violation`，出路只有两条：挂已有空叶子，或先 `CREATE ROUTE` 再建。

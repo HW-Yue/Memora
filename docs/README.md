@@ -34,6 +34,7 @@
 
 - [存储](./storage/README.md)
 - [MSQL](./query/msql.md) · [语义 Router](./query/semantic-routing.md)
+- [Agent 与引擎的分界](./query/agent-engine-boundary.md) — 谁发指令、谁展开
 - [检索四条路](./query/retrieval-routes-jev.md) · [jev](./query/jev-branch-selection.md)
 
 ## ADR
