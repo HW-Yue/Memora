@@ -76,7 +76,7 @@ function errorState(error) {
     return ["corrupt", "搜索响应无法验证", "页面拒绝展示不完整或不符合协议的结果。"];
   }
   if (error.code === "validation_error" || error.code === "unsupported_statement") {
-    return ["error", "这个查询无法回答", "关键词召回需要至少 3 个字符；更短的查询会被拒绝而不是返回空结果。"];
+    return ["error", "这个查询无法回答", "关键词召回需要至少 2 个字符；一个字符几乎出现在每一行，引擎会拒绝而不是返回整库。"];
   }
   return ["error", "搜索暂时不可用", "请确认 daemon 正常运行后重试。"];
 }
@@ -267,7 +267,7 @@ function searchForm(databases, selected, query) {
   const input = element("input", "search-input");
   input.type = "search";
   input.name = "query";
-  input.placeholder = "用一句话描述你要找的东西（至少 3 个字符）";
+  input.placeholder = "用一句话描述你要找的东西（至少 2 个字符）";
   input.value = query;
   input.autocomplete = "off";
   input.minLength = 3;

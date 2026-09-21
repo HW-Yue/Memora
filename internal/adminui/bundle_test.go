@@ -707,6 +707,15 @@ func TestSearchViewModuleRecallsPositionsAndLinksIntoTheTree(t *testing.T) {
 			t.Errorf("Search module still does %q", forbidden)
 		}
 	}
+	// The keyword index is a pair stream, so two characters is a word and one is
+	// not. The copy the page shows has to say that, or it will keep telling the
+	// reader to type three characters for an index that no longer needs them.
+	if !strings.Contains(javascript, "至少 2 个字符") {
+		t.Error("Search module does not state the two-character minimum")
+	}
+	if strings.Contains(javascript, "3 个字符") {
+		t.Error("Search module still repeats the trigram minimum")
+	}
 	for _, forbidden := range []string{
 		"innerHTML", "SELECT ", "SHOW HISTORY", "SHOW CHANGE", "INSERT ", "UPDATE ",
 		"DELETE ", "CREATE ", "localStorage", "sessionStorage", "console.",
