@@ -648,9 +648,8 @@ row 的正文、`links` 的值**。引擎拥有：**每张表的列集合固定�
 导航。把「位置算不算 agent 的输入」列成待定是错的，已从稿中删除；也不给库/表划分加约束。
 
 **三个描述字段**（都归 agent）：`purpose` = 装什么（库、表都必填）；`scope` = 收哪些的范围
-（库必填、表可选）；`anti_scope` = 明确不收什么（可选）。`DESCRIBE` 返回三者，`SHOW DATABASES`
-返回 purpose+scope，`SHOW TABLES` 只返回 purpose，表级 scope/anti_scope 只有 Atlas 摊平——
-「写了但常见读面看不到」是待定。
+（库必填、表可选）；`anti_scope` = 明确不收什么（可选）。**三个读面都返回三者**——`SHOW` 返回的
+是整个对象结构，`anti_scope` 带 `omitempty`，设了就会出现（详见下一条的实测修正）。
 
 **`row_semantics`**（即四张卡上「一行是…」的来源）：建表时声明的「一行代表什么」，Binder 与
 `row-detail/v1` 都强制必填。形状统一后它对每张表都相同、信息量为零，**建议撤掉**（契约级改动：
@@ -694,3 +693,45 @@ catalog-ddl、parser/binder、`catalog.Table`、`row-detail/v1`、Admin bundle �
 **新发现的缺口（待定）**：`ALTER DATABASE` 只有 `RENAME`，**没有改描述的路径**。一个「每次写入
 都要参考」的字段改不动，`scope` 里「当前有效」这类话迟早烂掉。候选：加
 `ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`（有界元数据写、走 L2），或冻结、要改就新建库。
+
+**顾问意见（同日）**：**值得做，但不急；不要冻结**。理由：`purpose`/`scope` 是给 agent 的放置
+提示，会随库实际内容漂移（尤其早期一次写定时还不知道库会长成什么样），而「新建库 + 迁移」在
+个人本地库里是假替代方案。**最大风险是拖太久**：agent 按过期 `scope` 持续误放，而语义库里的
+误放是**静默**的，等发现时已污染检索，回填比改字段贵得多。**改用触发条件而不是日期**：库数量
+超过 3，或第一次真的放错库，就做这条 rekey/amend。
+
+## 2026-09-21 · 向量待办是派生谓词，不要标志位；缺的是 TOFU rekey
+
+**对象**：向量是不是异步写入、要不要一个「向量已写入」的标志位、以及「前期没配模型、后期配置
+后批量补齐」这条路。
+
+**结论一（实测）**：**不是异步，引擎也从不算向量。** 嵌入由宿主计算：写入时可以顺带交
+（`mutation.vector`，**尽力而为**——向量与文本不符不能让已落库的行写入失败），也可以之后用
+`ACCEPT VECTOR` 补交。引擎是离线的，provider 与 API key 是宿主的事。
+
+**结论二（顾问同意）：不要标志位。** `mem_recall_units` 上有真相列 `embedding` / `content_hash` /
+`embedded_content_hash` / `embedding_model` / `embedding_dimensions`，就绪与否是**派生的**：
+`embedding IS NULL OR embedded_content_hash <> content_hash OR embedding_model <> 库的 model
+OR embedding_dimensions <> 库的维度`（`internal/sqlstore/embedding.go` 的 `vectorStatus` 与
+`pendingVectors`，注释写明「派生而不是存储，所以没有代码路径会忘记更新它」）。标志位是这份真相的
+**冗余副本**，文本改了忘清就会把陈旧向量当就绪；派生谓词天然覆盖「配 provider 之前写的行、
+别的客户端写的行、模型变更的行」——它们在 `SHOW PENDING VECTORS` 里长得一模一样。
+
+**结论三：用户要的补齐路径已经通了。** CLI 在每次**单语句 `exec`** 之后跑 `drainAfterWrite`：
+仅当本机环境里配了 provider 才动手 → 循环 `SHOW PENDING VECTORS … LIMIT 64`（最多 16 页，
+即**一次最多 1024 个单元**）→ 宿主嵌入 → 一个 request 装 N 条 `ACCEPT VECTOR`
+（`drainBatch=64`/`drainMaxPages=16`）。失败只写 stderr（`the rest stay not-ready`），
+**永远不会**让用户那次写入失败；更大的积压留给下一次写入继续排干。
+
+**最大缺口（顾问指出，待定）**：**TOFU 锁没有 rekey/解锁路径。** 第一次 accept 把
+`(model, dimensions)` 钉死在 `mem_databases` 上，之后换模型直接被拒
+（`database X is locked to m/d vectors; m2/d2 cannot share its index`）。「前期没配 → 后期配了」
+只要中间发生过一次 accept（哪怕是试用的小模型，或某个客户端默认 provider 抢先钉死），库就永久
+锁死。需要的不是标志位，而是一条**受控 rekey**：清空全部 `embedding` + 重置库上的
+`(model, dimensions, locked_at)` + `REPAIR VECTOR INDEX`，之后整库自然全部回到待办，用同一个
+排干循环重跑。
+
+**顺手发现的小错**：`internal/cli/embedding.go` 注释写「One request, one transaction」，
+但多语句 request **不自动开事务**（`docs/query/msql-batch-transactions.md`），批里的
+`ACCEPT VECTOR` 是**逐条 autocommit**——失败粒度是「一条坏单元只失败它自己」，对排干更有利，
+注释该改。
