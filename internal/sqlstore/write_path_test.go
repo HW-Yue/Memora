@@ -1,0 +1,356 @@
+package sqlstore_test
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/HW-Yue/Memora/internal/msql/executor"
+	"github.com/HW-Yue/Memora/internal/result"
+)
+
+// The tests in this file pin the write path that the invariant work is about to
+// change: how a Row is mounted on its leaf, how it is persisted, and where the
+// transaction boundaries are. They describe today's behaviour — including the
+// holes the next features close — so that changing it fails loudly here first.
+
+func (h *harness) notesTableID() string {
+	h.t.Helper()
+	var id string
+	if err := h.db.SQL().QueryRow(`SELECT id FROM mem_tables WHERE name = 'notes'`).Scan(&id); err != nil {
+		h.t.Fatal(err)
+	}
+	return id
+}
+
+// storedLeaves reads the mount straight out of the data table. SELECT projects
+// paths rather than IDs, and the point here is the stored row itself.
+func (h *harness) storedLeaves(rowID string) []string {
+	h.t.Helper()
+	var encoded string
+	query := `SELECT route_leaf_ids FROM "data_` + h.notesTableID() + `" WHERE row_id = ?`
+	if err := h.db.SQL().QueryRow(query, rowID).Scan(&encoded); err != nil {
+		h.t.Fatal(err)
+	}
+	leaves := []string{}
+	if err := json.Unmarshal([]byte(encoded), &leaves); err != nil {
+		h.t.Fatal(err)
+	}
+	return leaves
+}
+
+func (h *harness) leafHolder(leafID string) string {
+	h.t.Helper()
+	var body string
+	query := `SELECT body FROM "routes_` + h.notesTableID() + `" WHERE route_id = ?`
+	if err := h.db.SQL().QueryRow(query, leafID).Scan(&body); err != nil {
+		h.t.Fatal(err)
+	}
+	var stored struct {
+		RowID string `json:"row_id"`
+	}
+	if err := json.Unmarshal([]byte(body), &stored); err != nil {
+		h.t.Fatal(err)
+	}
+	return stored.RowID
+}
+
+func (h *harness) liveRows() int {
+	h.t.Helper()
+	var count int
+	query := `SELECT COUNT(*) FROM "data_` + h.notesTableID() + `" WHERE row_state = 'live'`
+	if err := h.db.SQL().QueryRow(query).Scan(&count); err != nil {
+		h.t.Fatal(err)
+	}
+	return count
+}
+
+// routeRevision is what DELETE ROUTE and the other route writes guard on.
+// Mounting a Row bumps the leaf's revision, so a caller cannot assume one.
+func (h *harness) routeRevision(routeID string) uint64 {
+	h.t.Helper()
+	var body string
+	query := `SELECT body FROM "routes_` + h.notesTableID() + `" WHERE route_id = ?`
+	if err := h.db.SQL().QueryRow(query, routeID).Scan(&body); err != nil {
+		h.t.Fatal(err)
+	}
+	var stored struct {
+		Revision uint64 `json:"revision"`
+	}
+	if err := json.Unmarshal([]byte(body), &stored); err != nil {
+		h.t.Fatal(err)
+	}
+	return stored.Revision
+}
+
+func (h *harness) seedNotes() (string, string) {
+	h.t.Helper()
+	h.run(`CREATE DATABASE work PURPOSE 'Work memory' SCOPE 'Projects'`, nil, executor.MutationOptions{})
+	h.run(`CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One fact' (title TEXT NOT NULL PURPOSE 'Title' ROLE title)`, nil, executor.MutationOptions{})
+	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Everything'`, nil, write("root")).Rows[0]["route_id"])
+	leaf := text(h.run(`CREATE ROUTE UNDER :p NAME 'sqlite' KIND 'leaf' PURPOSE 'Why sqlite'`,
+		map[string]any{"p": root}, write("leaf")).Rows[0]["route_id"])
+	return root, leaf
+}
+
+func (h *harness) insertTitle(title string, leaves []string) string {
+	h.t.Helper()
+	mutation := write("insert")
+	mutation.RouteLeafIDs = leaves
+	result := h.run(`INSERT INTO work.notes (title) VALUES (:title)`, map[string]any{"title": title}, mutation)
+	return text(result.Rows[0]["row_id"])
+}
+
+// Today an INSERT without any leaf commits. The Row then exists, is live, and
+// can never be reached by navigation — the hole the invariant layer closes.
+func TestInsertWithoutALeafCommitsAnUnreachableRow(t *testing.T) {
+	h := newHarness(t)
+	h.seedNotes()
+
+	rowID := h.insertTitle("orphan", nil)
+	if leaves := h.storedLeaves(rowID); len(leaves) != 0 {
+		t.Fatalf("leaves = %v", leaves)
+	}
+	if h.liveRows() != 1 {
+		t.Fatalf("live rows = %d", h.liveRows())
+	}
+}
+
+func TestInsertMountsTheRowOnItsLeaf(t *testing.T) {
+	h := newHarness(t)
+	_, leaf := h.seedNotes()
+
+	rowID := h.insertTitle("Use SQLite", []string{leaf})
+	if leaves := h.storedLeaves(rowID); len(leaves) != 1 || leaves[0] != leaf {
+		t.Fatalf("stored leaves = %v", leaves)
+	}
+	if holder := h.leafHolder(leaf); holder != rowID {
+		t.Fatalf("leaf holds %q, want %q", holder, rowID)
+	}
+	opened := h.run(`OPEN ROUTE :leaf LIMIT 1`, map[string]any{"leaf": leaf}, executor.MutationOptions{})
+	if len(opened.Rows) != 1 || text(opened.Rows[0]["row_id"]) != rowID {
+		t.Fatalf("open route = %v", opened.Rows)
+	}
+}
+
+func TestInsertRejectsLeavesThatCannotHoldTheRow(t *testing.T) {
+	h := newHarness(t)
+	root, leaf := h.seedNotes()
+	branch := text(h.run(`CREATE ROUTE UNDER :p NAME 'branch' KIND 'branch' PURPOSE 'Grouping'`,
+		map[string]any{"p": root}, write("branch")).Rows[0]["route_id"])
+	retired := text(h.run(`CREATE ROUTE UNDER :p NAME 'retired' KIND 'leaf' PURPOSE 'Retired'`,
+		map[string]any{"p": root}, write("retired")).Rows[0]["route_id"])
+	retire := write("retire")
+	retire.ExpectedRevision = 1
+	h.run(`DELETE ROUTE :r`, map[string]any{"r": retired}, retire)
+	h.insertTitle("first", []string{leaf})
+
+	cases := []struct {
+		name   string
+		leaves []string
+		code   result.Code
+	}{
+		{name: "branch", leaves: []string{branch}, code: result.CodeConstraint},
+		{name: "deprecated leaf", leaves: []string{retired}, code: result.CodeConstraint},
+		{name: "occupied leaf", leaves: []string{leaf}, code: result.CodeConstraint},
+		{name: "unknown leaf", leaves: []string{"route_missing"}, code: result.CodeNotFound},
+	}
+	for _, tc := range cases {
+		mutation := write("reject")
+		mutation.RouteLeafIDs = tc.leaves
+		if code := h.fails(`INSERT INTO work.notes (title) VALUES ('rejected')`, nil, mutation); code != tc.code {
+			t.Fatalf("%s: code = %s, want %s", tc.name, code, tc.code)
+		}
+	}
+	if h.liveRows() != 1 {
+		t.Fatalf("a rejected insert must write nothing: live rows = %d", h.liveRows())
+	}
+}
+
+// A leaf whose holder is no longer live is free again. This is how a Deleted
+// Row's leaf gets reused without any detach step.
+func TestInsertReassignsALeafWhoseHolderIsNoLongerLive(t *testing.T) {
+	h := newHarness(t)
+	_, leaf := h.seedNotes()
+	first := h.insertTitle("first", []string{leaf})
+
+	remove := write("delete")
+	remove.ExpectedRevision = 1
+	h.run(`DELETE FROM work.notes WHERE row_id = :row`, map[string]any{"row": first}, remove)
+
+	second := h.insertTitle("second", []string{leaf})
+	if holder := h.leafHolder(leaf); holder != second {
+		t.Fatalf("leaf holds %q, want %q", holder, second)
+	}
+	opened := h.run(`OPEN ROUTE :leaf LIMIT 1`, map[string]any{"leaf": leaf}, executor.MutationOptions{})
+	if len(opened.Rows) != 1 || text(opened.Rows[0]["row_id"]) != second {
+		t.Fatalf("open route = %v", opened.Rows)
+	}
+}
+
+// The mount option on UPDATE is a UNION, not a replacement: omitting it keeps
+// what is there, an explicit empty array is a no-op rather than a clear, and
+// naming another leaf adds it. Both of the last two are what 1:1 has to stop.
+func TestUpdateMountIsAUnionNotAReplacement(t *testing.T) {
+	h := newHarness(t)
+	root, leaf := h.seedNotes()
+	rowID := h.insertTitle("first", []string{leaf})
+
+	keep := write("refine")
+	keep.ExpectedRevision = 1
+	h.run(`UPDATE work.notes SET title = 'kept' WHERE row_id = :row`, map[string]any{"row": rowID}, keep)
+	if leaves := h.storedLeaves(rowID); len(leaves) != 1 || leaves[0] != leaf {
+		t.Fatalf("an UPDATE without a mount must keep it: %v", leaves)
+	}
+
+	clear := write("clear")
+	clear.ExpectedRevision = 2
+	clear.RouteLeafIDs = []string{}
+	h.run(`UPDATE work.notes SET title = 'still mounted' WHERE row_id = :row`, map[string]any{"row": rowID}, clear)
+	if leaves := h.storedLeaves(rowID); len(leaves) != 1 || leaves[0] != leaf {
+		t.Fatalf("an empty mount is a no-op today, not a clear: %v", leaves)
+	}
+
+	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'Second leaf'`,
+		map[string]any{"p": root}, write("second")).Rows[0]["route_id"])
+	add := write("add")
+	add.ExpectedRevision = 3
+	add.RouteLeafIDs = []string{second}
+	h.run(`UPDATE work.notes SET title = 'two leaves' WHERE row_id = :row`, map[string]any{"row": rowID}, add)
+	if leaves := h.storedLeaves(rowID); len(leaves) != 2 {
+		t.Fatalf("naming a second leaf must add it today: %v", leaves)
+	}
+}
+
+// Deleting a Row leaves its leaf pointing at it; reachability is decided when
+// the leaf is read, not by detaching it. The whole delete path is replaced by
+// the archive feature later, which is why this is pinned now.
+func TestDeleteKeepsTheLeafPointingButStopsNavigating(t *testing.T) {
+	h := newHarness(t)
+	_, leaf := h.seedNotes()
+	rowID := h.insertTitle("doomed", []string{leaf})
+
+	remove := write("delete")
+	remove.ExpectedRevision = 1
+	h.run(`DELETE FROM work.notes WHERE row_id = :row`, map[string]any{"row": rowID}, remove)
+
+	if leaves := h.storedLeaves(rowID); len(leaves) != 1 || leaves[0] != leaf {
+		t.Fatalf("stored leaves after delete = %v", leaves)
+	}
+	if holder := h.leafHolder(leaf); holder != rowID {
+		t.Fatalf("leaf holder after delete = %q", holder)
+	}
+	if opened := h.run(`OPEN ROUTE :leaf LIMIT 1`, map[string]any{"leaf": leaf}, executor.MutationOptions{}); len(opened.Rows) != 0 {
+		t.Fatalf("a deleted row must not be navigable: %v", opened.Rows)
+	}
+	selected := h.run("SELECT * FROM `work`.`notes` WHERE row_id = :row LIMIT 1", map[string]any{"row": rowID}, executor.MutationOptions{})
+	if len(selected.Rows) != 0 {
+		t.Fatalf("a deleted row must not read: %v", selected.Rows)
+	}
+}
+
+// DELETing the leaf itself detaches the Row and leaves it live with no way
+// back. That is the second hole the invariant layer closes.
+func TestDeleteRouteUnmountsALiveRowAndOrphansIt(t *testing.T) {
+	h := newHarness(t)
+	_, leaf := h.seedNotes()
+	rowID := h.insertTitle("stranded", []string{leaf})
+
+	retire := write("retire")
+	retire.ExpectedRevision = h.routeRevision(leaf)
+	h.run(`DELETE ROUTE :r`, map[string]any{"r": leaf}, retire)
+
+	if leaves := h.storedLeaves(rowID); len(leaves) != 0 {
+		t.Fatalf("stored leaves after DELETE ROUTE = %v", leaves)
+	}
+	if h.liveRows() != 1 {
+		t.Fatalf("live rows = %d", h.liveRows())
+	}
+	selected := h.run("SELECT * FROM `work`.`notes` WHERE row_id = :row LIMIT 1", map[string]any{"row": rowID}, executor.MutationOptions{})
+	if len(selected.Rows) != 1 {
+		t.Fatalf("the row is live and only unreachable: %v", selected.Rows)
+	}
+}
+
+// Values are keyed by column ID so that renaming a column never rewrites data.
+// The invariant work has to keep that property while it changes what else the
+// data table stores.
+func TestValuesAreStoredByColumnID(t *testing.T) {
+	h := newHarness(t)
+	_, leaf := h.seedNotes()
+	rowID := h.insertTitle("Use SQLite", []string{leaf})
+
+	var encoded string
+	query := `SELECT values_json FROM "data_` + h.notesTableID() + `" WHERE row_id = ?`
+	if err := h.db.SQL().QueryRow(query, rowID).Scan(&encoded); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]any{}
+	if err := json.Unmarshal([]byte(encoded), &values); err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("values = %v", values)
+	}
+	for key, value := range values {
+		if !strings.HasPrefix(key, "col_") {
+			t.Fatalf("value key %q must be a column ID, not a name", key)
+		}
+		if value != "Use SQLite" {
+			t.Fatalf("stored value = %v", value)
+		}
+	}
+}
+
+// One statement is one transaction unless an explicit one is open, and a
+// rolled-back transaction leaves nothing behind.
+func TestTransactionBoundaries(t *testing.T) {
+	h := newHarness(t)
+	_, leaf := h.seedNotes()
+
+	mutation := write("insert")
+	mutation.RouteLeafIDs = []string{leaf}
+	h.run(`BEGIN`, nil, executor.MutationOptions{})
+	h.run(`INSERT INTO work.notes (title) VALUES ('in flight')`, nil, mutation)
+	inside := h.run(`SELECT * FROM work.notes WHERE title = 'in flight' LIMIT 1`, nil, executor.MutationOptions{})
+	if len(inside.Rows) != 1 {
+		t.Fatalf("a transaction must read its own writes: %v", inside.Rows)
+	}
+	h.run(`ROLLBACK`, nil, executor.MutationOptions{})
+	if h.liveRows() != 0 {
+		t.Fatalf("rollback left %d rows behind", h.liveRows())
+	}
+
+	h.insertTitle("committed", []string{leaf})
+	if h.liveRows() != 1 {
+		t.Fatalf("a statement without BEGIN must commit on its own: %d rows", h.liveRows())
+	}
+	report, err := h.db.Doctor(context.Background())
+	if err != nil || report.Integrity != "ok" {
+		t.Fatalf("doctor = %+v, %v", report, err)
+	}
+}
+
+// Required columns and the text ceiling are enforced before anything is
+// written, so a rejected insert is not half-applied.
+func TestRequiredColumnAndTextCeilingAreEnforcedBeforeWriting(t *testing.T) {
+	h := newHarness(t)
+	_, leaf := h.seedNotes()
+
+	mutation := write("incomplete")
+	mutation.RouteLeafIDs = []string{leaf}
+	if code := h.fails(`INSERT INTO work.notes (title) VALUES (NULL)`, nil, mutation); code != result.CodeConstraint {
+		t.Fatalf("NULL title code = %s", code)
+	}
+	tooLong := write("too long")
+	tooLong.RouteLeafIDs = []string{leaf}
+	code := h.fails(`INSERT INTO work.notes (title) VALUES (:title)`,
+		map[string]any{"title": strings.Repeat("字", 1201)}, tooLong)
+	if code != result.CodeValueTooLong {
+		t.Fatalf("over the ceiling code = %s", code)
+	}
+	if h.liveRows() != 0 {
+		t.Fatalf("rejected inserts must write nothing: %d rows", h.liveRows())
+	}
+}
