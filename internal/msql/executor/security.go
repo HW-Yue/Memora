@@ -84,6 +84,7 @@ func StatementRiskLevel(statement ast.Statement) security.RiskLevel {
 	switch {
 	case statement.Insert != nil, statement.Update != nil, statement.Delete != nil,
 		statement.Restore != nil, statement.RepairLinks != nil, statement.RepairVector != nil,
+		statement.RepairRecall != nil,
 		statement.AcceptVector != nil,
 		// BEGIN/COMMIT/ROLLBACK are not reads: a read-only transport that accepted
 		// them would hand the caller control of a transaction it may then commit.
@@ -105,6 +106,11 @@ func statementDatabaseNames(statement ast.Statement) []string {
 	if statement.AcceptVector != nil && statement.AcceptVector.Database != nil {
 		if len(statement.AcceptVector.Database.Parts) >= 1 {
 			databases = append(databases, statement.AcceptVector.Database.Parts[0].Value)
+		}
+	}
+	if statement.RepairRecall != nil && statement.RepairRecall.Database != nil {
+		if len(statement.RepairRecall.Database.Parts) >= 1 {
+			databases = append(databases, statement.RepairRecall.Database.Parts[0].Value)
 		}
 	}
 	if statement.RepairVector != nil && statement.RepairVector.Database != nil {

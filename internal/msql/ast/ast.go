@@ -34,6 +34,7 @@ type Statement struct {
 	OpenArchive   *OpenArchiveStatement        `json:"open_archive,omitempty"`
 	RepairLinks   *RepairLinksStatement        `json:"repair_links,omitempty"`
 	RepairVector  *RepairVectorStatement       `json:"repair_vector,omitempty"`
+	RepairRecall  *RepairRecallStatement       `json:"repair_recall,omitempty"`
 	AcceptVector  *AcceptVectorStatement       `json:"accept_vector,omitempty"`
 	Recall        *RecallStatement             `json:"recall,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
@@ -202,6 +203,14 @@ type RecallStatement struct {
 // RepairLinksStatement drains a bounded batch of queued link repairs. It is a
 // write, not a read: it re-points or refreshes links.
 type RepairLinksStatement struct {
+	Database *Name       `json:"database"`
+	Limit    *Expression `json:"limit"`
+}
+
+// RepairRecallStatement rebuilds the derived recall layer from the live Rows.
+// Rows written before that layer existed have no unit, and nothing else can give
+// them one.
+type RepairRecallStatement struct {
 	Database *Name       `json:"database"`
 	Limit    *Expression `json:"limit"`
 }
@@ -395,6 +404,8 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.RepairLinks.Limit)
 	case statement.RepairVector != nil:
 		appendExpression(statement.RepairVector.Limit)
+	case statement.RepairRecall != nil:
+		appendExpression(statement.RepairRecall.Limit)
 	case statement.AcceptVector != nil:
 		appendExpression(statement.AcceptVector.Values)
 		appendExpression(statement.AcceptVector.Unit)

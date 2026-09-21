@@ -45,6 +45,7 @@ var statementSamples = map[string]string{
 	"APPLY_SCHEMA_CHANGE":   `APPLY SCHEMA CHANGE PLAN :plan FOR TABLE work.notes`,
 	"REPAIR_LINKS":          `REPAIR LINKS IN DATABASE work LIMIT 8`,
 	"REPAIR_VECTOR":         `REPAIR VECTOR INDEX IN DATABASE work LIMIT 8`,
+	"REPAIR_RECALL":         `REPAIR RECALL UNITS IN DATABASE work LIMIT 8`,
 	"ACCEPT_VECTOR":         `ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash`,
 	// Transactions take their kind from the action, so the scan below reads the
 	// call sites as well as the literals.

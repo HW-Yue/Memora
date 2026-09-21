@@ -274,6 +274,19 @@ once (`MATCH :q NEAREST :v`) merges what each found, counts a position found
 twice once, and still truncates by that same rule; if either arm cannot answer,
 the statement fails rather than quietly returning the half it could.
 
+Both derived layers can be rebuilt from the Rows, and neither is rebuilt for you.
+`REPAIR RECALL UNITS` gives every live Row the unit that keyword recall needs:
+Rows written before that layer existed have none, and recall cannot find what has
+no unit — it says nothing about that, so `doctor`'s `broken_recall_units` is where
+you notice. It drops orphaned units (whose Row is gone) too, and never modifies a
+Row.
+
+```sh
+memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affected_rows":64,"actor":"agent:host","source":"conversation:event-9","reason":"rebuild the recall layer"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "REPAIR RECALL UNITS IN DATABASE work LIMIT :limit"
+```
+
+Both passes are bounded and repeatable: run them until `remaining` is zero.
+
 The vector index is derived from the units, and you can reconcile it without
 guessing: a bounded pass repairs index rows so they hold exactly what the units
 hold. It never recomputes a vector — a unit whose text moved on is stale, not

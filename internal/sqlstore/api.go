@@ -80,6 +80,17 @@ func (o operations) AcceptVector(ctx context.Context, databaseName string, recor
 	return
 }
 
+// RepairRecallUnits rebuilds the derived recall layer from the live Rows: units
+// that predate the layer have to be created, and units whose Row is gone have to
+// be dropped. It is a write, and it is bounded like every other repair pass.
+func (o operations) RepairRecallUnits(ctx context.Context, databaseName string, limit int) (receipt RecallRepairReceipt, err error) {
+	err = o.run(ctx, true, func(t *tx) error {
+		receipt, err = t.repairRecallUnits(ctx, databaseName, limit)
+		return err
+	})
+	return
+}
+
 // VectorStatus reports how much of a scope a vector path can answer for. It is
 // derived from the truth columns, so it stays a read.
 func (o operations) VectorStatus(ctx context.Context, databaseName, tableName string) (status recall.VectorStatus, err error) {

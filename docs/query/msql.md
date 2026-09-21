@@ -39,7 +39,9 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
   MODEL :model HASH :hash`（宿主把算好的嵌入交回来；一条语句一个单元，批量＝一批语句）
 - 修复：`REPAIR LINKS IN DATABASE :database LIMIT :limit`（出队一批懒修复，见[行链接](../product/row-links.md)）
   与 `REPAIR VECTOR INDEX IN DATABASE :database LIMIT :limit`（把派生向量索引修到与真相一致，
-  重复执行直到 `remaining` 为 0；它**不重算向量**）
+  重复执行直到 `remaining` 为 0；它**不重算向量**）、
+  `REPAIR RECALL UNITS IN DATABASE :database LIMIT :limit`（把派生召回层修到与活行一致：
+  补上没有单元的行、删掉行已消失的孤儿单元、刷新文本已变的载荷；**不修改任何行**）
 - 配置：`SHOW CONFIGURATION` / `HISTORY`、`ALTER CONFIGURATION`、
   `RESTORE CONFIGURATION`
 

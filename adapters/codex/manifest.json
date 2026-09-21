@@ -1,6 +1,6 @@
 {
   "version": "memora.codex-adapter/v2",
-  "canonical_digest": "4912f7b2b7c02728d2675793104ca95ed1aa615dfd65cf32e9797a83525e9214",
+  "canonical_digest": "09339cf0449c06def4452080e548a9ce191a5838f2e6a3159bc041b89557df04",
   "protocol_digest": "beff394c6c4794e881de8b36c04d1fccf025ad9d4da1701f386733ffa7f7a60b",
   "task_contract_digest": "613ad116bd1977580e6f0c4781c80ffeea88567e994610d3f92c6f4d225915d1",
   "files": [
@@ -16,7 +16,7 @@
     },
     {
       "path": ".agents/skills/memora/SKILL.md",
-      "sha256": "4912f7b2b7c02728d2675793104ca95ed1aa615dfd65cf32e9797a83525e9214",
+      "sha256": "09339cf0449c06def4452080e548a9ce191a5838f2e6a3159bc041b89557df04",
       "mode": "0644"
     },
     {

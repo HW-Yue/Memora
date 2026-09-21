@@ -27,3 +27,11 @@ type VectorReceipt struct {
 	Repaired  int
 	Remaining int
 }
+
+// RecallReceipt reports what one bounded recall-unit repair pass did. Dropped
+// counts units whose Row is gone: they point at a position that is not there.
+type RecallReceipt struct {
+	Rebuilt   int
+	Dropped   int
+	Remaining int
+}

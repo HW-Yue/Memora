@@ -186,6 +186,52 @@ func (engine *Engine) repairLinks(ctx context.Context, statement *ast.RepairLink
 // the statement's LIMIT is how much one pass may repair, and the caller's
 // declared ceiling has to cover it. Running it until `remaining` is zero is
 // safe — each pass re-reads the truth, so nothing is applied twice.
+// repairRecallUnits rebuilds the derived recall layer from the live Rows. Rows
+// written before that layer existed have no unit, and keyword recall cannot find
+// what has no unit — silently, because the notice only covers vectors. Bounded by
+// the statement's LIMIT like the other repair passes.
+func (engine *Engine) repairRecallUnits(ctx context.Context, statement *ast.RepairRecallStatement, bound bindings, options MutationOptions) (Output, error) {
+	if statement == nil || statement.Database == nil || statement.Limit == nil {
+		return Output{}, executeError(result.CodeValidation, "REPAIR RECALL needs UNITS IN DATABASE and LIMIT")
+	}
+	if options.MaxAffectedRows == 0 {
+		return Output{}, executeError(result.CodeValidation, "REPAIR RECALL requires max_affected_rows")
+	}
+	limit, err := historyPositiveInteger(statement.Limit, catalog.Table{}, bound, "REPAIR RECALL LIMIT")
+	if err != nil {
+		return Output{}, err
+	}
+	if limit > maxQueryScan {
+		return Output{}, executeError(result.CodeValidation, "REPAIR RECALL LIMIT must be between 1 and 1000")
+	}
+	if options.MaxAffectedRows < uint64(limit) {
+		return Output{}, executeError(result.CodeValidation,
+			fmt.Sprintf("REPAIR RECALL LIMIT %d exceeds max_affected_rows %d", limit, options.MaxAffectedRows))
+	}
+	if len(statement.Database.Parts) != 1 {
+		return Output{}, executeError(result.CodeValidation, "REPAIR RECALL takes a Database name, not a dotted name")
+	}
+	databaseName := statement.Database.Parts[0].Value
+	if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
+		return Output{}, err
+	}
+	receipt, err := engine.rows.RepairRecallUnits(ctx, databaseName, int(limit))
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return Output{
+		Columns: []result.Column{
+			{Name: "rebuilt", Type: "INTEGER"},
+			{Name: "dropped", Type: "INTEGER"},
+			{Name: "remaining", Type: "INTEGER"},
+		},
+		Rows: []result.Row{{
+			"rebuilt": receipt.Rebuilt, "dropped": receipt.Dropped, "remaining": receipt.Remaining,
+		}},
+		AffectedRows: uint64(receipt.Rebuilt + receipt.Dropped),
+	}, nil
+}
+
 func (engine *Engine) repairVectorIndex(ctx context.Context, statement *ast.RepairVectorStatement, bound bindings, options MutationOptions) (Output, error) {
 	if statement == nil || statement.Database == nil || statement.Limit == nil {
 		return Output{}, executeError(result.CodeValidation, "REPAIR VECTOR needs INDEX IN DATABASE and LIMIT")

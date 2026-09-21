@@ -1495,6 +1495,9 @@ func (parser *parser) parseRepair() (ast.Statement, error) {
 	if parser.matchWord("VECTOR") {
 		return parser.parseRepairVector()
 	}
+	if parser.matchWord("RECALL") {
+		return parser.parseRepairRecall()
+	}
 	if _, err := parser.expectWord("LINKS"); err != nil {
 		return ast.Statement{}, err
 	}
@@ -1597,6 +1600,35 @@ func (parser *parser) parseRepairVector() (ast.Statement, error) {
 		return ast.Statement{}, err
 	}
 	return ast.Statement{Kind: "REPAIR_VECTOR", RepairVector: &ast.RepairVectorStatement{
+		Database: &database, Limit: &limit,
+	}}, nil
+}
+
+// parseRepairRecall reads REPAIR RECALL UNITS IN DATABASE <name> LIMIT <n>. Same
+// shape as the other repair passes, and for the same reason: a pass that ran to
+// completion would hold the writer for as long as the instance is big.
+func (parser *parser) parseRepairRecall() (ast.Statement, error) {
+	if _, err := parser.expectWord("UNITS"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("IN"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("DATABASE"); err != nil {
+		return ast.Statement{}, err
+	}
+	database, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("LIMIT"); err != nil {
+		return ast.Statement{}, err
+	}
+	limit, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "REPAIR_RECALL", RepairRecall: &ast.RepairRecallStatement{
 		Database: &database, Limit: &limit,
 	}}, nil
 }

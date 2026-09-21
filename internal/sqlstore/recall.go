@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/repair"
 	rowmodel "github.com/HW-Yue/Memora/internal/row"
 )
 
@@ -220,4 +221,139 @@ func (t *tx) brokenRecallUnits(ctx context.Context, table catalog.Table) (int, e
 		  AND NOT EXISTS (SELECT 1 FROM mem_recall_units u
 			WHERE u.table_id = ? AND u.row_id = d.row_id)`, table.ID).Scan(&missing)
 	return broken + missing, err
+}
+
+// RecallRepairReceipt is the receipt the executor speaks, named the way the
+// storage layer calls it.
+type RecallRepairReceipt = repair.RecallReceipt
+
+// repairRecallUnits rebuilds the derived recall layer from the live Rows.
+//
+// It exists because a Row only gets a unit when it is written, so every Row that
+// predates the recall layer has none — and keyword recall cannot find what has no
+// unit, while nothing said so. Measured on a real instance: 74 live Rows, 2 units.
+//
+// Like the vector index repair, this is bounded and repeatable, and it only
+// touches the derived layer: a Row is never modified and no vector is recomputed.
+func (t *tx) repairRecallUnits(ctx context.Context, databaseName string, limit int) (RecallRepairReceipt, error) {
+	receipt := RecallRepairReceipt{}
+	database, err := t.resolveDatabase(ctx, databaseName)
+	if err != nil {
+		return RecallRepairReceipt{}, err
+	}
+	type unitWork struct {
+		table catalog.Table
+		rowID string
+	}
+	found := []unitWork{}
+	orphans := []unitWork{}
+	remaining := 0
+	record := func(into *[]unitWork, item unitWork) {
+		if len(found)+len(orphans) < limit {
+			*into = append(*into, item)
+			return
+		}
+		remaining++
+	}
+	for _, table := range database.Tables {
+		live, err := t.liveRowIDs(ctx, table.ID)
+		if err != nil {
+			return RecallRepairReceipt{}, err
+		}
+		liveSet := make(map[string]bool, len(live))
+		for _, rowID := range live {
+			liveSet[rowID] = true
+			needs, err := t.unitNeedsRebuild(ctx, table, rowID)
+			if err != nil {
+				return RecallRepairReceipt{}, err
+			}
+			if needs {
+				record(&found, unitWork{table: table, rowID: rowID})
+			}
+		}
+		units, err := t.unitRowIDs(ctx, table.ID)
+		if err != nil {
+			return RecallRepairReceipt{}, err
+		}
+		for _, rowID := range units {
+			if !liveSet[rowID] {
+				record(&orphans, unitWork{table: table, rowID: rowID})
+			}
+		}
+	}
+	for _, work := range found {
+		value, err := t.readRow(ctx, work.table, work.rowID)
+		if err != nil {
+			return RecallRepairReceipt{}, err
+		}
+		if err := t.syncRecallUnit(ctx, work.table, value); err != nil {
+			return RecallRepairReceipt{}, err
+		}
+		receipt.Rebuilt++
+	}
+	for _, work := range orphans {
+		if err := t.removeRecallUnitsForRow(ctx, work.table, work.rowID); err != nil {
+			return RecallRepairReceipt{}, err
+		}
+		receipt.Dropped++
+	}
+	receipt.Remaining = remaining
+	return receipt, nil
+}
+
+// unitNeedsRebuild asks whether one live Row's unit is missing, mounted on a leaf
+// it no longer occupies, or holding a payload it no longer has.
+func (t *tx) unitNeedsRebuild(ctx context.Context, table catalog.Table, rowID string) (bool, error) {
+	var routeID, contentHash string
+	err := t.q().QueryRowContext(ctx, `SELECT route_id, content_hash FROM mem_recall_units
+		WHERE table_id = ? AND row_id = ?`, table.ID, rowID).Scan(&routeID, &contentHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	value, err := t.readRow(ctx, table, rowID)
+	if err != nil {
+		return false, err
+	}
+	if len(value.RouteLeafIDs) != 1 || value.RouteLeafIDs[0] != routeID {
+		return true, nil
+	}
+	return recallContentHash(recallPayload(table, value)) != contentHash, nil
+}
+
+func (t *tx) liveRowIDs(ctx context.Context, tableID string) ([]string, error) {
+	rows, err := t.q().QueryContext(ctx, `SELECT row_id FROM `+dataTable(tableID)+`
+		WHERE row_state = 'live' ORDER BY row_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []string{}
+	for rows.Next() {
+		id := ""
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (t *tx) unitRowIDs(ctx context.Context, tableID string) ([]string, error) {
+	rows, err := t.q().QueryContext(ctx, `SELECT row_id FROM mem_recall_units WHERE table_id = ?`, tableID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []string{}
+	for rows.Next() {
+		id := ""
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
