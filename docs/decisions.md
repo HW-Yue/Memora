@@ -927,3 +927,23 @@ vs 路径序、两路都命中压过单路第一且三次运行一致、融合�
 
 **已知边界**：两臂候选深度今天等于 `LIMIT`（向量内部先探测 `max(2n, n+8)`），加深属于实现细节；
 Admin 搜索页仍是关键词单臂 + 跨库交错，第二阶段接向量臂后库内顺序直接用引擎融合结果。
+
+## 2026-09-21 · 排干撞上 provider 的批上限（D16/D17，未修）
+
+**现场**：整库重建后 41 个单元无向量。本机配好 `MEMORA_EMBEDDING_*` 后跑一次排干：
+`me`（9 个单元）一次补齐；`memora`（32 个单元）拿到
+`400 Bad Request`（provider 原话：`batch size is invalid, it should not be larger than 10.`），
+0 个，且每次重试都从 64 个的同一页开始、永远失败。
+
+**根因**：`internal/cli/embedding.go` 的 `drainBatch = 64` 写死，provider 上限 10。
+后果是**超过 10 个待办的库永远排不干**，而失败只留一行 stderr、`doctor` 只报计数。
+
+**当场绕过并已生效**：按 10 个一批嵌入、逐个 `ACCEPT VECTOR`，32 个单元补上；
+`doctor` → `units_without_vectors: 0`、`vector_index_drift: 0`；两库 TOFU 身份锁在
+`text-embedding-v4` / 1024。真机演示：同一个语义问句（不使用 "rekey" 字样）走向量臂拿到
+`检索/向量身份 rekey` 等 5 条；两臂 RRF 融合后两路都命中的两篇排在最前。
+
+**两条待修的缺陷（见[缺陷报告](./development/dogfood-2026-09-21.md) D16/D17）**：
+① 排干遇到 provider 拒绝要能退到更小的批（二分重试 + 可配 `MEMORA_EMBEDDING_BATCH`），
+判据是"32 个单元、provider 每次只收 10 个"也能一次排干；② `memora exec --input` 只吃一个
+`StatementInput`，装不下"一批语句"，与 Skill 里"批量＝一批语句"的说法不一致。
