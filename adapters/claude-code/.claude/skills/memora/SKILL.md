@@ -300,9 +300,37 @@ memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affec
 characters, and a shorter one is refused rather than silently returning nothing.
 Hits are de-duplicated by path and ordered by table then path, so the same query
 over an unchanged database returns the same list. Scope is one Database, with an
-optional `IN <table>`. Today the lexical path is the only one wired; when a
-position exists but no hit returns, treat it as "not matched", never as "the tree
-has nothing there", and always report the query you used.
+optional `IN <table>`. Both arms are wired — keyword and vector — and a position
+that exists but returns no hit is "not matched", never "the tree has nothing
+there"; always report the query you used.
+
+### Move a Database to another embedding model
+
+The first accepted vector pins a Database to one `(model, dimensions)` pair, and
+a different model is refused from then on — not because it is worse, but because
+vectors from two models are not comparable and recall returns no scores that
+could show the mixture. Moving the Database is one bounded, repeatable L2
+statement:
+
+```sh
+memora exec --input '{"parameters":{"named":{"limit":8,"model":"text-embedding-v4","n":1024}},"mutation":{"max_affected_rows":8,"actor":"agent:host","source":"conversation:event-9","reason":"move the Database to the configured model"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "REKEY VECTOR IDENTITY IN DATABASE work LIMIT :limit MODEL :model DIMENSIONS :n"
+```
+
+Repeat **the same statement, target included** until the receipt says
+`rekeying` is false: the first pass opens the window and drops the derived
+index, each pass releases up to `LIMIT` units, and the pass that releases the
+last one locks the target. Leave `MODEL`/`DIMENSIONS` out and the Database comes
+out unlocked instead, free for whatever is configured next.
+
+A window is a refusal, not an outage: inside it `RECALL … NEAREST`,
+`ACCEPT VECTOR`, `REPAIR VECTOR INDEX` and `SHOW PENDING VECTORS` all fail with
+`rekey_in_progress`, keyword recall still answers, and the `vectors_not_ready`
+notice names the target and how many units are left; `doctor` reports
+`rekeying_databases`. **Dropping the target is also the escape hatch**: if a
+rekey was started and never finished, re-issuing the statement with no
+`MODEL`/`DIMENSIONS` re-aims the open window at unlocked, so a Database cannot
+be left stuck. Once the window closes, the ordinary drain refills the units with
+the new identity.
 
 ## Let jev choose a layer (optional)
 
@@ -350,17 +378,56 @@ from large to small scope and only create when reuse is impossible:
 2. Create a new Database only for a genuinely new domain — the user's first
    mention of a personal topic with no matching Database warrants a new
    Database, written before anything else, with an explicit purpose and scope.
-3. Inside the chosen Database, reuse an existing Table whose purpose and
-   row_semantics fit the knowledge; add a Row there.
+3. Inside the chosen Database, reuse an existing Table whose purpose fits the
+   knowledge; add a Row there.
 4. Create a new Table only when no existing Table fits and the content is a
    distinct, recurring kind the user will keep adding to.
 5. Never create on a hunch or from a name alone: match by the object's declared
-   purpose/scope and semantic description, not by guessing equivalence.
-6. Every new Table MUST declare exactly one Column with `ROLE 'summary'`, and
-   its TEXT ceiling must hold a ~1,000-CJK-character Markdown document plus
-   syntax (for example `TEXT(2500)`; the 1,200 default is too small). A Table
-   without a `summary` Column cannot hold a displayable Row. Declare
-   `ROLE 'title'` as well when the Table needs a short label.
+   purpose/scope, not by guessing equivalence.
+6. **The Columns are not yours to design.** Every Table has the same two
+   Columns, and you copy the template below verbatim. Do not invent Columns, do
+   not add a field because a value looks structured, and do not widen a Column
+   except to hold a longer document (see "Evolve schemas"). Classification,
+   status, dates, names and relationships belong in the Route tree, in the
+   `summary` prose, or in `links` — never in a new Column.
+
+### The one Table shape
+
+```sh
+memora schema --plan '{
+  "version": "memora.schema-plan/v1",
+  "id": "schema-plan-1",
+  "actor": "agent:host",
+  "source_event_id": "conversation:event-1",
+  "reason": "create the <table> Table with the canonical shape",
+  "authorized_databases": ["<database>"],
+  "ensure": {
+    "database": {"name": "<database>", "purpose": "<what this Database holds>",
+                 "scope": "<what belongs in it>", "anti_scope": "<what does not>"},
+    "table": {
+      "name": "<table>",
+      "purpose": "<what this Table holds, as a topic>",
+      "row_semantics": "一行是一份完整、可独立修改的语义文档",
+      "columns": [
+        {"name": "title", "type": "TEXT(200)", "nullable": false,
+         "purpose": "文档标题", "semantic_role": "title"},
+        {"name": "summary", "type": "TEXT(2500)", "nullable": false,
+         "purpose": "完整自足的文档正文", "semantic_role": "summary"}
+      ]
+    }
+  }
+}'
+```
+
+- Copy the two `columns` objects byte for byte: the names, types, purposes,
+  nullability and roles are fixed. Only the Database and Table names and their
+  purpose/scope text change per Table.
+- `purpose` is the sentence a later write reads to decide where knowledge
+  belongs, so write it as "是什么", not as a row definition: `实习与工作经历`,
+  not `一行是一段实习或工作经历`.
+- `row_semantics` is the engine's own statement of what a Row is; keep the
+  constant above. Reuse an existing Table whenever its `purpose` fits — never
+  create a second Table of the same kind for a slightly different shape.
 
 ## Write
 
@@ -377,7 +444,7 @@ source, reason, and the complete current Route leaf membership snapshot.
 Keep transactions short and verify the returned revision and logical row.
 
 Every INSERT and every UPDATE that creates or replaces a semantic module MUST
-write the `summary` Column. `summary` is the Row's body: a complete,
+write `title` and `summary`. `summary` is the Row's body: a complete,
 self-contained Markdown document of roughly 1,000 CJK characters that a reader
 can understand without opening anything else. It is not a one-line abstract,
 not a bullet list, and not a restatement of `title`. A Row without a usable
@@ -385,6 +452,14 @@ not a bullet list, and not a restatement of `title`. A Row without a usable
 empty to "fill in later". If the configured TEXT ceiling cannot hold the
 document, submit a Schema change to widen the Column first (see
 "Evolve schemas"); never silently truncate.
+
+**Legacy Tables already carry Columns you did not choose** (a Database written
+before this rule can have `company`, `role`, `period`, `highlights` and the
+like). Keep writing them out of the picture: put the facts in `summary` and in
+the Route tree, supply no value for the extra Columns, and never add another.
+Do not read them to decide anything, and do not try to drop them on your own —
+retiring them is a reviewed Schema change the user has to approve (see
+"Evolve schemas").
 
 Build one `memora.mutation-plan/v1` object. Every decision includes at least one
 read-only preflight with explicit Row expectations. IGNORE has no steps. INSERT,
@@ -501,17 +576,27 @@ memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-7","decisi
 
 Before creating a domain, discover existing Database and Table names and aliases.
 Submit the proposed name plus a short explicit synonym set through one
-`memora.schema-plan/v1` ensure plan. Database purpose/scope, Table
-purpose/row_semantics, and every Column type/purpose are mandatory. Reuse an
-exact candidate or alias; do not infer equivalence from a name alone.
+`memora.schema-plan/v1` ensure plan, using the fixed template in "Decide where
+knowledge lives". Database purpose/scope, Table purpose/row_semantics, and the
+two fixed Columns are mandatory; reuse an exact candidate or alias, and do not
+infer equivalence from a name alone.
 
-For an existing Table, do not translate Column evolution into ad hoc ALTER
-statements or the older host rename runner. Inspect the exact Table/Column IDs and
-revisions, then submit explicit ADD_COLUMN, RENAME_COLUMN, ALTER_COLUMN, or
-DROP_COLUMN intent as `memora.schema-change-proposal/v1` through read-only MSQL:
+**A Schema change is never how you add a field.** The only Column change this
+Skill asks for on its own is **widening `summary`** when a document genuinely
+does not fit its TEXT ceiling — an `ALTER_COLUMN` on `col_summary` with the same
+name, purpose and role and a larger `TEXT(n)`. Everything else about a Table's
+shape is the engine's, and a change you cannot express as "widen `summary`" is a
+change you should not make: put the information in the Route tree, in the
+`summary` prose, or in `links` instead.
+
+For that widening — or for retiring Columns that older Tables carry — inspect
+the exact Table/Column IDs and revisions, then submit explicit
+`ALTER_COLUMN` (or `DROP_COLUMN` for a legacy Column the user has asked you to
+retire) intent as `memora.schema-change-proposal/v1` through read-only MSQL.
+Never use ad hoc `ALTER` statements or the older host rename runner:
 
 ```sh
-memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.schema-change-proposal/v1","proposal_id":"schema-proposal-9","actor":"agent:host","source_event_id":"conversation:event-9","reason":"tighten reviewed title budget","expected_table_revision":4,"changes":[{"change_id":"title-budget","action":"ALTER_COLUMN","column_id":"col_title","expected_revision":2,"definition":{"name":"title","type":"TEXT(200)","nullable":false,"purpose":"Decision title","semantic_role":"title"}}]}}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal"
+memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.schema-change-proposal/v1","proposal_id":"schema-proposal-9","actor":"agent:host","source_event_id":"conversation:event-9","reason":"widen the summary ceiling for a longer document","expected_table_revision":4,"changes":[{"change_id":"summary-ceiling","action":"ALTER_COLUMN","column_id":"col_summary","expected_revision":2,"definition":{"name":"summary","type":"TEXT(5000)","nullable":false,"purpose":"完整自足的文档正文","semantic_role":"summary"}}]}}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal"
 ```
 
 The result must be `memora.schema-change-plan/v1`. `review_required` means only
