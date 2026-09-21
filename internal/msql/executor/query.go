@@ -151,7 +151,7 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 	if exact {
 		output.RowDetail = rowDetail(databaseName, table, projections)
 	}
-	for _, candidate := range candidates {
+	for index, candidate := range candidates {
 		matches := true
 		if selectStatement.Where != nil {
 			value, err := evaluate(selectStatement.Where, table, &candidate, bound)
@@ -175,6 +175,12 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 		projected["links"] = candidate.Links
 		output.Rows = append(output.Rows, projected)
 		if len(output.Rows) == int(limit) {
+			// The caller's LIMIT cut the listing. Saying `truncated: false` here
+			// would make "SELECT … LIMIT 10" on a 40-row table read as "this is
+			// everything the Table holds" — the one claim a census must never
+			// make falsely. More candidates remain, and whether they match is
+			// exactly what was not looked at.
+			output.Truncated = hasMore || index+1 < len(candidates)
 			return output, nil
 		}
 	}

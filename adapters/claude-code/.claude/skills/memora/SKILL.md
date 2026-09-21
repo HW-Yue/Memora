@@ -194,7 +194,11 @@ followed by point reads of the Rows that matter — replaces the whole
 `SHOW ROUTES … → OPEN ROUTE → SELECT` chain. Walk the tree when you are looking
 for *where something is* or when the Table is too large to census; the parity of
 leaf count and Row count is what proves a census was complete (`doctor`'s
-`orphan_rows` and `multi_leaf_rows` are both zero when they agree).
+`orphan_rows` and `multi_leaf_rows` are both zero when they agree). A cut census
+is never silent: the result carries `truncated: true` when the scan budget or your
+own `LIMIT` stopped it short, so read that flag before claiming you saw
+everything, and raise `select_rows` (or read the rest as point reads) when it is
+set.
 
 ## Query and summarize
 
@@ -225,7 +229,6 @@ Those two elements bind `row_01` and `row_02` respectively — the same paramete
 name, a different value per statement. Names may also differ between statements
 (`:first` in one, `:second` in the next), because each element's `parameters.named`
 is read for that statement alone.
-```
 
 `links` and `route_paths` ride along on every returned Row whether or not you
 projected them, and `columns` lists only the fields you asked for — do not try to
@@ -234,20 +237,29 @@ project the attached ones. Each statement's envelope also repeats `columns` and 
 `DESCRIBE TABLE` already gave you, so budget roughly 1.5–2 KB per statement on
 top of the facts.
 
-Use this bounded state machine:
+There are two ways from a Table to its facts, and the question picks one:
+
+- **Census** (enumerating: "what have I done", "what is in here") —
+  `SELECT row_id, title, revision FROM <table> LIMIT :limit`, then point reads of
+  the Rows that matter. `route_paths` comes back with every Row, so nothing else
+  is needed.
+- **Navigation** (locating: "where is the thing about X", or a Table too large to
+  census) — walk the tree, then read the Row the leaf points at.
 
 `SHOW ROUTES … AT ROOT` returns the root's **children**, not the root node itself
 (the children carry the root's `route_id` as their `parent_id`, and no row
 describes the root).
 
 ```text
-SHOW CATALOG ATLAS → deterministic continuation if partial → DESCRIBE TABLE
-→ SHOW ROUTES FROM TABLE ... AT ROOT
-→ choose one node → SHOW ROUTES UNDER ... (repeat as needed)
-→ OPEN ROUTE on a leaf
-→ validate database/table/Row/revision locators
-→ SELECT projected fields + row_id + revision
-→ answer only from revision-matched SELECT rows
+census:     SHOW CATALOG ATLAS → DESCRIBE TABLE → SELECT row_id, title, revision LIMIT n
+            → SELECT the Rows that matter → answer only from revision-matched rows
+
+navigation: SHOW CATALOG ATLAS → DESCRIBE TABLE
+            → SHOW ROUTES FROM TABLE ... AT ROOT
+            → choose one node → SHOW ROUTES UNDER ... (repeat as needed)
+            → OPEN ROUTE on a leaf → validate database/table/Row/revision locators
+            → SELECT projected fields + row_id + revision
+            → answer only from revision-matched SELECT rows
 ```
 
 Do not synthesize query terms, similarity scores, or a full path. Select one

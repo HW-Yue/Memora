@@ -91,3 +91,36 @@ func TestProjectingAnAttachedFieldExplainsWhereItComesFrom(t *testing.T) {
 		t.Fatalf("every returned Row must carry route_paths: %v", row)
 	}
 }
+
+// A census is how an agent proves it has seen everything, so the answer has to
+// say when it has not. `SELECT row_id, title FROM t LIMIT 2` over three Rows used
+// to come back `truncated: false` — the scan was complete, the *listing* was cut
+// by the caller's own LIMIT, and nothing distinguished the two. An agent reading
+// that would report three Rows as two and call it complete.
+func TestACensusCutByItsOwnLimitSaysSo(t *testing.T) {
+	h := newHarness(t)
+	leaves := h.seedLeaves("one", "two", "three")
+	h.insertTitle("第一条事实", []string{leaves[0]})
+	h.insertTitle("第二条事实", []string{leaves[1]})
+	third := h.insertTitle("第三条事实", []string{leaves[2]})
+
+	cut := h.run(`SELECT row_id, title FROM work.notes LIMIT 2`, nil, executor.MutationOptions{})
+	if len(cut.Rows) != 2 {
+		t.Fatalf("rows = %d, want 2", len(cut.Rows))
+	}
+	if !cut.Truncated {
+		t.Fatal("a listing cut by its own LIMIT must be reported as truncated")
+	}
+	// Reading the whole table in one statement is not truncated, so the flag
+	// still distinguishes "you asked for less" from "there is more".
+	whole := h.run(`SELECT row_id, title FROM work.notes LIMIT 3`, nil, executor.MutationOptions{})
+	if whole.Truncated {
+		t.Fatal("a listing that returned every Row must not be reported as truncated")
+	}
+	// A point read is never a cut listing either.
+	point := h.run(`SELECT title FROM work.notes WHERE row_id = :row LIMIT 1`,
+		map[string]any{"row": third}, executor.MutationOptions{})
+	if point.Truncated {
+		t.Fatal("a point read must not be reported as truncated")
+	}
+}
