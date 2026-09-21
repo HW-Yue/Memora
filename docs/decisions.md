@@ -28,6 +28,28 @@
 因此 `GOOS=linux` sweep 在 macOS runner 上必然失败，GitHub CI 必红。
 本地实测：不设该变量 `./scripts/ci.sh` 全绿（EXIT=0）；设成 `1` 则死在 `vet`（EXIT=1）。
 
+## 2026-09-20 · 落地顺序：先修 CI，再压基线，再补核心包回归
+
+对象：`rewrite/adr0011` 落地这一块的拆分、顺序与最大风险。
+状态：**方向性结论，待授权**（顾问咨询后落盘；不改变上一条「压一个 baseline 提交」的候选地位）。
+
+**结论**：顺序是 修 `ci.yml` → 在分支上见一次真实绿 CI → squash 一个 baseline 提交落 `main`、
+分支留 tag → 补 `catalog`／`row`／`instance` 三个核心包的最小回归 → 再开「行必须可导航」。
+
+**理由**
+
+- `ci.sh` 全绿 ≠ GitHub CI 会绿：本地 macOS 与 runner 的 cgo／交叉编译环境不是一回事；
+- 先见绿 CI 再 squash：否则 `main` 首次 CI 就红，回滚一个 22.5k 行的 squash 提交代价极大；
+- squash 前至少让 `catalog`／`row` 有可跑回归，否则 34 个提交压成一个不可二分点，
+  将来回归只能靠读代码定位（15 个包现在零测试，集中在 cli、daemon、adminapi、instance、
+  catalog、skillschema、skillwrite、routetrace、row）。
+
+**弃选**：先做「行必须可导航」再落地。产品上它确实是下一件，但把它压在一个从未见过
+CI 的基线之上，等于把两处风险叠在同一提交里。
+
+**前置（与选项无关）**：`.github/workflows/ci.yml` 把 `CGO_ENABLED=1` 设在整个 gate run 上，
+`GOOS=linux` sweep 在 macOS runner 上必然失败。应把它下沉到需要 cgo 的 job／stage。
+
 ## 2026-09-20 · 停用 F 流水号
 
 **结论**：现役工作用题目，不再编号。`F1`–`F228` 只作为旧引擎考古标签。

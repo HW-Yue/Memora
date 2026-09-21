@@ -23,7 +23,8 @@
 
 ## 工作
 
-- [执行计划](./planning/execution-plan.md) — 唯一队列。下一件：[行必须可导航](./planning/row-navigable.md)
+- [执行计划](./planning/execution-plan.md) — 唯一队列。先落地基座（CI → baseline → 核心回归），
+  再[行必须可导航](./planning/row-navigable.md)
 - [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
 - [决策日志](./decisions.md) — 运行中的判断；规范级结论进 ADR
 

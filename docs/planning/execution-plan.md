@@ -16,7 +16,13 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 
 产品形态见 [写入](../product/write-model.md) 与 [查询](../product/query-model.md)。
 
-### 行必须可导航（下一件）
+### 落地基座（先于下一件）
+
+候选顺序见[决策日志](../decisions.md)（待授权）：修 `ci.yml` 的 `CGO_ENABLED` →
+分支上见一次真实绿 CI → squash 一个 baseline 提交落 `main`、分支留 tag →
+补 `catalog`／`row`／`instance` 最小回归。
+
+### 行必须可导航（落地基座之后）
 
 [规格](./row-navigable.md)。现在 `exec` 直连 INSERT 不带叶子也能提交。
 先只读报告，再在 `sqlstore` 提交路径拦截。不做召回、不做行链接。
