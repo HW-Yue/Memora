@@ -23,7 +23,9 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	db, err := sqlstore.Open(filepath.Join(t.TempDir(), "memora.db"), sqlstore.Options{})
+	// The guard is on for every test Instance: a new path that would publish a
+	// live Row outside the one-to-one mount fails at its own commit.
+	db, err := sqlstore.Open(filepath.Join(t.TempDir(), "memora.db"), sqlstore.Options{CheckInvariants: true})
 	if err != nil {
 		t.Fatal(err)
 	}

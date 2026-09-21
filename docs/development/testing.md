@@ -28,9 +28,19 @@
 
 GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workflow 中复制另一套测试顺序。PR CI 只有 `contents: read` 权限，不发布 Release。签名发布工具链尚未移植到 SQLite 基座；对 `v*` tag 的 Release workflow 会明确失败，而不是调用不存在的脚本。
 
+## 不变量守门
+
+测试实例一律以 `sqlstore.Options{CheckInvariants: true}` 打开：每次写入提交前断言
+「live 行**恰好**被一个活跃叶子指向」，三类违例（零叶子行、多叶行、叶子不回指）任一非零
+就回滚并报 `internal_error`。断言只有这一处，落在 autocommit 与显式事务共用的提交点上。
+
+生产实例不开这个开关，靠 `memora doctor` 报同样三条查询——同一份 `mountViolations`，
+所以运维看到的和写入被要求的是同一件事。新路径写歪了会当场炸在它自己的提交上，而不是
+拖到别人想起来跑 doctor 时才发现。
+
 ## TDD 证据
 
-每个 feature 在本地先观察目标测试因缺少行为而失败，再写最小实现。最终合入的单一 commit 同时包含测试、实现和必要文档，并保持所有门禁为绿；不向 `main` 提交故意失败的 RED 状态。
+每个 feature 在本地先观察目标测试因缺少行为而失败，再写最小实现。最终合入的单一 commit 同时包含测试、实现和必要文档，并保持所有门禁为绿；不向主线分支提交故意失败的 RED 状态。
 
 ## 隔离规则
 

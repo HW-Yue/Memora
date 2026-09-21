@@ -32,12 +32,17 @@ const FileName = "memora.db"
 
 type Options struct {
 	Now func() time.Time
+	// CheckInvariants asserts the mount invariant before every write commits.
+	// Tests turn it on so a new path fails at the commit that broke it; a
+	// production Instance leaves it off and relies on the doctor command.
+	CheckInvariants bool
 }
 
 type DB struct {
-	sql   *sql.DB
-	write sync.Mutex
-	now   func() time.Time
+	sql             *sql.DB
+	write           sync.Mutex
+	now             func() time.Time
+	checkInvariants bool
 }
 
 // Error is a storage failure with a stable result code.
@@ -68,7 +73,7 @@ func Open(path string, options Options) (*DB, error) {
 	if now == nil {
 		now = time.Now
 	}
-	db := &DB{sql: handle, now: func() time.Time { return now().UTC() }}
+	db := &DB{sql: handle, now: func() time.Time { return now().UTC() }, checkInvariants: options.CheckInvariants}
 	if err := db.migrate(context.Background()); err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -171,6 +176,12 @@ func (db *DB) begin(ctx context.Context) (*tx, error) {
 
 func (t *tx) commit(ctx context.Context) error {
 	defer t.db.write.Unlock()
+	if t.db.checkInvariants {
+		if err := t.requireMountInvariant(ctx); err != nil {
+			_ = t.sql.Rollback()
+			return err
+		}
+	}
 	if err := t.flushChange(ctx); err != nil {
 		_ = t.sql.Rollback()
 		return err
