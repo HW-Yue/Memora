@@ -105,6 +105,10 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
   **F6 完成**（写入侧可选向量字段仍未做，它是快路径）。**下一件**：F5 CLI 自动嵌入与排空。
 - **M7 召回完成**（2026-09-21）：两个提交入口（写入时附带／`ACCEPT VECTOR` 后填）都已落地，
   关键词与向量两路闭环，CLI 配了 provider 即自动排空。
+  **端到端冒烟（真 CLI + 真 daemon，宿主手工交回一个向量）**：写入（无向量）→
+  `SHOW PENDING VECTORS` 列出该单元与它的载荷 → `ACCEPT VECTOR` 交回 → **`RECALL ... NEAREST`
+  返回 `root → 架构` 与 object_id、零通知** → 待办清空 → `RECALL ... MATCH` 同样命中。
+  判定标准「Agent 能不能找到东西」达成。
   向量由宿主侧算好交回，Memora 不发网络请求、不持有 base URL 与 key。
 - **下一件**：**M7 · F6**——详细方案见 [M7 召回：详细实施计划](./m7-recall-plan.md)。
   判定标准是「Agent 能不能找到东西」。**归档读面与修复队列冻结**：不再加面，
