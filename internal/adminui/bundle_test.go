@@ -417,6 +417,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"animation: false,\n        align: true",
 		"requestAnimationFrame", "prefers-reduced-motion", "semantic-document-enter",
 		"BRANCH_ENTER_MS", "DOCUMENT_ENTER_MS", "cancelAnimationFrame", "motionOpacity", "getNodeData",
+		"height > 0 ? height : DOCUMENT_NODE_MIN_HEIGHT",
 		"graph.localMotion", "graph.draw()", "__semanticGraph", "localMotion?.cancel",
 		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
 		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
@@ -469,6 +470,11 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	styleText := string(styles)
+	// A document card is as tall as its document. A fixed minimum left a hole
+	// under every shorter Row, which is exactly what the reader sees.
+	if strings.Contains(styleText, "min-height: 620px") || strings.Contains(styleText, "min-height: 430px") {
+		t.Error("the document card still reserves height the document does not use")
+	}
 	for _, required := range []string{
 		".route-rows .content { width: 100%; max-width: none;",
 		".route-rows .route-outlet { max-width: none; padding: 0; border: 0; background: transparent;",

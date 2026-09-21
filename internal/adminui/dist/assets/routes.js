@@ -384,7 +384,10 @@ async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
 }
 
 const DOCUMENT_NODE_WIDTH = 900;
-const DOCUMENT_NODE_MIN_HEIGHT = 620;
+// A measured height sets the card; this is only the floor for the degenerate case
+// where measurement returns nothing (a hidden or not-yet-laid-out node). It used
+// to be a fixed 620px, which left a hole under every shorter document.
+const DOCUMENT_NODE_MIN_HEIGHT = 120;
 const DOCUMENT_COLUMN_GAP = 72;
 const DOCUMENT_VERTICAL_GAP = 72;
 const CANVAS_FOCUS_MAX_ZOOM = 1.25;
@@ -505,7 +508,10 @@ function measuredDocumentHeight(article) {
   document.body.append(probe);
   const height = Math.ceil(probe.getBoundingClientRect().height);
   probe.remove();
-  return Math.max(DOCUMENT_NODE_MIN_HEIGHT, height);
+  // The document decides how tall its card is: a short document is a short card,
+  // not a page with a hole under it. The floor is only for a measurement that
+  // returned nothing at all.
+  return height > 0 ? height : DOCUMENT_NODE_MIN_HEIGHT;
 }
 
 function documentNodeHTML(data) {
