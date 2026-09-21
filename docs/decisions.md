@@ -106,6 +106,26 @@
 **落盘**：[history 谱系](./product/history-lineage.md) 定稿；已修订
 [行生命周期](./product/row-lifecycle-successor.md) 的两类变化表（`superseded` 用词 + revision 口径）。
 
+## 2026-09-21 · 级联摘链接的预算口径：guard 管目标行，级联另设界并如实报数
+
+对象：删除第 5 步会写别的行，`max_affected_rows` 与结果信封怎么算。
+状态：**方向性结论**（用户选 C）。
+
+**结论**：① `max_affected_rows` 保持**目标行**语义（DELETE 校验 1 行），不因级联变大而被拒；
+② 级联**另设一个界**（单次删除能摘的链接条数上限），超界拒绝、让 Agent 分步清理；
+③ 结果**如实报数**：`affected_rows` 仍是目标行，级联行数另外报出并照常进 `mem_changes`。
+
+**理由**：宪章要求每一步有界，级联不能例外；但把级联塞进 `max_affected_rows`，会让一次正常的
+删除随「别人链了它多少」随机失败——把两件事绑进同一道 guard，正是架构原则 §1 判据 3 的症状。
+
+**弃选**：A 把级联算进 `max_affected_rows`——需要 Agent 先数出对面有几行，而 `links` 现在
+**既不可读也不可写**（只有字段存在），前提都不具备，且读与写之间有 race。
+B 不给级联设界、只在结果里报——`max_affected_rows` 就不再是"这次请求写多少"的上界。
+
+**待定**：级联上限的具体数值与是否进库内配置，随[行链接](./product/row-links.md)实现时定。
+
+**落盘**：[行删除](./product/row-delete-archive.md) 的「级联写的预算口径」。
+
 ## 2026-09-21 · 删除改为归档式物理删除；history 只记原地修改
 
 对象：DELETE 的语义，以及 SPLIT／MERGE 后 history 的归属。
