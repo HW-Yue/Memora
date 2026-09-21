@@ -10,25 +10,43 @@
 its index`），**没有任何解锁路径**。它很容易被无意触发——一次试用、或别的客户端用自己的默认
 provider 抢先钉死，库就永久锁住了。
 
-## 形状（顾问结论：B，把「重新上锁」显式化）
+## 形状（已定：形式 B + 有界两阶段）
 
 ```sql
-RELEASE VECTOR IDENTITY IN DATABASE :db [MODEL :m DIMENSIONS :d]
+REKEY VECTOR IDENTITY IN DATABASE :db LIMIT :n [MODEL :m DIMENSIONS :d]
 ```
 
-- **L2**（结构变更：它要 drop 虚表），同一事务里按顺序做：
-  1. 校验 `expected_schema_version` 与当前锁状态；
-  2. **drop 掉该库每一张 vec0 虚表并删掉它的注册行**（`mem_recall_vec_<tableID>` +
-     `mem_recall_vec_indexes`）；
-  3. **清空该库每个单元的** `embedding` / `embedded_content_hash` / `embedding_model` /
-     `embedding_dimensions` / `embedded_at`；
-  4. 写锁：给了 `MODEL`/`DIMENSIONS` 就写新身份（形式 C），没给就清成「未锁」（形式 B）。
-- 之后的**重新上锁由排干循环里第一条 `ACCEPT VECTOR` 完成**（现成的 TOFU），排干走现成的
-  **L1 有界**通道：`SHOW PENDING VECTORS … LIMIT 64` → 宿主嵌入 → 一个 request 装 N 条
-  `ACCEPT VECTOR`，CLI 每次 `exec` 最多排 1024 个单元。
+**一条语句、可重复、有界**，和 `REPAIR VECTOR INDEX` 同族（`LIMIT` 就是批大小，回执报
+`released` / `remaining`）：
+
+- **第一次调用**：校验 `expected_schema_version` 与当前锁状态 → 标记**中间态** → drop 该库全部
+  vec0 虚表并删注册行（按表计，天然有界）→ 清掉至多 `LIMIT :n` 个单元的
+  `embedding` / `embedded_content_hash` / `embedding_model` / `embedding_dimensions` /
+  `embedded_at` → 回执 `remaining`；
+- **后续调用**：继续清字节，直到 `remaining = 0`；
+- **最后一次**（`remaining = 0`）：写锁（给了 `MODEL`/`DIMENSIONS` 写新身份，没给清成未锁）→
+  清掉中间态 → 回执 `state = done`。
+
+**授权级别：整条语句 L2。** 它 drop 虚表，是结构变更；也就是说这条语句自始至终是 L2，不随调用
+次数变级（按状态变级无法验证）。真正的大批量工作仍在**排干**里——宿主嵌入 N 条 `ACCEPT VECTOR`
+走现成的 **L1 有界**通道（`SHOW PENDING VECTORS … LIMIT 64` → 一个 request 装 N 条，CLI 每次
+`exec` 最多 1024 个单元）。
 
 **不选 A（一条语句做完 rekey）**：把「结构变更」和「全库清空」焊在一条语句里，`max_affected_rows`
-对无界的单元数失去意义，违反有界写规矩。
+对无界的单元数失去意义，违反有界写规矩。**也不做第二条语句**：中间态由同一条语句的第一次调用
+建立、最后一次调用撤销，窗口天然被它包住。
+
+## 中间态期间，向量层一律拒绝（这是 (b) 的代价，也是它的保障）
+
+`mem_databases` 加**新列**（如 `embedding_rekey_at` + 目标 `model`/`dimensions`；**加列不 bump
+`fileSchemaVersion`**），中间态置位期间：
+
+- `RECALL … NEAREST` **拒绝**（稳定 code，倾向 `rekey_in_progress`）——**不返回空结果**，因为空
+  结果和「没有命中」不可分辨；
+- `ACCEPT VECTOR` **拒绝**——否则并发宿主会拿旧模型把 vec0 表按旧维度重建、把错误身份钉回锁上；
+- `REPAIR VECTOR INDEX` **拒绝**——否则它会拿**旧模型字节**把新索引重建出来（见下面约束 ②）；
+- `SHOW PENDING VECTORS` 带上**目标 `(model, dims)`**，宿主据此选模型；
+- `doctor` 报中间态。
 
 ## 两条必须写进实现的约束（否则会静默出错）
 
@@ -55,16 +73,11 @@ RELEASE 与排干完成之间，库**可检索但向量召回为空**——不�
   RELEASE 那一刻就写锁，中间态只到排干完成为止；
 - `doctor` 报这个中间态。
 
-## 有界性怎么处理（本计划里唯一还需要定的）
+## 有界性（已定 (b)：两阶段有界）
 
-清 `embedding` 的字节数**无界**（单元数），而 `max_affected_rows` 是有界写的前提。两条候选：
-
-- **(a) 一次做完**：RELEASE 明确声明「这是结构级全库操作，不受 `max_affected_rows` 约束」，
-  借口是它已经在 L2 且中间态挡住了读；
-- **(b) 两阶段有界**：RELEASE 只做「标记中间态 + drop 派生层 + 写新锁」，清字节另开一条带
-  `LIMIT :n` / `remaining` 的有界语句反复跑到 0，完成后再允许排干。
-
-倾向 (b)：它保住「每个写都是有界的」这条不变量，代价是多一条语句和一次状态检查。
+`max_affected_rows` 对每个写都成立：`REKEY` 每次只动至多 `LIMIT :n` 个单元，`remaining` 递减到 0
+才写锁、撤中间态。**不选 (a)**（一次做完、声明不受 `max_affected_rows` 约束）——那会让「每个写都
+有界」这条不变量在最需要它的一次操作上失效。
 
 ## 要动的地方
 
@@ -89,6 +102,6 @@ RELEASE 与排干完成之间，库**可检索但向量召回为空**——不�
 
 ## 待定
 
-- 有界性选 (a) 还是 (b)。
-- 中间态是 `mem_databases` 上的新列，还是复用 `embedding_locked_at` 的语义（倾向新列，语义不同）。
-- `RECALL … NEAREST` 在中间态是稳定拒绝还是返回带 notice 的空结果（倾向拒绝：空结果不可分辨）。
+- 中间态列的最终名字与是否拆成两列（`embedding_rekey_at` + 目标 `model`/`dimensions`）。
+- `REKEY` 在**未锁**的库上是报「无需 rekey」还是直接开始（倾向报无需：没有身份可卸）。
+- `REKEY` 期间 `SHOW PENDING VECTORS` 是带目标身份还是直接拒绝（倾向带，宿主可以先准备模型）。

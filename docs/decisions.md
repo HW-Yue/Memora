@@ -756,3 +756,10 @@ OR embedding_dimensions <> 库的维度`（`internal/sqlstore/embedding.go` 的 
 `RECALL … NEAREST` 拒绝、`SHOW PENDING VECTORS` 带目标身份、第一条 `ACCEPT` 成功即退出、`doctor` 报。
 
 全稿见[向量 rekey](../planning/vector-rekey.md)。**未授权开工。**
+**有界性（用户已定，2026-09-21）**：选 **(b) 两阶段有界**，且合并成**一条可重复语句**
+`REKEY VECTOR IDENTITY IN DATABASE :db LIMIT :n [MODEL :m DIMENSIONS :d]`（与 `REPAIR VECTOR
+INDEX` 同族）：第一次调用标记中间态 + drop 派生层 + 清至多 `LIMIT` 个单元，后续调用继续清字节，
+`remaining = 0` 时写锁、撤中间态。整条语句 **L2**（它 drop 虚表，不按调用次数变级），大批量的
+重嵌仍走 L1 排干。**中间态期间向量层一律拒绝**：`NEAREST` 拒绝（不返回空结果）、
+`ACCEPT VECTOR` 拒绝、`REPAIR VECTOR INDEX` 拒绝、`SHOW PENDING VECTORS` 带目标身份、`doctor` 报。
+弃选 (a)：让「每个写都有界」在最需要它的一次操作上失效。
