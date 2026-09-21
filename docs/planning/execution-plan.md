@@ -92,7 +92,8 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 - **M7 · F2 召回读面 ✓**（2026-09-21）：`RECALL FROM <db> [IN <table>] MATCH :q LIMIT :n`；
   返回逐段 `route_id` 的完整路径 + database/table/kind/object_id，去重后按字典序稳定输出；
   缺 limit、越界（>1000）、短于 3 字一律拒；输出不含分数、理由、命中字段与正文。
-- **M7 · F4 词法通路 ✓**（2026-09-21）：FTS5 `trigram` 外部内容表同事务同步；
+- **M7 · F4 词法通路 ✓**（2026-09-21）：FTS5 外部内容表同事务同步（分词器当日为 `trigram`，
+  已被二字滑窗索引取代）；
   端到端实测——中文事实写入 → `RECALL` 命中 → `OPEN ROUTE` → `SELECT` 回表；
   改标题后旧词召不回、删除后召不回、全角半角等价。
 - **M7 · F6 进行中**（2026-09-21）：S0 构建（vec0 必需模块 + vendor + 启动断言）✓；
