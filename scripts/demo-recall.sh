@@ -110,6 +110,46 @@ PY
 query "$TMP/pending.json" "SHOW PENDING VECTORS IN DATABASE life LIMIT :limit" \
   | python3 -c "import sys,json;d=json.load(sys.stdin);print('   未就绪单元:', len(d['results'][0]['rows']))"
 
+echo "── 语义索引路（Agent 主路：逐层选，再回表）"
+python3 - "$binary" "$INSTANCE" "$TMP" <<'PY'
+import json, pathlib, subprocess, sys
+binary, instance, tmp = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+
+def call(source, named=None, write=False):
+    base = json.load(open(tmp / ("db.json" if write else "read.json")))
+    if named:
+        base["parameters"] = {"named": named}
+    command = "exec" if write else "query"
+    done = subprocess.run([binary, command, "--data-dir", instance, "--input", json.dumps(base), source],
+                          capture_output=True, text=True)
+    result = json.loads(done.stdout)["results"][0]
+    if result.get("error"):
+        raise SystemExit("  %s -> %s" % (source, result["error"]["message"]))
+    return result["rows"]
+
+print("  ① 发现：", ", ".join(row["name"] for row in call("SHOW TABLES FROM life LIMIT 10 COMPACT")))
+
+level = call("SHOW ROUTES FROM TABLE life.notes AT ROOT LIMIT 12")
+print("  ② 根下分支：", ", ".join("%s(%s)" % (row["name"], row["kind"]) for row in level))
+chosen = next(row for row in level if row["name"] == "技术")
+
+level = call("SHOW ROUTES UNDER :parent LIMIT 12", {"parent": chosen["route_id"]})
+print("  ③ 技术下：", ", ".join("%s(%s)" % (row["name"], row["kind"]) for row in level))
+chosen = next(row for row in level if row["name"] == "数据库")
+
+level = call("SHOW ROUTES UNDER :parent LIMIT 12", {"parent": chosen["route_id"]})
+print("  ④ 数据库下：", ", ".join("%s(%s)" % (row["name"], row["kind"]) for row in level))
+leaf = next(row for row in level if row["name"] == "存储引擎")
+
+locator = call("OPEN ROUTE :leaf LIMIT 1", {"leaf": leaf["route_id"]})
+rowID = locator[0]["row_id"]
+print("  ⑤ 打开叶子 -> row_id=%s" % rowID)
+
+rows = call("SELECT title, row_id, revision FROM life.notes WHERE row_id = :row LIMIT 1", {"row": rowID})
+for row in rows:
+    print("  ⑥ 回表取事实：%s（revision %s）" % (row["title"], row["revision"]))
+PY
+
 echo "── 召回演示"
 python3 - "$TMP" "$BASE_URL" "$MODEL" "$DIMENSIONS" "$API_KEY" <<'PY'
 import base64, json, pathlib, struct, sys, urllib.request
