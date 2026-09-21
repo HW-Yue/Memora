@@ -31,6 +31,7 @@
   再[行必须可导航](./planning/row-navigable.md)
 - [Admin 显示槽位](./planning/admin-display-slots.md) — 文档居中且只渲染一次
 - [引擎拥有形状](./planning/engine-owned-shape.md) — 讨论稿：列归引擎，命名/描述/位置/正文归 agent
+- [向量 rekey](./planning/vector-rekey.md) — 卸下 TOFU 身份，再让排干重新上锁
 - [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
 - [决策日志](./decisions.md) — 运行中的判断；规范级结论进 ADR
 

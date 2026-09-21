@@ -735,3 +735,24 @@ OR embedding_dimensions <> 库的维度`（`internal/sqlstore/embedding.go` 的 
 但多语句 request **不自动开事务**（`docs/query/msql-batch-transactions.md`），批里的
 `ACCEPT VECTOR` 是**逐条 autocommit**——失败粒度是「一条坏单元只失败它自己」，对排干更有利，
 注释该改。
+
+## 2026-09-21 · 向量 rekey 的形状：RELEASE（L2）＋ 排干重新 TOFU
+
+**结论（顾问）**：做 `RELEASE VECTOR IDENTITY IN DATABASE :db [MODEL :m DIMENSIONS :d]`，**L2**，
+同一事务里：drop 该库全部 vec0 虚表 + 删注册行 → 清空全部单元的 `embedding` 及其身份列 →
+写锁（给了新 `(model, dims)` 就写新身份，没给就清成未锁）。**重新上锁由排干循环里第一条
+`ACCEPT VECTOR` 完成**，排干走现成 L1 有界通道。形式 C（必须给新身份）只是可选谓词，不是唯一形状。
+
+**弃选 A**（一条语句做完 rekey）：把结构变更与全库清空焊在一起，`max_affected_rows` 对无界单元数
+失去意义。
+
+**两条硬约束**：① RELEASE 必须自己清派生层——`repairVectorIndex` 在锁为空时**早退**，指望事后
+对账会让虚表永久残留；② 清 `embedding` 字节不是可选项，且必须在锁翻转前/同事务完成——`tableVectorDrift`
+取真相不看 model，索引表一 drop，一次 `REPAIR VECTOR INDEX` 就会拿**旧模型字节**重建新索引，
+而 `storeVector` 又不比对维度。
+
+**最大风险：静默空窗**（RELEASE 到排干完成之间，库可检索但向量召回悄悄变空，且锁敞开，任何并发
+宿主的第一条 `ACCEPT` 能把错误身份钉死）。**缓解**：`mem_databases` 加显式中间态 → 期间
+`RECALL … NEAREST` 拒绝、`SHOW PENDING VECTORS` 带目标身份、第一条 `ACCEPT` 成功即退出、`doctor` 报。
+
+全稿见[向量 rekey](../planning/vector-rekey.md)。**未授权开工。**
