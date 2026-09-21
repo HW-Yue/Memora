@@ -384,3 +384,46 @@ func cliHelp(t *testing.T, root string) string {
 	}
 	return string(out)
 }
+
+// Optional SQLite modules arrive through build tags, and a stage that forgets
+// one builds a binary where recall silently has no index. The tags live in one
+// variable so there is a single place to read them from.
+func TestCIScriptKeepsOptionalSQLiteModules(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(repoRoot(t), "scripts/ci.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte("build_tags=sqlite_fts5")) {
+		t.Fatal("ci.sh does not declare the optional-module build tags")
+	}
+	for _, stage := range []string{"vet", "unit", "race", "cgo-build"} {
+		if !strings.Contains(ciStage(t, stage), `-tags "$build_tags"`) {
+			t.Errorf("%s compiles without the optional-module build tags", stage)
+		}
+	}
+	// The two analysers that load packages have to see the same package set the
+	// build does, or a file behind a tag hides from the sweep. The stage body is
+	// one command per line with continuations, so count the flag instead of
+	// matching it against a tool name.
+	if flags := strings.Count(ciStage(t, "lint"), `-tags "$build_tags"`); flags < 2 {
+		t.Errorf("lint passes the optional-module build tags %d times; staticcheck and errcheck both need them", flags)
+	}
+}
+
+// A hand-written build command is the easiest place to lose a tag.
+func TestDocumentedBuildsCarryTheSQLiteModuleTags(t *testing.T) {
+	for _, file := range []string{"README.md", filepath.Join("skills", "memora", "scripts", "install.sh")} {
+		body, err := os.ReadFile(filepath.Join(repoRoot(t), file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(body), "\n") {
+			if !strings.Contains(line, "go build") {
+				continue
+			}
+			if !strings.Contains(line, "-tags sqlite_fts5") {
+				t.Errorf("%s builds without the optional-module tags: %s", file, strings.TrimSpace(line))
+			}
+		}
+	}
+}

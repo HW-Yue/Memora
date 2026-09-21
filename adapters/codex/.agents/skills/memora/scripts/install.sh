@@ -99,7 +99,7 @@ else
       (
         cd "$source_dir"
         CGO_ENABLED=1 CGO_CFLAGS="${CGO_CFLAGS:--Wno-deprecated-declarations}" \
-          go build -trimpath -ldflags "-X main.version=$version -X main.commit=source -X main.builtAt=source" -o "$staged" ./cmd/memora
+          go build -tags sqlite_fts5 -trimpath -ldflags "-X main.version=$version -X main.commit=source -X main.builtAt=source" -o "$staged" ./cmd/memora
       )
     else
       mkdir -p "$work_dir/go-bin"

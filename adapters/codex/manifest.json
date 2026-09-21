@@ -46,7 +46,7 @@
     },
     {
       "path": ".agents/skills/memora/scripts/install.sh",
-      "sha256": "6ee39d82abcb2582bbb0203873699c7148bc59a486b0635650e685e5ceeb1722",
+      "sha256": "cc7cd44631352f3390389abffa753cbfc5900d69d53655980bb0a1128b4522be",
       "mode": "0755"
     },
     {

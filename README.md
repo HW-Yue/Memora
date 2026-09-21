@@ -12,7 +12,7 @@ Memora 是一个给 AI Agent 用的本地个人数据库：Agent 自己建模、
 需要 Go 1.25 与 C 编译器（SQLite 通过 cgo 编译，macOS 自带 clang 即可）。
 
 ```bash
-CGO_ENABLED=1 CGO_CFLAGS="-Wno-deprecated-declarations" go build -o bin/memora ./cmd/memora
+CGO_ENABLED=1 CGO_CFLAGS="-Wno-deprecated-declarations" go build -tags sqlite_fts5 -o bin/memora ./cmd/memora
 ```
 
 ```bash

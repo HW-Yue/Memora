@@ -12,6 +12,11 @@ staticcheck_version=v0.7.0
 errcheck_version=v1.20.0
 ineffassign_version=v0.1.0
 stages=(format vet lint unit race cgo-build)
+# Optional SQLite modules are compiled in through build tags. sqlite_fts5 is the
+# keyword index the recall path reads; a build without it produces a binary where
+# recall silently has no index, so the tag is threaded through every stage
+# rather than only the ones that link the database.
+build_tags=sqlite_fts5
 # The platforms this project ships on. vet and lint sweep each one so that a
 # file behind a //go:build tag cannot hide from either.
 supported_platforms=(linux darwin)
@@ -48,7 +53,7 @@ run_stage() {
       # decision — the other half is in unit, race and cgo-build.
       for goos in "${supported_platforms[@]}"; do
         printf 'ci: vet GOOS=%s\n' "$goos"
-        CGO_ENABLED=0 GOOS="$goos" "$go_command" vet ./...
+        CGO_ENABLED=0 GOOS="$goos" "$go_command" vet -tags "$build_tags" ./...
       done
       ;;
     lint)
@@ -105,11 +110,11 @@ run_stage() {
         # packages of another platform and must not inherit a cgo setting that
         # only makes sense on this one.
         CGO_ENABLED=0 GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/staticcheck" \
-          -checks 'all,-ST1000,-ST1003,-ST1005,-ST1020,-ST1021,-ST1022' ./...
+          -tags "$build_tags" -checks 'all,-ST1000,-ST1003,-ST1005,-ST1020,-ST1021,-ST1022' ./...
         # Tests are excluded from errcheck: a test that ignores an error fails
         # loudly on the next assertion anyway, and t.Cleanup closures would
         # otherwise need wrapping for no gain.
-        CGO_ENABLED=0 GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/errcheck" -ignoretests ./...
+        CGO_ENABLED=0 GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/errcheck" -tags "$build_tags" -ignoretests ./...
         CGO_ENABLED=0 GOOS="$goos" GOTOOLCHAIN="$lint_toolchain" "$lint_tool_dir/ineffassign" ./...
       done
       )
@@ -117,10 +122,10 @@ run_stage() {
     unit)
       # CGO_ENABLED=1 rather than inherited: these stages open real database
       # files, and go-sqlite3 with CGO_ENABLED=0 links a mock that cannot.
-      CGO_ENABLED=1 "$go_command" test ./...
+      CGO_ENABLED=1 "$go_command" test -tags "$build_tags" ./...
       ;;
     race)
-      CGO_ENABLED=1 "$go_command" test -race ./...
+      CGO_ENABLED=1 "$go_command" test -tags "$build_tags" -race ./...
       ;;
     cgo-build)
       # go-sqlite3 with CGO_ENABLED=0 links static_mock.go and cannot open a
@@ -135,7 +140,7 @@ run_stage() {
       trap 'rm -rf -- "$work"' EXIT
       export CGO_ENABLED=1
       export CGO_CFLAGS="${CGO_CFLAGS:--Wno-deprecated-declarations}"
-      "$go_command" build -trimpath -o "$work/memora" ./cmd/memora
+      "$go_command" build -tags "$build_tags" -trimpath -o "$work/memora" ./cmd/memora
       data="$work/instance"
       "$work/memora" init --data-dir "$data"
       "$work/memora" daemon start --data-dir "$data"
