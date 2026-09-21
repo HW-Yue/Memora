@@ -10,6 +10,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/recall"
+	"github.com/HW-Yue/Memora/internal/repair"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -54,6 +55,16 @@ func (o operations) AcceptVector(ctx context.Context, databaseName string, recor
 func (o operations) VectorStatus(ctx context.Context, databaseName, tableName string) (status recall.VectorStatus, err error) {
 	err = o.run(ctx, false, func(t *tx) error {
 		status, err = t.vectorStatus(ctx, databaseName, tableName)
+		return err
+	})
+	return
+}
+
+// RepairVectorIndex reconciles one Database's derived vector indexes with the
+// truth on its unit rows. It is a write: it repairs derived index rows.
+func (o operations) RepairVectorIndex(ctx context.Context, databaseName string, limit int) (receipt repair.VectorReceipt, err error) {
+	err = o.run(ctx, true, func(t *tx) error {
+		receipt, err = t.repairVectorIndex(ctx, databaseName, limit)
 		return err
 	})
 	return

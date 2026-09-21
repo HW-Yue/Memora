@@ -222,6 +222,15 @@ paths you got are real but the list may be incomplete. Read `not_ready_units`
 exhaustive. Do not retry hoping for more — `RECALL` never waits for embeddings;
 `memora doctor` reports the same count for the whole instance.
 
+The vector index is derived from the units, and you can reconcile it without
+guessing: a bounded pass repairs index rows so they hold exactly what the units
+hold. It never recomputes a vector — a unit whose text moved on is stale, not
+broken — so repeating it until `remaining` is zero is safe.
+
+```sh
+memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affected_rows":64,"actor":"agent:host","source":"conversation:event-9","reason":"reconcile the vector index"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "REPAIR VECTOR INDEX IN DATABASE work LIMIT :limit"
+```
+
 `LIMIT` is required and bounded to 1–1000; the query must be at least 3
 characters, and a shorter one is refused rather than silently returning nothing.
 Hits are de-duplicated by path and ordered by table then path, so the same query

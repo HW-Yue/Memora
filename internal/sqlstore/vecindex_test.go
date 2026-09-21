@@ -43,6 +43,14 @@ func (h *harness) nearestUnits(vector []float32, k int) []int64 {
 	return found
 }
 
+func (h *harness) repairVectorIndex(source string) int {
+	h.t.Helper()
+	options := write("reconcile the derived vector index")
+	options.MaxAffectedRows = 1000
+	result := h.run(source, nil, options)
+	return int(result.AffectedRows)
+}
+
 func (h *harness) acceptUnitVector(rowID string, vector []float32) int64 {
 	h.t.Helper()
 	unitNo, contentHash := h.recallUnit(rowID)
@@ -131,4 +139,66 @@ func TestDeletingARowDropsItsIndexRow(t *testing.T) {
 	if found := h.nearestUnits([]float32{0, 1}, 5); len(found) != 0 {
 		t.Fatalf("a deleted Row must leave nothing in the index: %v", found)
 	}
+}
+
+// The acceptance the plan asks for is that incremental upkeep and a full replay
+// agree: drop the derived index, reconcile, and the same query must answer with
+// the same positions.
+func TestRepairReplaysTheIndexFromTheTruth(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	first := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	second := h.insertAlongPath("write ahead log", pathOf("architecture", "wal"))
+	firstUnit := h.acceptUnitVector(first, []float32{1, 0})
+	h.acceptUnitVector(second, []float32{0, 1})
+	before := h.nearestUnits([]float32{1, 0}, 5)
+
+	// The index is derived, so losing it must be recoverable from the units —
+	// including the registry row claiming an index that is no longer there.
+	index := h.vectorIndexName()
+	if _, err := h.db.SQL().Exec(`DROP TABLE ` + index); err != nil {
+		t.Fatal(err)
+	}
+	if found := h.repairVectorIndex(`REPAIR VECTOR INDEX IN DATABASE work LIMIT 8`); found != 2 {
+		t.Fatalf("the pass must replay both units: %d", found)
+	}
+	after := h.nearestUnits([]float32{1, 0}, 5)
+	if len(after) != len(before) {
+		t.Fatalf("a rebuilt index must answer the same set: %v then %v", before, after)
+	}
+	for index := range before {
+		if before[index] != after[index] {
+			t.Fatalf("a rebuilt index must answer in the same order: %v then %v", before, after)
+		}
+	}
+	if len(after) == 0 || after[0] != firstUnit {
+		t.Fatalf("the nearest unit after the rebuild = %v, want %d first", after, firstUnit)
+	}
+	// A second pass has nothing left to do, which is what makes "repeat until
+	// remaining is zero" a safe instruction.
+	if status, err := h.db.Rows().VectorStatus(context.Background(), "work", ""); err != nil || status.NotReady != 0 {
+		t.Fatalf("both units are ready: %+v, %v", status, err)
+	}
+	if found := h.repairVectorIndex(`REPAIR VECTOR INDEX IN DATABASE work LIMIT 8`); found != 0 {
+		t.Fatalf("a converged index needs no repair: %d", found)
+	}
+}
+
+// A pass is bounded like every other maintenance write, and it reports the work
+// it did not do rather than pretending to have finished.
+func TestRepairIsBoundedAndReportsWhatIsLeft(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	h.acceptUnitVector(h.insertAlongPath("storage engine", pathOf("architecture", "sqlite")), []float32{1, 0})
+	h.acceptUnitVector(h.insertAlongPath("write ahead log", pathOf("architecture", "wal")), []float32{0, 1})
+	if _, err := h.db.SQL().Exec(`DROP TABLE ` + h.vectorIndexName()); err != nil {
+		t.Fatal(err)
+	}
+
+	receipt := h.run(`REPAIR VECTOR INDEX IN DATABASE work LIMIT 1`, nil, write("rebuild one unit"))
+	if text(receipt.Rows[0]["repaired"]) != "1" || text(receipt.Rows[0]["remaining"]) != "1" {
+		t.Fatalf("a bounded pass must report the rest: %v", receipt.Rows[0])
+	}
+	// And the statement refuses a limit its caller has not budgeted for.
+	h.fails(`REPAIR VECTOR INDEX IN DATABASE work LIMIT 8`, nil, write("over budget"))
 }

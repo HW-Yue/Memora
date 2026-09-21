@@ -173,7 +173,7 @@ F6 在 F5 之前落地，索引先于生产者存在。"从 `mem_recall_units` �
 | S1 | 库级 `(model, dims)` 身份锁 + 校验拒收 + `RECALL` 报"N 个单元未就绪" | 否 |
 | S2 | 向量字节落 `mem_recall_units`（真相）+ 两个入口 + `content_hash` 重算校验 | 否 |
 | S3 | 建 vec0 + 同事务增量插入／按 `unit_no` 删 | 是 |
-| S4 | `REPAIR <db> [IN <table>] REBUILD VECTOR INDEX`（从真相全量重放） | 是 |
+| S4 ✓ | `REPAIR VECTOR INDEX IN DATABASE <db> LIMIT <n>`：把派生索引**修到与真相一致**（不是 drop 再建；DROP + REPAIR 就是全量重建），受 `max_affected_rows` 约束、重复到 `remaining` 为 0 | 是 |
 | S5 | 向量召回接进 `RECALL`：确定性重排、跨表归并 | 是 |
 | S6 | 确定性／幂等验收套件 + 确定性假向量器 | — |
 

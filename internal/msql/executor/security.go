@@ -83,7 +83,7 @@ func (engine *Engine) authorizeDatabaseReferenceAtLevel(ctx context.Context, lev
 func StatementRiskLevel(statement ast.Statement) security.RiskLevel {
 	switch {
 	case statement.Insert != nil, statement.Update != nil, statement.Delete != nil,
-		statement.Restore != nil, statement.RepairLinks != nil,
+		statement.Restore != nil, statement.RepairLinks != nil, statement.RepairVector != nil,
 		// BEGIN/COMMIT/ROLLBACK are not reads: a read-only transport that accepted
 		// them would hand the caller control of a transaction it may then commit.
 		statement.Transaction != nil:
@@ -101,6 +101,11 @@ func StatementRiskLevel(statement ast.Statement) security.RiskLevel {
 
 func statementDatabaseNames(statement ast.Statement) []string {
 	databases := []string{}
+	if statement.RepairVector != nil && statement.RepairVector.Database != nil {
+		if len(statement.RepairVector.Database.Parts) >= 1 {
+			databases = append(databases, statement.RepairVector.Database.Parts[0].Value)
+		}
+	}
 	if statement.RepairLinks != nil && statement.RepairLinks.Database != nil {
 		if len(statement.RepairLinks.Database.Parts) >= 1 {
 			databases = append(databases, statement.RepairLinks.Database.Parts[0].Value)

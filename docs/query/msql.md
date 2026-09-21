@@ -34,6 +34,8 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
   范围里有单元没有可用向量时，结果带 `vectors_not_ready` **通知**（聚合计数，不改 `rows`）
 - 归档：`SHOW ARCHIVE`、`OPEN ARCHIVE`（删除后唯一的读面，见[行删除](../product/row-delete-archive.md)）
 - 修复：`REPAIR LINKS IN DATABASE :database LIMIT :limit`（出队一批懒修复，见[行链接](../product/row-links.md)）
+  与 `REPAIR VECTOR INDEX IN DATABASE :database LIMIT :limit`（把派生向量索引修到与真相一致，
+  重复执行直到 `remaining` 为 0；它**不重算向量**）
 - 配置：`SHOW CONFIGURATION` / `HISTORY`、`ALTER CONFIGURATION`、
   `RESTORE CONFIGURATION`
 

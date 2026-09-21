@@ -33,6 +33,7 @@ type Statement struct {
 	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
 	OpenArchive   *OpenArchiveStatement        `json:"open_archive,omitempty"`
 	RepairLinks   *RepairLinksStatement        `json:"repair_links,omitempty"`
+	RepairVector  *RepairVectorStatement       `json:"repair_vector,omitempty"`
 	Recall        *RecallStatement             `json:"recall,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
@@ -199,6 +200,14 @@ type RepairLinksStatement struct {
 	Limit    *Expression `json:"limit"`
 }
 
+// RepairVectorStatement reconciles a Database's vector indexes with the truth
+// the units hold: the vector bytes live on the unit rows, and the vec0 tables
+// are derived from them. It is a write, because it repairs those derived rows.
+type RepairVectorStatement struct {
+	Database *Name       `json:"database"`
+	Limit    *Expression `json:"limit"`
+}
+
 type OpenArchiveStatement struct {
 	Archive *Expression `json:"archive"`
 }
@@ -361,6 +370,8 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.OpenArchive.Archive)
 	case statement.RepairLinks != nil:
 		appendExpression(statement.RepairLinks.Limit)
+	case statement.RepairVector != nil:
+		appendExpression(statement.RepairVector.Limit)
 	case statement.Recall != nil:
 		appendExpression(statement.Recall.Query)
 		appendExpression(statement.Recall.Limit)

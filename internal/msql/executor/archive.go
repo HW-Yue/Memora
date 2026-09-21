@@ -178,6 +178,55 @@ func (engine *Engine) repairLinks(ctx context.Context, statement *ast.RepairLink
 	}, nil
 }
 
+// repairVectorIndex reconciles a Database's derived vector indexes with the
+// truth on its unit rows. It is a write with the same bound as REPAIR LINKS:
+// the statement's LIMIT is how much one pass may repair, and the caller's
+// declared ceiling has to cover it. Running it until `remaining` is zero is
+// safe — each pass re-reads the truth, so nothing is applied twice.
+func (engine *Engine) repairVectorIndex(ctx context.Context, statement *ast.RepairVectorStatement, bound bindings, options MutationOptions) (Output, error) {
+	if statement == nil || statement.Database == nil || statement.Limit == nil {
+		return Output{}, executeError(result.CodeValidation, "REPAIR VECTOR needs INDEX IN DATABASE and LIMIT")
+	}
+	if options.MaxAffectedRows == 0 {
+		return Output{}, executeError(result.CodeValidation, "REPAIR VECTOR requires max_affected_rows")
+	}
+	limit, err := historyPositiveInteger(statement.Limit, catalog.Table{}, bound, "REPAIR VECTOR LIMIT")
+	if err != nil {
+		return Output{}, err
+	}
+	if limit > maxQueryScan {
+		return Output{}, executeError(result.CodeValidation, "REPAIR VECTOR LIMIT must be between 1 and 1000")
+	}
+	if options.MaxAffectedRows < uint64(limit) {
+		return Output{}, executeError(result.CodeValidation,
+			fmt.Sprintf("REPAIR VECTOR LIMIT %d exceeds max_affected_rows %d", limit, options.MaxAffectedRows))
+	}
+	if len(statement.Database.Parts) != 1 {
+		return Output{}, executeError(result.CodeValidation, "REPAIR VECTOR takes a Database name, not a dotted name")
+	}
+	databaseName := statement.Database.Parts[0].Value
+	if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
+		return Output{}, err
+	}
+	receipt, err := engine.rows.RepairVectorIndex(ctx, databaseName, int(limit))
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	// Two aggregate numbers, no per-Table breakdown: recall answers with paths
+	// and no scores, so publishing how many units each Table is missing would
+	// hand out exactly the kind of signal the recall contract withholds.
+	return Output{
+		Columns: []result.Column{
+			{Name: "repaired", Type: "INTEGER"},
+			{Name: "remaining", Type: "INTEGER"},
+		},
+		Rows: []result.Row{{
+			"repaired": receipt.Repaired, "remaining": receipt.Remaining,
+		}},
+		AffectedRows: uint64(receipt.Repaired),
+	}, nil
+}
+
 // recallKeywords answers a keyword query with semantic paths. What it does not
 // answer is just as much of the contract: no score, no reason, no matched field
 // and no content leave here, so a caller can only navigate with the result.

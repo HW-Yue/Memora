@@ -19,3 +19,11 @@ type Receipt struct {
 	Discarded int
 	Remaining int
 }
+
+// VectorReceipt reports what one bounded vector-index repair pass did. There is
+// no "discarded" here: the pass repairs derived rows, so nothing is ever judged
+// no longer worth repairing.
+type VectorReceipt struct {
+	Repaired  int
+	Remaining int
+}

@@ -44,6 +44,7 @@ var statementSamples = map[string]string{
 	"PLAN_SCHEMA_CHANGE":    `PLAN SCHEMA CHANGE FOR TABLE work.notes USING :proposal`,
 	"APPLY_SCHEMA_CHANGE":   `APPLY SCHEMA CHANGE PLAN :plan FOR TABLE work.notes`,
 	"REPAIR_LINKS":          `REPAIR LINKS IN DATABASE work LIMIT 8`,
+	"REPAIR_VECTOR":         `REPAIR VECTOR INDEX IN DATABASE work LIMIT 8`,
 	// Transactions take their kind from the action, so the scan below reads the
 	// call sites as well as the literals.
 	"BEGIN":    `BEGIN`,
