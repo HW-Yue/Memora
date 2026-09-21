@@ -1705,8 +1705,9 @@ func (parser *parser) parseRecall() (ast.Statement, error) {
 		recall.Table = &table
 	}
 	// One arm at least, and MATCH always first: allowing either order would need
-	// a normalization step for no gain. Both together is the union, which the
-	// executor refuses until the fusion step lands.
+	// a normalization step for no gain. Both together is the union of what each
+	// arm found — de-duplicated by position, ordered by table and path, then
+	// truncated by LIMIT. There is no score to fuse on, by contract.
 	if parser.matchWord("MATCH") {
 		query, err := parser.parseExpression(1)
 		if err != nil {
