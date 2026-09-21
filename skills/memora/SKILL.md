@@ -222,6 +222,12 @@ paths you got are real but the list may be incomplete. Read `not_ready_units`
 exhaustive. Do not retry hoping for more — `RECALL` never waits for embeddings;
 `memora doctor` reports the same count for the whole instance.
 
+If this host has an embedding provider configured, `memora exec` already does the
+draining for you: after a write commits it asks what units are missing vectors,
+embeds them, and offers the vectors back — a failure there never fails the write,
+and it says so on stderr. What follows is the manual path for when you compute
+embeddings yourself.
+
 If you compute embeddings yourself, drain the backlog in three steps: ask what is
 missing, embed the text each unit hands you, then offer each vector back.
 

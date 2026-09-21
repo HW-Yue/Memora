@@ -16,6 +16,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/adminapi"
 	"github.com/HW-Yue/Memora/internal/config"
 	"github.com/HW-Yue/Memora/internal/daemon"
+	"github.com/HW-Yue/Memora/internal/embedding"
 	"github.com/HW-Yue/Memora/internal/instance"
 	"github.com/HW-Yue/Memora/internal/mcpadapter"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
@@ -272,7 +273,45 @@ func runExecute(
 	if !envelope.OK {
 		return ExitFailure
 	}
+	// The write is committed and reported; the host's half of the vector path
+	// runs after it and can never change that. A host without a provider has
+	// nothing to do here, and a host with a broken one hears about it without
+	// losing the fact it just recorded.
+	if command == "exec" && len(statements) == 1 {
+		if err := drainAfterWrite(context.Background(), dataDir, statements[0], execute, dependencies, stderr); err != nil {
+			_, _ = fmt.Fprintf(stderr, "embeddings: %v; the units stay not-ready\n", err)
+		}
+	}
 	return ExitOK
+}
+
+// drainAfterWrite runs the drain only when this host has an embedding provider.
+func drainAfterWrite(
+	ctx context.Context,
+	dataDir string,
+	caller executor.StatementInput,
+	execute ExecuteMSQL,
+	dependencies Dependencies,
+	stderr io.Writer,
+) error {
+	lookup := dependencies.LookupEnv
+	if lookup == nil {
+		lookup = os.LookupEnv
+	}
+	embedder, _, err := embedding.NewFromEnvLookup(func(name string) string {
+		value, _ := lookup(name)
+		return value
+	})
+	if err != nil {
+		// A partly configured provider is worth saying out loud, and it is not a
+		// reason to fail the write that already happened.
+		return err
+	}
+	if embedder == nil {
+		return nil
+	}
+	drainEmbeddings(ctx, dataDir, caller, execute, embedder, stderr)
+	return nil
 }
 
 func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies) int {

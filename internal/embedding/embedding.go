@@ -99,8 +99,15 @@ func ConfigFromEnv(lookup func(string) string) (Config, error) {
 
 // Embedder turns text into vectors. The CLI depends on this rather than on the
 // HTTP client, so a build (and a test) can run without a provider at all.
+//
+// Model and Dimensions are part of the interface because every accepted vector
+// has to be stamped with what produced it: the engine locks a Database to one
+// pair, and a host that cannot name its own model could not answer for the
+// vectors it offers.
 type Embedder interface {
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
+	Model() string
+	Dimensions() int
 }
 
 // Client is an OpenAI-compatible embeddings endpoint.
@@ -118,11 +125,18 @@ func New(config Config, httpClient *http.Client) *Client {
 	return &Client{httpClient: httpClient, config: config}
 }
 
-// NewFromEnv builds a client from the environment, or returns nil when the host
-// has not configured embeddings. A nil Embedder means "there is nothing to do
-// here", which callers must treat as the ordinary case rather than a failure.
-func NewFromEnv() (Embedder, Config, error) {
-	config, err := ConfigFromEnv(os.Getenv)
+// NewFromEnv builds a client from the process environment.
+func NewFromEnv() (Embedder, Config, error) { return NewFromEnvLookup(os.Getenv) }
+
+// NewFromEnvLookup builds a client from whatever environment the caller reads,
+// so the CLI can use its own injectable lookup and a test need not touch the
+// process environment.
+//
+// It returns a nil Embedder when the host has not configured embeddings. That is
+// the ordinary case, not a failure: the units simply stay not-ready until a host
+// with a provider drains them.
+func NewFromEnvLookup(lookup func(string) string) (Embedder, Config, error) {
+	config, err := ConfigFromEnv(lookup)
 	if err != nil {
 		return nil, Config{}, err
 	}
@@ -131,6 +145,9 @@ func NewFromEnv() (Embedder, Config, error) {
 	}
 	return New(config, nil), config, nil
 }
+
+// Model reports the provider model every vector from here will be stamped with.
+func (client *Client) Model() string { return client.config.Model }
 
 // Dimensions reports the width every vector from this provider will have. The
 // engine checks it against the Database's identity, so a provider changed
