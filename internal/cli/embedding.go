@@ -42,11 +42,12 @@ func drainEmbeddings(
 	caller executor.StatementInput,
 	execute ExecuteMSQL,
 	embedder embedding.Embedder,
+	batch int,
 	stderr io.Writer,
 ) int {
 	attached := 0
 	for _, database := range caller.Authorization.AuthorizedDatabases {
-		attached += drainDatabase(ctx, dataDir, caller, database, execute, embedder, stderr)
+		attached += drainDatabase(ctx, dataDir, caller, database, execute, embedder, batch, stderr)
 	}
 	if attached > 0 {
 		_, _ = fmt.Fprintf(stderr, "embeddings: attached %d vector(s)\n", attached)
@@ -61,6 +62,7 @@ func drainDatabase(
 	database string,
 	execute ExecuteMSQL,
 	embedder embedding.Embedder,
+	batch int,
 	stderr io.Writer,
 ) int {
 	attached := 0
@@ -79,26 +81,120 @@ func drainDatabase(
 		for _, row := range rows {
 			texts = append(texts, rowText(row["payload"]))
 		}
-		vectors, err := embedder.Embed(ctx, texts)
+		vectors, refused, err := embedTexts(ctx, embedder, texts, batch)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "embeddings: stopped after %d vector(s): %v; the rest stay not-ready\n", attached, err)
 			return attached
 		}
-		if len(vectors) != len(rows) {
-			_, _ = fmt.Fprintf(stderr, "embeddings: stopped after %d vector(s): provider returned %d vectors for %d units\n",
-				attached, len(vectors), len(rows))
+		for _, index := range refused {
+			_, _ = fmt.Fprintf(stderr,
+				"embeddings: unit %v stays not-ready: the provider refuses that text at any size\n", rows[index]["unit_no"])
+		}
+		kept, keptVectors := withoutRefused(rows, vectors, refused)
+		if len(kept) == 0 {
+			// Nothing in this page can be embedded, and the page is at the head of
+			// the work list: retrying would ask the same question forever.
+			_, _ = fmt.Fprintf(stderr,
+				"embeddings: nothing in this page could be embedded; %d unit(s) stay not-ready\n", len(rows))
 			return attached
 		}
-		if err := attachVectors(ctx, dataDir, caller, database, rows, vectors, embedder.Model(), execute); err != nil {
+		if err := attachVectors(ctx, dataDir, caller, database, kept, keptVectors, embedder.Model(), execute); err != nil {
 			_, _ = fmt.Fprintf(stderr, "embeddings: stopped after %d vector(s): %v; the rest stay not-ready\n", attached, err)
 			return attached
 		}
-		attached += len(rows)
+		attached += len(kept)
 		if len(rows) < drainBatch {
 			return attached
 		}
 	}
 	return attached
+}
+
+// embedTexts embeds one page, finding a request size the provider accepts.
+//
+// A provider with a batch ceiling answers 4xx instead of truncating, so a host
+// that gives up — or retries the same size — can never drain a backlog larger
+// than that ceiling. Splitting the request in half turns one refused request
+// into log2(n) accepted ones; a single text the provider still refuses is left
+// out and reported, not retried forever.
+//
+// A failure that is not a refusal (the provider is unreachable, or answered 5xx)
+// is returned as an error: splitting would only multiply that failure.
+func embedTexts(
+	ctx context.Context,
+	embedder embedding.Embedder,
+	texts []string,
+	batch int,
+) (vectors [][]float32, refused []int, err error) {
+	vectors = make([][]float32, len(texts))
+	if len(texts) == 0 {
+		return vectors, nil, nil
+	}
+	if batch <= 0 || batch > len(texts) {
+		batch = len(texts)
+	}
+	for start := 0; start < len(texts); start += batch {
+		end := min(start+batch, len(texts))
+		if err := embedInto(ctx, embedder, texts[start:end], vectors, start, &refused); err != nil {
+			return nil, nil, err
+		}
+	}
+	return vectors, refused, nil
+}
+
+func embedInto(
+	ctx context.Context,
+	embedder embedding.Embedder,
+	texts []string,
+	vectors [][]float32,
+	base int,
+	refused *[]int,
+) error {
+	found, err := embedder.Embed(ctx, texts)
+	if err == nil {
+		if len(found) != len(texts) {
+			return fmt.Errorf("provider returned %d vectors for %d units", len(found), len(texts))
+		}
+		for index, vector := range found {
+			vectors[base+index] = vector
+		}
+		return nil
+	}
+	var status *embedding.StatusError
+	if !errors.As(err, &status) || status.StatusCode < 400 || status.StatusCode >= 500 {
+		return err
+	}
+	if len(texts) == 1 {
+		*refused = append(*refused, base)
+		return nil
+	}
+	half := len(texts) / 2
+	if err := embedInto(ctx, embedder, texts[:half], vectors, base, refused); err != nil {
+		return err
+	}
+	return embedInto(ctx, embedder, texts[half:], vectors, base+half, refused)
+}
+
+// withoutRefused drops the units the provider refused, keeping rows and vectors
+// aligned: a refused unit is neither offered nor counted as attached.
+func withoutRefused(rows []result.Row, vectors [][]float32, refused []int) ([]result.Row, [][]float32) {
+	if len(refused) == 0 {
+		return rows, vectors
+	}
+	drop := map[int]bool{}
+	for _, index := range refused {
+		drop[index] = true
+	}
+	keptRows := make([]result.Row, 0, len(rows))
+	keptVectors := make([][]float32, 0, len(rows))
+	for index, row := range rows {
+		if drop[index] {
+			continue
+		}
+		keptRows = append(keptRows, row)
+		keptVectors = append(keptVectors, vectors[index])
+	}
+	return keptRows, keptVectors
 }
 
 // ExecuteMSQL is the daemon round trip the CLI already depends on; the drain

@@ -30,6 +30,11 @@ const (
 	EnvModel      = "MEMORA_EMBEDDING_MODEL"
 	EnvDimensions = "MEMORA_EMBEDDING_DIMENSIONS"
 	EnvAPIKey     = "MEMORA_EMBEDDING_API_KEY"
+	// EnvBatch is the largest number of texts one request may carry. Providers
+	// differ — one accepts ten, another thousands — and a host that finds out by
+	// being refused wastes a round trip per page. Unset means "no declared
+	// ceiling": the host still starts from the whole page and splits on refusal.
+	EnvBatch = "MEMORA_EMBEDDING_BATCH"
 )
 
 // Off is the value that turns embeddings off even when everything else is set.
@@ -41,6 +46,9 @@ type Config struct {
 	Model      string
 	Dimensions int
 	APIKey     string
+	// Batch caps one embedding request. Zero means unset: start from the page
+	// the drain asked for and split only when the provider refuses.
+	Batch int
 }
 
 // Configured reports whether there is enough here to embed anything.
@@ -76,6 +84,14 @@ func ConfigFromEnv(lookup func(string) string) (Config, error) {
 		}
 		config.Dimensions = parsed
 	}
+	batch := strings.TrimSpace(lookup(EnvBatch))
+	if batch != "" {
+		parsed, err := strconv.Atoi(batch)
+		if err != nil || parsed <= 0 {
+			return Config{}, fmt.Errorf("%s must be a positive integer", EnvBatch)
+		}
+		config.Batch = parsed
+	}
 	missing := []string{}
 	for name, value := range map[string]string{
 		EnvBaseURL: config.BaseURL, EnvModel: config.Model,
@@ -108,6 +124,21 @@ type Embedder interface {
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
 	Model() string
 	Dimensions() int
+}
+
+// StatusError is a provider response with a non-2xx status. Detail is the
+// provider's own explanation, truncated: it is what tells an operator that the
+// batch was too large rather than the model missing.
+type StatusError struct {
+	StatusCode int
+	Detail     string
+}
+
+func (err *StatusError) Error() string {
+	if err.Detail == "" {
+		return "the provider refused the request"
+	}
+	return "the provider refused the request: " + err.Detail
 }
 
 // Client is an OpenAI-compatible embeddings endpoint.
@@ -199,7 +230,13 @@ func (client *Client) Embed(ctx context.Context, texts []string) ([][]float32, e
 		// The body is read and dropped rather than forwarded: a provider that
 		// echoes the request on error would otherwise put the key in a log.
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<16))
-		return nil, fmt.Errorf("the embedding provider answered %s", response.Status)
+		// The status is typed because a host has to tell "this request was
+		// refused" (a batch the provider will not take, a text it will not
+		// embed) from "the provider is unreachable": the first is worth
+		// retrying in smaller pieces, the second is not worth retrying at all.
+		detail, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		return nil, fmt.Errorf("the embedding provider answered %s: %w",
+			response.Status, &StatusError{StatusCode: response.StatusCode, Detail: strings.TrimSpace(string(detail))})
 	}
 	payload := embedResponse{}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<20)).Decode(&payload); err != nil {

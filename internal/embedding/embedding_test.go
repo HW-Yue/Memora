@@ -72,6 +72,31 @@ func TestEmbeddingConfigComesFromTheEnvironment(t *testing.T) {
 	if strings.Contains(err.Error(), "text-embedding-v4") || strings.Contains(err.Error(), "example.invalid") {
 		t.Fatalf("a refusal must not echo configured values: %v", err)
 	}
+
+	// A provider that declares its batch ceiling is not a different provider; the
+	// ceiling travels with the rest of the configuration so the host can stop
+	// discovering it by being refused.
+	withBatch := map[string]string{}
+	for name, value := range full {
+		withBatch[name] = value
+	}
+	withBatch[embedding.EnvBatch] = "10"
+	if ceiling, err := embedding.ConfigFromEnv(lookup(withBatch)); err != nil || ceiling.Batch != 10 {
+		t.Fatalf("config = %+v, %v", ceiling, err)
+	}
+	unset, err := embedding.ConfigFromEnv(lookup(full))
+	if err != nil || unset.Batch != 0 {
+		t.Fatalf("an undeclared ceiling must stay zero (split on refusal): %+v, %v", unset, err)
+	}
+	invalid := map[string]string{}
+	for name, value := range full {
+		invalid[name] = value
+	}
+	invalid[embedding.EnvBatch] = "lots"
+	if _, err := embedding.ConfigFromEnv(lookup(invalid)); err == nil ||
+		!strings.Contains(err.Error(), embedding.EnvBatch) {
+		t.Fatalf("a malformed ceiling must name the variable: %v", err)
+	}
 }
 
 func TestEmbedSendsTheRequestAndOrdersTheAnswer(t *testing.T) {

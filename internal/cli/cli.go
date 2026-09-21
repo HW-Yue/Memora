@@ -343,7 +343,7 @@ func drainAfterWrite(
 	if lookup == nil {
 		lookup = os.LookupEnv
 	}
-	embedder, _, err := embedding.NewFromEnvLookup(func(name string) string {
+	embedder, config, err := embedding.NewFromEnvLookup(func(name string) string {
 		value, _ := lookup(name)
 		return value
 	})
@@ -355,7 +355,7 @@ func drainAfterWrite(
 	if embedder == nil {
 		return nil
 	}
-	drainEmbeddings(ctx, dataDir, caller, execute, embedder, stderr)
+	drainEmbeddings(ctx, dataDir, caller, execute, embedder, config.Batch, stderr)
 	return nil
 }
 

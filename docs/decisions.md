@@ -970,3 +970,20 @@ Admin 搜索页仍是关键词单臂 + 跨库交错，第二阶段接向量臂�
    计划）→ 写后验证（`SELECT` / `SHOW ROUTES` / `RECALL`）→ 宿主排干把向量补上（provider 配置从
    `~/.zshrc` 读入环境，不回显）。
 3. 验收：`doctor` 全 0、两库两臂召回命中、RRF 融合顺序合理。
+
+## 2026-09-21 · D16 已修：宿主排干按 provider 的批上限自适应
+
+**改法**：`internal/embedding` 把非 2xx 响应包成 `*StatusError`（带状态码与截断后的 provider 原话），
+并新增可选配置 `MEMORA_EMBEDDING_BATCH`（正整数，不设＝不声明上限）。`internal/cli/embedding.go`
+的排干改成：拿到 **4xx** 就把这一批**二分再试**，直到 provider 接受；**单个文本仍被拒**才留在待办
+并在 stderr 点名那个单元；**5xx / 连不上**这类不是"拒绝这批"的错误直接停下报错，不放大重试；
+若整页一个都嵌不了就直接结束，不对同一页反复自旋。`Config.Batch` 有值就按它切块，省掉第一次白撞。
+
+**证据**：`internal/cli/embedding_test.go` 新增
+`TestDrainSplitsABatchTheProviderRefuses`（24 个单元、provider 只收 10 个 → 全部补齐，且**被接受的
+请求没有一次超过上限**、尝试次数是对数级而不是重试风暴）、
+`TestDrainHonoursAConfiguredBatchSize`（声明 10 之后第一次请求就不超）、
+`TestDrainLeavesOutOnlyTheTextTheProviderRefuses`（一个坏文本只让自己留下，其余照常 offer，
+并在 stderr 点名）；`internal/embedding` 的配置测试补了 `MEMORA_EMBEDDING_BATCH` 的取值与非法值。
+原有"provider 挂了不许假装做完"的测试保持通过。判据达成：**32 个单元、provider 每次只收 10 个也
+能一次排干**。

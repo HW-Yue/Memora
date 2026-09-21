@@ -3,9 +3,11 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/HW-Yue/Memora/internal/embedding"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/security"
@@ -86,7 +88,7 @@ func TestDrainAttachesEveryPendingVector(t *testing.T) {
 	embedder := &stubEmbedder{model: "text-embedding-v4", dimensions: 1024}
 	stderr := &bytes.Buffer{}
 
-	attached := drainEmbeddings(context.Background(), "/tmp/instance", callerInput(), execute, embedder, stderr)
+	attached := drainEmbeddings(context.Background(), "/tmp/instance", callerInput(), execute, embedder, 0, stderr)
 	if attached != 2 {
 		t.Fatalf("attached = %d, want 2", attached)
 	}
@@ -131,7 +133,7 @@ func TestDrainReportsAFailedProviderAndKeepsTheWorkPending(t *testing.T) {
 	}
 	stderr := &bytes.Buffer{}
 	attached := drainEmbeddings(context.Background(), "/tmp/instance", callerInput(), execute,
-		&stubEmbedder{model: "m", dimensions: 2, fail: true}, stderr)
+		&stubEmbedder{model: "m", dimensions: 2, fail: true}, 0, stderr)
 	if attached != 0 {
 		t.Fatalf("attached = %d", attached)
 	}
@@ -160,4 +162,140 @@ func successfulEnvelope(statements ...result.StatementResult) result.Envelope {
 		}
 	}
 	return result.Envelope{Version: result.Version, RequestID: "test", OK: true, Results: statements}
+}
+
+// A provider with a batch ceiling is not a broken provider. Asking for a whole
+// page at once and giving up when it says no leaves a backlog larger than the
+// ceiling permanently unembedded — which is what happened to a 32-unit library
+// against a provider that accepts ten at a time.
+type ceilingEmbedder struct {
+	stubEmbedder
+	ceiling  int
+	attempts []int
+	accepted []int
+}
+
+func (stub *ceilingEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	stub.attempts = append(stub.attempts, len(texts))
+	if len(texts) > stub.ceiling {
+		return nil, fmt.Errorf("the embedding provider answered 400 Bad Request: %w",
+			&embedding.StatusError{StatusCode: 400, Detail: "batch size is invalid, it should not be larger than 10."})
+	}
+	stub.accepted = append(stub.accepted, len(texts))
+	return stub.stubEmbedder.Embed(ctx, texts)
+}
+
+func pendingRows(count int) []result.Row {
+	rows := make([]result.Row, 0, count)
+	for index := 1; index <= count; index++ {
+		rows = append(rows, result.Row{
+			"unit_no": int64(index), "table": "notes",
+			"content_hash": "sha256:unit", "payload": "payload",
+		})
+	}
+	return rows
+}
+
+// executePending serves one page and then an empty one, and counts the offers.
+func executePending(t *testing.T, rows []result.Row, offers *[]executor.StatementInput) func(context.Context, string, string, []executor.StatementInput, bool) (result.Envelope, error) {
+	served := false
+	return func(_ context.Context, _, source string, statements []executor.StatementInput, _ bool) (result.Envelope, error) {
+		if strings.HasPrefix(source, "SHOW PENDING VECTORS") {
+			if served {
+				return successfulEnvelope(pageResult(source, nil)), nil
+			}
+			served = true
+			return successfulEnvelope(pageResult(source, rows)), nil
+		}
+		*offers = append(*offers, statements...)
+		return successfulEnvelope(pageResult(source, nil)), nil
+	}
+}
+
+func TestDrainSplitsABatchTheProviderRefuses(t *testing.T) {
+	offers := []executor.StatementInput{}
+	execute := executePending(t, pendingRows(24), &offers)
+	embedder := &ceilingEmbedder{stubEmbedder: stubEmbedder{model: "m", dimensions: 2}, ceiling: 10}
+	stderr := &bytes.Buffer{}
+
+	attached := drainEmbeddings(context.Background(), "/tmp/instance", callerInput(), execute, embedder, 0, stderr)
+	if attached != 24 {
+		t.Fatalf("attached = %d, want every unit in a refUsable batch: %q", attached, stderr.String())
+	}
+	if len(offers) != 24 {
+		t.Fatalf("every unit must be offered once: %d", len(offers))
+	}
+	// The first request is the whole page and may be refused; what the provider
+	// actually accepted must never exceed its ceiling, and the splitting must not
+	// turn into a retry storm.
+	for _, size := range embedder.accepted {
+		if size > 10 {
+			t.Fatalf("an accepted request exceeded the ceiling: %v", embedder.accepted)
+		}
+	}
+	if len(embedder.attempts) > 4*16 {
+		t.Fatalf("splitting must be logarithmic, not a retry storm: %d attempts", len(embedder.attempts))
+	}
+	if !strings.Contains(stderr.String(), "attached 24") {
+		t.Fatalf("the summary must report the work done: %q", stderr.String())
+	}
+}
+
+func TestDrainHonoursAConfiguredBatchSize(t *testing.T) {
+	offers := []executor.StatementInput{}
+	execute := executePending(t, pendingRows(24), &offers)
+	embedder := &ceilingEmbedder{stubEmbedder: stubEmbedder{model: "m", dimensions: 2}, ceiling: 10}
+	stderr := &bytes.Buffer{}
+
+	attached := drainEmbeddings(context.Background(), "/tmp/instance", callerInput(), execute, embedder, 10, stderr)
+	if attached != 24 {
+		t.Fatalf("attached = %d", attached)
+	}
+	for _, size := range embedder.attempts {
+		if size > 10 {
+			t.Fatalf("a configured batch size must be respected from the first request: %v", embedder.attempts)
+		}
+	}
+}
+
+// A single text the provider will not embed is not the whole backlog's problem:
+// the rest must still be attached, and the one left out has to be named.
+type poisonEmbedder struct {
+	stubEmbedder
+	poison string
+}
+
+func (stub *poisonEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+	for _, text := range texts {
+		if text == stub.poison {
+			return nil, fmt.Errorf("the embedding provider answered 400 Bad Request: %w",
+				&embedding.StatusError{StatusCode: 400, Detail: "input is too long"})
+		}
+	}
+	return stub.stubEmbedder.Embed(context.Background(), texts)
+}
+
+func TestDrainLeavesOutOnlyTheTextTheProviderRefuses(t *testing.T) {
+	rows := []result.Row{
+		{"unit_no": int64(1), "table": "notes", "content_hash": "sha256:one", "payload": "fine"},
+		{"unit_no": int64(2), "table": "notes", "content_hash": "sha256:two", "payload": "poison"},
+		{"unit_no": int64(3), "table": "notes", "content_hash": "sha256:three", "payload": "also fine"},
+	}
+	offers := []executor.StatementInput{}
+	execute := executePending(t, rows, &offers)
+	embedder := &poisonEmbedder{stubEmbedder: stubEmbedder{model: "m", dimensions: 2}, poison: "poison"}
+	stderr := &bytes.Buffer{}
+
+	attached := drainEmbeddings(context.Background(), "/tmp/instance", callerInput(), execute, embedder, 0, stderr)
+	if attached != 2 || len(offers) != 2 {
+		t.Fatalf("attached = %d, offers = %d, want the two embeddable units", attached, len(offers))
+	}
+	for _, offer := range offers {
+		if offer.Parameters.Named["unit"] == int64(2) {
+			t.Fatal("a refused unit must not be offered")
+		}
+	}
+	if !strings.Contains(stderr.String(), "unit 2 stays not-ready") {
+		t.Fatalf("the refused unit must be named: %q", stderr.String())
+	}
 }
