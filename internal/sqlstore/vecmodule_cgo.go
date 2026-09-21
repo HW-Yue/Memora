@@ -6,12 +6,12 @@ import (
 	"context"
 	"database/sql"
 
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
+	"github.com/HW-Yue/Memora/internal/sqlstore/vecext"
 )
 
 // registerVectorModule compiles sqlite-vec into the binary and makes it visible
 // to every connection opened afterwards.
-func registerVectorModule() { sqlite_vec.Auto() }
+func registerVectorModule() { vecext.Auto() }
 
 // vectorModuleVersion is the assertion the open path runs: a binary without the
 // module cannot answer this, and there is no build in which the vector path is

@@ -39,6 +39,16 @@ run_stage() {
         printf 'unformatted Go files:\n%s\n' "$unformatted" >&2
         return 1
       fi
+      # sqlite-vec's translation unit includes a sqlite3.h that has to match the
+      # SQLite library this binary links, so it is generated from the driver
+      # instead of taken from the host. Re-running the generator proves the
+      # checked-in copy still matches: a driver bump that skipped it would
+      # otherwise leave the two describing different libraries.
+      "$go_command" generate ./internal/sqlstore/vecext/
+      if ! git diff --exit-code -- internal/sqlstore/vecext/include/sqlite3.h >/dev/null; then
+        printf 'internal/sqlstore/vecext/include/sqlite3.h is stale; run go generate ./internal/sqlstore/vecext/\n' >&2
+        return 1
+      fi
       ;;
     vet)
       # Once per supported platform, not once for whichever machine happens to

@@ -49,6 +49,20 @@ GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workfl
 就因此带着一个空的必需页字段上线了——它的测试全绿，而真实调用每次都在客户端报
 `invalid list page metadata`。直连结构体的断言证明不了读面可用。
 
+## cgo 那一半要在 Linux 上跑
+
+宿主门禁证明不了 cgo 的跨平台：`scripts/ci.sh` 里两个 `GOOS` 的 vet/lint 都以
+`CGO_ENABLED=0` 跑（走 `!cgo` 兜底文件），**真正编译 C 的只有 unit/race/cgo-build，
+而它们编的是本机平台**。sqlite-vec 的跨平台失败就是这样漏出来的：macOS 碰巧从系统 SDK
+拿到 `sqlite3.h`，Linux 容器没有，构建直接死在头文件上。
+
+本地用 `scripts/ci-linux.sh`（Docker，跑 Linux 上的 cgo 构建 + 开真库的测试）补这一半；
+CI 的 ubuntu job 是权威，本地脚本只是让你在开 PR 之前就能看见。
+
+`internal/sqlstore/vecext/include/sqlite3.h` 是**生成物**（`go generate ./internal/sqlstore/vecext/`，
+从驱动复制），不要手改：它必须与所链的 SQLite 库同版本，否则 sqlite-vec 是拿另一套声明去
+编这个库。`format` stage 会重跑生成器并 `git diff --exit-code`，驱动升级漏了这一步就当场红。
+
 ## TDD 证据
 
 每个 feature 在本地先观察目标测试因缺少行为而失败，再写最小实现。最终合入的单一 commit 同时包含测试、实现和必要文档，并保持所有门禁为绿；不向主线分支提交故意失败的 RED 状态。
