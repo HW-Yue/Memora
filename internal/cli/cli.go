@@ -45,6 +45,7 @@ Commands:
   exec       Execute MSQL through the local daemon
   help       Show this help
   init       Initialize a local instance
+  instance   Remove a local instance (irreversible; needs --yes)
   mcp        Serve MCP over newline-delimited stdio
   mutate     Execute a validated Mutation Plan
   parse      Parse an MSQL request through the local daemon
@@ -159,6 +160,8 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runExecute(args[0], args[1:], stdout, stderr, dependencies)
 	case "init":
 		return runInit(args[1:], stdout, stderr, dependencies)
+	case "instance":
+		return runInstance(args[1:], stdout, stderr)
 	case "mutate":
 		return runMutate(args[1:], stdout, stderr, dependencies)
 	case "mcp":

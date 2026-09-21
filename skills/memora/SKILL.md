@@ -563,6 +563,16 @@ create a database-level candidate/disputed state, or silently pick a winner.
 Also ask before irreversible, privacy-reducing, permission-expanding, or broadly
 destructive operations.
 
+## Removing an instance
+
+Deleting a Row or a leaf is a language operation with an archive behind it.
+Deleting a whole **instance** is not in the language at all: it is
+`memora instance destroy --data-dir <absolute path> --yes`, and it is
+irreversible. Ask the user first, name the exact directory, and never point it at
+an instance whose contents you have not shown them. There is no DROP for databases
+or tables, so an instance you created for a test is cleaned up this way rather
+than from inside a statement.
+
 ## Recover an archived deletion
 
 A DELETE removes the Row, the leaf it occupied, its history and both ends of its
