@@ -450,6 +450,32 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Limit = &limit
+	case parser.matchWord("PENDING"):
+		// The work a host has to do: which units in this Database still have no
+		// usable vector, and the text each one must be embedded from.
+		if _, err := parser.expectWord("VECTORS"); err != nil {
+			return ast.Statement{}, err
+		}
+		if _, err := parser.expectWord("IN"); err != nil {
+			return ast.Statement{}, err
+		}
+		if _, err := parser.expectWord("DATABASE"); err != nil {
+			return ast.Statement{}, err
+		}
+		database, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		if _, err := parser.expectWord("LIMIT"); err != nil {
+			return ast.Statement{}, err
+		}
+		limit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Object = "PENDING VECTORS"
+		show.Database = &database
+		show.Limit = &limit
 	case parser.matchWord("ARCHIVE"):
 		show.Object = "ARCHIVE"
 		if _, err := parser.expectWord("FROM"); err != nil {

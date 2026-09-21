@@ -222,6 +222,17 @@ paths you got are real but the list may be incomplete. Read `not_ready_units`
 exhaustive. Do not retry hoping for more — `RECALL` never waits for embeddings;
 `memora doctor` reports the same count for the whole instance.
 
+If you compute embeddings yourself, drain the backlog in three steps: ask what is
+missing, embed the text each unit hands you, then offer each vector back.
+
+```sh
+memora query --input '{"parameters":{"named":{"limit":32}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW PENDING VECTORS IN DATABASE work LIMIT :limit"
+```
+
+`SHOW PENDING VECTORS` returns `unit_no`, `table`, `content_hash` and `payload` —
+the work list, not an answer: it is what makes a backlog drainable even when the
+Rows were written by someone else. Embed `payload`, then offer the vector back:
+
 If you compute embeddings yourself, you can offer one to a unit — that is how a
 backlog gets drained, one statement per unit, as many statements as you like in
 one request:

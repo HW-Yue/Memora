@@ -49,6 +49,16 @@ func (o operations) RecallNearest(ctx context.Context, databaseName, tableName s
 	return
 }
 
+// PendingVectors lists the units a host still has to embed. It is a read: it
+// reports work, it does not do any.
+func (o operations) PendingVectors(ctx context.Context, databaseName string, limit int) (units []recall.PendingUnit, err error) {
+	err = o.run(ctx, false, func(t *tx) error {
+		units, err = t.pendingVectors(ctx, databaseName, limit)
+		return err
+	})
+	return
+}
+
 // AcceptVector offers one host-computed embedding to one unit. It is a write:
 // accepting a vector is what locks the Database's identity, so it belongs to the
 // same serialised transaction domain as the data it describes.

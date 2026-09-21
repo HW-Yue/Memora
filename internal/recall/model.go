@@ -57,3 +57,16 @@ type VectorRecord struct {
 	Dimensions  int
 	Vector      []float32
 }
+
+// PendingUnit is one unit a host still has to embed: the unit, the Table it
+// belongs to, the hash the vector must be computed for, and the text itself.
+//
+// Handing the text over is the point — the host cannot embed what it cannot
+// read — and it is not a hole in the recall contract: recall still answers with
+// positions and no content. This is the work list, not an answer.
+type PendingUnit struct {
+	UnitNo      int64
+	Table       string
+	ContentHash string
+	Payload     string
+}

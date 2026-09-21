@@ -178,3 +178,41 @@ func (t *tx) vectorStatus(ctx context.Context, databaseName, tableName string) (
 	}
 	return status, nil
 }
+
+// pendingVectors lists the units a host still has to embed, lowest number first.
+//
+// It is the read side of the same predicate the readiness count uses, which is
+// why a client can drain a backlog it did not create: rows written by another
+// client, or before a provider was configured, show up here exactly like rows
+// written just now. A stale vector is listed too — it needs re-embedding, and
+// the payload handed over is the text the unit holds now, not the one the old
+// vector was computed from.
+func (t *tx) pendingVectors(ctx context.Context, databaseName string, limit int) ([]recall.PendingUnit, error) {
+	database, err := t.resolveDatabase(ctx, databaseName)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := t.q().QueryContext(ctx, `SELECT u.unit_no, tb.name, u.content_hash, u.payload
+		FROM mem_recall_units u
+		JOIN mem_tables tb ON tb.id = u.table_id
+		JOIN mem_databases d ON d.id = u.database_id
+		WHERE u.database_id = ?
+		  AND (u.embedding IS NULL
+		       OR u.embedded_content_hash <> u.content_hash
+		       OR u.embedding_model <> d.embedding_model
+		       OR u.embedding_dimensions <> d.embedding_dimensions)
+		ORDER BY u.unit_no LIMIT ?`, database.ID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	units := []recall.PendingUnit{}
+	for rows.Next() {
+		unit := recall.PendingUnit{}
+		if err := rows.Scan(&unit.UnitNo, &unit.Table, &unit.ContentHash, &unit.Payload); err != nil {
+			return nil, err
+		}
+		units = append(units, unit)
+	}
+	return units, rows.Err()
+}

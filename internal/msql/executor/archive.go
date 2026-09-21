@@ -331,6 +331,52 @@ func mergeRecallRows(left, right []result.Row) []result.Row {
 	return merged
 }
 
+// showPendingVectors hands a host the work list: which units still need a
+// vector, and the text each one must be embedded from. It is a read — it reports
+// work, it does not do any, and it never calls a provider itself.
+func (engine *Engine) showPendingVectors(ctx context.Context, statement ast.Statement, bound bindings) (Output, error) {
+	if statement.Show == nil || statement.Show.Database == nil || statement.Show.Limit == nil {
+		return Output{}, executeError(result.CodeValidation, "SHOW PENDING VECTORS needs IN DATABASE and LIMIT")
+	}
+	if len(statement.Show.Database.Parts) != 1 {
+		return Output{}, executeError(result.CodeValidation,
+			"SHOW PENDING VECTORS takes a Database name, not a dotted name")
+	}
+	databaseName := statement.Show.Database.Parts[0].Value
+	if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
+		return Output{}, err
+	}
+	limit, err := historyPositiveInteger(statement.Show.Limit, catalog.Table{}, bound, "SHOW PENDING VECTORS LIMIT")
+	if err != nil {
+		return Output{}, err
+	}
+	if limit > maxQueryScan {
+		return Output{}, executeError(result.CodeValidation,
+			"SHOW PENDING VECTORS LIMIT must be between 1 and 1000")
+	}
+	units, err := engine.rows.PendingVectors(ctx, databaseName, int(limit))
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	output := Output{
+		Columns: []result.Column{
+			{Name: "unit_no", Type: "INTEGER"},
+			{Name: "table", Type: "TEXT"},
+			{Name: "content_hash", Type: "TEXT"},
+			{Name: "payload", Type: "TEXT"},
+		},
+		Rows:      make([]result.Row, 0, len(units)),
+		Truncated: len(units) == int(limit),
+	}
+	for _, unit := range units {
+		output.Rows = append(output.Rows, result.Row{
+			"unit_no": unit.UnitNo, "table": unit.Table,
+			"content_hash": unit.ContentHash, "payload": unit.Payload,
+		})
+	}
+	return output, nil
+}
+
 // acceptVector records one host-computed embedding for one unit. It is a write,
 // and it is the entry a client drains its backlog through: the language has no
 // array type, so one statement carries one embedding and a client that has many

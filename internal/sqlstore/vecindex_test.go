@@ -433,3 +433,43 @@ func TestRecallUnionRefusesWhenTheVectorArmCannotAnswer(t *testing.T) {
 		t.Fatal("the union must fail when one of its arms cannot answer")
 	}
 }
+
+// Draining a backlog has to work for rows this client did not write, so the work
+// list is derived from the units themselves rather than from what a writer
+// remembered to queue.
+func TestPendingVectorsListsWhatStillNeedsEmbedding(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	first := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	second := h.insertAlongPath("write ahead log", pathOf("architecture", "wal"))
+
+	pending := h.run(`SHOW PENDING VECTORS IN DATABASE work LIMIT 10`, nil, executor.MutationOptions{})
+	if len(pending.Rows) != 2 {
+		t.Fatalf("both units owe a vector: %+v", pending.Rows)
+	}
+	if text(pending.Rows[0]["table"]) != "notes" || text(pending.Rows[0]["payload"]) == "" ||
+		text(pending.Rows[0]["content_hash"]) == "" {
+		t.Fatalf("the work list must carry what a host needs to embed: %+v", pending.Rows[0])
+	}
+	if pending.Rows[0]["unit_no"] == nil {
+		t.Fatalf("the work list must name the unit to answer with: %+v", pending.Rows[0])
+	}
+
+	// Embedding one unit takes it off the list; the other stays.
+	unitNo, contentHash := h.recallUnit(first)
+	if _, err := h.db.Rows().AcceptVector(context.Background(), "work", sqlstore.VectorRecord{
+		UnitNo: unitNo, ContentHash: contentHash,
+		Model: "text-embedding-v4", Dimensions: 2, Vector: []float32{1, 0},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	remaining := h.run(`SHOW PENDING VECTORS IN DATABASE work LIMIT 10`, nil, executor.MutationOptions{})
+	if len(remaining.Rows) != 1 || text(remaining.Rows[0]["content_hash"]) == contentHash {
+		t.Fatalf("the embedded unit must leave the list: %+v", remaining.Rows)
+	}
+	// And it is bounded like every other listing.
+	if code := h.fails(`SHOW PENDING VECTORS IN DATABASE work LIMIT 5000`, nil, executor.MutationOptions{}); code == "" {
+		t.Fatal("the work list must be bounded")
+	}
+	_ = second
+}
