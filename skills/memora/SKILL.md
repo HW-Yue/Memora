@@ -136,10 +136,14 @@ candidates instead of choosing. Never widen the scope to make a guess fit.
 
 ```sh
 memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
-memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW TABLES FROM work COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "DESCRIBE TABLE work.notes COMPACT"
 memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
 ```
+
+The Atlas already carries every Table of every Database it returns — name,
+`purpose` and `scope` — so `SHOW TABLES FROM <db>` adds nothing unless the Atlas
+page came back `truncated` and you need one Database's Table list on its own.
+Read it once, then work from it.
 
 ## Speculative discovery
 
@@ -178,9 +182,19 @@ RowID lookup.
 **Completeness.** Enumerate every Table of the Database you bound; a Table is out
 of scope only when its declared `purpose`/`scope` excludes the question —
 "it looked unrelated" is not a reason. Census the Tables that could hold an
-answer (a bounded `SELECT row_id, title, revision` is enough to see what is
-there), and say in your answer what you read and what you did not. An unread
+answer, and say in your answer what you read and what you did not. An unread
 Table you never mention is an answer that looks complete and is not.
+
+**A census is a plain SELECT with no `WHERE`.** `SELECT row_id, title, revision
+FROM <table> LIMIT :limit` is legal, counted against `select_rows` exactly like a
+point read, and it is the cheapest way to see everything a Table holds: it
+returns each Row's `row_id` **and** its `route_paths`, so it locates the Rows
+without walking the tree. When a question needs more than one Row, that census —
+followed by point reads of the Rows that matter — replaces the whole
+`SHOW ROUTES … → OPEN ROUTE → SELECT` chain. Walk the tree when you are looking
+for *where something is* or when the Table is too large to census; the parity of
+leaf count and Row count is what proves a census was complete (`doctor`'s
+`orphan_rows` and `multi_leaf_rows` are both zero when they agree).
 
 ## Query and summarize
 
@@ -194,14 +208,23 @@ semantic-index path of the single leaf that locates it — so the host need not
 reverse-resolve membership after the fact. Report empty, stale, or
 permission-limited results instead of inventing a fallback.
 
-The read surface is deliberately narrow: **one equality on `row_id`**, joined by
-`AND` when you need more than one condition. `IN (…)`, `OR` and `JOIN` are not
-part of it, so **read one Row per statement**. To read several Rows, send several
+The `WHERE` surface is deliberately narrow: **one equality on `row_id`**, joined
+by `AND` when you need more than one condition. `IN (…)`, `OR` and `JOIN` are not
+part of it — and omitting `WHERE` entirely is not an error, it is the census
+above. **Read one Row per statement.** To read several Rows, send several
 statements in one request — `--input` takes one object per statement as an array,
-in source order, for `query` and `exec` alike:
+in source order, for `query` and `exec` alike, and **each element binds its own
+`parameters.named`** (the element at the same index as its statement), so two
+statements can read two different Rows:
 
 ```sh
 memora query --input '[{"parameters":{"named":{"row":"row_01"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}},{"parameters":{"named":{"row":"row_02"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}]' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1; SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1"
+```
+
+Those two elements bind `row_01` and `row_02` respectively — the same parameter
+name, a different value per statement. Names may also differ between statements
+(`:first` in one, `:second` in the next), because each element's `parameters.named`
+is read for that statement alone.
 ```
 
 `links` and `route_paths` ride along on every returned Row whether or not you
@@ -212,6 +235,10 @@ project the attached ones. Each statement's envelope also repeats `columns` and 
 top of the facts.
 
 Use this bounded state machine:
+
+`SHOW ROUTES … AT ROOT` returns the root's **children**, not the root node itself
+(the children carry the root's `route_id` as their `parent_id`, and no row
+describes the root).
 
 ```text
 SHOW CATALOG ATLAS → deterministic continuation if partial → DESCRIBE TABLE
@@ -234,10 +261,15 @@ memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":1}}
 memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
 
-Read the current budgets before navigation, with the statement that returns them:
-`SHOW CONFIGURATION` (the five `query_budgets` are `route_children`,
-`open_locators`, `select_scan`, `select_rows`, `route_frame_nodes`; `SHOW
-CONFIGURATION HISTORY` shows how they got there). The bundled ceilings are
+The five budgets are counted **per statement**, not per request: a batch of ten
+point reads is ten statements of one Row each, and each one is measured on its
+own. Read them only when a limit actually binds or you intend to exceed the
+bundled ceilings, with the statement that returns them — `SHOW CONFIGURATION`
+(the five `query_budgets` are `route_children`, `open_locators`, `select_scan`,
+`select_rows`, `route_frame_nodes`; `SHOW CONFIGURATION HISTORY` shows how they
+got there). `doctor`'s `rows` count is a good proxy for whether `select_rows` can
+bind at all: on a Database with fewer live Rows than the ceiling, a census fits
+and the budget read is optional. The bundled ceilings are
 12 Router rows, one locator per opened leaf, 10 selected rows across explicitly
 chosen leaves, and 12,000 context characters. `open_locators` is retained as a
 compatibility budget but cannot raise a leaf above its `0..1` cardinality. Use
@@ -384,6 +416,13 @@ memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affec
 `LIMIT` is required and bounded to 1–1000; the query must be at least 2
 characters (one character is refused, not answered with everything), and a
 shorter one is refused rather than silently returning nothing.
+
+**Recall is a text locator, never a completeness proof.** A Table named after a
+topic does not follow from a query containing that topic: `RECALL … MATCH 项目`
+misses a project whose title and Route names never use the word 项目. Recall
+finds positions you can navigate from; the census (or a full tree walk) is what
+proves nothing was missed, and the skill's `warnings` field is where an
+incomplete derived layer says so.
 Hits are de-duplicated by path and ordered by table then path, so the same query
 over an unchanged database returns the same list. Scope is one Database, with an
 optional `IN <table>`. Both arms are wired — keyword and vector — and a position
