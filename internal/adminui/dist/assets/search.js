@@ -314,9 +314,9 @@ export async function renderSearch(root, options) {
       renderSearch(root, options);
     });
 
-    if (query.length < 3) {
-      view.append(stateNode("empty", "输入至少 3 个字符",
-        "trigram 索引需要 3 个字符起步；更短的查询会被引擎拒绝，而不是返回空结果。"));
+    if (query.length < 2) {
+      view.append(stateNode("empty", "输入至少 2 个字符",
+        "索引按两个字一组切分，一个字短到会被引擎拒绝；更短的查询不会返回空结果。"));
       root.dataset.pageState = "empty";
       root.replaceChildren(view);
       return;

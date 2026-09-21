@@ -43,7 +43,17 @@ const FileName = "memora.db"
 //
 // Additive columns do not need a bump (the additive migration handles them); this
 // moves when an older binary could no longer read the file correctly.
-const fileSchemaVersion = 1
+//
+// It is 2 because the keyword index moved from FTS5's trigram tokenizer to the
+// pair token stream recallTokens produces. That change lives entirely in a derived
+// structure, but it is still a change of file: a binary that knows only version 1
+// would keep its own trigram index, answer nothing for a two-character Chinese
+// word, and report that as "not found" rather than as a version it cannot read.
+const fileSchemaVersion = 2
+
+// fileSchemaVersionKeywordIndex is the version at which the keyword index changed
+// tokenizer. A file below it is reindexed from its payloads on open.
+const fileSchemaVersionKeywordIndex = 2
 
 type Options struct {
 	Now func() time.Time
@@ -179,6 +189,9 @@ CREATE TABLE IF NOT EXISTS mem_recall_units (
 	revision INTEGER NOT NULL,
 	content_hash TEXT NOT NULL,
 	payload TEXT NOT NULL,
+	-- The token stream the keyword index holds, derived from payload by
+	-- recallTokens. It is not the text: nothing reads it back as prose, and
+	-- rebuilding it never touches a Row or the vectors that describe it.
 	payload_index TEXT NOT NULL,
 	embedding_model TEXT NOT NULL DEFAULT '',
 	embedding_dimensions INTEGER NOT NULL DEFAULT 0,
@@ -193,15 +206,6 @@ CREATE TABLE IF NOT EXISTS mem_recall_units (
 	updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mem_recall_units_row ON mem_recall_units(table_id, row_id);
--- Keyword recall is an external-content FTS5 index over the units: the text is
--- stored once, and unit_no is the stable rowid the index points at. trigram is
--- what makes Chinese content searchable with a built-in tokenizer.
-CREATE VIRTUAL TABLE IF NOT EXISTS mem_recall_fts USING fts5(
-	payload_index,
-	content='mem_recall_units',
-	content_rowid='unit_no',
-	tokenize='trigram'
-);
 -- The vector index is a derived structure, so which (Table) has one is recorded
 -- rather than inferred: sqlite_master cannot answer it without scanning for a
 -- name prefix, and a prefix scan also matches the virtual table's shadow tables
@@ -246,6 +250,23 @@ CREATE TABLE IF NOT EXISTS mem_traces (
 );
 `
 
+// keywordIndexDDL is kept out of the schema block above because it is also what
+// the rebuild writes: an Instance created today and one reindexed later must end
+// up with the same declaration, and two copies of it would eventually differ.
+//
+// Keyword recall is an external-content FTS5 index over the units: the payload is
+// stored once, and unit_no is the stable rowid the index points at. The indexed
+// column holds the token stream recallTokens produced rather than the text, so
+// the tokenizer here only has to split on spaces — unicode61 does exactly that,
+// and folds ASCII case while it is at it. The text-level tokenizer that used to
+// be named here could not answer a two-character Chinese word at all.
+const keywordIndexDDL = `CREATE VIRTUAL TABLE IF NOT EXISTS mem_recall_fts USING fts5(
+	payload_index,
+	content='mem_recall_units',
+	content_rowid='unit_no',
+	tokenize='unicode61'
+);`
+
 func (db *DB) migrate(ctx context.Context) error {
 	// Before anything is created or altered: an Instance written by a newer
 	// binary is not ours to migrate backwards.
@@ -258,7 +279,7 @@ func (db *DB) migrate(ctx context.Context) error {
 			"this instance was written by a newer Memora (file schema %d, this binary understands %d): "+
 				"upgrade the binary instead of opening it with this one", found, fileSchemaVersion)
 	}
-	if _, err := db.sql.ExecContext(ctx, schema+";"+kvSchema); err != nil {
+	if _, err := db.sql.ExecContext(ctx, schema+";"+kvSchema+";"+keywordIndexDDL); err != nil {
 		return fmt.Errorf("create Memora schema: %w", err)
 	}
 	// CREATE TABLE IF NOT EXISTS leaves an Instance created by an earlier
@@ -287,8 +308,73 @@ func (db *DB) migrate(ctx context.Context) error {
 			return fmt.Errorf("add %s.%s: %w", change.table, change.column, err)
 		}
 	}
+	// A file written before the bigram index is holding a keyword index built on
+	// a tokenizer that cannot answer what this one can, so it is re-derived here.
+	// Nothing else moves: the payload is untouched, which is also what the vectors
+	// were made from, so no Row is rewritten and nothing needs re-embedding.
+	if found < fileSchemaVersionKeywordIndex {
+		if err := db.rebuildKeywordIndex(ctx); err != nil {
+			return err
+		}
+	}
 	if _, err := db.sql.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", fileSchemaVersion)); err != nil {
 		return fmt.Errorf("record file schema version: %w", err)
+	}
+	return nil
+}
+
+// rebuildKeywordIndex drops the derived keyword index and writes it again from
+// the units it indexes. It runs in one transaction — an index half built from the
+// old tokenizer and half from the new one would answer with gaps that look like
+// missing data — and it is idempotent, so a file whose version was not recorded
+// before the process stopped is simply rebuilt on the next open.
+func (db *DB) rebuildKeywordIndex(ctx context.Context) error {
+	transaction, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("rebuild keyword index: %w", err)
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if _, err := transaction.ExecContext(ctx, `DROP TABLE IF EXISTS mem_recall_fts`); err != nil {
+		return fmt.Errorf("rebuild keyword index: %w", err)
+	}
+	if _, err := transaction.ExecContext(ctx, keywordIndexDDL); err != nil {
+		return fmt.Errorf("rebuild keyword index: %w", err)
+	}
+	rows, err := transaction.QueryContext(ctx, `SELECT unit_no, payload FROM mem_recall_units ORDER BY unit_no`)
+	if err != nil {
+		return fmt.Errorf("rebuild keyword index: %w", err)
+	}
+	type unit struct {
+		unitNo  int64
+		payload string
+	}
+	units := []unit{}
+	for rows.Next() {
+		one := unit{}
+		if err := rows.Scan(&one.unitNo, &one.payload); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("rebuild keyword index: %w", err)
+		}
+		units = append(units, one)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("rebuild keyword index: %w", err)
+	}
+	_ = rows.Close()
+	for _, one := range units {
+		indexed := recallIndexText(foldRecallText(one.payload))
+		if _, err := transaction.ExecContext(ctx,
+			`UPDATE mem_recall_units SET payload_index = ? WHERE unit_no = ?`, indexed, one.unitNo); err != nil {
+			return fmt.Errorf("rebuild keyword index: %w", err)
+		}
+		if _, err := transaction.ExecContext(ctx,
+			`INSERT INTO mem_recall_fts(rowid, payload_index) VALUES (?, ?)`, one.unitNo, indexed); err != nil {
+			return fmt.Errorf("rebuild keyword index: %w", err)
+		}
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("rebuild keyword index: %w", err)
 	}
 	return nil
 }

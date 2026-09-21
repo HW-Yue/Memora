@@ -637,9 +637,11 @@ func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallS
 		return Output{}, err
 	}
 	text = strings.TrimSpace(text)
-	// The trigram tokenizer cannot answer anything shorter than three
-	// characters: it would return an empty list that reads exactly like "not
-	// found". Recall does not explain itself, so the statement refuses instead.
+	// One character is not a word: almost every Row carries it, so the index can
+	// only answer with the whole Database in an order that means nothing, and an
+	// empty list would read exactly like "not found". Recall does not explain
+	// itself, so the statement refuses instead. Two characters is the shortest
+	// Chinese word and the shortest pair the index holds.
 	if utf8.RuneCountInString(text) < recallMinimumQueryRunes {
 		return Output{}, executeError(result.CodeValidation,
 			fmt.Sprintf("RECALL needs at least %d characters: shorter queries cannot be indexed",
@@ -722,8 +724,9 @@ func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, datab
 	return output, nil
 }
 
-// recallMinimumQueryRunes is the shortest query the trigram tokenizer can serve.
-const recallMinimumQueryRunes = 3
+// recallMinimumQueryRunes is the shortest query the keyword index can answer: a
+// pair of characters is the atom the index is built from.
+const recallMinimumQueryRunes = 2
 
 // writeVector turns an offered embedding into the write option the store takes.
 // The wire form is decoded here rather than in the store: it is a language

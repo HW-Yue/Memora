@@ -52,10 +52,10 @@ func recallPayload(table catalog.Table, value storedRow) string {
 	return strings.Join(parts, "\n")
 }
 
-// foldRecallText is what the keyword index stores: full-width ASCII folded to
-// half-width, so "ＡＢＣ" and "ABC" meet. Case is left to the tokenizer, which
-// already folds it. The stored payload keeps the text as written — the vector
-// path embeds that, not this.
+// foldRecallText is what the keyword index reads before it tokenizes: full-width
+// ASCII folded to half-width, so "ＡＢＣ" and "ABC" meet. Case is left to the
+// tokenizer, which already folds it. The stored payload keeps the text as written
+// — the vector path embeds that, not this.
 func foldRecallText(text string) string {
 	return strings.Map(func(character rune) rune {
 		if character >= '\uFF01' && character <= '\uFF5E' {
@@ -97,7 +97,10 @@ func (t *tx) syncRecallUnit(ctx context.Context, table catalog.Table, value stor
 		return err
 	}
 
-	folded := foldRecallText(payload)
+	// The index column holds the token stream rather than the text: what a query
+	// can match is exactly what recallTokens emitted for the payload, and nothing
+	// about the Row's own bytes decides that afterwards.
+	indexed := recallIndexText(foldRecallText(payload))
 	var unitNo int64
 	var existingRow, existingHash, existingIndex string
 	err := t.q().QueryRowContext(ctx, `SELECT unit_no, row_id, content_hash, payload_index
@@ -108,7 +111,7 @@ func (t *tx) syncRecallUnit(ctx context.Context, table catalog.Table, value stor
 			(route_id, database_id, table_id, row_id, revision, content_hash, payload, payload_index,
 			 embedding_model, embedding_dimensions, embedded_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 0, '', ?)`,
-			leafID, table.DatabaseID, table.ID, value.ID, value.Revision, hash, payload, folded, formatTime(t.now))
+			leafID, table.DatabaseID, table.ID, value.ID, value.Revision, hash, payload, indexed, formatTime(t.now))
 		if err != nil {
 			return err
 		}
@@ -116,7 +119,7 @@ func (t *tx) syncRecallUnit(ctx context.Context, table catalog.Table, value stor
 			return err
 		}
 		_, err = t.q().ExecContext(ctx, `INSERT INTO mem_recall_fts(rowid, payload_index) VALUES (?, ?)`,
-			unitNo, folded)
+			unitNo, indexed)
 		return err
 	case err != nil:
 		return err
@@ -139,11 +142,11 @@ func (t *tx) syncRecallUnit(ctx context.Context, table catalog.Table, value stor
 		SET row_id = ?, revision = ?, content_hash = ?, payload = ?, payload_index = ?,
 		    embedding_model = '', embedding_dimensions = 0, embedded_at = '', updated_at = ?
 		WHERE route_id = ?`,
-		value.ID, value.Revision, hash, payload, folded, formatTime(t.now), leafID); err != nil {
+		value.ID, value.Revision, hash, payload, indexed, formatTime(t.now), leafID); err != nil {
 		return err
 	}
 	_, err = t.q().ExecContext(ctx, `INSERT INTO mem_recall_fts(rowid, payload_index) VALUES (?, ?)`,
-		unitNo, folded)
+		unitNo, indexed)
 	return err
 }
 

@@ -115,9 +115,11 @@ func TestKeywordRecallRefusesQueriesItCannotIndex(t *testing.T) {
 	leaves := h.seedLeaves("one")
 	h.insertTitle("为什么选 SQLite", []string{leaves[0]})
 
-	// The trigram tokenizer cannot answer a short query, and an empty list would
-	// read exactly like "not found". The statement refuses instead.
-	for _, query := range []string{"", "存", "存储"} {
+	// A single character is in almost every Row, so an answer would be the whole
+	// Database in index order, and an empty list would read exactly like "not
+	// found". The statement refuses instead; two characters is a word and is
+	// answered, which TestKeywordRecallRefusesOnlyQueriesShorterThanAWord covers.
+	for _, query := range []string{"", "存"} {
 		source := `RECALL FROM work MATCH :q LIMIT 5`
 		if code := h.fails(source, map[string]any{"q": query}, executor.MutationOptions{}); code != result.CodeValidation {
 			t.Fatalf("query %q: code = %s", query, code)
@@ -144,10 +146,17 @@ func TestKeywordRecallForgetsDeletedAndSupersededRows(t *testing.T) {
 
 	// The superseded Row left the index with its reachability; the new Rows are
 	// recallable under their own text.
-	if paths := h.recallPaths(`RECALL FROM work MATCH :q LIMIT 10`, map[string]any{"q": "即将被拆分"}); len(paths) != 0 {
+	//
+	// The query has to be made of the old Row's own characters: matching is by
+	// shared pairs, so a query that still shares a pair with a live Row is
+	// answered by that Row by design (see TestAChinesePhraseStillFinds...). What
+	// is asserted here is that nothing answers with the words that are gone.
+	if paths := h.recallPaths(`RECALL FROM work MATCH :q LIMIT 10`, map[string]any{"q": "即将被"}); len(paths) != 0 {
 		t.Fatalf("a superseded Row must not be recalled: %v", paths)
 	}
-	if paths := h.recallPaths(`RECALL FROM work MATCH :q LIMIT 10`, map[string]any{"q": "拆分后的第一部分"}); len(paths) != 1 {
+	// Both new Rows share the words 拆分后的第…部分; the one that carries more of
+	// the query is the one that carries it all, and it ranks first.
+	if paths := h.recallPaths(`RECALL FROM work MATCH :q LIMIT 10`, map[string]any{"q": "拆分后的第一部分"}); len(paths) != 2 || paths[0] != "root/first" {
 		t.Fatalf("the new Rows must be recallable: %v", paths)
 	}
 
@@ -167,8 +176,11 @@ func TestKeywordRecallFindsEditsAndFoldsWidths(t *testing.T) {
 	edit.ExpectedRevision = 1
 	h.run(`UPDATE work.notes SET title = '新的标题在这里' WHERE row_id = :row`, map[string]any{"row": rowID}, edit)
 
-	// The index follows the text: the old phrase is gone and the new one is there.
-	if paths := h.recallPaths(`RECALL FROM work MATCH :q LIMIT 10`, map[string]any{"q": "旧的标题"}); len(paths) != 0 {
+	// The index follows the text: the new words are there and the old ones are
+	// not. 旧的 shares no pair with the new title while 的标/标题/题在 do, so this
+	// asks about the edit rather than about the characters both titles happen to
+	// share — a query that shares a pair with live text is answered by design.
+	if paths := h.recallPaths(`RECALL FROM work MATCH :q LIMIT 10`, map[string]any{"q": "旧的"}); len(paths) != 0 {
 		t.Fatalf("the index kept the old text: %v", paths)
 	}
 	if paths := h.recallPaths(`RECALL FROM work MATCH :q LIMIT 10`, map[string]any{"q": "新的标题"}); len(paths) != 1 {

@@ -24,10 +24,17 @@ func (t *tx) recallKeywords(ctx context.Context, databaseName, tableName, text s
 		}
 		tableID = table.ID
 	}
+	// The query is tokenized by the function that produced the index, so the two
+	// cannot disagree about what a token is. A query of nothing but separators
+	// emits no token, and no Row can carry what was never indexed.
+	match := recallMatchQuery(foldRecallText(text))
+	if match == "" {
+		return nil, nil
+	}
 	query := `SELECT u.table_id, u.row_id, u.route_id FROM mem_recall_fts f
 		JOIN mem_recall_units u ON u.unit_no = f.rowid
 		WHERE mem_recall_fts MATCH ? AND u.database_id = ?`
-	arguments := []any{text, database.ID}
+	arguments := []any{match, database.ID}
 	if tableID != "" {
 		query += ` AND u.table_id = ?`
 		arguments = append(arguments, tableID)
