@@ -5,19 +5,79 @@ on:
     tags:
       - 'v*'
 
+# Publishing writes a release and its assets, so this job needs more than the
+# test gate's read-only token.
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  unavailable:
-    name: Publication pipeline not on this kernel
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+  publish:
+    name: Build and publish the tagged release
+    # macOS only, like the gate: the storage layer needs cgo and the optional
+    # sqlite_fts5 module, and this is the platform the project ships on. The
+    # Intel archive is cross-compiled here rather than on a second runner.
+    runs-on: macos-latest
+    timeout-minutes: 45
     steps:
-      - name: Refuse to ship without a CGO publication Feature
+      - name: Check out the tagged commit
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Nothing ships that has not passed the gate the branch passes: a release
+      # is the one artifact nobody can retract quietly.
+      - name: Run the gate
+        run: ./scripts/ci.sh
+
+      # The archive layout is a contract, not a preference: the installer checks
+      # the listing and the checksum manifest before it will use either.
+      - name: Package the release archives
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          printf '%s\n' \
-            'Signed publication tools (publication.sh, verify-publication, smoke-release,' \
-            'clean-machine-acceptance) are not in this SQLite tree.' \
-            'Do not tag a release until a dedicated CGO publication Feature lands.' >&2
-          exit 1
+          set -euo pipefail
+          version="${TAG#v}"
+          commit="$(git rev-parse HEAD)"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          mkdir -p dist
+          for arch in arm64 amd64; do
+            work="$(mktemp -d)"
+            CGO_ENABLED=1 GOARCH="$arch" go build -tags sqlite_fts5 -trimpath \
+              -ldflags "-X main.version=$version -X main.commit=$commit -X main.builtAt=$built_at" \
+              -o "$work/memora" ./cmd/memora
+            chmod 755 "$work/memora"
+            cp COMMERCIAL-LICENSE.md LICENSE README.md "$work/"
+            ( cd "$work" && tar -czf "$GITHUB_WORKSPACE/dist/memora_${version}_darwin_${arch}.tar.gz" \
+                COMMERCIAL-LICENSE.md LICENSE README.md memora )
+            rm -rf "$work"
+          done
+          ( cd dist && shasum -a 256 memora_*.tar.gz > checksums.txt )
+          cat dist/checksums.txt
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/memora_*.tar.gz dist/checksums.txt \
+            --verify-tag \
+            --title "Memora $TAG" \
+            --notes "Built from the tagged commit on macOS, arm64 and amd64.
+
+          Every archive carries memora, LICENSE, COMMERCIAL-LICENSE.md and README.md, with
+          checksums.txt beside them; scripts/install.sh verifies both the checksum and the
+          layout before it installs anything.
+
+          These binaries are not signed or notarized — the signed publication toolchain has
+          not been ported to the SQLite kernel — so macOS may ask you to allow the binary in
+          System Settings > Privacy & Security. Version metadata is stamped at build time:
+          memora version --json reports the tag's version and the commit it came from."
