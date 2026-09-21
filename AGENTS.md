@@ -62,6 +62,20 @@
   换掉了，是容器恢复，不是 git 操作。`uptime` 与 `/proc/1` 的启动时间可佐证。
 - 不用 force push「修」这种情况：远端是对的，要改的是本地。
 
+## 写库的合法途径（只有两条）
+
+- **agent 按 `skills/memora/` 的流程写**：Discovery → 查重 → 计划 → 校验 → 执行 → 验证，
+  经 CLI / MCP / SDK 走 MSQL（含向量的 `ACCEPT VECTOR` 与写入后由宿主排干）。
+- **代码里的单元测试**直接打 storage。
+
+除此之外**任何东西都不许往库里写内容**：一次性脚本、临时 Python/Shell、手工拼的命令行、
+绕过 Skill 的批量导入都不行。**读不受此限**（`SHOW` / `DESCRIBE` / `SELECT` / `RECALL`
+随时可用）。判断很简单：这段代码是不是"某个 agent 正在按 Skill 工作"？不是，就不许写。
+
+需要宿主 provider 时，从 `~/.zshrc` 的 `MEMORA_EMBEDDING_*` 读进当前命令的环境
+（`eval "$(grep -E '^export MEMORA_EMBEDDING' ~/.zshrc)"`），**绝不回显密钥**；
+非交互 shell 不 source `.zshrc`，`source <(…)` 在沙箱里取不到 `/dev/fd`，用 `eval "$(…)"`。
+
 ## Feature 与 TDD
 
 - 禁止直接在主线分支上开发；每项 Feature、修复或规范调整都先从**主线分支**的最新提交创建独立分支（主线见上「分支主线」）。
