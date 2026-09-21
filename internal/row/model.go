@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/router"
 )
 
 type State string
@@ -55,7 +56,10 @@ type WriteOptions struct {
 	ExpectedRevision      uint64
 	ExpectedSchemaVersion uint64
 	Metadata              WriteMetadata
-	RouteLeafIDs          []string
+	// RouteLeafIDs names the leaf to mount on; RoutePath names a path for the
+	// engine to resolve and complete. They are mutually exclusive.
+	RouteLeafIDs []string
+	RoutePath    []router.PathSegment
 }
 
 type WriteMetadata struct {

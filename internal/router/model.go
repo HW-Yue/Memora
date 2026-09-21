@@ -17,6 +17,17 @@ type NodeDefinition struct {
 	Synopsis string
 }
 
+// PathSegment is one step of an implicit route path: the Agent names it and
+// gives its purpose, and the engine creates it only when it is missing. Both
+// fields are required, and the kind is explicit rather than inferred from the
+// position — the engine invents neither. See
+// docs/query/implicit-route-path-v1.md.
+type PathSegment struct {
+	Name    string `json:"name"`
+	Kind    Kind   `json:"kind"`
+	Purpose string `json:"purpose"`
+}
+
 type Node struct {
 	Version    string   `json:"version"`
 	ID         string   `json:"route_id"`

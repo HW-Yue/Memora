@@ -68,6 +68,14 @@ type RouteUpdate struct {
 	Synopsis         *string `json:"synopsis,omitempty"`
 }
 
+// PathSegment is one step of an implicit route path: the caller names it and
+// gives its purpose, and the engine creates it only when it is missing.
+type PathSegment struct {
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	Purpose string `json:"purpose"`
+}
+
 type MutationOptions struct {
 	ExpectedSchemaVersion  uint64            `json:"expected_schema_version,omitempty"`
 	ExpectedRevision       uint64            `json:"expected_revision,omitempty"`
@@ -81,6 +89,7 @@ type MutationOptions struct {
 	SourceLocator          string            `json:"source_locator,omitempty"`
 	SourceContentHash      string            `json:"source_content_hash,omitempty"`
 	RouteLeafIDs           []string          `json:"route_leaf_ids,omitempty"`
+	RoutePath              []PathSegment     `json:"route_path,omitempty"`
 	TargetRouteLeafIDs     [][]string        `json:"target_route_leaf_ids,omitempty"`
 	RelationTargetOrdinals map[string]int    `json:"relation_target_ordinals,omitempty"`
 	RouteUpdates           []RouteUpdate     `json:"route_updates,omitempty"`

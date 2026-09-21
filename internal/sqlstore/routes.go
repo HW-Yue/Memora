@@ -347,6 +347,91 @@ func (t *tx) renameNode(ctx context.Context, routeID, name string, expected uint
 	return t.withPath(ctx, node)
 }
 
+// ensureRoutePath resolves an implicit path under the Table's root, creating
+// the segments that are missing, and returns the leaf it ends at. The Agent
+// named every segment and gave its purpose, so completing the path is this
+// write's consequence rather than the engine inventing semantics. The rules are
+// in docs/query/implicit-route-path-v1.md.
+//
+// Resolution and creation share one name rule (trimmed, exact, sibling-unique
+// case-insensitively) because createNode enforces it: resolving more strictly
+// than the engine creates would dead-end on a name it already holds.
+func (t *tx) ensureRoutePath(ctx context.Context, table catalog.Table, segments []router.PathSegment) (string, error) {
+	if len(segments) == 0 {
+		return "", fail(result.CodeValidation, "an implicit route path needs at least one segment")
+	}
+	var root sql.NullString
+	if err := t.q().QueryRowContext(ctx, `SELECT router_root_id FROM mem_tables WHERE id = ?`, table.ID).Scan(&root); err != nil {
+		return "", err
+	}
+	if !root.Valid || root.String == "" {
+		return "", fail(result.CodeValidation,
+			"table %q has no route root yet: create it explicitly, its purpose is table-level semantics", table.Name)
+	}
+	parent, err := t.readRoute(ctx, table.ID, root.String)
+	if err != nil {
+		return "", err
+	}
+	for index, segment := range segments {
+		name := strings.TrimSpace(segment.Name)
+		purpose := strings.TrimSpace(segment.Purpose)
+		last := index == len(segments)-1
+		if name == "" || strings.Contains(name, "/") || purpose == "" ||
+			(segment.Kind != router.KindBranch && segment.Kind != router.KindLeaf) {
+			return "", fail(result.CodeValidation, "invalid route path segment %q", segment.Name)
+		}
+		if last && segment.Kind != router.KindLeaf {
+			return "", fail(result.CodeValidation,
+				"the last segment of a route path must be a leaf, not a %s", segment.Kind)
+		}
+		if !last && segment.Kind == router.KindLeaf {
+			return "", fail(result.CodeConstraint,
+				"route path segment %q is a leaf, so nothing can hang below it", name)
+		}
+		children, err := t.liveChildren(ctx, parent)
+		if err != nil {
+			return "", err
+		}
+		found := -1
+		for index := range children {
+			if strings.EqualFold(children[index].Name, name) {
+				found = index
+				break
+			}
+		}
+		if found < 0 {
+			created, err := t.createNode(ctx, parent.ID, router.NodeDefinition{
+				Name: name, Kind: segment.Kind, Purpose: purpose,
+			})
+			if err != nil {
+				return "", err
+			}
+			if last {
+				return created.ID, nil
+			}
+			if parent, err = t.readRoute(ctx, table.ID, created.ID); err != nil {
+				return "", err
+			}
+			continue
+		}
+		child := children[found]
+		if child.Kind != segment.Kind {
+			return "", fail(result.CodeConstraint,
+				"route %q already exists as a %s on this path, not a %s", name, child.Kind, segment.Kind)
+		}
+		if last {
+			if child.Purpose != purpose {
+				return "", fail(result.CodeConstraint,
+					"route leaf %q already exists with purpose %q: mount on its id, or change its purpose explicitly",
+					name, child.Purpose)
+			}
+			return child.ID, nil
+		}
+		parent = child
+	}
+	return "", fail(result.CodeInternal, "route path resolution ended without a leaf")
+}
+
 // pruneEmptyBranches removes branches that no longer carry a live child, and
 // keeps going while each removal empties its own parent. See
 // docs/product/route-companion-table.md「致空场景清单」.

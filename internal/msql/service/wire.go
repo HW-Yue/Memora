@@ -6,6 +6,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/security"
 	protocolmsql "github.com/HW-Yue/Memora/protocol/msql"
@@ -27,6 +28,12 @@ func toBatchRequest(request protocolmsql.Request) executor.BatchRequest {
 }
 
 func toMutationOptions(options protocolmsql.MutationOptions) executor.MutationOptions {
+	routePath := make([]router.PathSegment, len(options.RoutePath))
+	for index, segment := range options.RoutePath {
+		routePath[index] = router.PathSegment{
+			Name: segment.Name, Kind: router.Kind(segment.Kind), Purpose: segment.Purpose,
+		}
+	}
 	routeUpdates := make([]row.RouteUpdate, len(options.RouteUpdates))
 	for index, update := range options.RouteUpdates {
 		routeUpdates[index] = row.RouteUpdate{
@@ -47,6 +54,7 @@ func toMutationOptions(options protocolmsql.MutationOptions) executor.MutationOp
 		SourceLocator:          options.SourceLocator,
 		SourceContentHash:      options.SourceContentHash,
 		RouteLeafIDs:           cloneSlice(options.RouteLeafIDs),
+		RoutePath:              routePath,
 		TargetRouteLeafIDs:     cloneNestedStrings(options.TargetRouteLeafIDs),
 		RelationTargetOrdinals: cloneMap(options.RelationTargetOrdinals),
 		RouteUpdates:           routeUpdates,

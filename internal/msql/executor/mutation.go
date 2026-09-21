@@ -272,6 +272,7 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		Metadata:              mutationMetadata(options),
 		RouteLeafIDs:          options.RouteLeafIDs,
+		RoutePath:             options.RoutePath,
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -282,6 +283,9 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, bound bindings, options MutationOptions) (Output, error) {
 	if err := validateMutationOptions(options, true); err != nil {
 		return Output{}, err
+	}
+	if len(options.RoutePath) > 0 {
+		return Output{}, executeError(result.CodeValidation, "route_path is only accepted by INSERT")
 	}
 	databaseName, tableName, table, err := engine.bindTable(ctx, update.Table)
 	if err != nil {
@@ -359,6 +363,9 @@ func bindAssignments(table catalog.Table, assignments []ast.Assignment, bound bi
 func (engine *Engine) delete(ctx context.Context, deleteStatement *ast.DeleteStatement, bound bindings, options MutationOptions) (Output, error) {
 	if err := validateMutationOptions(options, true); err != nil {
 		return Output{}, err
+	}
+	if len(options.RoutePath) > 0 {
+		return Output{}, executeError(result.CodeValidation, "route_path is only accepted by INSERT")
 	}
 	databaseName, tableName, table, err := engine.bindTable(ctx, deleteStatement.Table)
 	if err != nil {

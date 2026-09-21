@@ -246,9 +246,26 @@ func (t *tx) insert(ctx context.Context, databaseName, tableName string, values 
 		ID: newID("row_"), Revision: 1, SchemaVersion: table.SchemaVersion, CommitSequence: sequence,
 		State: row.StateLive, Values: bound, CreatedAt: now, UpdatedAt: now,
 	}
-	leaves, err := t.mountLeaves(ctx, table, value.ID, options.RouteLeafIDs)
-	if err != nil {
-		return row.Row{}, err
+	// A write either names the leaf it mounts on or names a path for the engine
+	// to complete; it never does both, and the path is completed here so the
+	// nodes it creates commit in the same transaction as the Row.
+	var leaves []string
+	switch {
+	case options.RoutePath != nil && options.RouteLeafIDs != nil:
+		return row.Row{}, fail(result.CodeValidation,
+			"a write takes either an explicit leaf or an implicit path, not both")
+	case options.RoutePath != nil:
+		leafID, err := t.ensureRoutePath(ctx, table, options.RoutePath)
+		if err != nil {
+			return row.Row{}, err
+		}
+		if leaves, err = t.mountLeaves(ctx, table, value.ID, []string{leafID}); err != nil {
+			return row.Row{}, err
+		}
+	default:
+		if leaves, err = t.mountLeaves(ctx, table, value.ID, options.RouteLeafIDs); err != nil {
+			return row.Row{}, err
+		}
 	}
 	value.RouteLeafIDs = leaves
 	if err := requireSingleLeaf(value); err != nil {

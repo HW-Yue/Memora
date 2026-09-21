@@ -315,6 +315,24 @@ This bootstrap is ordinary Router construction, not a Route mutation plan.
 it cannot create the first root, and it is not the path for adding a leaf to
 hold a new Row.
 
+### Or name the path and let the kernel complete it
+
+An INSERT may carry `route_path` instead of `route_leaf_ids`: one entry per
+segment, each with its own `name`, `kind` and `purpose`. The kernel reuses the
+segments that already exist and creates the ones that do not, in the same
+transaction as the Row. The two options are mutually exclusive, and `route_path`
+is accepted by INSERT only.
+
+```sh
+memora exec --input '{"parameters":{"named":{"title":"Use SQLite"}},"mutation":{"expected_schema_version":1,"max_affected_rows":1,"route_path":[{"name":"architecture","kind":"branch","purpose":"Architecture decisions"},{"name":"sqlite","kind":"leaf","purpose":"Why SQLite"}],"actor":"agent:host","source":"conversation:event-7","reason":"record the decision"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "INSERT INTO work.notes (title) VALUES (:title)"
+```
+
+Sibling names match case-insensitively and never by alias. Expect a refusal when
+the Table has no root yet (create it explicitly — its purpose is table-level
+semantics), when an interior segment is a leaf, when the last segment is a
+branch, when the leaf exists under a different purpose, or when it already holds
+a live Row. Nothing is created unless the whole write commits.
+
 Before attaching a new Row, verify that the target leaf is empty;
 an occupied leaf requires a new semantic leaf, because a Row occupies exactly one
 leaf and cannot also be reached through a second one. Submit the plan through `mutate` so
