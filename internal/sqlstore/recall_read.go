@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	"github.com/HW-Yue/Memora/internal/recall"
@@ -33,10 +32,12 @@ func (t *tx) recallKeywords(ctx context.Context, databaseName, tableName, text s
 		query += ` AND u.table_id = ?`
 		arguments = append(arguments, tableID)
 	}
-	// The internal order decides which hits survive the limit. Insertion order is
-	// deterministic and, unlike FTS rank, is nothing a caller could mistake for a
-	// judgement about relevance.
-	query += ` ORDER BY u.unit_no LIMIT ?`
+	// The arm's own order is its relevance order: FTS5's BM25, best match first,
+	// with the unit number as the deterministic tie-break. Fusion reads the rank
+	// this order produces; the score itself is never returned, so the old worry —
+	// a caller mistaking an internal rank for a judgement about relevance — is
+	// answered by the contract rather than by throwing the order away.
+	query += ` ORDER BY bm25(mem_recall_fts), u.unit_no LIMIT ?`
 	arguments = append(arguments, limit)
 
 	rows, err := t.q().QueryContext(ctx, query, arguments...)
@@ -80,14 +81,9 @@ func (t *tx) recallKeywords(ctx context.Context, databaseName, tableName, text s
 			Kind: string(router.KindLeaf), ObjectID: hit.rowID,
 		})
 	}
-	// Stable, de-duplicated output: the internal order above only chose which
-	// hits survived the limit.
-	sort.Slice(hits, func(left, right int) bool {
-		if hits[left].Table != hits[right].Table {
-			return hits[left].Table < hits[right].Table
-		}
-		return pathLabel(hits[left].Path) < pathLabel(hits[right].Path)
-	})
+	// The order is the arm's own: the query above put the best match first, and
+	// de-duplication only drops repeats, so the rank a position carries into
+	// fusion is the rank the search gave it.
 	return hits, nil
 }
 

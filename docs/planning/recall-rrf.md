@@ -1,6 +1,7 @@
 # 召回融合：RRF 进引擎，只改顺序
 
-状态：**方案已定（A）**，2026-09-21 用户拍板。RRF 进引擎，只改顺序，不外露任何数字。未授权开工。
+状态：**已实现**（`feature/recall-rrf`）。A 落地：RRF 进引擎，只改顺序，不外露任何数字。
+规范升格为 [ADR-0013](../decisions/0013-recall-fusion-by-rank.md)。
 
 ## 要解决的问题
 
@@ -64,3 +65,17 @@ ADR-0012 明文禁止外露分数/距离、禁止调融合权重；ADR-0007 记�
 
 **契约腐蚀**：A 一旦落地，「引擎内部已经有分数了」会成为下一次要求外露的论据，B 会以
 "只露一点点"的形式回来。所以新 ADR 必须现在就把边界写死。
+
+## 实现与证据（已完成）
+
+- 关键词臂：`ORDER BY bm25(mem_recall_fts), u.unit_no`，去掉尾部按路径排序——臂自己的序就是
+  相关性序，去重只丢重复，名次原样带进融合。
+- 向量臂：去掉尾部按路径排序；候选仍按 `(distance, unit_no)`，所以单臂第一条是真正最近的。
+- 融合：`fuseRecallRows`（RRF `k=60` + 表名/路径平分回落 + `LIMIT` 截断），`recallUnion` 调它，
+  `Truncated` 现在如实表示"融合后还有位置被截掉"。
+- 证据：`internal/sqlstore/recall_fusion_test.go`
+  —— `TestKeywordRecallOrdersByRelevanceNotInsertion`（插入序会给出相反答案）、
+  `TestVectorRecallOrdersByDistanceNotPath`（最近的叶子名字排在最后也要赢）、
+  `TestRecallUnionFusesByRank`（两路都找到的位置压过单路第一名，且顺序与字典序不同、
+  三次运行一致）、`TestRecallUnionAddsNoNumbersToTheAnswer`（字段集合不变）。
+  原 `TestKeywordRecallScopeAndOrder` 的"按路径有序"说法改为"平分确定性"。

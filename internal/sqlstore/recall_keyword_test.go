@@ -86,8 +86,11 @@ func TestKeywordRecallScopeAndOrder(t *testing.T) {
 	if len(wide) != 2 {
 		t.Fatalf("database recall = %v", wide)
 	}
+	// Both Rows match the same term in the same words, so BM25 ties and the unit
+	// number decides — the same query twice must give the same listing, and the
+	// answer carries nothing that would reveal it did not.
 	if wide[0] != "root/alpha" || wide[1] != "root/beta" {
-		t.Fatalf("output must be stably ordered by path: %v", wide)
+		t.Fatalf("a tie must resolve deterministically: %v", wide)
 	}
 	narrow := h.recallPaths(`RECALL FROM work IN notes MATCH :q LIMIT 10`, map[string]any{"q": "共享关键词"})
 	if len(narrow) != 2 {

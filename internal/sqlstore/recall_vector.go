@@ -102,14 +102,9 @@ func (t *tx) recallNearest(ctx context.Context, databaseName, tableName string, 
 			Kind: "leaf", ObjectID: unit.rowID,
 		})
 	}
-	// Same output contract as the keyword arm: the choice is by distance, the
-	// listing is stable and lexicographic.
-	sort.Slice(hits, func(left, right int) bool {
-		if hits[left].Table != hits[right].Table {
-			return hits[left].Table < hits[right].Table
-		}
-		return pathLabel(hits[left].Path) < pathLabel(hits[right].Path)
-	})
+	// The order is the arm's own: candidates were sorted by distance (and by unit
+	// number when distances tie), so the nearest position the vector path can
+	// answer for comes first. That rank is what fusion reads.
 	return hits, nil
 }
 

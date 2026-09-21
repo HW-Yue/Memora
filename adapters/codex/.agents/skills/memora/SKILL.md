@@ -270,9 +270,14 @@ Database's locked width; a vector of the wrong width, or one carrying NaN, is
 refused rather than rounded. The answer has exactly the same shape as a keyword
 recall — so navigate the same way — and `LIMIT` means the same thing in both:
 it truncates the listing, it is not a recall strength. Asking for both arms at
-once (`MATCH :q NEAREST :v`) merges what each found, counts a position found
-twice once, and still truncates by that same rule; if either arm cannot answer,
-the statement fails rather than quietly returning the half it could.
+once (`MATCH :q NEAREST :v`) fuses them by **rank** (reciprocal rank fusion,
+`k = 60`): each arm brings its own order — the vector arm by distance, the
+keyword arm by BM25 — a position both arms found outranks one only a single arm
+found, ties fall back to table then path, and `LIMIT` still truncates the fused
+listing. The fused order is the useful part; no score, distance or rank is ever
+returned, so do not look for one and do not treat the order as a confidence
+measure. If either arm cannot answer, the statement fails rather than quietly
+returning the half it could.
 
 Both derived layers can be rebuilt from the Rows, and neither is rebuilt for you.
 `REPAIR RECALL UNITS` gives every live Row the unit that keyword recall needs:

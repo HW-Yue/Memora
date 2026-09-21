@@ -312,15 +312,17 @@ func (engine *Engine) recall(ctx context.Context, statement *ast.RecallStatement
 	return engine.recallKeywords(ctx, statement, bound, databaseName, tableName, limit)
 }
 
-// recallUnion answers with both arms and merges what they found.
+// recallUnion answers with both arms and fuses what they found by rank.
 //
-// There is nothing to weigh the two against each other: recall returns no
-// scores, so a merge has no common scale to rank on, and inventing one would
-// make relevance a number the contract deliberately withholds. So each arm
-// brings back its own candidates (how many is its business), the union is
-// de-duplicated by position, and LIMIT truncates the listing — exactly what
-// LIMIT means for a single arm, which is what keeps one statement's LIMIT from
-// meaning two different things.
+// Each arm brings back its own candidates in its own order — the vector arm by
+// distance, the keyword arm by BM25 — and fusion only reads where a position sat
+// in each list: score = Σ 1 / (recallFusionK + rank). No score crosses the wire
+// and no weight is tunable, which is why two arms whose numbers are not
+// comparable at all can still be combined: rank is the one thing they share.
+//
+// A position both arms found therefore outranks one that only a single arm
+// found, which is the whole point of asking twice. LIMIT still truncates the
+// fused listing, exactly what it means for a single arm.
 func (engine *Engine) recallUnion(ctx context.Context, statement *ast.RecallStatement, bound bindings, databaseName, tableName string, limit uint64) (Output, error) {
 	keywordHits, err := engine.recallKeywords(ctx, statement, bound, databaseName, tableName, limit)
 	if err != nil {
@@ -334,11 +336,10 @@ func (engine *Engine) recallUnion(ctx context.Context, statement *ast.RecallStat
 	if err != nil {
 		return Output{}, err
 	}
-	merged := mergeRecallRows(keywordHits.Rows, vectorHits.Rows)
-	merged = merged[:min(len(merged), int(limit))]
+	merged, truncated := fuseRecallRows(keywordHits.Rows, vectorHits.Rows, int(limit))
 	output := keywordHits
 	output.Rows = merged
-	output.Truncated = len(merged) == int(limit)
+	output.Truncated = truncated
 	return output, nil
 }
 
@@ -352,30 +353,59 @@ func rowText(value any) string {
 	return ""
 }
 
-// mergeRecallRows unions two listings by position and returns them in the stable
-// order both arms already promise: Table, then path. Two arms finding the same
-// position is one position.
-func mergeRecallRows(left, right []result.Row) []result.Row {
-	seen := map[string]bool{}
-	merged := make([]result.Row, 0, len(left)+len(right))
-	for _, rows := range [][]result.Row{left, right} {
-		for _, row := range rows {
-			key := rowText(row["table"]) + "|" + rowText(row["path"])
-			if seen[key] {
-				continue
+// recallFusionK is Reciprocal Rank Fusion's constant. It damps the difference
+// between the first few ranks so that agreement between arms matters more than
+// either arm's own top; the value is the one from the original paper, and it is
+// not a knob: nothing here is tunable, so nothing here can be tuned into a
+// relevance judgement the contract would have to explain.
+const recallFusionK = 60.0
+
+// fuseRecallRows merges two ranked listings by Reciprocal Rank Fusion and
+// returns the fused listing plus whether the limit cut anything.
+//
+// Ties fall back to Table then path, which keeps the answer deterministic: a
+// caller has no score to notice that a fused order moved, so two runs of the
+// same query over an unchanged database have to agree completely.
+func fuseRecallRows(keyword, vector []result.Row, limit int) ([]result.Row, bool) {
+	type fusedPosition struct {
+		row   result.Row
+		score float64
+		table string
+		path  string
+	}
+	positions := make([]fusedPosition, 0, len(keyword)+len(vector))
+	at := map[string]int{}
+	for _, arm := range [][]result.Row{keyword, vector} {
+		for rank, row := range arm {
+			table, path := rowText(row["table"]), rowText(row["path"])
+			key := table + "|" + path
+			position, exists := at[key]
+			if !exists {
+				positions = append(positions, fusedPosition{row: row, table: table, path: path})
+				position = len(positions) - 1
+				at[key] = position
 			}
-			seen[key] = true
-			merged = append(merged, row)
+			positions[position].score += 1 / (recallFusionK + float64(rank+1))
 		}
 	}
-	sort.Slice(merged, func(first, second int) bool {
-		leftTable, rightTable := rowText(merged[first]["table"]), rowText(merged[second]["table"])
-		if leftTable != rightTable {
-			return leftTable < rightTable
+	sort.Slice(positions, func(first, second int) bool {
+		if positions[first].score != positions[second].score {
+			return positions[first].score > positions[second].score
 		}
-		return rowText(merged[first]["path"]) < rowText(merged[second]["path"])
+		if positions[first].table != positions[second].table {
+			return positions[first].table < positions[second].table
+		}
+		return positions[first].path < positions[second].path
 	})
-	return merged
+	truncated := len(positions) > limit
+	rows := make([]result.Row, 0, len(positions))
+	for index, position := range positions {
+		if index == limit {
+			break
+		}
+		rows = append(rows, position.row)
+	}
+	return rows, truncated
 }
 
 // showPendingVectors hands a host the work list: which units still need a
