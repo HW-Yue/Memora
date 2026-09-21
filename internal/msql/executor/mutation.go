@@ -73,6 +73,8 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.repairVectorIndex(ctx, statement.RepairVector, bound, options)
 	case statement.RepairRecall != nil:
 		return engine.repairRecallUnits(ctx, statement.RepairRecall, bound, options)
+	case statement.RekeyVector != nil:
+		return engine.rekeyVectorIdentity(ctx, statement.RekeyVector, bound, options)
 	case statement.AcceptVector != nil:
 		return engine.acceptVector(ctx, statement.AcceptVector, bound)
 	case statement.Recall != nil:

@@ -395,7 +395,7 @@ func mutationStatement(statement ast.Statement) bool {
 	return statement.Insert != nil || statement.Update != nil || statement.Delete != nil ||
 		statement.Restore != nil || statement.Reshape != nil || statement.RepairLinks != nil ||
 		statement.RepairVector != nil || statement.AcceptVector != nil ||
-		statement.RepairRecall != nil ||
+		statement.RepairRecall != nil || statement.RekeyVector != nil ||
 		statement.CreateRoute != nil || statement.RenameRoute != nil || statement.UpdateRoute != nil ||
 		statement.ApplyRoute != nil || statement.ApplySchema != nil ||
 		statement.Configuration != nil

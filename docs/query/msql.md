@@ -37,6 +37,15 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
 - 向量：`SHOW PENDING VECTORS IN DATABASE :db LIMIT :n`（**待办清单**：哪些单元还缺向量、
   以及每个单元该拿哪段文本去嵌入）与 `ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE :db
   MODEL :model HASH :hash`（宿主把算好的嵌入交回来；一条语句一个单元，批量＝一批语句）
+- Rekey：`REKEY VECTOR IDENTITY IN DATABASE :db LIMIT :n [MODEL :model DIMENSIONS :n]`
+  （L2；把库从钉死的 `(model, dimensions)` 上卸下来。第一次调用开窗口并 drop 派生索引，
+  每次释放至多 `LIMIT` 个单元，`remaining = 0` 的那次写新身份并关窗；不给 `MODEL`/`DIMENSIONS`
+  就是卸成**未锁**，下一次 `ACCEPT` 重新锁。**重复同一条语句（带上目标）才是在继续**；
+  对已开窗的库发一条**不带目标**的 `REKEY` 是逃生口——把窗口改瞄成卸成未锁，免得没人收尾的
+  窗口把库卡在拒绝态。窗口内 `RECALL … NEAREST`、`ACCEPT VECTOR`、
+  `REPAIR VECTOR INDEX`、`SHOW PENDING VECTORS` 一律拒绝 `rekey_in_progress`；
+  关键词召回照常作答并带 `vectors_not_ready` 通知，`doctor` 报 `rekeying_databases`。
+  见[向量 rekey](../planning/vector-rekey.md)）
 - 修复：`REPAIR LINKS IN DATABASE :database LIMIT :limit`（出队一批懒修复，见[行链接](../product/row-links.md)）
   与 `REPAIR VECTOR INDEX IN DATABASE :database LIMIT :limit`（把派生向量索引修到与真相一致，
   重复执行直到 `remaining` 为 0；它**不重算向量**）、

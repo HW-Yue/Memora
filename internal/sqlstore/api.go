@@ -101,6 +101,24 @@ func (o operations) VectorStatus(ctx context.Context, databaseName, tableName st
 	return
 }
 
+// RekeyVectorIdentity moves one Database out of the (model, dimensions) pair it
+// committed to. It is a write, bounded and repeatable like the repair passes: it
+// releases at most limit units per call, and the call that releases the last one
+// writes the new identity and closes the window. A nil target leaves the
+// Database unlocked, free for whatever identity is configured next.
+func (o operations) RekeyVectorIdentity(
+	ctx context.Context,
+	databaseName string,
+	limit int,
+	target *VectorRekeyTarget,
+) (receipt VectorRekeyReceipt, err error) {
+	err = o.run(ctx, true, func(t *tx) error {
+		receipt, err = t.rekeyVectorIdentity(ctx, databaseName, limit, target)
+		return err
+	})
+	return
+}
+
 // RepairVectorIndex reconciles one Database's derived vector indexes with the
 // truth on its unit rows. It is a write: it repairs derived index rows.
 func (o operations) RepairVectorIndex(ctx context.Context, databaseName string, limit int) (receipt repair.VectorReceipt, err error) {

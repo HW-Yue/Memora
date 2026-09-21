@@ -763,3 +763,34 @@ INDEX` 同族）：第一次调用标记中间态 + drop 派生层 + 清至多 `
 重嵌仍走 L1 排干。**中间态期间向量层一律拒绝**：`NEAREST` 拒绝（不返回空结果）、
 `ACCEPT VECTOR` 拒绝、`REPAIR VECTOR INDEX` 拒绝、`SHOW PENDING VECTORS` 带目标身份、`doctor` 报。
 弃选 (a)：让「每个写都有界」在最需要它的一次操作上失效。
+
+## 2026-09-21 · 向量 rekey 已实现（`feature/vector-rekey`）
+
+**结论**：`REKEY VECTOR IDENTITY IN DATABASE :db LIMIT :n [MODEL :m DIMENSIONS :d]` 落地为
+**一条可重复、有界、L2** 的语句（与 `REPAIR VECTOR INDEX` 同族）。第一次调用把库标进中间态
+（`mem_databases.embedding_rekey_at/_model/_dimensions`，加列不 bump 文件 schema 版本）并 drop
+该库全部 vec0 虚表 + 注册行；每次释放至多 `LIMIT` 个单元的 embedding 与身份列；`remaining = 0`
+的那次写新身份（或卸成未锁）并关窗。大批判量重嵌仍走现成 L1 排干。
+
+**关键实现判断**：
+1. **守卫下沉到唯一那次身份读取**（`vectorIdentity`）——accept、storeVector、recall、repair 全都
+   经过它，拒绝天然继承，不必逐语句加闸门；原始读取另开 `vectorIdentityRow`，只给
+   `vectorStatus` 与 `doctor` 用（顾问开做前的建议，采纳）。
+2. `storeVector` 发现注册维度与当前身份不符时**丢弃重建**，不再信任注册行——`float[N]` 焊死在
+   vec0 声明里，这是颗静默地雷。
+3. **逃生口**：对已开窗的库再发一条**不带目标**的 `REKEY`，把窗口改瞄成「卸成未锁」；已经释放的
+   单元保持释放。**重复同一条语句（带上目标）才是在继续**——这条必须写进文档，否则「省略目标」
+   会被当成继续。
+4. **可观测**：关键词召回照常作答并在 `vectors_not_ready` 通知里带 `rekeying` /
+   `rekey_remaining` / `rekey_model` / `rekey_dimensions`；`doctor` 加 `rekeying_databases`，
+   且窗口内**不计** `vector_index_drift`（窗口不是损坏）。
+
+**顾问做完的判断**：与已定结论对齐；最大缺口不是并发压测，而是**窗口不可见、不可终止**——
+一个客户端崩在中途的 rekey 会把库无声卡在拒绝态且没有官方出口。上面第 3、4 条就是为此补的。
+
+**证据**：`internal/sqlstore/vector_rekey_test.go`（分次释放与回执、`float[3]`→drop→`float[4]`
+重建、无目标卸成未锁再重新 TOFU、窗口跨 reopen 存活并能收尾、逃生口、L2 拒绝、超
+`max_affected_rows` 拒绝、半截目标 parse_error、窗口内关键词召回与 `doctor` 可用）、
+`internal/devgate/statements_test.go`（每个 statement kind 有样品、只读传输按分类拒绝）。
+
+**待定**：多进程真实并发压测；要不要给窗口一个独立读面（`SHOW VECTOR STATUS`）；Admin 是否露出窗口。

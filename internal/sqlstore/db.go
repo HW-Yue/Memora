@@ -122,7 +122,16 @@ CREATE TABLE IF NOT EXISTS mem_databases (
 	-- identity that can be edited in place is one that will be.
 	embedding_model TEXT NOT NULL DEFAULT '',
 	embedding_dimensions INTEGER NOT NULL DEFAULT 0,
-	embedding_locked_at TEXT NOT NULL DEFAULT ''
+	embedding_locked_at TEXT NOT NULL DEFAULT '',
+	-- The rekey window. Non-empty embedding_rekey_at means this Database is
+	-- between identities: the derived index is gone, the units are being
+	-- released, and every vector path must refuse until the pass that clears the
+	-- last unit writes the new identity and empties this column. It is stored
+	-- rather than derived because a crash must not lose the fact that the index
+	-- and the identity no longer agree.
+	embedding_rekey_at TEXT NOT NULL DEFAULT '',
+	embedding_rekey_model TEXT NOT NULL DEFAULT '',
+	embedding_rekey_dimensions INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS mem_tables (
 	id TEXT PRIMARY KEY,
@@ -260,6 +269,9 @@ func (db *DB) migrate(ctx context.Context) error {
 		{"mem_databases", "embedding_model", "ALTER TABLE mem_databases ADD COLUMN embedding_model TEXT NOT NULL DEFAULT ''"},
 		{"mem_databases", "embedding_dimensions", "ALTER TABLE mem_databases ADD COLUMN embedding_dimensions INTEGER NOT NULL DEFAULT 0"},
 		{"mem_databases", "embedding_locked_at", "ALTER TABLE mem_databases ADD COLUMN embedding_locked_at TEXT NOT NULL DEFAULT ''"},
+		{"mem_databases", "embedding_rekey_at", "ALTER TABLE mem_databases ADD COLUMN embedding_rekey_at TEXT NOT NULL DEFAULT ''"},
+		{"mem_databases", "embedding_rekey_model", "ALTER TABLE mem_databases ADD COLUMN embedding_rekey_model TEXT NOT NULL DEFAULT ''"},
+		{"mem_databases", "embedding_rekey_dimensions", "ALTER TABLE mem_databases ADD COLUMN embedding_rekey_dimensions INTEGER NOT NULL DEFAULT 0"},
 		{"mem_recall_units", "embedding", "ALTER TABLE mem_recall_units ADD COLUMN embedding BLOB"},
 		{"mem_recall_units", "embedded_content_hash", "ALTER TABLE mem_recall_units ADD COLUMN embedded_content_hash TEXT NOT NULL DEFAULT ''"},
 	}

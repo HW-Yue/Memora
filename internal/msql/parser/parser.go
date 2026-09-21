@@ -123,6 +123,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		statement, err = parser.parseRecall()
 	case parser.matchWord("ACCEPT"):
 		return parser.parseAcceptVector()
+	case parser.matchWord("REKEY"):
+		return parser.parseRekeyVector()
 	case parser.matchWord("REPAIR"):
 		statement, err = parser.parseRepair()
 	case parser.matchWord("ROLLBACK"):
@@ -1602,6 +1604,56 @@ func (parser *parser) parseRepairVector() (ast.Statement, error) {
 	return ast.Statement{Kind: "REPAIR_VECTOR", RepairVector: &ast.RepairVectorStatement{
 		Database: &database, Limit: &limit,
 	}}, nil
+}
+
+// parseRekeyVector reads
+// REKEY VECTOR IDENTITY IN DATABASE <name> LIMIT <n> [MODEL <model> DIMENSIONS <n>].
+//
+// The limit is required, and the statement is repeatable: releasing every unit
+// in one pass would hold the writer for as long as the Database is big, and the
+// window it opens — derived index gone, units half released — is one no vector
+// path may answer inside. Model and dimensions are optional together: without
+// them the Database comes out unlocked and the next accepted vector locks it.
+func (parser *parser) parseRekeyVector() (ast.Statement, error) {
+	if _, err := parser.expectWord("VECTOR"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("IDENTITY"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("IN"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("DATABASE"); err != nil {
+		return ast.Statement{}, err
+	}
+	database, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("LIMIT"); err != nil {
+		return ast.Statement{}, err
+	}
+	limit, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	statement := &ast.RekeyVectorStatement{Database: &database, Limit: &limit}
+	if parser.matchWord("MODEL") {
+		model, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		if _, err := parser.expectWord("DIMENSIONS"); err != nil {
+			return ast.Statement{}, err
+		}
+		dimensions, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Model, statement.Dimensions = &model, &dimensions
+	}
+	return ast.Statement{Kind: "REKEY_VECTOR", RekeyVector: statement}, nil
 }
 
 // parseRepairRecall reads REPAIR RECALL UNITS IN DATABASE <name> LIMIT <n>. Same

@@ -38,6 +38,11 @@ type Report struct {
 	// bytes. It is what a reconcile pass would repair, so a health report that
 	// stayed silent about it would call a wrong index healthy.
 	VectorIndexDrift int `json:"vector_index_drift"`
+	// RekeyingDatabases counts Databases that are between vector identities. Such
+	// a Database's derived index is gone on purpose, so its drift is not counted:
+	// a rekey in progress is not a fault, and a health report that could not tell
+	// the two apart would call every window corruption.
+	RekeyingDatabases int `json:"rekeying_databases"`
 }
 
 func (db *DB) Doctor(ctx context.Context) (Report, error) {
@@ -55,9 +60,15 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 		}
 		report.Databases = len(databases)
 		for _, database := range databases {
-			identity, err := t.vectorIdentity(ctx, database.ID)
+			// The window is read raw on purpose: doctor is the surface that has
+			// to report a rekey, so it cannot be one of the paths that refuses
+			// while one is open.
+			identity, rekey, err := t.vectorIdentityRow(ctx, database.ID)
 			if err != nil {
 				return err
+			}
+			if rekey.Active {
+				report.RekeyingDatabases++
 			}
 			for _, table := range database.Tables {
 				report.Tables++
@@ -92,7 +103,7 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 					return err
 				}
 				report.UnitsWithoutVectors += status.NotReady
-				if identity.Model != "" {
+				if identity.Model != "" && !rekey.Active {
 					drift, err := t.vectorIndexDrift(ctx, database.ID, table.ID, identity.Dimensions)
 					if err != nil {
 						return err

@@ -35,6 +35,18 @@ type VectorStatus struct {
 	IdentityLocked bool
 	Model          string
 	Dimensions     int
+	// Rekeying reports that the Database is between identities: its derived
+	// index is gone, its units are being released, and no vector path may answer
+	// until the rekey finishes. Model and Dimensions then name the identity the
+	// drain will have to embed for — the one place that says it out loud,
+	// because every other vector read is refusing.
+	Rekeying bool
+	// RekeyStartedAt and RekeyRemaining describe the window itself: when it
+	// opened and how many units still hold bytes the rekey has to release. A
+	// window that nobody finishes leaves the Database refusing vector queries,
+	// so progress has to be observable without being guessed at.
+	RekeyStartedAt string
+	RekeyRemaining int
 }
 
 // VectorIdentity is the (model, dimensions) pair a Database commits to the first
@@ -56,6 +68,26 @@ type VectorRecord struct {
 	Model       string
 	Dimensions  int
 	Vector      []float32
+}
+
+// VectorRekeyTarget is the identity a rekey moves a Database to. An empty Model
+// means the Database comes out unlocked and the next accepted vector locks it
+// again — the case a user hits when the provider they configured first was a
+// trial, or when nothing was configured at all and the backlog is still waiting.
+type VectorRekeyTarget struct {
+	Model      string
+	Dimensions int
+}
+
+// VectorRekeyReceipt is one bounded rekey pass. Released counts the units this
+// pass let go of, Remaining how many still hold bytes, and Rekeying whether the
+// Database is still inside the window where no vector path may answer.
+type VectorRekeyReceipt struct {
+	Released   int
+	Remaining  int
+	Rekeying   bool
+	Model      string
+	Dimensions int
 }
 
 // PendingUnit is one unit a host still has to embed: the unit, the Table it

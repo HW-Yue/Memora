@@ -431,6 +431,79 @@ func (engine *Engine) showPendingVectors(ctx context.Context, statement ast.Stat
 //
 // The engine does not compute vectors and does not judge them; it only refuses
 // to attach an embedding that does not describe what the unit currently holds.
+// rekeyVectorIdentity moves one Database off the identity it locked itself into.
+// The pass is bounded and repeatable: the caller decides how much to release at
+// a time, the receipt says how much is left, and the caller repeats until it is
+// zero. Nothing here computes an embedding — the engine still never calls a
+// model — and the ordinary drain refills the work list once the window closes.
+func (engine *Engine) rekeyVectorIdentity(ctx context.Context, statement *ast.RekeyVectorStatement, bound bindings, options MutationOptions) (Output, error) {
+	if statement == nil || statement.Database == nil || statement.Limit == nil {
+		return Output{}, executeError(result.CodeValidation, "REKEY VECTOR needs IDENTITY IN DATABASE and LIMIT")
+	}
+	if options.MaxAffectedRows == 0 {
+		return Output{}, executeError(result.CodeValidation, "REKEY VECTOR requires max_affected_rows")
+	}
+	limit, err := historyPositiveInteger(statement.Limit, catalog.Table{}, bound, "REKEY VECTOR LIMIT")
+	if err != nil {
+		return Output{}, err
+	}
+	if limit > maxQueryScan {
+		return Output{}, executeError(result.CodeValidation, "REKEY VECTOR LIMIT must be between 1 and 1000")
+	}
+	if options.MaxAffectedRows < uint64(limit) {
+		return Output{}, executeError(result.CodeValidation,
+			fmt.Sprintf("REKEY VECTOR LIMIT %d exceeds max_affected_rows %d", limit, options.MaxAffectedRows))
+	}
+	if len(statement.Database.Parts) != 1 {
+		return Output{}, executeError(result.CodeValidation, "REKEY VECTOR takes a Database name, not a dotted name")
+	}
+	var target *recall.VectorRekeyTarget
+	switch {
+	case statement.Model == nil && statement.Dimensions == nil:
+		// No target: the Database comes out unlocked. That is the whole point for
+		// a user who never configured a provider, or who tried one and is moving
+		// to whatever they configure next.
+	case statement.Model == nil || statement.Dimensions == nil:
+		return Output{}, executeError(result.CodeValidation,
+			"REKEY VECTOR needs MODEL and DIMENSIONS together, or neither")
+	default:
+		model, err := relationshipString(statement.Model, catalog.Table{}, bound, "REKEY VECTOR model")
+		if err != nil {
+			return Output{}, err
+		}
+		if strings.TrimSpace(model) == "" {
+			return Output{}, executeError(result.CodeValidation, "REKEY VECTOR model must not be empty")
+		}
+		dimensions, err := historyPositiveInteger(statement.Dimensions, catalog.Table{}, bound, "REKEY VECTOR dimensions")
+		if err != nil {
+			return Output{}, err
+		}
+		target = &recall.VectorRekeyTarget{Model: model, Dimensions: int(dimensions)}
+	}
+	databaseName := statement.Database.Parts[0].Value
+	if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
+		return Output{}, err
+	}
+	receipt, err := engine.rows.RekeyVectorIdentity(ctx, databaseName, int(limit), target)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return Output{
+		Columns: []result.Column{
+			{Name: "released", Type: "INTEGER"},
+			{Name: "remaining", Type: "INTEGER"},
+			{Name: "rekeying", Type: "BOOLEAN"},
+			{Name: "model", Type: "TEXT"},
+			{Name: "dimensions", Type: "INTEGER"},
+		},
+		Rows: []result.Row{{
+			"released": receipt.Released, "remaining": receipt.Remaining, "rekeying": receipt.Rekeying,
+			"model": receipt.Model, "dimensions": receipt.Dimensions,
+		}},
+		AffectedRows: uint64(receipt.Released),
+	}, nil
+}
+
 func (engine *Engine) acceptVector(ctx context.Context, statement *ast.AcceptVectorStatement, bound bindings) (Output, error) {
 	if statement == nil || statement.Values == nil || statement.Unit == nil || statement.Database == nil ||
 		statement.Model == nil || statement.ContentHash == nil {
@@ -598,6 +671,16 @@ func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, datab
 		if status.IdentityLocked {
 			details["embedding_model"] = status.Model
 			details["embedding_dimensions"] = status.Dimensions
+		}
+		if status.Rekeying {
+			// A window is the one case where the vector path is down on purpose
+			// rather than merely behind, and a caller has to be able to see that
+			// without guessing: where the rekey is aimed and how much is left.
+			details["rekeying"] = true
+			details["rekey_started_at"] = status.RekeyStartedAt
+			details["rekey_remaining"] = status.RekeyRemaining
+			details["rekey_model"] = status.Model
+			details["rekey_dimensions"] = status.Dimensions
 		}
 		output.Warnings = append(output.Warnings, result.Notice{
 			Code: result.CodeVectorsNotReady,

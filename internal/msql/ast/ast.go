@@ -35,6 +35,7 @@ type Statement struct {
 	RepairLinks   *RepairLinksStatement        `json:"repair_links,omitempty"`
 	RepairVector  *RepairVectorStatement       `json:"repair_vector,omitempty"`
 	RepairRecall  *RepairRecallStatement       `json:"repair_recall,omitempty"`
+	RekeyVector   *RekeyVectorStatement        `json:"rekey_vector,omitempty"`
 	AcceptVector  *AcceptVectorStatement       `json:"accept_vector,omitempty"`
 	Recall        *RecallStatement             `json:"recall,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
@@ -235,6 +236,19 @@ type RepairVectorStatement struct {
 	Limit    *Expression `json:"limit"`
 }
 
+// RekeyVectorStatement moves one Database out of the (model, dimensions) pair it
+// locked itself into. It is bounded and repeatable like the repair passes: each
+// call releases at most Limit units, and the call that releases the last one
+// writes the new identity. Model and Dimensions are optional together: without
+// them the Database comes out unlocked, which is what a host with no provider
+// yet — or one that tried a provider and changed its mind — needs.
+type RekeyVectorStatement struct {
+	Database   *Name       `json:"database"`
+	Limit      *Expression `json:"limit"`
+	Model      *Expression `json:"model,omitempty"`
+	Dimensions *Expression `json:"dimensions,omitempty"`
+}
+
 type OpenArchiveStatement struct {
 	Archive *Expression `json:"archive"`
 }
@@ -406,6 +420,10 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.RepairVector.Limit)
 	case statement.RepairRecall != nil:
 		appendExpression(statement.RepairRecall.Limit)
+	case statement.RekeyVector != nil:
+		appendExpression(statement.RekeyVector.Limit)
+		appendExpression(statement.RekeyVector.Model)
+		appendExpression(statement.RekeyVector.Dimensions)
 	case statement.AcceptVector != nil:
 		appendExpression(statement.AcceptVector.Values)
 		appendExpression(statement.AcceptVector.Unit)

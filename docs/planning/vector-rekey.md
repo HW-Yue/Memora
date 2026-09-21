@@ -1,7 +1,7 @@
 # 向量 rekey：卸下身份，再让排干重新上锁
 
-状态：**实现计划（未授权开工）**。触发场景：用户前期没配向量模型 → 后来配了想补齐；
-或者试用过一个小模型，把库的 `(model, dimensions)` 钉死了，之后换不动。
+状态：**已实现**（分支 `feature/vector-rekey`，等 CI 全绿后合回主线）。触发场景：用户前期没配
+向量模型 → 后来配了想补齐；或者试用过一个小模型，把库的 `(model, dimensions)` 钉死了，之后换不动。
 
 ## 问题
 
@@ -23,9 +23,12 @@ REKEY VECTOR IDENTITY IN DATABASE :db LIMIT :n [MODEL :m DIMENSIONS :d]
   vec0 虚表并删注册行（按表计，天然有界）→ 清掉至多 `LIMIT :n` 个单元的
   `embedding` / `embedded_content_hash` / `embedding_model` / `embedding_dimensions` /
   `embedded_at` → 回执 `remaining`；
-- **后续调用**：继续清字节，直到 `remaining = 0`；
+- **后续调用**：继续清字节，直到 `remaining = 0`；**重复同一条语句（带上目标）才是在继续**；
 - **最后一次**（`remaining = 0`）：写锁（给了 `MODEL`/`DIMENSIONS` 写新身份，没给清成未锁）→
   清掉中间态 → 回执 `state = done`。
+- **逃生口**：对**已开窗**的库再发一条**不带目标**的 `REKEY`，就是把窗口改瞄成「卸成未锁」——
+  已经释放的单元保持释放，剩下的照常释放，结束时库是未锁的。没有这条，一个没人收尾的窗口会把
+  库无声卡在拒绝态（顾问指出：窗口必须可见且可终止）。
 
 **授权级别：整条语句 L2。** 它 drop 虚表，是结构变更；也就是说这条语句自始至终是 L2，不随调用
 次数变级（按状态变级无法验证）。真正的大批量工作仍在**排干**里——宿主嵌入 N 条 `ACCEPT VECTOR`
@@ -79,29 +82,40 @@ RELEASE 与排干完成之间，库**可检索但向量召回为空**——不�
 才写锁、撤中间态。**不选 (a)**（一次做完、声明不受 `max_affected_rows` 约束）——那会让「每个写都
 有界」这条不变量在最需要它的一次操作上失效。
 
-## 要动的地方
+## 实现要点（已落地）
 
-- `internal/sqlstore/vecindex.go`：新增 release 路径（drop 虚表 + 删注册行 + 清字节 + 写锁），
-  并让 `vecIndexReady` / `storeVector` 在维度与当前身份不符时**不信任**旧表；
-- `internal/sqlstore/db.go`：`mem_databases` 加中间态列（加列不 bump `fileSchemaVersion`）；
-- `internal/msql/{ast,parser,binder,executor}`：新语句 + L2 授权 + 参数校验；
-- `internal/sqlstore/embedding.go`：`vectorStatus` / `pendingVectors` 带上目标身份；
-- Skill：`docs/query/msql.md` 与 `skills/memora/SKILL.md` 增加 rekey 一节（改了 skill 要跑
-  `scripts/sync-skill.sh --check`）；
-- `internal/adminui`：只在确认要在 Admin 露出中间态时才动（冻结 bundle，要同步哈希）。
+- **守卫放在唯一的那次身份读取里**（`internal/sqlstore/embedding.go` 的 `vectorIdentity`）：
+  accept、storeVector/写入时附带向量、recall、repair、doctor 全都经过它，所以拒绝天然被四条路
+  继承，不需要在每个语句里各加一道（顾问指出：只在 executor/binder 加闸门绕不住库内路径）。
+  原始读取另开 `vectorIdentityRow`，供**状态**与 **doctor** 使用——它们是窗口内唯二还能说话的地方。
+- `mem_databases` 加三列（加列不 bump `fileSchemaVersion`）：`embedding_rekey_at` /
+  `embedding_rekey_model` / `embedding_rekey_dimensions`。窗口**存下来**而不是推导，因为它正是
+  「索引与身份故意不一致」的那一刻，崩溃丢了它就没人知道要重建。
+- `dropVectorIndexes` 先删注册行再 DROP 虚表；`storeVector` 遇到注册维度与当前身份不符时**丢弃
+  重建**，不再信任注册行（`float[N]` 焊死，这是一颗静默地雷）。
+- 关键词召回窗口内照常作答，并带 `vectors_not_ready` 通知；`doctor` 报 `rekeying_databases`，
+  且窗口内**不计** `vector_index_drift`（窗口不是损坏）。
+- 未锁的库 + 不给目标 → 回执全零（没有身份可卸、没有派生层可丢）。
 
-## 验收证据（TDD）
+## 验收证据（TDD，全部已绿）
 
-1. RED：锁定一个库并嵌入若干单元 → 用另一个模型 `ACCEPT` 被拒（现状），rekey 后同一条被接受；
-2. 真机旅程：同维度换模型（不动 vec0 表）与换维度（**必须 drop + 按新维度重建**）各跑一遍；
-3. 中间态：RELEASE 后 `NEAREST` 被拒而不是空结果；`SHOW PENDING VECTORS` 带目标身份；
-4. 中断/崩溃：RELEASE 后、排干中途 kill daemon → reopen 后仍在中间态，且能继续排干；
-5. 并发：两个宿主同时对中间态库 `ACCEPT` → 不会钉死错误身份（第二条被拒或按目标身份拒绝）；
-6. 对账不倒退：RELEASE 与排干之间跑 `REPAIR VECTOR INDEX` → **不会**把旧模型字节写回；
-7. reopen / `doctor` / `vector_index_drift = 0` / `./scripts/ci.sh` 全绿。
+| 计划里的证据 | 落在哪 |
+|---|---|
+| RED：锁定后换模型被拒 → rekey 后可换 | `TestRekeyMovesTheIdentityInBoundedPasses` |
+| 分次释放、回执 `released`/`remaining`/`rekeying` | 同上 + `TestRekeyStatementIsStructuralAndBounded` |
+| 换维度必须 drop + 按新维度重建 | 同上（断言 `float[3]` → 空 → `float[4]` 与注册行） |
+| 窗口内 `NEAREST` / `ACCEPT` / `REPAIR` / `PENDING` 一律拒 | 同上（断 `rekey_in_progress`） |
+| 无目标 → 卸成未锁，下一次 `ACCEPT` 重新锁 | `TestRekeyWithoutATargetLeavesTheDatabaseUnlocked` |
+| 中断/重开：窗口跨进程存活并能收尾 | `TestRekeyWindowSurvivesAReopen` |
+| 对账不倒退（窗口内 `REPAIR` 拒绝，旧字节不会被写回） | 同上 + 守卫测试 |
+| L2 / 有界 / 半截目标被拒 | `TestRekeyStatementIsStructuralAndBounded` |
+| 关键词召回与 `doctor` 在窗口内仍可用 | `TestRekeyWindowLeavesTheRestOfTheInstanceUsable` |
+| 每个 statement kind 都有样品、只读传输按分类拒绝 | `internal/devgate/statements_test.go` |
 
 ## 待定
 
-- 中间态列的最终名字与是否拆成两列（`embedding_rekey_at` + 目标 `model`/`dimensions`）。
-- `REKEY` 在**未锁**的库上是报「无需 rekey」还是直接开始（倾向报无需：没有身份可卸）。
-- `REKEY` 期间 `SHOW PENDING VECTORS` 是带目标身份还是直接拒绝（倾向带，宿主可以先准备模型）。
+- 并发两个宿主同时打在窗口上：写入是串行的，第二条 `ACCEPT` 会被拒；**没有**做多进程实测。
+- 窗口内 `SHOW PENDING VECTORS` 是拒绝（现状）还是带目标身份放行——现状是拒绝，目标身份由
+  `doctor` 与 `VectorStatus` 给出。
+- Admin 是否要露出窗口（要动冻结 bundle）。
+

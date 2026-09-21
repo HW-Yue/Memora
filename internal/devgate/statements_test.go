@@ -47,6 +47,7 @@ var statementSamples = map[string]string{
 	"REPAIR_VECTOR":         `REPAIR VECTOR INDEX IN DATABASE work LIMIT 8`,
 	"REPAIR_RECALL":         `REPAIR RECALL UNITS IN DATABASE work LIMIT 8`,
 	"ACCEPT_VECTOR":         `ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash`,
+	"REKEY_VECTOR":          `REKEY VECTOR IDENTITY IN DATABASE work LIMIT 8`,
 	// Transactions take their kind from the action, so the scan below reads the
 	// call sites as well as the literals.
 	"BEGIN":    `BEGIN`,
@@ -126,6 +127,7 @@ func TestReadOnlyPolicyFollowsTheClassification(t *testing.T) {
 		{source: `SHOW ARCHIVE FROM work.notes LIMIT 5`, read: true},
 		{source: `SELECT * FROM work.notes LIMIT 1`, read: true},
 		{source: `REPAIR LINKS IN DATABASE work LIMIT 8`, read: false},
+		{source: `REKEY VECTOR IDENTITY IN DATABASE work LIMIT 8`, read: false},
 		{source: `BEGIN`, read: false},
 		{source: `INSERT INTO work.notes (title) VALUES ('x')`, read: false},
 	}

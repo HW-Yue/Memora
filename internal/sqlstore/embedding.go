@@ -29,8 +29,10 @@ import (
 // The vocabulary is shared with the executor, which speaks it without the
 // storage layer; these aliases are what the storage layer calls it.
 type (
-	VectorIdentity = recall.VectorIdentity
-	VectorRecord   = recall.VectorRecord
+	VectorIdentity     = recall.VectorIdentity
+	VectorRecord       = recall.VectorRecord
+	VectorRekeyTarget  = recall.VectorRekeyTarget
+	VectorRekeyReceipt = recall.VectorRekeyReceipt
 )
 
 type recallUnit struct {
@@ -103,21 +105,60 @@ func (t *tx) acceptVector(ctx context.Context, databaseName string, record Vecto
 	return identity, nil
 }
 
+// rekeyState is the identity row's window columns. Active means this Database is
+// between identities: its derived index is gone and its units are being
+// released, so nothing may read or write the vector layer.
+type rekeyState struct {
+	Active    bool
+	Target    recall.VectorRekeyTarget
+	StartedAt string
+	Identity  VectorIdentity
+}
+
+// vectorIdentityRow reads the identity and the window in one go, without
+// refusing. Every guard in this file is a decision made on top of it, and the
+// one caller that must keep answering during a window — the status a host reads
+// to learn which identity to embed for — needs exactly this.
+func (t *tx) vectorIdentityRow(ctx context.Context, databaseID string) (VectorIdentity, rekeyState, error) {
+	identity := VectorIdentity{}
+	state := rekeyState{}
+	var lockedAt, rekeyAt sql.NullString
+	err := t.q().QueryRowContext(ctx, `SELECT embedding_model, embedding_dimensions, embedding_locked_at,
+			embedding_rekey_at, embedding_rekey_model, embedding_rekey_dimensions
+		FROM mem_databases WHERE id = ?`, databaseID).
+		Scan(&identity.Model, &identity.Dimensions, &lockedAt,
+			&rekeyAt, &state.Target.Model, &state.Target.Dimensions)
+	if errors.Is(err, sql.ErrNoRows) {
+		return VectorIdentity{}, rekeyState{}, fail(result.CodeNotFound, "database was not found")
+	}
+	if err != nil {
+		return VectorIdentity{}, rekeyState{}, err
+	}
+	identity.LockedAt = lockedAt.String
+	state.StartedAt = rekeyAt.String
+	state.Active = rekeyAt.String != ""
+	state.Identity = identity
+	return identity, state, nil
+}
+
 // vectorIdentity reads the pair a Database is locked to. An empty model means it
 // has not accepted a vector yet.
+//
+// A rekey in progress is a refusal here rather than at each call site on
+// purpose: accepting a vector, storing a derived index row, answering a vector
+// query and reconciling the index all have to stop, and the one place they all
+// pass through is this read. A guard per statement would be a guard someone
+// forgets to add.
 func (t *tx) vectorIdentity(ctx context.Context, databaseID string) (VectorIdentity, error) {
-	identity := VectorIdentity{}
-	var lockedAt sql.NullString
-	err := t.q().QueryRowContext(ctx, `SELECT embedding_model, embedding_dimensions, embedding_locked_at
-		FROM mem_databases WHERE id = ?`, databaseID).
-		Scan(&identity.Model, &identity.Dimensions, &lockedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return VectorIdentity{}, fail(result.CodeNotFound, "database was not found")
-	}
+	identity, state, err := t.vectorIdentityRow(ctx, databaseID)
 	if err != nil {
 		return VectorIdentity{}, err
 	}
-	identity.LockedAt = lockedAt.String
+	if state.Active {
+		return VectorIdentity{}, fail(result.CodeRekeyInProgress,
+			"database %q is between vector identities; no vector path can answer until the rekey finishes",
+			databaseID)
+	}
 	return identity, nil
 }
 
@@ -151,7 +192,10 @@ func (t *tx) vectorStatus(ctx context.Context, databaseName, tableName string) (
 	if err != nil {
 		return recall.VectorStatus{}, err
 	}
-	identity, err := t.vectorIdentity(ctx, database.ID)
+	// The status is the one vector read that keeps answering inside a rekey
+	// window: it is what tells a host which identity to embed for once the
+	// window closes, so refusing here would leave the work list unreachable.
+	identity, state, err := t.vectorIdentityRow(ctx, database.ID)
 	if err != nil {
 		return recall.VectorStatus{}, err
 	}
@@ -159,22 +203,44 @@ func (t *tx) vectorStatus(ctx context.Context, databaseName, tableName string) (
 	status.Model, status.Dimensions = identity.Model, identity.Dimensions
 
 	tableFilter := ""
+	tableID := ""
 	arguments := []any{database.ID}
 	if tableName != "" {
 		table, err := t.liveTable(ctx, databaseName, tableName)
 		if err != nil {
 			return recall.VectorStatus{}, err
 		}
+		tableID = table.ID
 		tableFilter = " AND u.table_id = ?"
 		arguments = append(arguments, table.ID)
+	}
+	if state.Active {
+		// Between identities nothing is ready, and the identity still on the row
+		// is the one being retired — the target is what the drain will need.
+		status.Rekeying = true
+		status.IdentityLocked = false
+		status.Model, status.Dimensions = state.Target.Model, state.Target.Dimensions
+		status.RekeyStartedAt = state.StartedAt
+		remaining, err := t.unreleasedVectorUnits(ctx, database.ID, tableID)
+		if err != nil {
+			return recall.VectorStatus{}, err
+		}
+		status.RekeyRemaining = remaining
+	}
+
+	readiness := `AND (u.embedding IS NULL
+		       OR u.embedded_content_hash <> u.content_hash
+		       OR u.embedding_model <> d.embedding_model
+		       OR u.embedding_dimensions <> d.embedding_dimensions)`
+	if status.Rekeying {
+		// Inside the window every unit is waiting, including the ones still
+		// holding bytes: those bytes belong to the identity being retired.
+		readiness = ""
 	}
 	err = t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_recall_units u
 		JOIN mem_databases d ON d.id = u.database_id
 		WHERE u.database_id = ?`+tableFilter+`
-		  AND (u.embedding IS NULL
-		       OR u.embedded_content_hash <> u.content_hash
-		       OR u.embedding_model <> d.embedding_model
-		       OR u.embedding_dimensions <> d.embedding_dimensions)`, arguments...).Scan(&status.NotReady)
+		  `+readiness, arguments...).Scan(&status.NotReady)
 	if err != nil {
 		return recall.VectorStatus{}, err
 	}
@@ -192,6 +258,12 @@ func (t *tx) vectorStatus(ctx context.Context, databaseName, tableName string) (
 func (t *tx) pendingVectors(ctx context.Context, databaseName string, limit int) ([]recall.PendingUnit, error) {
 	database, err := t.resolveDatabase(ctx, databaseName)
 	if err != nil {
+		return nil, err
+	}
+	// A work list inside a rekey window would be a lie twice over: the units it
+	// named are the ones being released, and the host that embedded them would
+	// be embedding for an identity that is no longer the target.
+	if _, err := t.vectorIdentity(ctx, database.ID); err != nil {
 		return nil, err
 	}
 	rows, err := t.q().QueryContext(ctx, `SELECT u.unit_no, tb.name, u.content_hash, u.payload
@@ -217,6 +289,146 @@ func (t *tx) pendingVectors(ctx context.Context, databaseName string, limit int)
 		units = append(units, unit)
 	}
 	return units, rows.Err()
+}
+
+// rekeyVectorIdentity moves one Database out of the identity it locked itself
+// into. It is bounded and repeatable like the repair passes in this family: the
+// first call opens the window and drops what the old identity derived, each call
+// releases at most limit units, and the call that releases the last one writes
+// the new identity and closes the window.
+//
+// The window is stored rather than inferred because the two halves have to agree
+// across a crash: while it is open the derived index is gone and the units are
+// half-released, so any reader would be answering from an index that no longer
+// describes the bytes, and any writer would be pinning an identity the rekey is
+// retiring.
+//
+// A nil target leaves the Database unlocked, which is the shape a user needs
+// when nothing was configured yet or the first provider they tried was a trial:
+// whatever they configure next is then free to lock it.
+func (t *tx) rekeyVectorIdentity(
+	ctx context.Context,
+	databaseName string,
+	limit int,
+	target *recall.VectorRekeyTarget,
+) (recall.VectorRekeyReceipt, error) {
+	receipt := recall.VectorRekeyReceipt{}
+	database, err := t.resolveDatabase(ctx, databaseName)
+	if err != nil {
+		return recall.VectorRekeyReceipt{}, err
+	}
+	if limit < 1 {
+		return recall.VectorRekeyReceipt{}, fail(result.CodeValidation, "a rekey needs a positive LIMIT")
+	}
+	if target != nil && (strings.TrimSpace(target.Model) == "" || target.Dimensions <= 0) {
+		return recall.VectorRekeyReceipt{}, fail(result.CodeValidation,
+			"a rekey target needs a model and positive dimensions")
+	}
+	identity, state, err := t.vectorIdentityRow(ctx, database.ID)
+	if err != nil {
+		return recall.VectorRekeyReceipt{}, err
+	}
+	switch {
+	case !state.Active:
+		if identity.Model == "" && target == nil {
+			// No identity to release and nothing derived from one.
+			return receipt, nil
+		}
+		state = rekeyState{Active: true, StartedAt: formatTime(t.now)}
+		if target != nil {
+			state.Target = *target
+		}
+		if _, err := t.q().ExecContext(ctx, `UPDATE mem_databases
+			SET embedding_rekey_at = ?, embedding_rekey_model = ?, embedding_rekey_dimensions = ?
+			WHERE id = ?`,
+			state.StartedAt, state.Target.Model, state.Target.Dimensions, database.ID); err != nil {
+			return recall.VectorRekeyReceipt{}, err
+		}
+		if err := t.dropVectorIndexes(ctx, database.ID); err != nil {
+			return recall.VectorRekeyReceipt{}, err
+		}
+	case target != nil && (target.Model != state.Target.Model || target.Dimensions != state.Target.Dimensions):
+		// The window's target is fixed by the call that opened it. Aiming an
+		// open window somewhere else would release units for one identity and
+		// lock the Database to another.
+		return recall.VectorRekeyReceipt{}, fail(result.CodeValidation,
+			"database %q is already rekeying to %s/%d, so it cannot also be rekeyed to %s/%d",
+			database.Name, state.Target.Model, state.Target.Dimensions, target.Model, target.Dimensions)
+	case target == nil && state.Target.Model != "":
+		// A window nobody finishes would leave the Database refusing every
+		// vector answer with no way out, so "no target" is also the escape
+		// hatch: it re-aims the open window at unlocked. Units already released
+		// stay released — the work is the same either way, only the ending
+		// changes — and the next accepted vector locks whatever is configured.
+		state.Target = recall.VectorRekeyTarget{}
+		if _, err := t.q().ExecContext(ctx, `UPDATE mem_databases
+			SET embedding_rekey_model = '', embedding_rekey_dimensions = 0 WHERE id = ?`,
+			database.ID); err != nil {
+			return recall.VectorRekeyReceipt{}, err
+		}
+	}
+
+	released, err := t.releaseVectorBytes(ctx, database.ID, limit)
+	if err != nil {
+		return recall.VectorRekeyReceipt{}, err
+	}
+	remaining, err := t.unreleasedVectorUnits(ctx, database.ID, "")
+	if err != nil {
+		return recall.VectorRekeyReceipt{}, err
+	}
+	receipt.Released, receipt.Remaining = released, remaining
+	receipt.Model, receipt.Dimensions = state.Target.Model, state.Target.Dimensions
+	if remaining > 0 {
+		receipt.Rekeying = true
+		return receipt, nil
+	}
+	lockedAt := ""
+	if state.Target.Model != "" {
+		lockedAt = formatTime(t.now)
+	}
+	if _, err := t.q().ExecContext(ctx, `UPDATE mem_databases
+		SET embedding_model = ?, embedding_dimensions = ?, embedding_locked_at = ?,
+		    embedding_rekey_at = '', embedding_rekey_model = '', embedding_rekey_dimensions = 0
+		WHERE id = ?`,
+		state.Target.Model, state.Target.Dimensions, lockedAt, database.ID); err != nil {
+		return recall.VectorRekeyReceipt{}, err
+	}
+	return receipt, nil
+}
+
+// releaseVectorBytes lets go of at most limit units' vectors. The provenance
+// columns go with the bytes: a unit that keeps a model name while holding no
+// bytes would still be counted as ready by anything that asked the columns
+// instead of the bytes.
+func (t *tx) releaseVectorBytes(ctx context.Context, databaseID string, limit int) (int, error) {
+	outcome, err := t.q().ExecContext(ctx, `UPDATE mem_recall_units
+		SET embedding = NULL, embedded_content_hash = '', embedding_model = '',
+		    embedding_dimensions = 0, embedded_at = '', updated_at = ?
+		WHERE unit_no IN (SELECT unit_no FROM mem_recall_units
+			WHERE database_id = ? AND embedding IS NOT NULL ORDER BY unit_no LIMIT ?)`,
+		formatTime(t.now), databaseID, limit)
+	if err != nil {
+		return 0, err
+	}
+	released, err := outcome.RowsAffected()
+	return int(released), err
+}
+
+// unreleasedVectorUnits counts the bytes a rekey still has to let go of, for a
+// whole Database or for one of its Tables. It is the same number the pass
+// reports as remaining, so a caller watching the window and a caller running it
+// never disagree about how much is left.
+func (t *tx) unreleasedVectorUnits(ctx context.Context, databaseID, tableID string) (int, error) {
+	filter := ""
+	arguments := []any{databaseID}
+	if tableID != "" {
+		filter = " AND table_id = ?"
+		arguments = append(arguments, tableID)
+	}
+	count := 0
+	err := t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_recall_units
+		WHERE database_id = ? AND embedding IS NOT NULL`+filter, arguments...).Scan(&count)
+	return count, err
 }
 
 // attachVectorForRow offers a write's attached embedding to the unit the Row
@@ -268,6 +480,18 @@ func (t *tx) unitVectorState(ctx context.Context, databaseName, tableName, rowID
 	}
 	if err != nil {
 		return state, err
+	}
+	// Inside a rekey window nothing is ready, and the identity named on the row
+	// is the one being retired — the honest answer is the target, with Ready
+	// false, so a write that offered a vector reports it did not attach rather
+	// than claiming a vector the vector path will not answer with.
+	if _, rekey, err := t.vectorIdentityRow(ctx, table.DatabaseID); err != nil {
+		return state, err
+	} else if rekey.Active {
+		state.HasUnit = true
+		state.Ready = false
+		state.Model, state.Dimensions = rekey.Target.Model, rekey.Target.Dimensions
+		return state, nil
 	}
 	state.HasUnit = true
 	state.Ready = state.Ready && embeddedHash == state.ContentHash &&

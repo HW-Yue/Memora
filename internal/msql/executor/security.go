@@ -94,7 +94,13 @@ func StatementRiskLevel(statement ast.Statement) security.RiskLevel {
 		statement.CreateRoute != nil, statement.RenameRoute != nil,
 		statement.UpdateRoute != nil,
 		statement.ApplyRoute != nil, statement.ApplySchema != nil,
-		statement.Configuration != nil:
+		statement.Configuration != nil,
+		// A rekey drops derived indexes, and the width of a vec0 table is welded
+		// into its declaration — so it is a structural change even though each
+		// pass is bounded. It does not become a write on its later passes: a
+		// statement whose permission depends on how far along it is cannot be
+		// authorized before it runs.
+		statement.RekeyVector != nil:
 		return security.LevelStructural
 	default:
 		return security.LevelRead
@@ -121,6 +127,11 @@ func statementDatabaseNames(statement ast.Statement) []string {
 	if statement.RepairLinks != nil && statement.RepairLinks.Database != nil {
 		if len(statement.RepairLinks.Database.Parts) >= 1 {
 			databases = append(databases, statement.RepairLinks.Database.Parts[0].Value)
+		}
+	}
+	if statement.RekeyVector != nil && statement.RekeyVector.Database != nil {
+		if len(statement.RekeyVector.Database.Parts) >= 1 {
+			databases = append(databases, statement.RekeyVector.Database.Parts[0].Value)
 		}
 	}
 	appendDatabase := func(name ast.Name) {

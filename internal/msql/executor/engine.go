@@ -42,6 +42,7 @@ type Rows interface {
 	RepairVectorIndex(context.Context, string, int) (repair.VectorReceipt, error)
 	RepairRecallUnits(context.Context, string, int) (repair.RecallReceipt, error)
 	AcceptVector(context.Context, string, recall.VectorRecord) (recall.VectorIdentity, error)
+	RekeyVectorIdentity(context.Context, string, int, *recall.VectorRekeyTarget) (recall.VectorRekeyReceipt, error)
 	PendingVectors(context.Context, string, int) ([]recall.PendingUnit, error)
 	UnitVectorState(context.Context, string, string, string) (recall.UnitVectorState, error)
 	ArchivePage(context.Context, string, string, string, string, int) ([]archive.Summary, archive.Page, error)

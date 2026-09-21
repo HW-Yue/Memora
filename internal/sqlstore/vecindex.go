@@ -34,9 +34,19 @@ func (t *tx) storeVector(ctx context.Context, databaseID, tableID string, unitNo
 	if identity.Model == "" {
 		return fail(result.CodeInternal, "a vector was accepted before the database identity was locked")
 	}
-	ready, _, err := t.vecIndexReady(ctx, tableID)
+	ready, indexedDimensions, err := t.vecIndexReady(ctx, tableID)
 	if err != nil {
 		return err
+	}
+	if ready && indexedDimensions != identity.Dimensions {
+		// The width is welded into the virtual table (float[N] is fixed at
+		// CREATE), so an index built for another identity is not one this write
+		// can use: inserting would either fail or, worse, succeed at the wrong
+		// width. Rebuild it instead of trusting the registry row.
+		if err := t.dropVectorIndex(ctx, tableID); err != nil {
+			return err
+		}
+		ready = false
 	}
 	if !ready {
 		statement := fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS %s USING vec0(embedding float[%d])`,
@@ -57,6 +67,50 @@ func (t *tx) storeVector(ctx context.Context, databaseID, tableID string, unitNo
 		return err
 	}
 	_, err = t.q().ExecContext(ctx, `INSERT INTO `+name+`(rowid, embedding) VALUES (?, ?)`, unitNo, vector)
+	return err
+}
+
+// dropVectorIndexes removes every derived index one Database owns, registry row
+// first: a crash between the two must leave a table nobody trusts rather than a
+// registry row pointing at a table that is gone.
+//
+// A rekey drops them rather than emptying them because their width is welded
+// into the declaration, and the identity a rekey moves to may be a different
+// width.
+func (t *tx) dropVectorIndexes(ctx context.Context, databaseID string) error {
+	rows, err := t.q().QueryContext(ctx,
+		`SELECT table_id FROM mem_recall_vec_indexes WHERE database_id = ?`, databaseID)
+	if err != nil {
+		return err
+	}
+	tableIDs := []string{}
+	for rows.Next() {
+		var tableID string
+		if err := rows.Scan(&tableID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		tableIDs = append(tableIDs, tableID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	_ = rows.Close()
+	for _, tableID := range tableIDs {
+		if err := t.dropVectorIndex(ctx, tableID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *tx) dropVectorIndex(ctx context.Context, tableID string) error {
+	if _, err := t.q().ExecContext(ctx,
+		`DELETE FROM mem_recall_vec_indexes WHERE table_id = ?`, tableID); err != nil {
+		return err
+	}
+	_, err := t.q().ExecContext(ctx, `DROP TABLE IF EXISTS `+vecIndexName(tableID))
 	return err
 }
 
