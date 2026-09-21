@@ -1,6 +1,6 @@
 {
   "version": "memora.claude-code-adapter/v2",
-  "canonical_digest": "1bcb274ff57f0ec25b2326b5f0de4be936d4921a618c14121091b0846ce863a5",
+  "canonical_digest": "4bdffc87e0024cb79bb94e218f5d9671df63db4151e0ef8eeeb5185def88b4bd",
   "protocol_digest": "beff394c6c4794e881de8b36c04d1fccf025ad9d4da1701f386733ffa7f7a60b",
   "task_contract_digest": "613ad116bd1977580e6f0c4781c80ffeea88567e994610d3f92c6f4d225915d1",
   "files": [
@@ -16,7 +16,7 @@
     },
     {
       "path": ".claude/skills/memora/SKILL.md",
-      "sha256": "1bcb274ff57f0ec25b2326b5f0de4be936d4921a618c14121091b0846ce863a5",
+      "sha256": "4bdffc87e0024cb79bb94e218f5d9671df63db4151e0ef8eeeb5185def88b4bd",
       "mode": "0644"
     },
     {

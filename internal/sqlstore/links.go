@@ -7,6 +7,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/repair"
 	"github.com/HW-Yue/Memora/internal/result"
 	rowmodel "github.com/HW-Yue/Memora/internal/row"
 )
@@ -220,13 +221,16 @@ func (t *tx) resolveLinks(ctx context.Context, databaseName string, table catalo
 // recomputed from this snapshot, or this write would wipe the links it holds to
 // everyone else. Summaries and revisions are written at the moment of the write;
 // they are staleness markers, never refreshed in cascade here.
-func (t *tx) syncLinks(ctx context.Context, databaseName string, table catalog.Table, value *storedRow, refs []rowmodel.LinkRef) error {
+// It returns the counterpart endpoints it rewrote, because those summaries are
+// already fresh: queueing them would make a link write schedule its own repair.
+func (t *tx) syncLinks(ctx context.Context, databaseName string, table catalog.Table, value *storedRow, refs []rowmodel.LinkRef) (map[string]bool, error) {
+	refreshed := map[string]bool{}
 	if refs == nil {
-		return nil
+		return refreshed, nil
 	}
 	targets, err := t.resolveLinks(ctx, databaseName, table, value.ID, refs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	current := map[string]Link{}
 	for _, link := range value.Links {
@@ -243,8 +247,9 @@ func (t *tx) syncLinks(ctx context.Context, databaseName string, table catalog.T
 		}
 		revision, err := t.attachCounterpart(ctx, table, *value, target)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		refreshed[linkKey(target.Table.ID, target.Row.ID)] = true
 		linked = append(linked, Link{
 			RowID: target.Row.ID, DatabaseID: target.Table.DatabaseID, TableID: target.Table.ID,
 			Table: target.Table.Name, Summary: summarize(target.Table, target.Row), Revision: revision,
@@ -255,11 +260,12 @@ func (t *tx) syncLinks(ctx context.Context, databaseName string, table catalog.T
 			continue
 		}
 		if err := t.detachOneLink(ctx, table, *value, link); err != nil {
-			return err
+			return nil, err
 		}
+		refreshed[linkKey(link.TableID, link.RowID)] = true
 	}
 	value.Links = linked
-	return nil
+	return refreshed, nil
 }
 
 // attachCounterpart adds this Row's side to the other Row and returns the
@@ -322,12 +328,11 @@ func withoutLink(links []Link, tableID, rowID string) []Link {
 	return remaining
 }
 
-// Repair reasons. A summary is stale when the stored revision is no longer the
-// counterpart's; a reference is stale when the counterpart has been superseded
-// and the link has to follow its successors.
+// The repair vocabulary lives in package repair; these aliases are what the
+// storage layer and its tests call it.
 const (
-	RepairStaleSummary   = "stale_summary"
-	RepairStaleReference = "stale_reference"
+	RepairStaleSummary   = repair.StaleSummary
+	RepairStaleReference = repair.StaleReference
 )
 
 // enqueueRepair records that one link endpoint needs repair. The queue is an
@@ -361,19 +366,299 @@ func (t *tx) pendingRepairs(ctx context.Context, tableID, rowID string) (map[str
 	return pending, rows.Err()
 }
 
-// enqueueSupersededLinks queues every endpoint that still points at a Row which
-// is being superseded. The writer does this inside its own transaction: a reader
-// cannot write (writers are serialised), and waiting for someone to read would
-// leave the queue empty across a crash.
-func (t *tx) enqueueSupersededLinks(ctx context.Context, table catalog.Table, source storedRow) error {
-	for _, link := range source.Links {
+// enqueueInboundRepairs queues every endpoint that still points at a Row. The
+// writer does this inside its own transaction: a reader cannot write (writers
+// are serialised), and waiting for someone to read would leave the queue empty
+// across a crash. A Row's own links are the reverse inventory — a link is stored
+// at both ends, so whoever points here is listed here.
+func (t *tx) enqueueInboundRepairs(ctx context.Context, table catalog.Table, value storedRow, reason string, skip map[string]bool) error {
+	for _, link := range value.Links {
 		counterpartTable := table.ID
 		if link.TableID != "" {
 			counterpartTable = link.TableID
 		}
-		if err := t.enqueueRepair(ctx, table, link.RowID, counterpartTable, source.ID, RepairStaleReference); err != nil {
+		if skip[linkKey(counterpartTable, link.RowID)] {
+			continue
+		}
+		if err := t.enqueueRepair(ctx, table, link.RowID, counterpartTable, value.ID, reason); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// RepairReceipt reports what one bounded repair pass did. The executor speaks
+// this shape without importing the storage layer.
+type RepairReceipt = repair.Receipt
+
+// maxRepairHops bounds following a successor chain, which a reshape can extend.
+const maxRepairHops = 16
+
+// RepairLinks drains a bounded batch of queued endpoints. Every entry is
+// re-checked before it is applied: the queue records what was true when it was
+// written, and a repair that no longer has anything to do is discarded rather
+// than applied blindly.
+func (t *tx) repairLinks(ctx context.Context, databaseName string, limit int) (RepairReceipt, error) {
+	receipt := RepairReceipt{}
+	database, err := t.resolveDatabase(ctx, databaseName)
+	if err != nil {
+		return receipt, err
+	}
+	databaseID := database.ID
+	type queued struct {
+		tableID, rowID, counterpartTableID, counterpartRowID, reason string
+	}
+	rows, err := t.q().QueryContext(ctx, `SELECT table_id, row_id, counterpart_table_id, counterpart_row_id, reason
+		FROM mem_repairs WHERE database_id = ? ORDER BY queued_at, row_id LIMIT ?`, databaseID, limit+1)
+	if err != nil {
+		return receipt, err
+	}
+	entries := []queued{}
+	for rows.Next() {
+		entry := queued{}
+		if err := rows.Scan(&entry.tableID, &entry.rowID, &entry.counterpartTableID,
+			&entry.counterpartRowID, &entry.reason); err != nil {
+			_ = rows.Close()
+			return receipt, err
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return receipt, err
+	}
+	_ = rows.Close()
+	if len(entries) > limit {
+		receipt.Remaining = len(entries) - limit
+		entries = entries[:limit]
+	}
+
+	for _, entry := range entries {
+		applied, err := t.repairEndpoint(ctx, entry.tableID, entry.rowID, entry.counterpartTableID,
+			entry.counterpartRowID, entry.reason)
+		if err != nil {
+			return receipt, err
+		}
+		if applied {
+			receipt.Repaired++
+		} else {
+			receipt.Discarded++
+		}
+		if _, err := t.q().ExecContext(ctx, `DELETE FROM mem_repairs
+			WHERE table_id = ? AND row_id = ? AND counterpart_table_id = ? AND counterpart_row_id = ?`,
+			entry.tableID, entry.rowID, entry.counterpartTableID, entry.counterpartRowID); err != nil {
+			return receipt, err
+		}
+	}
+	var remaining int
+	if err := t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_repairs WHERE database_id = ?`,
+		databaseID).Scan(&remaining); err != nil {
+		return receipt, err
+	}
+	receipt.Remaining = remaining
+	return receipt, nil
+}
+
+// repairEndpoint applies one queued endpoint and reports whether it changed
+// anything. Writes here go straight to the Row: the repair deliberately does not
+// queue the endpoints it touches, or repairing one link would queue the next
+// repair forever.
+func (t *tx) repairEndpoint(ctx context.Context, tableID, holderID, counterpartTableID, counterpartID, reason string) (bool, error) {
+	holderTable, err := t.tableByID(ctx, tableID)
+	if err != nil {
+		return false, nil
+	}
+	holder, err := t.readRow(ctx, holderTable, holderID)
+	if err != nil || holder.State != rowmodel.StateLive {
+		return false, nil
+	}
+	counterpartTable := holderTable
+	if counterpartTableID != "" && counterpartTableID != tableID {
+		resolved, err := t.tableByID(ctx, counterpartTableID)
+		if err != nil {
+			return false, nil
+		}
+		counterpartTable = resolved
+	}
+	counterpart, counterpartErr := t.readRow(ctx, counterpartTable, counterpartID)
+	if counterpartErr != nil {
+		// The counterpart is gone: the link has nothing to point at any more.
+		return t.dropHolderLink(ctx, holderTable, holder, counterpartTable.ID, counterpartID)
+	}
+
+	switch reason {
+	case RepairStaleReference:
+		terminals, err := t.successorTail(ctx, counterpartTable, counterpart)
+		if err != nil {
+			return false, err
+		}
+		return t.repointLink(ctx, holderTable, holder, counterpartTable, counterpart, terminals)
+	case RepairStaleSummary:
+		if counterpart.State != rowmodel.StateLive {
+			terminals, err := t.successorTail(ctx, counterpartTable, counterpart)
+			if err != nil {
+				return false, err
+			}
+			return t.repointLink(ctx, holderTable, holder, counterpartTable, counterpart, terminals)
+		}
+		return t.refreshSummary(ctx, holderTable, holder, counterpartTable, counterpart)
+	default:
+		return false, nil
+	}
+}
+
+// successorTail follows a superseded Row to the Rows that stand for it now.
+func (t *tx) successorTail(ctx context.Context, table catalog.Table, value storedRow) ([]linkTarget, error) {
+	frontier := []string{value.ID}
+	visited := map[string]bool{value.ID: true}
+	terminal := []linkTarget{}
+	for hops := 0; hops < maxRepairHops && len(frontier) > 0; hops++ {
+		next := []string{}
+		for _, id := range frontier {
+			current, err := t.readRow(ctx, table, id)
+			if err != nil {
+				continue
+			}
+			if current.State == rowmodel.StateSuperseded && len(current.SuccessorIDs) > 0 {
+				for _, successor := range current.SuccessorIDs {
+					if visited[successor] {
+						continue
+					}
+					visited[successor] = true
+					next = append(next, successor)
+				}
+				continue
+			}
+			if current.State == rowmodel.StateLive {
+				terminal = append(terminal, linkTarget{Table: table, Row: current})
+			}
+		}
+		frontier = next
+	}
+	return terminal, nil
+}
+
+// repointLink moves one endpoint from a superseded Row to whatever stands for it
+// now: the old back edge goes, and every terminal gains the link. Both ends of
+// every edge are written together, so the repair cannot leave a stale summary of
+// its own making behind.
+func (t *tx) repointLink(ctx context.Context, holderTable catalog.Table, holder storedRow,
+	oldTable catalog.Table, old storedRow, terminals []linkTarget) (bool, error) {
+	changed := false
+	holder.Links = withoutLink(holder.Links, oldTable.ID, old.ID)
+	if err := t.advance(ctx, holderTable, &holder); err != nil {
+		return false, err
+	}
+	for _, terminal := range terminals {
+		terminal.Row.Links = append(withoutLink(terminal.Row.Links, holderTable.ID, holder.ID), Link{
+			RowID: holder.ID, DatabaseID: holderTable.DatabaseID, TableID: holderTable.ID,
+			Table: holderTable.Name, Summary: summarize(holderTable, holder), Revision: holder.Revision,
+		})
+		if err := t.advance(ctx, terminal.Table, &terminal.Row); err != nil {
+			return false, err
+		}
+		if err := t.writeRow(ctx, terminal.Table, terminal.Row, false); err != nil {
+			return false, err
+		}
+		if err := t.appendHistory(ctx, terminal.Table, terminal.Row, history.OperationUpdate, rowmodel.WriteMetadata{}, nil); err != nil {
+			return false, err
+		}
+		holder.Links = append(holder.Links, Link{
+			RowID: terminal.Row.ID, DatabaseID: terminal.Table.DatabaseID, TableID: terminal.Table.ID,
+			Table: terminal.Table.Name, Summary: summarize(terminal.Table, terminal.Row), Revision: terminal.Row.Revision,
+		})
+		changed = true
+	}
+	if old.State == rowmodel.StateSuperseded {
+		old.Links = withoutLink(old.Links, holderTable.ID, holder.ID)
+		if err := t.advance(ctx, oldTable, &old); err != nil {
+			return false, err
+		}
+		if err := t.writeRow(ctx, oldTable, old, false); err != nil {
+			return false, err
+		}
+	}
+	if err := t.writeRow(ctx, holderTable, holder, false); err != nil {
+		return false, err
+	}
+	if err := t.appendHistory(ctx, holderTable, holder, history.OperationUpdate, rowmodel.WriteMetadata{}, nil); err != nil {
+		return false, err
+	}
+	return changed, nil
+}
+
+// refreshSummary rewrites one endpoint's summary from the counterpart's current
+// revision, and the counterpart's entry about the holder at the same time: two
+// summaries written together cannot make each other stale.
+func (t *tx) refreshSummary(ctx context.Context, holderTable catalog.Table, holder storedRow,
+	counterpartTable catalog.Table, counterpart storedRow) (bool, error) {
+	holderRevision := holder.Revision + 1
+	counterpartRevision := counterpart.Revision + 1
+
+	holder.Links = replaceLink(holder.Links, counterpartTable.ID, Link{
+		RowID: counterpart.ID, DatabaseID: counterpartTable.DatabaseID, TableID: counterpartTable.ID,
+		Table: counterpartTable.Name, Summary: summarize(counterpartTable, counterpart),
+		Revision: counterpartRevision,
+	})
+	counterpart.Links = replaceLink(counterpart.Links, holderTable.ID, Link{
+		RowID: holder.ID, DatabaseID: holderTable.DatabaseID, TableID: holderTable.ID,
+		Table: holderTable.Name, Summary: summarize(holderTable, holder), Revision: holderRevision,
+	})
+	if err := t.advance(ctx, counterpartTable, &counterpart); err != nil {
+		return false, err
+	}
+	if err := t.writeRow(ctx, counterpartTable, counterpart, false); err != nil {
+		return false, err
+	}
+	if err := t.advance(ctx, holderTable, &holder); err != nil {
+		return false, err
+	}
+	if err := t.writeRow(ctx, holderTable, holder, false); err != nil {
+		return false, err
+	}
+	if err := t.appendHistory(ctx, holderTable, holder, history.OperationUpdate, rowmodel.WriteMetadata{}, nil); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// dropHolderLink removes an endpoint whose counterpart no longer exists.
+func (t *tx) dropHolderLink(ctx context.Context, holderTable catalog.Table, holder storedRow,
+	counterpartTableID, counterpartID string) (bool, error) {
+	remaining := withoutLink(holder.Links, counterpartTableID, counterpartID)
+	if len(remaining) == len(holder.Links) {
+		return false, nil
+	}
+	holder.Links = remaining
+	if err := t.advance(ctx, holderTable, &holder); err != nil {
+		return false, err
+	}
+	if err := t.writeRow(ctx, holderTable, holder, false); err != nil {
+		return false, err
+	}
+	if err := t.appendHistory(ctx, holderTable, holder, history.OperationUpdate, rowmodel.WriteMetadata{}, nil); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// replaceLink rewrites the entry pointing at tableID, or appends it when there
+// is none, which is what "refresh" means for one side of a link.
+func replaceLink(links []Link, tableID string, replacement Link) []Link {
+	updated := make([]Link, 0, len(links)+1)
+	replaced := false
+	for _, link := range links {
+		if link.RowID == replacement.RowID && (link.TableID == "" || link.TableID == tableID) {
+			if !replaced {
+				updated = append(updated, replacement)
+				replaced = true
+			}
+			continue
+		}
+		updated = append(updated, link)
+	}
+	if !replaced {
+		updated = append(updated, replacement)
+	}
+	return updated
 }

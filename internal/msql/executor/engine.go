@@ -11,6 +11,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/binder"
+	"github.com/HW-Yue/Memora/internal/repair"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -33,6 +34,7 @@ type Rows interface {
 	AsOfRevision(context.Context, string, string, string, uint64) (row.Row, error)
 	AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error)
 	HistoryPage(context.Context, string, string, string, string, int) ([]history.Record, history.ReadPage, error)
+	RepairLinks(context.Context, string, int) (repair.Receipt, error)
 	ArchivePage(context.Context, string, string, string, string, int) ([]archive.Summary, archive.Page, error)
 	ArchiveRecord(context.Context, string) (archive.Record, error)
 	Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error)

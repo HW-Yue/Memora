@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
@@ -123,5 +124,52 @@ func (engine *Engine) openArchive(ctx context.Context, open *ast.OpenArchiveStat
 			"reason": record.Summary.Reason,
 			"path":   json.RawMessage(path), "row": json.RawMessage(content),
 		}},
+	}, nil
+}
+
+// repairLinks drains a bounded batch of queued link repairs. It is a write: the
+// batch bound is the statement's own LIMIT, and the caller's declared ceiling
+// has to cover it, because one endpoint can touch several Rows.
+func (engine *Engine) repairLinks(ctx context.Context, statement *ast.RepairLinksStatement, bound bindings, options MutationOptions) (Output, error) {
+	if statement == nil || statement.Database == nil || statement.Limit == nil {
+		return Output{}, executeError(result.CodeValidation, "REPAIR LINKS needs IN DATABASE and LIMIT")
+	}
+	if options.MaxAffectedRows == 0 {
+		return Output{}, executeError(result.CodeValidation, "REPAIR LINKS requires max_affected_rows")
+	}
+	limit, err := historyPositiveInteger(statement.Limit, catalog.Table{}, bound, "REPAIR LINKS LIMIT")
+	if err != nil {
+		return Output{}, err
+	}
+	if limit > maxQueryScan {
+		return Output{}, executeError(result.CodeValidation, "REPAIR LINKS LIMIT must be between 1 and 1000")
+	}
+	if options.MaxAffectedRows < uint64(limit) {
+		return Output{}, executeError(result.CodeValidation,
+			fmt.Sprintf("REPAIR LINKS LIMIT %d exceeds max_affected_rows %d", limit, options.MaxAffectedRows))
+	}
+	// The statement names one Database; a dotted name is not accepted, because a
+	// repair pass is scoped to the Database whose queue it drains.
+	if len(statement.Database.Parts) != 1 {
+		return Output{}, executeError(result.CodeValidation, "REPAIR LINKS takes a Database name, not a dotted name")
+	}
+	databaseName := statement.Database.Parts[0].Value
+	if err := engine.authorizeDatabaseReference(ctx, databaseName); err != nil {
+		return Output{}, err
+	}
+	receipt, err := engine.rows.RepairLinks(ctx, databaseName, int(limit))
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return Output{
+		Columns: []result.Column{
+			{Name: "repaired", Type: "INTEGER"},
+			{Name: "discarded", Type: "INTEGER"},
+			{Name: "remaining", Type: "INTEGER"},
+		},
+		Rows: []result.Row{{
+			"repaired": receipt.Repaired, "discarded": receipt.Discarded, "remaining": receipt.Remaining,
+		}},
+		AffectedRows: uint64(receipt.Repaired),
 	}, nil
 }

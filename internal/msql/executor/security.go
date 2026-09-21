@@ -80,7 +80,7 @@ func (engine *Engine) authorizeDatabaseReferenceAtLevel(ctx context.Context, lev
 func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 	switch {
 	case statement.Insert != nil, statement.Update != nil, statement.Delete != nil,
-		statement.Restore != nil:
+		statement.Restore != nil, statement.RepairLinks != nil:
 		return security.LevelWrite
 	case statement.Create != nil, statement.Alter != nil, statement.Reshape != nil,
 		statement.CreateRoute != nil, statement.RenameRoute != nil,
@@ -95,6 +95,11 @@ func statementRiskLevel(statement ast.Statement) security.RiskLevel {
 
 func statementDatabaseNames(statement ast.Statement) []string {
 	databases := []string{}
+	if statement.RepairLinks != nil && statement.RepairLinks.Database != nil {
+		if len(statement.RepairLinks.Database.Parts) >= 1 {
+			databases = append(databases, statement.RepairLinks.Database.Parts[0].Value)
+		}
+	}
 	appendDatabase := func(name ast.Name) {
 		if len(name.Parts) >= 1 {
 			databases = append(databases, name.Parts[0].Value)

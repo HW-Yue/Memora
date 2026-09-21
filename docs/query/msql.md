@@ -30,6 +30,7 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
 - 事务：`BEGIN`、`COMMIT`、`ROLLBACK`
 - 历史：`SHOW HISTORY`、`AS OF REVISION` / `COMMIT_SEQUENCE`
 - 归档：`SHOW ARCHIVE`、`OPEN ARCHIVE`（删除后唯一的读面，见[行删除](../product/row-delete-archive.md)）
+- 修复：`REPAIR LINKS IN DATABASE :database LIMIT :limit`（出队一批懒修复，见[行链接](../product/row-links.md)）
 - 配置：`SHOW CONFIGURATION` / `HISTORY`、`ALTER CONFIGURATION`、
   `RESTORE CONFIGURATION`
 

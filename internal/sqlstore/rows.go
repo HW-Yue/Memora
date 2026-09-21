@@ -272,7 +272,7 @@ func (t *tx) insert(ctx context.Context, databaseName, tableName string, values 
 	if err := requireSingleLeaf(value); err != nil {
 		return row.Row{}, err
 	}
-	if err := t.syncLinks(ctx, databaseName, table, &value, options.Links); err != nil {
+	if _, err := t.syncLinks(ctx, databaseName, table, &value, options.Links); err != nil {
 		return row.Row{}, err
 	}
 	if err := t.writeRow(ctx, table, value, true); err != nil {
@@ -383,7 +383,15 @@ func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID strin
 	if err := t.advance(ctx, table, &value); err != nil {
 		return row.Row{}, err
 	}
-	if err := t.syncLinks(ctx, databaseName, table, &value, options.Links); err != nil {
+	refreshed, err := t.syncLinks(ctx, databaseName, table, &value, options.Links)
+	if err != nil {
+		return row.Row{}, err
+	}
+	// Whoever linked here holds a summary of the revision this write just left
+	// behind. The writer queues them rather than walking every link on a read:
+	// the Row's own links are the reverse inventory. The endpoints this write
+	// refreshed itself are already current, so they are skipped.
+	if err := t.enqueueInboundRepairs(ctx, table, value, RepairStaleSummary, refreshed); err != nil {
 		return row.Row{}, err
 	}
 	related := []string{}

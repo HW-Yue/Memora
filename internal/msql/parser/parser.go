@@ -119,6 +119,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		}
 	case parser.matchWord("COMMIT"):
 		statement = transactionStatement("COMMIT")
+	case parser.matchWord("REPAIR"):
+		statement, err = parser.parseRepair()
 	case parser.matchWord("ROLLBACK"):
 		statement = transactionStatement("ROLLBACK")
 	case parser.checkKind(lexer.KindEOF):
@@ -1454,4 +1456,33 @@ func tokenDescription(token lexer.Token) string {
 		return "EOF"
 	}
 	return strconv.Quote(token.Lexeme)
+}
+
+// parseRepair reads REPAIR LINKS IN DATABASE <name> LIMIT <n>. The limit is
+// required: a repair pass that could drain the whole queue would block writers
+// for as long as the queue is long.
+func (parser *parser) parseRepair() (ast.Statement, error) {
+	if _, err := parser.expectWord("LINKS"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("IN"); err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("DATABASE"); err != nil {
+		return ast.Statement{}, err
+	}
+	database, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	if _, err := parser.expectWord("LIMIT"); err != nil {
+		return ast.Statement{}, err
+	}
+	limit, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	return ast.Statement{Kind: "REPAIR_LINKS", RepairLinks: &ast.RepairLinksStatement{
+		Database: &database, Limit: &limit,
+	}}, nil
 }

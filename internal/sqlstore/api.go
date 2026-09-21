@@ -29,6 +29,14 @@ func (db *DB) ops() operations {
 	}}
 }
 
+func (o operations) RepairLinks(ctx context.Context, databaseName string, limit int) (receipt RepairReceipt, err error) {
+	err = o.run(ctx, true, func(t *tx) error {
+		receipt, err = t.repairLinks(ctx, databaseName, limit)
+		return err
+	})
+	return
+}
+
 func (o operations) ArchivePage(ctx context.Context, databaseName, tableName, rowID, cursor string, limit int) (values []ArchiveSummary, page ArchivePage, err error) {
 	err = o.run(ctx, false, func(t *tx) error {
 		values, page, err = t.archivePage(ctx, databaseName, tableName, rowID, cursor, limit)
@@ -321,7 +329,7 @@ func (t *tx) reshape(ctx context.Context, databaseName, tableName string, source
 		// Every link still pointing here becomes a pending repair, queued in this
 		// same transaction: readers do not write, and a crash must not leave the
 		// queue empty while the links are already stale.
-		if err := t.enqueueSupersededLinks(ctx, table, value); err != nil {
+		if err := t.enqueueInboundRepairs(ctx, table, value, RepairStaleReference, nil); err != nil {
 			return nil, err
 		}
 		// No advance and no history record: identity changed, content did not, so

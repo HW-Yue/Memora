@@ -32,6 +32,7 @@ type Statement struct {
 	UpdateRoute   *UpdateRouteStatement        `json:"update_route,omitempty"`
 	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
 	OpenArchive   *OpenArchiveStatement        `json:"open_archive,omitempty"`
+	RepairLinks   *RepairLinksStatement        `json:"repair_links,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
 	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
@@ -179,6 +180,13 @@ type UpdateRouteStatement struct {
 	Route    *Expression `json:"route"`
 	Synopsis *Expression `json:"synopsis"`
 	Aliases  *Expression `json:"aliases,omitempty"`
+}
+
+// RepairLinksStatement drains a bounded batch of queued link repairs. It is a
+// write, not a read: it re-points or refreshes links.
+type RepairLinksStatement struct {
+	Database *Name       `json:"database"`
+	Limit    *Expression `json:"limit"`
 }
 
 type OpenArchiveStatement struct {
@@ -341,6 +349,8 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.OpenRoute.Limit)
 	case statement.OpenArchive != nil:
 		appendExpression(statement.OpenArchive.Archive)
+	case statement.RepairLinks != nil:
+		appendExpression(statement.RepairLinks.Limit)
 	case statement.PlanRoute != nil:
 		appendExpression(statement.PlanRoute.Proposal)
 	case statement.PlanSchema != nil:

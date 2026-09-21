@@ -430,6 +430,22 @@ the path (`CREATE ROUTE`, or `route_path` on the INSERT) and mounting the new Ro
 on its leaf. The archived IDs are a record of what was, not a promise it can be
 reused.
 
+## Drain the link repair queue
+
+Linking is two-sided and lazy repairs are queued rather than applied inline: a
+reshape queues the links that pointed at it, and an in-place write queues the
+summaries that describe it. Draining is an explicit, bounded write.
+
+```sh
+memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affected_rows":64,"actor":"agent:host","source":"conversation:event-9","reason":"drain link repairs"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "REPAIR LINKS IN DATABASE work LIMIT :limit"
+```
+
+`LIMIT` is the batch size and may not exceed `max_affected_rows`. The receipt
+reports how many endpoints were repaired, discarded (the queued condition no
+longer holds), and how many remain. A repair re-checks every entry before
+applying it and never queues a follow-up of its own, so repeating the statement
+until `remaining` is zero is safe.
+
 ## Router mutations
 
 ### Route branch fan-out
