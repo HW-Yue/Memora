@@ -18,7 +18,7 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 
 | # | 模块 | 职责 | 规模 |
 |---|---|---|---|
-| 1 | **落地基座** | 修 `ci.yml` 的 `CGO_ENABLED`／GOOS sweep，拿到真实绿 CI；squash 一个 baseline 落 `main`；补 `catalog`／`row`／`instance` 最小回归 | 小，2–3 F |
+| 1 | **落地基座** | 修 `ci.yml` 的 `CGO_ENABLED`／GOOS sweep，拿到真实绿 CI；补 `catalog`／`row`／`instance` 最小回归（**不落 `main`**） | 小，2–3 F |
 | 2 | **写入不变量层** | 把「live 行**恰好**被一个活跃叶子指向」做成 `sqlstore` 提交路径上的强制检查；顺手给 `rows`／`routes` 补事务级测试骨架 | 中，3–4 F |
 | 3 | **节点生命周期** | 空节点在**任何致空操作**里同事务物理删除 + 递归向上剪枝；`DELETE ROUTE` 从 Agent 表面退役；INSERT 隐式建路径 | 中，2–3 F |
 | 4 | **归档式删除** | 六步单事务：归档、删行、删叶、剪空父、按 `links` 倒推摘对端、删 history；恢复交给 Agent | 大，4–5 F |

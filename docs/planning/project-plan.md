@@ -17,7 +17,7 @@ Memora 是给 AI Agent 用的本地个人数据库：Agent 自己建模、用 MS
    归档式删除 → 从归档重建；
 3. **不变量**：live 行**恰好**一个活跃叶子；一次逻辑写入一个事务；删除后从任何读面
    （含 `AS OF`）都拿不到；召回只返回路径，不返回分数、理由与正文；
-4. **质量门**：`./scripts/ci.sh` 六道门在**真实 CI** 上对 `main` 全绿；每个 Feature
+4. **质量门**：`./scripts/ci.sh` 六道门在**真实 CI** 上对**当前分支**全绿；每个 Feature
    独立可回滚。
 
 **明确不做**：自研存储引擎／MVCC／WAL 与恢复重放；把文档 chunk、PDF、图片作为持久化
@@ -28,7 +28,8 @@ Memora 是给 AI Agent 用的本地个人数据库：Agent 自己建模、用 MS
 SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_changes`、配置。
 现役查询主路 `SHOW ROUTES` → `OPEN ROUTE` → `SELECT`；写入 `INSERT` / `UPDATE` /
 `DELETE` / `SPLIT` / `MERGE`；接入 CLI、MCP、只读 Admin、Skill、SDK、daemon。
-源码约 22.5k 行、测试约 5.4k 行。分支 `rewrite/adr0011` 领先 `main`，**从未跑过真实 CI**。
+源码约 22.5k 行、测试约 5.4k 行。分支 `rewrite/adr0011`；**真实 CI 已跑通一次**（2026-09-21，
+两个平台全绿）。`main` 是另一条路，与这条线无关。
 
 **这七块里什么是编排、什么不是**（免得估工时错判）：存储引擎**零开发**——没有页格式、WAL、
 B+ 树、恢复重放。M2–M6 的主体是「一个事务里按顺序执行若干条 SQL + 判定 + 证据」；
@@ -41,11 +42,13 @@ M1 是工程底座（CI 配置、baseline、回归），一条 SQL 都不用写�
 
 ### M1 落地基座 —— 小，2–3 F
 
-修 `ci.yml`：`CGO_ENABLED=1` 下沉到需要 cgo 的 stage，`GOOS=linux` sweep 用 0 →
-在分支上见一次真实绿 CI → squash 一个 baseline 提交落 `main`、分支留 tag 存档 →
-补 `catalog`／`row`／`instance` 最小回归。
+修 `ci.yml`：`CGO_ENABLED` 由各 stage 自己决定，让跨平台 sweep 不再受调用方环境摆布 →
+在当前分支上跑一次**真实 GitHub CI** → 补 `catalog`／`row`／`instance` 最小回归。
 
-**判据**：GitHub CI 对 `main` 六道门全绿；baseline 可构建可回滚；三个核心包有可跑回归。
+**判据**：真实 CI 在当前分支六道门全绿；三个核心包有可跑回归。
+
+**不含 baseline 落 `main`**（2026-09-21 定）：`main` 是另一条路，与当前分支无关，
+不把这条线压成 baseline 提交过去。
 
 ### M2 写入不变量层 —— 中，3–4 F
 
