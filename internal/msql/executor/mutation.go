@@ -61,6 +61,10 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 		return engine.describeRoute(ctx, statement.Describe, bound)
 	case statement.Show != nil && statement.Show.Object == "HISTORY":
 		return engine.showHistory(ctx, statement, bound)
+	case statement.Show != nil && statement.Show.Object == "ARCHIVE":
+		return engine.showArchive(ctx, statement, bound)
+	case statement.OpenArchive != nil:
+		return engine.openArchive(ctx, statement.OpenArchive, bound)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
 		return engine.showRoutes(ctx, statement, bound)
 	case statement.CreateRoute != nil:

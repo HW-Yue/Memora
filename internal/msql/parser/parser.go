@@ -444,6 +444,41 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		show.Limit = &limit
+	case parser.matchWord("ARCHIVE"):
+		show.Object = "ARCHIVE"
+		if _, err := parser.expectWord("FROM"); err != nil {
+			return ast.Statement{}, err
+		}
+		name, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Table = &name
+		if parser.matchWord("FOR") {
+			if _, err := parser.expectWord("ROW"); err != nil {
+				return ast.Statement{}, err
+			}
+			row, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Row = &row
+		}
+		if parser.matchWord("CURSOR") {
+			cursor, err := parser.parseExpression(1)
+			if err != nil {
+				return ast.Statement{}, err
+			}
+			show.Cursor = &cursor
+		}
+		if _, err := parser.expectWord("LIMIT"); err != nil {
+			return ast.Statement{}, err
+		}
+		limit, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		show.Limit = &limit
 	case parser.matchWord("ROUTES"):
 		show.Object = "ROUTES"
 		switch {
@@ -1264,6 +1299,13 @@ func (parser *parser) parseAlterRoute() (ast.Statement, error) {
 }
 
 func (parser *parser) parseOpenRoute() (ast.Statement, error) {
+	if parser.matchWord("ARCHIVE") {
+		archive, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		return ast.Statement{Kind: "OPEN_ARCHIVE", OpenArchive: &ast.OpenArchiveStatement{Archive: &archive}}, nil
+	}
 	if _, err := parser.expectWord("ROUTE"); err != nil {
 		return ast.Statement{}, err
 	}

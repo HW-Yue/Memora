@@ -117,7 +117,8 @@ CREATE TABLE IF NOT EXISTS mem_change_scopes (
 	PRIMARY KEY(database_id, sequence)
 );
 CREATE TABLE IF NOT EXISTS mem_archive (
-	archive_id TEXT PRIMARY KEY,
+	sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+	archive_id TEXT NOT NULL UNIQUE,
 	database_id TEXT NOT NULL,
 	table_id TEXT NOT NULL,
 	row_id TEXT NOT NULL,

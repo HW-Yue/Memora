@@ -410,6 +410,26 @@ create a database-level candidate/disputed state, or silently pick a winner.
 Also ask before irreversible, privacy-reducing, permission-expanding, or broadly
 destructive operations.
 
+## Recover an archived deletion
+
+A DELETE removes the Row, the leaf it occupied, its history and both ends of its
+links. The engine writes one archive record first, and rebuilding from it is your
+work, not the engine's.
+
+```sh
+memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ARCHIVE FROM work.notes FOR ROW :row LIMIT :limit"
+memora query --input '{"parameters":{"named":{"archive":"archive_01"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "OPEN ARCHIVE :archive"
+```
+
+`SHOW ARCHIVE` lists metadata only and requires both a Table scope and a LIMIT;
+`OPEN ARCHIVE` returns one record in full — the path root-first, and the Row as it
+was stored, including the links it carried. A deleted Row is unreachable
+everywhere else (`SELECT`, `SHOW HISTORY`, `AS OF`, `OPEN ROUTE`); the archive is
+the single exception, and `SELECT` cannot reach it either. Rebuild by recreating
+the path (`CREATE ROUTE`, or `route_path` on the INSERT) and mounting the new Row
+on its leaf. The archived IDs are a record of what was, not a promise it can be
+reused.
+
 ## Router mutations
 
 ### Route branch fan-out

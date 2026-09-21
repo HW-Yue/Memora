@@ -31,6 +31,7 @@ type Statement struct {
 	RenameRoute   *RenameRouteStatement        `json:"rename_route,omitempty"`
 	UpdateRoute   *UpdateRouteStatement        `json:"update_route,omitempty"`
 	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
+	OpenArchive   *OpenArchiveStatement        `json:"open_archive,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
 	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
@@ -180,6 +181,10 @@ type UpdateRouteStatement struct {
 	Aliases  *Expression `json:"aliases,omitempty"`
 }
 
+type OpenArchiveStatement struct {
+	Archive *Expression `json:"archive"`
+}
+
 type OpenRouteStatement struct {
 	Mode   string      `json:"mode"`
 	Route  *Expression `json:"route"`
@@ -274,6 +279,10 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.Row)
 		appendExpression(statement.Show.Cursor)
 		appendExpression(statement.Show.Limit)
+	case statement.Show != nil && statement.Show.Object == "ARCHIVE":
+		appendExpression(statement.Show.Row)
+		appendExpression(statement.Show.Cursor)
+		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && (statement.Show.Object == "CHANGES" || statement.Show.Object == "CHANGE"):
 		appendExpression(statement.Show.Change)
 		appendExpression(statement.Show.After)
@@ -330,6 +339,8 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.OpenRoute.Route)
 		appendExpression(statement.OpenRoute.Cursor)
 		appendExpression(statement.OpenRoute.Limit)
+	case statement.OpenArchive != nil:
+		appendExpression(statement.OpenArchive.Archive)
 	case statement.PlanRoute != nil:
 		appendExpression(statement.PlanRoute.Proposal)
 	case statement.PlanSchema != nil:

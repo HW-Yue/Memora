@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/HW-Yue/Memora/internal/archive"
 	"github.com/HW-Yue/Memora/internal/catalog"
-	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
 )
 
@@ -13,28 +13,10 @@ import (
 // it occupied, its history and every link pointing at it all go, so the archive
 // is the only copy left. Rebuilding from it is the Agent's work, not the
 // engine's. See docs/product/row-delete-archive.md.
-type ArchiveSegment struct {
-	RouteID string      `json:"route_id"`
-	Name    string      `json:"name"`
-	Kind    router.Kind `json:"kind"`
-	Purpose string      `json:"purpose"`
-}
-
-// ArchivedRow is the Row as it was stored, keyed exactly as the data table
-// keys it, so a rebuild does not depend on this file guessing at columns.
-type ArchivedRow struct {
-	RowID          string         `json:"row_id"`
-	SchemaVersion  uint64         `json:"schema_version"`
-	Revision       uint64         `json:"revision"`
-	CommitSequence uint64         `json:"commit_sequence"`
-	RowState       string         `json:"row_state"`
-	Values         map[string]any `json:"values"`
-	RouteLeafIDs   []string       `json:"route_leaf_ids"`
-	Links          []Link         `json:"links"`
-	SuccessorIDs   []string       `json:"successor_ids"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
-}
+type (
+	ArchiveSegment = archive.Segment
+	ArchivedRow    = archive.Row
+)
 
 // archivedPath walks from the Row's leaf up to the root and returns the path
 // root-first, so a reader can rebuild it in the order it was navigated.
@@ -74,10 +56,18 @@ func (t *tx) archiveRow(
 	if err != nil {
 		return err
 	}
+	links := make([]archive.Link, 0, len(value.Links))
+	for _, link := range value.Links {
+		links = append(links, archive.Link{
+			RelationID: link.RelationID, Direction: link.Direction, RowID: link.RowID,
+			DatabaseID: link.DatabaseID, TableID: link.TableID, Summary: link.Summary,
+			Revision: link.Revision, Type: link.Type, Description: link.Description,
+		})
+	}
 	content, err := json.Marshal(ArchivedRow{
 		RowID: value.ID, SchemaVersion: value.SchemaVersion, Revision: value.Revision,
 		CommitSequence: value.CommitSequence, RowState: string(value.State), Values: value.Values,
-		RouteLeafIDs: value.RouteLeafIDs, Links: value.Links, SuccessorIDs: value.SuccessorIDs,
+		RouteLeafIDs: value.RouteLeafIDs, Links: links, SuccessorIDs: value.SuccessorIDs,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	})
 	if err != nil {

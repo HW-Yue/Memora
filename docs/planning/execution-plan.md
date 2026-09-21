@@ -65,7 +65,10 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 - **M4a · 归档式删除（写侧）✓**（2026-09-21）：新增 `mem_archive`；删除改为六步单事务——
   归档（含 root 的完整路径 + 行内容 + 删前双向链接）、物理删行、删叶、剪空壳、倒推摘掉
   对面链接（界 1000，级联行进 `mem_changes`）、删 history。两个墓碑时代的测试随之重写。
-- **下一件**：**M4b 归档读面**（`SHOW ARCHIVE` / `OPEN ARCHIVE`，顾问已判形）。
+- **M4b · 归档读面 ✓**（2026-09-21）：`SHOW ARCHIVE FROM <表> [FOR ROW] [CURSOR] LIMIT`
+  （必填范围与 LIMIT，游标绑 scope + 校验和）与 `OPEN ARCHIVE <id>`（全量：逐段路径 + 行内容）；
+  归档仍是内部表，`SELECT` 够不到，`OPEN` 按记录自己的 Database 授权。**M4 完成。**
+- **下一件**：**M5 history 谱系**（`superseded` 不推进 revision；新行首条 history 指向来源）。
 
 ## M2 的 Feature 切分（已完成）
 

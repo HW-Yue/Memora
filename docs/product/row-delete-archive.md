@@ -1,6 +1,6 @@
 # 行删除：归档后物理删除
 
-状态：**写侧已实现**（2026-09-21）；**归档读面待做**（`SHOW ARCHIVE` / `OPEN ARCHIVE`）。
+状态：**已实现**（2026-09-21）：写侧六步事务 + 读面 `SHOW ARCHIVE` / `OPEN ARCHIVE`。
 取代[数据行的生命周期](./row-lifecycle-successor.md)里「删除只置 deprecated、废弃行留在主表」，
 并修订[查询形态](./query-model.md) §7「判据是可达性，不是物理擦除」。
 
@@ -34,10 +34,12 @@ DELETE = 先把删除前的语义路径与内容写进**归档表**，再把行�
 purpose），节点与行的内容完整，删除前的双向链接也在快照里。
 被摘掉的对面链接不在归档语义内——恢复是重建，不是回滚现场。
 
-读面形状（顾问判形，**待实现**）：`SHOW ARCHIVE`（只列元数据，必须带过滤／分页，不能无条件
-全列，否则退化成软删除浏览器）与 `OPEN ARCHIVE <id>`（取全量内容）。不给 `SELECT`／
+读面**已实现**：`SHOW ARCHIVE FROM <表> [FOR ROW :row] [CURSOR :cursor] LIMIT :limit`
+（只列元数据，**表范围与 LIMIT 都必填**，游标绑 scope 并带校验和）与
+`OPEN ARCHIVE :archive_id`（取全量内容：逐段路径 + 行内容）。不给 `SELECT`／
 `OPEN ROUTE` 加参数——参数化等于把归档挂进普通查询语法树，`WHERE`／`JOIN` 一来就成旁路。
-归档表仍是 `mem_` 内部表，不出现在 `SHOW`／`DESCRIBE` 里，只由这两条语句触达。
+归档表仍是 `mem_` 内部表：不出现在 `SHOW TABLES` 里，`SELECT` 也够不到它，只由这两条语句触达。
+`OPEN ARCHIVE` 按**记录自己的 Database** 做授权，不看调用方手里恰好有什么 scope。
 
 ## 级联写的预算口径（已定，2026-09-21）
 

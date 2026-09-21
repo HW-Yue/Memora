@@ -147,7 +147,7 @@ history 都真删，删除前的语义路径与内容先进归档表，见[行�
 | history 表的 `(row_id, *)` 区段 | 记录已随行删除 |
 | 关键词／向量检索 | 不成为命中 |
 | `RESTORE` | 拒绝；引擎不提供恢复入口 |
-| **归档表** | **唯一例外**：只由显式恢复流程读，且恢复由 Agent 重建，见[行删除](./row-delete-archive.md) |
+| **归档** | **唯一例外**：只有 `SHOW ARCHIVE`（元数据，必填表范围与 LIMIT）与 `OPEN ARCHIVE`（全量）够得到，`SELECT` 也不行；恢复由 Agent 重建，见[行删除](./row-delete-archive.md) |
 
 `SHOW CHANGES` 是例外：它是审计设施，会继续报告这个 Row 的 ID 与前后 revision，
 但**不含任何列值**。

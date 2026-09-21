@@ -29,6 +29,19 @@ func (db *DB) ops() operations {
 	}}
 }
 
+func (o operations) ArchivePage(ctx context.Context, databaseName, tableName, rowID, cursor string, limit int) (values []ArchiveSummary, page ArchivePage, err error) {
+	err = o.run(ctx, false, func(t *tx) error {
+		values, page, err = t.archivePage(ctx, databaseName, tableName, rowID, cursor, limit)
+		return err
+	})
+	return
+}
+
+func (o operations) ArchiveRecord(ctx context.Context, archiveID string) (value ArchiveRecord, err error) {
+	err = o.run(ctx, false, func(t *tx) error { value, err = t.archiveRecord(ctx, archiveID); return err })
+	return
+}
+
 func (o operations) Get(ctx context.Context, databaseName, tableName, rowID string) (value row.Row, err error) {
 	err = o.run(ctx, false, func(t *tx) error { value, err = t.get(ctx, databaseName, tableName, rowID); return err })
 	return

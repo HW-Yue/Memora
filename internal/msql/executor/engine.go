@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/HW-Yue/Memora/internal/archive"
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/discovery"
 	"github.com/HW-Yue/Memora/internal/history"
@@ -32,6 +33,8 @@ type Rows interface {
 	AsOfRevision(context.Context, string, string, string, uint64) (row.Row, error)
 	AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error)
 	HistoryPage(context.Context, string, string, string, string, int) ([]history.Record, history.ReadPage, error)
+	ArchivePage(context.Context, string, string, string, string, int) ([]archive.Summary, archive.Page, error)
+	ArchiveRecord(context.Context, string) (archive.Record, error)
 	Restore(context.Context, string, string, string, uint64, row.WriteOptions) (row.Row, error)
 	CreateRouterNode(context.Context, string, router.NodeDefinition) (router.Node, error)
 	RenameRouterNode(context.Context, string, string, uint64) (router.Node, error)

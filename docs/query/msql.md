@@ -29,6 +29,7 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
 - Schema：`CREATE` / `ALTER`、`PLAN SCHEMA CHANGE` / `APPLY SCHEMA CHANGE`
 - 事务：`BEGIN`、`COMMIT`、`ROLLBACK`
 - 历史：`SHOW HISTORY`、`AS OF REVISION` / `COMMIT_SEQUENCE`
+- 归档：`SHOW ARCHIVE`、`OPEN ARCHIVE`（删除后唯一的读面，见[行删除](../product/row-delete-archive.md)）
 - 配置：`SHOW CONFIGURATION` / `HISTORY`、`ALTER CONFIGURATION`、
   `RESTORE CONFIGURATION`
 
