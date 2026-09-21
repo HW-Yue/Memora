@@ -124,3 +124,41 @@ func TestACensusCutByItsOwnLimitSaysSo(t *testing.T) {
 		t.Fatal("a point read must not be reported as truncated")
 	}
 }
+
+// `truncated` has to mean one thing on every surface: "at least one more exists".
+// Two of them used to set it from `len(items) == limit`, which reports more when
+// the listing merely filled the page — a reader that trusts the flag would claim
+// completeness it does not have, and the same reader is told elsewhere that the
+// flag is the completeness signal.
+func TestTruncatedMeansMoreExistsOnEverySurface(t *testing.T) {
+	h := newHarness(t)
+	leaves := h.seedLeaves("one", "two")
+	h.insertTitle("共享关键词的第一条", []string{leaves[0]})
+	h.insertTitle("共享关键词的第二条", []string{leaves[1]})
+
+	// Recall, exactly at the limit: two matches, LIMIT 2 is everything.
+	exact := h.run(`RECALL FROM work MATCH :q LIMIT 2`,
+		map[string]any{"q": "共享关键词"}, executor.MutationOptions{})
+	if len(exact.Rows) != 2 || exact.Truncated {
+		t.Fatalf("a listing that returned every hit must not be truncated: %d rows, truncated=%v",
+			len(exact.Rows), exact.Truncated)
+	}
+	// Recall, cut by the limit: two matches, LIMIT 1 leaves one behind.
+	cut := h.run(`RECALL FROM work MATCH :q LIMIT 1`,
+		map[string]any{"q": "共享关键词"}, executor.MutationOptions{})
+	if len(cut.Rows) != 1 || !cut.Truncated {
+		t.Fatalf("a cut listing must be truncated: %d rows, truncated=%v", len(cut.Rows), cut.Truncated)
+	}
+	// The pending-vector listing follows the same definition: both Rows have a
+	// unit and no vector yet, so LIMIT 2 is the whole backlog and LIMIT 1 is not.
+	pending := h.run(`SHOW PENDING VECTORS IN DATABASE work LIMIT 2`, nil, executor.MutationOptions{})
+	if len(pending.Rows) != 2 || pending.Truncated {
+		t.Fatalf("the whole backlog must not be truncated: %d rows, truncated=%v",
+			len(pending.Rows), pending.Truncated)
+	}
+	pendingCut := h.run(`SHOW PENDING VECTORS IN DATABASE work LIMIT 1`, nil, executor.MutationOptions{})
+	if len(pendingCut.Rows) != 1 || !pendingCut.Truncated {
+		t.Fatalf("a cut backlog must be truncated: %d rows, truncated=%v",
+			len(pendingCut.Rows), pendingCut.Truncated)
+	}
+}

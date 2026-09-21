@@ -324,7 +324,11 @@ func (engine *Engine) recall(ctx context.Context, statement *ast.RecallStatement
 // found, which is the whole point of asking twice. LIMIT still truncates the
 // fused listing, exactly what it means for a single arm.
 func (engine *Engine) recallUnion(ctx context.Context, statement *ast.RecallStatement, bound bindings, databaseName, tableName string, limit uint64) (Output, error) {
-	keywordHits, err := engine.recallKeywords(ctx, statement, bound, databaseName, tableName, limit)
+	// Each arm is asked for one position beyond the caller's LIMIT, because
+	// fusion can only report "there is more" for positions it was given: a fused
+	// listing that happens to land exactly on the limit would otherwise look
+	// complete while an arm still held a further position.
+	keywordHits, err := engine.recallKeywords(ctx, statement, bound, databaseName, tableName, limit+1)
 	if err != nil {
 		return Output{}, err
 	}
@@ -332,7 +336,7 @@ func (engine *Engine) recallUnion(ctx context.Context, statement *ast.RecallStat
 	// not decode) must not silently degrade the answer to keywords only: the
 	// caller asked for both, and half an answer that looks whole is the one
 	// outcome recall must never produce.
-	vectorHits, err := engine.recallNearest(ctx, statement, bound, databaseName, tableName, limit)
+	vectorHits, err := engine.recallNearest(ctx, statement, bound, databaseName, tableName, limit+1)
 	if err != nil {
 		return Output{}, err
 	}
@@ -431,9 +435,15 @@ func (engine *Engine) showPendingVectors(ctx context.Context, statement ast.Stat
 		return Output{}, executeError(result.CodeValidation,
 			"SHOW PENDING VECTORS LIMIT must be between 1 and 1000")
 	}
-	units, err := engine.rows.PendingVectors(ctx, databaseName, int(limit))
+	units, err := engine.rows.PendingVectors(ctx, databaseName, int(limit)+1)
 	if err != nil {
 		return Output{}, normalizeError(err)
+	}
+	// One extra unit is asked for and dropped, so `truncated` can mean "at least
+	// one more" instead of "the page was full".
+	pendingTruncated := len(units) > int(limit)
+	if pendingTruncated {
+		units = units[:limit]
 	}
 	output := Output{
 		Columns: []result.Column{
@@ -443,7 +453,7 @@ func (engine *Engine) showPendingVectors(ctx context.Context, statement ast.Stat
 			{Name: "payload", Type: "TEXT"},
 		},
 		Rows:      make([]result.Row, 0, len(units)),
-		Truncated: len(units) == int(limit),
+		Truncated: pendingTruncated,
 	}
 	for _, unit := range units {
 		output.Rows = append(output.Rows, result.Row{
@@ -624,7 +634,7 @@ func (engine *Engine) recallNearest(ctx context.Context, statement *ast.RecallSt
 	if err != nil {
 		return Output{}, err
 	}
-	hits, err := engine.rows.RecallNearest(ctx, databaseName, tableName, query, int(limit))
+	hits, err := engine.rows.RecallNearest(ctx, databaseName, tableName, query, int(limit)+1)
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
@@ -647,7 +657,7 @@ func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallS
 			fmt.Sprintf("RECALL needs at least %d characters: shorter queries cannot be indexed",
 				recallMinimumQueryRunes))
 	}
-	hits, err := engine.rows.RecallKeywords(ctx, databaseName, tableName, text, int(limit))
+	hits, err := engine.rows.RecallKeywords(ctx, databaseName, tableName, text, int(limit)+1)
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
@@ -657,6 +667,15 @@ func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallS
 // recallOutput is the one place a recall answer is shaped, so both arms keep the
 // same columns, the same stable order and the same notice.
 func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, databaseName, tableName string, limit uint64) (Output, error) {
+	// The arms are asked for one hit more than the caller's LIMIT, so that a
+	// listing which fills exactly to the limit can be told apart from one where
+	// more existed. `truncated` means "at least one more" here, the same thing it
+	// means on every other read surface; `len(hits) == limit` alone would report
+	// more when there was nothing.
+	truncated := len(hits) > int(limit)
+	if truncated {
+		hits = hits[:limit]
+	}
 	output := Output{
 		Columns: []result.Column{
 			{Name: "database", Type: "TEXT"},
@@ -681,7 +700,7 @@ func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, datab
 			"path": json.RawMessage(path), "kind": hit.Kind, "object_id": object,
 		})
 	}
-	output.Truncated = len(hits) == int(limit)
+	output.Truncated = truncated
 
 	// Recall answers with the paths it found, and a result that silently covered
 	// only part of the scope would read exactly like a complete one — there are

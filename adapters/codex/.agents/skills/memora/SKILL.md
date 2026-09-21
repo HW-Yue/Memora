@@ -143,7 +143,8 @@ memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authoriz
 The Atlas already carries every Table of every Database it returns — name,
 `purpose` and `scope` — so `SHOW TABLES FROM <db>` adds nothing unless the Atlas
 page came back `truncated` and you need one Database's Table list on its own.
-Read it once, then work from it.
+`SHOW DATABASES` itself returns `tables: []` on every row: it names Databases
+only, which is why the Atlas is the step that follows it.
 
 ## Speculative discovery
 
@@ -191,14 +192,25 @@ point read, and it is the cheapest way to see everything a Table holds: it
 returns each Row's `row_id` **and** its `route_paths`, so it locates the Rows
 without walking the tree. When a question needs more than one Row, that census —
 followed by point reads of the Rows that matter — replaces the whole
-`SHOW ROUTES … → OPEN ROUTE → SELECT` chain. Walk the tree when you are looking
-for *where something is* or when the Table is too large to census; the parity of
-leaf count and Row count is what proves a census was complete (`doctor`'s
-`orphan_rows` and `multi_leaf_rows` are both zero when they agree). A cut census
-is never silent: the result carries `truncated: true` when the scan budget or your
-own `LIMIT` stopped it short, so read that flag before claiming you saw
-everything, and raise `select_rows` (or read the rest as point reads) when it is
-set.
+`SHOW ROUTES … → OPEN ROUTE → SELECT` chain, and no Route walk is needed first.
+Walk the tree when you are looking for *where something is*, or when the Table is
+larger than `select_rows` (see the caveat below).
+
+A census is complete when it returned **every** Row, and the flag that says so is
+`truncated`: `true` when the scan budget or your own `LIMIT` stopped the listing
+short, `false` when the answer is everything. Trust it over arithmetic. Leaf count
+and Row count agreeing is *route-mount integrity* (`orphan_rows`,
+`multi_leaf_rows`, `mismatched_mounts`), not a statement about what a SELECT
+returned — a census is complete even on an instance where those counters are
+non-zero.
+
+**A census that comes back `truncated: true` has no read-only continuation.**
+`SELECT` has no cursor, `WHERE` takes only `row_id` equality, and the budget can
+only be raised by a write (`ALTER CONFIGURATION`, below). So above `select_rows`
+the sanctioned enumerator is the **Route tree walk**: `SHOW ROUTES` pages with a
+cursor at `route_children` per level, and every leaf names its Row. Take a Table's
+row count from the census itself, not from `doctor`, whose `rows` is
+instance-wide.
 
 ## Query and summarize
 
@@ -232,10 +244,12 @@ is read for that statement alone.
 
 `links` and `route_paths` ride along on every returned Row whether or not you
 projected them, and `columns` lists only the fields you asked for — do not try to
-project the attached ones. Each statement's envelope also repeats `columns` and a
-`row_detail` block (schema version, `row_semantics`, display map) that
-`DESCRIBE TABLE` already gave you, so budget roughly 1.5–2 KB per statement on
-top of the facts.
+project the attached ones. A **point read** (one that names a `row_id`) also
+carries a `row_detail` block per returned Row: schema version, `row_semantics`,
+and the display map naming the title and summary columns. A census does not, and
+`DESCRIBE TABLE` is where that shape comes from if you need it before reading. So
+a point-read batch costs roughly 1.5–2 KB per Row beyond the facts, while a
+census pays for `columns` only.
 
 There are two ways from a Table to its facts, and the question picks one:
 
@@ -279,19 +293,21 @@ own. Read them only when a limit actually binds or you intend to exceed the
 bundled ceilings, with the statement that returns them — `SHOW CONFIGURATION`
 (the five `query_budgets` are `route_children`, `open_locators`, `select_scan`,
 `select_rows`, `route_frame_nodes`; `SHOW CONFIGURATION HISTORY` shows how they
-got there). `doctor`'s `rows` count is a good proxy for whether `select_rows` can
-bind at all: on a Database with fewer live Rows than the ceiling, a census fits
-and the budget read is optional. The bundled ceilings are
-12 Router rows, one locator per opened leaf, 10 selected rows across explicitly
-chosen leaves, and 12,000 context characters. `open_locators` is retained as a
-compatibility budget but cannot raise a leaf above its `0..1` cardinality. Use
-the smaller current limits for the remaining budgets.
+got there). The bundled ceilings are `route_children` 12, `open_locators` 1,
+`select_rows` 10, `select_scan` 1000 and `route_frame_nodes` 12,000 context
+characters. `select_scan` is the one easy to forget and the one that cuts a
+census without the `LIMIT` looking wrong: it caps how many candidate rows one
+SELECT examines before it reports `truncated`. `open_locators` is retained as a
+compatibility budget but cannot raise a leaf above its `0..1` cardinality. All
+five are counted **per statement**: a batch of ten point reads is ten statements
+of one Row each, so it never approaches `select_rows`.
 
 `select_rows` is a **hard failure, not a clamp**: `SELECT … LIMIT 50` is refused
-rather than truncated, so read the budget before the first SELECT. A Table that
-genuinely holds more live Rows than the ceiling is still readable — either as
-point-read batches (one statement per Row, many statements per request) or by
-raising the budget explicitly:
+rather than truncated, which is why the census uses a `LIMIT` you know fits. Read
+`SHOW CONFIGURATION` when a `LIMIT` is refused or when you expect a Table to
+exceed the ceiling — not as a ritual before every read. A Table that genuinely
+holds more live Rows than the ceiling is enumerated read-only by the Route tree
+walk, or the ceiling is raised explicitly:
 
 ```sql
 ALTER CONFIGURATION QUERY_BUDGETS SET
@@ -425,9 +441,8 @@ broken — so repeating it until `remaining` is zero is safe.
 memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affected_rows":64,"actor":"agent:host","source":"conversation:event-9","reason":"reconcile the vector index"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "REPAIR VECTOR INDEX IN DATABASE work LIMIT :limit"
 ```
 
-`LIMIT` is required and bounded to 1–1000; the query must be at least 2
-characters (one character is refused, not answered with everything), and a
-shorter one is refused rather than silently returning nothing.
+`REPAIR VECTOR INDEX` requires a `LIMIT`, bounded to 1–1000. (The ≥2-character
+rule belongs to `RECALL … MATCH`; see the recall section.)
 
 **Recall is a text locator, never a completeness proof.** A Table named after a
 topic does not follow from a query containing that topic: `RECALL … MATCH 项目`
