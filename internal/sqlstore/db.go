@@ -63,12 +63,19 @@ func Open(path string, options Options) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
 	}
+	// The vector module is an auto-extension: it only reaches connections opened
+	// after registration, so this comes first.
+	registerVectorModule()
 	dsn := "file:" + path + "?_journal_mode=WAL&_busy_timeout=10000&_foreign_keys=on&_synchronous=NORMAL"
 	handle, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
 	}
 	handle.SetMaxOpenConns(8)
+	if err := requireVectorModule(context.Background(), handle); err != nil {
+		_ = handle.Close()
+		return nil, err
+	}
 	now := options.Now
 	if now == nil {
 		now = time.Now

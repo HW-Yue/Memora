@@ -24,6 +24,9 @@ func TestSQLiteModulesAreCompiledIn(t *testing.T) {
 	}{
 		{name: "fts5", ddl: `CREATE VIRTUAL TABLE module_fts USING fts5(body)`},
 		{name: "fts5 trigram tokenizer", ddl: `CREATE VIRTUAL TABLE module_trigram USING fts5(body, tokenize='trigram')`},
+		// Vectors are required rather than optional: vector recall is one of the
+		// four paths, so a build without vec0 must fail at open, not at query.
+		{name: "sqlite-vec vec0", ddl: `CREATE VIRTUAL TABLE module_vec USING vec0(embedding float[4])`},
 	}
 	for _, module := range modules {
 		if _, err := db.SQL().ExecContext(ctx, module.ddl); err != nil {
