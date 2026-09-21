@@ -4,8 +4,11 @@
 # The host gate cannot cover this: sqlite-vec is C, and a missing header or a
 # Linux-only compile problem only appears when something compiles it there. That
 # is exactly how a build that worked on macOS failed on Linux — the vector
-# module included a sqlite3.h the host had and the container did not. The ubuntu
-# CI job runs the same thing, so this is the local way to see it before a PR.
+# module included a sqlite3.h the host had and the container did not.
+#
+# CI runs macOS only (see .github/workflows/ci.yml), so this script is the only
+# way to check the cgo half on Linux. It is an opt-in tool, not part of the
+# gate: use it when a change touches the C side and someone may build on Linux.
 #
 # Needs Docker and network access to fetch the module cache on a cold image.
 set -euo pipefail

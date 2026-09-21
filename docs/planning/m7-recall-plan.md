@@ -198,8 +198,8 @@ Linux 容器上直接没有这个头，构建死在 `fatal error: sqlite3.h`。�
 
 **跨平台验证的补丁**：宿主门禁编不到 Linux 的 C（两个 `GOOS` 的 vet/lint 都跑
 `CGO_ENABLED=0`，走的是兜底文件），所以补了 `scripts/ci-linux.sh`——在 Docker 里跑 Linux 的
-cgo 构建，加上所有开真库的测试。**CI 的 ubuntu job 仍是权威**，本地脚本只是让人在开 PR
-之前就能看见同类问题。
+cgo 构建，加上所有开真库的测试。**CI 只跑 macOS**（已定），所以 Linux 的 cgo 这一半只剩这个脚本能验——它是可选工具，
+不进门禁；`scripts/ci.sh` 里对 Linux 的覆盖只有 `GOOS=linux` 的 vet/lint 编译检查。
 
 ### 已定的四个形状
 

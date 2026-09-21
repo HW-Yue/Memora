@@ -56,8 +56,10 @@ GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workfl
 而它们编的是本机平台**。sqlite-vec 的跨平台失败就是这样漏出来的：macOS 碰巧从系统 SDK
 拿到 `sqlite3.h`，Linux 容器没有，构建直接死在头文件上。
 
-本地用 `scripts/ci-linux.sh`（Docker，跑 Linux 上的 cgo 构建 + 开真库的测试）补这一半；
-CI 的 ubuntu job 是权威，本地脚本只是让你在开 PR 之前就能看见。
+本地用 `scripts/ci-linux.sh`（Docker，跑 Linux 上的 cgo 构建 + 开真库的测试）补这一半。
+**CI 只跑 macOS**（见 `.github/workflows/ci.yml`）：Linux 不再是我们发布的目标平台，
+所以它只在 `scripts/ci.sh` 的 vet/lint 里被扫（`GOOS=linux` 的编译检查，`CGO_ENABLED=0`）。
+Linux 的那一半 cgo 现在**只有**这个脚本能验，它是可选工具，不进门禁。
 
 `internal/sqlstore/vecext/include/sqlite3.h` 是**生成物**（`go generate ./internal/sqlstore/vecext/`，
 从驱动复制），不要手改：它必须与所链的 SQLite 库同版本，否则 sqlite-vec 是拿另一套声明去

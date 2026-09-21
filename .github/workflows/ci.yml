@@ -15,16 +15,18 @@ concurrency:
 
 jobs:
   test:
-    # Both platforms run the same six gates. macOS is where development
-    # happens; Linux is where anyone else's machine and every container is, and
-    # the storage layer is full of file-system behaviour that differs between
-    # them. sqlite3 requires CGO; the cgo-build stage opens a real database.
+    # macOS only, by decision: it is the platform this project ships on and
+    # where development happens. Linux is still swept at the vet/lint level by
+    # scripts/ci.sh (a compile check under GOOS=linux, CGO_ENABLED=0), and
+    # scripts/ci-linux.sh can run the cgo half in a container on demand — but
+    # no CI job spends time on a platform we do not target. sqlite3 requires
+    # CGO; the cgo-build stage opens a real database.
     name: ${{ matrix.os }} tests
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest]
     timeout-minutes: 20
     steps:
       - name: Check out repository
