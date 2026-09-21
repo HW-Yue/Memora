@@ -543,3 +543,63 @@ func TestAWriteCanCarryItsOwnVector(t *testing.T) {
 		t.Fatalf("the write must still have happened: %d rows", count)
 	}
 }
+
+// "Healthy" has to include the derived index: the units and the index can agree
+// with the Rows and still disagree with each other, and only a reconcile pass
+// would ever notice. The report counts what that pass would repair.
+func TestDoctorReportsVectorIndexDrift(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	first := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	second := h.insertAlongPath("write ahead log", pathOf("architecture", "wal"))
+	firstUnit := h.acceptUnitVector(first, []float32{1, 0})
+	h.acceptUnitVector(second, []float32{0, 1})
+	if drift := h.doctor().VectorIndexDrift; drift != 0 {
+		t.Fatalf("a freshly maintained index has no drift: %d", drift)
+	}
+	index := h.vectorIndexName()
+
+	// A missing index row: the truth holds bytes the index cannot answer with.
+	if _, err := h.db.SQL().Exec(`DELETE FROM `+index+` WHERE rowid = ?`, firstUnit); err != nil {
+		t.Fatal(err)
+	}
+	if drift := h.doctor().VectorIndexDrift; drift != 1 {
+		t.Fatalf("a missing index row is drift: %d", drift)
+	}
+	// A row whose unit is gone: the index would answer with a position that is
+	// not there any more.
+	blob, err := vecext.SerializeFloat32([]float32{0.5, 0.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.db.SQL().Exec(`INSERT INTO `+index+`(rowid, embedding) VALUES (999999, ?)`, blob); err != nil {
+		t.Fatal(err)
+	}
+	if drift := h.doctor().VectorIndexDrift; drift != 2 {
+		t.Fatalf("an orphan index row is drift too: %d", drift)
+	}
+	// And the pass that exists for exactly this brings it back to zero.
+	for page := 0; page < 4; page++ {
+		if h.repairVectorIndex(`REPAIR VECTOR INDEX IN DATABASE work LIMIT 100`) == 0 {
+			break
+		}
+	}
+	if drift := h.doctor().VectorIndexDrift; drift != 0 {
+		t.Fatalf("a repaired index has no drift: %d", drift)
+	}
+}
+
+// Losing the index outright is drift for every unit that holds bytes, not zero:
+// the report has to say the index is gone, not that it agrees.
+func TestDoctorSeesAWholeIndexGoMissing(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	rowID := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	h.acceptUnitVector(rowID, []float32{1, 0})
+	if _, err := h.db.SQL().Exec(`DROP TABLE ` + h.vectorIndexName()); err != nil {
+		t.Fatal(err)
+	}
+	if drift := h.doctor().VectorIndexDrift; drift != 1 {
+		t.Fatalf("a dropped index is drift for every unit with bytes: %d", drift)
+	}
+}

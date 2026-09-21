@@ -309,3 +309,14 @@ func (t *tx) applyVectorDrift(ctx context.Context, databaseID string, drift vect
 	}
 	return t.storeVector(ctx, databaseID, drift.tableID, drift.unitNo, drift.vector)
 }
+
+// vectorIndexDrift counts the disagreements a reconcile pass would repair. It is
+// the same walk REPAIR runs, with a counter instead of a writer, so the health
+// report and the repair cannot disagree about what "drift" means.
+func (t *tx) vectorIndexDrift(ctx context.Context, databaseID, tableID string, dimensions int) (int, error) {
+	drift := 0
+	if _, err := t.tableVectorDrift(ctx, databaseID, tableID, dimensions, func(vectorDrift) { drift++ }); err != nil {
+		return 0, err
+	}
+	return drift, nil
+}

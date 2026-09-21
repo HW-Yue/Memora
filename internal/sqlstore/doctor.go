@@ -32,6 +32,12 @@ type Report struct {
 	// has not done — so it is reported, not treated as unhealthy. It is the same
 	// number RECALL carries as a notice.
 	UnitsWithoutVectors int `json:"units_without_vectors"`
+	// VectorIndexDrift counts the disagreements between the derived vector index
+	// and the truth it is derived from: a unit whose bytes are missing from the
+	// index, an index row whose unit is gone, or the two holding different
+	// bytes. It is what a reconcile pass would repair, so a health report that
+	// stayed silent about it would call a wrong index healthy.
+	VectorIndexDrift int `json:"vector_index_drift"`
 }
 
 func (db *DB) Doctor(ctx context.Context) (Report, error) {
@@ -49,6 +55,10 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 		}
 		report.Databases = len(databases)
 		for _, database := range databases {
+			identity, err := t.vectorIdentity(ctx, database.ID)
+			if err != nil {
+				return err
+			}
 			for _, table := range database.Tables {
 				report.Tables++
 				var rows, nodes int
@@ -82,6 +92,13 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 					return err
 				}
 				report.UnitsWithoutVectors += status.NotReady
+				if identity.Model != "" {
+					drift, err := t.vectorIndexDrift(ctx, database.ID, table.ID, identity.Dimensions)
+					if err != nil {
+						return err
+					}
+					report.VectorIndexDrift += drift
+				}
 			}
 		}
 		return t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_changes`).Scan(&report.Changes)
