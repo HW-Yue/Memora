@@ -800,8 +800,13 @@ function installCanvasGestureBridge(graph, container) {
   let pendingPan = null;
   let pendingZoom = null;
   let gestureFrame = 0;
+  let gestureTimer = 0;
   const applyGesture = () => {
     gestureFrame = 0;
+    if (gestureTimer) {
+      clearTimeout(gestureTimer);
+      gestureTimer = 0;
+    }
     if (!container.isConnected) {
       pendingPan = null;
       pendingZoom = null;
@@ -820,6 +825,15 @@ function installCanvasGestureBridge(graph, container) {
   };
   const scheduleGesture = () => {
     if (!gestureFrame) gestureFrame = requestAnimationFrame(applyGesture);
+    // rAF 在后台标签或极端掉帧时可能很晚才来，累积的位移就会一直躺着不动（同一个位置
+    // 拖几次突然"卡住"）。兜底：最多 100ms 一定把它应用掉。
+    if (!gestureTimer) {
+      gestureTimer = setTimeout(() => {
+        gestureTimer = 0;
+        if (gestureFrame) cancelAnimationFrame(gestureFrame);
+        applyGesture();
+      }, 100);
+    }
   };
   const flushGesture = () => {
     if (gestureFrame) cancelAnimationFrame(gestureFrame);
@@ -944,9 +958,9 @@ function installCanvasGestureBridge(graph, container) {
     }
   };
   const onWheel = (event) => {
-    const target = event.target instanceof Element ?
-      event.target.closest(".semantic-document-node") : null;
-    if (!target) return;
+    // 画布上的滚轮/触控板手势全部由这里处理，空白处不再交给 G6 的 scroll-canvas：
+    // 两套实现会按"鼠标停在哪"分工，其中一套状态卡住时表现就是"同一个位置拖几次就
+    // 不动了，挪个地方又好了"。这里只有一条路径，并且和指针拖动共用按帧合并 + 兜底。
     event.preventDefault();
     event.stopPropagation();
     if (event.ctrlKey || event.metaKey) {
@@ -1036,20 +1050,9 @@ function createSemanticGraph(container, tree, onNodeClick) {
       getVGap: () => 22,
     },
     behaviors: [
-      // 鼠标平移由 installCanvasGestureBridge 统一接管（卡片与空白处都要能拖）；
-      // G6 的 drag-canvas 在这里对空白处无效，留着只会在它复活时造成双份平移。
-      {
-        type: "scroll-canvas",
-        key: "trackpad-pan",
-        enable: (event) => !event.ctrlKey && !event.metaKey && !event.altKey,
-        sensitivity: 1,
-      },
-      {
-        type: "zoom-canvas",
-        key: "trackpad-zoom",
-        enable: (event) => event.ctrlKey || event.metaKey,
-        sensitivity: 0.2,
-      },
+      // 平移与缩放全部由 installCanvasGestureBridge 接管：画布上的空白处和卡片走同一条
+      // 路径，滚轮/触控板也一样。G6 的 drag-canvas 对空白处无效，scroll-canvas /
+      // zoom-canvas 又会在同一位置卡住——两套实现并存只会各自留下一种"拖不动"。
       "click-select",
       {
         type: "collapse-expand",

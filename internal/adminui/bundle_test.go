@@ -414,14 +414,17 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	}
 	routeText := string(routes)
 	for _, required := range []string{
-		"window.G6", "compact-box", "scroll-canvas", "collapse-expand",
+		"window.G6", "compact-box", "collapse-expand",
 		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "MEMORA ROW", "documentNode",
 		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"",
 		"DOCUMENT_NODE_WIDTH", "documentWidth", "translateElementTo", "focusElement",
 		"type: (data) => data.kind === \"document\" ? \"html\" : \"rect\"",
 		"innerHTML: documentNodeHTML", "markdownit({ html: false", "DOMPurify.sanitize",
 		"semantic-document-node", "semantic-document-reading",
-		"trackpad-pan", "trackpad-zoom", "event.ctrlKey", "event.metaKey",
+		"event.ctrlKey", "event.metaKey",
+		// 滚轮与触控板只有一条路径（本桥），并且带 rAF 兜底：G6 的 scroll-canvas
+		// 曾经在同一个位置拖几次后卡住，而两套实现会按“鼠标停在哪”分工。
+		"gestureTimer", "画布上的滚轮/触控板手势全部由这里处理",
 		// 空白处的鼠标拖拽也必须平移：G6 的 drag-canvas 实测对空白处无效，所以
 		// 画布上任何左键按下都走这条桥，只有浮层控件除外。
 		"isCanvasControl", "画布空白处也要能拖",
@@ -430,7 +433,7 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"CANVAS_DRAG_THRESHOLD", "pendingPress", "event.pointerType === \"touch\"",
 		// 丢掉 pointerup 之后画布会一直跟着鼠标跑：没按键的移动必须结束这次拖动。
 		"event.buttons === 0", "abandonGesture",
-		"zoomRange: [0.25, 2]", "sensitivity: 0.2",
+		"zoomRange: [0.25, 2]",
 		"autoFit: false", "animation: false,\n    zoomRange: [0.25, 2]", "node.childrenLoaded === true",
 		"animation: false,\n        align: true",
 		"requestAnimationFrame", "semantic-document-enter",
@@ -463,7 +466,9 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		// 140ms, which re-rendered every HTML node on each of those frames.
 		"localMotion", "animateNodes", "motionOpacity", "BRANCH_ENTER_MS",
 		// The behavior that was supposed to pan the background and did not.
-		"\"drag-canvas\",",
+		"\"drag-canvas\",", "type: \"scroll-canvas\"", "type: \"zoom-canvas\"",
+		"trackpad-pan", "trackpad-zoom", "sensitivity: 0.2", "type: \"scroll-canvas\"", "type: \"zoom-canvas\"",
+		"trackpad-pan", "trackpad-zoom", "sensitivity: 0.2",
 	} {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
