@@ -32,7 +32,9 @@
 
 要**真的调用模型**时，用可选、不进门禁的工具，而不是放宽这条：`scripts/demo-recall.sh`
 读宿主环境（或 `~/.zshrc` 里的赋值，绝不回显）里的 `MEMORA_EMBEDDING_*`，建一套语义树、
-用真 provider 算向量、再把两条召回路的答案打出来。它按定义会联网，所以只有显式运行才会跑。
+用真 provider 算向量，走一遍逐层导航与三条召回，最后**把 provider 指向一个死端口**再写一条，
+证明"写入照常、向量留成待办、下一次正常写入把欠账一起补上"。它按定义会联网，所以只有显式
+运行才会跑。
 
 GitHub Actions 与本地开发调用同一个 `scripts/ci.sh`，不得在 workflow 中复制另一套测试顺序。PR CI 只有 `contents: read` 权限，不发布 Release。签名发布工具链尚未移植到 SQLite 基座；对 `v*` tag 的 Release workflow 会明确失败，而不是调用不存在的脚本。
 

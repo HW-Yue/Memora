@@ -192,4 +192,59 @@ for row in result['rows']:
 if result['warnings']:
     print('      warnings:', [w['code'] for w in result['warnings']])"
 done
+echo "── provider 挂了会怎样（写入照常，向量留成待办）"
+python3 - "$TMP" <<'PY'
+import json, pathlib, sys
+tmp = pathlib.Path(sys.argv[1])
+base = json.load(open(tmp / "db.json"))
+base["authorization"]["default_level"] = "L1"
+seed = json.load(open(tmp / "root.json"))["mutation"]
+for name, leaf, fact in [("failed", "失败实验", "provider 挂掉时写下的这条事实"),
+                         ("healed", "自愈实验", "下一条写入把欠账一起补上")]:
+    mutation = {**seed, "max_affected_rows": 1, "reason": name,
+                "route_path": [{"name": "技术", "kind": "branch", "purpose": "技术"},
+                               {"name": "数据库", "kind": "branch", "purpose": "数据库"},
+                               {"name": leaf, "kind": "leaf", "purpose": leaf}]}
+    (tmp / ("fail-" + name + ".json")).write_text(json.dumps(
+        {**base, "parameters": {"named": {"t": fact}}, "mutation": mutation}))
+PY
+
+# 同一个实例、同一条语句，只是 provider 指向一个没人监听的端口。
+set +e
+MEMORA_EMBEDDING_BASE_URL="http://127.0.0.1:9/v1" "$binary" exec --data-dir "$INSTANCE" \
+  --input "$(cat "$TMP/fail-failed.json")" "INSERT INTO life.notes (title) VALUES (:t)" \
+  >/dev/null 2>"$TMP/fail-stderr.txt"
+status=$?
+set -e
+echo "  退出码: ${status}（写入不该因为 provider 挂了而失败）"
+echo "  CLI 说了什么: $(grep -o 'embeddings: stopped[^;]*' "$TMP/fail-stderr.txt" || echo '（没说，得查）')"
+
+python3 - "$binary" "$INSTANCE" "$TMP" <<'PY'
+import json, pathlib, subprocess, sys
+binary, instance, tmp = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+def call(source, named=None):
+    base = json.load(open(tmp / "read.json"))
+    if named: base["parameters"] = {"named": named}
+    done = subprocess.run([binary, "query", "--data-dir", instance, "--input", json.dumps(base), source],
+                          capture_output=True, text=True)
+    return json.loads(done.stdout)["results"][0]["rows"]
+rows = call("SELECT title FROM life.notes LIMIT 10")
+print("  那条事实写进去了吗:", any("provider 挂掉时" in row["title"] for row in rows))
+pending = call("SHOW PENDING VECTORS IN DATABASE life LIMIT :limit", {"limit": 32})
+print("  待办里的单元数:", len(pending))
+PY
+
+# 下一次用正常 provider 的写入，会把欠账一起补上——这就是"发件箱"的意义。
+"$binary" exec --data-dir "$INSTANCE" --input "$(cat "$TMP/fail-healed.json")" \
+  "INSERT INTO life.notes (title) VALUES (:t)" >/dev/null 2>"$TMP/heel-stderr.txt"
+echo "  自愈: $(grep -o 'embeddings: attached [0-9]* vector(s)' "$TMP/heel-stderr.txt" || echo '（没补上）')"
+python3 - "$binary" "$INSTANCE" "$TMP" <<'PY'
+import json, pathlib, subprocess, sys
+binary, instance, tmp = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+base = json.load(open(tmp / "read.json")); base["parameters"] = {"named": {"limit": 32}}
+done = subprocess.run([binary, "query", "--data-dir", instance, "--input", json.dumps(base),
+                       "SHOW PENDING VECTORS IN DATABASE life LIMIT :limit"], capture_output=True, text=True)
+print("  补完之后待办里的单元数:", len(json.loads(done.stdout)["results"][0]["rows"]))
+PY
+
 echo "── 完成（实例留在 ${INSTANCE}）"
