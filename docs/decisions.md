@@ -853,3 +853,27 @@ schema change），所以四张表仍写着旧的「一行是…」——它会�
 
 **顾问提醒并已执行**：重建产品文档最大的风险是"旧文档一封存就凭印象编造"，所以先全量导出存档，
 新内容逐条来自现行仓库文档与本轮决策；没有出处的一律不写。旧目录保留到用户明确说可以删。
+
+## 2026-09-21 · Admin 搜索页（第一阶段：关键词 → 语义树）
+
+**结论**：Admin 新增 `/search`（分支 `feat/admin-search`，`bd97cbf`）。输入一句话，按选中的
+Database（默认全部）走**关键词召回**，跨库**交错合并**取前 10，每条结果带 `关键词` 来源标签与
+完整语义路径；点击进入 `/routes/<db_id>/<tbl_id>/<leaf_route_id>`，树视图会**沿祖先链逐层展开**
+并选中该叶（`expandToRoute`，用 `DESCRIBE ROUTE` 逐跳回溯）。页面明说：只回答「在哪」、顺序是
+交错而不是相似度排名、`LIMIT` 是截断。
+
+**为什么先只做关键词**：查询向量必须由宿主算，而 Admin 刻意保持成一个纯只读 MSQL 客户端。
+第二阶段给 gateway 加宿主侧 `internal/embedding`（带硬超时、失败即降级并显式返回
+`vector: skipped, reason`），把向量命中按同一套交错规则混进结果。顾问提醒过：**不要用路径字典序
+伪造跨路排序**——召回不返回分数，交错 + 来源标签才是如实的做法。
+
+**顺带两件事**：
+1. 新增 `scripts/refresh-admin-bundle.py`（`--check` 可查漂移）：前端是冻结 bundle，
+   `bundle.go` 里的路径/类型/sha256/size 清单以后用它重生成，不再手抄。
+2. **运维事实**：Admin 前端是**编进二进制**的，所以重建二进制后必须重启 `memora admin`，
+   否则它继续端出旧 bundle——今天就是这么发现 `/assets/search.js` 404 的。
+
+**验证**：`internal/adminui` 测试（13 个资源、v4 清单、搜索模块的 MSQL 表面与禁用项、深链路展开）
++ `./scripts/ci.sh` 全绿；真机经 Admin gateway 跑通 `SHOW DATABASES` 与三组
+`RECALL FROM "me"/"memora" MATCH …`（结果与后来页面上看到的一致），并逐字节确认
+`/assets/search.js`、`app.js`、`app.css`、`/search` 由新二进制原样端出。
