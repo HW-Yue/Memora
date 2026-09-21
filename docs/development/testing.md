@@ -20,6 +20,10 @@
 `gofmt` 只扫 `cmd/` 和 `internal/`。没有独立的 `tests/` 目录，也没有
 `//go:build integration|e2e` 文件，所以没有空转的 tag stage。
 
+任何 `go build` / `go test` / `go vet` 都必须带 `-tags sqlite_fts5`：FTS5 是可选模块，
+不带标签构建出来的二进制里**召回没有索引**，模块可用性测试会当场失败（`./scripts/ci.sh`
+已经统一带上了）。下游若用 `go test ./...` 裸跑，记得自己加标签。
+
 构建必须 `CGO_ENABLED=1`。`go-sqlite3` 在 `CGO_ENABLED=0` 时链到 `static_mock.go`，
 产物打不开数据库；`cgo-build` 拒绝这条路径，并在本机跑 `init` / `daemon` / `doctor`。
 交叉编译 sqlite3 需要 C 交叉编译器，本仓库不提供，本机 runner 各验各的三元组。

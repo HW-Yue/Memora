@@ -281,6 +281,9 @@ func (t *tx) insert(ctx context.Context, databaseName, tableName string, values 
 	if err := t.appendHistory(ctx, table, value, history.OperationInsert, options.Metadata, options.Origins); err != nil {
 		return row.Row{}, err
 	}
+	if err := t.syncRecallUnit(ctx, table, value); err != nil {
+		return row.Row{}, err
+	}
 	t.rowChange(table, value, change.OperationInsert, options.Metadata, leaves)
 	return project(table, value), nil
 }
@@ -424,6 +427,9 @@ func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID strin
 	if err := t.appendHistory(ctx, table, value, history.OperationUpdate, options.Metadata, nil); err != nil {
 		return row.Row{}, err
 	}
+	if err := t.syncRecallUnit(ctx, table, value); err != nil {
+		return row.Row{}, err
+	}
 	t.rowChange(table, value, change.OperationUpdate, options.Metadata, related)
 	return project(table, value), nil
 }
@@ -455,6 +461,9 @@ func (t *tx) deleteRow(ctx context.Context, databaseName, tableName, rowID strin
 	}
 
 	deleted := project(table, value)
+	if err := t.removeRecallUnitsForRow(ctx, table, rowID); err != nil {
+		return row.Row{}, err
+	}
 	if _, err := t.q().ExecContext(ctx, `DELETE FROM `+dataTable(table.ID)+` WHERE row_id = ?`, rowID); err != nil {
 		return row.Row{}, err
 	}

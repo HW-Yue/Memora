@@ -27,6 +27,9 @@ bin/memora daemon start
 bin/memora doctor
 ```
 
+`-tags sqlite_fts5` 是必需的：FTS5 是 SQLite 的可选模块，不带标签构建出来的二进制里召回没有索引。
+自己跑测试时同样要带（`go test -tags sqlite_fts5 ./...`），`./scripts/ci.sh` 已经统一带上。
+
 默认实例目录是 `~/Library/Application Support/Memora/instances/default`，
 可以用 `--data-dir /绝对路径` 指定。数据库就是其中的 `databases/memora.db`，
 任何 SQLite 工具都能打开查看。

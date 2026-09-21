@@ -332,6 +332,10 @@ func (t *tx) reshape(ctx context.Context, databaseName, tableName string, source
 		if err := t.enqueueInboundRepairs(ctx, table, value, RepairStaleReference, nil); err != nil {
 			return nil, err
 		}
+		// A superseded Row is nowhere: its unit goes with its reachability.
+		if err := t.removeRecallUnitsForRow(ctx, table, value.ID); err != nil {
+			return nil, err
+		}
 		// No advance and no history record: identity changed, content did not, so
 		// the Row keeps the revision its last in-place write gave it and
 		// (row_id, revision) never has a hole. successor_ids carries the change.

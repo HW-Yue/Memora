@@ -166,6 +166,15 @@ func (t *tx) requireMountInvariant(ctx context.Context) error {
 					"mount invariant violated in %s.%s: %d live rows with no leaf, %d with several, %d whose leaf points elsewhere",
 					database.Name, table.Name, violations.OrphanRows, violations.MultiLeafRows, violations.MismatchedMounts)
 			}
+			units, err := t.brokenRecallUnits(ctx, table)
+			if err != nil {
+				return err
+			}
+			if units > 0 {
+				return fail(result.CodeInternal,
+					"recall index violated in %s.%s: %d units disagree with the live Rows",
+					database.Name, table.Name, units)
+			}
 			broken, err := t.brokenLinks(ctx, table)
 			if err != nil {
 				return err

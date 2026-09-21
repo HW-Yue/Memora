@@ -241,9 +241,11 @@ func (t *tx) moveMembership(ctx context.Context, table catalog.Table, move route
 	if err := requireSingleLeaf(value); err != nil {
 		return err
 	}
-	_, err = t.q().ExecContext(ctx, `UPDATE `+dataTable(table.ID)+` SET route_leaf_ids = ? WHERE row_id = ?`,
-		encodeJSON(value.RouteLeafIDs), value.ID)
-	return err
+	if _, err := t.q().ExecContext(ctx, `UPDATE `+dataTable(table.ID)+` SET route_leaf_ids = ? WHERE row_id = ?`,
+		encodeJSON(value.RouteLeafIDs), value.ID); err != nil {
+		return err
+	}
+	return t.syncRecallUnit(ctx, table, value)
 }
 
 // checkTreeShape enforces the invariants a plan must leave behind: parent and

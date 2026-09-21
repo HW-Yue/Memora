@@ -23,6 +23,9 @@ type Report struct {
 	// BrokenLinks counts entries that are dangling or one-sided: links are the
 	// one place the same fact is stored twice, so they get a count too.
 	BrokenLinks int `json:"broken_links"`
+	// BrokenRecallUnits counts units that disagree with the live Rows: one for a
+	// Row that is gone, or a live Row with no unit.
+	BrokenRecallUnits int `json:"broken_recall_units"`
 }
 
 func (db *DB) Doctor(ctx context.Context) (Report, error) {
@@ -63,6 +66,11 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 					return err
 				}
 				report.BrokenLinks += broken
+				units, err := t.brokenRecallUnits(ctx, table)
+				if err != nil {
+					return err
+				}
+				report.BrokenRecallUnits += units
 			}
 		}
 		return t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_changes`).Scan(&report.Changes)

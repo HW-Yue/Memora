@@ -131,6 +131,20 @@ CREATE TABLE IF NOT EXISTS mem_archive (
 	row_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mem_archive_row ON mem_archive(table_id, row_id);
+CREATE TABLE IF NOT EXISTS mem_recall_units (
+	route_id TEXT PRIMARY KEY,
+	database_id TEXT NOT NULL,
+	table_id TEXT NOT NULL,
+	row_id TEXT NOT NULL,
+	revision INTEGER NOT NULL,
+	content_hash TEXT NOT NULL,
+	payload TEXT NOT NULL,
+	embedding_model TEXT NOT NULL DEFAULT '',
+	embedding_dimensions INTEGER NOT NULL DEFAULT 0,
+	embedded_at TEXT NOT NULL DEFAULT '',
+	updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mem_recall_units_row ON mem_recall_units(table_id, row_id);
 CREATE TABLE IF NOT EXISTS mem_repairs (
 	database_id TEXT NOT NULL,
 	table_id TEXT NOT NULL,
