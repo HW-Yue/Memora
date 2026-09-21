@@ -1,10 +1,18 @@
-// Package skilldoc keeps the Skill's own examples honest. The Skill is the first
-// thing a fresh agent reads, and its examples are copied verbatim: when one of
-// them was wrong (a `RECALL` example that passed a `:limit` parameter while
-// writing a literal `LIMIT 5`), the engine refused it and the agent lost two
-// calls learning something the document was supposed to teach. The engine's
-// errors cannot prevent that — the document is the error. So every shell example
-// in SKILL.md is executed here against the parser and its own parameters.
+// Package skilldoc keeps the Skill's own examples honest.
+//
+// The Skill is the first thing a fresh agent reads, and its examples are copied
+// verbatim: when one was wrong (a `RECALL` example that passed a `:limit`
+// parameter while writing a literal `LIMIT 5`), the engine refused it and the
+// agent spent two calls learning something the document was supposed to teach.
+// The engine cannot prevent that — the document is the error.
+//
+// So every `memora` command in SKILL.md's shell examples is checked here, and the
+// check is a coverage one: a command that does not fit a shape this test knows
+// fails, instead of being silently skipped. What it verifies is static — the MSQL
+// parses, and each statement binds exactly the named parameters it is given
+// (nothing unused, nothing missing), with array elements bound per statement
+// index. It does not execute them: most examples name tables and Rows that exist
+// only in the reader's instance.
 package skilldoc
 
 import (
@@ -22,90 +30,221 @@ const skillPath = "../../skills/memora/SKILL.md"
 
 var (
 	fencePattern     = regexp.MustCompile("(?s)```sh\n(.*?)```")
-	inputPattern     = regexp.MustCompile(`--input\s+'(\{.*?\})'\s+"([^"]*)"`)
 	parameterPattern = regexp.MustCompile(`:([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
-type example struct {
-	input   string
-	source  string
-	rawLine string
+type command struct {
+	text  string
+	lines []string
 }
 
-func examples(t *testing.T) []example {
+// commands returns every `memora` command in the shell examples. A command
+// starts at a line whose trimmed text begins with `memora ` and continues while
+// its single quotes are unbalanced, which is how the multi-line `--plan` JSON
+// examples stay in one piece.
+func commands(t *testing.T) []command {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Clean(skillPath))
 	if err != nil {
 		t.Fatalf("read the Skill: %v", err)
 	}
-	found := []example{}
+	found := []command{}
 	for _, fence := range fencePattern.FindAllStringSubmatch(string(content), -1) {
+		current := []string{}
 		for _, line := range strings.Split(fence[1], "\n") {
-			match := inputPattern.FindStringSubmatch(line)
-			if match == nil {
+			if strings.HasPrefix(strings.TrimSpace(line), "memora ") {
+				if len(current) > 0 {
+					found = append(found, command{text: strings.Join(current, "\n"), lines: current})
+				}
+				current = []string{line}
 				continue
 			}
-			found = append(found, example{input: match[1], source: match[2], rawLine: line})
+			if len(current) > 0 {
+				current = append(current, line)
+			}
+		}
+		if len(current) > 0 {
+			found = append(found, command{text: strings.Join(current, "\n"), lines: current})
 		}
 	}
-	if len(found) < 10 {
-		t.Fatalf("only %d examples found in the Skill; the extractor is wrong", len(found))
+	if len(found) < 30 {
+		t.Fatalf("only %d memora commands found; the extractor is wrong", len(found))
 	}
 	return found
 }
 
-// TestEverySkillExampleBindsItsOwnParameters is the RED that the broken RECALL
-// example would have failed: a named parameter the statement never mentions is a
-// validation error at execution time ("named parameter :limit is unused"), and a
-// parameter the statement mentions but the input omits is a missing-parameter
-// error. Both are the document's fault, and both are invisible until an agent
-// runs the example.
-func TestEverySkillExampleBindsItsOwnParameters(t *testing.T) {
-	t.Parallel()
-	for _, item := range examples(t) {
-		named := map[string]any{}
-		decoded := struct {
-			Parameters struct {
-				Named map[string]any `json:"named"`
-			} `json:"parameters"`
-		}{}
-		if err := json.Unmarshal([]byte(item.input), &decoded); err != nil {
-			t.Errorf("example is not decodable JSON input: %v\n%s", err, item.rawLine)
-			continue
+// afterFlag returns the single-quoted blob that follows flag, which is how the
+// examples carry their JSON: the JSON itself uses double quotes, so the next
+// single quote closes it.
+func afterFlag(text, flag string) string {
+	start := strings.Index(text, flag)
+	if start < 0 {
+		return ""
+	}
+	rest := text[start+len(flag):]
+	end := strings.IndexByte(rest, '\'')
+	if end < 0 {
+		return ""
+	}
+	return rest[:end]
+}
+
+// sourceArg returns the last double-quoted string in the command — the MSQL
+// source. It is taken from the end because the JSON before it is full of double
+// quotes, and the source itself may contain single-quoted literals.
+func sourceArg(text string) string {
+	last := strings.LastIndexByte(text, '"')
+	if last < 0 {
+		return ""
+	}
+	first := strings.LastIndexByte(text[:last], '"')
+	if first < 0 {
+		return ""
+	}
+	return text[first+1 : last]
+}
+
+type inputShape struct {
+	named    map[string]any
+	elements []map[string]any
+	array    bool
+}
+
+func decodeNamed(t *testing.T, payload string, line string) map[string]any {
+	t.Helper()
+	decoded := struct {
+		Parameters struct {
+			Named map[string]any `json:"named"`
+		} `json:"parameters"`
+	}{}
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		t.Errorf("input is not decodable JSON: %v\n%s", err, line)
+		return nil
+	}
+	return decoded.Parameters.Named
+}
+
+func parseInput(t *testing.T, raw string, line string) inputShape {
+	t.Helper()
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "[") {
+		return inputShape{named: decodeNamed(t, trimmed, line)}
+	}
+	elements := []json.RawMessage{}
+	if err := json.Unmarshal([]byte(trimmed), &elements); err != nil {
+		t.Errorf("input array is not decodable JSON: %v\n%s", err, line)
+		return inputShape{array: true}
+	}
+	named := make([]map[string]any, 0, len(elements))
+	for _, element := range elements {
+		named = append(named, decodeNamed(t, string(element), line))
+	}
+	return inputShape{elements: named, array: true}
+}
+
+func bindingsMatch(t *testing.T, named map[string]any, source string, line string) {
+	t.Helper()
+	used := map[string]bool{}
+	for _, match := range parameterPattern.FindAllStringSubmatch(source, -1) {
+		used[match[1]] = true
+	}
+	for name := range named {
+		if !used[name] {
+			t.Errorf("example passes :%s but its statement never uses it:\n%s", name, line)
 		}
-		for name := range decoded.Parameters.Named {
-			named[name] = nil
-		}
-		used := map[string]bool{}
-		for _, match := range parameterPattern.FindAllStringSubmatch(item.source, -1) {
-			used[match[1]] = true
-		}
-		for name := range named {
-			if !used[name] {
-				t.Errorf("example passes :%s but the statement never uses it:\n%s", name, item.rawLine)
-			}
-		}
-		for name := range used {
-			if _, ok := named[name]; !ok {
-				t.Errorf("example uses :%s but the input does not pass it:\n%s", name, item.rawLine)
-			}
+	}
+	for name := range used {
+		if _, ok := named[name]; !ok {
+			t.Errorf("example uses :%s but its input does not pass it:\n%s", name, line)
 		}
 	}
 }
 
-// TestEverySkillStatementParses keeps the examples inside the language the
-// engine actually speaks: an example the parser rejects teaches a shape that
-// does not exist.
-func TestEverySkillStatementParses(t *testing.T) {
+func statements(source string) []string {
+	parts := []string{}
+	for _, part := range strings.Split(source, ";") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return parts
+}
+
+// TestEverySkillCommandIsACoveredShape is the coverage guard: a new example in a
+// shape this test does not understand fails here rather than passing unnoticed.
+func TestEverySkillCommandIsACoveredShape(t *testing.T) {
 	t.Parallel()
-	for _, item := range examples(t) {
-		for _, statement := range strings.Split(item.source, ";") {
-			statement = strings.TrimSpace(statement)
-			if statement == "" {
+	shapes := map[string]int{}
+	for _, item := range commands(t) {
+		words := strings.Fields(item.lines[0])
+		head := ""
+		if len(words) > 1 {
+			head = words[1]
+		}
+		switch {
+		case strings.Contains(item.text, "--input '"):
+			if sourceArg(item.text) == "" {
+				t.Errorf("command has an input but no quoted statement:\n%s", item.lines[0])
 				continue
 			}
-			if _, err := parser.Parse(statement); err != nil {
-				t.Errorf("example does not parse: %v\n%s", err, statement)
+			shapes["input"]++
+		case strings.Contains(item.text, "--plan '"):
+			shapes["plan"]++
+		case sourceArg(item.text) != "":
+			shapes["bare-statement"]++
+		case head == "doctor" || head == "version" || head == "help":
+			shapes["tool"]++
+		default:
+			t.Errorf("command fits no known shape and is not checked:\n%s", item.lines[0])
+		}
+	}
+	for _, required := range []string{"input", "plan", "bare-statement", "tool"} {
+		if shapes[required] == 0 {
+			t.Errorf("no example of shape %q was found; the extractor or the Skill changed", required)
+		}
+	}
+}
+
+// TestEverySkillStatementParsesAndBindsItsOwnParameters is the RED that the
+// broken RECALL example would have failed.
+func TestEverySkillStatementParsesAndBindsItsOwnParameters(t *testing.T) {
+	t.Parallel()
+	for _, item := range commands(t) {
+		line := item.lines[0]
+		switch {
+		case strings.Contains(item.text, "--input '"):
+			shape := parseInput(t, afterFlag(item.text, "--input '"), line)
+			list := statements(sourceArg(item.text))
+			if shape.array && len(shape.elements) != 0 && len(shape.elements) != len(list) {
+				t.Errorf("input array has %d elements for %d statements:\n%s",
+					len(shape.elements), len(list), line)
+				continue
+			}
+			for index, statement := range list {
+				if _, err := parser.Parse(statement); err != nil {
+					t.Errorf("example does not parse: %v\n%s", err, statement)
+					continue
+				}
+				named := shape.named
+				if shape.array && index < len(shape.elements) {
+					named = shape.elements[index]
+				}
+				bindingsMatch(t, named, statement, line)
+			}
+		case strings.Contains(item.text, "--plan '"):
+			decoded := map[string]any{}
+			if err := json.Unmarshal([]byte(afterFlag(item.text, "--plan '")), &decoded); err != nil {
+				t.Errorf("plan is not decodable JSON: %v\n%s", err, line)
+				continue
+			}
+			if version, _ := decoded["version"].(string); version == "" {
+				t.Errorf("plan has no version:\n%s", line)
+			}
+		case sourceArg(item.text) != "":
+			for _, statement := range statements(sourceArg(item.text)) {
+				if _, err := parser.Parse(statement); err != nil {
+					t.Errorf("example does not parse: %v\n%s", err, statement)
+				}
 			}
 		}
 	}
