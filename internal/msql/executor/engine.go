@@ -36,6 +36,7 @@ type Rows interface {
 	AsOfCommit(context.Context, string, string, string, uint64) (row.Row, error)
 	HistoryPage(context.Context, string, string, string, string, int) ([]history.Record, history.ReadPage, error)
 	RecallKeywords(context.Context, string, string, string, int) ([]recall.Hit, error)
+	VectorStatus(context.Context, string, string) (recall.VectorStatus, error)
 	RepairLinks(context.Context, string, int) (repair.Receipt, error)
 	ArchivePage(context.Context, string, string, string, string, int) ([]archive.Summary, archive.Page, error)
 	ArchiveRecord(context.Context, string) (archive.Record, error)
@@ -155,6 +156,10 @@ type Output struct {
 	Page           *result.ListPage
 	RowDetail      *result.RowDetail
 	Discovery      *discovery.Frame
+	// Warnings are structured notices about this statement's own result, not
+	// errors: they explain what the answer could not cover. They never change
+	// Rows — a caller that ignores them still reads a valid result.
+	Warnings []result.Notice
 }
 
 type Error struct {

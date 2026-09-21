@@ -214,6 +214,14 @@ exactly as after discovery: `OPEN ROUTE` the last segment, then `SELECT` the fac
 Recall never prefetches: it does not open the leaf, cache the row, or substitute
 for the `SELECT` that produces the answer.
 
+A recall may come back with a `vectors_not_ready` warning. It is not an error:
+it says how many units in the scope no vector path can answer for yet, so the
+paths you got are real but the list may be incomplete. Read `not_ready_units`
+(and `identity_locked`, which separates “nobody configured embeddings” from
+“some units went stale”) and say so instead of presenting the result as
+exhaustive. Do not retry hoping for more — `RECALL` never waits for embeddings;
+`memora doctor` reports the same count for the whole instance.
+
 `LIMIT` is required and bounded to 1–1000; the query must be at least 3
 characters, and a shorter one is refused rather than silently returning nothing.
 Hits are de-duplicated by path and ordered by table then path, so the same query

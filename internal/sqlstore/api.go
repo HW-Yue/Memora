@@ -49,11 +49,11 @@ func (o operations) AcceptVector(ctx context.Context, databaseName string, recor
 	return
 }
 
-// NotReadyUnits counts the units in a Database that a vector path cannot answer
-// for. It is derived from the truth columns, so it stays a read.
-func (o operations) NotReadyUnits(ctx context.Context, databaseName, tableName string) (count int, err error) {
+// VectorStatus reports how much of a scope a vector path can answer for. It is
+// derived from the truth columns, so it stays a read.
+func (o operations) VectorStatus(ctx context.Context, databaseName, tableName string) (status recall.VectorStatus, err error) {
 	err = o.run(ctx, false, func(t *tx) error {
-		count, err = t.notReadyUnits(ctx, databaseName, tableName)
+		status, err = t.vectorStatus(ctx, databaseName, tableName)
 		return err
 	})
 	return

@@ -21,3 +21,18 @@ type Hit struct {
 	Kind     string
 	ObjectID string
 }
+
+// VectorStatus says how much of a scope a vector path can actually answer for.
+// It is derived from the truth columns on the units, never stored: a count that
+// had to be maintained would eventually disagree with the vectors themselves.
+type VectorStatus struct {
+	// NotReady counts units with no vector, a vector for text they no longer
+	// hold, or a vector from another identity.
+	NotReady int
+	// IdentityLocked reports whether the Database has accepted a vector yet. It
+	// separates "nobody configured embeddings" from "some units are stale",
+	// which need different recovery.
+	IdentityLocked bool
+	Model          string
+	Dimensions     int
+}

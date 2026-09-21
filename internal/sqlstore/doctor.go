@@ -26,6 +26,12 @@ type Report struct {
 	// BrokenRecallUnits counts units that disagree with the live Rows: one for a
 	// Row that is gone, or a live Row with no unit.
 	BrokenRecallUnits int `json:"broken_recall_units"`
+	// UnitsWithoutVectors counts units no vector path can answer for yet: no
+	// vector, a vector for text the unit has moved past, or one from another
+	// identity. Unlike the counts above this is not a fault — it is work a host
+	// has not done — so it is reported, not treated as unhealthy. It is the same
+	// number RECALL carries as a notice.
+	UnitsWithoutVectors int `json:"units_without_vectors"`
 }
 
 func (db *DB) Doctor(ctx context.Context) (Report, error) {
@@ -71,6 +77,11 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 					return err
 				}
 				report.BrokenRecallUnits += units
+				status, err := t.vectorStatus(ctx, database.Name, table.Name)
+				if err != nil {
+					return err
+				}
+				report.UnitsWithoutVectors += status.NotReady
 			}
 		}
 		return t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_changes`).Scan(&report.Changes)

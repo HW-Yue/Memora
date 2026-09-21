@@ -82,7 +82,14 @@ not_found, already_exists, permission_denied, revision_conflict, write_conflict,
 constraint_violation
 value_too_long, transaction_aborted, invalid_transaction_state
 cancelled, deadline_exceeded, output_truncated, internal_error
+vectors_not_ready
 ```
+
+`vectors_not_ready` 是**通知**码：本次 `RECALL` 的作答范围里有单元没有可用的向量，
+所以它可能漏掉了向量路本来能命中的位置。恢复规则：宿主补齐这些单元的向量（见
+[M7 召回](../planning/m7-recall-plan.md) 的 F5 排空），或者明确接受只看关键词路的结果。
+`details` 带聚合计数（按 database／table）与库身份是否已定，不带逐单元明细——
+召回不返回分数，所以调用方无法自己判断漏了什么，这条通知就是它唯一的信号。
 
 `internal_error` 不得携带 stack、物理 Page、文件路径或底层 SQLite 信息。新增机器可读语义必须先登记 code 和恢复规则。
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -244,6 +245,35 @@ func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallS
 		})
 	}
 	output.Truncated = len(hits) == int(limit)
+
+	// Recall answers with the paths it found, and a result that silently covered
+	// only part of the scope would read exactly like a complete one — there are
+	// no scores to hint that something is missing. So the count of units this
+	// answer could not draw on travels with the answer itself, aggregated by
+	// scope rather than listed per unit.
+	status, err := engine.rows.VectorStatus(ctx, databaseName, tableName)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	if status.NotReady > 0 {
+		details := map[string]any{
+			"database": databaseName, "not_ready_units": status.NotReady,
+			"identity_locked": status.IdentityLocked,
+		}
+		if tableName != "" {
+			details["table"] = tableName
+		}
+		if status.IdentityLocked {
+			details["embedding_model"] = status.Model
+			details["embedding_dimensions"] = status.Dimensions
+		}
+		output.Warnings = append(output.Warnings, result.Notice{
+			Code: result.CodeVectorsNotReady,
+			Message: "the vector path could not answer for " +
+				strconv.Itoa(status.NotReady) + " unit(s) in this scope, so this result may be missing matches",
+			Details: details,
+		})
+	}
 	return output, nil
 }
 

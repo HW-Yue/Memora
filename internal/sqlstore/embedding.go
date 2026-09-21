@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/HW-Yue/Memora/internal/recall"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/sqlstore/vecext"
 )
@@ -135,35 +136,46 @@ func (t *tx) recallUnitByNumber(ctx context.Context, databaseID string, unitNo i
 	return unit, nil
 }
 
-// notReadyUnits counts the units a vector path cannot answer for: no vector yet,
+// vectorStatus counts the units a vector path cannot answer for: no vector yet,
 // a vector for text the unit no longer holds, or a vector from a different
 // identity. Readiness is derived from the truth columns rather than stored, so
 // no code path can forget to update it.
-func (t *tx) notReadyUnits(ctx context.Context, databaseName, tableName string) (int, error) {
+//
+// The identity join is not optional. Units from every Database share one table,
+// so the Database's identity is part of every readiness question — a unit is
+// only ready against the identity of the Database it belongs to.
+func (t *tx) vectorStatus(ctx context.Context, databaseName, tableName string) (recall.VectorStatus, error) {
+	status := recall.VectorStatus{}
 	database, err := t.resolveDatabase(ctx, databaseName)
 	if err != nil {
-		return 0, err
+		return recall.VectorStatus{}, err
 	}
+	identity, err := t.vectorIdentity(ctx, database.ID)
+	if err != nil {
+		return recall.VectorStatus{}, err
+	}
+	status.IdentityLocked = identity.Model != ""
+	status.Model, status.Dimensions = identity.Model, identity.Dimensions
+
 	tableFilter := ""
 	arguments := []any{database.ID}
 	if tableName != "" {
 		table, err := t.liveTable(ctx, databaseName, tableName)
 		if err != nil {
-			return 0, err
+			return recall.VectorStatus{}, err
 		}
 		tableFilter = " AND u.table_id = ?"
 		arguments = append(arguments, table.ID)
 	}
-	count := 0
 	err = t.q().QueryRowContext(ctx, `SELECT COUNT(*) FROM mem_recall_units u
 		JOIN mem_databases d ON d.id = u.database_id
 		WHERE u.database_id = ?`+tableFilter+`
 		  AND (u.embedding IS NULL
 		       OR u.embedded_content_hash <> u.content_hash
 		       OR u.embedding_model <> d.embedding_model
-		       OR u.embedding_dimensions <> d.embedding_dimensions)`, arguments...).Scan(&count)
+		       OR u.embedding_dimensions <> d.embedding_dimensions)`, arguments...).Scan(&status.NotReady)
 	if err != nil {
-		return 0, err
+		return recall.VectorStatus{}, err
 	}
-	return count, nil
+	return status, nil
 }

@@ -312,6 +312,7 @@ func successfulStatement(index int, kind, source string, output Output) result.S
 	statement.Page = output.Page
 	statement.RowDetail = output.RowDetail
 	statement.Discovery = output.Discovery
+	statement.Warnings = output.Warnings
 	return statement
 }
 

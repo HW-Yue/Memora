@@ -19,6 +19,7 @@ const (
 	CodeCancelled          Code = "cancelled"
 	CodeDeadlineExceeded   Code = "deadline_exceeded"
 	CodeOutputTruncated    Code = "output_truncated"
+	CodeVectorsNotReady    Code = "vectors_not_ready"
 	CodeInternal           Code = "internal_error"
 )
 
@@ -27,6 +28,7 @@ var registeredCodes = map[Code]struct{}{
 	CodeNotFound: {}, CodeAlreadyExists: {}, CodePermissionDenied: {}, CodeRevisionConflict: {}, CodeWriteConflict: {}, CodeConstraint: {},
 	CodeValueTooLong: {}, CodeTransactionAborted: {}, CodeInvalidTransaction: {},
 	CodeCancelled: {}, CodeDeadlineExceeded: {}, CodeOutputTruncated: {}, CodeInternal: {},
+	CodeVectorsNotReady: {},
 }
 
 func IsRegisteredCode(code Code) bool {

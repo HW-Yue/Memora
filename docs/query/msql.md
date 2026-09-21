@@ -30,7 +30,8 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
 - 事务：`BEGIN`、`COMMIT`、`ROLLBACK`
 - 历史：`SHOW HISTORY`、`AS OF REVISION` / `COMMIT_SEQUENCE`
 - 召回：`RECALL FROM <database> [IN <table>] MATCH :q LIMIT :n`（关键词定位语义路径，
-  只回答"在哪"，不返回分数与正文；向量路见 [M7 召回](../planning/m7-recall-plan.md)）
+  只回答"在哪"，不返回分数与正文；向量路见 [M7 召回](../planning/m7-recall-plan.md)）。
+  范围里有单元没有可用向量时，结果带 `vectors_not_ready` **通知**（聚合计数，不改 `rows`）
 - 归档：`SHOW ARCHIVE`、`OPEN ARCHIVE`（删除后唯一的读面，见[行删除](../product/row-delete-archive.md)）
 - 修复：`REPAIR LINKS IN DATABASE :database LIMIT :limit`（出队一批懒修复，见[行链接](../product/row-links.md)）
 - 配置：`SHOW CONFIGURATION` / `HISTORY`、`ALTER CONFIGURATION`、

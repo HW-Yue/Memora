@@ -9,6 +9,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
+	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/sqlstore"
 )
 
@@ -99,8 +100,8 @@ func TestReadinessIsDerivedFromTheTruthColumns(t *testing.T) {
 	ctx := context.Background()
 	rows := h.db.Rows()
 
-	if count, err := rows.NotReadyUnits(ctx, "work", ""); err != nil || count != 2 {
-		t.Fatalf("before any vector: %d, %v", count, err)
+	if status, err := rows.VectorStatus(ctx, "work", ""); err != nil || status.NotReady != 2 {
+		t.Fatalf("before any vector: %+v, %v", status, err)
 	}
 	unitNo, contentHash := h.recallUnit(first)
 	if _, err := rows.AcceptVector(ctx, "work", sqlstore.VectorRecord{
@@ -109,11 +110,11 @@ func TestReadinessIsDerivedFromTheTruthColumns(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if count, err := rows.NotReadyUnits(ctx, "work", ""); err != nil || count != 1 {
-		t.Fatalf("after one vector: %d, %v", count, err)
+	if status, err := rows.VectorStatus(ctx, "work", ""); err != nil || status.NotReady != 1 {
+		t.Fatalf("after one vector: %+v, %v", status, err)
 	}
-	if count, err := rows.NotReadyUnits(ctx, "work", "notes"); err != nil || count != 1 {
-		t.Fatalf("the Table scope must agree: %d, %v", count, err)
+	if status, err := rows.VectorStatus(ctx, "work", "notes"); err != nil || status.NotReady != 1 {
+		t.Fatalf("the Table scope must agree: %+v, %v", status, err)
 	}
 
 	// Editing the text moves the content hash on, so the stored vector no longer
@@ -123,8 +124,8 @@ func TestReadinessIsDerivedFromTheTruthColumns(t *testing.T) {
 	refine.ExpectedRevision = 1
 	h.run(`UPDATE work.notes SET title = 'storage engine, reconsidered' WHERE row_id = :row`,
 		map[string]any{"row": first}, refine)
-	if count, err := rows.NotReadyUnits(ctx, "work", ""); err != nil || count != 2 {
-		t.Fatalf("an edited unit must be not-ready again: %d, %v", count, err)
+	if status, err := rows.VectorStatus(ctx, "work", ""); err != nil || status.NotReady != 2 {
+		t.Fatalf("an edited unit must be not-ready again: %+v, %v", status, err)
 	}
 	if hash, _, _, hasBytes := h.storedVector(unitNo); !hasBytes || hash == "" {
 		t.Fatalf("the stale vector should still be readable, not erased: %q %v", hash, hasBytes)
@@ -138,8 +139,8 @@ func TestReadinessIsDerivedFromTheTruthColumns(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if count, err := rows.NotReadyUnits(ctx, "work", ""); err != nil || count != 1 {
-		t.Fatalf("after re-embedding: %d, %v", count, err)
+	if status, err := rows.VectorStatus(ctx, "work", ""); err != nil || status.NotReady != 1 {
+		t.Fatalf("after re-embedding: %+v, %v", status, err)
 	}
 }
 
@@ -172,11 +173,11 @@ func TestVectorIdentityBelongsToOneDatabase(t *testing.T) {
 	}
 	// The Database that accepted nothing is still unlocked and still has its own
 	// readiness answer.
-	if count, err := h.db.Rows().NotReadyUnits(ctx, "other", ""); err != nil || count != 0 {
-		t.Fatalf("the other Database owns no units: %d, %v", count, err)
+	if status, err := h.db.Rows().VectorStatus(ctx, "other", ""); err != nil || status.NotReady != 0 || status.IdentityLocked {
+		t.Fatalf("the other Database owns no units and no identity: %+v, %v", status, err)
 	}
-	if count, err := h.db.Rows().NotReadyUnits(ctx, "work", ""); err != nil || count != 0 {
-		t.Fatalf("the Database that accepted a vector is ready: %d, %v", count, err)
+	if status, err := h.db.Rows().VectorStatus(ctx, "work", ""); err != nil || status.NotReady != 0 || !status.IdentityLocked {
+		t.Fatalf("the Database that accepted a vector is ready: %+v, %v", status, err)
 	}
 }
 
@@ -253,4 +254,58 @@ func hHasColumn(t *testing.T, db *sqlstore.DB, table, column string) bool {
 		t.Fatal(err)
 	}
 	return false
+}
+
+// A recall that could not draw on the vector path must say so. It returns paths
+// and nothing else — no scores — so without this notice a partial answer is
+// indistinguishable from a complete one.
+func TestRecallReportsTheUnitsTheVectorPathCouldNotCover(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	rowID := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
+	h.insertAlongPath("write ahead log", pathOf("architecture", "wal"))
+	ctx := context.Background()
+
+	partial := h.recallFrom(`RECALL FROM work MATCH :q LIMIT 5`, map[string]any{"q": "storage engine"})
+	if len(partial.Warnings) != 1 {
+		t.Fatalf("a recall over units without vectors must warn once: %+v", partial.Warnings)
+	}
+	notice := partial.Warnings[0]
+	if notice.Code != result.CodeVectorsNotReady {
+		t.Fatalf("notice code = %q", notice.Code)
+	}
+	if got := notice.Details["not_ready_units"]; got != 2 {
+		t.Fatalf("not_ready_units = %v, want both units in scope", got)
+	}
+	if locked, present := notice.Details["identity_locked"]; !present || locked != false {
+		t.Fatalf("an unlocked Database must say so: %+v", notice.Details)
+	}
+	// The health report carries the same number: the notice explains one answer,
+	// the report is where you go to ask the question without a query in hand.
+	if report := h.doctor(); report.UnitsWithoutVectors != 2 {
+		t.Fatalf("doctor must count units without vectors: %+v", report)
+	}
+
+	// Cover one unit and the count in the notice follows the truth columns down.
+	unitNo, contentHash := h.recallUnit(rowID)
+	if _, err := h.db.Rows().AcceptVector(ctx, "work", sqlstore.VectorRecord{
+		UnitNo: unitNo, ContentHash: contentHash,
+		Model: "text-embedding-v4", Dimensions: 2, Vector: []float32{1, 0},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stillPartial := h.recallFrom(`RECALL FROM work MATCH :q LIMIT 5`, map[string]any{"q": "storage engine"})
+	if len(stillPartial.Warnings) != 1 || stillPartial.Warnings[0].Details["not_ready_units"] != 1 {
+		t.Fatalf("the notice must report the remaining unit: %+v", stillPartial.Warnings)
+	}
+	if locked := stillPartial.Warnings[0].Details["identity_locked"]; locked != true {
+		t.Fatalf("the Database is locked now: %+v", stillPartial.Warnings[0].Details)
+	}
+	if report := h.doctor(); report.UnitsWithoutVectors != 1 {
+		t.Fatalf("doctor must follow the truth columns: %+v", report)
+	}
+	// The notice explains the result; it never becomes part of it.
+	if len(stillPartial.Rows) != 1 || len(partial.Rows) != 1 {
+		t.Fatalf("warnings must not change the rows: %d then %d", len(partial.Rows), len(stillPartial.Rows))
+	}
 }

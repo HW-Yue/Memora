@@ -254,7 +254,7 @@ vec0 才是派生物，真相列同样不依赖 vec0。真正的依赖链是—�
 | 步 | 内容 | 依赖 vec0 |
 |---|---|---|
 | S1′ ✓ | 真相列（`embedding` + `embedded_content_hash`）+ 库身份锁 + 接受/拒收 | 否 |
-| S2′ | 未就绪上报（`executor.Output.Warnings` 接 `result.Notice` + doctor 计数） | 否 |
+| S2′ ✓ | 未就绪上报（`executor.Output.Warnings` 接 `result.Notice` + doctor 计数） | 否 |
 | S3′ | vec0 索引，从真相列派生，`rowid = unit_no`，可重建可丢弃 | 是 |
 
 **锁的粒度 = 召回的作用域 = Memora Database**（不是实例级）：vec0 每 (库,表) 一张、
