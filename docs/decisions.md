@@ -995,3 +995,35 @@ Admin 搜索页仍是关键词单臂 + 跨库交错，第二阶段接向量臂�
 尾部内容、空数组都拒绝。Skill 的向量一节补上批量写法（并说明 provider 的批上限属于宿主，
 `MEMORA_EMBEDDING_BATCH` 声明、宿主的排干会自己拆被拒的批）。证据：`internal/cli/input_test.go`
 （RED 是缺 `decodeStatementInputs` 时的编译失败，GREEN 是同一测试通过）。
+
+## 2026-09-21 · 两个库由 Skill 流程重建（合规版）
+
+**做法**：先修 [D16](./development/dogfood-2026-09-21.md)（排干按 provider 批上限二分退批，`f098f17`）
+与 D17（`--input` 接受一批语句，`c509e74`），把二进制更新到 `c509e74`，然后**新建一个实例、由 agent
+按 `skills/memora/` 的流程重建两个库**（不再是脚本写库）：
+
+1. **Discovery**：冷实例 `SHOW DATABASES` 为空 → 没有可复用的库，新建是正当的。
+2. **建库建表**：用 Skill 的固定模板逐表提交 `memora.schema-plan/v1` ensure（`me` 的 profile/
+   applications/experiences/projects，`memora` 的 modules/decisions），回执都是 `applied / verified`。
+3. **每个 Table 建根**：`CREATE ROUTE ROOT`（L2）。
+4. **逐行写入**：一行一次 `INSERT`（L1，带 `route_path` 与完整 mutation），`me` 9 行、`memora`
+   34 行（19 modules + 15 decisions）；每次写入后**宿主排干自动补向量**（日志里的
+   `embeddings: attached 1 vector(s)`），43 个单元全部就绪。
+5. **一次 REVISE**：个人项目里那篇《Memora 本地语义数据库》的正文早于今天的架构变更（写着
+   "自研页式引擎 / MVCC"），按 Skill 的 REVISE 路径（`expected_revision` + `route_leaf_ids` 快照）
+   改成"基座是 SQLite、一切皆普通表"。
+
+**顺手把产品文档写成最新的**：`召回契约` 补上两臂按名次融合（RRF）；`Admin 观察面` 记搜索页；
+`当前缺口` 与 `运行现状` 更新；`decisions` 新增 **ADR-0013 两路召回按名次融合** 与
+**Admin 搜索页** 两条。
+
+**验证**：`doctor` healthy，`databases 2 / tables 6 / rows 43 / route_nodes 61`，`units_without_vectors 0`、
+`vector_index_drift 0`、`broken_recall_units 0`、孤儿/多叶/挂载/断链全 0；六张表都只有
+`title` + `summary`；树与设计一致；两库三路召回都过（关键词按 BM25、向量臂用一个**不含 "rekey"
+字样**的问句命中 rekey 两篇、两臂 RRF 把双命中排前）；Admin 搜索页的数据面经 gateway 跑通且
+**不再有 `vectors_not_ready` 通知**；`sync-skill.sh --check` 无漂移。
+
+**实例状态**：`default` 就是这次重建的实例；上一版（脚本写的）封存在
+`instances/default.before-skill-rebuild-2026-09-21`，最初那版在
+`instances/default.before-rewrite-2026-09-21`。CLI ≡ daemon ≡ `0.3.0-dev` @ `c509e74`，无 skew；
+Admin 已用新二进制重启。**两个备份目录等用户明确说要删再删。**
