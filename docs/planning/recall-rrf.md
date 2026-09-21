@@ -79,3 +79,22 @@ ADR-0012 明文禁止外露分数/距离、禁止调融合权重；ADR-0007 记�
   `TestRecallUnionFusesByRank`（两路都找到的位置压过单路第一名，且顺序与字典序不同、
   三次运行一致）、`TestRecallUnionAddsNoNumbersToTheAnswer`（字段集合不变）。
   原 `TestKeywordRecallScopeAndOrder` 的"按路径有序"说法改为"平分确定性"。
+
+## 真机对照（同一查询，`memora` 库，`RECALL FROM memora MATCH 'rekey' LIMIT 10`）
+
+旧构建（表名 + 路径字典序）：`检索/向量身份 rekey` → `当前状态/当前缺口` →
+`接口与检索/MSQL 表面` → `接口与检索/向量 rekey` → `运行与宿主/CLI、daemon 与实例`
+
+新构建（BM25 名次）：`接口与检索/向量 rekey` → `检索/向量身份 rekey` → `当前状态/当前缺口` →
+`运行与宿主/CLI、daemon 与实例` → `接口与检索/MSQL 表面`
+
+标题就是查询词的两篇升到最前，只在正文里捎带提到 rekey 的那篇（`MSQL 表面`）落到最后——
+正是"顺序由相关性决定"该有的样子。同一实例上 `RECALL FROM "me" MATCH … NEAREST …` 仍然
+**整条失败**（`me` 没有向量身份），"不给半份答案"这条没被融合改掉。
+
+## 还没做的
+
+- 两臂候选深度今天各等于 `LIMIT`（向量内部先探测 `max(2n, n+8)`）。加深候选（例如各取 `3×LIMIT`
+  再融合）是**实现细节**，不触碰契约，将来可单独评估。
+- Admin 搜索页仍只走关键词臂并跨库交错；第二阶段接上向量臂后，**库内**顺序直接用引擎的融合结果，
+  跨库的交错保持不变（`RECALL` 一次只回答一个 Database，跨库没有可融的名次）。

@@ -910,3 +910,20 @@ ADR 把「名次内用、不外露」写死。Admin 搜索页落地后改用引�
 所以 A 里「关键词改用 BM25」不是"把已有的分数拿出来用"，而是**新引入一个相关性序**，只喂融合。
 
 全稿见 [召回融合](./planning/recall-rrf.md)。**未授权开工。**
+
+## 2026-09-21 · RRF 已实现（`feature/recall-rrf`，`884c8f6`）
+
+**落地内容**：关键词臂改成 `ORDER BY bm25(mem_recall_fts), u.unit_no`（臂自己的序就是相关性序，
+去掉尾部按路径排序）；向量臂去掉尾部按路径排序（单臂第一条现在是真正最近的）；`recallUnion`
+换成 `fuseRecallRows`（RRF `k=60` + 表名/路径字典序做平分回落 + `LIMIT` 截断，`Truncated` 如实
+表示"融合后还有位置被截掉"）；规范升格为 [ADR-0013](./decisions/0013-recall-fusion-by-rank.md)，
+ADR-0012 的表述改为「名次可内用、不可外露」，`docs/query/msql.md` 与检索四条路文档同步，
+Skill 的召回段也改成"按名次融合、别把顺序当置信度"（两个 adapter 副本与 manifest 已同步）。
+
+**证据**：新增 `internal/sqlstore/recall_fusion_test.go` 四个测试（相关性序 vs 插入序、距离序
+vs 路径序、两路都命中压过单路第一且三次运行一致、融合后字段集合不变）；`TestKeywordRecallScopeAndOrder`
+的说法从"按路径有序"改为"平分确定性"；`./scripts/ci.sh` 全绿；真机对照见
+[召回融合计划](./planning/recall-rrf.md)（标题即查询词的两篇升到最前、只捎带提到的那篇落到最后）。
+
+**已知边界**：两臂候选深度今天等于 `LIMIT`（向量内部先探测 `max(2n, n+8)`），加深属于实现细节；
+Admin 搜索页仍是关键词单臂 + 跨库交错，第二阶段接向量臂后库内顺序直接用引擎融合结果。
