@@ -23,8 +23,8 @@
 → ① 发现：定位库和表
 → ② 定位（四条路，可单走或组合；Skill 编排）：
      语义索引（Agent 主路，已实现）：SHOW ROUTES 走到叶子
-     关键词召回（待实现）：一次拿到命中路径
-     向量召回（待实现）：一次拿到命中路径
+     关键词召回（已实现，`RECALL`）：一次拿到命中路径
+     向量召回（M7 后续 Feature）：一次拿到命中路径
      jev（可选）：把一层 child 交给 jev Choice，内核仍是 SHOW ROUTES
 → ③ 叶子路径 → RowID（OPEN ROUTE）
 → ④ 回表取值：SELECT WHERE row_id = …

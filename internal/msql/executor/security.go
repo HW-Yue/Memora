@@ -16,7 +16,7 @@ func (engine *Engine) authorizeStatement(ctx context.Context, statement ast.Stat
 			return normalizeError(err)
 		}
 	}
-	level := statementRiskLevel(statement)
+	level := StatementRiskLevel(statement)
 	databases := statementDatabaseNames(statement)
 	for _, database := range databases {
 		if present {
@@ -77,10 +77,16 @@ func (engine *Engine) authorizeDatabaseReferenceAtLevel(ctx context.Context, lev
 	return normalizeError(security.RequireAnyDatabaseLevel(ctx, level, reference))
 }
 
-func statementRiskLevel(statement ast.Statement) security.RiskLevel {
+// StatementRiskLevel is the one classification of what a statement can do. The
+// read-only transports use it too: a hard-coded allowlist of their own is how a
+// new read statement ends up unreachable from the CLI.
+func StatementRiskLevel(statement ast.Statement) security.RiskLevel {
 	switch {
 	case statement.Insert != nil, statement.Update != nil, statement.Delete != nil,
-		statement.Restore != nil, statement.RepairLinks != nil:
+		statement.Restore != nil, statement.RepairLinks != nil,
+		// BEGIN/COMMIT/ROLLBACK are not reads: a read-only transport that accepted
+		// them would hand the caller control of a transaction it may then commit.
+		statement.Transaction != nil:
 		return security.LevelWrite
 	case statement.Create != nil, statement.Alter != nil, statement.Reshape != nil,
 		statement.CreateRoute != nil, statement.RenameRoute != nil,

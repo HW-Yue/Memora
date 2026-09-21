@@ -83,10 +83,23 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
   `max_affected_rows` 约束）；出队时重新校验、不成立即丢弃；引用修复沿 `successor_ids`
   到链尾并补全双向，摘要修复两面一起写以防自激；原地写入会把指向它的摘要入队。
   读侧不再需要 `stale` 标记（写方入队已覆盖）。**M6 完成。**
-- **下一件**：**M7 召回**——详细方案见 [M7 召回：详细实施计划](./m7-recall-plan.md)（待授权）。
-  七个 Feature，顺序 `构建标签 → 索引物料表 → 召回读面 → 词法通路 → vec0 → 向量队列 → 融合闭环`，
-  **词法先闭环、再接向量**，两次端到端。判定标准是「Agent 能不能找到东西」。
-  **归档读面与修复队列冻结**：不再加面，出问题降级到 `doctor`。
+- **M7 · F1 构建标签贯通 ✓**（2026-09-21）：`sqlite_fts5` 在 `ci.sh` 声明一次并穿进
+  vet／unit／race／cgo-build／lint／errcheck；README 与安装脚本的构建命令同步；
+  `modules_test.go` 断言开库后 fts5 与 `trigram` 可用；三个 devgate 门锁住这些入口。
+- **M7 · F3 索引物料表 ✓**（2026-09-21）：新增 `mem_recall_units`（一叶一单元、`unit_no`
+  稳定行号）+ FTS5 外部内容表 `mem_recall_fts`；写路径同事务维护、哈希不变不重算、
+  换叶即移出旧单元；`doctor` 报 `broken_recall_units`。
+- **M7 · F2 召回读面 ✓**（2026-09-21）：`RECALL FROM <db> [IN <table>] MATCH :q LIMIT :n`；
+  返回逐段 `route_id` 的完整路径 + database/table/kind/object_id，去重后按字典序稳定输出；
+  缺 limit、越界（>1000）、短于 3 字一律拒；输出不含分数、理由、命中字段与正文。
+- **M7 · F4 词法通路 ✓**（2026-09-21）：FTS5 `trigram` 外部内容表同事务同步；
+  端到端实测——中文事实写入 → `RECALL` 命中 → `OPEN ROUTE` → `SELECT` 回表；
+  改标题后旧词召不回、删除后召不回、全角半角等价。
+- **M7 剩余**：F6（vec0 盘上索引）→ F5（向量队列与回填）→ F7（融合闭环）。
+  向量由宿主侧算好交回，Memora 不发网络请求、不持有 base URL 与 key。
+- **下一件**：**M7 · F6**——详细方案见 [M7 召回：详细实施计划](./m7-recall-plan.md)。
+  判定标准是「Agent 能不能找到东西」。**归档读面与修复队列冻结**：不再加面，
+  出问题降级到 `doctor`。
 
 ## M2 的 Feature 切分（已完成）
 

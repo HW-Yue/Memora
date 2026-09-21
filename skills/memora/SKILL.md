@@ -196,6 +196,32 @@ change the answer. Cite `database.table`, Row ID, revision, and available source
 anchor for every factual summary. Distinguish “no matching Row,” “truncated,”
 “stale during SELECT,” and “permission denied.”
 
+## Recall a position you cannot name
+
+`SHOW ROUTES` walks down from a node you already chose. When you cannot name that
+node, recall answers the other question: **where in the semantic tree does this
+topic live?** It is a locator, not an answer — it returns no fact, no score, no
+distance, no rank, no reason, and not the text it matched.
+
+```sh
+memora query --input '{"parameters":{"named":{"q":"存储引擎","limit":5}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "RECALL FROM work MATCH :q LIMIT 5"
+memora query --input '{"parameters":{"named":{"q":"存储引擎","limit":5}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "RECALL FROM work IN notes MATCH :q LIMIT 5"
+```
+
+Each hit carries `database`, `table`, `kind`, an optional `object_id`, and `path`
+— the root-first segments, each with the `route_id` navigation needs. Continue
+exactly as after discovery: `OPEN ROUTE` the last segment, then `SELECT` the fact.
+Recall never prefetches: it does not open the leaf, cache the row, or substitute
+for the `SELECT` that produces the answer.
+
+`LIMIT` is required and bounded to 1–1000; the query must be at least 3
+characters, and a shorter one is refused rather than silently returning nothing.
+Hits are de-duplicated by path and ordered by table then path, so the same query
+over an unchanged database returns the same list. Scope is one Database, with an
+optional `IN <table>`. Today the lexical path is the only one wired; when a
+position exists but no hit returns, treat it as "not matched", never as "the tree
+has nothing there", and always report the query you used.
+
 ## Decide where knowledge lives
 
 Before persisting a new piece of knowledge, decide where it belongs. Decide

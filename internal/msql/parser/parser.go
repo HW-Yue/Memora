@@ -119,6 +119,8 @@ func (parser *parser) parseStatement() (ast.Statement, error) {
 		}
 	case parser.matchWord("COMMIT"):
 		statement = transactionStatement("COMMIT")
+	case parser.matchWord("RECALL"):
+		statement, err = parser.parseRecall()
 	case parser.matchWord("REPAIR"):
 		statement, err = parser.parseRepair()
 	case parser.matchWord("ROLLBACK"):
@@ -1485,4 +1487,42 @@ func (parser *parser) parseRepair() (ast.Statement, error) {
 	return ast.Statement{Kind: "REPAIR_LINKS", RepairLinks: &ast.RepairLinksStatement{
 		Database: &database, Limit: &limit,
 	}}, nil
+}
+
+// parseRecall reads RECALL FROM <database> [IN <table>] MATCH <query> LIMIT <n>.
+// The Database is required and the Table optional: recall answers across a
+// Database's Tables, and the authorization it needs is the Database's.
+func (parser *parser) parseRecall() (ast.Statement, error) {
+	if _, err := parser.expectWord("FROM"); err != nil {
+		return ast.Statement{}, err
+	}
+	database, err := parser.parseName()
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	recall := &ast.RecallStatement{Database: &database}
+	if parser.matchWord("IN") {
+		table, err := parser.parseName()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		recall.Table = &table
+	}
+	if _, err := parser.expectWord("MATCH"); err != nil {
+		return ast.Statement{}, err
+	}
+	query, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	recall.Query = &query
+	if _, err := parser.expectWord("LIMIT"); err != nil {
+		return ast.Statement{}, err
+	}
+	limit, err := parser.parseExpression(1)
+	if err != nil {
+		return ast.Statement{}, err
+	}
+	recall.Limit = &limit
+	return ast.Statement{Kind: "RECALL", Recall: recall}, nil
 }

@@ -93,3 +93,17 @@ memora 侧：列出待向量化单元（有界）  →  脚本：读 ~/.zshrc �
         →  提交向量（校验维度／model／哈希）
         →  RECALL 命中 → SELECT 回表
 ```
+
+## 进度
+
+- **F1 · 构建标签贯通 ✓**（2026-09-21）：`scripts/ci.sh` 声明一次 `build_tags=sqlite_fts5`
+  并穿进 vet／unit／race／cgo-build／lint；release 与 README 同步；新增模块可用性断言。
+- **F3 · 索引物料表 ✓**（2026-09-21）：新增 `mem_recall_units`（一叶一单元，`unit_no` 稳定
+  行号）+ FTS5 外部内容表；写路径同事务维护，哈希不变不重算、换叶即移出旧单元；
+  `doctor` 报 `broken_recall_units`。
+- **F2 · 召回读面 ✓**（2026-09-21）：`RECALL FROM <db> [IN <table>] MATCH :q LIMIT :n`；
+  逐段 `route_id` 路径、按表与路径去重后字典序；缺 limit／越界／短于 3 字被拒；
+  输出不含任何被禁字段。
+- **F4 · 词法通路 ✓**（2026-09-21）：FTS5 `trigram` 外部内容表，同事务同步；
+  中文查询命中 → `OPEN ROUTE` → `SELECT` 回表闭环已实测（含全角折叠、删除后召不回）。
+- **下一件**：F6（vec0）→ F5（向量队列）→ F7（融合闭环）。

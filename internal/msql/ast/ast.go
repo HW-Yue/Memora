@@ -33,6 +33,7 @@ type Statement struct {
 	OpenRoute     *OpenRouteStatement          `json:"open_route,omitempty"`
 	OpenArchive   *OpenArchiveStatement        `json:"open_archive,omitempty"`
 	RepairLinks   *RepairLinksStatement        `json:"repair_links,omitempty"`
+	Recall        *RecallStatement             `json:"recall,omitempty"`
 	PlanRoute     *PlanRouteMutationStatement  `json:"plan_route_mutation,omitempty"`
 	PlanSchema    *PlanSchemaChangeStatement   `json:"plan_schema_change,omitempty"`
 	ApplyRoute    *ApplyRouteMutationStatement `json:"apply_route_mutation,omitempty"`
@@ -180,6 +181,15 @@ type UpdateRouteStatement struct {
 	Route    *Expression `json:"route"`
 	Synopsis *Expression `json:"synopsis"`
 	Aliases  *Expression `json:"aliases,omitempty"`
+}
+
+// RecallStatement asks where a keyword match sits in the semantic tree. It
+// answers with paths, never with matches: no score, no reason, no content.
+type RecallStatement struct {
+	Database *Name       `json:"database"`
+	Table    *Name       `json:"table,omitempty"`
+	Query    *Expression `json:"query"`
+	Limit    *Expression `json:"limit"`
 }
 
 // RepairLinksStatement drains a bounded batch of queued link repairs. It is a
@@ -351,6 +361,9 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.OpenArchive.Archive)
 	case statement.RepairLinks != nil:
 		appendExpression(statement.RepairLinks.Limit)
+	case statement.Recall != nil:
+		appendExpression(statement.Recall.Query)
+		appendExpression(statement.Recall.Limit)
 	case statement.PlanRoute != nil:
 		appendExpression(statement.PlanRoute.Proposal)
 	case statement.PlanSchema != nil:

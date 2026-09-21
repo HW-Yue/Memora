@@ -9,6 +9,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
+	"github.com/HW-Yue/Memora/internal/recall"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
@@ -27,6 +28,14 @@ func (db *DB) ops() operations {
 		}
 		return db.view(ctx, fn)
 	}}
+}
+
+func (o operations) RecallKeywords(ctx context.Context, databaseName, tableName, text string, limit int) (hits []recall.Hit, err error) {
+	err = o.run(ctx, false, func(t *tx) error {
+		hits, err = t.recallKeywords(ctx, databaseName, tableName, text, limit)
+		return err
+	})
+	return
 }
 
 func (o operations) RepairLinks(ctx context.Context, databaseName string, limit int) (receipt RepairReceipt, err error) {

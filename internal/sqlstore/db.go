@@ -132,19 +132,30 @@ CREATE TABLE IF NOT EXISTS mem_archive (
 );
 CREATE INDEX IF NOT EXISTS mem_archive_row ON mem_archive(table_id, row_id);
 CREATE TABLE IF NOT EXISTS mem_recall_units (
-	route_id TEXT PRIMARY KEY,
+	unit_no INTEGER PRIMARY KEY AUTOINCREMENT,
+	route_id TEXT NOT NULL UNIQUE,
 	database_id TEXT NOT NULL,
 	table_id TEXT NOT NULL,
 	row_id TEXT NOT NULL,
 	revision INTEGER NOT NULL,
 	content_hash TEXT NOT NULL,
 	payload TEXT NOT NULL,
+	payload_index TEXT NOT NULL,
 	embedding_model TEXT NOT NULL DEFAULT '',
 	embedding_dimensions INTEGER NOT NULL DEFAULT 0,
 	embedded_at TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mem_recall_units_row ON mem_recall_units(table_id, row_id);
+-- Keyword recall is an external-content FTS5 index over the units: the text is
+-- stored once, and unit_no is the stable rowid the index points at. trigram is
+-- what makes Chinese content searchable with a built-in tokenizer.
+CREATE VIRTUAL TABLE IF NOT EXISTS mem_recall_fts USING fts5(
+	payload_index,
+	content='mem_recall_units',
+	content_rowid='unit_no',
+	tokenize='trigram'
+);
 CREATE TABLE IF NOT EXISTS mem_repairs (
 	database_id TEXT NOT NULL,
 	table_id TEXT NOT NULL,

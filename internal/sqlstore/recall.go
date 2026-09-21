@@ -51,6 +51,22 @@ func recallPayload(table catalog.Table, value storedRow) string {
 	return strings.Join(parts, "\n")
 }
 
+// foldRecallText is what the keyword index stores: full-width ASCII folded to
+// half-width, so "ＡＢＣ" and "ABC" meet. Case is left to the tokenizer, which
+// already folds it. The stored payload keeps the text as written — the vector
+// path embeds that, not this.
+func foldRecallText(text string) string {
+	return strings.Map(func(character rune) rune {
+		if character >= '\uFF01' && character <= '\uFF5E' {
+			return character - 0xFEE0
+		}
+		if character == '\u3000' {
+			return ' '
+		}
+		return character
+	}, text)
+}
+
 func recallContentHash(payload string) string {
 	digest := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(digest[:])
@@ -71,21 +87,35 @@ func (t *tx) syncRecallUnit(ctx context.Context, table catalog.Table, value stor
 	// A Row occupies exactly one leaf, so a unit for this Row on any other leaf
 	// describes a position it has left. Removing it here makes the index agree
 	// with the Rows however the move happened.
+	if err := t.withdrawRecallUnits(ctx, `table_id = ? AND row_id = ? AND route_id <> ?`,
+		table.ID, value.ID, leafID); err != nil {
+		return err
+	}
 	if _, err := t.q().ExecContext(ctx, `DELETE FROM mem_recall_units
 		WHERE table_id = ? AND row_id = ? AND route_id <> ?`, table.ID, value.ID, leafID); err != nil {
 		return err
 	}
 
-	var existingRow, existingHash string
-	err := t.q().QueryRowContext(ctx, `SELECT row_id, content_hash FROM mem_recall_units WHERE route_id = ?`,
-		leafID).Scan(&existingRow, &existingHash)
+	folded := foldRecallText(payload)
+	var unitNo int64
+	var existingRow, existingHash, existingIndex string
+	err := t.q().QueryRowContext(ctx, `SELECT unit_no, row_id, content_hash, payload_index
+		FROM mem_recall_units WHERE route_id = ?`, leafID).Scan(&unitNo, &existingRow, &existingHash, &existingIndex)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = t.q().ExecContext(ctx, `INSERT INTO mem_recall_units
-			(route_id, database_id, table_id, row_id, revision, content_hash, payload, embedding_model,
-			 embedding_dimensions, embedded_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, '', 0, '', ?)`,
-			leafID, table.DatabaseID, table.ID, value.ID, value.Revision, hash, payload, formatTime(t.now))
+		inserted, err := t.q().ExecContext(ctx, `INSERT INTO mem_recall_units
+			(route_id, database_id, table_id, row_id, revision, content_hash, payload, payload_index,
+			 embedding_model, embedding_dimensions, embedded_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 0, '', ?)`,
+			leafID, table.DatabaseID, table.ID, value.ID, value.Revision, hash, payload, folded, formatTime(t.now))
+		if err != nil {
+			return err
+		}
+		if unitNo, err = inserted.LastInsertId(); err != nil {
+			return err
+		}
+		_, err = t.q().ExecContext(ctx, `INSERT INTO mem_recall_fts(rowid, payload_index) VALUES (?, ?)`,
+			unitNo, folded)
 		return err
 	case err != nil:
 		return err
@@ -95,22 +125,74 @@ func (t *tx) syncRecallUnit(ctx context.Context, table catalog.Table, value stor
 			WHERE route_id = ?`, value.Revision, formatTime(t.now), leafID)
 		return err
 	}
-	// The text changed (or another Row took the leaf), so whatever vector was
-	// here described something else and its provenance goes with it.
-	_, err = t.q().ExecContext(ctx, `UPDATE mem_recall_units
-		SET row_id = ?, revision = ?, content_hash = ?, payload = ?,
+	// The text changed (or another Row took the leaf), so whatever vector was here
+	// described something else and its provenance goes with it. The index is told
+	// about the old text before the content row changes: an external-content index
+	// deletes by value, not by rowid.
+	if _, err := t.q().ExecContext(ctx,
+		`INSERT INTO mem_recall_fts(mem_recall_fts, rowid, payload_index) VALUES('delete', ?, ?)`,
+		unitNo, existingIndex); err != nil {
+		return err
+	}
+	if _, err := t.q().ExecContext(ctx, `UPDATE mem_recall_units
+		SET row_id = ?, revision = ?, content_hash = ?, payload = ?, payload_index = ?,
 		    embedding_model = '', embedding_dimensions = 0, embedded_at = '', updated_at = ?
 		WHERE route_id = ?`,
-		value.ID, value.Revision, hash, payload, formatTime(t.now), leafID)
+		value.ID, value.Revision, hash, payload, folded, formatTime(t.now), leafID); err != nil {
+		return err
+	}
+	_, err = t.q().ExecContext(ctx, `INSERT INTO mem_recall_fts(rowid, payload_index) VALUES (?, ?)`,
+		unitNo, folded)
 	return err
 }
 
 // removeRecallUnitsForRow drops every unit a Row owns. A deleted or superseded
 // Row is not recallable: recall answers where something is, and it is nowhere.
 func (t *tx) removeRecallUnitsForRow(ctx context.Context, table catalog.Table, rowID string) error {
+	if err := t.withdrawRecallUnits(ctx, `table_id = ? AND row_id = ?`, table.ID, rowID); err != nil {
+		return err
+	}
 	_, err := t.q().ExecContext(ctx, `DELETE FROM mem_recall_units WHERE table_id = ? AND row_id = ?`,
 		table.ID, rowID)
 	return err
+}
+
+// withdrawRecallUnits removes the units matching a predicate from the keyword
+// index. An external-content FTS5 index deletes by value, so the old text has to
+// be read before the content row disappears.
+func (t *tx) withdrawRecallUnits(ctx context.Context, where string, arguments ...any) error {
+	rows, err := t.q().QueryContext(ctx, `SELECT unit_no, payload_index FROM mem_recall_units WHERE `+where, arguments...)
+	if err != nil {
+		return err
+	}
+	units := []struct {
+		unitNo int64
+		index  string
+	}{}
+	for rows.Next() {
+		unit := struct {
+			unitNo int64
+			index  string
+		}{}
+		if err := rows.Scan(&unit.unitNo, &unit.index); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		units = append(units, unit)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	_ = rows.Close()
+	for _, unit := range units {
+		if _, err := t.q().ExecContext(ctx,
+			`INSERT INTO mem_recall_fts(mem_recall_fts, rowid, payload_index) VALUES('delete', ?, ?)`,
+			unit.unitNo, unit.index); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // brokenRecallUnits counts the two ways the materialised index can disagree with
