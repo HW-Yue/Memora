@@ -30,7 +30,7 @@
 - [执行计划](./planning/execution-plan.md) — 唯一队列。先落地基座（CI → baseline → 核心回归），
   再[行必须可导航](./planning/row-navigable.md)
 - [Admin 显示槽位](./planning/admin-display-slots.md) — 文档居中且只渲染一次
-- [引擎拥有形状](./planning/engine-owned-shape.md) — 讨论稿：agent 只给位置与正文，Schema 归引擎
+- [引擎拥有形状](./planning/engine-owned-shape.md) — 讨论稿：列归引擎，命名/描述/位置/正文归 agent
 - [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
 - [决策日志](./decisions.md) — 运行中的判断；规范级结论进 ADR
 
