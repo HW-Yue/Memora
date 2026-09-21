@@ -132,19 +132,22 @@ Row 命中时保留 `object_id`（即 RowID），见
 
 **已删除的 Row，从任何地方都拿不到。**
 
-判据是**可达性，不是物理擦除**。SQLite 页里的字节可能还在——
-但**不得对用户承诺「数据已被抹除」**。承诺的是这一条，而且必须完整：
+删除是**归档后物理删除**（2026-09-21 修订）：行、它的叶子、因此变空的父节点与它的
+history 都真删，删除前的语义路径与内容先进归档表，见[行删除](./row-delete-archive.md)。
+判据仍是**可达性**——SQLite 页里的字节可能还在，**不得对用户承诺「数据已被抹除」**。
+承诺的是下面这一条，而且必须完整：
 
 | 面 | 已删除的 Row |
 |---|---|
 | 点查 `SELECT WHERE row_id=` | 零行 |
 | 列表／扫描 | 不出现 |
-| 语义树 `OPEN ROUTE` | 叶子上没有它 |
+| 语义树 `OPEN ROUTE` | 叶子和路径都已删除，走不到 |
 | `SHOW HISTORY` | not found |
 | **`SELECT ... AS OF REVISION\|COMMIT_SEQUENCE`** | **not found** |
-| history 表的 `(row_id, *)` 区段 | 拿不到 |
+| history 表的 `(row_id, *)` 区段 | 记录已随行删除 |
 | 关键词／向量检索 | 不成为命中 |
-| `RESTORE` | 拒绝，且说明删除是终态 |
+| `RESTORE` | 拒绝；引擎不提供恢复入口 |
+| **归档表** | **唯一例外**：只由显式恢复流程读，且恢复由 Agent 重建，见[行删除](./row-delete-archive.md) |
 
 `SHOW CHANGES` 是例外：它是审计设施，会继续报告这个 Row 的 ID 与前后 revision，
 但**不含任何列值**。

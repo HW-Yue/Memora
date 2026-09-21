@@ -28,6 +28,33 @@
 因此 `GOOS=linux` sweep 在 macOS runner 上必然失败，GitHub CI 必红。
 本地实测：不设该变量 `./scripts/ci.sh` 全绿（EXIT=0）；设成 `1` 则死在 `vet`（EXIT=1）。
 
+## 2026-09-21 · 删除改为归档式物理删除；history 只记原地修改
+
+对象：DELETE 的语义，以及 SPLIT／MERGE 后 history 的归属。
+状态：**方向性结论**（用户在讨论中定），两处未决见下。
+
+**结论一 · 删除 = 归档后物理删除**。一个事务里：① 删除前的完整语义树路径与节点/行内容
+写进**归档表**；② 主表整行删除（含 `route_leaf_ids`）；③ 删掉它占用的叶子；④ 自底向上剪枝
+——父节点摘掉这个子节点后**没有其它子节点才连父一起删**，还有其它子节点就只摘 `child_ids`
+里的这一项；⑤ 该行 history 全部删除，不归档。**恢复不由引擎做**：归档表是引擎逻辑的终点，
+Agent 读归档自己重建。
+
+**结论二 · history 只记原地修改**。SPLIT 时源行 history 不动，两个新行各建自己的 history
+并**指向源行 history**；MERGE 的新行 history 指向多个来源（所以指针是列表）。源行仍留主表，
+用一个字段记录新 row id、读时懒解析。
+
+**理由**：删除要可恢复，但引擎不该背恢复语义；归档 + 物理删让主表与语义树不留死节点。
+history 只承载「这一行被改过什么」，身份变化用指针表达，源行历史不被污染，回溯不断链。
+
+**弃选**：① 只置 `deprecated` 留墓碑（现状）——主表与树上长期堆死节点，恢复也没有自足快照；
+② 引擎提供 RESTORE——恢复的判断属于 Agent，引擎只保证归档自足。
+
+**未决**（下次定）：一行多叶时删全部叶子还是只删指定语义索引；别的行 `links` 指着被删行时
+怎么处理；history 指针字段的位置；它与 `successor_ids` 是否重复（[架构原则 §2](./product/architecture-principles.md)）。
+
+**落盘**：[行删除](./product/row-delete-archive.md)、[history 谱系](./product/history-lineage.md)；
+已修订 `write-model` §1.2、`query-model` §7、`row-lifecycle-successor`、`msql-mutation`。
+
 ## 2026-09-20 · 落地顺序：先修 CI，再压基线，再补核心包回归
 
 对象：`rewrite/adr0011` 落地这一块的拆分、顺序与最大风险。

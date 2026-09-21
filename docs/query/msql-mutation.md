@@ -42,7 +42,10 @@ F17a 的 `actor`、`source` 和 `reason` 也属于结构化 options，并原样�
 
 `route_leaf_ids` 是提交后完整 Router membership 快照，位于结构化 option 而不是
 SQL source。非 nil 空数组显式清空；目标必须是同一 Database 的 leaf。快照、Row
-revision、History、Route locator 和 Change Log 原子提交，DELETE 始终清空 membership。
+revision、History、Route locator 和 Change Log 原子提交。
+**DELETE 已改为归档后物理删除**（2026-09-21）：行、它占用的叶子、因此变空的父节点
+和它的 history 一并删除，删除前的语义路径与内容先进归档表，见
+[行删除](../product/row-delete-archive.md)。
 
 普通 UPDATE 缺少 `route_leaf_ids` 时保留当前 membership，并把 locator revision
 推进到新 Row revision；这只适用于语义边界没有改变的修改。INSERT 由 Skill 提交完整

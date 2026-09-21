@@ -31,6 +31,11 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 
 字段已在行上；MSQL 还没有。见 [行链接](../product/row-links.md)。
 
+### 归档式删除 + history 谱系（新规格，待排期）
+
+[行删除](../product/row-delete-archive.md) 与 [history 谱系](../product/history-lineage.md)。
+两处未决先定：一行多叶怎么删、入向链接怎么办、history 指针字段的位置与 `successor_ids` 的关系。
+
 ### 召回架构
 
 关键词与向量只出路径、事实回表。方案未定，不写代码。

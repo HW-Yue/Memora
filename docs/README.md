@@ -18,6 +18,8 @@
 
 配套：[语义表](./product/route-companion-table.md) ·
 [行生命周期](./product/row-lifecycle-successor.md) ·
+[行删除](./product/row-delete-archive.md) ·
+[history 谱系](./product/history-lineage.md) ·
 [行链接](./product/row-links.md) ·
 [配置](./product/adaptive-configuration.md)
 

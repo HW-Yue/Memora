@@ -30,12 +30,13 @@
 数据行自己带 `revision`，所以数据表**不需要**额外的 `history_id` 指针——
 `(row_id, revision)` 本身就是「跳到这行最近一次改动」的键。
 
-history 只记**原地修改**。拆分、合并、删除改变身份，走数据表里的
-`successor_ids` 废弃 + 接替，见[数据行的生命周期](./row-lifecycle-successor.md)。
+history 只记**原地修改**。拆分、合并产生的新行各建自己的 history 并
+**指向来源 history**，源行的 history 不因身份变化而增长，见 [history 谱系](./history-lineage.md)；
+源行仍留主表、用一个字段记录新 row id，读时懒解析，见[数据行的生命周期](./row-lifecycle-successor.md)。
 
-**Row 被删除后，它在 history 表的整个 `(row_id, *)` 区段一并不可达。**
-history 是一张真的表，而表默认可查，所以这条必须明写：删除的契约是
-「从任何地方都拿不到」，history 不是例外。完整清单见[查询形态 §7](./query-model.md)。
+**删除已改为归档后物理删除**（2026-09-21）：删除前的语义路径与内容先进归档表，
+再删行、删叶、剪掉因此变空的父节点、删除该行的 history。见[行删除](./row-delete-archive.md)。
+删除的契约仍是「从任何地方都拿不到」，归档表是唯一例外读面，完整清单见[查询形态 §7](./query-model.md)。
 
 ### 1.3 语义配套表
 
