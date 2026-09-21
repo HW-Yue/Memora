@@ -131,6 +131,16 @@ CREATE TABLE IF NOT EXISTS mem_archive (
 	row_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mem_archive_row ON mem_archive(table_id, row_id);
+CREATE TABLE IF NOT EXISTS mem_repairs (
+	database_id TEXT NOT NULL,
+	table_id TEXT NOT NULL,
+	row_id TEXT NOT NULL,
+	counterpart_table_id TEXT NOT NULL,
+	counterpart_row_id TEXT NOT NULL,
+	reason TEXT NOT NULL,
+	queued_at TEXT NOT NULL,
+	PRIMARY KEY (table_id, row_id, counterpart_table_id, counterpart_row_id)
+);
 CREATE TABLE IF NOT EXISTS mem_route_index (
 	route_id TEXT PRIMARY KEY,
 	table_id TEXT NOT NULL

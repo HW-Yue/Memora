@@ -103,6 +103,12 @@ func (t *tx) brokenLinks(ctx context.Context, table catalog.Table) (int, error) 
 			if err := decodeJSON(entry.links, &links); err != nil {
 				return 0, err
 			}
+			pending := map[string]bool{}
+			if len(links) > 0 {
+				if pending, err = t.pendingRepairs(ctx, table.ID, entry.id); err != nil {
+					return 0, err
+				}
+			}
 			for _, link := range links {
 				counterpartTable := table
 				if link.TableID != "" && link.TableID != table.ID {
@@ -115,7 +121,12 @@ func (t *tx) brokenLinks(ctx context.Context, table catalog.Table) (int, error) 
 				}
 				counterpart, err := t.readRow(ctx, counterpartTable, link.RowID)
 				if err != nil || counterpart.State != rowmodel.StateLive {
-					broken++
+					// A link to a Row that is gone or superseded is legitimate
+					// while it is queued for repair, and broken once it is not:
+					// that is what keeps the queue honest instead of decorative.
+					if !pending[linkKey(counterpartTable.ID, link.RowID)] {
+						broken++
+					}
 					continue
 				}
 				answered := false

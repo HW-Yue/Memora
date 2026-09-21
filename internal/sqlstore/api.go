@@ -318,6 +318,12 @@ func (t *tx) reshape(ctx context.Context, databaseName, tableName string, source
 		if err != nil {
 			return nil, err
 		}
+		// Every link still pointing here becomes a pending repair, queued in this
+		// same transaction: readers do not write, and a crash must not leave the
+		// queue empty while the links are already stale.
+		if err := t.enqueueSupersededLinks(ctx, table, value); err != nil {
+			return nil, err
+		}
 		// No advance and no history record: identity changed, content did not, so
 		// the Row keeps the revision its last in-place write gave it and
 		// (row_id, revision) never has a hole. successor_ids carries the change.

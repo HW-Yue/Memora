@@ -321,3 +321,59 @@ func withoutLink(links []Link, tableID, rowID string) []Link {
 	}
 	return remaining
 }
+
+// Repair reasons. A summary is stale when the stored revision is no longer the
+// counterpart's; a reference is stale when the counterpart has been superseded
+// and the link has to follow its successors.
+const (
+	RepairStaleSummary   = "stale_summary"
+	RepairStaleReference = "stale_reference"
+)
+
+// enqueueRepair records that one link endpoint needs repair. The queue is an
+// ordinary table keyed by the endpoint, so queueing the same one twice is a
+// no-op and a crash mid-repair simply leaves it queued.
+func (t *tx) enqueueRepair(ctx context.Context, table catalog.Table, holderRowID, counterpartTableID, counterpartRowID, reason string) error {
+	_, err := t.q().ExecContext(ctx, `INSERT OR IGNORE INTO mem_repairs
+		(database_id, table_id, row_id, counterpart_table_id, counterpart_row_id, reason, queued_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		table.DatabaseID, table.ID, holderRowID, counterpartTableID, counterpartRowID, reason, formatTime(t.now))
+	return err
+}
+
+// pendingRepairs lists the endpoints a Row already has queued, so the invariant
+// can tell "waiting for repair" apart from "broken".
+func (t *tx) pendingRepairs(ctx context.Context, tableID, rowID string) (map[string]bool, error) {
+	rows, err := t.q().QueryContext(ctx, `SELECT counterpart_table_id, counterpart_row_id FROM mem_repairs
+		WHERE table_id = ? AND row_id = ?`, tableID, rowID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	pending := map[string]bool{}
+	for rows.Next() {
+		var counterpartTable, counterpartRow string
+		if err := rows.Scan(&counterpartTable, &counterpartRow); err != nil {
+			return nil, err
+		}
+		pending[linkKey(counterpartTable, counterpartRow)] = true
+	}
+	return pending, rows.Err()
+}
+
+// enqueueSupersededLinks queues every endpoint that still points at a Row which
+// is being superseded. The writer does this inside its own transaction: a reader
+// cannot write (writers are serialised), and waiting for someone to read would
+// leave the queue empty across a crash.
+func (t *tx) enqueueSupersededLinks(ctx context.Context, table catalog.Table, source storedRow) error {
+	for _, link := range source.Links {
+		counterpartTable := table.ID
+		if link.TableID != "" {
+			counterpartTable = link.TableID
+		}
+		if err := t.enqueueRepair(ctx, table, link.RowID, counterpartTable, source.ID, RepairStaleReference); err != nil {
+			return err
+		}
+	}
+	return nil
+}
