@@ -39,17 +39,39 @@
 
 **顺序**：`F1 → F3 → F2 → F4 → F6 → F5 → F7`，即**词法先闭环，再接向量**，两次闭环。
 
-## 要先定的三处岔路（我给了倾向，等你拍板）
+## 三处岔路（已定，2026-09-21）
 
 1. **可召回单元的粒度**（最大风险所在）：单元挂在**叶子（route_id）**上，一个叶子一个单元，
    文本载荷取该行 `ROLE summary` + `title`（无则第一个 TEXT 列）。理由：召回返回的正是
    **语义路径**，叶子是路径的末端、且一行恰好一叶（1:1 已强制），所以"单元 = 叶子"让路径天然唯一。
    branch 不进索引（它不挂行，命中它还得下钻，不属于召回要回答的问题）。
-2. **向量谁产出**：**宿主/Agent 算好交回**，Memora 侧只做队列与存储（顾问选项①）。
-   与"Provider 属于宿主"的既有规则一致，也不需要 mem_config 存 URL。
-   代价：写路径多一个 `vector` 选项或一条提交语句，闭环多一步。
+2. **向量谁产出**：**宿主侧算好交回**。但**缝要收窄**——调模型的那段**不进 `sdk/memora`**：
+   让发布的 Go 客户端读 provider 环境变量并发 HTTP，等于 Memora 自己成了 provider 调用方，
+   直接违反既有规则（Provider 属于宿主，base URL 与 key 绝不交给 Memora），而且宿主未必有模型。
+   分工：
+   - **Memora 侧只搬运**：① 有界列出待向量化单元（`route_id`／`row_id` + **确切文本载荷** +
+     内容哈希 + 该单元要求的 `model`／`dimensions`）；② 有界、**幂等**地提交向量，校验维度、
+     model 标签、以及哈希是否仍是当前文本（对不上即拒，说明文本又变了）；
+   - **宿主侧**（`skills/memora/scripts/` 里的脚本，与 `install.sh`／`check.sh` 同处）读
+     `MEMORA_EMBEDDING_*`、调 `POST {BASE_URL}/embeddings`（带 `model`／`input`／`dimensions`）、
+     再把向量交回。
 3. **可见性**：**词法同步（同事务）**，**向量异步（队列回填）**。理由：中文 trigram 成本可控，
    异步只会把"刚写就召不回"变成必现 bug；向量有外部模型，同步会把网络延迟塞进写事务。
+
+### 向量的来源标记（换模型与改正文的安全网）
+
+每个向量必须记 **`model` + `dimensions` + 文本内容哈希**。换模型或改了正文 → 旧向量作废、
+单元回到队列。维度必须跟模型走：维度一变就是另一个索引（vec0 的维度是建表时定死的）。
+
+### 本地模型（测试用，已确认）
+
+用户已在 `~/.zshrc` 配好阿里云百炼 OpenAI 兼容模式：
+`MEMORA_EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`、
+`MEMORA_EMBEDDING_MODEL=text-embedding-v4`、`MEMORA_EMBEDDING_DIMENSIONS=1024`，
+`MEMORA_EMBEDDING_API_KEY` 有值（**密钥不写进仓库、不进数据库、不进日志**）。
+
+**硬约束：仓库测试不许碰网络**（既有约定）。因此 F5／F6／F7 的测试用**确定性的本地假向量器**；
+阿里云这条真链路只在 skill 的**冒烟脚本**里手动跑，**绝不进 `ci.sh`**。
 
 ## 风险
 
@@ -63,8 +85,11 @@
 4. **`sqlite-vec` 是新的 C 依赖**：如果它在某个平台构建失败，Feature 6 会卡住。
    缓解——F1 的可用性测试同时断言 vec0；卡住时 Feature 5 的队列照常可用，只是 `RECALL` 报未就绪。
 
-## 我需要你提供的一件事
+## 冒烟脚本要跑的闭环（手动，不进 CI）
 
-本地向量模型的**接口形状**：是 OpenAI 兼容的 `POST /v1/embeddings`，还是别的（Ollama、
-llama.cpp server、本地库直接调用）？以及**维度**。这决定测试期用什么驱动它——
-Memora 侧不发请求，所以它只需要出现在测试与 Skill 层的驱动代码里。
+```text
+memora 侧：列出待向量化单元（有界）  →  脚本：读 ~/.zshrc 的 MEMORA_EMBEDDING_*
+        →  POST /embeddings（model=text-embedding-v4, dimensions=1024）
+        →  提交向量（校验维度／model／哈希）
+        →  RECALL 命中 → SELECT 回表
+```
