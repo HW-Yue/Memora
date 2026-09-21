@@ -40,6 +40,7 @@ type VectorRecord struct {
 
 type recallUnit struct {
 	unitNo      int64
+	tableID     string
 	contentHash string
 }
 
@@ -99,6 +100,11 @@ func (t *tx) acceptVector(ctx context.Context, databaseName string, record Vecto
 		record.UnitNo); err != nil {
 		return VectorIdentity{}, err
 	}
+	// The index is derived from the row just written, in the same transaction:
+	// a crash cannot leave a vector without its index row or the reverse.
+	if err := t.storeVector(ctx, database.ID, unit.tableID, record.UnitNo, encoded); err != nil {
+		return VectorIdentity{}, err
+	}
 	return identity, nil
 }
 
@@ -122,8 +128,8 @@ func (t *tx) vectorIdentity(ctx context.Context, databaseID string) (VectorIdent
 
 func (t *tx) recallUnitByNumber(ctx context.Context, databaseID string, unitNo int64) (recallUnit, error) {
 	unit := recallUnit{unitNo: unitNo}
-	err := t.q().QueryRowContext(ctx, `SELECT content_hash FROM mem_recall_units
-		WHERE unit_no = ? AND database_id = ?`, unitNo, databaseID).Scan(&unit.contentHash)
+	err := t.q().QueryRowContext(ctx, `SELECT table_id, content_hash FROM mem_recall_units
+		WHERE unit_no = ? AND database_id = ?`, unitNo, databaseID).Scan(&unit.tableID, &unit.contentHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		// The identity is part of the lookup on purpose: units from every
 		// Database share one table, and a vector must never land in another

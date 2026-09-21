@@ -178,6 +178,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS mem_recall_fts USING fts5(
 	content_rowid='unit_no',
 	tokenize='trigram'
 );
+-- The vector index is a derived structure, so which (Table) has one is recorded
+-- rather than inferred: sqlite_master cannot answer it without scanning for a
+-- name prefix, and a prefix scan also matches the virtual table's shadow tables
+-- (_chunks, _rowids, _vector_chunksNN). This is a registry of derived indexes,
+-- not a second copy of any vector.
+CREATE TABLE IF NOT EXISTS mem_recall_vec_indexes (
+	table_id TEXT PRIMARY KEY,
+	database_id TEXT NOT NULL,
+	model TEXT NOT NULL,
+	dimensions INTEGER NOT NULL,
+	created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS mem_repairs (
 	database_id TEXT NOT NULL,
 	table_id TEXT NOT NULL,

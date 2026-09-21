@@ -161,20 +161,22 @@ func (t *tx) removeRecallUnitsForRow(ctx context.Context, table catalog.Table, r
 // index. An external-content FTS5 index deletes by value, so the old text has to
 // be read before the content row disappears.
 func (t *tx) withdrawRecallUnits(ctx context.Context, where string, arguments ...any) error {
-	rows, err := t.q().QueryContext(ctx, `SELECT unit_no, payload_index FROM mem_recall_units WHERE `+where, arguments...)
+	rows, err := t.q().QueryContext(ctx, `SELECT unit_no, table_id, payload_index FROM mem_recall_units WHERE `+where, arguments...)
 	if err != nil {
 		return err
 	}
 	units := []struct {
-		unitNo int64
-		index  string
+		unitNo  int64
+		tableID string
+		index   string
 	}{}
 	for rows.Next() {
 		unit := struct {
-			unitNo int64
-			index  string
+			unitNo  int64
+			tableID string
+			index   string
 		}{}
-		if err := rows.Scan(&unit.unitNo, &unit.index); err != nil {
+		if err := rows.Scan(&unit.unitNo, &unit.tableID, &unit.index); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -185,14 +187,18 @@ func (t *tx) withdrawRecallUnits(ctx context.Context, where string, arguments ..
 		return err
 	}
 	_ = rows.Close()
+	refs := make([]unitRef, 0, len(units))
 	for _, unit := range units {
 		if _, err := t.q().ExecContext(ctx,
 			`INSERT INTO mem_recall_fts(mem_recall_fts, rowid, payload_index) VALUES('delete', ?, ?)`,
 			unit.unitNo, unit.index); err != nil {
 			return err
 		}
+		refs = append(refs, unitRef{tableID: unit.tableID, unitNo: unit.unitNo})
 	}
-	return nil
+	// A unit that is going away must leave no row in the vector index either:
+	// nothing downstream could tell that the position it points at is gone.
+	return t.removeVectors(ctx, refs)
 }
 
 // brokenRecallUnits counts the two ways the materialised index can disagree with

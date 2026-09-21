@@ -15,7 +15,10 @@ import (
 )
 
 type harness struct {
-	t       *testing.T
+	t *testing.T
+	// path is the instance file, so a test can open a second handle and check
+	// that what it just wrote is really on disk rather than in this process.
+	path    string
 	db      *sqlstore.DB
 	session *msqlservice.Session
 	seq     int
@@ -25,7 +28,8 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	// The guard is on for every test Instance: a new path that would publish a
 	// live Row outside the one-to-one mount fails at its own commit.
-	db, err := sqlstore.Open(filepath.Join(t.TempDir(), "memora.db"), sqlstore.Options{CheckInvariants: true})
+	path := filepath.Join(t.TempDir(), "memora.db")
+	db, err := sqlstore.Open(path, sqlstore.Options{CheckInvariants: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +43,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &harness{t: t, db: db, session: session}
+	return &harness{t: t, path: path, db: db, session: session}
 }
 
 var authorization = security.Authorization{
