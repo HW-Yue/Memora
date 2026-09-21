@@ -1103,3 +1103,46 @@ Agent 阅读来筛"，比"静默零召回"可接受；`recall_keyword_test.go` �
 **证据**：`internal/sqlstore/recall_cjk_test.go`（8 组，含旧文件迁移与 `user_version=99` 拒绝）、
 `recall_keyword_test.go` 的两处改写、`internal/adminui` 冻结 bundle 重刷、`./scripts/ci.sh` 全绿。
 红-绿已实测：换回空格切分并关掉迁移分支时六条新用例全红。
+
+## 2026-09-22 · 读面的截断语义：`truncated` 必须覆盖"被自己的 LIMIT 截断"
+
+**对象**：`SELECT` 结果里的 `truncated`。
+
+**结论**：`truncated: true` 的含义是"还有我没看的东西"，同时覆盖两种情况——扫描预算 `select_scan`
+用完，**以及**调用方自己的 `LIMIT` 先满足了。点查（`WHERE row_id = …`）与整表普查（返回了全部
+Row）仍然报 `false`。
+
+**理由**：Agent 用普查证明"我看全了"，而旧实现只按扫描预算置位：三行的表上
+`SELECT row_id, title … LIMIT 2` 返回 `truncated: false`——扫描确实完整，被截断的是**列出的
+结果**。两者是不同的断言，其中一个不能省略。子 agent 把这个 `false` 与两行一起读，就会得出
+"这张表只有两行"，于是**超过 `select_rows` 之后所有完整性结论都不成立**，而三轮收敛式检查
+（叶子普查 / 行普查 / 召回子集）恰好都发现不了它。
+
+**弃选**：给 `SELECT` 加 cursor（工作量大，且本轮真正的缺口是"说实话"而不是"能翻页"）；
+把 `truncated` 限定为"扫描被截断"（那正是旧行为）。
+
+**证据**：`internal/sqlstore/read_surface_test.go` 的 `TestACensusCutByItsOwnLimitSaysSo`
+（退回旧逻辑时断言失败，不是编译失败）；真机：`me.projects`（5 行）`LIMIT 10` → `truncated:false`，
+`LIMIT 2` → `truncated:true`。
+
+## 2026-09-22 · `SHOW ROUTES … AT ROOT` 返回根的孩子：保留形状，把话说准
+
+**对象**：`AT ROOT` 的结果形状（不返回根节点本身）。
+
+**结论**：**不改协议**。`AT ROOT` 表示"从根那一层开始列"，返回的是根的孩子；子行携带
+`parent_id = 根 route_id`，所以 bootstrapping 拿到根 ID 只差一跳。SKILL.md 与查询规范把这一点
+写清楚，不再让读者以为会拿到根节点。
+
+**理由**：顾问给的选项是"修好或改名"。改名是一次语言变更（skill、示例、测试、既有 agent 的
+写法都要跟着改），而这里没有任何**正确性**损失：根 ID 在一次子行读取里就有；真正会咬人的是
+"读起来像会返回根节点"这句话，那句已经改成事实描述。语言面越小越好，改名的收益抵不上一轮
+破坏性变更。**这条作为边界记录，若日后 `describe route` 之类的根入口出现，可重新评估。**
+
+## 2026-09-22 · 核查：`COMPACT` 不会丢掉 `anti_scope`（顾问的前提不成立）
+
+顾问担心"COMPACT 模式静默删掉 `anti_scope`，于是 agent 会去搜一个被明确排除的库"。核查结果：
+`internal/msql/executor/catalog_atlas.go` 的 `databaseAtlasRow` / `tableAtlasRow` 在
+`AntiScope != ""` 时**总是**写入该字段，`COMPACT` 只影响行字节预算与分页，不做字段投影；
+两个现役 Database 的 `anti_scope` 本来就是空串。所以第三轮子 agent 看到的"没有 `anti_scope`"
+是"没有可排除的东西"，不是"被压缩掉了"。**结论：不需要改动**；若将来 `COMPACT` 真的要裁剪
+字段，语义字段（scope/anti_scope/purpose）不得在裁剪之列，这条写在这里当约束。
