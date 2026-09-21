@@ -68,7 +68,11 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 - **M4b · 归档读面 ✓**（2026-09-21）：`SHOW ARCHIVE FROM <表> [FOR ROW] [CURSOR] LIMIT`
   （必填范围与 LIMIT，游标绑 scope + 校验和）与 `OPEN ARCHIVE <id>`（全量：逐段路径 + 行内容）；
   归档仍是内部表，`SELECT` 够不到，`OPEN` 按记录自己的 Database 授权。**M4 完成。**
-- **下一件**：**M5 history 谱系**（`superseded` 不推进 revision；新行首条 history 指向来源）。
+- **M5 · history 谱系 ✓**（2026-09-21）：reshape 的源行只改 `row_state` 与 `successor_ids`
+  （revision／commit_sequence／updated_at 不动，也不追加 history），新行首条 history 带
+  `origins` 列表指向每个来源行与其 revision；`SHOW HISTORY` 新增 `origins` 列。
+  **M5 完成。**
+- **下一件**：**M6 行链接读写**（`links` 开放读写、双向一致、摘要懒更新）。
 
 ## M2 的 Feature 切分（已完成）
 

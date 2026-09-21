@@ -24,6 +24,15 @@ const (
 	OperationMerge      Operation = "MERGE"
 )
 
+// Origin names a Row whose history this one continues from: the Row a SPLIT
+// split, or one of the Rows a MERGE merged. It is recorded on the new Row's
+// first history record, so reading a Row's history back to its origin does not
+// depend on resolving successor_ids across Rows.
+type Origin struct {
+	RowID    string `json:"row_id"`
+	Revision uint64 `json:"revision"`
+}
+
 type Record struct {
 	Version           string         `json:"version"`
 	DatabaseID        string         `json:"database_id"`
@@ -45,6 +54,9 @@ type Record struct {
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 	RecordedAt        time.Time      `json:"recorded_at"`
+	// Origins is set on the first record of a Row that a reshape created, and
+	// empty everywhere else: a Row's own later edits do not repeat it.
+	Origins []Origin `json:"origins,omitempty"`
 }
 
 type Metadata struct {

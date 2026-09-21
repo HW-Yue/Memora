@@ -32,8 +32,12 @@ Row ID 必须满足 `RELATION_ID`，LIMIT 为 1–1000。结果按最新 revisio
 
 ```text
 row_id, revision, commit_sequence, schema_version, operation
-row_state, actor, source, reason, updated_at
+row_state, actor, source, reason, updated_at, origins
 ```
+
+`origins` 是这一行 history 的来源指针（[history 谱系](../product/history-lineage.md)）：
+SPLIT／MERGE 建出来的行，**首条记录**上带一个列表，逐项是
+`{row_id, revision}`——身份变化之前那一行停在哪个 revision。原地修改的行没有这一列的值。
 
 SHOW 不回传完整 values；需要内容时再用 AS OF 精确读取。超过 LIMIT 时 statement 和
 顶层 envelope 标记 `truncated = true`，并返回 `memora.list-page/v1`。cursor 绑定

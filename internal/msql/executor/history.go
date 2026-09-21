@@ -2,6 +2,9 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
+
+	"github.com/HW-Yue/Memora/internal/history"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/logical"
@@ -64,6 +67,9 @@ func (engine *Engine) showHistory(
 			{Name: "source_content_hash", Type: "TEXT", Nullable: true},
 			{Name: "reason", Type: "TEXT"},
 			{Name: "updated_at", Type: "TIMESTAMP"},
+			// The lineage edge a reshape left on a Row's first record: the Rows
+			// this one's history continues from.
+			{Name: "origins", Type: "JSON", Nullable: true},
 		},
 		Rows:      make([]result.Row, 0, len(records)),
 		Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
@@ -82,6 +88,7 @@ func (engine *Engine) showHistory(
 			"source_locator": record.SourceLocator, "source_content_hash": record.SourceContentHash,
 			"reason":     record.Reason,
 			"updated_at": record.UpdatedAt,
+			"origins":    originsJSON(record.Origins),
 		})
 	}
 	return output, nil
@@ -162,4 +169,17 @@ func historyPositiveInteger(
 		return 0, executeError(result.CodeValidation, label+" must be a positive INTEGER")
 	}
 	return uint64(integer), nil
+}
+
+// originsJSON renders the lineage edge for SHOW HISTORY, or NULL when the record
+// starts a history of its own.
+func originsJSON(origins []history.Origin) any {
+	if len(origins) == 0 {
+		return nil
+	}
+	encoded, err := json.Marshal(origins)
+	if err != nil {
+		return nil
+	}
+	return json.RawMessage(encoded)
 }

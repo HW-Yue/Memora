@@ -19,11 +19,11 @@ func segment(name string, kind router.Kind, purpose string) router.PathSegment {
 
 // seedTree creates the Database, Table and root without any leaf, so a path's
 // result is the whole tree.
-func (h *harness) seedTree() {
+func (h *harness) seedTree() string {
 	h.t.Helper()
 	h.run(`CREATE DATABASE work PURPOSE 'Work memory' SCOPE 'Projects'`, nil, executor.MutationOptions{})
 	h.run(`CREATE TABLE work.notes PURPOSE 'Notes' ROW SEMANTICS 'One fact' (title TEXT NOT NULL PURPOSE 'Title' ROLE title)`, nil, executor.MutationOptions{})
-	h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Everything'`, nil, write("root"))
+	return text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'Everything'`, nil, write("root")).Rows[0]["route_id"])
 }
 
 func (h *harness) rootChildren() []result.Row {

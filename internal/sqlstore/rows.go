@@ -170,7 +170,7 @@ func metadataFrom(options row.WriteMetadata) change.Metadata {
 	}
 }
 
-func (t *tx) appendHistory(ctx context.Context, table catalog.Table, value storedRow, operation history.Operation, metadata row.WriteMetadata) error {
+func (t *tx) appendHistory(ctx context.Context, table catalog.Table, value storedRow, operation history.Operation, metadata row.WriteMetadata, origins []history.Origin) error {
 	projected := project(table, value)
 	record := history.Record{
 		Version: history.Version, DatabaseID: table.DatabaseID, TableID: table.ID, RowID: value.ID,
@@ -180,7 +180,7 @@ func (t *tx) appendHistory(ctx context.Context, table catalog.Table, value store
 		SourceKind: metadata.SourceKind, SourceReceiptID: metadata.SourceReceiptID,
 		SourceLocator: metadata.SourceLocator, SourceContentHash: metadata.SourceContentHash,
 		Reason: fallback(metadata.Reason, "write"), CreatedAt: projected.CreatedAt, UpdatedAt: projected.UpdatedAt,
-		RecordedAt: t.now,
+		RecordedAt: t.now, Origins: origins,
 	}
 	_, err := t.q().ExecContext(ctx, `INSERT INTO `+historyTable(table.ID)+`(row_id, revision, commit_sequence, body) VALUES (?, ?, ?, ?)`,
 		value.ID, value.Revision, value.CommitSequence, encodeJSON(record))
@@ -274,7 +274,7 @@ func (t *tx) insert(ctx context.Context, databaseName, tableName string, values 
 	if err := t.writeRow(ctx, table, value, true); err != nil {
 		return row.Row{}, err
 	}
-	if err := t.appendHistory(ctx, table, value, history.OperationInsert, options.Metadata); err != nil {
+	if err := t.appendHistory(ctx, table, value, history.OperationInsert, options.Metadata, options.Origins); err != nil {
 		return row.Row{}, err
 	}
 	t.rowChange(table, value, change.OperationInsert, options.Metadata, leaves)
@@ -404,7 +404,7 @@ func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID strin
 	if err := t.writeRow(ctx, table, value, false); err != nil {
 		return row.Row{}, err
 	}
-	if err := t.appendHistory(ctx, table, value, history.OperationUpdate, options.Metadata); err != nil {
+	if err := t.appendHistory(ctx, table, value, history.OperationUpdate, options.Metadata, nil); err != nil {
 		return row.Row{}, err
 	}
 	t.rowChange(table, value, change.OperationUpdate, options.Metadata, related)
@@ -567,7 +567,7 @@ func (t *tx) restore(ctx context.Context, databaseName, tableName, rowID string,
 	if err := t.writeRow(ctx, table, value, false); err != nil {
 		return row.Row{}, err
 	}
-	if err := t.appendHistory(ctx, table, value, history.OperationCompensate, options.Metadata); err != nil {
+	if err := t.appendHistory(ctx, table, value, history.OperationCompensate, options.Metadata, nil); err != nil {
 		return row.Row{}, err
 	}
 	t.rowChange(table, value, change.OperationRestore, options.Metadata, nil)

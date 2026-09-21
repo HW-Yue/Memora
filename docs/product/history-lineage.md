@@ -1,7 +1,7 @@
 # history 只记原地修改，身份变化靠谱系指针
 
-状态：**方向性结论**（2026-09-21 定方向）。指针位置、与 `successor_ids` 的关系、
-源行 revision 三条均已定。
+状态：**已实现**（2026-09-21）。指针落在新行 history 的首条记录上，`SHOW HISTORY` 以
+`origins` 列读出；源行只改 `row_state` 与 `successor_ids`。
 
 ## 一句话
 
@@ -22,6 +22,10 @@ history 只记**一行自己的原地修改**。拆分、合并产生的新行�
 **源行 revision 不推进。** 身份变化不是这一行的内容版本：源行停在它最后一次原地修改的
 revision 上，history 保持连续，`(row_id, revision)` 不出现没有记录的空洞。
 `superseded` 这件事由**状态 + `successor_ids`** 表达，不由 revision 表达。
+
+实现口径（2026-09-21）：源行那次写入只改 `row_state` 与 `successor_ids`——
+`revision`、`commit_sequence`、`updated_at` 都停在最后一次原地修改上，也不追加 history
+记录；这次身份变化照样进 `mem_changes`（审计面记的是事务，不是行的版本）。
 
 源行仍留在主表（`superseded`），用一个字段（`successor_ids`）记录它拆分／合并后的新 row id，
 读到时懒解析，见[数据行的生命周期](./row-lifecycle-successor.md)。

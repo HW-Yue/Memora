@@ -283,10 +283,22 @@ func (t *tx) reshape(ctx context.Context, databaseName, tableName string, source
 			options.ExpectedSchemaVersion, table.Name, table.SchemaVersion)
 	}
 	metadata := options.Metadata
+	// The new Rows continue the sources' history: their first history record
+	// points back at each Row they came from. The revision is read before
+	// anything is written, because the sources stop moving at their last
+	// in-place revision (docs/product/history-lineage.md).
+	origins := make([]history.Origin, 0, len(sources))
+	for _, sourceID := range sources {
+		source, err := t.readRow(ctx, table, sourceID)
+		if err != nil {
+			return nil, err
+		}
+		origins = append(origins, history.Origin{RowID: source.ID, Revision: source.Revision})
+	}
 	created := make([]row.Row, 0, len(targets))
 	successorIDs := []string{}
 	for index, values := range targets {
-		write := row.WriteOptions{Metadata: metadata}
+		write := row.WriteOptions{Metadata: metadata, Origins: origins}
 		if index < len(options.TargetRouteLeafIDs) {
 			write.RouteLeafIDs = options.TargetRouteLeafIDs[index]
 		}
@@ -306,15 +318,12 @@ func (t *tx) reshape(ctx context.Context, databaseName, tableName string, source
 		if err != nil {
 			return nil, err
 		}
-		if err := t.advance(ctx, table, &value); err != nil {
-			return nil, err
-		}
+		// No advance and no history record: identity changed, content did not, so
+		// the Row keeps the revision its last in-place write gave it and
+		// (row_id, revision) never has a hole. successor_ids carries the change.
 		value.State = row.StateSuperseded
 		value.SuccessorIDs = successorIDs
 		if err := t.writeRow(ctx, table, value, false); err != nil {
-			return nil, err
-		}
-		if err := t.appendHistory(ctx, table, value, operation, metadata); err != nil {
 			return nil, err
 		}
 		kind := change.OperationSplit

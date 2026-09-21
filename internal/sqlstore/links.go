@@ -157,7 +157,7 @@ func (t *tx) detachCounterpartLinks(ctx context.Context, table catalog.Table, va
 		if err := t.writeRow(ctx, target, counterpart, false); err != nil {
 			return nil, err
 		}
-		if err := t.appendHistory(ctx, target, counterpart, history.OperationUpdate, row.WriteMetadata{}); err != nil {
+		if err := t.appendHistory(ctx, target, counterpart, history.OperationUpdate, row.WriteMetadata{}, nil); err != nil {
 			return nil, err
 		}
 		detached = append(detached, counterpart.ID)

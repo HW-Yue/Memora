@@ -60,6 +60,8 @@ type WriteOptions struct {
 	// engine to resolve and complete. They are mutually exclusive.
 	RouteLeafIDs []string
 	RoutePath    []router.PathSegment
+	// Origins carries the history this Row continues, set by a reshape.
+	Origins []history.Origin
 }
 
 type WriteMetadata struct {
