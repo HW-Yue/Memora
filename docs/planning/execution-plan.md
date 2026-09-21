@@ -1,6 +1,6 @@
 # 执行计划
 
-状态：2026-09-21。现役唯一工作队列。
+状态：2026-09-21。现役唯一工作队列。里程碑、判据与顺序理由见[项目计划](./project-plan.md)。
 
 工作项用题目。`F1`–`F228` 只在 `docs/archive/`。分支 `feature/<short-name>`。
 每项按 [TDD](./feature-tdd-protocol.md) 独立 Review、授权、验收。

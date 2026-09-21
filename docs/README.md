@@ -25,6 +25,7 @@
 
 ## 工作
 
+- [项目计划](./planning/project-plan.md) — 七个里程碑、判据与顺序
 - [执行计划](./planning/execution-plan.md) — 唯一队列。先落地基座（CI → baseline → 核心回归），
   再[行必须可导航](./planning/row-navigable.md)
 - [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
