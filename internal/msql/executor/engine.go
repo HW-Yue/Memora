@@ -97,6 +97,10 @@ type MutationOptions struct {
 	TargetRouteLeafIDs     [][]string           `json:"target_route_leaf_ids,omitempty"`
 	RelationTargetOrdinals map[string]int       `json:"relation_target_ordinals,omitempty"`
 	RouteUpdates           []row.RouteUpdate    `json:"route_updates,omitempty"`
+	// Vector is the embedding a host computed for the Row this statement writes.
+	// The engine never computes one; it only checks that the hash names the text
+	// the Row actually holds.
+	Vector *VectorInput `json:"vector,omitempty"`
 }
 
 type Authorization = security.Authorization
@@ -120,6 +124,7 @@ func (options MutationOptions) MarshalJSON() ([]byte, error) {
 		TargetRouteLeafIDs     *[][]string          `json:"target_route_leaf_ids,omitempty"`
 		RelationTargetOrdinals map[string]int       `json:"relation_target_ordinals,omitempty"`
 		RouteUpdates           []row.RouteUpdate    `json:"route_updates,omitempty"`
+		Vector                 *VectorInput         `json:"vector,omitempty"`
 	}
 	wire := wireOptions{
 		ExpectedSchemaVersion:  options.ExpectedSchemaVersion,
@@ -136,6 +141,7 @@ func (options MutationOptions) MarshalJSON() ([]byte, error) {
 		RelationTargetOrdinals: options.RelationTargetOrdinals,
 		RouteUpdates:           options.RouteUpdates,
 		RoutePath:              options.RoutePath,
+		Vector:                 options.Vector,
 	}
 	if options.RouteLeafIDs != nil {
 		wire.RouteLeafIDs = &options.RouteLeafIDs
@@ -147,6 +153,14 @@ func (options MutationOptions) MarshalJSON() ([]byte, error) {
 		wire.Links = &options.Links
 	}
 	return json.Marshal(wire)
+}
+
+// VectorInput is one embedding offered alongside a write, in the one wire form
+// a vector has: base64 of little-endian float32.
+type VectorInput struct {
+	Model       string `json:"model"`
+	ContentHash string `json:"content_hash"`
+	Values      string `json:"values"`
 }
 
 type Output struct {

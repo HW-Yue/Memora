@@ -101,6 +101,17 @@ type MutationOptions struct {
 	TargetRouteLeafIDs     [][]string        `json:"target_route_leaf_ids,omitempty"`
 	RelationTargetOrdinals map[string]int    `json:"relation_target_ordinals,omitempty"`
 	RouteUpdates           []RouteUpdate     `json:"route_updates,omitempty"`
+	// Vector is the embedding a host computed for the Row this statement writes.
+	Vector *VectorInput `json:"vector,omitempty"`
+}
+
+// VectorInput is one embedding offered alongside a write: the model that made
+// it, the hash of the text it was made from, and the vector itself in the one
+// wire form a vector has (base64 of little-endian float32).
+type VectorInput struct {
+	Model       string `json:"model"`
+	ContentHash string `json:"content_hash"`
+	Values      string `json:"values"`
 }
 
 func (options MutationOptions) MarshalJSON() ([]byte, error) {

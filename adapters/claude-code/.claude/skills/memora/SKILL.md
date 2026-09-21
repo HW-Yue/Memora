@@ -222,6 +222,13 @@ paths you got are real but the list may be incomplete. Read `not_ready_units`
 exhaustive. Do not retry hoping for more — `RECALL` never waits for embeddings;
 `memora doctor` reports the same count for the whole instance.
 
+If you already hold the vector for exactly what you are about to write, you can
+attach it to the write itself (`mutation.vector`, alongside `route_path`) and it
+lands in the same transaction. The `content_hash` must be the hash of the text
+you embedded: the engine recomputes it from what the Row actually holds, refuses
+a mismatch, and writes the Row anyway — a warning on the result says the unit is
+still not-ready, which is the difference between a lost vector and a silent one.
+
 If this host has an embedding provider configured, `memora exec` already does the
 draining for you: after a write commits it asks what units are missing vectors,
 embeds them, and offers the vectors back — a failure there never fails the write,

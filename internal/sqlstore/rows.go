@@ -284,6 +284,10 @@ func (t *tx) insert(ctx context.Context, databaseName, tableName string, values 
 	if err := t.syncRecallUnit(ctx, table, value); err != nil {
 		return row.Row{}, err
 	}
+	// The host offered an embedding with the Row, so it lands in the same
+	// transaction as the text it describes. A refusal is not a failure of the
+	// write: the Row is the fact, the vector is an index over it.
+	_ = t.attachVectorForRow(ctx, table, value.ID, options.Vector)
 	t.rowChange(table, value, change.OperationInsert, options.Metadata, leaves)
 	return project(table, value), nil
 }
@@ -430,6 +434,7 @@ func (t *tx) updateRow(ctx context.Context, databaseName, tableName, rowID strin
 	if err := t.syncRecallUnit(ctx, table, value); err != nil {
 		return row.Row{}, err
 	}
+	_ = t.attachVectorForRow(ctx, table, value.ID, options.Vector)
 	t.rowChange(table, value, change.OperationUpdate, options.Metadata, related)
 	return project(table, value), nil
 }

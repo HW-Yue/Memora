@@ -6,8 +6,10 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/recall"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/row"
 	"github.com/HW-Yue/Memora/internal/sqlstore/vecext"
 )
 
@@ -215,4 +217,30 @@ func (t *tx) pendingVectors(ctx context.Context, databaseName string, limit int)
 		units = append(units, unit)
 	}
 	return units, rows.Err()
+}
+
+// attachVectorForRow offers a write's attached embedding to the unit the Row
+// owns. It is best effort on purpose: the caller's Row is already written, and a
+// vector that does not describe the text it was computed from must not turn a
+// recorded fact into a failed write. The unit simply stays not-ready.
+func (t *tx) attachVectorForRow(ctx context.Context, table catalog.Table, rowID string, vector *row.Vector) error {
+	if vector == nil {
+		return nil
+	}
+	var unitNo int64
+	err := t.q().QueryRowContext(ctx, `SELECT unit_no FROM mem_recall_units WHERE table_id = ? AND row_id = ?`,
+		table.ID, rowID).Scan(&unitNo)
+	if errors.Is(err, sql.ErrNoRows) {
+		// The Row is not recallable (it is not live, or it holds no leaf), so
+		// there is nothing for a vector to describe.
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = t.acceptVector(ctx, table.DatabaseID, recall.VectorRecord{
+		UnitNo: unitNo, ContentHash: vector.ContentHash, Model: vector.Model,
+		Dimensions: len(vector.Values), Vector: vector.Values,
+	})
+	return err
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/recall"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/row"
 )
 
 // The archive is where a deleted Row still exists, and it is the one read face
@@ -564,3 +565,61 @@ func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, datab
 
 // recallMinimumQueryRunes is the shortest query the trigram tokenizer can serve.
 const recallMinimumQueryRunes = 3
+
+// writeVector turns an offered embedding into the write option the store takes.
+// The wire form is decoded here rather than in the store: it is a language
+// concern, and a malformed one is the caller's mistake to hear about before
+// anything is written.
+func writeVector(input *VectorInput) (*row.Vector, error) {
+	if input == nil {
+		return nil, nil
+	}
+	if input.Model == "" || input.ContentHash == "" {
+		return nil, executeError(result.CodeValidation,
+			"an attached vector needs MODEL and content_hash, so the engine can check what it describes")
+	}
+	values, err := recall.DecodeVector(input.Values)
+	if err != nil {
+		return nil, executeError(result.CodeValidation, err.Error())
+	}
+	return &row.Vector{Model: input.Model, ContentHash: input.ContentHash, Values: values}, nil
+}
+
+// warnIfVectorDidNotLand says so when a write offered an embedding and the unit
+// still has no usable vector afterwards.
+//
+// The write is never failed for this: the Row is the fact and the vector is an
+// index over it. But it must not be silent either — recall returns no scores, so
+// a caller that thinks its vector landed would have no way to find out that it
+// did not. The notice is the same one RECALL carries, so the two readings agree,
+// and it names the scope rather than one unit for the same reason RECALL does.
+func (engine *Engine) warnIfVectorDidNotLand(ctx context.Context, output Output, attached *VectorInput, databaseName, tableName string) (Output, error) {
+	if attached == nil {
+		return output, nil
+	}
+	status, err := engine.rows.VectorStatus(ctx, databaseName, tableName)
+	if err != nil {
+		return output, normalizeError(err)
+	}
+	if status.NotReady == 0 {
+		return output, nil
+	}
+	details := map[string]any{
+		"database": databaseName, "not_ready_units": status.NotReady,
+		"identity_locked": status.IdentityLocked,
+	}
+	if tableName != "" {
+		details["table"] = tableName
+	}
+	if status.IdentityLocked {
+		details["embedding_model"] = status.Model
+		details["embedding_dimensions"] = status.Dimensions
+	}
+	output.Warnings = append(output.Warnings, result.Notice{
+		Code: result.CodeVectorsNotReady,
+		Message: "the attached vector was not accepted; " + strconv.Itoa(status.NotReady) +
+			" unit(s) in this scope still have no usable vector",
+		Details: details,
+	})
+	return output, nil
+}

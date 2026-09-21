@@ -282,17 +282,23 @@ func (engine *Engine) insert(ctx context.Context, insert *ast.InsertStatement, b
 		}
 		values[columns[index].Name] = normalized
 	}
+	attachment, err := writeVector(options.Vector)
+	if err != nil {
+		return Output{}, err
+	}
 	inserted, err := engine.rows.Insert(ctx, databaseName, tableName, values, datarow.WriteOptions{
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		Metadata:              mutationMetadata(options),
 		RouteLeafIDs:          options.RouteLeafIDs,
 		RoutePath:             options.RoutePath,
 		Links:                 linksOrNil(options.Links),
+		Vector:                attachment,
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
-	return mutationOutput(inserted), nil
+	output := mutationOutput(inserted)
+	return engine.warnIfVectorDidNotLand(ctx, output, options.Vector, databaseName, tableName)
 }
 
 func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, bound bindings, options MutationOptions) (Output, error) {
@@ -329,17 +335,23 @@ func (engine *Engine) update(ctx context.Context, update *ast.UpdateStatement, b
 		}
 		changes[assignment.column.Name] = normalized
 	}
+	attachment, err := writeVector(options.Vector)
+	if err != nil {
+		return Output{}, err
+	}
 	updated, err := engine.rows.Update(ctx, databaseName, tableName, matches[0].ID, changes, datarow.WriteOptions{
 		ExpectedSchemaVersion: options.ExpectedSchemaVersion,
 		ExpectedRevision:      options.ExpectedRevision,
 		Metadata:              mutationMetadata(options),
 		RouteLeafIDs:          options.RouteLeafIDs,
 		Links:                 linksOrNil(options.Links),
+		Vector:                attachment,
 	})
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
-	return mutationOutput(updated), nil
+	output := mutationOutput(updated)
+	return engine.warnIfVectorDidNotLand(ctx, output, options.Vector, databaseName, tableName)
 }
 
 type boundAssignment struct {

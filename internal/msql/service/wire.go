@@ -27,6 +27,16 @@ func toBatchRequest(request protocolmsql.Request) executor.BatchRequest {
 	return executor.BatchRequest{Source: request.Source, Statements: statements}
 }
 
+// vectorInput carries an attached embedding across the wire boundary. It is a
+// straight copy: the executor decodes it, and a build without a vector path
+// still has to be able to parse a request that carries one.
+func vectorInput(value *protocolmsql.VectorInput) *executor.VectorInput {
+	if value == nil {
+		return nil
+	}
+	return &executor.VectorInput{Model: value.Model, ContentHash: value.ContentHash, Values: value.Values}
+}
+
 func toMutationOptions(options protocolmsql.MutationOptions) executor.MutationOptions {
 	routePath := make([]router.PathSegment, len(options.RoutePath))
 	for index, segment := range options.RoutePath {
@@ -59,6 +69,7 @@ func toMutationOptions(options protocolmsql.MutationOptions) executor.MutationOp
 		SourceContentHash:      options.SourceContentHash,
 		RouteLeafIDs:           cloneSlice(options.RouteLeafIDs),
 		RoutePath:              routePath,
+		Vector:                 vectorInput(options.Vector),
 		Links:                  links,
 		TargetRouteLeafIDs:     cloneNestedStrings(options.TargetRouteLeafIDs),
 		RelationTargetOrdinals: cloneMap(options.RelationTargetOrdinals),

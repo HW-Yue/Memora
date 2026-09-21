@@ -80,6 +80,15 @@ type Row struct {
 	Links        []Link   `json:"links,omitempty"`
 }
 
+// Vector is one host-computed embedding offered alongside a write. The content
+// hash is the handshake: it is the hash of the text the host embedded, and the
+// engine recomputes it from what the Row actually holds.
+type Vector struct {
+	Model       string
+	ContentHash string
+	Values      []float32
+}
+
 type WriteOptions struct {
 	ExpectedRevision      uint64
 	ExpectedSchemaVersion uint64
@@ -93,6 +102,12 @@ type WriteOptions struct {
 	// Links is the Row's complete link membership: nil leaves it untouched and
 	// an empty list clears it, the same distinction the mount snapshot makes.
 	Links []LinkRef
+	// Vector is an embedding the host computed for this Row's text, offered with
+	// the write so it lands in the same transaction as the Row. It is best
+	// effort by design: a vector that does not describe what was written is
+	// refused, the Row is still written, and the unit stays not-ready where
+	// RECALL and doctor can see it.
+	Vector *Vector
 }
 
 type WriteMetadata struct {

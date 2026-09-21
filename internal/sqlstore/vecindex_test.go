@@ -2,10 +2,13 @@ package sqlstore_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/recall"
+	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/sqlstore"
 	"github.com/HW-Yue/Memora/internal/sqlstore/vecext"
 )
@@ -472,4 +475,66 @@ func TestPendingVectorsListsWhatStillNeedsEmbedding(t *testing.T) {
 		t.Fatal("the work list must be bounded")
 	}
 	_ = second
+}
+
+// payloadHash mirrors the engine's content hash for a payload. It is spelled out
+// here on purpose: the handshake is only meaningful if the host's hash is
+// computed the same way the engine computes it, so a test that used anything
+// else would be testing a rule nobody has to follow.
+func payloadHash(payload string) string {
+	digest := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(digest[:])
+}
+
+// The second entry: an embedding offered with the write itself, so a host that
+// already has the vector does not need a second round trip.
+func TestAWriteCanCarryItsOwnVector(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	encoded, err := recall.EncodeVector([]float32{1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := write("write with the embedding already in hand")
+	options.RoutePath = pathOf("architecture", "sqlite")
+	options.Vector = &executor.VectorInput{Model: "text-embedding-v4", ContentHash: "", Values: encoded}
+
+	// The content hash is the handshake, so a caller that does not know what the
+	// engine will index has to hear about it before anything is written.
+	if code := h.fails(`INSERT INTO work.notes (title) VALUES ('no handshake')`, nil, options); code == "" {
+		t.Fatal("an attached vector without a content hash must be refused")
+	}
+
+	// With the hash of the text it embedded, the Row and its vector land together.
+	options = write("write with the embedding already in hand")
+	options.RoutePath = pathOf("architecture", "sqlite")
+	options.Vector = &executor.VectorInput{
+		Model: "text-embedding-v4",
+		// The payload of a title-only Table is the title itself, and the engine's
+		// content hash is sha256 of that payload with no prefix.
+		ContentHash: payloadHash("storage engine"),
+		Values:      encoded,
+	}
+	h.run(`INSERT INTO work.notes (title) VALUES ('storage engine')`, nil, options)
+	rowID := text(h.run(`SELECT row_id FROM work.notes LIMIT 1`, nil, executor.MutationOptions{}).Rows[0]["row_id"])
+	if status, err := h.db.Rows().VectorStatus(context.Background(), "work", ""); err != nil || status.NotReady != 0 {
+		t.Fatalf("the write must have left the unit ready: %+v, %v", status, err)
+	}
+	hits := h.recallFrom(`RECALL FROM work NEAREST :v LIMIT 5`, map[string]any{"v": encoded})
+	if len(hits.Rows) != 1 || text(hits.Rows[0]["object_id"]) != rowID {
+		t.Fatalf("the attached vector must be searchable: %+v", hits.Rows)
+	}
+
+	// A hash for different text is refused, the write still happens, and the
+	// result says so rather than leaving the caller to discover it later.
+	wrong := write("write with an embedding of some other text")
+	wrong.RoutePath = pathOf("architecture", "wal")
+	wrong.Vector = &executor.VectorInput{Model: "text-embedding-v4", ContentHash: "sha256:older-revision", Values: encoded}
+	written := h.run(`INSERT INTO work.notes (title) VALUES ('a second fact')`, nil, wrong)
+	if len(written.Warnings) != 1 || written.Warnings[0].Code != result.CodeVectorsNotReady {
+		t.Fatalf("a refused attachment must be visible: %+v", written.Warnings)
+	}
+	if count := len(h.run(`SELECT row_id FROM work.notes LIMIT 10`, nil, executor.MutationOptions{}).Rows); count != 2 {
+		t.Fatalf("the write must still have happened: %d rows", count)
+	}
 }
