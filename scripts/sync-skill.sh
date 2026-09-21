@@ -17,7 +17,7 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 canonical=$root/skills/memora
 # The files every copy carries. Adding a file to the Skill means adding it here.
-files=(SKILL.md contract.json host-contract.json references/product-manual.md agents/openai.yaml scripts/install.sh scripts/check.sh)
+files=(SKILL.md contract.json host-contract.json references/product-manual.md agents/openai.yaml scripts/install.sh scripts/check.sh scripts/jev_select.py)
 adapters=(adapters/codex/.agents/skills/memora adapters/claude-code/.claude/skills/memora)
 
 mode=repo
@@ -67,7 +67,12 @@ case "$mode" in
     ;;
   repo)
     for adapter in "${adapters[@]}"; do copy_into "$root/$adapter"; done
-    printf 'sync-skill: adapters updated; refresh the manifests with the gate\n'
+    if command -v python3 >/dev/null 2>&1; then
+      python3 "$root/scripts/refresh-skill-manifests.py" "$root"
+    else
+      printf 'sync-skill: python3 missing, manifests not refreshed\n' >&2
+    fi
+    printf 'sync-skill: adapters and their manifests updated\n'
     ;;
   install)
     copy_into "$target"

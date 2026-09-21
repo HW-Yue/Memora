@@ -427,3 +427,65 @@ func TestDocumentedBuildsCarryTheSQLiteModuleTags(t *testing.T) {
 		}
 	}
 }
+
+// The fourth retrieval path is a Skill-layer script, so nothing in the Go tree
+// calls it — which is exactly why its request shape needs a check: it is the one
+// place a route id could travel to a model, and the retrieval design says ids
+// never leave. --dry-run builds the request without sending it.
+func TestJevSelectorSendsNamesAndPurposesOnly(t *testing.T) {
+	root := repoRoot(t)
+	script := filepath.Join(root, "skills/memora/scripts/jev_select.py")
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not installed")
+	}
+	request := `{"intent":"where did we put the crash recovery notes",` +
+		`"options":[{"name":"tech","purpose":"decisions","route_id":"route_secret_one"},` +
+		`{"name":"life","purpose":"health","route_id":"route_secret_two"}]}`
+	command := exec.Command(python, script, "--dry-run")
+	command.Dir = root
+	command.Stdin = strings.NewReader(request)
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("jev_select.py --dry-run: %v", err)
+	}
+	if bytes.Contains(output, []byte("route_secret")) || bytes.Contains(output, []byte("route_id")) {
+		t.Fatalf("a route id reached the request: %s", output)
+	}
+	var payload struct {
+		Request struct {
+			Model     string `json:"model"`
+			Questions map[string]struct {
+				Type         string            `json:"type"`
+				Criteria     map[string]string `json:"criteria"`
+				Instructions struct {
+					Question string            `json:"question"`
+					Places   map[string]string `json:"places"`
+				} `json:"instructions"`
+			} `json:"questions"`
+		} `json:"request"`
+	}
+	if err := json.Unmarshal(output, &payload); err != nil {
+		t.Fatalf("dry run did not answer with JSON: %v (%s)", err, output)
+	}
+	if payload.Request.Model == "" {
+		t.Fatal("the request must name a model")
+	}
+	question, present := payload.Request.Questions["child"]
+	if !present || question.Type != "choice" {
+		t.Fatalf("the layer must travel as a Choice: %+v", payload.Request.Questions)
+	}
+	// Both the rubric and the restated options must carry the purpose, and only
+	// the two options the caller offered.
+	for name, purpose := range map[string]string{"tech": "decisions", "life": "health"} {
+		if question.Criteria[name] != purpose || question.Instructions.Places[name] != purpose {
+			t.Fatalf("option %q lost its purpose: %+v", name, question)
+		}
+	}
+	if len(question.Criteria) != 2 {
+		t.Fatalf("only the offered options may be sent: %+v", question.Criteria)
+	}
+	if question.Instructions.Question == "" {
+		t.Fatal("the question must say what is being decided")
+	}
+}

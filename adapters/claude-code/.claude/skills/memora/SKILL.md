@@ -288,6 +288,37 @@ optional `IN <table>`. Today the lexical path is the only one wired; when a
 position exists but no hit returns, treat it as "not matched", never as "the tree
 has nothing there", and always report the query you used.
 
+## Let jev choose a layer (optional)
+
+Walking the tree means picking a child at every layer. You can make that choice
+yourself — that is the main path — or, when the host has a TypeSafe key, hand one
+layer to jev and take back which child to descend into. It is the fourth
+retrieval path and the only optional one: skip it and the other three are
+unchanged, because the kernel still answers `SHOW ROUTES` and this only decides
+which answer to follow.
+
+```sh
+echo '{"intent":"我上次说那个数据库的崩溃恢复是怎么做的","options":[{"name":"技术","purpose":"技术决策与实现"},{"name":"生活","purpose":"健康、阅读与日常"},{"name":"工作","purpose":"项目与求职进展"}]}' | python3 scripts/jev_select.py
+```
+
+It answers with `{"choice":"…","confidence":…,"probabilities":{…}}`.
+
+Two rules that matter more than the call itself:
+
+- **Hand over names and purposes only.** Never send route ids: an identifier is
+  not an authorization token and has no business in a model prompt. The script
+  drops anything else it is given, but do not pass it in the first place.
+- **`confidence` is concentration, not correctness.** It says how firmly jev
+  preferred one option; it cannot say whether the right child is in this layer at
+  all. Read a low value as "ask the user or decide yourself". Measured on this
+  repository's own tree: a clear intent came back `1.0`, a deliberately vague one
+  (`嗯……那个东西`) came back `0.58` — treat that neighbourhood as unresolved.
+
+Exit codes tell you what happened: `0` answered, `2` no key configured (choose
+yourself — this is not an error), `3` the provider refused or answered something
+that is not one of the options, `4` the request was malformed. `--dry-run` prints
+the request without sending it, which is the cheap way to see what would travel.
+
 ## Decide where knowledge lives
 
 Before persisting a new piece of knowledge, decide where it belongs. Decide

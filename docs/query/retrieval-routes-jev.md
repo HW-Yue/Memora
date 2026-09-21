@@ -16,7 +16,7 @@ jev 是 Skill 层可选选择器，走同一套逐层面，不进内核。
 | 语义索引 | Agent 主路：自己读每层 child 选一个 | `SHOW ROUTES` |
 | 关键词召回 | 一次拿到命中位置 | `RECALL`（FTS5 trigram） |
 | 向量召回 | 一次拿到命中位置 | 待实现（M7） |
-| jev | 把一层 child 当 `Choice` 交给 jev | 仍是 `SHOW ROUTES`，零内核改动 |
+| jev | 把一层 child 当 `Choice` 交给 jev | `skills/memora/scripts/jev_select.py`（Skill 层，零内核改动） |
 
 内核**不表达**「有几条路」「选哪条」「全走」。四条路最终都是语义路径，
 事实一律 `SELECT` 回表。Skill 可单走或组合。
