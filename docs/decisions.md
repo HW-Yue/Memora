@@ -1027,3 +1027,27 @@ Admin 搜索页仍是关键词单臂 + 跨库交错，第二阶段接向量臂�
 `instances/default.before-skill-rebuild-2026-09-21`，最初那版在
 `instances/default.before-rewrite-2026-09-21`。CLI ≡ daemon ≡ `0.3.0-dev` @ `c509e74`，无 skew；
 Admin 已用新二进制重启。**两个备份目录等用户明确说要删再删。**
+
+## 2026-09-21 · Admin：文档视图只剩文档，搜索页接上向量支路
+
+**结论一（用户指示）**：删掉「记录字段」那一段。用户明确"后期不会出现新加列，也没有旧表数据需要
+导入"——引擎现在也拒绝任何超出 `title`/`summary` 的列声明（ADR-0014），所以那块空区域是永久家具。
+同一条规则一并落到两处视图：**语义索引的文档节点**只留标题 + 正文（撤掉标题下的 `row_semantics`
+小字与底部属性区），**Row 页**主块只留标题 + 正文（去掉纯文本的 summary 副本，去掉按列平铺的
+字段块与 `row_semantics` 行）。死掉的 CSS 一并删掉，`bundle_test.go` 把"不得再出现"写成断言。
+
+**结论二**：搜索页接上向量支路，做法是 gateway 的 `POST /api/v1/search`（`592289f`）：
+- 查询向量由 gateway 用宿主 `MEMORA_EMBEDDING_*` 现算（**硬超时 5s**），然后发一条
+  `RECALL … MATCH :q NEAREST :v LIMIT 10`，把引擎 RRF 融合好的列表**原样返回**——前端不再排序，
+  它只在跨 Database 时交错（`RECALL` 一次只回答一个库，跨库没有共同名次可融）。
+- **每库一条 vector 状态**，并把三种"没走向量"分清楚：`not_configured`（没配 provider，稳定）、
+  `embedding_timeout` / `provider_unavailable`（这次失败，偶发，可重试）、`vector_not_ready`
+  （这个库还没锁身份或正在 rekey，稳定）；任何一种都退回关键词臂并在页面上如实说明。
+- 回执里带**实际发出的 MSQL 原文**与模型/维度：只读观察面的价值在可复现。
+- 顾问指出的最大风险正是"一个搜索框、两种不可比的结果集"，所以按库标注模式、按库降级、并给出
+  可复现的语句，而不是一个全局 flag 盖住混合状态。
+
+**证据**：`internal/adminapi/search_test.go`（真 HTTP + session + CSRF，四组：两臂融合 / 未配置 /
+provider 失败与库未就绪分开 / 入参校验）、`internal/adminui` 的 bundle 断言（新前端面 + 旧元素与
+`RECALL` 字面量都不得再出现）、`./scripts/ci.sh` 全绿。**运行中的 Admin 是旧二进制，需要重启**
+才会带上新端点与新页面（前端编在二进制里）。
