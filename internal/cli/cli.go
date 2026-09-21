@@ -18,6 +18,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/daemon"
 	"github.com/HW-Yue/Memora/internal/embedding"
 	"github.com/HW-Yue/Memora/internal/instance"
+	"github.com/HW-Yue/Memora/internal/ipc"
 	"github.com/HW-Yue/Memora/internal/mcpadapter"
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -235,7 +236,7 @@ func runSchema(
 				return writeFailure(stderr, encodeErr)
 			}
 		}
-		return commandError(stderr, "execute Schema Plan", err)
+		return daemonFailure(stderr, dataDir, "execute Schema Plan", err)
 	}
 	if err := json.NewEncoder(stdout).Encode(report.Receipt); err != nil {
 		return writeFailure(stderr, err)
@@ -306,7 +307,7 @@ func runExecute(
 	}
 	envelope, err := execute(context.Background(), dataDir, source, statements, command == "query")
 	if err != nil {
-		return commandError(stderr, command+" MSQL", err)
+		return daemonFailure(stderr, dataDir, command+" MSQL", err)
 	}
 	if err := json.NewEncoder(stdout).Encode(envelope); err != nil {
 		return writeFailure(stderr, err)
@@ -510,7 +511,7 @@ func runMutate(
 	})
 	report, err := skillwrite.New(tool).Run(context.Background(), plan)
 	if err != nil {
-		return commandError(stderr, "execute Mutation Plan", err)
+		return daemonFailure(stderr, dataDir, "execute Mutation Plan", err)
 	}
 	if err := json.NewEncoder(stdout).Encode(report.Receipt); err != nil {
 		return writeFailure(stderr, err)
@@ -843,6 +844,26 @@ func usageError(stderr io.Writer, message string) int {
 		return ExitFailure
 	}
 	return ExitUsage
+}
+
+// daemonFailure reports a daemon round trip that failed. A protocol skew gets its
+// own shape: the client cannot guess the daemon's syntax, so it refuses and says
+// exactly how to fix it — one instance has one daemon, and the fix is to restart
+// it with the binary you are running.
+func daemonFailure(stderr io.Writer, dataDir, action string, err error) int {
+	var skewed *ipc.SkewedError
+	if errors.As(err, &skewed) {
+		if _, writeErr := fmt.Fprintf(stderr,
+			"memora: %s: %s\n"+
+				"memora: this client and this instance's daemon are different builds, so the client cannot know the daemon's syntax.\n"+
+				"  restart the daemon with the binary you are running:\n"+
+				"    memora daemon stop --data-dir %q && memora daemon start --data-dir %q\n",
+			action, security.Redact(skewed.Error()), dataDir, dataDir); writeErr != nil {
+			return ExitFailure
+		}
+		return ExitFailure
+	}
+	return commandError(stderr, action, err)
 }
 
 func commandError(stderr io.Writer, action string, err error) int {

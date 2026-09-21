@@ -80,6 +80,11 @@ func (client *Client) callRequest(ctx context.Context, request Request, result a
 	}
 	select {
 	case response := <-responses:
+		// Before the payload and before the error: a daemon that speaks another
+		// engine protocol cannot be understood, whatever it answered.
+		if response.ServerProtocol != EngineProtocol {
+			return &SkewedError{Client: EngineProtocol, Server: response.ServerProtocol}
+		}
 		if response.Error != nil {
 			return &RemoteError{Code: response.Error.Code, Message: response.Error.Message}
 		}

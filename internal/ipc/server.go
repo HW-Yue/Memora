@@ -83,7 +83,8 @@ func (server *Server) ServeConnection(connection net.Conn) {
 		if request.Version != Version {
 			writeResponse(connection, &writes, Response{
 				Version: Version, RequestID: request.RequestID, SessionID: session.ID,
-				Error: &ResponseError{Code: "protocol_version", Message: ErrProtocolVersion.Error()},
+				ServerProtocol: EngineProtocol,
+				Error:          &ResponseError{Code: "protocol_version", Message: ErrProtocolVersion.Error()},
 			})
 			continue
 		}
@@ -94,7 +95,10 @@ func (server *Server) ServeConnection(connection net.Conn) {
 		requests.Add(1)
 		go func() {
 			defer requests.Done()
-			response := Response{Version: Version, RequestID: request.RequestID, SessionID: session.ID}
+			response := Response{
+				Version: Version, RequestID: request.RequestID, SessionID: session.ID,
+				ServerProtocol: EngineProtocol,
+			}
 			defer func() {
 				cancel()
 				activeMu.Lock()
