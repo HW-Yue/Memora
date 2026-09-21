@@ -446,7 +446,11 @@ func TestPendingVectorsListsWhatStillNeedsEmbedding(t *testing.T) {
 	first := h.insertAlongPath("storage engine", pathOf("architecture", "sqlite"))
 	second := h.insertAlongPath("write ahead log", pathOf("architecture", "wal"))
 
-	pending := h.run(`SHOW PENDING VECTORS IN DATABASE work LIMIT 10`, nil, executor.MutationOptions{})
+	// The bound travels as a named parameter here on purpose: a literal LIMIT hid
+	// the fact that the work list's Object was missing from the walker that tells
+	// the binder which parameters a statement uses.
+	pending := h.run(`SHOW PENDING VECTORS IN DATABASE work LIMIT :limit`,
+		map[string]any{"limit": 10}, executor.MutationOptions{})
 	if len(pending.Rows) != 2 {
 		t.Fatalf("both units owe a vector: %+v", pending.Rows)
 	}
@@ -466,7 +470,8 @@ func TestPendingVectorsListsWhatStillNeedsEmbedding(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	remaining := h.run(`SHOW PENDING VECTORS IN DATABASE work LIMIT 10`, nil, executor.MutationOptions{})
+	remaining := h.run(`SHOW PENDING VECTORS IN DATABASE work LIMIT :limit`,
+		map[string]any{"limit": 10}, executor.MutationOptions{})
 	if len(remaining.Rows) != 1 || text(remaining.Rows[0]["content_hash"]) == contentHash {
 		t.Fatalf("the embedded unit must leave the list: %+v", remaining.Rows)
 	}

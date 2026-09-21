@@ -324,6 +324,11 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.Show.Row)
 		appendExpression(statement.Show.Cursor)
 		appendExpression(statement.Show.Limit)
+	case statement.Show != nil && statement.Show.Object == "PENDING VECTORS":
+		// Every Object needs its own case: this walker is what tells the binder
+		// which parameters a statement actually uses, and an Object missing here
+		// can only take literals — a named parameter is refused as unused.
+		appendExpression(statement.Show.Limit)
 	case statement.Show != nil && statement.Show.Object == "ARCHIVE":
 		appendExpression(statement.Show.Row)
 		appendExpression(statement.Show.Cursor)
