@@ -15,6 +15,17 @@ fail() {
   exit 1
 }
 
+# The checkout this script lives in, if it is one. With no published release the
+# honest thing to do is build from here rather than send someone to a download
+# page that has nothing on it — and the script already ships inside a checkout.
+detect_checkout() {
+  script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+  candidate=$(CDPATH= cd -- "$script_dir/../../.." 2>/dev/null && pwd) || return 0
+  if [ -f "$candidate/go.mod" ] && [ -d "$candidate/cmd/memora" ]; then
+    printf '%s' "$candidate"
+  fi
+}
+
 # An installer that only says "unknown option" tells a reader nothing about how
 # to run it — and the flags are not guessable (which build, which directory,
 # whether it may touch anything).
@@ -31,6 +42,9 @@ usage: install.sh [--yes] [--version <v>] [--install-dir <absolute path>]
   --source-dir    build from a local checkout instead of a release archive
 
 Building from source needs cgo and the sqlite_fts5 tag; this script passes both.
+With no published release (the release pipeline has not landed yet) the installer
+builds from the checkout it lives in and says so, instead of pointing at a
+download that does not exist.
 USAGE
 }
 
@@ -49,6 +63,17 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "$authorized" = true ] || fail "installation requires explicit user authorization; rerun with --yes after approval"
+# Inside a checkout, the checkout wins: an installer that ships in the source tree
+# is being run by someone working on it, and the published release can be far
+# behind — the latest one was 253 commits old when this was written, which is a
+# silent downgrade, not an install.
+checkout=$(detect_checkout)
+if [ -z "$version" ] && [ -n "$checkout" ]; then
+  printf 'memora installer: this installer is inside a source checkout, so it builds %s rather than the published release.\n' "$checkout" >&2
+  printf 'memora installer: pass --version <v> to install a published release instead. It needs Go and cgo and takes a few minutes.\n' >&2
+  source_dir=${source_dir:-$checkout}
+  version=source
+fi
 if [ -z "$version" ]; then
   latest_body=""
   if command -v curl >/dev/null 2>&1; then
@@ -58,7 +83,16 @@ if [ -z "$version" ]; then
   version=$(printf '%s' "$latest_body" |
     sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' |
     head -1)
-  [ -n "$version" ] || fail "cannot resolve the latest Memora release from GitHub; reconnect or pass --version to pin one"
+  if [ -z "$version" ]; then
+    if [ -n "$checkout" ]; then
+      printf 'memora installer: no published release to download (the release pipeline has not landed), so this builds from the checkout at %s instead.\n' "$checkout" >&2
+      printf 'memora installer: that needs Go and cgo (Xcode command line tools) and takes a few minutes, and the result is a local build rather than a signed release.\n' >&2
+      source_dir=${source_dir:-$checkout}
+      version=source
+    else
+      fail "no Memora release is published yet and this is not inside a source checkout; clone the repository and rerun with --source-dir <absolute path>"
+    fi
+  fi
   version=${version#v}
 fi
 [ "$target_os" = darwin ] || fail "v0 bootstrap supports only macOS"
@@ -94,7 +128,10 @@ else
   checksums="$work_dir/checksums.txt"
   release_url="$release_base/v${version}"
   release_available=true
-  if ! command -v curl >/dev/null 2>&1 ||
+  if [ "$version" = source ]; then
+    # Set by the fallback above: there is nothing to download, by construction.
+    release_available=false
+  elif ! command -v curl >/dev/null 2>&1 ||
      ! curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --output "$archive" "$release_url/$asset" ||
      ! curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --output "$checksums" "$release_url/checksums.txt"; then
     release_available=false
@@ -155,9 +192,10 @@ if [ -n "$data_dir" ]; then
   fi
   "$target" doctor --data-dir "$data_dir"
 else
-  "$target" init
-  if ! "$target" daemon ping >/dev/null 2>&1; then
-    "$target" daemon start >/dev/null
-  fi
-  "$target" doctor
+  # No --data-dir means "install the binary", not "and also migrate whatever
+  # instance happens to be the default one". Touching it was how a 253-commit-old
+  # release ended up writing its own tables into a newer instance: an installer
+  # must not reach a user's live memory unless it was told which one.
+  printf 'installed into %s; no instance was touched.\n' "$target"
+  printf 'to create and check one:\n  %s init --data-dir <absolute path>\n  %s doctor --data-dir <absolute path>\n' "$target" "$target"
 fi
