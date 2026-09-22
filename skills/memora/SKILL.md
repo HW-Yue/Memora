@@ -25,8 +25,11 @@ in — the same one that carries `references/` and `scripts/`.
   user's explicit instruction). Every one of them answers `--help` — ask it
   instead of guessing an option, and never invent a flag. The same goes for the
   Skill's own scripts under `scripts/`: they are not `memora` subcommands, they
-  take their own flags (`scripts/jev_select.py` has `--help`, `--dry-run` and
-  `--min-confidence`), and each is described in the reference that uses it.
+  take their own flags (`scripts/jev_select.py` has `--help`, `--dry-run`,
+  `--min-confidence` and `--replay`; `scripts/embed_query.py` has `--help`,
+  `--dry-run` and `--encode`), and each is described in the reference that uses
+  it. A script that exits `2` is telling you the capability is switched off:
+  report that instead of quietly working around it.
 - Never inspect, edit, copy or infer state from physical database, index, journal,
   page or instance files. Logical MSQL results are the host's only source of
   database truth.

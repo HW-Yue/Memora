@@ -93,25 +93,65 @@ refuses a mismatch, so an embedding of a previous revision cannot land on the
 current one. A unit the engine has no vector for simply stays not-ready —
 `RECALL` reports it, and nothing pretends it was attached.
 
-When you already have a query embedding — for instance the one you just computed
-for the text the user asked about — you can search by position instead of words:
-`RECALL FROM <db> [IN <table>] NEAREST :v LIMIT :n`. The Database needs a vector
-**identity** before this works: with no provider configured, or before the first
-vector is attached, it answers `database has no vector identity yet` — accept one
-vector first (below), then search by position. The vector travels as
-**base64 (raw URL-safe) of little-endian float32, no padding**, and must match the
-Database's locked width; a vector of the wrong width, or one carrying NaN, is
-refused rather than rounded. The answer has exactly the same shape as a keyword
-recall — so navigate the same way — and `LIMIT` means the same thing in both:
-it truncates the listing, it is not a recall strength. Asking for both arms at
-once (`MATCH :q NEAREST :v`) fuses them by **rank** (reciprocal rank fusion,
-`k = 60`): each arm brings its own order — the vector arm by distance, the
-keyword arm by BM25 — a position both arms found outranks one only a single arm
-found, ties fall back to table then path, and `LIMIT` still truncates the fused
-listing. The fused order is the useful part; no score, distance or rank is ever
-returned, so do not look for one and do not treat the order as a confidence
-measure. If either arm cannot answer, the statement fails rather than quietly
-returning the half it could.
+### The fast path: both arms, one statement
+
+The engine never computes a query embedding — the model Provider is the host's —
+so the Skill carries the half that turns the user's words into the parameter
+`NEAREST` takes:
+
+```sh
+echo '{"text":"<what the user asked about>"}' \
+  | python3 "<skill-directory>/scripts/embed_query.py"
+# -> {"vector":"<base64>","model":"text-embedding-v4","dimensions":1024,"elapsed_ms":232}
+
+memora query --input '{"parameters":{"named":{"q":"<the same words>","n":"<that vector>","limit":10}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' \
+  "RECALL FROM work MATCH :q NEAREST :n LIMIT :limit"
+```
+
+That one statement runs both arms and the engine fuses them by **rank**
+(reciprocal rank fusion, `k = 60`): each arm brings its own order — the vector arm
+by distance, the keyword arm by BM25 — a position both arms found outranks one
+only a single arm found, ties fall back to table then path, and `LIMIT` truncates
+the fused listing. No score, distance or rank is ever returned, so do not look for
+one and do not treat the order as a confidence measure. Only the keyword arm
+(`MATCH :q`) needs no provider at all.
+
+**When there is no provider, say so.** `embed_query.py` exits `2` and names what is
+missing; `MEMORA_EMBEDDING=off` does the same deliberately. Then the recall you
+can run answers with `arms: ["keyword"]`, and the honest description of that
+answer is "keyword only", never "fused". A host that reports a keyword list as a
+two-arm recall has told the user something untrue about how thoroughly it looked.
+The same silence applies one level down: `vectors_not_ready` on a result means the
+vector arm could not answer for those units, so the listing is real but bounded.
+
+The Database needs a vector **identity** before any of this works: with no vector
+ever attached it answers `database has no vector identity yet` — accept one vector
+first (below), then search by position. The vector travels as **base64 (raw
+URL-safe) of little-endian float32, no padding**, and must match the Database's
+locked width; a vector of the wrong width, or one carrying NaN, is refused rather
+than rounded. If either arm cannot answer, the fused statement fails rather than
+quietly returning the half it could.
+
+### When the fast path is not enough
+
+Recall is a locator, and its result decides **what to read next**, never whether
+you have read enough. Three signals — all of them stated by the engine, none of
+them a judgement about relevance — mean the answer needs the tree or a census:
+
+- **`vectors_not_ready` on the result**: the vector arm was absent for those
+  units, so this listing is bounded. Do not present it as a search of everything.
+- **`truncated: true` across several parents**: the hits span two or more
+  different parents and there were more. A truncated cross-topic listing is the
+  one shape where the right position may simply not be in it — walk the tree or
+  census the Table.
+- **the question is universal or counting** ("how many", "all of them", "is there
+  any"): recall can never answer that. Census the Table.
+
+`arms` is **provenance, not strength**: a position found only by the keyword arm
+does not mean the vector arm judged it irrelevant, and none of these three signals
+may be replaced by "the results look weak". Reading the Row is not the fallback
+for a weak list — it is the only step that turns a position into a fact, every
+time.
 
 Both derived layers can be rebuilt from the Rows, and neither is rebuilt for you.
 `REPAIR RECALL UNITS` gives every live Row the unit that keyword recall needs:

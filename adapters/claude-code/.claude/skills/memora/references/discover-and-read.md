@@ -73,10 +73,13 @@ Database. Do not claim a cold Database/Table is absent until coverage is
 complete.
 
 Locate Rows with `SHOW ROUTES` (the Agent's main path) and `SELECT` for facts.
-Keyword recall (`RECALL … MATCH`) and vector recall (`RECALL … NEAREST`) are the
-other two product paths. jev is the fourth and only optional one, a Skill-side
-chooser that reads no database state of its own — and it is a **fallback**, not a
-front door: it answers one layer at a time and it never produces the answer.
+Keyword recall (`RECALL … MATCH`) answers when you cannot name the node; the fused
+two-arm recall (`MATCH … NEAREST`, one statement) needs a query vector, which
+`scripts/embed_query.py` produces — with no provider configured it exits `2` and
+the recall is keyword-only, which the answer has to say rather than call it
+fused. jev is the fourth and only optional one, a Skill-side chooser that reads no
+database state of its own — and it is a **fallback**, not a front door: it answers
+one layer at a time and it never produces the answer.
 
 ### Which jev question a layer needs
 

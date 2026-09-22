@@ -1337,3 +1337,37 @@ floor probe + 脚本内切分）与 `--replay FILE`（对录下来的 answers �
 决定的动作。回归测试 `internal/devgate/jev_select_test.go` + 四份 fixture（两份是 2026-09-22 真实
 录下的 answers，两份是规则的边界：probe 登顶、答了但没分开），并断言输出里不含 `noul`/`confidence`；
 把 probe 从"排在梯形底部"改回"与候选一起排名"时该测试确实变红（那条正是它抓出来的实现 bug）。
+
+## 2026-09-22 · 快速路径补齐：Skill 侧要有算查询向量的手段
+
+**对象**：`RECALL … MATCH :q NEAREST :v` 里那个 `:v` 从哪来。
+
+**问题（事实）**：Admin 的 Go 网关一直会用宿主 provider 把查询文本算成向量
+（`internal/adminapi/handler.go`，硬超时 5 s），而 **Skill 侧没有任何算查询向量的手段**：
+`scripts/` 只有 `check.sh`/`install.sh`/`jev_select.py`，参考里只写"当你**已经**有查询向量时"；
+CLI 的 `MEMORA_EMBEDDING_*` 只用于**写入后自动排干**积压向量。结果是：CLI 上按 Skill 走的 agent
+想做"向量+关键词"，实际只会发出 `arms:["keyword"]`，而且**退化是静默的**——它会以为自己做了融合召回。
+Claude 的判词：一个只有一半能执行的默认路径，比一个老实的窄默认更危险。能力不对称也直接与
+"AI 是逻辑层的首要用户"相反：人用的 Admin 有向量臂，AI 用的 Skill 没有。
+
+**结论**：**补**。新增 `skills/memora/scripts/embed_query.py`——宿主侧、读宿主自己的环境、密钥不进
+引擎不进日志不进 argv，与 `jev_select.py` 同一类别（先例已立，不是新架构）。三个约束照抄 Admin：
+5 s 硬超时；**失败要吵**（`exit 2` 并点名缺哪个环境变量，`MEMORA_EMBEDDING=off` 同样）；编码与引擎
+逐字节一致。
+
+**顺带定死的判定规则（顾问 2026-09-22）**：召回结果只用来决定"下一步读哪条"，**永远不用来决定
+"够不够回答"**；相关性强弱**不写成规则**（没有分数时那是阅读理解不是判断）。升级到树/普查只认三个
+引擎自己声明的信号：`vectors_not_ready`（向量臂缺席，列表有界）、`truncated` 为真且命中跨 ≥2 个父
+节点（被截断的跨主题列表）、问题是**全称/计数类**（召回永远答不了"有几个/全部/有没有"）。另外
+`arms` 是**出处不是强度**：`["keyword"]` 不等于"向量认为它不相关"，不得据此升级或降权；**回表核验
+是前提，不是兜底**——把它写成 fallback 会让人以为存在不用回表的快路径。
+
+**证据**：`internal/devgate/embed_query_test.go`——`--encode 0.5,-1,0` 与 `0.1,-2.5,3.1415927,1e-8`
+等三组输入必须与 Go 的 `recall.EncodeVector` **逐字节相同**（错的宽度或错的字节序会在语句处被拒，
+而宿主只会看到"关键词又回来了"）；未配置时 `exit 2` 且消息里出现四个环境变量名与 `keyword`。
+真机端到端：脚本算出的向量直接喂给 `RECALL FROM me MATCH :q NEAREST :n LIMIT 5`，返回
+`arms:["keyword","vector"]`（融合真的发生了），首层耗时 0.2 s 左右。
+
+**同步链的两个小坑（一并修）**：新脚本必须加进 `scripts/sync-skill.sh` 的固定文件清单，否则两个
+adapter 与两处安装位都拿不到它（devgate 的整树对比会立刻发现）；`cp` 覆盖已有文件时**保留**目标
+权限，所以脚本模式改为显式 `chmod 755`（此前 `chmod +x` 修不好一个 711 的文件）。

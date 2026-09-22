@@ -19,7 +19,7 @@ canonical=$root/skills/memora
 # The files every copy carries. The constants are listed; everything under
 # references/ is enumerated, because a new reference that is not copied is a
 # pointer into a file the reader does not have.
-files=(SKILL.md contract.json host-contract.json agents/openai.yaml scripts/install.sh scripts/check.sh scripts/jev_select.py)
+files=(SKILL.md contract.json host-contract.json agents/openai.yaml scripts/install.sh scripts/check.sh scripts/jev_select.py scripts/embed_query.py)
 for reference in "$canonical"/references/*.md; do
   [ -e "$reference" ] || continue
   files+=("${reference#"$canonical/"}")
@@ -45,7 +45,9 @@ copy_into() {
     mkdir -p "$destination/$(dirname "$file")"
     cp "$canonical/$file" "$destination/$file"
   done
-  chmod +x "$destination/scripts/"*.sh
+  # Set the mode rather than adding to it: `cp` keeps an existing file's
+  # permissions, so a copy that started life group-unreadable stayed that way.
+  chmod 755 "$destination/scripts/"*.sh "$destination/scripts/"*.py
 }
 
 compare_with() {
