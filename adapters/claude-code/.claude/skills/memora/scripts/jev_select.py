@@ -11,8 +11,16 @@ Contract
     stdin : {"intent": "<what the user wants>",
              "options": [{"name": "<child name>", "purpose": "<child purpose>"}, ...]}
     stdout: {"choice": "<name>", "confidence": 0.0-1.0,
-             "probabilities": {"<name>": 0.0-1.0, ...}, "model": "<model>"}
+             "probabilities": {"<name>": 0.0-1.0, ...}, "model": "<model>",
+             "elapsed_ms": <the provider round trip, integer>}
     exit  : 0 answered | 2 not configured | 3 provider refused | 4 bad input
+            | 5 below --min-confidence
+
+`model` is the model that **served** the answer, not the alias that was asked for.
+`elapsed_ms` is measured around the provider call, because "a jev decision is
+worth a second" is a claim a caller has to be able to check: the round trip is a
+fresh process and a fresh TLS connection to a hosted API, and it dominates the
+model's own time.
 
 Route IDs are never part of the request. The caller hands over names and purposes
 only, so an identifier that is not an authorization token cannot end up in a
@@ -161,9 +169,11 @@ def main():
              "TYPESAFE_API_KEY is not set; choose the child yourself or ask the user")
     base_url = from_environment("TYPESAFE_BASE_URL") or DEFAULT_BASE_URL
 
+    started = time.monotonic()
     answer, error = call_provider(base_url, api_key, payload)
+    elapsed_ms = int((time.monotonic() - started) * 1000)
     if error:
-        fail(EXIT_PROVIDER_REFUSED, error)
+        fail(EXIT_PROVIDER_REFUSED, "%s (after %d ms)" % (error, elapsed_ms))
     chosen = answer.get("answers", {}).get("child", {})
     choice = chosen.get("choice")
     if not choice or choice not in criteria:
@@ -175,11 +185,13 @@ def main():
     if arguments.min_confidence is not None and (confidence is None or confidence < arguments.min_confidence):
         json.dump({"error": "confidence %s is below the requested minimum %s"
                             % (confidence, arguments.min_confidence),
-                   "choice": choice, "confidence": confidence}, sys.stdout)
+                   "choice": choice, "confidence": confidence,
+                   "model": answer.get("model"), "elapsed_ms": elapsed_ms}, sys.stdout)
         sys.stdout.write("\n")
         return EXIT_BELOW_THRESHOLD
     json.dump({"choice": choice, "confidence": confidence,
-               "probabilities": chosen.get("probabilities", {}), "model": answer.get("model")},
+               "probabilities": chosen.get("probabilities", {}),
+               "model": answer.get("model"), "elapsed_ms": elapsed_ms},
               sys.stdout)
     sys.stdout.write("\n")
     return EXIT_ANSWERED

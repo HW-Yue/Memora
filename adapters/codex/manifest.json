@@ -1,6 +1,6 @@
 {
   "version": "memora.codex-adapter/v2",
-  "canonical_digest": "4435636e7691e6f061fcd21d4511723568e69f9ca0d4e6d572a7d72ff43edaf5",
+  "canonical_digest": "6c2094779de7dc25366b3faf8eaeff66e9e9133243641b1b3d9c2d7e32d5c5eb",
   "protocol_digest": "beff394c6c4794e881de8b36c04d1fccf025ad9d4da1701f386733ffa7f7a60b",
   "task_contract_digest": "613ad116bd1977580e6f0c4781c80ffeea88567e994610d3f92c6f4d225915d1",
   "files": [
@@ -16,7 +16,7 @@
     },
     {
       "path": ".agents/skills/memora/SKILL.md",
-      "sha256": "4435636e7691e6f061fcd21d4511723568e69f9ca0d4e6d572a7d72ff43edaf5",
+      "sha256": "6c2094779de7dc25366b3faf8eaeff66e9e9133243641b1b3d9c2d7e32d5c5eb",
       "mode": "0644"
     },
     {
@@ -51,7 +51,7 @@
     },
     {
       "path": ".agents/skills/memora/scripts/jev_select.py",
-      "sha256": "20787e9faae42020e15fbd7e01ca2b521493df7548a9c6513b7154c80335a2db",
+      "sha256": "b7bc6ee829ea702d966afc2e06fdeda8cd3399d940afec7daafd6e532d687444",
       "mode": "0755"
     },
     {

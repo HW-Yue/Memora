@@ -85,8 +85,13 @@ other case:
 
 - the layer has **at least two live children** — the script refuses fewer
   (`exit 4`), and with one child there is nothing to choose;
-- the intent is **single-target** ("which place do I look in"). "List them all"
-  is not a choice and must not be asked as one;
+- **the question you hand it is single-target** ("which of these places holds
+  this?"). The *task* may want everything and still use jev here — the
+  enumeration happens afterwards with `SELECT`. What must not happen is asking it
+  to enumerate: at a layer whose children **are** the items, an "all of them"
+  intent has no right answer, and that is what the `all`/`none` options are for.
+  Verified on a real library: asked "both companies" at a two-internship layer, it
+  answered `none` at 0.97 — the honest refusal, and the reason the option exists;
 - you put a **`none` option** in the option set (below). This one is not
   optional bookkeeping: `Choice` always picks something, so an unanswerable
   question comes back as a **confident wrong answer**.
@@ -96,8 +101,17 @@ The contract, exactly — options carry name and purpose, **never** a `route_id`
 ```sh
 echo '{"intent":"<what the user wants>","options":[{"name":"<child>","purpose":"<its purpose>"},{"name":"none","purpose":"none of these places is where this intent lives"}]}' \
   | python3 "<skill-directory>/scripts/jev_select.py"
-# -> {"choice":"<name>","confidence":0.0-1.0,"probabilities":{…},"model":"…"}
+# -> {"choice":"<name>","confidence":0.0-1.0,"probabilities":{…},"model":"…","elapsed_ms":0}
 ```
+
+`model` is the model that **served** the answer (`jev-1.13.0` in practice, while
+the default asked for is the `jev-latest` alias) — report what came back, not the
+alias. `elapsed_ms` is the provider round trip, so the budget below is something
+you can check instead of assume. `--dry-run` prints the request that would be
+sent and sends nothing (no key needed) — that is how to confirm the shape, and
+that no `route_id` travelled. `--min-confidence FLOAT` refuses a weak answer as
+`exit 5` instead of returning it, with the choice and `elapsed_ms` still on
+stdout. Both flags are in `python3 "<skill-directory>/scripts/jev_select.py" --help`.
 
 Exit codes: `0` answered, `2` no `TYPESAFE_API_KEY`, `3` the provider refused,
 `4` it was not a choice (fewer than two options, empty intent), `5` below
@@ -111,10 +125,13 @@ not whether the answer is right, and a 0.9 can be the wrong pick. For an
 `SHOW ROUTES` when it wins.
 
 **Budget it honestly.** Each decision is a fresh process and a fresh TLS
-connection to a hosted API: measured at **0.9–2.0 s per layer**, of which the
-model itself is ~0.2 s — the option count barely moves it (12 options ≈ 2
-options) and the layers are decided serially. One obvious child, or a question
-`RECALL` already answers, is not worth a second.
+connection to a hosted API — one measured library spent **0.9–1.0 s per decision**
+on repeat calls and 2.0 s on a cold first one, of which the model itself is
+~0.2 s; the option count barely moves it (12 options ≈ 2 options, +0.1 s) and the
+layers are decided serially. On a query the cheaper paths already answer, jev
+earns nothing: one real run of "list my internships" used it at exactly one of
+four layers (the Table choice) and got the rest from the census. One obvious
+child, or a question `RECALL` answers, is not worth a second.
 
 Treat Route results as `navigation_only`. They are neither answers nor evidence.
 Explicitly choose one or more Tables from the compact Atlas. For a selected

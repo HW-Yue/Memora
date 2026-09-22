@@ -12,6 +12,9 @@ index; every procedure lives in a reference you load when the task needs it.
 because a spine that looks self-sufficient is how a host stops reading and starts
 improvising.
 
+`<skill-directory>` below and in the references is the directory this file lives
+in — the same one that carries `references/` and `scripts/`.
+
 ## Constraints
 
 - Only `memora doctor`, `query`, `exec`, `mutate` and `schema` do database work.
@@ -20,7 +23,10 @@ improvising.
   `parse` (to check a statement before sending it), `version` (which also answers
   to the conventional `--version` and `-v`), and `instance destroy` (only on the
   user's explicit instruction). Every one of them answers `--help` — ask it
-  instead of guessing an option, and never invent a flag.
+  instead of guessing an option, and never invent a flag. The same goes for the
+  Skill's own scripts under `scripts/`: they are not `memora` subcommands, they
+  take their own flags (`scripts/jev_select.py` has `--help`, `--dry-run` and
+  `--min-confidence`), and each is described in the reference that uses it.
 - Never inspect, edit, copy or infer state from physical database, index, journal,
   page or instance files. Logical MSQL results are the host's only source of
   database truth.
