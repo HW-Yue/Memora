@@ -16,8 +16,14 @@ set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 canonical=$root/skills/memora
-# The files every copy carries. Adding a file to the Skill means adding it here.
-files=(SKILL.md contract.json host-contract.json references/product-manual.md agents/openai.yaml scripts/install.sh scripts/check.sh scripts/jev_select.py)
+# The files every copy carries. The constants are listed; everything under
+# references/ is enumerated, because a new reference that is not copied is a
+# pointer into a file the reader does not have.
+files=(SKILL.md contract.json host-contract.json agents/openai.yaml scripts/install.sh scripts/check.sh scripts/jev_select.py)
+for reference in "$canonical"/references/*.md; do
+  [ -e "$reference" ] || continue
+  files+=("${reference#"$canonical/"}")
+done
 adapters=(adapters/codex/.agents/skills/memora adapters/claude-code/.claude/skills/memora)
 
 mode=repo

@@ -26,7 +26,10 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 )
 
-const skillPath = "../../skills/memora/SKILL.md"
+// Every markdown file the Skill carries: the spine and the references it points
+// at. An example that moves into a reference must stay checked, or the move
+// trades a verified example for an unverified one.
+const skillRoot = "../../skills/memora"
 
 var (
 	// Every fenced block, whatever its language tag: an example that lands in a
@@ -45,13 +48,35 @@ type command struct {
 // starts at a line whose trimmed text begins with `memora ` and continues while
 // its single quotes are unbalanced, which is how the multi-line `--plan` JSON
 // examples stay in one piece.
+func skillFiles(t *testing.T) []string {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(skillRoot, "*.md"))
+	if err != nil {
+		t.Fatalf("list the Skill: %v", err)
+	}
+	references, err := filepath.Glob(filepath.Join(skillRoot, "references", "*.md"))
+	if err != nil {
+		t.Fatalf("list the Skill references: %v", err)
+	}
+	files = append(files, references...)
+	if len(files) < 5 {
+		t.Fatalf("only %d Skill files found; the extractor is wrong", len(files))
+	}
+	return files
+}
+
 func commands(t *testing.T) []command {
 	t.Helper()
-	content, err := os.ReadFile(filepath.Clean(skillPath))
-	if err != nil {
-		t.Fatalf("read the Skill: %v", err)
-	}
 	found := []command{}
+	content := []byte{}
+	for _, file := range skillFiles(t) {
+		body, err := os.ReadFile(filepath.Clean(file))
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		content = append(content, body...)
+		content = append(content, '\n')
+	}
 	for _, fence := range fencePattern.FindAllStringSubmatch(string(content), -1) {
 		current := []string{}
 		for _, line := range strings.Split(fence[1], "\n") {
@@ -185,6 +210,11 @@ func TestEverySkillCommandIsACoveredShape(t *testing.T) {
 			head = words[1]
 		}
 		switch {
+		case strings.Contains(item.text, "--input '") && strings.Contains(item.text, "..."):
+			// A sketch: the JSON is visibly elided, so there is nothing to bind. The
+			// ellipsis is the licence — an example may elide, but only where the
+			// reader can see that it did.
+			shapes["sketch"]++
 		case strings.Contains(item.text, "--input '"):
 			if sourceArg(item.text) == "" {
 				t.Errorf("command has an input but no quoted statement:\n%s", item.lines[0])
@@ -195,13 +225,16 @@ func TestEverySkillCommandIsACoveredShape(t *testing.T) {
 			shapes["plan"]++
 		case sourceArg(item.text) != "":
 			shapes["bare-statement"]++
-		case head == "doctor" || head == "version" || head == "help":
-			shapes["tool"]++
+		case head == "doctor" || head == "version" || head == "help" ||
+			head == "init" || head == "daemon" || head == "admin":
+			// Operational commands: no MSQL source to bind, only a subcommand that
+			// the CLI has to know. `doctor` and `version` are the spine's own.
+			shapes["shell"]++
 		default:
 			t.Errorf("command fits no known shape and is not checked:\n%s", item.lines[0])
 		}
 	}
-	for _, required := range []string{"input", "plan", "bare-statement", "tool"} {
+	for _, required := range []string{"input", "sketch", "plan", "bare-statement", "shell"} {
 		if shapes[required] == 0 {
 			t.Errorf("no example of shape %q was found; the extractor or the Skill changed", required)
 		}
@@ -215,6 +248,9 @@ func TestEverySkillStatementParsesAndBindsItsOwnParameters(t *testing.T) {
 	for _, item := range commands(t) {
 		line := item.lines[0]
 		switch {
+		case strings.Contains(item.text, "--input '") && strings.Contains(item.text, "..."):
+			// Visibly elided (the coverage test is where that is licensed).
+			continue
 		case strings.Contains(item.text, "--input '"):
 			shape := parseInput(t, afterFlag(item.text, "--input '"), line)
 			list := statements(sourceArg(item.text))

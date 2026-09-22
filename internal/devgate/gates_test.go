@@ -237,29 +237,68 @@ func TestSkillSurfaceMatchesLiveCLI(t *testing.T) {
 		}
 	}
 
-	shared := []string{
-		"SKILL.md",
-		"contract.json",
-		"host-contract.json",
-		"references/product-manual.md",
-		"scripts/check.sh",
-		"scripts/install.sh",
-	}
-	for _, rel := range shared {
-		canonical, err := os.ReadFile(filepath.Join(root, "skills/memora", rel))
+	// Every file the canonical Skill carries has to exist in each adapter copy,
+	// byte for byte, and no copy may carry a file the canonical one does not. A
+	// fixed list was how a reference could be added to the canonical Skill and be
+	// missing from a copy the host actually reads — the pointer worked and the
+	// file behind it did not exist.
+	canonical := filepath.Join(root, "skills/memora")
+	expected := map[string][]byte{}
+	if err := filepath.WalkDir(canonical, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(canonical, path)
 		if err != nil {
+			return err
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		expected[rel] = body
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The adapters carry one file of their own (the distribution licence), which
+	// has nothing to compare against and is not drift.
+	adapterOnly := map[string]bool{"LICENSE": true, "COMMERCIAL-LICENSE.md": true}
+	for _, copyRoot := range []string{
+		filepath.Join(root, "adapters/codex/.agents/skills/memora"),
+		filepath.Join(root, "adapters/claude-code/.claude/skills/memora"),
+	} {
+		seen := map[string]bool{}
+		if err := filepath.WalkDir(copyRoot, func(path string, entry os.DirEntry, err error) error {
+			if err != nil || entry.IsDir() {
+				return err
+			}
+			rel, err := filepath.Rel(copyRoot, path)
+			if err != nil {
+				return err
+			}
+			seen[rel] = true
+			want, ok := expected[rel]
+			if !ok {
+				if !adapterOnly[rel] {
+					t.Errorf("%s carries %s, which the canonical Skill does not", copyRoot, rel)
+				}
+				return nil
+			}
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(want, body) {
+				t.Errorf("%s does not match skills/memora/%s", copyRoot, rel)
+			}
+			return nil
+		}); err != nil {
 			t.Fatal(err)
 		}
-		for _, copyRel := range []string{
-			filepath.Join("adapters/codex/.agents/skills/memora", rel),
-			filepath.Join("adapters/claude-code/.claude/skills/memora", rel),
-		} {
-			got, err := os.ReadFile(filepath.Join(root, copyRel))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(canonical, got) {
-				t.Errorf("%s does not match skills/memora/%s", copyRel, rel)
+		for rel := range expected {
+			if !seen[rel] {
+				t.Errorf("%s is missing %s", copyRoot, rel)
 			}
 		}
 	}
