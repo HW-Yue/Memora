@@ -308,8 +308,6 @@ const DOCUMENT_NODE_WIDTH = 900;
 // where measurement returns nothing (a hidden or not-yet-laid-out node). It used
 // to be a fixed 620px, which left a hole under every shorter document.
 const DOCUMENT_NODE_MIN_HEIGHT = 120;
-const DOCUMENT_COLUMN_GAP = 72;
-const DOCUMENT_VERTICAL_GAP = 72;
 const CANVAS_FOCUS_MAX_ZOOM = 1.25;
 // 空白处的一次按下既可能是"拖画布"，也可能是"点节点"。移动没超过这个像素数就按点击放行。
 const CANVAS_DRAG_THRESHOLD = 3;
@@ -511,25 +509,36 @@ function graphNodeSize(data) {
   return [layout.width, layout.height];
 }
 
-function layoutNodeData(node) {
-  return node?.data?.data || node?.data || node || {};
+// G6's `treeLayout` hands the layout `{id: idOf(node), data: node.data || {}}`,
+// and a node in this view is flat: `treeToGraphData` passes the object straight
+// through, which is why the style callbacks can read `data.kind` off it. A flat
+// object has no `.data`, so a size callback that reads the node it is given
+// reads `{}` — every node, document cards included, was laid out as a 220x72
+// Route box, and the layout never reserved the thousand pixels a card actually
+// occupies. That is what turned every edge into a long diagonal.
+//
+// So the layout does not read the node: it reads this registry by id. The
+// registry is rebuilt from the same tree the graph data was built from, in the
+// same call, so the two can never describe different sizes. One canvas per page
+// makes a module-level registry safe; the alternative — threading a map through
+// every `setData` call site — buys nothing and can go stale on one of them.
+const layoutNodeSizes = new Map();
+
+function rememberLayoutSizes(tree) {
+  layoutNodeSizes.clear();
+  const remember = (node) => {
+    const layout = routeNodeLayout(node?.name);
+    layoutNodeSizes.set(node.id, node.kind === "document"
+      ? [node.documentWidth || DOCUMENT_NODE_WIDTH, node.documentHeight || DOCUMENT_NODE_MIN_HEIGHT]
+      : [layout.width, layout.height]);
+    for (const child of node.children || []) remember(child);
+  };
+  remember(tree);
+  return layoutNodeSizes;
 }
 
-function isDocumentLayoutNode(node) {
-  const data = layoutNodeData(node);
-  return data.kind === "document" || String(data.id || node?.id || "").startsWith("row_document_");
-}
-
-function graphNodeWidth(node) {
-  const data = layoutNodeData(node);
-  if (isDocumentLayoutNode(node)) return data.documentWidth || DOCUMENT_NODE_WIDTH;
-  return routeNodeLayout(data.name).width;
-}
-
-function graphNodeHeight(node) {
-  const data = layoutNodeData(node);
-  if (isDocumentLayoutNode(node)) return data.documentHeight || DOCUMENT_NODE_MIN_HEIGHT;
-  return routeNodeLayout(data.name).height;
+function layoutNodeSize(node) {
+  return layoutNodeSizes.get(node?.id) || [ROUTE_NODE_MIN_WIDTH, ROUTE_NODE_HEIGHT];
 }
 
 function treeNode(row) {
@@ -569,6 +578,7 @@ function findTreeNode(node, id) {
 }
 
 function graphData(tree) {
+  rememberLayoutSizes(tree);
   return window.G6.treeToGraphData(tree, {
     getNodeData: (node, depth) => {
       node.depth = depth;
@@ -591,66 +601,10 @@ function clearCanvasState(stage) {
   if (current) current.remove();
 }
 
-function graphPosition(graph, id) {
-  const position = graph.getElementPosition(id);
-  const x = Array.isArray(position) ? position[0] : position?.x;
-  const y = Array.isArray(position) ? position[1] : position?.y;
-  return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
-}
-
-async function alignDocumentColumn(graph, tree) {
-  if (typeof graph.getElementPosition !== "function" ||
-      typeof graph.translateElementTo !== "function") return;
-  const routes = [];
-  const documents = [];
-  const collect = (node) => {
-    if (node.kind === "document") documents.push(node);
-    else routes.push(node);
-    for (const child of node.children || []) collect(child);
-  };
-  collect(tree);
-  if (!documents.length) return;
-
-  let routeRight = Number.NEGATIVE_INFINITY;
-  for (const route of routes) {
-    const position = graphPosition(graph, route.id);
-    if (position) routeRight = Math.max(routeRight, position[0] + graphNodeWidth(route) / 2);
-  }
-  if (!Number.isFinite(routeRight)) return;
-
-  const placements = documents.map((document) => {
-    const position = graphPosition(graph, document.id);
-    return position ? {
-      document,
-      originalY: position[1],
-      y: position[1],
-      height: document.documentHeight || DOCUMENT_NODE_MIN_HEIGHT,
-    } : null;
-  }).filter(Boolean).sort((left, right) => left.originalY - right.originalY);
-  if (!placements.length) return;
-
-  for (let index = 1; index < placements.length; index += 1) {
-    const previous = placements[index - 1];
-    const current = placements[index];
-    const minimumY = previous.y + previous.height / 2 +
-      DOCUMENT_VERTICAL_GAP + current.height / 2;
-    current.y = Math.max(current.y, minimumY);
-  }
-  const originalMean = placements.reduce((sum, item) => sum + item.originalY, 0) / placements.length;
-  const adjustedMean = placements.reduce((sum, item) => sum + item.y, 0) / placements.length;
-  const verticalShift = originalMean - adjustedMean;
-  const columnLeft = routeRight + DOCUMENT_COLUMN_GAP;
-  await Promise.all(placements.map((item) => graph.translateElementTo(item.document.id, [
-    columnLeft + (item.document.documentWidth || DOCUMENT_NODE_WIDTH) / 2,
-    item.y + verticalShift,
-  ], false)));
-}
-
 async function replaceDocumentNode(graph, tree, node, document) {
   node.children = document ? [document] : [];
   graph.setData(graphData(tree));
   await graph.render();
-  await alignDocumentColumn(graph, tree);
   return document;
 }
 
@@ -662,7 +616,6 @@ async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableI
   graph.setData(graphData(tree));
   await graph.render();
   if (graph.expandElement) await graph.expandElement(selected, { animation: false });
-  await alignDocumentColumn(graph, tree);
 }
 
 // expandToRoute walks the ancestor chain of a deep-linked node and expands each
@@ -946,12 +899,27 @@ function createSemanticGraph(container, tree, onNodeClick) {
       style: { stroke: "#9bb1a1", lineWidth: 1.4 },
     },
     layout: {
-      type: "compact-box",
-      direction: "LR",
-      getWidth: graphNodeWidth,
-      getHeight: graphNodeHeight,
-      getHGap: () => 72,
-      getVGap: () => 22,
+      // G6's compact box layout cannot be used with nodes of different sizes: its
+      // result carries the top-left corner of a gap-inflated box while G6 places
+      // the element's centre there (`YE` ends with a uniform `translate`, never a
+      // per-node half-size correction). With one node size the whole tree is
+      // shifted and nobody notices; the moment a 900x527 card is laid out next
+      // to a 220x72 Route box, every card is drawn half its own size up and to
+      // the left of the row it was given — on top of its Route, with the edge
+      // leaving at a random height. Verified in the vendored 5.1.1 by running
+      // `G6.CompactBoxLayout` on a two-node tree and comparing the result with
+      // the drawn bounds.
+      //
+      // dagre takes a size per node and answers with centres, which is what G6
+      // renders, so no compensation pass is needed and none is written. Its
+      // ranksep/nodesep are also per-side: the visible gap is twice the value,
+      // hence 36 and 24 for the 72px the previous layout used.
+      type: "antv-dagre",
+      rankdir: "LR",
+      ranker: "tight-tree",
+      nodeSize: layoutNodeSize,
+      ranksep: 36,
+      nodesep: 24,
     },
     behaviors: [
       // 平移与缩放全部由 installCanvasGestureBridge 接管：画布上的空白处和卡片走同一条

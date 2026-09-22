@@ -434,10 +434,10 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 	}
 	routeText := string(routes)
 	for _, required := range []string{
-		"window.G6", "compact-box", "collapse-expand",
+		"window.G6", "collapse-expand",
 		"OPEN ROUTE :route LIMIT 1", "SELECT * FROM", "MEMORA ROW", "documentNode",
 		"聚焦到中心", "aria-label", "fitView", "kind === \"document\"",
-		"DOCUMENT_NODE_WIDTH", "documentWidth", "translateElementTo", "focusElement",
+		"DOCUMENT_NODE_WIDTH", "documentWidth", "focusElement",
 		"type: (data) => data.kind === \"document\" ? \"html\" : \"rect\"",
 		"innerHTML: documentNodeHTML", "markdownit({ html: false", "DOMPurify.sanitize",
 		"semantic-document-node", "semantic-document-reading",
@@ -464,13 +464,19 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		// layout reads the same numbers, which is what keeps edges on the boxes.
 		"routeNodeLayout", "labelWordWrap: true", "labelMaxLines:", "labelTextOverflow:",
 		"labelWordWrapWidth:",
+		// The tree layout is handed `{id, data: node.data || {}}` by G6's
+		// treeLayout while this project's node data is flat, so a size callback
+		// that reads the node it is given reads `{}` — which is how a document
+		// card, a thousand pixels tall, was laid out as a 220x72 Route box and
+		// every edge became a long diagonal. The size the layout gets is looked up
+		// by node id in a registry rebuilt from the same tree as the graph data.
+		"rememberLayoutSizes", "layoutNodeSize", "antv-dagre",
 		// Trackpad input is coalesced into one transform per frame; the per-frame
 		// fade that redrew the whole canvas is gone with it.
 		"requestAnimationFrame(applyGesture)", "pendingPan", "pendingZoom", "flushGesture",
 		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
 		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
 		"semantic-canvas-fullscreen", "semantic-canvas-controls", "返回表",
-		"alignDocumentColumn", "DOCUMENT_COLUMN_GAP", "DOCUMENT_VERTICAL_GAP",
 		"CANVAS_FOCUS_MAX_ZOOM", "zoomTo", "focusRouteNode",
 		"for (const column of preview.columns)",
 	} {
@@ -489,9 +495,28 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"\"drag-canvas\",", "type: \"scroll-canvas\"", "type: \"zoom-canvas\"",
 		"trackpad-pan", "trackpad-zoom", "sensitivity: 0.2", "type: \"scroll-canvas\"", "type: \"zoom-canvas\"",
 		"trackpad-pan", "trackpad-zoom", "sensitivity: 0.2",
+		// The document column was a second vertical layout that did not know the
+		// tree layout existed: it stacked every card by its real height and then
+		// moved the whole thing to line its mean up with the old one. It shipped
+		// the symptom rather than the fix — cards were placed by one coordinate
+		// system while the layout that owns the rows used another — so it does not
+		// come back, and neither does the `translateElementTo` pass that moved
+		// cards after G6 had already drawn their edges.
+		"alignDocumentColumn", "DOCUMENT_COLUMN_GAP", "DOCUMENT_VERTICAL_GAP",
+		"translateElementTo",
+		// Reading the size out of the layout's own node argument is the bug, not
+		// a style choice: G6 hands the layout `{id, data}` with an empty `data`.
+		"layoutNodeData", "isDocumentLayoutNode", "graphNodeWidth", "graphNodeHeight",
+		"layoutNodeWidth", "layoutNodeHeight",
+		// compact-box positions a node by the top-left corner of a box inflated by
+		// its gaps while G6 draws the node's centre there, so it is only correct
+		// while every node has one size. With a 900x527 card next to a 220x72 Route
+		// box it draws the card over its Route at the wrong height; dagre takes a
+		// size per node and answers with centres.
+		"compact-box", "getHGap", "getVGap", "getWidth: layoutNode", "getHeight: layoutNode",
 	} {
 		if strings.Contains(routeText, forbidden) {
-			t.Errorf("Semantic canvas still renders a floating DOM preview %q", forbidden)
+			t.Errorf("Semantic canvas still carries %q", forbidden)
 		}
 	}
 	if strings.Contains(routeText, "const pending = statusDocumentNode") {

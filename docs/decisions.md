@@ -1520,3 +1520,26 @@ subprocess 而放弃复用同一份决策实现（现在两份都由 `jev_select
 
 **证据**：`internal/devgate/keepalive_test.go` + `internal/devgate/testdata/jev/keepalive_check.py`；
 `skills/memora/references/jev-tree.md` 的"Reading a run"与 `docs/query/jev-tree-v1.md` 的实测数字。
+## 2026-09-23 · Admin 画布的布局引擎：compact-box 换成 dagre（修订 2026-09-22 的判词）
+
+**对象**：`/routes/<db>/<table>` 语义画布的树布局由谁承担。2026-09-22 的判词里写的是
+「让 compact-box 吃真实高度」，本次实现时查实这条前提不成立，改为 dagre。
+
+**结论**：布局引擎换成 `antv-dagre`（`rankdir: LR`、`ranker: tight-tree`、`nodeSize` 逐节点给真实
+尺寸、`ranksep: 36`、`nodesep: 24`）；尺寸仍走按 id 的 `Map` 注册表，`alignDocumentColumn` 与全局
+位移删除。目标（Route 与它的卡片对成一行、斜线变短变平）不变。
+
+**理由**：在页面里直接跑 vendored G6 5.1.1 的 `G6.CompactBoxLayout` 实测——它返回的是**含 gap 的
+盒子左上角**（两节点例：`(-254,-80)` 与 `(110,-307)`，盒宽 364 / 1044），而 `YE` 收尾只做一次整体
+`translate`，从不逐节点做半尺寸修正；G6 渲染却把节点位置当**中心**。尺寸一致时这是一个全树常量位移
+（所以它一直"看着没问题"），混合尺寸（Route 72 高、卡片 527 高）下就变成每张卡被画在自己那一行的
+左上方半个自身尺寸处：压住 Route、纵向偏高半个卡高。dagre 接收逐节点 `nodeSize` 并返回中心坐标，
+G6 直接照画，不需要任何补偿 pass。
+
+**弃选**：(a) 保留 compact-box + 事后 `translateElement` 补偿——那正是刚删掉的那类"事后挪元素"，
+且不赌 G6 会顺带重算关联边；(b) 自己写树布局——可控但要自己接管 collapse-expand 的重排；
+(c) 用 `getPreH/getPreV` 把位置"顶"到盒子中心——实测会让相邻盒子间距翻倍。
+
+**证据**：真机（`me.projects`，四张卡同开）`getElementRenderBounds`：Route 右边到卡左边 71px（四种
+卡高全部一致），两边中心 y 差 0（全部）。细节与两次翻车记录见
+[Admin 语义画布的连线](./planning/admin-canvas-connections.md#实现记录2026-09-23)。

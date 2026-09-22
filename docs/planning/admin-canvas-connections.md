@@ -1,6 +1,46 @@
 # Admin 语义画布的连线
 
-状态：方向已定（2026-09-22），未实现。对象是 `/routes/<db>/<table>` 上 Route ↔ 文档卡的那些边。
+状态：**第一刀已实现并真机验证（2026-09-23）**，第二刀（port 锚点）未做。对象是
+`/routes/<db>/<table>` 上 Route ↔ 文档卡的那些边。
+
+## 实现记录（2026-09-23）
+
+分支 `fix/canvas-layout-eats-card-height`。改动落在 `internal/adminui/dist/assets/routes.js`：
+
+- **尺寸表**：新增 `layoutNodeSizes` / `rememberLayoutSizes()` / `layoutNodeSize()`。`graphData()` 在
+  建图前用同一棵树重建这张 `Map<id,{w,h}>`，布局回调按 **id** 查表，不再读 G6 递给它的节点参数。
+- **删掉 `alignDocumentColumn`**、`DOCUMENT_COLUMN_GAP`、`DOCUMENT_VERTICAL_GAP` 与全局位移；
+  `translateElementTo` / `graphPosition` 随之成为死代码，一并删除。
+- **布局引擎从 compact-box 换成 dagre**（`antv-dagre` / `rankdir: LR` / `ranker: tight-tree` /
+  `nodeSize: layoutNodeSize` / `ranksep: 36` / `nodesep: 24`）。这不是风格选择，是 compact-box 在
+  **混合尺寸下根本不成立**，见下。
+
+### compact-box 为什么不能用（本次新查实，推翻原「决定」第 1 条的乐观前提）
+
+在页面里直接跑 vendored 的 `G6.CompactBoxLayout`（两节点：Route 220×72 → 卡片 900×527）实测：
+
+- 它回给调用方的是**含 gap 的盒子的左上角**（`x=-254,y=-80` 与 `x=110,y=-307`，盒宽 364 / 1044），
+  而 `YE` 收尾只做一次整体 `translate`，**从不做逐节点的半尺寸修正**；G6 渲染时却把节点位置当**中心**。
+- 尺寸一致时这个错位对全树是同一个常量位移，看不见——这正是它以前"看着没问题"的原因；一旦卡片
+  527 高、Route 72 高，每张卡就被画在自己那一行的左上方半个自身尺寸处：横向压住 Route，纵向偏高
+  半个卡高。实测 `dy ≈ -(卡高/2 - 36.5)`，与症状完全对上。
+- dagre 收 `nodeSize`（可逐节点给真实尺寸）并回**中心**坐标，G6 直接照画，不需要任何补偿 pass。
+  它的 `ranksep`/`nodesep` 是单边的，屏幕上的间隙是两倍，所以 36/24 对应原本的 72px 节奏。
+
+### 真机验证（projects 表，四张卡同开）
+
+用 CDP/OpenCLI 在 `me.projects` 的画布上展开两级、点开四张卡，读 `getElementRenderBounds`：
+
+| 卡高 | Route 右边 → 卡左边 | 两边中心 y 差 |
+|---|---|---|
+| 527 | 71 | 0 |
+| 527 | 71 | 0 |
+| 475 | 71 | 0 |
+| 527 | 71 | 0 |
+
+即卡片正好在 Route 右侧、留出 72px，且与 Route **纵向居中**；验证截图留在被 gitignore 的 `.dsh-tmp/canvas-dagre-layout.png`，不入库。
+过程里的两次翻车也记下来：同路径只换 hash 的导航不会重载页面，SPA 会拿着上一个 server 的 CSRF
+打 401；画布变宽后节点会跑到视口外，合成点击前要先 `fitView`。
 
 ## 症状（用户原话）
 
@@ -33,6 +73,8 @@
 1. **让树布局吃真实高度，删掉 `alignDocumentColumn` 与全局位移。** LR 下 `getHeight` 就是纵向占位；
    文档节点返回实测卡高，compact-box 自己会把 Route 和它的卡片对成一行，斜线变近水平线，
    「越展开越乱」这个放大器直接消失。
+   **2026-09-23 修订**：前半句成立且已实现，后半句的前提不成立——compact-box 在混合尺寸下会把节点
+   画错位置（见「实现记录」），所以承载「吃真实高度」的布局引擎换成了 dagre。目标不变，工具变了。
 2. **尺寸不赌 `node.data`。** `getWidth` / `getHeight` 改成闭包查一张 `Map<id, {w,h}>`（展开时按 id
    写入实测值），绕开 `layoutNodeData()` 返回 `{}` 的不确定性。
 3. **锚点用 port，形状仍留 `cubic-horizontal`。** Route `{placement:'right'}`、文档卡
@@ -83,6 +125,10 @@
 
 ## 待定
 
+- **第二刀：port 锚点（未做）。** 第一刀之后 Route→卡片已经是短近水平线、端点在卡片左边框的中点
+  （真机实测 `dy = 0`、`gapX = 71`），所以 port 现在只解决剩下的两件事：一是分支 → 多个子 Route 的
+  长斜线仍从盒子边框的"中心连线求交"位置穿出（同一父节点的多条边角度不同，锚点高度也就不同）；
+  二是把一个"碰巧对齐"变成"结构上对齐"，将来任何移动都不会退化。
 - ~~G6 5.1.1 的 `html` 节点上 port 能不能正常算 bbox~~（源码级判断：能。`Gb.render` 显式调用
   `drawPortShapes`；port 位置走 `key-container` 的 bounds，而 `key-container` 的 x/y/width/height
   就是 `getKeyStyle` 里的 `dx`/`dy` + 真实尺寸，所以 `dx = -w/2` 这种偏移不会漏算；`zB()` 在 port
@@ -90,6 +136,6 @@
   把 port 的圆点藏掉（`r: 0`）之后边是否仍落在卡片左边框，且 DOM 层不再吃掉线头。顾问判词见上一节：
   这一处用 port，不写自定义 edge。）
 - 锚点时序：见上一节「最大风险」，先真机看一张长卡的左侧锚点 y，再决定要不要在 port 之前先等一次
-  卡片尺寸落定。
-- 两趟渲染的那次跳动怎么收——见「最大风险：测高时序」，倾向认为不存在；真机看一帧再定。
+  卡片尺寸落定。（第一刀的实测里它没出现：四张卡的 `dy` 都是 0。）
+- 两趟渲染的那次跳动怎么收——见「最大风险：测高时序」，第一刀里确认不存在（尺寸在建图前就测好了）。
 - 卡片在画布上要不要收成摘要预览（这次不做，见「代价」）。
