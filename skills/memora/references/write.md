@@ -115,11 +115,12 @@ Build one `memora.mutation-plan/v1` object. Every decision includes at least one
 read-only preflight with explicit Row expectations. IGNORE has no steps. INSERT,
 REVISE, and MOVE have one step; MERGE is one UPDATE plus DELETE steps;
 SPLIT is one UPDATE plus INSERT steps. Keep at most eight steps. Every INSERT or
-UPDATE supplies the complete `route_leaf_ids` snapshot naming exactly one leaf:
-a Row occupies exactly one Leaf, and a Leaf holds at most one live Row.
-A Row with no Route membership can never be reached by semantic navigation, so
-an empty array is not a valid snapshot: attach an existing empty leaf, or create
-the leaf first.
+UPDATE names exactly one Route leaf, in one of the two forms below, and the two
+are mutually exclusive: a Row occupies exactly one Leaf, and a Leaf holds at most
+one live Row. An empty array is not a mount, and a Row with no Route membership
+can never be reached by semantic navigation. The plan carries whichever form the
+statement does — `mutate` accepts both, so a planned write and a one-shot write
+have the same shape.
 
 ### Create the Route leaf you are about to write into
 
@@ -138,10 +139,15 @@ leaf, and it says so one of two ways — never at the top level of the request,
 always inside `mutation`:
 
 - `route_path`: name the path and let the engine reuse or create the segments.
-  This is the one the INSERT example below uses, and the one to prefer when the
-  leaf may not exist yet.
-- `route_leaf_ids`: hand over the `route_id` you just created, as the UPDATE
-  example does.
+  INSERT only, and never together with `route_leaf_ids`. This is the one the
+  INSERT example below uses, and the one to prefer when the leaf may not exist
+  yet: it stays the same L1 write in the same transaction, so naming a new
+  position costs no extra statement and cannot leave a half-built path behind.
+  A delete removes the Row's leaf and prunes whatever branch the removal left
+  empty, which is why creating your own position is part of writing the Row
+  rather than a structural change.
+- `route_leaf_ids`: hand over the `route_id` you already hold — the `UPDATE`
+  example does, and so does an INSERT into a leaf you created with `CREATE ROUTE`.
 
 A Table needs its root once, then one leaf per Row.
 
@@ -219,9 +225,22 @@ a live Row. Nothing is created unless the whole write commits.
 
 Before attaching a new Row, verify that the target leaf is empty;
 an occupied leaf requires a new semantic leaf, because a Row occupies exactly one
-leaf and cannot also be reached through a second one. Submit the plan through `mutate` so
-Policy validation occurs before any Tool call and multi-step changes share one
-short transaction.
+leaf and cannot also be reached through a second one.
+
+**Send the write through `memora mutate` when you can.** A plan carries the same
+`input` object per step — mount form included, `route_path` or `route_leaf_ids` —
+plus read-only preflight and verify checks, so Policy validates it before any tool
+call and a multi-step change shares one short transaction. `exec` stays right for
+a one-off read or a statement you have already planned; it is not the way around a
+plan. `expect_rows` is your own claim about what the check must find, so set it to
+what the search above must return — 0 when the subject is genuinely new:
+
+```sh
+memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-8","decision":"INSERT","database":"work","table":"notes","actor":"agent:host","source_event_id":"conversation:event-7","reason":"record the decision","authorized_databases":["work"],"preflight":[{"id":"dedupe","msql":"SELECT row_id, revision FROM work.notes LIMIT 10","expect_rows":0}],"steps":[{"id":"insert","kind":"INSERT","target":"work.notes","msql":"INSERT INTO work.notes (title, summary) VALUES (:title, :summary)","input":{"parameters":{"named":{"title":"Use SQLite","summary":"<the complete ~1,000-CJK-character Markdown document; abbreviated here>"}},"mutation":{"expected_schema_version":1,"max_affected_rows":1,"route_path":[{"name":"architecture","kind":"branch","purpose":"Architecture decisions"},{"name":"sqlite","kind":"leaf","purpose":"Why SQLite"}],"actor":"agent:host","source":"conversation:event-7","reason":"record the decision"}}}],"verify":[{"id":"read-back","msql":"SELECT row_id, revision FROM work.notes LIMIT 10","expect_rows":1}]}'
+```
+
+A REVISE plan has the same shape with `"decision":"REVISE"`, an UPDATE step, and
+`expected_revision` next to the `route_leaf_ids` snapshot:
 
 ```sh
 memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"<complete self-contained ~1,000-CJK-character Markdown document; abbreviated in this example>"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"

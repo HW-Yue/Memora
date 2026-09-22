@@ -7,6 +7,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/ast"
 	"github.com/HW-Yue/Memora/internal/msql/parser"
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 )
 
 func (plan Plan) Validate() error {
@@ -121,11 +122,23 @@ func validateStep(step Step, plan Plan) (string, []string, error) {
 		if kind == "UPDATE" && options.ExpectedRevision == 0 {
 			return "", nil, fmt.Errorf("UPDATE requires expected revision")
 		}
-		if options.RouteLeafIDs == nil {
-			return "", nil, fmt.Errorf("row mutation requires a complete Route snapshot")
-		}
-		if err := validateSnapshot(options.RouteLeafIDs, 32, "Route memberships"); err != nil {
-			return "", nil, err
+		if len(options.RoutePath) > 0 {
+			if kind != "INSERT" {
+				return "", nil, fmt.Errorf("route_path completes a new position and is accepted by INSERT only; an UPDATE keeps the position it has, name it in route_leaf_ids")
+			}
+			if options.RouteLeafIDs != nil {
+				return "", nil, fmt.Errorf("route_path and route_leaf_ids are mutually exclusive: route_path completes a new position, route_leaf_ids names an existing leaf")
+			}
+			if err := validateRoutePath(options.RoutePath); err != nil {
+				return "", nil, err
+			}
+		} else {
+			if options.RouteLeafIDs == nil {
+				return "", nil, fmt.Errorf("row mutation requires a complete Route snapshot, or route_path on an INSERT")
+			}
+			if err := validateRowMounts(options.RouteLeafIDs); err != nil {
+				return "", nil, err
+			}
 		}
 	case "DELETE":
 		if options.ExpectedSchemaVersion == 0 || options.ExpectedRevision == 0 {
@@ -168,6 +181,43 @@ func validateSnapshot(values []string, maximum int, label string) error {
 			return fmt.Errorf("%s must be non-empty and deduplicated", label)
 		}
 		seen[normalized] = true
+	}
+	return nil
+}
+
+// validateRowMounts checks the snapshot form of a Row write: a Row occupies
+// exactly one Leaf, so "some memberships" is not a valid answer — an empty
+// array is a Row the semantic index cannot reach, not a Row with no position.
+func validateRowMounts(values []string) error {
+	if err := validateSnapshot(values, 32, "Route memberships"); err != nil {
+		return err
+	}
+	if len(values) != 1 {
+		return fmt.Errorf("a Row occupies exactly one Route leaf; the memberships snapshot names %d", len(values))
+	}
+	return nil
+}
+
+// validateRoutePath checks the implicit form, which the engine completes inside
+// the write's own transaction. It repeats the shape rules the storage layer
+// enforces, so that a plan fails at Policy time instead of at execution time;
+// whether a named segment already exists is a question only the engine can
+// answer, and it is answered when the path is completed.
+func validateRoutePath(segments []router.PathSegment) error {
+	for index, segment := range segments {
+		if blank(segment.Name) || blank(segment.Purpose) {
+			return fmt.Errorf("route path segment %d needs both a name and a purpose", index+1)
+		}
+		if segment.Kind != router.KindBranch && segment.Kind != router.KindLeaf {
+			return fmt.Errorf("route path segment %q has kind %q; a path segment is a branch or a leaf, and the root is created explicitly", segment.Name, segment.Kind)
+		}
+		last := index == len(segments)-1
+		if last && segment.Kind != router.KindLeaf {
+			return fmt.Errorf("the last route path segment %q must be the leaf that holds the Row", segment.Name)
+		}
+		if !last && segment.Kind == router.KindLeaf {
+			return fmt.Errorf("route path segment %q is a leaf, so nothing can hang below it", segment.Name)
+		}
 	}
 	return nil
 }

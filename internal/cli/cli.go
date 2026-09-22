@@ -56,6 +56,43 @@ Commands:
 Run 'memora help' for usage.
 `
 
+// commandUsage is what `memora <command> --help` and `memora help <command>`
+// answer. A host reaches for the conventional flag before it builds anything —
+// a Mutation Plan, a Schema plan, a statement — and being told "unknown option"
+// or, worse, having `--help` parsed as MSQL teaches it nothing about what the
+// command wants. One line each: the shape of the invocation and what it needs.
+var commandUsage = map[string]string{
+	"admin": "Usage: memora admin [--data-dir <dir>] [--port <port>]\n" +
+		"Starts a temporary local read-only Admin API for one instance.\n",
+	"daemon": "Usage: memora daemon <start|run|status|ping|stop> [--data-dir <dir>]\n" +
+		"Manages the daemon that serves one instance.\n",
+	"doctor": "Usage: memora doctor [--data-dir <dir>]\n" +
+		"Reports logical integrity for one instance.\n",
+	"exec": "Usage: memora exec [--input <json|@file>] '<MSQL statements>'\n" +
+		"Executes MSQL, including mutations, through the local daemon.\n",
+	"init": "Usage: memora init [--data-dir <dir>]\n" +
+		"Initializes a local instance.\n",
+	"instance": "Usage: memora instance destroy --yes [--data-dir <dir>]\n" +
+		"Removes a local instance; irreversible, and only on explicit instruction.\n",
+	"mcp": "Usage: memora mcp [--data-dir <dir>]\n" +
+		"Serves MCP over newline-delimited stdio.\n",
+	"mutate": "Usage: memora mutate --plan '<memora.mutation-plan/v1 JSON>'\n" +
+		"Validates a Mutation Plan and executes it; the plan carries preflight,\n" +
+		"step and verify statements, each with its own input object.\n",
+	"parse": "Usage: memora parse [--input <json|@file>] '<MSQL statements>'\n" +
+		"Parses without executing: a grammatical check, not a permission to run.\n",
+	"query": "Usage: memora query [--input <json|@file>] '<MSQL statements>'\n" +
+		"Queries MSQL through the local daemon; reads only.\n",
+	"schema": "Usage: memora schema --plan '<memora.schema-plan/v1 JSON>'\n" +
+		"Validates a Schema Plan and executes it; creating structure is L2.\n",
+	"version": "Usage: memora version [--json]\n" +
+		"Reports the build; --version and -v do the same.\n",
+}
+
+func helpRequested(argument string) bool {
+	return argument == "--help" || argument == "-h" || argument == "help"
+}
+
 type BuildInfo struct {
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
@@ -196,13 +233,23 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 	if len(args) == 0 {
 		return writeText(stdout, stderr, helpText)
 	}
+	// The conventional flag on any command, answered before dispatch so that a
+	// probe never reaches a parser or a daemon.
+	if len(args) > 1 && helpRequested(args[1]) {
+		if usage, known := commandUsage[args[0]]; known {
+			return writeText(stdout, stderr, usage)
+		}
+	}
 
 	switch args[0] {
 	case "help", "-h", "--help":
-		if len(args) != 1 {
-			return usageError(stderr, "help does not accept arguments")
+		if len(args) == 1 {
+			return writeText(stdout, stderr, helpText)
 		}
-		return writeText(stdout, stderr, helpText)
+		if usage, known := commandUsage[args[1]]; known {
+			return writeText(stdout, stderr, usage)
+		}
+		return usageError(stderr, fmt.Sprintf("help does not know %q; run 'memora help' for the list", args[1]))
 	case "daemon":
 		return runDaemon(args[1:], stdout, stderr, build, dependencies)
 	case "admin":

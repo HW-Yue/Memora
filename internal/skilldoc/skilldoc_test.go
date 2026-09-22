@@ -188,6 +188,41 @@ func bindingsMatch(t *testing.T, named map[string]any, source string, line strin
 	}
 }
 
+// planStatements checks the statements a Mutation Plan carries. A plan is not one
+// statement with one parameter map: every check and step is a separate statement
+// with its own `input`, so each is parsed and bound against its own element and
+// nothing else. A plan example may elide a value — the sketch licence — but not
+// the statement it sends or the parameters that statement needs.
+func planStatements(t *testing.T, plan map[string]any, line string) {
+	t.Helper()
+	for _, section := range []string{"preflight", "steps", "verify"} {
+		entries, _ := plan[section].([]any)
+		for _, entry := range entries {
+			fields, ok := entry.(map[string]any)
+			if !ok {
+				continue
+			}
+			source, _ := fields["msql"].(string)
+			if strings.TrimSpace(source) == "" || strings.Contains(source, "...") {
+				continue
+			}
+			named := map[string]any{}
+			if input, ok := fields["input"].(map[string]any); ok {
+				if encoded, err := json.Marshal(input); err == nil {
+					named = decodeNamed(t, string(encoded), line)
+				}
+			}
+			for _, statement := range statements(source) {
+				if _, err := parser.Parse(statement); err != nil {
+					t.Errorf("plan statement does not parse: %v\n%s", err, statement)
+					continue
+				}
+				bindingsMatch(t, named, statement, line)
+			}
+		}
+	}
+}
+
 func statements(source string) []string {
 	parts := []string{}
 	for _, part := range strings.Split(source, ";") {
@@ -279,6 +314,7 @@ func TestEverySkillStatementParsesAndBindsItsOwnParameters(t *testing.T) {
 			if version, _ := decoded["version"].(string); version == "" {
 				t.Errorf("plan has no version:\n%s", line)
 			}
+			planStatements(t, decoded, line)
 		case sourceArg(item.text) != "":
 			for _, statement := range statements(sourceArg(item.text)) {
 				if _, err := parser.Parse(statement); err != nil {

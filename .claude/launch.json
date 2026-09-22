@@ -1,0 +1,22 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "memora-admin",
+      "url": "http://localhost:3888",
+      "port": 3888
+    },
+    {
+      "name": "memora-admin-sqlite",
+      "runtimeExecutable": "/Users/yy/.local/bin/memora",
+      "runtimeArgs": [
+        "admin",
+        "--data-dir",
+        "/private/tmp/claude-501/-Users-yy-Developer-Memora/a71ced33-63b5-4ae8-85a7-93ada298d595/scratchpad/installed-check",
+        "--no-open"
+      ],
+      "port": 3888,
+      "url": "http://127.0.0.1:3888"
+    }
+  ]
+}

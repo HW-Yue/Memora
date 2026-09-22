@@ -6,7 +6,7 @@ Part of the `memora` Skill. It is loaded on demand: `SKILL.md` holds the constra
 
 When the user asks what Memora is, how the architecture works, how a read/write
 flows through the engine, or how to use/troubleshoot the local Admin, read
-[`references/product-manual.md`](references/product-manual.md). It is the
+[`references/product-manual.md`](./product-manual.md). It is the
 stable product and operations guide; it must not be used as a substitute for
 live MSQL discovery. Admin is a local, read-only observer on `127.0.0.1:3888`;
 all facts and all mutations still come from the scoped daemon through MSQL. If the

@@ -16,7 +16,8 @@ memora query --input '{"parameters":{"named":{"archive":"archive_01"}},"authoriz
 `SHOW ARCHIVE` lists metadata only and requires both a Table scope and a LIMIT.
 Leaving `FOR ROW` out lists the whole Table's deletions, which is the only way to
 discover a deletion when you no longer know its `row_id` — the `FOR ROW` form
-presupposes you do. `OPEN ARCHIVE` returns one record in full — the path
+presupposes you do. Its `archive_id` is what the second statement takes: there is
+no other way to name an archive record. `OPEN ARCHIVE` returns one record in full — the path
 root-first, and the Row as it was stored, including the links it carried. The
 archived values are keyed by **column_id**, not by column name, so rebuilding
 means mapping them back through `DESCRIBE TABLE`; and the archived record's

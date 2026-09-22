@@ -57,28 +57,34 @@ backlog gets drained, one statement per unit, as many statements as you like in
 one request:
 
 ```sh
-memora exec --input '{"parameters":{"named":{"v":"<base64>","unit":42,"model":"text-embedding-v4","hash":"sha256:..."}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embedding"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash"
+memora exec --input '{"parameters":{"named":{"v":"<base64>","unit":42,"model":"text-embedding-v4","hash":"<the content_hash SHOW PENDING VECTORS gave you, bare 64 hex>"}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embedding"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash"
 ```
 
 A batch is several statements in one request, and `--input` takes **one object per
 statement as an array** — one `ACCEPT VECTOR`, one input, in source order:
 
 ```sh
-memora exec --input '[{"parameters":{"named":{"v":"<b64>","unit":42,"model":"text-embedding-v4","hash":"sha256:a"}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embeddings"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}},{"parameters":{"named":{"v":"<b64>","unit":43,"model":"text-embedding-v4","hash":"sha256:b"}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embeddings"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}]' "ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash; ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash"
+memora exec --input '[{"parameters":{"named":{"v":"<b64>","unit":42,"model":"text-embedding-v4","hash":"<content_hash of unit 42>"}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embeddings"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}},{"parameters":{"named":{"v":"<b64>","unit":43,"model":"text-embedding-v4","hash":"<content_hash of unit 43>"}},"mutation":{"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"attach embeddings"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}]' "ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash; ACCEPT VECTOR :v FOR UNIT :unit IN DATABASE work MODEL :model HASH :hash"
 ```
 
 Your provider may cap how many texts one embedding request may carry; that is the
 host's business, not the language's (`MEMORA_EMBEDDING_BATCH` declares the cap, and
 the CLI splits a refused batch on its own).
 
-`HASH` is the hash of the text you embedded, not of the Row: the engine recomputes
-it and refuses a mismatch, so an embedding of a previous revision cannot land on
-the current one. A unit the engine has no vector for simply stays not-ready —
+`unit` and `HASH` both come from that same `SHOW PENDING VECTORS` row — `unit_no`
+is the unit, and `HASH` is its `content_hash` **as printed, the bare 64 hex
+characters** (a `sha256:` prefix is a different string and is refused). It is the
+hash of the text you embedded, not of the Row: the engine recomputes it and
+refuses a mismatch, so an embedding of a previous revision cannot land on the
+current one. A unit the engine has no vector for simply stays not-ready —
 `RECALL` reports it, and nothing pretends it was attached.
 
 When you already have a query embedding — for instance the one you just computed
 for the text the user asked about — you can search by position instead of words:
-`RECALL FROM <db> [IN <table>] NEAREST :v LIMIT :n`. The vector travels as
+`RECALL FROM <db> [IN <table>] NEAREST :v LIMIT :n`. The Database needs a vector
+**identity** before this works: with no provider configured, or before the first
+vector is attached, it answers `database has no vector identity yet` — accept one
+vector first (below), then search by position. The vector travels as
 **base64 (raw URL-safe) of little-endian float32, no padding**, and must match the
 Database's locked width; a vector of the wrong width, or one carrying NaN, is
 refused rather than rounded. The answer has exactly the same shape as a keyword

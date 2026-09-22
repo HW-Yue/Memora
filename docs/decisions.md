@@ -603,7 +603,7 @@ sha256 与 size，`bundle_test.go` 断言——改 UI 必须同步 dist 资源�
 **开做前的判断（已核对）**：方向无偏差，最大风险是**没有 summary 列的表**——`row-detail/v1`
 允许 `display.summary_column` 为空，`routes.js` 有兜底文案而 `rows.js` 没有；改造后这类表的
 正中主块会空白。所以**先写兜底，再动渲染**，并且每改一次 JS 就同步一次 bundle 哈希与测试。
-落地顺序与坑见 [Admin 显示槽位](../planning/admin-display-slots.md)。
+落地顺序与坑见 [Admin 显示槽位](./planning/admin-display-slots.md)。
 
 ## 2026-09-21 · 引擎拥有形状，agent 只给位置与正文（讨论稿）
 
@@ -632,7 +632,7 @@ sha256 与 size，`bundle_test.go` 断言——改 UI 必须同步 dist 资源�
 
 **待定**：封闭字段集的名单与填值方；`title` 从正文首个标题派生还是另设字段；人（L2）能否
 例外扩展形状；表名是否还承担语义；现存实例先迁移还是并行。全稿见
-[引擎拥有形状](../planning/engine-owned-shape.md)。**与宪章现表述冲突，未授权开工、未改宪章。**
+[引擎拥有形状](./planning/engine-owned-shape.md)。**与宪章现表述冲突，未授权开工、未改宪章。**
 
 ## 2026-09-21 · 只收回「列」的定义权，不设全局封闭字段（取代上一条）
 
@@ -677,7 +677,7 @@ catalog-ddl、parser/binder、`catalog.Table`、`row-detail/v1`、Admin bundle �
 
 **待定**：`row_semantics` 撤掉还是引擎写常数；表级 `scope`/`anti_scope` 是否在 `SHOW TABLES`
 露出；人（L2）能否例外扩展形状；现存实例先迁移还是并行。全稿见
-[引擎拥有形状](../planning/engine-owned-shape.md)。**未授权开工、未改宪章。**
+[引擎拥有形状](./planning/engine-owned-shape.md)。**未授权开工、未改宪章。**
 
 ## 2026-09-21 · 库级 purpose/scope/anti_scope 保留，作为每次写入的参考
 
@@ -755,7 +755,7 @@ OR embedding_dimensions <> 库的维度`（`internal/sqlstore/embedding.go` 的 
 宿主的第一条 `ACCEPT` 能把错误身份钉死）。**缓解**：`mem_databases` 加显式中间态 → 期间
 `RECALL … NEAREST` 拒绝、`SHOW PENDING VECTORS` 带目标身份、第一条 `ACCEPT` 成功即退出、`doctor` 报。
 
-全稿见[向量 rekey](../planning/vector-rekey.md)。**未授权开工。**
+全稿见[向量 rekey](./planning/vector-rekey.md)。**未授权开工。**
 **有界性（用户已定，2026-09-21）**：选 **(b) 两阶段有界**，且合并成**一条可重复语句**
 `REKEY VECTOR IDENTITY IN DATABASE :db LIMIT :n [MODEL :m DIMENSIONS :d]`（与 `REPAIR VECTOR
 INDEX` 同族）：第一次调用标记中间态 + drop 派生层 + 清至多 `LIMIT` 个单元，后续调用继续清字节，
@@ -956,7 +956,7 @@ Admin 搜索页仍是关键词单臂 + 跨库交错，第二阶段接向量臂�
 「除了代码里面的单测以外，不能允许其他地方直接从引擎写数据库内容」。另外我没把 `~/.zshrc` 里的
 `MEMORA_EMBEDDING_*` 读进命令环境，所以排干当时是空操作（这条是操作失误，不是配置缺失）。
 
-**规则已写进 [AGENTS.md](../../AGENTS.md)（写库的合法途径，只有两条）**：
+**规则已写进 [AGENTS.md](../AGENTS.md)（写库的合法途径，只有两条）**：
 ① agent 按 `skills/memora/` 的流程经 CLI/MCP/SDK 走 MSQL（含 `ACCEPT VECTOR` 与写入后宿主排干）；
 ② 代码里的单元测试直接打 storage。**其余一律不许写**（一次性脚本、临时 Python/Shell、手工拼的
 命令行、绕过 Skill 的批量导入），**读不受限**。判断标准：这段代码是不是"某个 agent 正在按 Skill
@@ -1169,3 +1169,67 @@ Row）仍然报 `false`。
 **证据**：`internal/sqlstore/read_surface_test.go` 的 `TestACensusCutByItsOwnLimitSaysSo`
 （截断的普查恰好带一条 `output_truncated` 通知并点名树 walk；完整普查不带）；
 `skills/memora/SKILL.md` 的普查段说明这个通知就是枚举器的来源。
+
+## 2026-09-22 · Admin 语义画布的手势：只留应用自己的一层，且一次拖动必须能自己结束
+
+**对象**：Admin 语义画布（G6）的平移/缩放手势由谁实现、状态由谁清。
+
+**结论（四条规则）**：
+
+1. **手势只有一层，且由应用自己的手势桥拥有**：G6 自带的 `drag-canvas` / `scroll-canvas` /
+   `zoom-canvas` 全部不用，空白处与文档卡片走同一条路径。
+2. **一次拖动必须能自己结束**：见到"没按键的移动"（`event.buttons === 0`）即判定结束；窗口失焦、
+   `pointercancel` 直接放弃。松开的信号为什么丢不重要——下一次没按键的移动就是证据。
+3. **空白处按下不立刻抢指针**：先记起点，位移超过 `CANVAS_DRAG_THRESHOLD`(3px) 才算拖动，否则按
+   点击放行；否则 `setPointerCapture` 会把 `pointerup`/`click` 重定向到容器，节点展开/收起整体失效。
+4. **按帧合并 + 100ms 兜底计时器**：位移每帧最多应用一次，rAF 迟迟不来也要把累积位移应用掉。
+
+**理由**：用户连报三次"拖不动"（展开几个文档后拖不动、单指滑动"鼠标到哪它到哪"、某个位置双指拖
+几次就卡住），三次同一类病因——**状态没人清，或者两套实现在按位置分工**。真机日志：15 次
+`pointerdown` 只有 14 次 `pointerup`；最近 200 次 `pointermove` 里 189 次没按键，而相机在这段时间
+变了 154 次。
+
+**弃选**：保留 G6 的三个 canvas 插件（一层不归我们控制、状态清不掉的实现，迟早留下一种拖不动）；
+为触摸屏多点触控专门处理（桌面 Admin 未纳入）。
+
+**证据**：`internal/adminui/bundle_test.go` 把四条规则钉成断言（禁三个插件与 `trackpad-pan`/
+`trackpad-zoom`；必须 `event.buttons === 0`、`CANVAS_DRAG_THRESHOLD`、`gestureTimer`、
+`isCanvasControl`），加回去断言确实红；真机真实输入：改前"按下 + 两次没按键的移动"推相机
+100px/120px，改后纹丝不动；空白处拖拽改前不动、改后能动；19 篇文档全开，打开一篇 16–26ms、
+收起 4–6ms、最差帧 38ms、>50ms 的帧 0 个。落地记录见
+[Admin 语义画布的手势](./planning/admin-canvas-gestures.md)。
+
+## 2026-09-22 · 写入路径：计划要能表达 `route_path`，而"顺带建位置"仍算 L1
+
+**对象**：Mutation Plan 能表达哪些挂载形式；`route_path` 顺带创建路径段属于 L1 还是 L2。
+
+**结论**：
+
+1. `mutate` 的 INSERT 步骤**接受 `route_path`**，与 `route_leaf_ids` 互斥；`route_path` 只给 INSERT
+   （UPDATE 保留它已有的位置）。计划校验器按引擎的形状规则校验路径段（每段有 name/purpose、只能
+   是 branch/leaf、最后一段必须是 leaf、leaf 之上不能再挂东西）。
+2. `route_leaf_ids` 快照**必须恰好一个叶子**：原先只查 nil，`[]` 能过 Policy 却被引擎拒——同一个
+   不变量在两个层上说法不一致。
+3. **`route_path` 顺带创建路径段保持 L1**，不升级为 L2。判据是"这个副作用是否随这一行消失"，已查
+   实：`DELETE` 删行的同时删掉它占用的叶子，并 `pruneEmptyBranches` 清掉因此变空的分支
+   （`internal/sqlstore/rows.go` 的 `deleteRow`；`internal/sqlstore/write_path_test.go` 已有断言）。
+   计划层也**没有** L2 通道——`skillwrite.authorizedInput` 给每一步固定 `LevelWrite`；结构性动作
+   （建 root、建表、改 schema）本来就只走 `exec` + 显式 L2，这正是 Skill 教 `CREATE ROUTE` 的方式。
+
+**理由**：一个不带上下文的 fresh agent 按 Skill 写入时撞上真矛盾——`write.md` 同时说"INSERT 优先用
+`route_path`"和"把计划交给 `mutate` 先过 Policy"，而校验器只认 `route_leaf_ids`。它最后绕开
+`mutate` 直接用 `exec`，于是**丢掉了计划层的 preflight**。那是最常走的一条路（新主题 = 新叶子），
+把它做成"两步 + 非原子"，或者让它继续没有 preflight，都比多校验一条路径段贵。
+
+**弃选（顾问主张，未采纳）**：取消 `route_path`，INSERT 一律先 `CREATE ROUTE`（L2）建叶子、再按快照
+挂载。顾问的两条理由查证后一条不成立、一条代价更高：(a)"路径段不随行删除而消失"——叶子随行删除、
+空分支被剪掉，副作用确实随这一行消失；(b) 通过 `exec` 仍能在 L1 用 `route_path`，除非同时改风险
+分级（要动 `StatementRiskLevel` 的签名，或在 insert 里补一次 L2 校验），所以 B 消不掉它想消掉的口子，
+反而让最高频路径失去原子性。**若将来用户裁决"记新主题也要先审"，正确的落点是把「已审父节点下建
+叶子」单独定级，而不是把 `route_path` 从引擎里删掉。**
+
+**证据**：`internal/skillwrite/policy_test.go`（该包的第一批测试：route_path 计划被接受、两种形式
+互斥、缺挂载被拒、路径段形状、恰好一个叶子、UPDATE 不许带 route_path），
+`internal/sqlstore/skillwrite_plan_test.go`（真库上跑完一个 route_path 计划：receipt committed +
+verified、位置可导航、删行后空分支被剪）；RED 已实测（退回旧校验时两个测试都红）。
+

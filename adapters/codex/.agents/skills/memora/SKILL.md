@@ -17,9 +17,10 @@ improvising.
 - Only `memora doctor`, `query`, `exec`, `mutate` and `schema` do database work.
   A few commands exist for narrow cases and are used only that way:
   `daemon stop` (to clear a build skew the detector reports), `daemon status`,
-  `parse` (to check a statement before sending it), `version` (the conventional
-  `--version` flag is not accepted), and `instance destroy` (only on the user's
-  explicit instruction).
+  `parse` (to check a statement before sending it), `version` (which also answers
+  to the conventional `--version` and `-v`), and `instance destroy` (only on the
+  user's explicit instruction). Every one of them answers `--help` — ask it
+  instead of guessing an option, and never invent a flag.
 - Never inspect, edit, copy or infer state from physical database, index, journal,
   page or instance files. Logical MSQL results are the host's only source of
   database truth.

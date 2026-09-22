@@ -170,9 +170,10 @@ facts, while a census pays for `columns` only.
 **Date your evidence when the answer is about "now".** A Row's `row_detail.updated_at`
 says when that revision was written; `SHOW HISTORY FROM <table> FOR ROW :row LIMIT :limit`
 lists the revisions of that one Row; and the commit log —
-`SHOW CHANGES IN DATABASE :database LIMIT :limit` — is the audit surface that dates
-a whole tree (`IN DATABASE` is required, and change entries carry no column values,
-only Row IDs and revisions). `doctor`'s `changes` and `rows` are instance-wide
+`SHOW CHANGES IN DATABASE work LIMIT :limit` — is the audit surface that dates
+a whole tree (`IN DATABASE` is required, it takes the Database **name as an
+identifier** so a parameter there does not parse, and change entries carry no
+column values, only Row IDs and revisions). `doctor`'s `changes` and `rows` are instance-wide
 counters: use them to notice that a tree is frozen, never as a substitute for
 reading it. `doctor`'s `route_nodes` also counts the Table **roots**, which no
 `SHOW ROUTES` page ever returns, so a full walk will always come up short by one
@@ -224,10 +225,13 @@ point reads is ten statements of one Row each, and each one is measured on its
 own. Read them only when a limit actually binds or you intend to exceed the
 bundled ceilings, with the statement that returns them — `SHOW CONFIGURATION`
 (the five `query_budgets` are `route_children`, `open_locators`, `select_scan`,
-`select_rows`, `route_frame_nodes`; `SHOW CONFIGURATION HISTORY` shows how they
-got there). The bundled ceilings are `route_children` 12, `open_locators` 1,
-`select_rows` 10, `select_scan` 1000 and `route_frame_nodes` 12,000 context
-characters. `select_scan` is the one easy to forget and the one that cuts a
+`select_rows`, `route_frame_nodes`; `SHOW CONFIGURATION HISTORY LIMIT :limit` shows
+how they got there). The bundled ceilings are `route_children` 12, `open_locators` 1,
+`select_rows` 10, `select_scan` 1000 and `route_frame_nodes` 12 **nodes** — that
+last one is the host's own bound on a cross-statement Route Frame: the engine
+stores and returns the number, and enforcing it is the host's job, so exceeding
+it is not an engine error. It is accepted in `1..100`, and the budget statement
+below has to carry every one of the five. `select_scan` is the one easy to forget and the one that cuts a
 census without the `LIMIT` looking wrong: it caps how many candidate rows one
 SELECT examines before it reports `truncated`. `open_locators` is retained as a
 compatibility budget but cannot raise a leaf above its `0..1` cardinality. All
@@ -241,16 +245,16 @@ exceed the ceiling — not as a ritual before every read. A Table that genuinely
 holds more live Rows than the ceiling is enumerated read-only by the Route tree
 walk, or the ceiling is raised explicitly:
 
-```sql
-ALTER CONFIGURATION QUERY_BUDGETS SET
-  ROUTE_CHILDREN :routes, OPEN_LOCATORS :locators, SELECT_SCAN :scan,
-  SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame;
+```sh
+memora exec --input '{"parameters":{"named":{"routes":12,"locators":1,"scan":1000,"rows":10,"frame":12}},"mutation":{"expected_revision":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"raise the census ceiling for one large Table"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "ALTER CONFIGURATION QUERY_BUDGETS SET ROUTE_CHILDREN :routes, OPEN_LOCATORS :locators, SELECT_SCAN :scan, SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame"
 ```
 
-It replaces all five (they are one revision, with `expected_revision`, actor and
+It replaces all five (they are one revision, so the mutation needs
+`expected_revision` — read it from `SHOW CONFIGURATION` first — plus actor and
 reason), `SHOW CONFIGURATION HISTORY LIMIT :limit` shows the trail, and
 `RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision` appends a compensating
-revision. Raising a budget is a deliberate act with a reason, not a reflex. A locator cursor is never
+revision (same input: `expected_revision`, actor, reason; the statement names the
+revision to restore **to**). Raising a budget is a deliberate act with a reason, not a reflex. A locator cursor is never
 expected from a valid leaf. Drop the Route Frame when its schema or route
 revision is stale, the topic changes, or the task ends.
 

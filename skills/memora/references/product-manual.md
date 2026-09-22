@@ -150,7 +150,7 @@ init、daemon start 和 doctor 检查，才能向用户报告安装成功。
 memora init --instance work
 memora daemon start --data-dir /absolute/instance
 memora doctor --data-dir /absolute/instance
-memora query --input '{...authorization...}' 'SHOW CATALOG ATLAS LIMIT 64'
+memora query --input '{...authorization...}' 'SHOW CATALOG ATLAS LIMIT 64 COMPACT'
 memora exec  --input '{...authorization...}' 'SELECT ...'
 ```
 

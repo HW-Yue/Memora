@@ -75,11 +75,16 @@ remedies. Choose between them yourself; do not retry the same write.
    new node belongs inside an existing child, or the children should be regrouped.
    Use the Route mutation proposal flow below.
 2. `raise_branch_fanout` — the domain genuinely has more sibling groups than the
-   current limit, and merging them would lose a real distinction. Raise this
-   Database's limit with an expected revision, actor, and reason:
+   current limit, and merging them would lose a real distinction. Read the current
+   value with `SHOW CONFIGURATION ROUTE_POLICY` (it is one policy for the
+   **instance**, not one per Database), then raise it: `branch_fanout` lives in
+   `2..100`, and one change may raise it by at most 4, so widening is a repeated
+   decision rather than one jump to the ceiling. The statement is only half the
+   write — the input carries the `expected_revision` from that read, plus actor
+   and reason, without which the engine refuses it:
 
-```sql
-ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :fanout
+```sh
+memora exec --input '{"parameters":{"named":{"fanout":16}},"mutation":{"expected_revision":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"this instance really has more parallel groups"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :fanout"
 ```
 
 Prefer restructuring when the crowded children share an obvious parent concept;

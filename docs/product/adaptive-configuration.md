@@ -81,12 +81,22 @@ RESTORE CONFIGURATION ROUTE_POLICY TO REVISION :revision;
 ```
 
 `branch_fanout` 的启动默认值是 12，取值范围 `2..100`。它同样归为「允许显式运行时
-修改」：Agent 在 Route branch 越界失败后自行判断重构子树还是提高本库上限，两条出路
+修改」：Agent 在 Route branch 越界失败后自行判断重构子树还是提高上限，两条出路
 都写在失败信封里。降低上限不回溯，既有超限子树保持可读可维护。规则见
 [写入形态](./write-model.md) §4.3。
 
+**作用域要说准（2026-09-22 核查）**：现在它**不是每库一份**——`mem_config` 里只有
+`memora.configuration.route_policy` 一个键，`SHOW CONFIGURATION ROUTE_POLICY` 也不带
+Database 列，所以一个实例只有一份 route policy；`query_budgets` 同样如此。但引擎自己的
+措辞写的是「this database allows %d」（`internal/nativeconfig/policy.go` 的
+`ValidateFanoutStep`），失败信封又只在某个库的写入里出现，读起来像按库配置。**待定**：
+把措辞改成"this instance"，还是把 route policy 真正做成每库一份（`mem_config` 的
+key 带上数据库 id，`SHOW`/`ALTER`/`RESTORE` 都要接受库名）——后者是协议改动，需要
+单独一块授权。在那之前，Skill 按"实例一份"写。
+
 裸 `SHOW CONFIGURATION` 仍返回 `query_budgets`；两个键不接受对方的字段，也不能因为
-某次目标恰好等于读取预算就复用成一个含义含混的开关。
+某次目标恰好等于读取预算就复用成一个含义含混的开关。两个键的写入都必须带
+`expected_revision`（先读再写），否则引擎直接拒。
 
 ## 配置记录
 
