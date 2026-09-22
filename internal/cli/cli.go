@@ -215,6 +215,10 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return runSchema(args[1:], stdout, stderr, dependencies)
 	case "version":
 		return runVersion(args[1:], stdout, stderr, build)
+	case "--version", "-version", "-v":
+		// The conventional flag, because a host reaches for it first and used to
+		// be told the command does not exist. `version` stays the documented form.
+		return runVersion(args[1:], stdout, stderr, build)
 	default:
 		if _, err := fmt.Fprintf(stderr, "memora: unknown command %q\nRun 'memora help' for usage.\n", args[0]); err != nil {
 			return ExitFailure

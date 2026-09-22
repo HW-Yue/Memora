@@ -337,12 +337,19 @@ func rowDetail(databaseName string, table catalog.Table, projections []projectio
 		TableID: table.ID, TableName: table.Name, SchemaVersion: table.SchemaVersion,
 		RowSemantics: table.RowSemantics,
 	}
-	for _, item := range projections {
-		switch item.column.SemanticRole {
+	// The display map names the Table's title and summary columns, not the ones
+	// this particular read happened to project: a caller that asked for `title`
+	// alone still needs to know which column holds the document, and deriving the
+	// map from the projection made it change shape with the request.
+	for _, column := range table.Columns {
+		if column.Archived() {
+			continue
+		}
+		switch column.SemanticRole {
 		case "title":
-			detail.Display.TitleColumn = item.column.Name
+			detail.Display.TitleColumn = column.Name
 		case "summary":
-			detail.Display.SummaryColumn = item.column.Name
+			detail.Display.SummaryColumn = column.Name
 		}
 	}
 	if detail.Display.TitleColumn == "" {

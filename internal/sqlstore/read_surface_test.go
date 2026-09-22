@@ -247,3 +247,32 @@ func TestTheTextCeilingCountsCodePointsNotBytes(t *testing.T) {
 		t.Fatalf("a refused insert must not mount a Row, found %s", holder)
 	}
 }
+
+// The display map is a property of the Table, not of the request: a caller that
+// projected only `title` still needs to know which column holds the document.
+// Deriving it from the projection made `row_detail.display` change shape with
+// every read — a caller could not rely on `summary_column` being there.
+func TestTheDisplayMapNamesTheTablesColumnsNotTheProjection(t *testing.T) {
+	h := newHarness(t)
+	h.run(`CREATE DATABASE work PURPOSE 'Work memory' SCOPE 'Documents'`, nil, executor.MutationOptions{})
+	h.run(`CREATE TABLE work.docs PURPOSE 'Documents' ROW SEMANTICS 'One document per row' `+
+		`(title TEXT NOT NULL PURPOSE 'Title' ROLE title, body TEXT(2500) NOT NULL PURPOSE 'Body' ROLE summary)`,
+		nil, executor.MutationOptions{})
+	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.docs PURPOSE 'Documents'`, nil, write("root")).Rows[0]["route_id"])
+	leaf := text(h.run(`CREATE ROUTE UNDER :parent NAME 'one' KIND 'leaf' PURPOSE 'First document'`,
+		map[string]any{"parent": root}, write("leaf")).Rows[0]["route_id"])
+	insert := write("insert document")
+	insert.RouteLeafIDs = []string{leaf}
+	rowID := text(h.run(`INSERT INTO work.docs (title, body) VALUES (:title, :body)`,
+		map[string]any{"title": "一条文档", "body": "正文"}, insert).Rows[0]["row_id"])
+
+	// Only `title` is projected; the map must still name the document column.
+	partial := h.run(`SELECT title FROM work.docs WHERE row_id = :row LIMIT 1`,
+		map[string]any{"row": rowID}, executor.MutationOptions{})
+	if partial.RowDetail == nil {
+		t.Fatal("a point read must carry a row detail")
+	}
+	if partial.RowDetail.Display.TitleColumn != "title" || partial.RowDetail.Display.SummaryColumn != "body" {
+		t.Fatalf("the display map must name the Table's columns: %+v", partial.RowDetail.Display)
+	}
+}
