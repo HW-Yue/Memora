@@ -32,6 +32,7 @@
 - [Admin 显示槽位](./planning/admin-display-slots.md) — 文档居中且只渲染一次
 - [Admin 语义画布的性能](./planning/admin-canvas-performance.md) — 卡顿的四个来源与这次的修法
 - [Admin 语义画布的手势](./planning/admin-canvas-gestures.md) — 画布手势只有一层，而且必须能自己结束
+- [Admin 语义画布的连线](./planning/admin-canvas-connections.md) — 布局吃真实卡高，锚点交给 port
 - [引擎拥有形状](./planning/engine-owned-shape.md) — 讨论稿：列归引擎，命名/描述/位置/正文归 agent
 - [向量 rekey](./planning/vector-rekey.md) — 卸下 TOFU 身份，再让排干重新上锁
 - [无上下文 subagent 循环实测（2026-09-22）](./development/dogfood-2026-09-22.md) — 五轮摩擦与修复
