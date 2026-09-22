@@ -1,0 +1,27 @@
+{
+  "options": [
+    "OPPO",
+    "悠悠有品",
+    "本科"
+  ],
+  "model": "rule fixture",
+  "note": "constructed: every candidate is answered, none is separated",
+  "answers": {
+    "holds_0": {
+      "type": "noul",
+      "noul": 0.7
+    },
+    "holds_1": {
+      "type": "noul",
+      "noul": 0.65
+    },
+    "holds_2": {
+      "type": "noul",
+      "noul": 0.6
+    },
+    "nothing_here": {
+      "type": "noul",
+      "noul": 0.55
+    }
+  }
+}

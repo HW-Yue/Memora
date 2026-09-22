@@ -1,0 +1,27 @@
+{
+  "options": [
+    "OPPO",
+    "悠悠有品",
+    "本科"
+  ],
+  "model": "rule fixture",
+  "note": "constructed: the floor probe outranks every candidate",
+  "answers": {
+    "holds_0": {
+      "type": "noul",
+      "noul": 0.05
+    },
+    "holds_1": {
+      "type": "noul",
+      "noul": 0.04
+    },
+    "holds_2": {
+      "type": "noul",
+      "noul": 0.03
+    },
+    "nothing_here": {
+      "type": "noul",
+      "noul": 0.61
+    }
+  }
+}

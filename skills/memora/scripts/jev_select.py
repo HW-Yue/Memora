@@ -6,15 +6,36 @@ kernel still answers `SHOW ROUTES`, and this script only decides which of those
 answers to follow. Nothing about it changes the engine, and the engine never
 learns that jev exists.
 
+Two modes, because a layer answers one of two questions. Which one it is comes
+from the layer's structure, not from guessing the user's intent:
+
+* `"mode": "choice"` (the default) — the children are **alternatives**, only one
+  of which can be right ("which Table holds this?"). One `Choice` question.
+* `"mode": "set"` — the children are **instances of one kind** and several may
+  apply ("which of my internships?"). One `Noul` question per child, all in one
+  request, so the answer is a set. A `Choice` here can only ever return one, and
+  asking it to return two is how a second internship goes missing.
+
 Contract
 --------
     stdin : {"intent": "<what the user wants>",
+             "mode": "choice" | "set",
              "options": [{"name": "<child name>", "purpose": "<child purpose>"}, ...]}
-    stdout: {"choice": "<name>", "confidence": 0.0-1.0,
+    stdout choice: {"mode": "choice", "choice": "<name>", "confidence": 0.0-1.0,
              "probabilities": {"<name>": 0.0-1.0, ...}, "model": "<model>",
              "elapsed_ms": <the provider round trip, integer>}
+    stdout set   : {"mode": "set", "relevant": ["<name>", ...],
+             "decision": "separated" | "undecided" | "empty",
+             "model": "<model>", "elapsed_ms": <integer>}
     exit  : 0 answered | 2 not configured | 3 provider refused | 4 bad input
             | 5 below --min-confidence
+
+In `set` mode no probability leaves this process. The cut is decided here, by the
+rule in `decide_set`, and the caller receives names and a decision — never a
+score it could threshold, rank or store. `separated` means the request's own
+answers split cleanly; `undecided` means they did not, so the caller enumerates
+the layer instead of trusting a filter; `empty` means nothing stood out at all,
+which is the same signal as the `none` option in `choice` mode.
 
 `model` is the model that **served** the answer, not the alias that was asked for.
 `elapsed_ms` is measured around the provider call, because "a jev decision is
@@ -47,6 +68,24 @@ DEFAULT_BASE_URL = "https://api.typesafe.ai"
 DEFAULT_MODEL = "jev-latest"
 REQUEST_TIMEOUT_SECONDS = 30
 RETRY_DELAYS_SECONDS = (0.5, 1.5)
+
+MODE_CHOICE = "choice"
+MODE_SET = "set"
+
+# The sentinel is the whole reason `set` mode needs no magic relevance number: it
+# is one extra Noul asking whether this layer holds nothing for the intent, and it
+# travels in the same request. "Is 0.63 relevant?" becomes "is 0.63 separated from
+# what this very request called nothing?" — a comparison inside one request, not a
+# constant calibrated per library, per user, or per corpus.
+SENTINEL = "nothing_here"
+SENTINEL_QUESTION = ("Is it true that none of the places in `candidates` holds any "
+                     "part of what `state.intent` asks about?")
+
+# How far apart two answers must be before the request is called decisive. It is
+# fixed and deliberately not configurable: it measures whether the model answered
+# decisively this time, not how relevant anything is, and a tunable version would
+# be exactly the relevance threshold this design refuses to have.
+SEPARATION_FACTOR = 2.0
 
 EXIT_ANSWERED = 0
 EXIT_NOT_CONFIGURED = 2
@@ -86,8 +125,11 @@ def read_request():
         fail(EXIT_BAD_INPUT, "the request must be JSON on stdin: %s" % error)
     intent = request.get("intent", "")
     options = request.get("options", [])
+    mode = request.get("mode", MODE_CHOICE)
     if not isinstance(intent, str) or not intent.strip():
         fail(EXIT_BAD_INPUT, "the request needs a non-empty intent")
+    if mode not in (MODE_CHOICE, MODE_SET):
+        fail(EXIT_BAD_INPUT, "mode must be %r or %r" % (MODE_CHOICE, MODE_SET))
     if not isinstance(options, list) or len(options) < 2:
         fail(EXIT_BAD_INPUT, "choosing needs at least two options")
     criteria = {}
@@ -100,10 +142,12 @@ def read_request():
         # Only the human-readable description travels; any other key the caller
         # passed (route_id, for instance) is dropped here rather than trusted.
         criteria[name] = option.get("purpose") or option.get("name")
-    return intent, criteria
+    if SENTINEL in criteria:
+        fail(EXIT_BAD_INPUT, "option name %r is reserved for the floor probe" % SENTINEL)
+    return intent, criteria, mode
 
 
-def build_payload(intent, criteria, model):
+def build_choice_payload(intent, criteria, model):
     return {
         "state": {"intent": intent},
         "model": model,
@@ -118,6 +162,70 @@ def build_payload(intent, criteria, model):
             }
         },
     }
+
+
+def build_set_payload(intent, criteria, model):
+    # One Noul per candidate, plus the floor probe, in a single request. Noul is
+    # the primitive TypeSafe documents for "several may apply": one question per
+    # label, judged independently and in parallel, so the answer is a set rather
+    # than a pick. The floor probe rides along so the cut below can be a
+    # comparison inside this request instead of a number calibrated somewhere.
+    candidates = [{"name": name, "purpose": purpose} for name, purpose in criteria.items()]
+    questions = {}
+    for index, (name, purpose) in enumerate(criteria.items()):
+        questions["holds_%d" % index] = {
+            "type": "noul",
+            "instructions": {
+                "candidate": {"name": name, "purpose": purpose},
+                "question": "Is `candidate` one of the places the intent's answer lives in?",
+            },
+            "criteria": {
+                "true": "this place holds part of, or all of, what the intent asks about",
+                "false": "this place holds nothing the intent asks about",
+            },
+        }
+    questions[SENTINEL] = {
+        "type": "noul",
+        "instructions": {"question": SENTINEL_QUESTION},
+        "criteria": {
+            "true": "none of the candidates holds any part of what the intent asks about",
+            "false": "at least one candidate holds part of what the intent asks about",
+        },
+    }
+    return {
+        "state": {"intent": intent, "candidates": candidates},
+        "model": model,
+        "questions": questions,
+    }
+
+
+def decide_set(ranked, floor):
+    # Turn per-candidate Noul values plus the floor probe into (names, decision).
+    # The rule the Skill states, implemented once:
+    #   1. rank the candidates and the floor probe together, as one ladder;
+    #   2. cut at the largest ratio drop, and only if that drop is at least
+    #      SEPARATION_FACTOR -- a clear gap in this request, not a relevance score;
+    #   3. everything above the cut is the set. The floor probe winning the top
+    #      means `empty` (nothing here answers the intent); no clear drop at all
+    #      means `undecided`, and the caller enumerates the layer rather than
+    #      trusting a filter the model did not make.
+    ladder = sorted(list(ranked.items()) + [(SENTINEL, floor)],
+                    key=lambda item: (-item[1], item[0]))
+    best_index, best_ratio = None, 0.0
+    for index in range(len(ladder) - 1):
+        above = ladder[index][1]
+        below = ladder[index + 1][1]
+        if above <= 0:
+            continue
+        ratio = float("inf") if below <= 0 else above / below
+        if ratio > best_ratio:
+            best_ratio, best_index = ratio, index
+    if best_index is None or best_ratio < SEPARATION_FACTOR:
+        return [], "undecided"
+    kept = sorted(name for name, _ in ladder[: best_index + 1] if name != SENTINEL)
+    if not kept:
+        return [], "empty"
+    return kept, "separated"
 
 
 def call_provider(base_url, api_key, payload):
@@ -144,17 +252,55 @@ def call_provider(base_url, api_key, payload):
     return None, "the provider kept refusing"
 
 
+def replay(path):
+    """Re-run the set-mode cut on recorded provider answers.
+
+    The cut is the only part of this path that decides anything, so it is the
+    part worth testing: a recorded answer file turns it into a deterministic
+    function of numbers that came from a real request. No network, no key, and
+    nothing printed but the same shape a live call returns.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            recorded = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        fail(EXIT_BAD_INPUT, "replay file is not readable JSON: %s" % error)
+    names = recorded.get("options")
+    answers = recorded.get("answers")
+    if not isinstance(names, list) or len(names) < 2 or not isinstance(answers, dict):
+        fail(EXIT_BAD_INPUT, "a replay file needs options and answers")
+    values = {}
+    for index, name in enumerate(names):
+        value = answers.get("holds_%d" % index, {}).get("noul")
+        if not isinstance(value, (int, float)):
+            fail(EXIT_BAD_INPUT, "replay is missing an answer for %r" % name)
+        values[name] = float(value)
+    floor = answers.get(SENTINEL, {}).get("noul")
+    if not isinstance(floor, (int, float)):
+        fail(EXIT_BAD_INPUT, "replay is missing the floor probe")
+    relevant, decision = decide_set(values, float(floor))
+    json.dump({"mode": MODE_SET, "relevant": relevant, "decision": decision,
+               "model": recorded.get("model", "replay"), "elapsed_ms": 0}, sys.stdout)
+    sys.stdout.write("\n")
+    return EXIT_ANSWERED
+
+
 def main():
     parser = argparse.ArgumentParser(description="Choose a layer's child with jev")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the request that would be sent, send nothing")
     parser.add_argument("--min-confidence", type=float, default=None,
                         help="refuse an answer below this confidence instead of returning it")
+    parser.add_argument("--replay", metavar="FILE", default=None,
+                        help="apply the set-mode cut to recorded answers: no network, no key")
     arguments = parser.parse_args()
+    if arguments.replay:
+        return replay(arguments.replay)
 
-    intent, criteria = read_request()
+    intent, criteria, mode = read_request()
     model = from_environment("TYPESAFE_MODEL") or DEFAULT_MODEL
-    payload = build_payload(intent, criteria, model)
+    payload = (build_set_payload(intent, criteria, model) if mode == MODE_SET
+               else build_choice_payload(intent, criteria, model))
 
     if arguments.dry_run:
         # No key needed and no call made: this is how the request shape is
@@ -174,7 +320,24 @@ def main():
     elapsed_ms = int((time.monotonic() - started) * 1000)
     if error:
         fail(EXIT_PROVIDER_REFUSED, "%s (after %d ms)" % (error, elapsed_ms))
-    chosen = answer.get("answers", {}).get("child", {})
+    answers = answer.get("answers", {})
+    if mode == MODE_SET:
+        values = {}
+        for index, name in enumerate(criteria):
+            value = answers.get("holds_%d" % index, {}).get("noul")
+            if not isinstance(value, (int, float)):
+                fail(EXIT_PROVIDER_REFUSED, "the provider did not answer for %r" % name)
+            values[name] = float(value)
+        floor = answers.get(SENTINEL, {}).get("noul")
+        if not isinstance(floor, (int, float)):
+            fail(EXIT_PROVIDER_REFUSED, "the provider did not answer the floor probe")
+        relevant, decision = decide_set(values, float(floor))
+        json.dump({"mode": MODE_SET, "relevant": relevant, "decision": decision,
+                   "model": answer.get("model"), "elapsed_ms": elapsed_ms}, sys.stdout)
+        sys.stdout.write("\n")
+        return EXIT_ANSWERED
+
+    chosen = answers.get("child", {})
     choice = chosen.get("choice")
     if not choice or choice not in criteria:
         fail(EXIT_PROVIDER_REFUSED, "the provider answered with something that is not one of the options")
@@ -189,7 +352,7 @@ def main():
                    "model": answer.get("model"), "elapsed_ms": elapsed_ms}, sys.stdout)
         sys.stdout.write("\n")
         return EXIT_BELOW_THRESHOLD
-    json.dump({"choice": choice, "confidence": confidence,
+    json.dump({"mode": MODE_CHOICE, "choice": choice, "confidence": confidence,
                "probabilities": chosen.get("probabilities", {}),
                "model": answer.get("model"), "elapsed_ms": elapsed_ms},
               sys.stdout)

@@ -1,0 +1,27 @@
+{
+  "options": [
+    "OPPO",
+    "悠悠有品",
+    "本科"
+  ],
+  "model": "jev-1.13.0",
+  "note": "recorded from a real jev-1.13.0 request on 2026-09-22: intent '全部实习经历，两家公司的实习都要'",
+  "answers": {
+    "holds_0": {
+      "type": "noul",
+      "noul": 0.97
+    },
+    "holds_1": {
+      "type": "noul",
+      "noul": 0.96
+    },
+    "holds_2": {
+      "type": "noul",
+      "noul": 0.04
+    },
+    "nothing_here": {
+      "type": "noul",
+      "noul": 0.02
+    }
+  }
+}

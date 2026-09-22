@@ -78,6 +78,19 @@ other two product paths. jev is the fourth and only optional one, a Skill-side
 chooser that reads no database state of its own — and it is a **fallback**, not a
 front door: it answers one layer at a time and it never produces the answer.
 
+### Which jev question a layer needs
+
+The shape follows the **layer**, not a guess about the user's intent:
+
+- children that are **alternatives**, only one of which can be right ("which
+  Table holds this?") → `"mode":"choice"`, one `Choice`, below;
+- children that are **instances of one kind**, several of which may apply ("which
+  of my internships?") → `"mode":"set"`, one `Noul` per child. A `Choice` here
+  can only ever return one, and asking it for two is how the second internship
+  goes missing. Measured on a real library with two internships: the set answer
+  returned both, and with a single-target intent it returned one — same request
+  shape, same ~0.9 s.
+
 ### When jev is worth a call
 
 Use it only when all three of these hold, and decide the layer yourself in every
@@ -87,22 +100,54 @@ other case:
   (`exit 4`), and with one child there is nothing to choose;
 - **the question you hand it is single-target** ("which of these places holds
   this?"). The *task* may want everything and still use jev here — the
-  enumeration happens afterwards with `SELECT`. What must not happen is asking it
-  to enumerate: at a layer whose children **are** the items, an "all of them"
-  intent has no right answer, and that is what the `all`/`none` options are for.
-  Verified on a real library: asked "both companies" at a two-internship layer, it
-  answered `none` at 0.97 — the honest refusal, and the reason the option exists;
-- you put a **`none` option** in the option set (below). This one is not
-  optional bookkeeping: `Choice` always picks something, so an unanswerable
-  question comes back as a **confident wrong answer**.
+  enumeration happens afterwards with `SELECT`, and a layer whose children are
+  instances of one kind is a `set` question, not a `choice` one. What must not
+  happen is asking a `Choice` to enumerate: it always returns one, so a
+  two-internship layer asked for both comes back with one of them — or, with the
+  `none` option and no `all`, with `none` at 0.97, which is the honest refusal but
+  still not the answer;
+- **in `choice` mode**, you put a `none` option in the option set (below). This one
+  is not optional bookkeeping: `Choice` always picks something, so an unanswerable
+  question comes back as a **confident wrong answer**. `set` mode needs no `none`
+  option — it asks a floor probe of its own for every request.
 
 The contract, exactly — options carry name and purpose, **never** a `route_id`:
 
 ```sh
+# choice: one child, for a layer of alternatives. Keep the `none` option.
 echo '{"intent":"<what the user wants>","options":[{"name":"<child>","purpose":"<its purpose>"},{"name":"none","purpose":"none of these places is where this intent lives"}]}' \
   | python3 "<skill-directory>/scripts/jev_select.py"
-# -> {"choice":"<name>","confidence":0.0-1.0,"probabilities":{…},"model":"…","elapsed_ms":0}
+# -> {"mode":"choice","choice":"<name>","confidence":0.0-1.0,"probabilities":{…},"model":"…","elapsed_ms":0}
+
+# set: several children may apply. No `none` option — the script adds its own.
+echo '{"mode":"set","intent":"<what the user wants>","options":[{"name":"<child>","purpose":"<its purpose>"},{"name":"<another>","purpose":"<its purpose>"}]}' \
+  | python3 "<skill-directory>/scripts/jev_select.py"
+# -> {"mode":"set","relevant":["<name>",…],"decision":"separated|undecided|empty","model":"…","elapsed_ms":0}
 ```
+
+**In `set` mode no probability comes back.** The cut happens inside the script, so
+what you receive is a set of names and one of three decisions; there is nothing to
+threshold, rank or store. The rule is the same one every time, and it is relative
+to the request rather than calibrated: alongside the per-child questions the
+script asks a **floor probe** ("is it true that none of these places holds any part
+of the intent?"), ranks the answers and the probe together, and cuts at the
+largest gap — provided that gap is at least a factor of two, which is a fixed
+constant and deliberately not configurable, because it measures whether the model
+answered decisively this time rather than how relevant anything is.
+
+Act on the decision:
+
+- `separated` → those children are the set. Descend into each, and answer from the
+  Rows they locate;
+- `undecided` → the model answered but did not separate them: **enumerate the
+  layer** (`SHOW ROUTES` and read it) instead of trusting a filter it did not
+  make;
+- `empty` → nothing here answers the intent, the same signal as `none`: go up a
+  layer, or switch to `RECALL`.
+
+And the case this rule exists beside: if the user plainly wants everything and the
+layer's children are all of it, do not call jev at all — enumerate. jev is for
+layers that mix what is wanted with what is not.
 
 `model` is the model that **served** the answer (`jev-1.13.0` in practice, while
 the default asked for is the `jev-latest` alias) — report what came back, not the
@@ -120,9 +165,7 @@ hold from `SHOW ROUTES`, then send the next `SHOW ROUTES UNDER`.
 
 Act on `none`: go back up a layer, or switch to `RECALL`. A low confidence is not
 a substitute for it — confidence measures how concentrated the distribution was,
-not whether the answer is right, and a 0.9 can be the wrong pick. For an
-"all of them" task put an `all` option in the set and enumerate with
-`SHOW ROUTES` when it wins.
+not whether the answer is right, and a 0.9 can be the wrong pick.
 
 **Budget it honestly.** Each decision is a fresh process and a fresh TLS
 connection to a hosted API — one measured library spent **0.9–1.0 s per decision**
