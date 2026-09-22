@@ -29,6 +29,11 @@ memora doctor
 memora query "SHOW DATABASES LIMIT 32 COMPACT"
 ```
 
+`check.sh` reports the detector's state (CLI/daemon/instance, and whether they
+skew); `doctor` reports **instance-wide** counters — its `rows` and `tables`
+cover every Database, so they size nothing per Table. Take a Table's own count
+from its census.
+
 Show the discovered Database names and purposes to the user and ask which one
 to use before the first authorized read or write. Once the user names a
 Database, continue the bounded discovery below with that exact name. **When
@@ -196,6 +201,11 @@ of scope only when its declared `purpose`/`scope` excludes the question —
 "it looked unrelated" is not a reason. Census the Tables that could hold an
 answer, and say in your answer what you read and what you did not. An unread
 Table you never mention is an answer that looks complete and is not.
+
+**A ruling and the spec it produced are usually two Rows in two Tables** — a
+decision log against the current specification, which is why "how does X work"
+often has half its answer in each. Read both before writing the answer, and say
+which Table each half came from.
 
 **A census is a plain SELECT with no `WHERE`.** `SELECT row_id, title, revision
 FROM <table> LIMIT :limit` is legal, counted against `select_rows` exactly like a

@@ -120,7 +120,11 @@ func TestACensusCutByItsOwnLimitSaysSo(t *testing.T) {
 			continue
 		}
 		hints++
-		if hint, _ := notice.Details["enumerate_with"].(string); !strings.Contains(hint, "SHOW ROUTES FROM TABLE work.notes") {
+		// The hint is advice, so it has to be advice that runs: an earlier build
+		// named a `LIMIT` that route listings no longer take, and the parser
+		// answered the reader with a retirement error.
+		if hint, _ := notice.Details["enumerate_with"].(string); !strings.Contains(hint, "SHOW ROUTES FROM TABLE work.notes") ||
+			strings.Contains(hint, "LIMIT") {
 			t.Fatalf("a truncated census must name the enumerator: %v", notice.Details)
 		}
 	}

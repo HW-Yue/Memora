@@ -114,7 +114,10 @@ by distance, the keyword arm by BM25 — a position both arms found outranks one
 only a single arm found, ties fall back to table then path, and `LIMIT` truncates
 the fused listing. No score, distance or rank is ever returned, so do not look for
 one and do not treat the order as a confidence measure. Only the keyword arm
-(`MATCH :q`) needs no provider at all.
+(`MATCH :q`) needs no provider at all, and when the words you have are distinctive
+enough that the keyword arm already names the place, that arm alone answers —
+the vector arm costs a provider round trip and adds its own tail of near
+neighbours, which is worth it for paraphrases and not for exact terms.
 
 **When there is no provider, say so.** `embed_query.py` exits `2` and names what is
 missing; `MEMORA_EMBEDDING=off` does the same deliberately. Then the recall you
@@ -123,6 +126,14 @@ answer is "keyword only", never "fused". A host that reports a keyword list as a
 two-arm recall has told the user something untrue about how thoroughly it looked.
 The same silence applies one level down: `vectors_not_ready` on a result means the
 vector arm could not answer for those units, so the listing is real but bounded.
+
+**The locked identity itself is not readable.** No statement returns a Database's
+`(model, dimensions)`; it shows up where it matters — `vectors_not_ready` carries
+`identity_locked` and, during a rekey, `rekeying`/`rekey_remaining`/`rekey_model`/
+`rekey_dimensions` — and `doctor` reports `units_without_vectors` and
+`rekeying_databases` instance-wide. So do not go looking for a status statement
+that does not exist; infer from those counters, and read
+[`references/recover.md`](recover.md) if a rekey is open.
 
 The Database needs a vector **identity** before any of this works: with no vector
 ever attached it answers `database has no vector identity yet` — accept one vector

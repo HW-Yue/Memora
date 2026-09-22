@@ -198,8 +198,8 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 	if output.Truncated {
 		// A truncated census is not a dead end, and the reader should not have to
 		// remember which of the four read paths can finish it: the answer names
-		// the enumerator. The Route tree is the one read surface that pages with a
-		// cursor, and every leaf it reaches names its Row.
+		// the enumerator. The Route tree is the one read surface a caller can
+		// enumerate completely, and every leaf it reaches names its Row.
 		output.Warnings = append(output.Warnings, result.Notice{
 			Code: result.CodeOutputTruncated,
 			Message: "this listing stopped before every Row: a census cannot continue read-only " +
@@ -209,8 +209,10 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 				"table":       tableName,
 				"returned":    len(output.Rows),
 				"select_rows": budgets.SelectRows,
-				"enumerate_with": "SHOW ROUTES FROM TABLE " + databaseName + "." + tableName +
-					" AT ROOT LIMIT :limit",
+				// The suggestion has to be a statement that runs. `SHOW ROUTES`
+				// takes no LIMIT — a layer comes back whole — so naming one here
+				// would hand the reader a parse error as advice.
+				"enumerate_with": "SHOW ROUTES FROM TABLE " + databaseName + "." + tableName + " AT ROOT",
 			},
 		})
 	}

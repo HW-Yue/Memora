@@ -24,11 +24,10 @@ in — the same one that carries `references/` and `scripts/`.
   to the conventional `--version` and `-v`), and `instance destroy` (only on the
   user's explicit instruction). Every one of them answers `--help` — ask it
   instead of guessing an option, and never invent a flag. The same goes for the
-  Skill's own scripts under `scripts/`: they are not `memora` subcommands, they
-  take their own flags (`scripts/jev_select.py` has `--help`, `--dry-run`,
-  `--min-confidence` and `--replay`; `scripts/embed_query.py` has `--help`,
-  `--dry-run` and `--encode`; `scripts/jev_tree.py` has `--help`, `--record` and
-  `--replay`), and each is described in the reference that uses it. A script that exits `2` is telling you the capability is switched off:
+  Skill's own scripts under `scripts/`: they are not `memora` subcommands but
+  every one of them answers `--help` and is described in the reference that uses
+  it. `scripts/check.sh` is the detector — run it first, it reports the
+  instance's state. A script that exits `2` is telling you the capability is switched off:
   report that instead of quietly working around it.
 - Never inspect, edit, copy or infer state from physical database, index, journal,
   page or instance files. Logical MSQL results are the host's only source of
