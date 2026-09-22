@@ -90,7 +90,8 @@ and an answer that says how it got there.
 
 ## Boundaries
 
-- **Read-only.** Every statement is a `SHOW`/`OPER`/`SELECT`-class read, and each
+- **Read-only.** Every statement is a read on the surfaces this path uses
+  (`SHOW DATABASES`, `SHOW CATALOG ATLAS`, `SHOW ROUTES`, `OPEN ROUTE`), and each
   one carries an authorization object scoped to the single Database it reads.
 - **Only authorized Databases are ever offered.** Not as candidates, not as
   negative examples: an unauthorized name in a model prompt is a leak, and it is
