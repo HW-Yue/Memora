@@ -134,6 +134,15 @@ semantic-index path of the single leaf that locates it — so the host need not
 reverse-resolve membership after the fact. Report empty, stale, or
 permission-limited results instead of inventing a fallback.
 
+**A leaf id from earlier still works after the tree moved.** A `SPLIT` or `MERGE`
+retires the nodes it replaced but keeps them as redirects: reading such a leaf,
+by `OPEN ROUTE` or as a Row's `route_paths`, lands on its successor instead of
+failing. So an old id resolving to a Row that now sits elsewhere is the designed
+continuity, not a broken mount — the retired node is not a live leaf and no
+longer counts as one (`doctor`'s `route_nodes` counts live nodes only). Answer
+from the path and revision you got back, and re-read the tree if the *position*
+is what the question is about.
+
 The `WHERE` surface is deliberately narrow: **one equality on `row_id`**, joined
 by `AND` when you need more than one condition. `IN (…)`, `OR` and `JOIN` are not
 part of it — and omitting `WHERE` entirely is not an error, it is the census

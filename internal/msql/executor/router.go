@@ -493,7 +493,11 @@ func relationshipString(
 	label string,
 ) (string, error) {
 	if expression == nil || containsIdentifier(expression) {
-		return "", executeError(result.CodeValidation, label+" must be a literal or parameter")
+		// A bare word parses as an identifier, so "route_ab12" reaches the
+		// executor as a name rather than a literal and is refused here. Saying
+		// "literal" alone left readers guessing which spelling that meant.
+		return "", executeError(result.CodeValidation,
+			label+" must be a quoted string ('route_ab12') or a :parameter — a bare word is read as an identifier")
 	}
 	value, err := evaluate(expression, table, nil, bound)
 	if err != nil {

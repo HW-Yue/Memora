@@ -111,9 +111,22 @@ carries the wrong shape for its `operation`:
 
 | `operation` | required | forbidden |
 | --- | --- | --- |
-| `MOVE` | `sources`, `target_parent_id` | — |
+| `MOVE` | **exactly one** `sources` entry, `target_parent_id` | — |
 | `SPLIT` | exactly one `sources` entry, at least two `targets` | `target_parent_id` |
 | `MERGE` | at least two `sources` entries, exactly one `target` | `target_parent_id` |
+
+**A `MOVE` is one node.** The field is a list because the other operations need
+one, but the engine refuses a plan that names two: moving five leaves is five
+plan-and-apply pairs, each reviewed. Do not look for a batch form — there is
+none, and a proposal with several sources is answered with
+`MOVE requires one source, one target parent, and no new targets`.
+
+A `SPLIT` or `MERGE` **creates** the target node, so its `key` and `name` have to
+be a *new* node name: lowercase letters, digits, `-` and `_` only, at most 64
+characters, no spaces. A name that is fine on `CREATE ROUTE` or `route_path`
+(which accept spaces and upper case) is refused here with
+`target key, name, purpose, or synopsis is invalid` — you cannot reuse an
+existing node's display name as the merged key.
 
 Verify that the result is `memora.route-mutation-plan/v1`, `status=review_required`,
 and has base snapshot and plan hashes. Show the exact plan and impact to the user.

@@ -240,7 +240,14 @@ memora mutate --plan '{"version":"memora.mutation-plan/v1","id":"plan-8","decisi
 ```
 
 A REVISE plan has the same shape with `"decision":"REVISE"`, an UPDATE step, and
-`expected_revision` next to the `route_leaf_ids` snapshot:
+`expected_revision` next to the `route_leaf_ids` snapshot. Two things about the
+command itself, because both invite a wrong guess: `memora mutate` prints the
+**receipt object alone** on stdout — `memora.mutation-receipt/v1`, not an
+envelope wrapping it, so read `status`/`verified`/`changes` at the top level; and
+a plan cannot declare its own risk level. The runner sets **L1** for every step
+and check it sends, which is why a plan is the right shape for Row writes and
+never for structure: `CREATE ROUTE` and `APPLY ROUTE MUTATION PLAN` are L2, and
+they go through `exec` or `query` with an explicit level.
 
 ```sh
 memora exec --input '{"parameters":{"named":{"row":"row_01","summary":"<complete self-contained ~1,000-CJK-character Markdown document; abbreviated in this example>"}},"mutation":{"expected_schema_version":1,"expected_revision":2,"max_affected_rows":1,"route_leaf_ids":["route_query"],"actor":"agent:host","source":"conversation:event-7","reason":"refine verified conclusion"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "UPDATE work.notes SET summary = :summary WHERE row_id = :row"
