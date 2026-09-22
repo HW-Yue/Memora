@@ -16,3 +16,7 @@ coverage.*
 
 # 本地构建产物
 /memora
+
+# The agent harness's own scratch space: caches and logs, never part of the tree.
+.dsh-tmp/
+.dsh-diag-claude.mjs

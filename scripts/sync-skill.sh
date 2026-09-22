@@ -19,7 +19,7 @@ canonical=$root/skills/memora
 # The files every copy carries. The constants are listed; everything under
 # references/ is enumerated, because a new reference that is not copied is a
 # pointer into a file the reader does not have.
-files=(SKILL.md contract.json host-contract.json agents/openai.yaml scripts/install.sh scripts/check.sh scripts/jev_select.py scripts/embed_query.py)
+files=(SKILL.md contract.json host-contract.json agents/openai.yaml scripts/install.sh scripts/check.sh scripts/jev_select.py scripts/embed_query.py scripts/jev_tree.py)
 for reference in "$canonical"/references/*.md; do
   [ -e "$reference" ] || continue
   files+=("${reference#"$canonical/"}")

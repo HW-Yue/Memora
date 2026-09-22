@@ -36,8 +36,12 @@ there is no human in the loop** — a subagent, a scheduled run, a host that
 cannot ask — do not stall and do not guess silently: print the discovered names
 with their purposes as your receipt, bind the one Database whose declared
 `purpose`/`scope` covers the question, and **state that inference in your
-answer**. If two or more Databases could cover it, stop and report the
-candidates instead of choosing. Never widen the scope to make a guess fit.
+answer**. If two or more Databases could cover it, that is not an error to
+report: a requirement can genuinely point at several, and the honest answer is the
+set of them. Put the candidates through jev, **inside the authorized scope only**
+(see [`references/jev-tree.md`](jev-tree.md)), and report the candidates and stop
+only when it comes back `undecided` or `empty`, or when nothing can decide and
+nobody can be asked. Never widen the scope to make a guess fit.
 
 ```sh
 memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"

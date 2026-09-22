@@ -45,7 +45,7 @@
 - [MSQL](./query/msql.md) · [语义 Router](./query/semantic-routing.md)
 - [Agent 与引擎的分界](./query/agent-engine-boundary.md) — 谁发指令、谁展开
 - [INSERT 隐式建路径](./query/implicit-route-path-v1.md) — 用路径而不是 leaf id 挂载
-- [检索四条路](./query/retrieval-routes-jev.md) · [jev](./query/jev-branch-selection.md)
+- [检索四条路](./query/retrieval-routes-jev.md) · [jev 逐层选择](./query/jev-branch-selection.md) · [jev 走树](./query/jev-tree-v1.md)
 
 ## ADR
 

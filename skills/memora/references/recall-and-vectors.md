@@ -153,6 +153,13 @@ may be replaced by "the results look weak". Reading the Row is not the fallback
 for a weak list — it is the only step that turns a position into a fact, every
 time.
 
+When the requirement is **structural** rather than similar ("which of my
+internships", "where do we keep the decisions about X"), the walk in
+[`references/jev-tree.md`](jev-tree.md) is the other way to locate: it takes a
+requirement across Databases, Tables and the tree in one call and returns the
+positions it committed to. It is slower than this recall and says how it decided;
+use it when a reproducible, explainable path is worth seconds.
+
 Both derived layers can be rebuilt from the Rows, and neither is rebuilt for you.
 `REPAIR RECALL UNITS` gives every live Row the unit that keyword recall needs:
 Rows written before that layer existed have none, and recall cannot find what has

@@ -1446,3 +1446,41 @@ bundle）、Skill/契约示例、`docs/query/route-read-v1.md` 等。
 `route_children` 列，且必须带 `configuration_retired_key` 通知、通知里点出 40 与 `branch_fanout`）、
 `internal/adminui/bundle_test.go` 的 `TestRouteTreeNeverPaginatesBranchOverflow`（退回 cursor 循环
 实测变红）。
+
+## 2026-09-22 · jev 走树成为第三条定位路：脚本自走 + catalog 两级也交给 jev
+
+**对象**：`skills/memora/scripts/jev_tree.py`——一条要求进、一组**落点**出；以及"选库/选表"是否
+交给 jev。
+
+**结论**：
+
+1. **三级一套规则**：库（`SHOW DATABASES`，带授权）→ 表（`SHOW CATALOG ATLAS`，**按单库**）→ 树
+   （`SHOW ROUTES` 逐层），每级把候选的 name + purpose 交给已成型的 `jev_select.py`（`Noul`-per-child
+   + floor probe + 落差切），拿回名字集合 + `separated|undecided|empty`。**单 child 层不问。**
+2. **输出是落点集合，不是候选列表**：无序、无分数、不排名；`n=1` 不是特例。每条落点 = 路径 +
+   `leaf_route_id` + `row_id` + `revision` + 终止原因；`incomplete`/`incomplete_at` 点名
+   "模型答了但没分开、被枚举"的层；`evidence` 带上每级**当时看到的 option 文本**（可审计）。
+3. **`undecided` 一律枚举该层**，不丢；`empty` 是结果不是失败。
+4. **BFS 不是 DFS**；预算是常数不是旋钮：总 jev 12、深度 5、frontier 4、墙钟 30 s。
+5. **catalog 也可以交给 jev（顾问 2026-09-22 改判）**：它上一轮反对的是**强制单选**——树内层有
+   "答案一定在这个父节点下"的前提，跨库选表没有，`choice` 会把"都不合适"压成错答案；`set` 的
+   **floor probe 补上了这个缺口**，异质性不再是阻塞项。但**这次的干净分离是 n=1 证据**（两个库的
+   purpose 极度互斥），不当一般性结论。
+6. **A 为主干，B 只在 L0 返回多个库时用**：A 是"先问库、再按**单库授权**取 Atlas 问表"，中止点干净
+   （L0 空/未定就不付 Atlas 的钱）；B（把所有已授权库的表拍平成一次请求）只在已收窄的集合上用，
+   上限 **≤3 库、≤25 option**，超了退回逐库问。
+7. **政策改了**：原写"两个以上库都可能覆盖就停下报候选，不要自己挑"。改为"授权边界一个字不动；
+   库级返回多个是**合法答案**；在授权内由 jev 选并留证；只有 `empty`/`undecided` 才停下报候选"。
+   `discover-and-read.md` 与 `docs/query/jev-tree-v1.md` 同步。
+8. **写路径本轮不接**：读可以对集合扇出（读错多查一张表），**写必须塌缩成唯一落点**；要接就单开
+   一块（`|set| == 1`，0 个/≥2 个/floor 胜出一律停下问人，不做 top1 补救），并且**库层要人确认**——
+   写错表大致可追回，**写错库是把个人事实漏进仓库知识库，那是越界不是笔误**。
+9. **绝不把未授权库放进 option**，连"当负例"都不行；发现模式的 `SHOW DATABASES` 永不作为输入源。
+
+**证据**：`internal/devgate/jev_tree_test.go` + 五份 fixture（四份是 2026-09-22 真实跑出来的记录，
+姓名与雇主已替换为占位符；一份是构造的 `undecided` 规则边界）——两条实习=两条落点、单目标=一条、
+问到库里没有的=0 条且 `stopped`、跨库时 Atlas 按库读且表问题拍平并带库名、`undecided` 被枚举且
+`incomplete_at` 点名；并断言**输出里没有任何 `noul`/`confidence`/`probabilit` 字段**、记录的语句全是读。
+退回"`undecided` 丢掉"时该测试确实变红。实现里踩到并修掉的两个坑：**记录 key 必须带授权范围**
+（同一个 `SHOW CATALOG ATLAS` 在不同范围的答案不同，否则一个库的答案会冒充另一个库的），以及
+**Atlas 必须按单库授权**（多库一起问会把别库的表混进来）。

@@ -27,8 +27,8 @@ in — the same one that carries `references/` and `scripts/`.
   Skill's own scripts under `scripts/`: they are not `memora` subcommands, they
   take their own flags (`scripts/jev_select.py` has `--help`, `--dry-run`,
   `--min-confidence` and `--replay`; `scripts/embed_query.py` has `--help`,
-  `--dry-run` and `--encode`), and each is described in the reference that uses
-  it. A script that exits `2` is telling you the capability is switched off:
+  `--dry-run` and `--encode`; `scripts/jev_tree.py` has `--help`, `--record` and
+  `--replay`), and each is described in the reference that uses it. A script that exits `2` is telling you the capability is switched off:
   report that instead of quietly working around it.
 - Never inspect, edit, copy or infer state from physical database, index, journal,
   page or instance files. Logical MSQL results are the host's only source of
@@ -61,6 +61,7 @@ in — the same one that carries `references/` and `scripts/`.
 | installing, detecting or removing the instance; what Memora *is*; the Admin | [`references/install.md`](references/install.md) |
 | finding the right Database and Table, then reading rows out of it | [`references/discover-and-read.md`](references/discover-and-read.md) |
 | "where did we discuss X", keyword or vector recall, embeddings, rekey, repair | [`references/recall-and-vectors.md`](references/recall-and-vectors.md) |
+| locating a requirement across Databases, Tables and the tree in one walk | [`references/jev-tree.md`](references/jev-tree.md) |
 | adding, revising, splitting or merging a Row | [`references/write.md`](references/write.md) |
 | creating a Table or Column, or restructuring the semantic tree | [`references/schema-and-router.md`](references/schema-and-router.md) |
 | a Row was deleted, or the derived layers drifted | [`references/recover.md`](references/recover.md) |

@@ -1,0 +1,194 @@
+{
+ "version": "memora.jev-tree-recording/v1",
+ "request": {
+  "requirement": "用户只想了解自己在 ACME 的internshiphistory",
+  "authorized_databases": [
+   "me",
+   "memora"
+  ]
+ },
+ "engine": {
+  "{\"databases\": [\"me\", \"memora\"], \"named\": {}, \"source\": \"SHOW DATABASES\"}": {
+   "rows": [
+    {
+     "aliases": [],
+     "created_at": "2026-09-21T15:19:07.400937Z",
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "name": "me",
+     "purpose": "the user的personalidentity、job seeking与project事实",
+     "schema_version": 5,
+     "scope": "current personal档案、internship、project与job search投递",
+     "tables": [],
+     "updated_at": "2026-09-21T15:19:30.809642Z"
+    },
+    {
+     "aliases": [],
+     "created_at": "2026-09-21T15:19:55.779114Z",
+     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
+     "name": "memora",
+     "purpose": "Memora 本仓库的当前有效产品知识",
+     "schema_version": 3,
+     "scope": "现行原则、规格、能力、风险与工作方向",
+     "tables": [],
+     "updated_at": "2026-09-21T15:20:22.586375Z"
+    }
+   ]
+  },
+  "{\"databases\": [\"me\"], \"named\": {\"bytes\": 8192, \"limit\": 64}, \"source\": \"SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT\"}": {
+   "rows": [
+    {
+     "aliases": [],
+     "database": "me",
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "database",
+     "purpose": "the user的personalidentity、job seeking与project事实",
+     "schema_version": 5,
+     "scope": "current personal档案、internship、project与job search投递"
+    },
+    {
+     "aliases": [],
+     "database": "me",
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "table",
+     "purpose": "job search投递与进展",
+     "row_semantics": "一行是一份完整、可独立修改的语义文档",
+     "schema_version": 1,
+     "table": "applications",
+     "table_id": "tbl_20e36c6cf805cb89bcd36196c82d383f"
+    },
+    {
+     "aliases": [],
+     "database": "me",
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "table",
+     "purpose": "internship与工作history",
+     "row_semantics": "一行是一份完整、可独立修改的语义文档",
+     "schema_version": 1,
+     "table": "experiences",
+     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
+    },
+    {
+     "aliases": [],
+     "database": "me",
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "table",
+     "purpose": "current personalidentity与job seeking意向",
+     "row_semantics": "一行是一份完整、可独立修改的语义文档",
+     "schema_version": 1,
+     "table": "profile",
+     "table_id": "tbl_591b0ef08952ebc7d8c27b5993728576"
+    },
+    {
+     "aliases": [],
+     "database": "me",
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "table",
+     "purpose": "presentable key project",
+     "row_semantics": "一行是一份完整、可独立修改的语义文档",
+     "schema_version": 1,
+     "table": "projects",
+     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
+    }
+   ]
+  },
+  "{\"databases\": [\"me\"], \"named\": {}, \"source\": \"SHOW ROUTES FROM TABLE me.experiences AT ROOT\"}": {
+   "rows": [
+    {
+     "aliases": [],
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "branch",
+     "name": "internship",
+     "parent_id": "route_b34423a71a3999135ca360407cb5941c",
+     "path": "/internship",
+     "purpose": "internshiphistory",
+     "revision": 3,
+     "route_id": "route_e9a17b1351a01d181496054215306c6f",
+     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
+    }
+   ]
+  },
+  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_b34423a71a3999135ca360407cb5941c\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
+   "rows": [
+    {
+     "aliases": [],
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "branch",
+     "name": "internship",
+     "parent_id": "route_b34423a71a3999135ca360407cb5941c",
+     "path": "/internship",
+     "purpose": "internshiphistory",
+     "revision": 3,
+     "route_id": "route_e9a17b1351a01d181496054215306c6f",
+     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
+    }
+   ]
+  },
+  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_e9a17b1351a01d181496054215306c6f\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
+   "rows": [
+    {
+     "aliases": [],
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "leaf",
+     "name": "ACME",
+     "parent_id": "route_e9a17b1351a01d181496054215306c6f",
+     "path": "/internship/ACME",
+     "purpose": "ACME internship",
+     "revision": 2,
+     "route_id": "route_7915ef8a4605ba4e22b906f83a732850",
+     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
+    },
+    {
+     "aliases": [],
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "kind": "leaf",
+     "name": "GLOBEX",
+     "parent_id": "route_e9a17b1351a01d181496054215306c6f",
+     "path": "/internship/GLOBEX",
+     "purpose": "GLOBEXinternship",
+     "revision": 2,
+     "route_id": "route_edc88a760c7d5d14a2159dca46b9a684",
+     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
+    }
+   ]
+  },
+  "{\"databases\": [\"me\"], \"named\": {\"leaf\": \"route_7915ef8a4605ba4e22b906f83a732850\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
+   "rows": [
+    {
+     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "revision": 1,
+     "row_id": "row_9ba155509ce7e0ea1d281ebd098f406b",
+     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
+    }
+   ]
+  }
+ },
+ "jev": {
+  "用户只想了解自己在 ACME 的internshiphistory || me|memora": {
+   "mode": "set",
+   "relevant": [
+    "me"
+   ],
+   "decision": "separated",
+   "model": "jev-1.13.0",
+   "elapsed_ms": 972
+  },
+  "用户只想了解自己在 ACME 的internshiphistory || applications|experiences|profile|projects": {
+   "mode": "set",
+   "relevant": [
+    "experiences"
+   ],
+   "decision": "separated",
+   "model": "jev-1.13.0",
+   "elapsed_ms": 685
+  },
+  "用户只想了解自己在 ACME 的internshiphistory || ACME|GLOBEX": {
+   "mode": "set",
+   "relevant": [
+    "ACME"
+   ],
+   "decision": "separated",
+   "model": "jev-1.13.0",
+   "elapsed_ms": 1084
+  }
+ }
+}
