@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
@@ -150,6 +151,13 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 	}
 	if exact {
 		output.RowDetail = rowDetail(databaseName, table, projections)
+		// The freshness anchor: a revision number alone cannot say whether a Row
+		// that reads like a living log ("progress is appended here") has actually
+		// been touched, because such a Row keeps revision 1 until someone writes.
+		if len(candidates) == 1 {
+			output.RowDetail.CreatedAt = candidates[0].CreatedAt.UTC().Format(time.RFC3339)
+			output.RowDetail.UpdatedAt = candidates[0].UpdatedAt.UTC().Format(time.RFC3339)
+		}
 	}
 	for index, candidate := range candidates {
 		matches := true
@@ -297,7 +305,8 @@ func bindProjections(table catalog.Table, expressions []ast.Expression) ([]proje
 		}
 		projections = append(projections, projection{
 			name: column.Name,
-			column: result.Column{Name: column.Name, Type: column.Type, Nullable: column.Nullable,
+			column: result.Column{Name: column.Name, Type: column.Type, MaxCharacters: column.MaxCharacters,
+				Nullable: column.Nullable,
 				ColumnID: column.ID, Purpose: column.Purpose, SemanticRole: column.SemanticRole},
 		})
 	}

@@ -10,7 +10,12 @@ and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
 Only use the `memora doctor`, `memora query`, `memora exec`,
-`memora mutate`, and `memora schema` interfaces for normal database work.
+`memora mutate`, and `memora schema` interfaces for normal database work. Four
+commands outside that list exist for the cases named here and are used exactly
+that way: `memora daemon stop` (to clear a build skew the detector reports),
+`memora parse` (to check a statement before sending it), `memora instance
+destroy` (only on the user's explicit instruction), and this Skill's own
+`scripts/jev_*.py`.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -188,7 +193,11 @@ Table you never mention is an answer that looks complete and is not.
 
 **A census is a plain SELECT with no `WHERE`.** `SELECT row_id, title, revision
 FROM <table> LIMIT :limit` is legal, counted against `select_rows` exactly like a
-point read, and it is the cheapest way to see everything a Table holds: it
+point read, and it is the cheapest way to see everything a Table holds. Census
+every Table of the bound Database in **one request** — one statement per Table,
+one `--input` element per statement — then point-read the Rows that matter in a
+second request: that is the shortest honest path to a complete, cited answer, and
+on Tables that fit it replaces the tree walk entirely. It is also the cheapest way to see everything a Table holds: it
 returns each Row's `row_id` **and** its `route_paths`, so it locates the Rows
 without walking the tree. When a question needs more than one Row, that census —
 followed by point reads of the Rows that matter — replaces the whole
@@ -245,7 +254,13 @@ is read for that statement alone.
 
 `links` and `route_paths` ride along on every returned Row whether or not you
 projected them, and `columns` lists only the fields you asked for — do not try to
-project the attached ones. A **point read** (one that names a `row_id`) also
+project the attached ones. A TEXT column's declared ceiling travels with it as
+`max_characters`, counted in Unicode code points: `summary` is a ~1,000-character
+document inside a `TEXT(2500)` ceiling, and a reader can check that without
+guessing at bytes. A point read's `row_detail` also carries `created_at` and
+`updated_at`, which is the only way to say whether a Row that describes itself as
+a living log has actually been written since — `revision` stays 1 until someone
+writes, so it cannot date a "current status". A **point read** (one that names a `row_id`) also
 carries a `row_detail` block per returned Row: schema version, `row_semantics`,
 and the display map naming the title and summary columns. A census does not, and
 `DESCRIBE TABLE` is where that shape comes from if you need it before reading. So
@@ -442,8 +457,13 @@ broken — so repeating it until `remaining` is zero is safe.
 memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affected_rows":64,"actor":"agent:host","source":"conversation:event-9","reason":"reconcile the vector index"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "REPAIR VECTOR INDEX IN DATABASE work LIMIT :limit"
 ```
 
-`REPAIR VECTOR INDEX` requires a `LIMIT`, bounded to 1–1000. (The ≥2-character
-rule belongs to `RECALL … MATCH`; see the recall section.)
+`REPAIR VECTOR INDEX` requires a `LIMIT`, bounded to 1–1000, and it is not a
+read.
+
+`RECALL` requires a `LIMIT` bounded to 1–1000, and a query of at least **2
+characters**: one character is in almost every Row, so it is refused rather than
+answered with the whole Database, and a short query never comes back as an empty
+list that reads like "not found".
 
 **Recall is a text locator, never a completeness proof.** A Table named after a
 topic does not follow from a query containing that topic: `RECALL … MATCH 项目`

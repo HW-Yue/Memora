@@ -22,14 +22,23 @@ if version=$(memora version --json 2>/dev/null); then
     *'"skewed":true'*) state=skewed ;;
     "") state=unknown ;;
   esac
+  # `ready` means "the CLI is installed and no daemon that disagrees with it is
+  # running" — a stopped daemon is ordinary (the CLI starts a matching one on the
+  # next command), so the envelope says which case the reader is in instead of
+  # leaving `ready` to be read as "a daemon answered and agreed".
+  daemon_state=not_running
+  case "$instance" in
+    *'"running":true'*) daemon_state=running ;;
+  esac
   if [ -z "$instance" ]; then
     # Why the daemon could not answer, not just that it did not: "unknown" alone
     # reads like a mystery and hides the ordinary causes (a file sandbox that
     # cannot read the instance's lock file, a daemon that is still starting).
     reason=$(memora daemon status --json 2>&1 >/dev/null | tr '\n\t' '  ' | tr -d '"\\' | cut -c1-200 || true)
-    printf '{"status":"%s","version":%s,"install_url":"%s","reason":"%s"}\n' "$state" "$version" "$install_url" "$reason"
+    printf '{"status":"%s","version":%s,"daemon":"%s","install_url":"%s","reason":"%s"}\n' \
+      "$state" "$version" "$daemon_state" "$install_url" "$reason"
   else
-    printf '{"status":"%s","version":%s,"instance":%s}\n' "$state" "$version" "$instance"
+    printf '{"status":"%s","version":%s,"daemon":"%s","instance":%s}\n' "$state" "$version" "$daemon_state" "$instance"
   fi
   exit 0
 fi

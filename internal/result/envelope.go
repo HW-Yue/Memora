@@ -28,12 +28,17 @@ const (
 type Row map[string]any
 
 type Column struct {
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	Nullable     bool   `json:"nullable"`
-	ColumnID     string `json:"column_id,omitempty"`
-	Purpose      string `json:"purpose,omitempty"`
-	SemanticRole string `json:"semantic_role,omitempty"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	// MaxCharacters is the declared ceiling for a TEXT column, in Unicode code
+	// points. Without it the read surface says "TEXT" and the write rule it
+	// enforces (a Row's summary is a ~1000-character document under a TEXT(2500)
+	// ceiling) cannot be checked by a reader.
+	MaxCharacters int    `json:"max_characters,omitempty"`
+	Nullable      bool   `json:"nullable"`
+	ColumnID      string `json:"column_id,omitempty"`
+	Purpose       string `json:"purpose,omitempty"`
+	SemanticRole  string `json:"semantic_role,omitempty"`
 }
 
 type RowDisplay struct {
@@ -51,6 +56,12 @@ type RowDetail struct {
 	SchemaVersion uint64     `json:"schema_version"`
 	RowSemantics  string     `json:"row_semantics"`
 	Display       RowDisplay `json:"display"`
+	// UpdatedAt is when this revision was written, and CreatedAt is when the Row
+	// first appeared. A revision number alone cannot answer "is this still the
+	// current state of the world" — a Row that is a living log and has not been
+	// touched since it was created has revision 1 forever.
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 type ListPage struct {

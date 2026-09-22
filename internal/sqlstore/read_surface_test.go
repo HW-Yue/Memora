@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
@@ -180,5 +181,36 @@ func TestTruncatedMeansMoreExistsOnEverySurface(t *testing.T) {
 	if len(pendingCut.Rows) != 1 || !pendingCut.Truncated {
 		t.Fatalf("a cut backlog must be truncated: %d rows, truncated=%v",
 			len(pendingCut.Rows), pendingCut.Truncated)
+	}
+}
+
+// A reader that can only see `type: "TEXT"` cannot check the write rule it is
+// told to follow (~1,000 CJK characters inside a TEXT(2500) column), and a reader
+// that can only see a `revision` cannot tell whether a Row that reads like a
+// living log has actually been updated since it was created. Both belong in the
+// read surface: the declared ceiling on the column, and the write time on the Row.
+func TestAReadCarriesTheColumnCeilingAndTheRowWriteTime(t *testing.T) {
+	h := newHarness(t)
+	leaves := h.seedLeaves("one")
+	rowID := h.insertTitle("唯一一条事实", []string{leaves[0]})
+
+	read := h.run(`SELECT title, row_id, revision FROM work.notes LIMIT 1`, nil, executor.MutationOptions{})
+	title := result.Column{}
+	for _, column := range read.Columns {
+		if column.Name == "title" {
+			title = column
+		}
+	}
+	if title.Name == "" || title.MaxCharacters <= 0 {
+		t.Fatalf("a TEXT column must carry its declared ceiling: %+v", read.Columns)
+	}
+
+	point := h.run(`SELECT title, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1`,
+		map[string]any{"row": rowID}, executor.MutationOptions{})
+	if point.RowDetail == nil || point.RowDetail.UpdatedAt == "" || point.RowDetail.CreatedAt == "" {
+		t.Fatalf("a point read must carry its freshness anchor: %+v", point.RowDetail)
+	}
+	if _, err := time.Parse(time.RFC3339, point.RowDetail.UpdatedAt); err != nil {
+		t.Fatalf("updated_at must be a timestamp a reader can parse: %v", err)
 	}
 }
