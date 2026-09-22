@@ -181,10 +181,31 @@ func (engine *Engine) Query(ctx context.Context, statement ast.Statement, parame
 			// make falsely. More candidates remain, and whether they match is
 			// exactly what was not looked at.
 			output.Truncated = hasMore || index+1 < len(candidates)
-			return output, nil
+			break
 		}
 	}
-	output.Truncated = hasMore
+	if !output.Truncated && !exact {
+		output.Truncated = hasMore
+	}
+	if output.Truncated {
+		// A truncated census is not a dead end, and the reader should not have to
+		// remember which of the four read paths can finish it: the answer names
+		// the enumerator. The Route tree is the one read surface that pages with a
+		// cursor, and every leaf it reaches names its Row.
+		output.Warnings = append(output.Warnings, result.Notice{
+			Code: result.CodeOutputTruncated,
+			Message: "this listing stopped before every Row: a census cannot continue read-only " +
+				"(SELECT has no cursor), so enumerate the rest with the Route tree walk",
+			Details: map[string]any{
+				"database":    databaseName,
+				"table":       tableName,
+				"returned":    len(output.Rows),
+				"select_rows": budgets.SelectRows,
+				"enumerate_with": "SHOW ROUTES FROM TABLE " + databaseName + "." + tableName +
+					" AT ROOT LIMIT :limit",
+			},
+		})
+	}
 	return output, nil
 }
 

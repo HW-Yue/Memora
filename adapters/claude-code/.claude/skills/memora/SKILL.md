@@ -208,9 +208,10 @@ non-zero.
 `SELECT` has no cursor, `WHERE` takes only `row_id` equality, and the budget can
 only be raised by a write (`ALTER CONFIGURATION`, below). So above `select_rows`
 the sanctioned enumerator is the **Route tree walk**: `SHOW ROUTES` pages with a
-cursor at `route_children` per level, and every leaf names its Row. Take a Table's
-row count from the census itself, not from `doctor`, whose `rows` is
-instance-wide.
+cursor at `route_children` per level, and every leaf names its Row. You do not
+have to remember that: the truncated answer carries an `output_truncated` warning
+whose `details.enumerate_with` is the statement to run. Take a Table's row count
+from the census itself, not from `doctor`, whose `rows` is instance-wide.
 
 ## Query and summarize
 

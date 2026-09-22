@@ -111,11 +111,31 @@ func TestACensusCutByItsOwnLimitSaysSo(t *testing.T) {
 	if !cut.Truncated {
 		t.Fatal("a listing cut by its own LIMIT must be reported as truncated")
 	}
+	// And the refusal is actionable: the answer names the one read surface that
+	// can finish the enumeration, so the reader does not have to remember it.
+	hints := 0
+	for _, notice := range cut.Warnings {
+		if notice.Code != result.CodeOutputTruncated {
+			continue
+		}
+		hints++
+		if hint, _ := notice.Details["enumerate_with"].(string); !strings.Contains(hint, "SHOW ROUTES FROM TABLE work.notes") {
+			t.Fatalf("a truncated census must name the enumerator: %v", notice.Details)
+		}
+	}
+	if hints != 1 {
+		t.Fatalf("a truncated census must carry exactly one output_truncated notice, got %d", hints)
+	}
 	// Reading the whole table in one statement is not truncated, so the flag
 	// still distinguishes "you asked for less" from "there is more".
 	whole := h.run(`SELECT row_id, title FROM work.notes LIMIT 3`, nil, executor.MutationOptions{})
 	if whole.Truncated {
 		t.Fatal("a listing that returned every Row must not be reported as truncated")
+	}
+	for _, notice := range whole.Warnings {
+		if notice.Code == result.CodeOutputTruncated {
+			t.Fatal("a complete census must not carry an output_truncated notice")
+		}
 	}
 	// A point read is never a cut listing either.
 	point := h.run(`SELECT title FROM work.notes WHERE row_id = :row LIMIT 1`,
