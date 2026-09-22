@@ -5,6 +5,12 @@ description: memora 是用户的个人记忆与知识库。用户问到关于自
 
 # Memora Canonical Skill
 
+**If this body looks cut off** — it ends mid-sentence, or the examples stop
+abruptly — then the host injected only part of it. Read `SKILL.md` from disk at
+this Skill's installed path before acting: the write flow, recall and vector
+sections are below the fold, and acting on a truncated body is how a host ends up
+improvising a statement that already exists here.
+
 Use this single source for stable host behavior. It targets `memora.msql.ast/v1`
 and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.

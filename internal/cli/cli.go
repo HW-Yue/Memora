@@ -93,6 +93,16 @@ func ensureDaemon(ctx context.Context, dataDir string, stderr io.Writer, depende
 	if state.Running {
 		return nil
 	}
+	// A directory that holds no instance at all is the ordinary state of a fresh
+	// HOME. Starting a daemon for it used to spend the whole daemon-start timeout
+	// and then report "context deadline exceeded", which reads like a broken
+	// daemon rather than a missing instance.
+	if _, err := instance.Read(dataDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("no Memora instance at %s: run 'memora init' first", dataDir)
+		}
+		return err
+	}
 	resolve := dependencies.Executable
 	if resolve == nil {
 		resolve = os.Executable

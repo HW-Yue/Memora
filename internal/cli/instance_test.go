@@ -69,3 +69,36 @@ func TestInstanceDestroyRefusesAnythingItWasNotToldToDelete(t *testing.T) {
 		t.Fatalf("a refused destroy removed an ordinary directory: %v", err)
 	}
 }
+
+// A fresh HOME has no instance, and the first command against one used to start a
+// daemon for the empty directory and then wait out the whole start timeout:
+// "context deadline exceeded" reads like a broken daemon, not like a missing
+// instance. A write-path exercise on a throwaway HOME lost its whole session to
+// this, so the refusal names the missing thing and the command that creates it.
+func TestACommandAgainstAnEmptyHomeSaysThereIsNoInstance(t *testing.T) {
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "Library", "Application Support", "Memora", "instances", "default")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	started := false
+	dependencies := Dependencies{
+		HomeDir: func() (string, error) { return home, nil },
+		Executable: func() (string, error) {
+			started = true
+			return "", os.ErrNotExist
+		},
+	}
+	code := RunWithDependencies([]string{"query", "SHOW DATABASES LIMIT 8 COMPACT"}, stdout, stderr, BuildInfo{}, dependencies)
+	if code == ExitOK {
+		t.Fatalf("a query with no instance must fail: %s", stdout.String())
+	}
+	if started {
+		t.Fatal("no daemon may be started for a directory that holds no instance")
+	}
+	message := stderr.String()
+	if !strings.Contains(message, "no Memora instance at") || !strings.Contains(message, "memora init") {
+		t.Fatalf("the refusal must name the missing instance and the fix: %q", message)
+	}
+	if !strings.Contains(message, dataDir) {
+		t.Fatalf("the refusal must name the path it looked at: %q", message)
+	}
+}
