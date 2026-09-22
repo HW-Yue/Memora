@@ -50,6 +50,18 @@
 （个人事实漏进仓库知识库），不是笔误。将来若要接，形状是"`|set| == 1`，否则停下问人"，且库层要人
 确认一次——在那之前，写入的位置判断仍由 Skill 的写入流程负责。
 
+## 每一步都看得见
+
+脚本边走边说：`--log FILE` 把每一步写成 JSON lines（每条含 `seq`/`at_ms`/`kind`/`layer`/选项数/
+选中项/`decision`/`duration_ms`，决策那条还带 provider 自己的 `elapsed_ms`），同样的行默认打到
+stderr（`--quiet` 关掉；stdout 只有答案）。答案里也带同样口径：`timings.engine_ms`、`timings.jev_ms`、
+`statements`、`decisions`，以及每层的 `evidence[].options_count`/`elapsed_ms`。
+
+实测一次"两段实习都要"：**3.5 s 里 3.4 s 是三次模型决策**（第一次 1.8 s 含建连，之后约 0.8 s），
+七条本地语句合计 81 ms；单 child 的层在日志里是 `skipped reason=single child`。跨库那次九次决策、
+二十四条语句、8.1 s，预算在哪一层被吃掉（frontier 宽度）在日志里直接看得到。`--replay` 复跑记录时
+标 `recorded: true` 且耗时近 0——"决定了什么"与"花了多少"因此可以分开看。
+
 ## 可审计
 
 `--record FILE` 把这次跑到的**每个引擎答案和每个 jev 答案**记下来，`--replay FILE` 不连库、不连

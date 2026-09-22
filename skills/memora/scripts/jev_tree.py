@@ -32,7 +32,10 @@ Database being read, and nothing here writes.
 
 `--record FILE` writes every engine answer and every jev answer it saw;
 `--replay FILE` runs the same walk from that recording with no database and no
-provider, which is how this path is tested in CI.
+provider, which is how this path is tested in CI. `--log FILE` writes the step
+log — every statement, every decision, what each chose and how long it took — as
+JSON lines, while the same lines go to stderr unless `--quiet` is given. stdout
+stays the answer alone.
 """
 
 import argparse
@@ -41,6 +44,37 @@ import os
 import subprocess
 import sys
 import time
+
+
+class StepLog:
+    """What the walk did, step by step: which layer, what it chose between, what
+    it chose, and how long that took.
+
+    Two consumers: a human reads the lines on stderr while the walk runs, and
+    `--log FILE` writes the same events as JSON lines so a run can be analysed
+    afterwards. stdout stays the answer alone — a host parses that, and a note
+    mixed into it is how a JSON stream breaks.
+    """
+
+    def __init__(self, path, quiet):
+        self.started = time.monotonic()
+        self.path = path
+        self.quiet = quiet
+        self.events = []
+
+    def emit(self, kind, **fields):
+        event = {"seq": len(self.events), "at_ms": int((time.monotonic() - self.started) * 1000),
+                 "kind": kind}
+        event.update(fields)
+        self.events.append(event)
+        if self.path:
+            with open(self.path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+        if not self.quiet:
+            detail = " ".join("%s=%s" % (key, value) for key, value in fields.items()
+                              if value not in ("", None, [], {}))
+            sys.stderr.write("[%6d ms] %-10s %s\n" % (event["at_ms"], kind, detail))
+        return event
 
 MEMORA = os.environ.get("MEMORA_CLI", "memora")
 JEV = os.environ.get(
@@ -90,10 +124,12 @@ class Budget:
 class Engine:
     """The read faces this path needs, optionally served from a recording."""
 
-    def __init__(self, recorder=None, recorded=None):
+    def __init__(self, recorder=None, recorded=None, log=None):
         self.recorder = recorder
         self.recorded = recorded
+        self.log = log
         self.statements = []
+        self.spent_ms = 0
 
     @staticmethod
     def key(source, databases, named):
@@ -104,13 +140,16 @@ class Engine:
         return json.dumps({"source": source, "databases": list(databases),
                            "named": named or {}}, ensure_ascii=False, sort_keys=True)
 
-    def query(self, source, databases, named=None):
+    def query(self, source, databases, named=None, label=""):
         key = self.key(source, databases, named or {})
         self.statements.append({"source": source, "databases": databases, "named": named or {}})
+        started = time.monotonic()
         if self.recorded is not None:
             if key not in self.recorded:
                 fail(EXIT_BAD_INPUT, "the recording has no engine answer for %s" % key)
-            return self.recorded[key]
+            answer = self.recorded[key]
+            self.note(source, databases, answer, label, started, recorded=True)
+            return answer
         payload = {"authorization": {
             "version": AUTHORIZATION_VERSION, "actor": "agent:host",
             "authorized_databases": databases, "default_level": "L0"}}
@@ -131,7 +170,16 @@ class Engine:
             # Every answer this run stood on, so the same walk can be replayed
             # without a database: that is what makes this path testable in CI.
             self.recorder[key] = answer
+        self.note(source, databases, answer, label, started)
         return answer
+
+    def note(self, source, databases, answer, label, started, recorded=False):
+        spent = int((time.monotonic() - started) * 1000)
+        self.spent_ms += spent
+        if self.log:
+            self.log.emit("statement", layer=label, source=source, databases=list(databases),
+                          rows=len(answer.get("rows", [])), duration_ms=spent,
+                          recorded=recorded)
 
 
 class Chooser:
@@ -141,21 +189,24 @@ class Chooser:
     hands back names plus `separated`/`undecided`/`empty`.
     """
 
-    def __init__(self, intent, budget, recorder=None, recorded=None):
+    def __init__(self, intent, budget, recorder=None, recorded=None, log=None):
         self.intent = intent
         self.budget = budget
         self.recorder = recorder
         self.recorded = recorded
+        self.log = log
         self.model = ""
+        self.spent_ms = 0
         # Decisions taken, live or replayed; `budget.jev_calls` counts provider
         # calls, which is what a replay does not make.
         self.decisions = 0
 
-    def decide(self, options):
+    def decide(self, options, layer=""):
         # The key is the intent plus the option names in the order they were
         # offered. Not sorted: the caller's order is deterministic, and sorting
         # would make the key depend on collation rather than on the question.
         key = self.intent + " || " + "|".join(name for name, _ in options)
+        started = time.monotonic()
         if self.recorded is not None:
             if key not in self.recorded:
                 fail(EXIT_BAD_INPUT, "the recording has no jev answer for %s" % key)
@@ -179,6 +230,14 @@ class Chooser:
         self.model = answer.get("model", self.model)
         if self.recorder is not None:
             self.recorder[key] = answer
+        spent = int((time.monotonic() - started) * 1000)
+        self.spent_ms += spent
+        if self.log:
+            self.log.emit("decision", layer=layer, options=len(options),
+                          option_names=[name for name, _ in options],
+                          chosen=answer["relevant"], decision=answer["decision"],
+                          provider_ms=answer.get("elapsed_ms"), duration_ms=spent,
+                          recorded=self.recorded is not None)
         return answer["relevant"], answer["decision"]
 
 
@@ -193,11 +252,17 @@ def choose_layer(chooser, budget, options, layer, evidence):
     if not options:
         return [], "empty"
     if len(options) == 1:
+        if chooser.log:
+            chooser.log.emit("skipped", layer=layer, reason="single child", options=1,
+                             chosen=[options[0][0]])
         return [options[0][0]], "single"
     stop = budget.exhausted()
     if stop:
+        if chooser.log:
+            chooser.log.emit("skipped", layer=layer, reason=stop, options=len(options))
         return [], stop
-    relevant, decision = chooser.decide(options)
+    started = time.monotonic()
+    relevant, decision = chooser.decide(options, layer)
     if decision == "undecided":
         relevant = [name for name, _ in options]
     evidence.append({
@@ -206,6 +271,7 @@ def choose_layer(chooser, budget, options, layer, evidence):
         # that cannot be audited later is a guess with a receipt.
         "options": [{"name": name, "purpose": purpose} for name, purpose in options],
         "relevant": relevant, "decision": decision,
+        "options_count": len(options), "elapsed_ms": int((time.monotonic() - started) * 1000),
     })
     return relevant, decision
 
@@ -215,7 +281,7 @@ def table_options(engine, database, requirement):
     # returns every Table of all of them, which is how a Table gets attributed to
     # the wrong library.
     atlas = engine.query("SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT", [database],
-                         named={"limit": 64, "bytes": 8192})
+                         named={"limit": 64, "bytes": 8192}, label="tables of " + database)
     return [(row["table"], row.get("purpose", "")) for row in atlas["rows"]
             if row.get("kind") == "table"]
 
@@ -262,7 +328,8 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
     landings = []
     frontier = []
     for database, table in tables:
-        rows = engine.query("SHOW ROUTES FROM TABLE %s.%s AT ROOT" % (database, table), [database])["rows"]
+        rows = engine.query("SHOW ROUTES FROM TABLE %s.%s AT ROOT" % (database, table), [database],
+                            label="%s.%s root" % (database, table))["rows"]
         if not rows:
             evidence.append({"layer": "%s.%s" % (database, table), "decision": "no_root",
                              "options": [], "relevant": []})
@@ -273,7 +340,8 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
         advanced = []
         for node in frontier:
             children = engine.query("SHOW ROUTES UNDER :parent", [node["database"]],
-                                    named={"parent": node["parent"]})["rows"]
+                                    named={"parent": node["parent"]},
+                                    label="/".join(segment["name"] for segment in node["path"]) or "root")["rows"]
             options = [(row["name"], row.get("purpose", "")) for row in children]
             layer = "/".join(segment["name"] for segment in node["path"]) or "root"
             chosen, decision = choose_layer(chooser, budget, options, layer, evidence)
@@ -288,7 +356,7 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
                 label = "/" + "/".join(segment["name"] for segment in path)
                 if row["kind"] == "leaf":
                     locator = engine.query("OPEN ROUTE :leaf LIMIT 1", [node["database"]],
-                                           named={"leaf": row["route_id"]})["rows"]
+                                           named={"leaf": row["route_id"]}, label="leaf " + label)["rows"]
                     landings.append({
                         "path": label, "leaf_route_id": row["route_id"],
                         "row_id": locator[0]["row_id"] if locator else None,
@@ -323,7 +391,14 @@ def main():
                         help="write every engine and jev answer to FILE")
     parser.add_argument("--replay", metavar="FILE", default=None,
                         help="run from a recording: no database, no provider")
+    parser.add_argument("--log", metavar="FILE", default=None,
+                        help="also write the step log to FILE as JSON lines")
+    parser.add_argument("--quiet", action="store_true",
+                        help="do not print the step log to stderr")
     arguments = parser.parse_args()
+    if arguments.log and os.path.exists(arguments.log):
+        os.remove(arguments.log)
+    log = StepLog(arguments.log, arguments.quiet)
 
     recording = {"version": RECORDING_VERSION, "request": None, "engine": {}, "jev": {}}
     if arguments.replay:
@@ -351,16 +426,18 @@ def main():
         fail(EXIT_BAD_INPUT, "the request needs a non-empty authorized_databases list")
 
     budget = Budget()
+    log.emit("start", requirement=requirement, authorized_databases=list(databases),
+             mode="replay" if arguments.replay else "live")
     engine = Engine(recorder=recording["engine"] if arguments.record else None,
-                    recorded=recording["engine"] if arguments.replay else None)
+                    recorded=recording["engine"] if arguments.replay else None, log=log)
     chooser = Chooser(requirement, budget,
                       recorder=recording["jev"] if arguments.record else None,
-                      recorded=recording["jev"] if arguments.replay else None)
+                      recorded=recording["jev"] if arguments.replay else None, log=log)
     evidence, stopped = [], ""
 
     # Level 0 — which Database. Only the authorized ones are ever offered: a
     # name outside that scope must never reach the model, not even as a negative.
-    catalogue = engine.query("SHOW DATABASES", databases)
+    catalogue = engine.query("SHOW DATABASES", databases, label="databases")
     offered = [row for row in catalogue["rows"] if row["name"] in databases]
     options = [(row["name"], row.get("purpose", "")) for row in offered]
     if request.get("database"):
@@ -394,11 +471,16 @@ def main():
         "evidence": evidence,
         "jev_calls": budget.jev_calls,
         "decisions": chooser.decisions,
+        "statements": len(engine.statements),
+        "timings": {"engine_ms": engine.spent_ms, "jev_ms": chooser.spent_ms},
         "elapsed_ms": int((time.monotonic() - budget.started) * 1000),
         "model": chooser.model,
     }
     if stopped:
         result["stopped"] = stopped
+    log.emit("done", landings=len(landings), decisions=chooser.decisions,
+             statements=len(engine.statements), engine_ms=engine.spent_ms,
+             jev_ms=chooser.spent_ms, incomplete=bool(uncertain))
     if arguments.record:
         with open(arguments.record, "w", encoding="utf-8") as handle:
             json.dump(recording, handle, ensure_ascii=False, indent=1)

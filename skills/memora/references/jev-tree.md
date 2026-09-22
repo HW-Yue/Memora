@@ -88,6 +88,37 @@ and an answer that says how it got there.
   30 seconds. When one bites, the answer says so — narrow the requirement, or
   name the Database/Table and read it directly.
 
+## Reading a run
+
+The walk says what it did while it does it. The same lines go to stderr and, with
+`--log FILE`, to a file as JSON lines (`--quiet` silences stderr; stdout stays the
+answer alone):
+
+```sh
+... | python3 "<skill-directory>/scripts/jev_tree.py" --log /tmp/jev-tree.jsonl
+```
+
+```
+[     0 ms] start      requirement=… mode=live
+[    10 ms] statement  layer=databases source=SHOW DATABASES rows=2 duration_ms=10
+[  1836 ms] decision   layer=databases options=2 chosen=['work'] decision=separated provider_ms=1746
+[ 2685 ms] skipped    layer=root reason=single child options=1 chosen=['internship']
+[ 3516 ms] done       landings=2 decisions=3 statements=7 engine_ms=81 jev_ms=3427
+```
+
+One real run of "both internships" read like that: **3.4 s of 3.5 s was the three
+model decisions** (1.8 s for the first, which pays the connection, then ~0.8 s
+each) and seven local statements cost 81 ms in total. A wider requirement — one
+that spans two Databases — made nine decisions and twenty-four statements in
+8.1 s, and the log is where the budget shows: the layer that exceeded the frontier
+width is recorded there as the branch landing it became.
+
+The answer carries the same numbers: `timings.engine_ms`, `timings.jev_ms`,
+`statements`, `decisions`, and per layer `evidence[].options_count` and
+`evidence[].elapsed_ms`. `--replay` reports the recorded run with `recorded: true`
+and near-zero durations, which is how you tell "what it decided" from "what it
+cost".
+
 ## Boundaries
 
 - **Read-only.** Every statement is a read on the surfaces this path uses
