@@ -1485,3 +1485,38 @@ bundle）、Skill/契约示例、`docs/query/route-read-v1.md` 等。
 退回"`undecided` 丢掉"时该测试确实变红。实现里踩到并修掉的两个坑：**记录 key 必须带授权范围**
 （同一个 `SHOW CATALOG ATLAS` 在不同范围的答案不同，否则一个库的答案会冒充另一个库的），以及
 **Atlas 必须按单库授权**（多库一起问会把别库的表混进来）。
+
+## 2026-09-22 · jev 走树的连接生命周期：一趟一条，不做常驻
+
+**对象**：`jev_tree.py` 走树时怎么用宿主 provider 的连接。
+
+**结论**：**一条连接服务一趟走树**（第一次决策付 TLS，之后同一连接上继续问），**不做常驻进程/连接池**；
+`jev_select.py` 里的 `Provider` 就是这么个对象，`jev_tree.py` import 它、整趟复用它；远端掐掉的连接
+丢一次重试一次。留 `JEV_IN_PROCESS=0` 退回"每次决策一个子进程"（慢，但 import 出问题不会把走树整死）。
+
+**理由（实测，2026-09-22）**：
+
+- 新连接 **696 / 759 / 804 / 736 / 669 ms**；复用同一 `HTTPSConnection` **301 / 299 / 244 / 343 / 523 ms**
+  （首次 756 ms 付握手）。差的就是 TLS——`curl` 空手往返 0.87 s，其中握手 0.57 s。
+- 一趟走树的决策数 = "每层 ≥2 个孩子各一次"，所以改前**每一层都在重付握手**。同一句"两段实习都要"：
+  **3.5 s → 1.69 s**（三次决策 1.57 s，首决策 0.8 s、后两次 ~0.35 s）；跨库九次决策 **8.1 s → 4.19 s**。
+  本地语句部分没变（~110 ms / 24 条 345 ms）。
+- **常驻无用**：远端/代理会掐掉空闲几分钟的连接，跨 run 守连接买到的只是"少一次握手"，却要多一个要管、
+  要探活的进程——而且和"memora 的 daemon 由 CLI 管"那条边界打架。时间在**一趟之内**，所以生命周期就定在
+  "一趟"。
+
+**弃选**：常驻 daemon / 连接池（见上）；把整条路径压成一次扁平请求（要丢掉逐层语义）；为省一次
+subprocess 而放弃复用同一份决策实现（现在两份都由 `jev_select` 提供）。
+
+**两个附带发现（都已修，值得记）**：
+
+1. **在同目录 import 兄弟脚本会让 Python 往发布的 skill 树里写 `__pycache__`**。skill 树是**逐字节整树
+   对比**发布的，`internal/devgate` 的 gate 当场变红——现在 import 前设 `sys.dont_write_bytecode = True`
+   （测试脚本里同样）。**凡是被逐字节比较的目录，import 前都要先关字节码**。
+2. **这个行为要靠"线上断言"来钉**：功能测试在慢一倍的情况下照样全绿。
+   `TestJevKeepsOneProviderConnectionForTheWalk` 起一个本地 HTTP/1.1 provider，**数它接受了几条连接**，
+   断言两次决策只走一条；把"每次 send 后 close"加回去，测试立刻红（`two requests opened 2 connections`）。
+   性能改动如果没有这种可断言的"线上事实"，等于没测。
+
+**证据**：`internal/devgate/keepalive_test.go` + `internal/devgate/testdata/jev/keepalive_check.py`；
+`skills/memora/references/jev-tree.md` 的"Reading a run"与 `docs/query/jev-tree-v1.md` 的实测数字。
