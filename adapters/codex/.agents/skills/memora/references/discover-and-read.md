@@ -74,8 +74,47 @@ complete.
 
 Locate Rows with `SHOW ROUTES` (the Agent's main path) and `SELECT` for facts.
 Keyword recall (`RECALL … MATCH`) and vector recall (`RECALL … NEAREST`) are the
-other two product paths; jev is the fourth and only optional one, a Skill-side
-chooser that reads no database state of its own.
+other two product paths. jev is the fourth and only optional one, a Skill-side
+chooser that reads no database state of its own — and it is a **fallback**, not a
+front door: it answers one layer at a time and it never produces the answer.
+
+### When jev is worth a call
+
+Use it only when all three of these hold, and decide the layer yourself in every
+other case:
+
+- the layer has **at least two live children** — the script refuses fewer
+  (`exit 4`), and with one child there is nothing to choose;
+- the intent is **single-target** ("which place do I look in"). "List them all"
+  is not a choice and must not be asked as one;
+- you put a **`none` option** in the option set (below). This one is not
+  optional bookkeeping: `Choice` always picks something, so an unanswerable
+  question comes back as a **confident wrong answer**.
+
+The contract, exactly — options carry name and purpose, **never** a `route_id`:
+
+```sh
+echo '{"intent":"<what the user wants>","options":[{"name":"<child>","purpose":"<its purpose>"},{"name":"none","purpose":"none of these places is where this intent lives"}]}' \
+  | python3 "<skill-directory>/scripts/jev_select.py"
+# -> {"choice":"<name>","confidence":0.0-1.0,"probabilities":{…},"model":"…"}
+```
+
+Exit codes: `0` answered, `2` no `TYPESAFE_API_KEY`, `3` the provider refused,
+`4` it was not a choice (fewer than two options, empty intent), `5` below
+`--min-confidence`. Map the chosen **name** back to the `route_id` you already
+hold from `SHOW ROUTES`, then send the next `SHOW ROUTES UNDER`.
+
+Act on `none`: go back up a layer, or switch to `RECALL`. A low confidence is not
+a substitute for it — confidence measures how concentrated the distribution was,
+not whether the answer is right, and a 0.9 can be the wrong pick. For an
+"all of them" task put an `all` option in the set and enumerate with
+`SHOW ROUTES` when it wins.
+
+**Budget it honestly.** Each decision is a fresh process and a fresh TLS
+connection to a hosted API: measured at **0.9–2.0 s per layer**, of which the
+model itself is ~0.2 s — the option count barely moves it (12 options ≈ 2
+options) and the layers are decided serially. One obvious child, or a question
+`RECALL` already answers, is not worth a second.
 
 Treat Route results as `navigation_only`. They are neither answers nor evidence.
 Explicitly choose one or more Tables from the compact Atlas. For a selected
