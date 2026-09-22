@@ -250,16 +250,37 @@ function locatorCard(row) {
   return card;
 }
 
+// The canvas's back control returns to the Database this Table belongs to, so it
+// is named after the Database and not after the Table. That name is the only
+// reason this view reads a Database at all, and it comes in the same statement
+// batch as the Table and its Routes: the page must not be able to draw a control
+// naming one place while linking to another.
+function databasePoint(result, databaseID) {
+  if (result.rows.length !== 1) throw new RouteViewError("corrupt", "Database point result is invalid");
+  const row = result.rows[0];
+  if (!row || row.database_id !== databaseID ||
+      typeof row.name !== "string" || row.name.length === 0 ||
+      typeof row.purpose !== "string" || row.purpose.length === 0 ||
+      typeof row.scope !== "string" || row.scope.length === 0 ||
+      !positiveRevision(row.schema_version)) {
+    throw new RouteViewError("corrupt", "Database scope or fields are invalid");
+  }
+  return row;
+}
+
 async function loadTableRoot(executeMSQL, databaseID, tableID) {
-  const subject = `${quoteIdentifier(databaseID, "db_")}.${quoteIdentifier(tableID, "tbl_")}`;
+  const database = quoteIdentifier(databaseID, "db_");
+  const subject = `${database}.${quoteIdentifier(tableID, "tbl_")}`;
   const source =
-    `DESCRIBE TABLE ${subject} COMPACT; SHOW ROUTES FROM TABLE ${subject} AT ROOT`;
+    `DESCRIBE DATABASE ${database} COMPACT; DESCRIBE TABLE ${subject} COMPACT; ` +
+    `SHOW ROUTES FROM TABLE ${subject} AT ROOT`;
   const results = resultsFrom(await executeMSQL(source, [
-    statementInput({}), statementInput({})
-  ]), 2);
+    statementInput({}), statementInput({}), statementInput({})
+  ]), 3);
   return {
-    object: tablePoint(results[0], databaseID, tableID),
-    rows: routeRows(results[1], databaseID, tableID),
+    database: databasePoint(results[0], databaseID),
+    object: tablePoint(results[1], databaseID, tableID),
+    rows: routeRows(results[2], databaseID, tableID),
   };
 }
 
@@ -1049,11 +1070,11 @@ export async function renderRoutes(root, options) {
     const tree = treeRoot(data.object, data.rows);
     const view = element("div", "semantic-canvas-page semantic-canvas-fullscreen");
     const controls = element("div", "semantic-canvas-controls");
-    const back = element("a", "canvas-control canvas-back", "返回表");
-    back.href = `/catalog/${encodeURIComponent(databaseID)}/${encodeURIComponent(tableID)}`;
+    const back = element("a", "canvas-control canvas-back", "返回库");
+    back.href = `/catalog/${encodeURIComponent(databaseID)}`;
     back.dataset.route = "";
-    back.setAttribute("aria-label", `返回 ${data.object.name} 表`);
-    back.title = `返回 ${data.object.name} 表`;
+    back.setAttribute("aria-label", `返回 ${data.database.name} 库`);
+    back.title = `返回 ${data.database.name} 库`;
     controls.append(back);
     const focusButton = element("button", "canvas-focus-button", "聚焦到中心");
     focusButton.type = "button";

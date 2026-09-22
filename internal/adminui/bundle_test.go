@@ -476,7 +476,11 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		"requestAnimationFrame(applyGesture)", "pendingPan", "pendingZoom", "flushGesture",
 		"installCanvasGestureBridge", "pointerdown", "pointermove", "pointerup", "onWheel",
 		"graph.translateBy", "graph.zoomBy", "deltaY", "caretPositionFromPoint", "setBaseAndExtent",
-		"semantic-canvas-fullscreen", "semantic-canvas-controls", "返回表",
+		"semantic-canvas-fullscreen", "semantic-canvas-controls", "返回库",
+		// The back control names the library it returns to, so the canvas reads
+		// DESCRIBE DATABASE in the same batch as the table and its routes: a label
+		// that names a place the link does not go is worse than no label at all.
+		"DESCRIBE DATABASE ", "data.database.name",
 		"CANVAS_FOCUS_MAX_ZOOM", "zoomTo", "focusRouteNode",
 		"for (const column of preview.columns)",
 	} {
@@ -514,6 +518,10 @@ func TestAdminSemanticCanvasBundleContract(t *testing.T) {
 		// box it draws the card over its Route at the wrong height; dagre takes a
 		// size per node and answers with centres.
 		"compact-box", "getHGap", "getVGap", "getWidth: layoutNode", "getHeight: layoutNode",
+		// The canvas is a Table's Route tree, but the control returns to the
+		// Database it belongs to; calling that "返回表" sent the reader to one page
+		// while naming another.
+		"返回表", "返回 ${data.object.name} 表",
 	} {
 		if strings.Contains(routeText, forbidden) {
 			t.Errorf("Semantic canvas still carries %q", forbidden)
