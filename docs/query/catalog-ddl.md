@@ -31,7 +31,9 @@ Parser 允许缺省语义项以保持语法与 AST 分层；Catalog Binder 必�
 `PLAN SCHEMA CHANGE` 的 `ADD_COLUMN` 上都会被拒绝，拒绝信息里带形状规范原文。`ALTER_COLUMN`
 （加宽上限）与 `DROP_COLUMN`（退役旧列）不受影响；旧实例已存的列不会被重新校验，照常可读可写。
 
-Column 类型由 F14 冻结；`TEXT` 使用 1200 字符启动上限，`TEXT(n)` 持久化 Column 自己的正整数上限。完整集合和输入规则见 [逻辑类型与字段预算 v1](../data/logical-types.md)。
+Column 类型由 F14 冻结；`TEXT` 使用 1200 字符启动上限，`TEXT(n)` 持久化 Column 自己的正整数上限。
+**`TEXT(n)` 的 n 是 Unicode 码点（字符）不是字节**——引擎按 `utf8.RuneCountInString` 校验，
+超过上限回 `value_too_long`；读侧在 `columns[].max_characters` 里把这个上限带出去，所以只读也能核对。完整集合和输入规则见 [逻辑类型与字段预算 v1](../data/logical-types.md)。
 
 `ROLE` 可选，v1 接受 `title/summary/identity/status/fact/rationale`。title 与 summary 在单个 Table
 内各最多一个；未声明 title 时 Row detail 只能回退到 RowID/revision，不能猜列名。
