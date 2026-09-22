@@ -51,7 +51,7 @@
     },
     {
       "path": ".agents/skills/memora/scripts/jev_select.py",
-      "sha256": "2431fdc4e68754ecb5061ce1df4d1f3f22c1f965bd701de70acc771d0b94fc8a",
+      "sha256": "175d3731258b195bc93dbc00a220a72d39f1dd05f5a499685f38603b649c36a6",
       "mode": "0755"
     },
     {

@@ -45,6 +45,16 @@ import subprocess
 import sys
 import time
 
+# The sibling script that owns the question and the cut is importable, so a walk
+# can ask it in-process and keep one provider connection for the whole run. It is
+# a script, not a package, so the directory it lives in goes on the path first —
+# and the interpreter is told not to leave a `__pycache__` behind: the Skill's
+# tree is shipped and compared byte for byte, so an import must not add a file to
+# it.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import jev_select  # noqa: E402  (after the path insert, deliberately)
+
 
 class StepLog:
     """What the walk did, step by step: which layer, what it chose between, what
@@ -189,12 +199,13 @@ class Chooser:
     hands back names plus `separated`/`undecided`/`empty`.
     """
 
-    def __init__(self, intent, budget, recorder=None, recorded=None, log=None):
+    def __init__(self, intent, budget, recorder=None, recorded=None, log=None, provider=None):
         self.intent = intent
         self.budget = budget
         self.recorder = recorder
         self.recorded = recorded
         self.log = log
+        self.provider = provider
         self.model = ""
         self.spent_ms = 0
         # Decisions taken, live or replayed; `budget.jev_calls` counts provider
@@ -213,19 +224,23 @@ class Chooser:
             answer = self.recorded[key]
         else:
             self.budget.jev_calls += 1
-            request = {"mode": "set", "intent": self.intent,
-                       "options": [{"name": name, "purpose": purpose} for name, purpose in options]}
-            completed = subprocess.run(
-                [sys.executable, JEV], input=json.dumps(request, ensure_ascii=False),
-                capture_output=True, text=True)
-            try:
-                answer = json.loads(completed.stdout)
-            except json.JSONDecodeError:
-                fail(EXIT_PROVIDER_REFUSED, "jev answered nothing readable: %s"
-                     % completed.stdout[:200])
-            if completed.returncode != 0:
-                code = EXIT_NOT_CONFIGURED if completed.returncode == 2 else EXIT_PROVIDER_REFUSED
-                fail(code, answer.get("error", "jev exited %d" % completed.returncode))
+            criteria = {name: purpose or name for name, purpose in options}
+            if self.provider is not None:
+                answer = self.ask_in_process(criteria)
+            else:
+                request = {"mode": "set", "intent": self.intent,
+                           "options": [{"name": name, "purpose": purpose} for name, purpose in options]}
+                completed = subprocess.run(
+                    [sys.executable, JEV], input=json.dumps(request, ensure_ascii=False),
+                    capture_output=True, text=True)
+                try:
+                    answer = json.loads(completed.stdout)
+                except json.JSONDecodeError:
+                    fail(EXIT_PROVIDER_REFUSED, "jev answered nothing readable: %s"
+                         % completed.stdout[:200])
+                if completed.returncode != 0:
+                    code = EXIT_NOT_CONFIGURED if completed.returncode == 2 else EXIT_PROVIDER_REFUSED
+                    fail(code, answer.get("error", "jev exited %d" % completed.returncode))
         self.decisions += 1
         self.model = answer.get("model", self.model)
         if self.recorder is not None:
@@ -239,6 +254,33 @@ class Chooser:
                           provider_ms=answer.get("elapsed_ms"), duration_ms=spent,
                           recorded=self.recorded is not None)
         return answer["relevant"], answer["decision"]
+
+    def ask_in_process(self, criteria):
+        """The set question, asked on the walk's own connection.
+
+        The cut, the floor probe and the sentinel live in `jev_select`; this only
+        supplies the connection and turns its answer into the same shape the
+        subprocess path returns, so both paths decide identically.
+        """
+        payload = jev_select.build_set_payload(self.intent, criteria, self.provider.model)
+        started = time.monotonic()
+        raw, error = self.provider.send(payload)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        if error:
+            fail(EXIT_PROVIDER_REFUSED, "%s (after %d ms)" % (error, elapsed_ms))
+        answers = raw.get("answers", {})
+        values = {}
+        for index, name in enumerate(criteria):
+            value = answers.get("holds_%d" % index, {}).get("noul")
+            if not isinstance(value, (int, float)):
+                fail(EXIT_PROVIDER_REFUSED, "the provider did not answer for %r" % name)
+            values[name] = float(value)
+        floor = answers.get(jev_select.SENTINEL, {}).get("noul")
+        if not isinstance(floor, (int, float)):
+            fail(EXIT_PROVIDER_REFUSED, "the provider did not answer the floor probe")
+        relevant, decision = jev_select.decide_set(values, float(floor))
+        return {"mode": "set", "relevant": relevant, "decision": decision,
+                "model": raw.get("model"), "elapsed_ms": elapsed_ms}
 
 
 def choose_layer(chooser, budget, options, layer, evidence):
@@ -430,9 +472,20 @@ def main():
              mode="replay" if arguments.replay else "live")
     engine = Engine(recorder=recording["engine"] if arguments.record else None,
                     recorded=recording["engine"] if arguments.replay else None, log=log)
+    # One provider connection for the whole walk when it is live; a replay asks
+    # nobody and needs none. `JEV_IN_PROCESS=0` falls back to one subprocess per
+    # decision, which is slower but keeps a broken import from breaking the walk.
+    provider = None
+    if not arguments.replay and os.environ.get("JEV_IN_PROCESS", "1") != "0":
+        provider = jev_select.Provider()
+        if not provider.api_key:
+            fail(EXIT_NOT_CONFIGURED,
+                 "TYPESAFE_API_KEY is not set; choose the layer yourself or ask the user")
+        log.emit("provider", base_url=provider.base_url, model=provider.model, mode="reused connection")
     chooser = Chooser(requirement, budget,
                       recorder=recording["jev"] if arguments.record else None,
-                      recorded=recording["jev"] if arguments.replay else None, log=log)
+                      recorded=recording["jev"] if arguments.replay else None, log=log,
+                      provider=provider)
     evidence, stopped = [], ""
 
     # Level 0 — which Database. Only the authorized ones are ever offered: a
@@ -481,6 +534,8 @@ def main():
     log.emit("done", landings=len(landings), decisions=chooser.decisions,
              statements=len(engine.statements), engine_ms=engine.spent_ms,
              jev_ms=chooser.spent_ms, incomplete=bool(uncertain))
+    if provider is not None:
+        provider.close()
     if arguments.record:
         with open(arguments.record, "w", encoding="utf-8") as handle:
             json.dump(recording, handle, ensure_ascii=False, indent=1)

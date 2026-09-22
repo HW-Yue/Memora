@@ -106,12 +106,19 @@ answer alone):
 [ 3516 ms] done       landings=2 decisions=3 statements=7 engine_ms=81 jev_ms=3427
 ```
 
-One real run of "both internships" read like that: **3.4 s of 3.5 s was the three
-model decisions** (1.8 s for the first, which pays the connection, then ~0.8 s
-each) and seven local statements cost 81 ms in total. A wider requirement — one
-that spans two Databases — made nine decisions and twenty-four statements in
-8.1 s, and the log is where the budget shows: the layer that exceeded the frontier
-width is recorded there as the branch landing it became.
+One real run of "both internships" reads like that: **1.6 s of 1.7 s is the three
+model decisions** — the first ~0.8 s pays the TLS handshake and the next two
+~0.35 s each, because the walk keeps **one** provider connection for all of them —
+while the seven local statements cost ~120 ms in total. Rebuilding that connection
+per decision (or per subprocess) was measured at ~0.73 s every time, which is
+roughly what a walk with nine decisions spent before the connection was reused
+(8.1 s, now 4.5 s). The log is also where a budget shows: the layer that exceeded
+the frontier width is recorded there as the branch landing it became.
+
+A kept connection can be closed by the far end between calls; the provider drops
+it and tries once more, so the cost of reuse is one retry, never a failure.
+`JEV_IN_PROCESS=0` falls back to one subprocess per decision — slower, and kept
+only so a broken import cannot break the walk.
 
 The answer carries the same numbers: `timings.engine_ms`, `timings.jev_ms`,
 `statements`, `decisions`, and per layer `evidence[].options_count` and

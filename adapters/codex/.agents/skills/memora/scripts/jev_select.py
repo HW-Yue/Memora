@@ -55,13 +55,16 @@ correct in the world.
 """
 
 import argparse
+import http.client
 import json
 import os
 import pathlib
 import re
+import ssl
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_BASE_URL = "https://api.typesafe.ai"
@@ -252,6 +255,72 @@ def call_provider(base_url, api_key, payload):
     return None, "the provider kept refusing"
 
 
+class Provider:
+    """One connection, reused for every decision a walk asks for.
+
+    A fresh connection measured 696-804 ms per call against 244-523 ms on a
+    reused one: TLS handshake is most of the difference, and a walk makes one call
+    per layer with more than one child, so keeping the connection turns several
+    hundred milliseconds per layer into a fraction of that. The first call still
+    pays the handshake.
+
+    This is not a daemon. A connection idle for minutes is closed by any proxy in
+    the path, so holding one between *runs* would buy little and cost a process to
+    supervise; holding one across the decisions inside a run is where the time is.
+    """
+
+    def __init__(self, base_url=None, api_key=None, model=None):
+        self.base_url = (base_url or from_environment("TYPESAFE_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        self.api_key = api_key if api_key is not None else from_environment("TYPESAFE_API_KEY")
+        self.model = model or from_environment("TYPESAFE_MODEL") or DEFAULT_MODEL
+        self.connection = None
+
+    def _connect(self):
+        parts = urllib.parse.urlsplit(self.base_url)
+        if parts.scheme == "https":
+            return http.client.HTTPSConnection(parts.netloc, timeout=REQUEST_TIMEOUT_SECONDS,
+                                               context=ssl.create_default_context())
+        return http.client.HTTPConnection(parts.netloc, timeout=REQUEST_TIMEOUT_SECONDS)
+
+    def send(self, payload):
+        """One request on the kept connection, reconnecting once if it went away."""
+        body = json.dumps(payload).encode()
+        path = urllib.parse.urlsplit(self.base_url).path.rstrip("/") + "/v1/systemone"
+        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + self.api_key}
+        attempts = len(RETRY_DELAYS_SECONDS) + 1
+        for attempt in range(attempts):
+            if self.connection is None:
+                self.connection = self._connect()
+            try:
+                self.connection.request("POST", path, body=body, headers=headers)
+                response = self.connection.getresponse()
+                raw = response.read()
+                if response.status < 200 or response.status > 299:
+                    # The body is read and dropped: a provider that echoes the
+                    # request on failure would otherwise put the key in a log.
+                    if response.status in (429, 529) and attempt + 1 < attempts:
+                        time.sleep(RETRY_DELAYS_SECONDS[attempt])
+                        continue
+                    return None, "the provider answered %s %s" % (response.status, response.reason)
+                return json.loads(raw), None
+            except (http.client.HTTPException, OSError) as error:
+                # A kept connection can be closed by the far end between calls.
+                # Dropping it and trying once more is the whole cost of reusing it;
+                # only a failure after a fresh connection is a provider failure.
+                self.close()
+                if attempt + 1 >= attempts:
+                    return None, "could not reach the provider: %s" % error
+        return None, "the provider kept refusing"
+
+    def close(self):
+        if self.connection is not None:
+            try:
+                self.connection.close()
+            except OSError:
+                pass
+            self.connection = None
+
+
 def replay(path):
     """Re-run the set-mode cut on recorded provider answers.
 
@@ -316,8 +385,10 @@ def main():
     base_url = from_environment("TYPESAFE_BASE_URL") or DEFAULT_BASE_URL
 
     started = time.monotonic()
-    answer, error = call_provider(base_url, api_key, payload)
+    provider = Provider(base_url=base_url, api_key=api_key, model=model)
+    answer, error = provider.send(payload)
     elapsed_ms = int((time.monotonic() - started) * 1000)
+    provider.close()
     if error:
         fail(EXIT_PROVIDER_REFUSED, "%s (after %d ms)" % (error, elapsed_ms))
     answers = answer.get("answers", {})
