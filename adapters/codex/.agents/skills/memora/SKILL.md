@@ -10,12 +10,19 @@ and consumes `memora.result/v1`. Keep live schemas, routes, candidates, and rows
 out of this file; discover them from the current instance for each task.
 
 Only use the `memora doctor`, `memora query`, `memora exec`,
-`memora mutate`, and `memora schema` interfaces for normal database work. Four
+`memora mutate`, and `memora schema` interfaces for normal database work. A few
 commands outside that list exist for the cases named here and are used exactly
 that way: `memora daemon stop` (to clear a build skew the detector reports),
-`memora parse` (to check a statement before sending it), `memora instance
-destroy` (only on the user's explicit instruction), and this Skill's own
-`scripts/jev_*.py`.
+`memora daemon status` (to see whether one is running and which build it is),
+`memora parse` (to check a statement before sending it), `memora version` (the
+conventional `--version` flag is not accepted), `memora instance destroy` (only on
+the user's explicit instruction), and this Skill's own `scripts/jev_*.py`.
+
+Writes also print **non-JSON notes to stderr** — a partly configured embedding
+provider is the usual one, and it says the units stay not-ready. A host that
+parses stdout as JSON must not merge stderr into that stream, and
+`MEMORA_EMBEDDING=off` silences the provider entirely when the task needs no
+vectors.
 Never inspect, edit, copy, or infer state from physical database, index, journal,
 page, or instance files. Logical MSQL results are the only source of database
 truth available to the host.
@@ -193,13 +200,13 @@ Table you never mention is an answer that looks complete and is not.
 
 **A census is a plain SELECT with no `WHERE`.** `SELECT row_id, title, revision
 FROM <table> LIMIT :limit` is legal, counted against `select_rows` exactly like a
-point read, and it is the cheapest way to see everything a Table holds. Census
-every Table of the bound Database in **one request** — one statement per Table,
-one `--input` element per statement — then point-read the Rows that matter in a
-second request: that is the shortest honest path to a complete, cited answer, and
-on Tables that fit it replaces the tree walk entirely. It is also the cheapest way to see everything a Table holds: it
+point read, and it is the cheapest way to see everything a Table holds: it
 returns each Row's `row_id` **and** its `route_paths`, so it locates the Rows
-without walking the tree. When a question needs more than one Row, that census —
+without walking the tree. Census every Table of the bound Database in **one
+request** — one statement per Table, one `--input` element per statement — then
+point-read the Rows that matter in a second request: that is the shortest honest
+path to a complete, cited answer, and on Tables that fit it replaces the tree walk
+entirely. When a question needs more than one Row, that census —
 followed by point reads of the Rows that matter — replaces the whole
 `SHOW ROUTES … → OPEN ROUTE → SELECT` chain, and no Route walk is needed first.
 Walk the tree when you are looking for *where something is*, or when the Table is
@@ -213,9 +220,10 @@ and Row count agreeing is *route-mount integrity* (`orphan_rows`,
 returned — a census is complete even on an instance where those counters are
 non-zero.
 
-**A census that comes back `truncated: true` has no read-only continuation.**
-`SELECT` has no cursor, `WHERE` takes only `row_id` equality, and the budget can
-only be raised by a write (`ALTER CONFIGURATION`, below). So above `select_rows`
+**A census that comes back `truncated: true` cannot be continued with another
+`SELECT`.** That statement has no cursor, its `WHERE` takes only `row_id`
+equality, and the budget can only be raised by a write (`ALTER CONFIGURATION`,
+below). The read-only continuation is a different surface: above `select_rows`
 the sanctioned enumerator is the **Route tree walk**: `SHOW ROUTES` pages with a
 cursor at `route_children` per level, and every leaf names its Row. You do not
 have to remember that: the truncated answer carries an `output_truncated` warning
@@ -290,7 +298,11 @@ There are two ways from a Table to its facts, and the question picks one:
 
 `SHOW ROUTES … AT ROOT` returns the root's **children**, not the root node itself
 (the children carry the root's `route_id` as their `parent_id`, and no row
-describes the root).
+describes the root). Because of that, one tree has three path spellings in three
+surfaces, and a host that wants to compare them normalises deliberately:
+`route_paths` on a Row is root-**less** (`["/技法/红烧"]`), a recall hit's `path` is
+segments **with** a literal `root` segment (`root → 技法 → 红烧`), and an archive
+path is a single string that names it (`"/root/技法/清蒸"`).
 
 ```text
 census:     SHOW CATALOG ATLAS → DESCRIBE TABLE → SELECT row_id, title, revision LIMIT n
@@ -631,8 +643,11 @@ Use parameters, expected schema/revision, a maximum affected-row count, actor,
 source, reason, and the complete current Route leaf membership snapshot.
 Keep transactions short and verify the returned revision and logical row.
 
-Every INSERT and every UPDATE that creates or replaces a semantic module MUST
-write `title` and `summary`. `summary` is the Row's body: a complete,
+Every INSERT MUST write `title` and `summary`, because both columns are NOT NULL
+and the engine refuses the write otherwise. An UPDATE may set only the fields it
+changes — it is a partial write, and the engine keeps the columns it was not
+given — but the Row must still read as a complete document afterwards, which is
+what makes `title` and `summary` the shape rather than two more fields. `summary` is the Row's body: a complete,
 self-contained Markdown document of roughly 1,000 CJK characters that a reader
 can understand without opening anything else. It is not a one-line abstract,
 not a bullet list, and not a restatement of `title`. A Row without a usable
@@ -740,7 +755,7 @@ transaction as the Row. The two options are mutually exclusive, and `route_path`
 is accepted by INSERT only.
 
 ```sh
-memora exec --input '{"parameters":{"named":{"title":"Use SQLite"}},"mutation":{"expected_schema_version":1,"max_affected_rows":1,"route_path":[{"name":"architecture","kind":"branch","purpose":"Architecture decisions"},{"name":"sqlite","kind":"leaf","purpose":"Why SQLite"}],"actor":"agent:host","source":"conversation:event-7","reason":"record the decision"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "INSERT INTO work.notes (title) VALUES (:title)"
+memora exec --input '{"parameters":{"named":{"title":"Use SQLite","summary":"<the complete ~1,000-CJK-character Markdown document; abbreviated here>"}},"mutation":{"expected_schema_version":1,"max_affected_rows":1,"route_path":[{"name":"architecture","kind":"branch","purpose":"Architecture decisions"},{"name":"sqlite","kind":"leaf","purpose":"Why SQLite"}],"actor":"agent:host","source":"conversation:event-7","reason":"record the decision"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "INSERT INTO work.notes (title, summary) VALUES (:title, :summary)"
 ```
 
 Sibling names match case-insensitively and never by alias. Expect a refusal when
@@ -857,11 +872,23 @@ memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"autho
 memora query --input '{"parameters":{"named":{"archive":"archive_01"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "OPEN ARCHIVE :archive"
 ```
 
-`SHOW ARCHIVE` lists metadata only and requires both a Table scope and a LIMIT;
-`OPEN ARCHIVE` returns one record in full — the path root-first, and the Row as it
-was stored, including the links it carried. A deleted Row is unreachable
+`SHOW ARCHIVE` lists metadata only and requires both a Table scope and a LIMIT.
+Leaving `FOR ROW` out lists the whole Table's deletions, which is the only way to
+discover a deletion when you no longer know its `row_id` — the `FOR ROW` form
+presupposes you do. `OPEN ARCHIVE` returns one record in full — the path
+root-first, and the Row as it was stored, including the links it carried. The
+archived values are keyed by **column_id**, not by column name, so rebuilding
+means mapping them back through `DESCRIBE TABLE`; and the archived record's
+`row_state` still reads `live`, because that is the state the Row was in when it
+was archived — it is a record of what was, not of what is now. A deleted Row is unreachable
 everywhere else (`SELECT`, `SHOW HISTORY`, `AS OF`, `OPEN ROUTE`); the archive is
-the single exception, and `SELECT` cannot reach it either. Rebuild by recreating
+the single exception, and `SELECT` cannot reach it either. The `AS OF` forms are
+`SELECT … AS OF REVISION :revision WHERE row_id = :row LIMIT 1` and
+`SELECT … AS OF COMMIT_SEQUENCE :sequence WHERE row_id = :row LIMIT 1` — the
+version keyword is not optional. An `AS OF` read answers for a Row that is live
+now, and its Rows come back without the attached fields: `links` is `null` and
+`route_paths` is `[]`, because those describe the Row's present placement and an
+old revision may sit somewhere else today. Rebuild by recreating
 the path (`CREATE ROUTE`, or `route_path` on the INSERT) and mounting the new Row
 on its leaf. The archived IDs are a record of what was, not a promise it can be
 reused.
@@ -923,6 +950,16 @@ engine to infer the grouping. Generate a review-only plan through MSQL:
 ```sh
 memora query --input '{"parameters":{"named":{"proposal":{"version":"memora.route-mutation-proposal/v1","proposal_id":"route-proposal-1","operation":"MOVE","actor":"agent:host","source_event_id":"conversation:event-9","reason":"move reviewed subtree","sources":[{"route_id":"route_source","expected_revision":3}],"target_parent_id":"route_archive"}}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "PLAN ROUTE MUTATION FOR TABLE work.notes USING :proposal"
 ```
+
+Every node named in a proposal is `{"route_id": …, "expected_revision": …}`, and
+each operation requires its own fields — the engine refuses a proposal that
+carries the wrong shape for its `operation`:
+
+| `operation` | required | forbidden |
+| --- | --- | --- |
+| `MOVE` | `sources`, `target_parent_id` | — |
+| `SPLIT` | exactly one `sources` entry, at least two `targets` | `target_parent_id` |
+| `MERGE` | at least two `sources` entries, exactly one `target` | `target_parent_id` |
 
 Verify that the result is `memora.route-mutation-plan/v1`, `status=review_required`,
 and has base snapshot and plan hashes. Show the exact plan and impact to the user.
