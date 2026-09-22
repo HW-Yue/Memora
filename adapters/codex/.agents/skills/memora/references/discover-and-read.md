@@ -246,12 +246,14 @@ holds more live Rows than the ceiling is enumerated read-only by the Route tree
 walk, or the ceiling is raised explicitly:
 
 ```sh
-memora exec --input '{"parameters":{"named":{"routes":12,"locators":1,"scan":1000,"rows":10,"frame":12}},"mutation":{"expected_revision":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"raise the census ceiling for one large Table"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "ALTER CONFIGURATION QUERY_BUDGETS SET ROUTE_CHILDREN :routes, OPEN_LOCATORS :locators, SELECT_SCAN :scan, SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame"
+memora exec --input '{"parameters":{"named":{"routes":12,"locators":1,"scan":1000,"rows":10,"frame":12}},"mutation":{"expected_revision":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"raise the census ceiling for one large Table"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ALTER CONFIGURATION QUERY_BUDGETS SET ROUTE_CHILDREN :routes, OPEN_LOCATORS :locators, SELECT_SCAN :scan, SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame"
 ```
 
+Changing configuration is an **L2** write, and the statement is only half of it.
 It replaces all five (they are one revision, so the mutation needs
 `expected_revision` — read it from `SHOW CONFIGURATION` first — plus actor and
-reason), `SHOW CONFIGURATION HISTORY LIMIT :limit` shows the trail, and
+reason, and `default_level` is `L2`; an L1 authorization is refused before the
+revision is even looked at), `SHOW CONFIGURATION HISTORY LIMIT :limit` shows the trail, and
 `RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision` appends a compensating
 revision (same input: `expected_revision`, actor, reason; the statement names the
 revision to restore **to**). Raising a budget is a deliberate act with a reason, not a reflex. A locator cursor is never

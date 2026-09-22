@@ -60,7 +60,9 @@ ordinary reversible Schema action.
 ### Route branch fan-out
 
 One root or branch may carry at most `branch_fanout` live children. The startup
-default is 12 and each Database owns its own value:
+default is 12, and the value belongs to the **instance** — one route policy for
+all Databases, not one each (the failure envelope's "this database allows …"
+means "this instance"; the stored key carries no Database id):
 
 ```sh
 memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CONFIGURATION ROUTE_POLICY"
@@ -79,12 +81,13 @@ remedies. Choose between them yourself; do not retry the same write.
    value with `SHOW CONFIGURATION ROUTE_POLICY` (it is one policy for the
    **instance**, not one per Database), then raise it: `branch_fanout` lives in
    `2..100`, and one change may raise it by at most 4, so widening is a repeated
-   decision rather than one jump to the ceiling. The statement is only half the
-   write — the input carries the `expected_revision` from that read, plus actor
-   and reason, without which the engine refuses it:
+   decision rather than one jump to the ceiling. Changing configuration is an
+   **L2** write, and the statement is only half of it: the input carries the
+   `expected_revision` from that read, plus actor and reason, without which the
+   engine refuses it:
 
 ```sh
-memora exec --input '{"parameters":{"named":{"fanout":16}},"mutation":{"expected_revision":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"this instance really has more parallel groups"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :fanout"
+memora exec --input '{"parameters":{"named":{"fanout":16}},"mutation":{"expected_revision":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"this instance really has more parallel groups"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ALTER CONFIGURATION ROUTE_POLICY SET BRANCH_FANOUT :fanout"
 ```
 
 Prefer restructuring when the crowded children share an obvious parent concept;

@@ -48,3 +48,27 @@ func TestHelpTakesAnOptionalCommand(t *testing.T) {
 		t.Fatalf("the refusal must name what it did not know: %q", stderr.String())
 	}
 }
+
+// A host that has already typed a subcommand is asking the same question, so the
+// flag has to count in any position. Looking only at args[1] left
+// `daemon stop --help` and `instance destroy --help` answering "unknown option" —
+// the very answer this whole surface exists to replace.
+func TestHelpAfterASubcommandAnswersToo(t *testing.T) {
+	for _, args := range [][]string{
+		{"daemon", "stop", "--help"},
+		{"daemon", "status", "-h"},
+		{"instance", "destroy", "--help"},
+		{"help", "--help"},
+		{"help", "-h"},
+	} {
+		stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+		code := RunWithDependencies(args, stdout, stderr, BuildInfo{}, Dependencies{})
+		if code != ExitOK {
+			t.Errorf("%v: exit %d, stderr %q", args, code, stderr.String())
+			continue
+		}
+		if !strings.Contains(stdout.String(), "Usage:") {
+			t.Errorf("%v: no usage was printed: %q", args, stdout.String())
+		}
+	}
+}

@@ -62,33 +62,37 @@ Run 'memora help' for usage.
 // or, worse, having `--help` parsed as MSQL teaches it nothing about what the
 // command wants. One line each: the shape of the invocation and what it needs.
 var commandUsage = map[string]string{
-	"admin": "Usage: memora admin [--data-dir <dir>] [--port <port>]\n" +
+	"admin": "Usage: memora admin [--data-dir <dir>] [--scope <database|id>] [--no-open]\n" +
 		"Starts a temporary local read-only Admin API for one instance.\n",
-	"daemon": "Usage: memora daemon <start|run|status|ping|stop> [--data-dir <dir>]\n" +
+	"daemon": "Usage: memora daemon <start|run|status|ping|stop> [--data-dir <dir>] [--json]\n" +
 		"Manages the daemon that serves one instance.\n",
 	"doctor": "Usage: memora doctor [--data-dir <dir>]\n" +
 		"Reports logical integrity for one instance.\n",
-	"exec": "Usage: memora exec [--input <json|@file>] '<MSQL statements>'\n" +
+	"exec": "Usage: memora exec [--data-dir <dir>] [--input <json>] '<MSQL statements>'\n" +
 		"Executes MSQL, including mutations, through the local daemon.\n",
-	"init": "Usage: memora init [--data-dir <dir>]\n" +
+	"init": "Usage: memora init [--data-dir <dir>] [--instance <name>] [--config <path>] [--log-level <level>]\n" +
 		"Initializes a local instance.\n",
 	"instance": "Usage: memora instance destroy --yes [--data-dir <dir>]\n" +
 		"Removes a local instance; irreversible, and only on explicit instruction.\n",
 	"mcp": "Usage: memora mcp [--data-dir <dir>]\n" +
 		"Serves MCP over newline-delimited stdio.\n",
-	"mutate": "Usage: memora mutate --plan '<memora.mutation-plan/v1 JSON>'\n" +
+	"mutate": "Usage: memora mutate [--data-dir <dir>] --plan '<memora.mutation-plan/v1 JSON>'\n" +
 		"Validates a Mutation Plan and executes it; the plan carries preflight,\n" +
 		"step and verify statements, each with its own input object.\n",
-	"parse": "Usage: memora parse [--input <json|@file>] '<MSQL statements>'\n" +
-		"Parses without executing: a grammatical check, not a permission to run.\n",
-	"query": "Usage: memora query [--input <json|@file>] '<MSQL statements>'\n" +
+	"parse": "Usage: memora parse [--data-dir <dir>] '<one MSQL statement>'\n" +
+		"Parses one statement without executing and without parameters: a grammatical\n" +
+		"check, not a permission to run, and not a binding check.\n",
+	"query": "Usage: memora query [--data-dir <dir>] [--input <json>] '<MSQL statements>'\n" +
 		"Queries MSQL through the local daemon; reads only.\n",
-	"schema": "Usage: memora schema --plan '<memora.schema-plan/v1 JSON>'\n" +
+	"schema": "Usage: memora schema [--data-dir <dir>] --plan '<memora.schema-plan/v1 JSON>'\n" +
 		"Validates a Schema Plan and executes it; creating structure is L2.\n",
 	"version": "Usage: memora version [--json]\n" +
 		"Reports the build; --version and -v do the same.\n",
 }
 
+// helpRequested answers whether one argument is a request for usage. It matches
+// the whole argument, so a statement that merely mentions "--help" inside its
+// source is not mistaken for one.
 func helpRequested(argument string) bool {
 	return argument == "--help" || argument == "-h" || argument == "help"
 }
@@ -234,16 +238,20 @@ func RunWithDependencies(args []string, stdout, stderr io.Writer, build BuildInf
 		return writeText(stdout, stderr, helpText)
 	}
 	// The conventional flag on any command, answered before dispatch so that a
-	// probe never reaches a parser or a daemon.
-	if len(args) > 1 && helpRequested(args[1]) {
-		if usage, known := commandUsage[args[0]]; known {
-			return writeText(stdout, stderr, usage)
+	// probe never reaches a parser or a daemon. Any position counts: a host that
+	// has already typed a subcommand — `daemon stop --help`, `instance destroy
+	// --help` — is asking the same question as one that has not.
+	if usage, known := commandUsage[args[0]]; known {
+		for _, argument := range args[1:] {
+			if helpRequested(argument) {
+				return writeText(stdout, stderr, usage)
+			}
 		}
 	}
 
 	switch args[0] {
 	case "help", "-h", "--help":
-		if len(args) == 1 {
+		if len(args) == 1 || helpRequested(args[1]) {
 			return writeText(stdout, stderr, helpText)
 		}
 		if usage, known := commandUsage[args[1]]; known {
