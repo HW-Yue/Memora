@@ -156,11 +156,11 @@ func TestAgentJourneyOnSQLite(t *testing.T) {
 	}
 
 	// Walk the tree the way the Agent does.
-	top := h.run(`SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12`, nil, executor.MutationOptions{})
+	top := h.run(`SHOW ROUTES FROM TABLE work.notes AT ROOT`, nil, executor.MutationOptions{})
 	if len(top.Rows) != 1 || text(top.Rows[0]["route_id"]) != branchID {
 		t.Fatalf("root children = %v", top.Rows)
 	}
-	under := h.run(`SHOW ROUTES UNDER :parent LIMIT 12`, map[string]any{"parent": branchID}, executor.MutationOptions{})
+	under := h.run(`SHOW ROUTES UNDER :parent`, map[string]any{"parent": branchID}, executor.MutationOptions{})
 	if len(under.Rows) != 1 || text(under.Rows[0]["route_id"]) != leafID {
 		t.Fatalf("branch children = %v", under.Rows)
 	}

@@ -91,11 +91,11 @@ func TestAMutationPlanMountsAnInsertOnANewPath(t *testing.T) {
 
 	// The position the plan completed is a real navigable position, not just a
 	// string in the Row's mount list.
-	branches := h.run(`SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12`, nil, executor.MutationOptions{})
+	branches := h.run(`SHOW ROUTES FROM TABLE work.notes AT ROOT`, nil, executor.MutationOptions{})
 	if len(branches.Rows) != 1 || text(branches.Rows[0]["name"]) != "architecture" {
 		t.Fatalf("root children = %v", branches.Rows)
 	}
-	leaves := h.run(`SHOW ROUTES UNDER :parent LIMIT 12`,
+	leaves := h.run(`SHOW ROUTES UNDER :parent`,
 		map[string]any{"parent": text(branches.Rows[0]["route_id"])}, executor.MutationOptions{})
 	if len(leaves.Rows) != 1 || text(leaves.Rows[0]["name"]) != "sqlite" {
 		t.Fatalf("branch children = %v", leaves.Rows)
@@ -114,7 +114,7 @@ func TestAMutationPlanMountsAnInsertOnANewPath(t *testing.T) {
 	}
 	deletion.ExpectedRevision = *report.Receipt.Changes[0].Revision
 	h.run(`DELETE FROM work.notes WHERE row_id = :row`, map[string]any{"row": rowID}, deletion)
-	if after := h.run(`SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12`, nil, executor.MutationOptions{}); len(after.Rows) != 0 {
+	if after := h.run(`SHOW ROUTES FROM TABLE work.notes AT ROOT`, nil, executor.MutationOptions{}); len(after.Rows) != 0 {
 		t.Fatalf("the emptied branch must be pruned, still there: %v", after.Rows)
 	}
 }

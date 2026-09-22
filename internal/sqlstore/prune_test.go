@@ -46,7 +46,7 @@ func TestRouteMutationMovePrunesEmptiedBranches(t *testing.T) {
 
 	// The leaf is now the root's only child: both emptied branches are gone, and
 	// the leaf stays even though it holds no Row yet.
-	children := h.run(`SHOW ROUTES UNDER :p LIMIT 12`, map[string]any{"p": root}, executor.MutationOptions{})
+	children := h.run(`SHOW ROUTES UNDER :p`, map[string]any{"p": root}, executor.MutationOptions{})
 	if len(children.Rows) != 1 || text(children.Rows[0]["route_id"]) != leaf {
 		t.Fatalf("root children after the move = %v", children.Rows)
 	}

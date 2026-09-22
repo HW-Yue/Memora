@@ -21,7 +21,11 @@ const (
 	CodeOutputTruncated    Code = "output_truncated"
 	CodeVectorsNotReady    Code = "vectors_not_ready"
 	CodeRekeyInProgress    Code = "rekey_in_progress"
-	CodeInternal           Code = "internal_error"
+	// A stored configuration revision still carries a key the engine retired.
+	// The value is ignored, and this says so: silently dropping it would leave a
+	// host believing a number it set is still in force.
+	CodeConfigurationRetiredKey Code = "configuration_retired_key"
+	CodeInternal                Code = "internal_error"
 )
 
 var registeredCodes = map[Code]struct{}{
@@ -30,6 +34,7 @@ var registeredCodes = map[Code]struct{}{
 	CodeValueTooLong: {}, CodeTransactionAborted: {}, CodeInvalidTransaction: {},
 	CodeCancelled: {}, CodeDeadlineExceeded: {}, CodeOutputTruncated: {}, CodeInternal: {},
 	CodeVectorsNotReady: {}, CodeRekeyInProgress: {},
+	CodeConfigurationRetiredKey: {},
 }
 
 func IsRegisteredCode(code Code) bool {

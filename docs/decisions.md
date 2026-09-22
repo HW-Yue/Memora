@@ -1398,3 +1398,51 @@ canvas 边线之上。于是边从盒子边缘随机位置钻出、被卡片吃�
 （render → measure → relayout），会有一次跳动；宽度锁死 900、高度按 doc id 缓存、每次展开只重排一次。
 
 细节与待定：[Admin 语义画布的连线](./planning/admin-canvas-connections.md)。
+
+## 2026-09-22 · 语义树不再分页：一层一次返回，`LIMIT`/`CURSOR`/`route_children` 一起撤掉
+
+**对象**：`SHOW ROUTES FROM TABLE … AT ROOT` / `SHOW ROUTES UNDER :parent` 的分页，以及
+`query_budgets.route_children` 这条预算。
+
+**结论**：**一层就是一次答案**。`LIMIT` 与 `CURSOR` 从 `SHOW ROUTES` 的语法里删掉（写了会被语法
+拒绝，并说明撤掉的原因）；响应不再带 `page`/`next_cursor`/`snapshot`（内部仍计算 snapshot 作为
+"这条答案钉在哪个版本"的校验，但不上线，因为没有 cursor 可续）；`query_budgets.route_children`
+预算随之删除，**五条预算变四条**；`route_policy.branch_fanout` 成为唯一约束层大小的数字。
+
+**理由**：
+
+1. **jev 自走语义树要求每层候选集完整**。分页意味着 jev 看到的是"一页"而不是"一层"，而它的
+   `none`/`relevant`/floor probe 的语义前提正是候选完整；失败形态还是**静默**的（小树永远不触发）。
+   顾问的判词：先定翻页策略（拉完整层/逐页早停/分页锦标赛）是三个不同的产品，别默认——而删掉分页
+   把这个问题彻底消掉，不再是"选哪种翻页"。
+2. **`LIMIT` 只剩两种结果**：大到不起作用，或小到必须硬失败（截断已被产品否掉）。一个只会"无效"
+   或"报错"的参数不是参数（顾问）。层大小本来就由 `branch_fanout ≤ 100` 结构性封顶（单孩子约
+   250 B，整层 ≤ ~30 KB）。
+3. **保留恒假的 `truncated` 等于没删**：它是个诱导调用方继续追问"是不是还有"的假把手。所以这个面上
+   去掉的是 `page`/`next_cursor`，不是把 `truncated` 永远置 false（信封顶层的 `truncated` 仍在每个
+   结果上，此处置 false 是**真话**：什么都没被切掉）。
+4. **`route_children` 不能留成"读侧结构上限"**：两条键管同一个数字必然产生隐式不变量
+   `route_children ≥ branch_fanout`；有人把 fan-out 调到 20 而读侧还是 12，就会出现**一棵合法却读不
+   出来的树**（还是 `validation_error` 硬失败）——比刚删掉的分页缺陷更糟。定则：**fan-out 只在
+   `route_policy.branch_fanout` 一处治理，读侧对它没有意见**。
+5. **不顺手放宽 fan-out**：`2..100` 与"一次最多 +4"的理由是 jev 的判断质量与成本，不是分页；
+   删掉歧义不等于拿到放宽授权（顾问）。
+
+**迁移**：已经存在的配置 revision 里还带着 `route_children`。处理方式不是静默吞掉：`QueryBudgets`
+保留一个 `RetiredRouteChildren`（**从不被当作预算读**，只用来识别），`SHOW/ALTER/RESTORE CONFIGURATION`
+在遇到非零值时附一条 `configuration_retired_key` 通知，说明这个数已被忽略、下一次写入就会消失。
+新增通知码 `result.CodeConfigurationRetiredKey`。
+
+**落地**：`internal/msql/parser`（`SHOW ROUTES` 拒收 `LIMIT`/`CURSOR`；`ALTER CONFIGURATION
+QUERY_BUDGETS SET` 拒收 `ROUTE_CHILDREN`，两处都指名说明）、`internal/msql/executor/router.go`
+（整层输出，去掉 page）、`internal/router/page.go` 的 `CompleteNodes`（整层 + snapshot，装不下即
+报错而不是给页）、`internal/sqlstore` 的两个列表方法去掉 cursor/limit、`nativeconfig`（四条预算 +
+retired 识别字段）、`internal/adminui/dist/assets/routes.js`（cursor 循环塌成一次调用 + 重新冻结
+bundle）、Skill/契约示例、`docs/query/route-read-v1.md` 等。
+
+**证据**：`internal/msql/parser/route_whole_layer_test.go`（四种带 `LIMIT`/`CURSOR` 的写法必须被拒且
+消息含 "whole layer"；两种不带参数的写法必须解析且 `Limit`/`Cursor` 为空）、
+`internal/sqlstore/retired_config_test.go`（存一条五字段的旧配置，`SHOW CONFIGURATION` 不得再有
+`route_children` 列，且必须带 `configuration_retired_key` 通知、通知里点出 40 与 `branch_fanout`）、
+`internal/adminui/bundle_test.go` 的 `TestRouteTreeNeverPaginatesBranchOverflow`（退回 cursor 循环
+实测变红）。

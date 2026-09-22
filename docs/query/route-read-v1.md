@@ -12,10 +12,15 @@ single locator leaf。Route 只负责导航，任何读取都不得夹带 Row �
 
 ```sql
 DESCRIBE ROUTE :route_id;
-SHOW ROUTES FROM TABLE work.notes AT ROOT [CURSOR :cursor] LIMIT :limit;
-SHOW ROUTES UNDER :parent_id [CURSOR :cursor] LIMIT :limit;
-OPEN ROUTE :leaf_id [CURSOR :cursor] LIMIT :limit;
+SHOW ROUTES FROM TABLE work.notes AT ROOT;
+SHOW ROUTES UNDER :parent_id;
+OPEN ROUTE :leaf_id LIMIT :limit;
 ```
+
+`SHOW ROUTES` **没有** `LIMIT` 也没有 `CURSOR`：它返回该节点的**整层**孩子。层的体量由
+`route_policy.branch_fanout`（默认 12，上限 100）唯一决定，所以读侧不需要页，也没有"还有下一页"
+这种状态——`LIMIT`/`CURSOR` 与 `query_budgets.route_children` 已于 2026-09-22 一起撤掉，写了会被
+语法拒绝并说明原因。`OPEN ROUTE` 保留 `LIMIT`（locator 集合基数 `0..1`）与 cursor 语法。
 
 - `DESCRIBE` 是一个有界 point read，返回 node 元数据、非 null `aliases`、`database_id/table_id` scope 与
   按需 synopsis，不返回 children；
@@ -25,13 +30,15 @@ OPEN ROUTE :leaf_id [CURSOR :cursor] LIMIT :limit;
 - `OPEN` 只接受 leaf，只返回零个或一个 `database_id/table_id/row_id/revision` locator；
 - 业务字段和正文只能由后续 `SELECT ... WHERE row_id = ... LIMIT ...` 回表。
 
-`LIMIT` 必填；Canonical Skill 对 `OPEN` 固定使用 1。cursor 语法为兼容保留，但合法
+`OPEN` 的 `LIMIT` 必填，Canonical Skill 固定使用 1；cursor 语法为兼容保留，但合法
 Leaf 不会产生 next cursor。
 
 ## List page
 
-`SHOW` 与 `OPEN` 复用 `memora.list-page/v1`，每次都返回 version、limit、输入 cursor、
-snapshot、truncated 和可选 next cursor。`OPEN` 的 visible locator 集合基数是 `0..1`。
+`OPEN` 使用 `memora.list-page/v1`，返回 version、limit、输入 cursor、snapshot、truncated
+和可选 next cursor；其 visible locator 集合基数是 `0..1`。`SHOW ROUTES` 不再返回 page：
+整层就是答案，没有 cursor、没有 `next_cursor`，`truncated` 因此恒为 false（而不是一个可以被
+追问"是不是还有"的把手）。
 
 cursor 绑定读取类型、稳定 parent/leaf scope、snapshot 与下一 offset，并使用 canonical
 encoding 和 checksum。损坏、非 canonical、跨 scope、越界 cursor 返回

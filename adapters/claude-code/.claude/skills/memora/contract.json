@@ -22,8 +22,13 @@
   },
   "bootstrap_script": "scripts/install.sh",
   "install_consent": "required",
-  "supported_install_os": ["darwin"],
-  "supported_install_arch": ["arm64", "amd64"],
+  "supported_install_os": [
+    "darwin"
+  ],
+  "supported_install_arch": [
+    "arm64",
+    "amd64"
+  ],
   "allowed_commands": [
     "doctor",
     "query",
@@ -37,7 +42,10 @@
     "owner": "host",
     "endpoint_policy": "host-configured",
     "credentials": "never-passed-to-memora",
-    "protocols": ["openai-compatible", "anthropic-compatible"]
+    "protocols": [
+      "openai-compatible",
+      "anthropic-compatible"
+    ]
   },
   "workflows": [
     "discover",
@@ -76,13 +84,13 @@
     },
     {
       "name": "route-root",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"cursor\":\"\",\"limit\":12}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit\"",
-      "msql": "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
+      "command": "memora query --input '{\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW ROUTES FROM TABLE work.notes AT ROOT\"",
+      "msql": "SHOW ROUTES FROM TABLE work.notes AT ROOT"
     },
     {
       "name": "route-under",
-      "command": "memora query --input '{\"parameters\":{\"named\":{\"parent\":\"route_architecture\",\"limit\":12}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW ROUTES UNDER :parent LIMIT :limit\"",
-      "msql": "SHOW ROUTES UNDER :parent LIMIT :limit"
+      "command": "memora query --input '{\"parameters\":{\"named\":{\"parent\":\"route_architecture\"}},\"authorization\":{\"version\":\"memora.authorization/v2\",\"actor\":\"agent:host\",\"authorized_databases\":[\"work\"],\"default_level\":\"L0\"}}' \"SHOW ROUTES UNDER :parent\"",
+      "msql": "SHOW ROUTES UNDER :parent"
     },
     {
       "name": "open-route",

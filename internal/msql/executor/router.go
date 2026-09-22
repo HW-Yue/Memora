@@ -14,7 +14,7 @@ import (
 
 type tableRouterRows interface {
 	CreateTableRouterRoot(context.Context, string, string, string, string) (router.Node, error)
-	ListTableRouterRootsPage(context.Context, string, string, string, int) ([]router.Node, router.ReadPage, error)
+	ListTableRouterRoots(context.Context, string, string) ([]router.Node, router.ReadPage, error)
 }
 
 type routeSynopsisRows interface {
@@ -215,27 +215,19 @@ func (engine *Engine) showRoutes(
 	bound bindings,
 ) (Output, error) {
 	show := statement.Show
-	if show == nil || show.Limit == nil || (show.RouteMode != "TABLE_ROOT" && show.Route == nil) {
+	// A layer is answered whole. Its size is the Database's
+	// `route_policy.branch_fanout`, so there is no read-side limit and no cursor:
+	// a caller that had to page a layer could not tell a complete candidate set
+	// from a partial one, and every consumer of this surface — the agent, jev,
+	// the Admin tree — needs the whole layer to decide anything.
+	if show == nil || (show.RouteMode != "TABLE_ROOT" && show.Route == nil) {
 		return Output{}, executeError(result.CodeValidation, "SHOW ROUTES is incomplete")
 	}
-	cursor := ""
-	if show.Cursor != nil {
-		var err error
-		cursor, err = routerString(show.Cursor, bound, "Router cursor")
-		if err != nil {
-			return Output{}, err
-		}
-	}
-	budgets, err := engine.queryBudgets(ctx)
-	if err != nil {
-		return Output{}, err
-	}
-	limit, err := engine.routerLimit(ctx, show.Limit, bound, "SHOW ROUTES LIMIT", budgets.RouteChildren)
-	if err != nil {
-		return Output{}, err
-	}
-	var nodes []router.Node
-	var page router.ReadPage
+	var (
+		nodes []router.Node
+		page  router.ReadPage
+		err   error
+	)
 	expectedDatabaseID, expectedTableID, expectedParentID := "", "", ""
 	if show.RouteMode == "TABLE_ROOT" {
 		if show.Table == nil {
@@ -250,7 +242,7 @@ func (engine *Engine) showRoutes(
 			return Output{}, executeError(result.CodeUnsupported, "Table Router is not supported by this backend")
 		}
 		expectedDatabaseID, expectedTableID = table.DatabaseID, table.ID
-		nodes, page, err = tableRows.ListTableRouterRootsPage(ctx, table.DatabaseID, table.ID, cursor, limit)
+		nodes, page, err = tableRows.ListTableRouterRoots(ctx, table.DatabaseID, table.ID)
 	} else {
 		parent, resolveErr := engine.resolveRouterNode(ctx, show.Route, bound)
 		if resolveErr != nil {
@@ -260,13 +252,16 @@ func (engine *Engine) showRoutes(
 			return Output{}, executeError(result.CodeConstraint, "SHOW ROUTES UNDER requires a root or branch; use OPEN ROUTE for a leaf")
 		}
 		expectedDatabaseID, expectedTableID, expectedParentID = parent.DatabaseID, parent.TableID, parent.ID
-		nodes, page, err = engine.rows.ListRouterChildrenPage(ctx, parent.ID, cursor, limit)
+		nodes, page, err = engine.rows.ListRouterChildren(ctx, parent.ID)
 	}
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
+	// The snapshot is not on the wire — with no cursor there is nothing to resume
+	// — but a backend that forgot to compute it would be answering about a listing
+	// it never pinned, so the check stays.
 	if page.Snapshot == "" {
-		return Output{}, executeError(result.CodeInternal, "Route child page has no snapshot")
+		return Output{}, executeError(result.CodeInternal, "Route child listing has no snapshot")
 	}
 	if err := validateRouteChildren(nodes, expectedDatabaseID, expectedTableID, expectedParentID); err != nil {
 		return Output{}, err
@@ -284,12 +279,7 @@ func (engine *Engine) showRoutes(
 			{Name: "purpose", Type: "TEXT"},
 			{Name: "revision", Type: "INTEGER"},
 		},
-		Rows:      make([]result.Row, 0, len(nodes)),
-		Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
-		Page: &result.ListPage{
-			Version: result.ListPageVersion, Limit: uint64(limit), Cursor: cursor,
-			Snapshot: page.Snapshot, Truncated: page.NextCursor != "", NextCursor: page.NextCursor,
-		},
+		Rows: make([]result.Row, 0, len(nodes)),
 	}
 	for _, node := range nodes {
 		output.Rows = append(output.Rows, routeResult(node))

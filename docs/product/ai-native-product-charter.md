@@ -45,7 +45,7 @@ SHOW DATABASES COMPACT;
 SHOW TABLES FROM project_memora COMPACT;
 SHOW CATALOG ATLAS LIMIT 64 BYTES 8192 COMPACT;
 DESCRIBE TABLE project_memora.decisions COMPACT;
-SHOW ROUTES FROM TABLE project_memora.decisions AT ROOT LIMIT 12;
+SHOW ROUTES FROM TABLE project_memora.decisions AT ROOT;
 SHOW ROUTES UNDER :route_id LIMIT 12;
 OPEN ROUTE :leaf_id LIMIT 1;
 SELECT * FROM project_memora.decisions WHERE row_id = :row_id LIMIT 1;

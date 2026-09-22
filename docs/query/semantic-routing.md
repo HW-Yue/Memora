@@ -19,7 +19,7 @@ Database
 ## 导航
 
 ```sql
-SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12;
+SHOW ROUTES FROM TABLE work.notes AT ROOT;
 SHOW ROUTES UNDER :route_id LIMIT 12;
 OPEN ROUTE :leaf_id LIMIT 1;
 SELECT * FROM work.notes WHERE row_id = :row_id LIMIT 1;

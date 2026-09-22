@@ -13,9 +13,9 @@ func TestParseDatabaseConfigurationStatements(t *testing.T) {
 		{"SHOW CONFIGURATION HISTORY LIMIT :limit", "SHOW", 1},
 		{
 			"ALTER CONFIGURATION QUERY_BUDGETS SET " +
-				"ROUTE_CHILDREN :routes, OPEN_LOCATORS :locators, SELECT_SCAN :scan, " +
+				"OPEN_LOCATORS :locators, SELECT_SCAN :scan, " +
 				"SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame",
-			"ALTER_CONFIGURATION", 5,
+			"ALTER_CONFIGURATION", 4,
 		},
 		{"RESTORE CONFIGURATION QUERY_BUDGETS TO REVISION :revision", "RESTORE_CONFIGURATION", 1},
 	}
@@ -36,6 +36,9 @@ func TestParseDatabaseConfigurationRejectsPartialReplacement(t *testing.T) {
 		"ALTER CONFIGURATION QUERY_BUDGETS SET SELECT_ROWS 3",
 		"SHOW CONFIGURATION HISTORY",
 		"RESTORE CONFIGURATION QUERY_BUDGETS REVISION 1",
+		// The page budget went with route paging, wherever it is written.
+		"ALTER CONFIGURATION QUERY_BUDGETS SET ROUTE_CHILDREN 12, OPEN_LOCATORS 1, SELECT_SCAN 1000, SELECT_ROWS 10, ROUTE_FRAME_NODES 12",
+		"ALTER CONFIGURATION QUERY_BUDGETS SET OPEN_LOCATORS 1, ROUTE_CHILDREN 12, SELECT_SCAN 1000, SELECT_ROWS 10, ROUTE_FRAME_NODES 12",
 	} {
 		if _, err := Parse(source); err == nil {
 			t.Fatalf("Parse(%q) succeeded", source)

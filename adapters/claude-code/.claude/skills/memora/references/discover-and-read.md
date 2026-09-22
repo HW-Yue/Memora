@@ -42,7 +42,7 @@ candidates instead of choosing. Never widen the scope to make a guess fit.
 ```sh
 memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
 memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "DESCRIBE TABLE work.notes COMPACT"
-memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit"
+memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT"
 ```
 
 The Atlas already carries every Table of every Database it returns — name,
@@ -219,8 +219,9 @@ non-zero.
 `SELECT`.** That statement has no cursor, its `WHERE` takes only `row_id`
 equality, and the budget can only be raised by a write (`ALTER CONFIGURATION`,
 below). The read-only continuation is a different surface: above `select_rows`
-the sanctioned enumerator is the **Route tree walk**: `SHOW ROUTES` pages with a
-cursor at `route_children` per level, and every leaf names its Row. You do not
+the sanctioned enumerator is the **Route tree walk**: one `SHOW ROUTES` per level
+returns that whole level — a layer is bounded by `route_policy.branch_fanout`, so
+there is no page and no cursor — and every leaf names its Row. You do not
 have to remember that: the truncated answer carries an `output_truncated` warning
 whose `details.enumerate_with` is the statement to run. Take a Table's row count
 from the census itself, not from `doctor`, whose `rows` is instance-wide.
@@ -287,7 +288,7 @@ identifier** so a parameter there does not parse, and change entries carry no
 column values, only Row IDs and revisions). `doctor`'s `changes` and `rows` are instance-wide
 counters: use them to notice that a tree is frozen, never as a substitute for
 reading it. `doctor`'s `route_nodes` also counts the Table **roots**, which no
-`SHOW ROUTES` page ever returns, so a full walk will always come up short by one
+`SHOW ROUTES` answer ever returns, so a full walk will always come up short by one
 node per Table — read each root's `route_id` from the `parent_id` of its children
 instead of trying to reconcile the total by counting.
 
@@ -326,7 +327,7 @@ a permission denial. If a selected Row changed, discard it and refresh discovery
 at most once when it can materially affect the answer.
 
 ```sh
-memora query --input '{"parameters":{"named":{"parent":"route_architecture","limit":12}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES UNDER :parent LIMIT :limit"
+memora query --input '{"parameters":{"named":{"parent":"route_architecture"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES UNDER :parent"
 memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":1}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "OPEN ROUTE :leaf LIMIT :limit"
 memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```
@@ -335,9 +336,10 @@ The five budgets are counted **per statement**, not per request: a batch of ten
 point reads is ten statements of one Row each, and each one is measured on its
 own. Read them only when a limit actually binds or you intend to exceed the
 bundled ceilings, with the statement that returns them — `SHOW CONFIGURATION`
-(the five `query_budgets` are `route_children`, `open_locators`, `select_scan`,
-`select_rows`, `route_frame_nodes`; `SHOW CONFIGURATION HISTORY LIMIT :limit` shows
-how they got there). The bundled ceilings are `route_children` 12, `open_locators` 1,
+(the four `query_budgets` are `open_locators`, `select_scan`, `select_rows` and
+`route_frame_nodes` — `route_children` was the `SHOW ROUTES` page budget and went
+with route paging; `SHOW CONFIGURATION HISTORY LIMIT :limit` shows how they got
+there). The bundled ceilings are `open_locators` 1,
 `select_rows` 10, `select_scan` 1000 and `route_frame_nodes` 12 **nodes** — that
 last one is the host's own bound on a cross-statement Route Frame: the engine
 stores and returns the number, and enforcing it is the host's job, so exceeding
@@ -357,11 +359,11 @@ holds more live Rows than the ceiling is enumerated read-only by the Route tree
 walk, or the ceiling is raised explicitly:
 
 ```sh
-memora exec --input '{"parameters":{"named":{"routes":12,"locators":1,"scan":1000,"rows":10,"frame":12}},"mutation":{"expected_revision":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"raise the census ceiling for one large Table"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ALTER CONFIGURATION QUERY_BUDGETS SET ROUTE_CHILDREN :routes, OPEN_LOCATORS :locators, SELECT_SCAN :scan, SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame"
+memora exec --input '{"parameters":{"named":{"locators":1,"scan":1000,"rows":10,"frame":12}},"mutation":{"expected_revision":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-7","reason":"raise the census ceiling for one large Table"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ALTER CONFIGURATION QUERY_BUDGETS SET OPEN_LOCATORS :locators, SELECT_SCAN :scan, SELECT_ROWS :rows, ROUTE_FRAME_NODES :frame"
 ```
 
 Changing configuration is an **L2** write, and the statement is only half of it.
-It replaces all five (they are one revision, so the mutation needs
+It replaces all four (they are one revision, so the mutation needs
 `expected_revision` — read it from `SHOW CONFIGURATION` first — plus actor and
 reason, and `default_level` is `L2`; an L1 authorization is refused before the
 revision is even looked at), `SHOW CONFIGURATION HISTORY LIMIT :limit` shows the trail, and

@@ -228,9 +228,9 @@ func (o operations) GetRouterNode(ctx context.Context, routeID string) (value ro
 	return
 }
 
-func (o operations) ListRouterChildrenPage(ctx context.Context, parentID, cursor string, limit int) (values []router.Node, page router.ReadPage, err error) {
+func (o operations) ListRouterChildren(ctx context.Context, parentID string) (values []router.Node, page router.ReadPage, err error) {
 	err = o.run(ctx, false, func(t *tx) error {
-		values, page, err = t.childrenPage(ctx, parentID, cursor, limit)
+		values, page, err = t.children(ctx, parentID)
 		return err
 	})
 	return
@@ -249,9 +249,9 @@ func (o operations) CreateTableRouterRoot(ctx context.Context, databaseName, tab
 	return
 }
 
-func (o operations) ListTableRouterRootsPage(ctx context.Context, databaseID, tableID, cursor string, limit int) (values []router.Node, page router.ReadPage, err error) {
+func (o operations) ListTableRouterRoots(ctx context.Context, databaseID, tableID string) (values []router.Node, page router.ReadPage, err error) {
 	err = o.run(ctx, false, func(t *tx) error {
-		values, page, err = t.tableRootChildren(ctx, databaseID, tableID, cursor, limit)
+		values, page, err = t.tableRootChildren(ctx, databaseID, tableID)
 		return err
 	})
 	return

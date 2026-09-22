@@ -542,21 +542,16 @@ func (parser *parser) parseShow() (ast.Statement, error) {
 		default:
 			return ast.Statement{}, parser.unexpected("UNDER or FROM TABLE")
 		}
-		if parser.matchWord("CURSOR") {
-			cursor, err := parser.parseExpression(1)
-			if err != nil {
-				return ast.Statement{}, err
+		// A layer comes back whole: its size is the Database's
+		// `route_policy.branch_fanout`, never a read-side page, so the paging
+		// parameters are gone. They are refused by name because a host copying an
+		// example that predates this would otherwise read a page and believe it
+		// held the layer.
+		for _, retired := range []string{"CURSOR", "LIMIT"} {
+			if parser.matchWord(retired) {
+				return ast.Statement{}, parser.retiredRoutePaging(retired)
 			}
-			show.Cursor = &cursor
 		}
-		if _, err := parser.expectWord("LIMIT"); err != nil {
-			return ast.Statement{}, err
-		}
-		limit, err := parser.parseExpression(1)
-		if err != nil {
-			return ast.Statement{}, err
-		}
-		show.Limit = &limit
 	default:
 		return ast.Statement{}, parser.unexpected("INSTANCE, CONFIGURATION, DATABASES, CATALOG ATLAS, TABLES, COLUMNS, CHANGES, CHANGE, ROUTE TRACE, HISTORY, or ROUTES")
 	}
@@ -869,7 +864,6 @@ func (parser *parser) parseAlterConfiguration() (ast.Statement, error) {
 		name string
 		set  func(*ast.Expression)
 	}{
-		{"ROUTE_CHILDREN", func(expression *ast.Expression) { value.RouteChildren = expression }},
 		{"OPEN_LOCATORS", func(expression *ast.Expression) { value.OpenLocators = expression }},
 		{"SELECT_SCAN", func(expression *ast.Expression) { value.SelectScan = expression }},
 		{"SELECT_ROWS", func(expression *ast.Expression) { value.SelectRows = expression }},
@@ -887,6 +881,17 @@ func (parser *parser) parseAlterConfiguration() (ast.Statement, error) {
 		if index > 0 {
 			if _, err := parser.expectKind(lexer.KindComma, ","); err != nil {
 				return ast.Statement{}, err
+			}
+		}
+		// `ROUTE_CHILDREN` was the SHOW ROUTES page size. A route listing returns
+		// a whole layer now, so the key is gone — refused by name, in whatever
+		// position it is written, rather than as "expected OPEN_LOCATORS".
+		if key == "QUERY_BUDGETS" && parser.checkWord("ROUTE_CHILDREN") {
+			return ast.Statement{}, &Error{
+				Code: ErrorUnexpectedToken, Span: parser.peek().Span,
+				Expected: "`ROUTE_CHILDREN` was retired with route paging: a route listing returns the " +
+					"whole layer, and its size is the Database's route_policy.branch_fanout",
+				Found: tokenDescription(parser.peek()), StatementIndex: -1,
 			}
 		}
 		if _, err := parser.expectWord(field.name); err != nil {
@@ -1482,6 +1487,19 @@ func (parser *parser) unexpected(expected string) *Error {
 		code = ErrorUnexpectedEOF
 	}
 	return &Error{Code: code, Span: token.Span, Expected: expected, Found: tokenDescription(token), StatementIndex: -1}
+}
+
+// retiredRoutePaging refuses a parameter SHOW ROUTES no longer takes. The
+// message says what to write instead of leaving the reader to guess whether the
+// layer is still pageable.
+func (parser *parser) retiredRoutePaging(parameter string) *Error {
+	return &Error{
+		Code: ErrorUnexpectedToken, Span: parser.peek().Span,
+		Expected: "the whole layer: SHOW ROUTES returns every child of one node, so `" + parameter +
+			"` was retired with route paging and the statement ends at the node",
+		Found:          tokenDescription(parser.peek()),
+		StatementIndex: -1,
+	}
 }
 
 func (parser *parser) errorAt(token lexer.Token, expected string) *Error {

@@ -49,6 +49,28 @@ type pageNode struct {
 	Revision uint64 `json:"revision"`
 }
 
+// CompleteNodes returns a listing that has no page: every node, with the
+// snapshot that identifies it. A route layer is bounded by the Database's
+// `route_policy.branch_fanout`, not by a read-side budget, so there is nothing
+// to page and no cursor to hand back — and a listing that somehow did not fit is
+// an error rather than a page, because no surface above this can report "there
+// is more" about a layer.
+func CompleteNodes(scope string, nodes []Node) ([]Node, ReadPage, error) {
+	limit := len(nodes)
+	if limit < 1 {
+		limit = 1
+	}
+	complete, page, err := PaginateNodes(scope, "", limit, nodes)
+	if err != nil {
+		return nil, ReadPage{}, err
+	}
+	if page.NextCursor != "" {
+		return nil, ReadPage{}, routerError(result.CodeInternal,
+			"a route layer must fit one answer: the listing has more nodes than it returned")
+	}
+	return complete, page, nil
+}
+
 func PaginateNodes(scope, cursor string, limit int, nodes []Node) ([]Node, ReadPage, error) {
 	values := make([]pageNode, 0, len(nodes))
 	for _, node := range nodes {

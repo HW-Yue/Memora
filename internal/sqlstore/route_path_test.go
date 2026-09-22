@@ -28,7 +28,7 @@ func (h *harness) seedTree() string {
 
 func (h *harness) rootChildren() []result.Row {
 	h.t.Helper()
-	return h.run(`SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT 12`, nil, executor.MutationOptions{}).Rows
+	return h.run(`SHOW ROUTES FROM TABLE work.notes AT ROOT`, nil, executor.MutationOptions{}).Rows
 }
 
 func (h *harness) insertAlongPath(title string, path []router.PathSegment) string {
@@ -57,11 +57,11 @@ func TestInsertCompletesAMissingPath(t *testing.T) {
 	if len(top) != 1 || text(top[0]["name"]) != "architecture" {
 		t.Fatalf("root children = %v", top)
 	}
-	under := h.run(`SHOW ROUTES UNDER :p LIMIT 12`, map[string]any{"p": text(top[0]["route_id"])}, executor.MutationOptions{})
+	under := h.run(`SHOW ROUTES UNDER :p`, map[string]any{"p": text(top[0]["route_id"])}, executor.MutationOptions{})
 	if len(under.Rows) != 1 || text(under.Rows[0]["name"]) != "storage" {
 		t.Fatalf("second level = %v", under.Rows)
 	}
-	last := h.run(`SHOW ROUTES UNDER :p LIMIT 12`, map[string]any{"p": text(under.Rows[0]["route_id"])}, executor.MutationOptions{})
+	last := h.run(`SHOW ROUTES UNDER :p`, map[string]any{"p": text(under.Rows[0]["route_id"])}, executor.MutationOptions{})
 	if len(last.Rows) != 1 || text(last.Rows[0]["name"]) != "sqlite" || text(last.Rows[0]["kind"]) != "leaf" {
 		t.Fatalf("leaf level = %v", last.Rows)
 	}
@@ -85,7 +85,7 @@ func TestInsertReusesTheExistingPrefix(t *testing.T) {
 	if len(top) != 1 {
 		t.Fatalf("the shared branch must not be duplicated: %v", top)
 	}
-	under := h.run(`SHOW ROUTES UNDER :p LIMIT 12`, map[string]any{"p": text(top[0]["route_id"])}, executor.MutationOptions{})
+	under := h.run(`SHOW ROUTES UNDER :p`, map[string]any{"p": text(top[0]["route_id"])}, executor.MutationOptions{})
 	if len(under.Rows) != 2 {
 		t.Fatalf("both leaves must hang under the one shared branch: %v", under.Rows)
 	}

@@ -60,7 +60,7 @@ var frozenAssets = []assetSpec{
 	},
 	{
 		file: "dist/assets/routes.js", path: "/assets/routes.js", contentType: "text/javascript; charset=utf-8",
-		hash: "0eab14f61ff7480b3eccb16a9a6cdaf0af30c3691dbb8e28fe0e9cbb0c35d47a", size: 49764,
+		hash: "be4bf2df203c3a8e9669c97587786e59e1d8616b0f1a45999a1135144b7b2c70", size: 46233,
 	},
 	{
 		file: "dist/assets/rows.js", path: "/assets/rows.js", contentType: "text/javascript; charset=utf-8",

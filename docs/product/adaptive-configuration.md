@@ -48,7 +48,6 @@ F79 的 `query_budgets` 暂归为“允许显式运行时修改”：必须完�
 SHOW CONFIGURATION;
 SHOW CONFIGURATION HISTORY LIMIT :limit;
 ALTER CONFIGURATION QUERY_BUDGETS SET
-  ROUTE_CHILDREN :routes,
   OPEN_LOCATORS :locators,
   SELECT_SCAN :scan,
   SELECT_ROWS :rows,
@@ -70,8 +69,11 @@ Route Frame nodes 12。F169 后 `open_locators` 是兼容字段：历史 revisio
 
 ## 第二个配置键：`route_policy`
 
-`route_children` 是一次 Route 读取的查询预算，不等同于 Branch 的结构 fan-out。
-结构上限是独立配置键 `route_policy`，拥有独立 revision 链、actor 和 reason：
+**`route_children` 已于 2026-09-22 随路由分页一起撤掉**：`SHOW ROUTES` 现在一次返回整层，
+读侧不再有"一页取多少"这个选择，层的体量由结构上限唯一决定。撤掉它的理由是两条键管同一个数字
+必然产生隐式不变量（`route_children ≥ branch_fanout`），一旦有人把 fan-out 调到 20 而读侧还是 12，
+就会出现"一棵合法却读不出来的树"。所以**fan-out 只在 `route_policy.branch_fanout` 一处治理，
+读侧对它没有意见**。结构上限是独立配置键 `route_policy`，拥有独立 revision 链、actor 和 reason：
 
 ```sql
 SHOW CONFIGURATION ROUTE_POLICY;

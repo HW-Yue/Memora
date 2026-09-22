@@ -1,40 +1,10 @@
 // Admin 是展示层，对一层能显示多少个节点不设任何上限：后端有多少就画多少。
 // 节点数量该不该增长是 Agent 的判断（route_policy.branch_fanout，F223），不是这里的事。
 //
-// 唯一的数字是单次请求的页大小，它由服务端的 query_budgets.route_children 决定
-// （SHOW ROUTES LIMIT 超过该预算会被拒绝），所以向服务端查询而不是写死。
-// 取到首页后一直顺着 cursor 取，直到 truncated 为 false。
-let routeChildrenBudget = 0;
+// SHOW ROUTES 一次返回整层：服务端从不截断（一层最多 branch_fanout 个子节点，≤100），
+// 所以这两条 SHOW ROUTES 既不传 LIMIT/CURSOR，也没有 page/next_cursor/snapshot 可跟。
+// 展示层自己截断就等于把"这一层有多少个"这个 Agent 的判断换成了前端的。
 const LOCATOR_LIMIT = 1;
-
-async function childPageSize(executeMSQL) {
-  if (routeChildrenBudget > 0) return routeChildrenBudget;
-  const result = resultsFrom(await executeMSQL("SHOW CONFIGURATION QUERY_BUDGETS"), 1)[0];
-  const budget = result.rows.length === 1 ? result.rows[0].route_children : 0;
-  if (!Number.isSafeInteger(budget) || budget < 1) {
-    throw new RouteViewError("corrupt", "Route child page budget is invalid");
-  }
-  routeChildrenBudget = budget;
-  return budget;
-}
-
-// 顺着 cursor 取完所有页。没有页数上限——只在 cursor 不前进时中止，
-// 那是服务端契约被破坏，不是展示策略。
-async function drainPages(first, limit, fetchPage, rowsOf) {
-  let rows = rowsOf(first);
-  let page = validatePage(first, limit);
-  while (page.truncated) {
-    const cursor = page.next_cursor;
-    const result = await fetchPage(cursor);
-    const next = validatePage(result, limit);
-    rows = rows.concat(rowsOf(result));
-    if (next.next_cursor === cursor) {
-      throw new RouteViewError("corrupt", "Route Tree cursor did not advance");
-    }
-    page = next;
-  }
-  return { rows, page };
-}
 const DOCUMENT_ENTER_MS = 180;
 
 class RouteViewError extends Error {
@@ -96,6 +66,7 @@ function resultsFrom(envelope, count) {
   return envelope.results;
 }
 
+// OPEN ROUTE 仍然分页（它不在"整层返回"里），所以这一个封套还是要验；SHOW ROUTES 已不再用它。
 function validatePage(result, limit) {
   const page = result.page;
   if (!page || page.version !== "memora.list-page/v1" || page.limit !== limit ||
@@ -224,7 +195,7 @@ function errorState(error) {
     return ["permission", "无权查看这棵 Route Tree", "当前 Admin session 未授权该 Database。"];
   }
   if (error.code === "revision_conflict") {
-    return ["error", "Route Tree 已发生变化", "当前分页快照已失效，请刷新这一层后继续。"];
+    return ["error", "Route Tree 已发生变化", "读到的快照已经不是现在这棵树（这一层被改过），刷新后重新读。"];
   }
   if (error.code === "corrupt" || error.code === "internal_error" || error.code === "constraint_violation") {
     return ["corrupt", "Route Tree 响应无法验证", "页面拒绝展示不完整或跨 scope 的语义索引。"];
@@ -279,70 +250,17 @@ function locatorCard(row) {
   return card;
 }
 
-function markComplete(section) {
-  const root = section.closest(".route-outlet");
-  if (root) root.dataset.pageState = "ready";
-}
-
-function pagedSection(title, rows, page, render, loadMore) {
-  const section = element("section", "catalog-section route-section");
-  const header = element("div", "section-heading");
-  header.append(element("h3", "", title));
-  const list = element("div", "route-list");
-  for (const row of rows) list.append(render(row));
-  section.append(header, list);
-  if (page.truncated) addContinuation(section, list, rows, page, render, loadMore);
-  return section;
-}
-
-function addContinuation(section, list, rows, page, render, loadMore) {
-  const button = element("button", "load-more", "加载下一页");
-  button.type = "button";
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    try {
-      const next = await loadMore(page.next_cursor);
-      if (next.page.snapshot !== page.snapshot) {
-        throw new RouteViewError("revision_conflict", "Route page snapshot changed");
-      }
-      const known = new Set(rows.map((row) => row.route_id || row.row_id));
-      for (const row of next.rows) {
-        const id = row.route_id || row.row_id;
-        if (known.has(id)) throw new RouteViewError("corrupt", "Route continuation duplicated an object");
-        known.add(id);
-        rows.push(row);
-        list.append(render(row));
-      }
-      button.remove();
-      if (next.page.truncated) addContinuation(section, list, rows, next.page, render, loadMore);
-      else markComplete(section);
-    } catch (error) {
-      const [kind, stateTitle, detail] = errorState(error);
-      section.append(stateNode(kind, stateTitle, detail));
-      button.disabled = false;
-    }
-  });
-  section.append(button);
-}
-
 async function loadTableRoot(executeMSQL, databaseID, tableID) {
   const subject = `${quoteIdentifier(databaseID, "db_")}.${quoteIdentifier(tableID, "tbl_")}`;
-  const limit = await childPageSize(executeMSQL);
   const source =
-    `DESCRIBE TABLE ${subject} COMPACT; SHOW ROUTES FROM TABLE ${subject} AT ROOT LIMIT :limit`;
+    `DESCRIBE TABLE ${subject} COMPACT; SHOW ROUTES FROM TABLE ${subject} AT ROOT`;
   const results = resultsFrom(await executeMSQL(source, [
-    statementInput({}), statementInput({ limit })
+    statementInput({}), statementInput({})
   ]), 2);
-  const drained = await drainPages(
-    results[1],
-    limit,
-    async (cursor) => resultsFrom(await executeMSQL(
-      `SHOW ROUTES FROM TABLE ${subject} AT ROOT CURSOR :cursor LIMIT :limit`,
-      [statementInput({ cursor, limit })]
-    ), 1)[0],
-    (result) => routeRows(result, databaseID, tableID)
-  );
-  return { object: tablePoint(results[0], databaseID, tableID), rows: drained.rows, page: drained.page };
+  return {
+    object: tablePoint(results[0], databaseID, tableID),
+    rows: routeRows(results[1], databaseID, tableID),
+  };
 }
 
 async function describeRoute(executeMSQL, databaseID, tableID, routeID) {
@@ -353,19 +271,10 @@ async function describeRoute(executeMSQL, databaseID, tableID, routeID) {
 }
 
 async function loadChildren(executeMSQL, databaseID, tableID, routeID) {
-  const limit = await childPageSize(executeMSQL);
-  const first = resultsFrom(await executeMSQL(
-    "SHOW ROUTES UNDER :route LIMIT :limit", [statementInput({ route: routeID, limit })]
+  const result = resultsFrom(await executeMSQL(
+    "SHOW ROUTES UNDER :route", [statementInput({ route: routeID })]
   ), 1)[0];
-  return drainPages(
-    first,
-    limit,
-    async (cursor) => resultsFrom(await executeMSQL(
-      "SHOW ROUTES UNDER :route CURSOR :cursor LIMIT :limit",
-      [statementInput({ route: routeID, cursor, limit })]
-    ), 1)[0],
-    (result) => routeRows(result, databaseID, tableID, routeID)
-  );
+  return { rows: routeRows(result, databaseID, tableID, routeID) };
 }
 
 async function loadLocators(executeMSQL, databaseID, tableID, routeID) {
@@ -636,11 +545,10 @@ function treeNode(row) {
     revision: row.revision,
     children: [],
     childrenLoaded: false,
-    page: null
   };
 }
 
-function treeRoot(table, rows, page) {
+function treeRoot(table, rows) {
   return {
     id: "table-root",
     name: table.name,
@@ -648,7 +556,6 @@ function treeRoot(table, rows, page) {
     purpose: table.purpose,
     children: rows.map(treeNode),
     childrenLoaded: true,
-    page
   };
 }
 
@@ -749,11 +656,8 @@ async function replaceDocumentNode(graph, tree, node, document) {
 
 async function appendChildren(graph, tree, node, executeMSQL, databaseID, tableID) {
   const next = await loadChildren(executeMSQL, databaseID, tableID, node.route_id);
-  const existing = [];
-  const added = next.rows.map(treeNode);
-  node.children = existing.concat(added);
+  node.children = next.rows.map(treeNode);
   node.childrenLoaded = true;
-  node.page = next.page;
   const selected = node.id;
   graph.setData(graphData(tree));
   await graph.render();
@@ -1174,7 +1078,7 @@ export async function renderRoutes(root, options) {
     const tableID = stableID(parts[1], "tbl_", "Table");
     const data = await loadTableRoot(options.executeMSQL, databaseID, tableID);
     if (!options.isCurrent()) return;
-    const tree = treeRoot(data.object, data.rows, data.page);
+    const tree = treeRoot(data.object, data.rows);
     const view = element("div", "semantic-canvas-page semantic-canvas-fullscreen");
     const controls = element("div", "semantic-canvas-controls");
     const back = element("a", "canvas-control canvas-back", "返回表");
@@ -1193,7 +1097,7 @@ export async function renderRoutes(root, options) {
     canvas.setAttribute("aria-label", "语义索引树无限画布");
     stage.append(controls, canvas);
     view.append(stage);
-    root.dataset.pageState = data.rows.length === 0 ? "empty" : data.page.truncated ? "truncated" : "ready";
+    root.dataset.pageState = data.rows.length === 0 ? "empty" : "ready";
     root.replaceChildren(view);
     if (data.rows.length === 0) {
       setCanvasState(stage, "empty", "这个 Table 还没有 Route", "语义索引建立后，第一层节点会显示在这里。");

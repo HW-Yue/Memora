@@ -14,12 +14,22 @@ const (
 	recordSchema    = 1
 )
 
+// QueryBudgets are the read-side ceilings a caller can move. `route_children`
+// is deliberately absent: it was the SHOW ROUTES page size, and route listings
+// stopped paginating — a layer is bounded by `route_policy.branch_fanout`, which
+// is governed in that one place and not duplicated here.
 type QueryBudgets struct {
-	RouteChildren   int `json:"route_children"`
 	OpenLocators    int `json:"open_locators"`
 	SelectScan      int `json:"select_scan"`
 	SelectRows      int `json:"select_rows"`
 	RouteFrameNodes int `json:"route_frame_nodes"`
+	// RetiredRouteChildren is not a budget and is never read as one. A revision
+	// written while route paging existed still carries the key, and decoding it
+	// here is how a host is *told* that the number stopped doing anything instead
+	// of watching it disappear; the next write drops it. Nothing may consult it:
+	// a second place that bounds a route listing is exactly the duplication that
+	// removing the key was meant to end.
+	RetiredRouteChildren int `json:"route_children,omitempty"`
 }
 
 type Revision struct {
@@ -43,8 +53,7 @@ func (err *Error) StableCode() string { return string(err.Code) }
 
 func Defaults() QueryBudgets {
 	return QueryBudgets{
-		RouteChildren: 12, OpenLocators: 1, SelectScan: 1000,
-		SelectRows: 10, RouteFrameNodes: 12,
+		OpenLocators: 1, SelectScan: 1000, SelectRows: 10, RouteFrameNodes: 12,
 	}
 }
 
@@ -59,9 +68,6 @@ func ValidateMutation(expected uint64, actor, reason string) error {
 }
 
 func ValidateBudgets(value QueryBudgets) error {
-	if value.RouteChildren < 1 || value.RouteChildren > 100 {
-		return configError(result.CodeConstraint, "route_children must be between 1 and 100")
-	}
 	if value.OpenLocators < 1 || value.OpenLocators > 100 {
 		return configError(result.CodeConstraint, "open_locators must be between 1 and 100")
 	}

@@ -20,7 +20,9 @@ const (
 
 // RoutePolicy holds the semantic structure limits a Database enforces on its
 // Router tree. BranchFanout is the maximum number of live children one root or
-// branch may carry; it is not the SHOW ROUTES read page budget.
+// branch may carry, and — now that a route listing returns a whole layer — it is
+// also what bounds the size of that answer. There is no read-side page budget to
+// keep in step with it.
 type RoutePolicy struct {
 	BranchFanout int `json:"branch_fanout"`
 }

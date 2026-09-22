@@ -211,7 +211,7 @@ func (t *tx) createTableRoot(ctx context.Context, databaseName, tableName, purpo
 	return t.withPath(ctx, node)
 }
 
-func (t *tx) tableRootChildren(ctx context.Context, databaseID, tableID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
+func (t *tx) tableRootChildren(ctx context.Context, databaseID, tableID string) ([]router.Node, router.ReadPage, error) {
 	var root sql.NullString
 	err := t.q().QueryRowContext(ctx, `SELECT router_root_id FROM mem_tables WHERE id = ? AND database_id = ?`, tableID, databaseID).Scan(&root)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -221,12 +221,12 @@ func (t *tx) tableRootChildren(ctx context.Context, databaseID, tableID, cursor 
 		return nil, router.ReadPage{}, err
 	}
 	if !root.Valid || root.String == "" {
-		return router.PaginateNodes("table-root:"+databaseID+":"+tableID, cursor, limit, []router.Node{})
+		return router.CompleteNodes("table-root:"+databaseID+":"+tableID, []router.Node{})
 	}
-	return t.childrenPage(ctx, root.String, cursor, limit)
+	return t.children(ctx, root.String)
 }
 
-func (t *tx) childrenPage(ctx context.Context, parentID, cursor string, limit int) ([]router.Node, router.ReadPage, error) {
+func (t *tx) children(ctx context.Context, parentID string) ([]router.Node, router.ReadPage, error) {
 	parent, err := t.findRoute(ctx, parentID)
 	if err != nil {
 		return nil, router.ReadPage{}, err
@@ -246,7 +246,7 @@ func (t *tx) childrenPage(ctx context.Context, parentID, cursor string, limit in
 		}
 		nodes = append(nodes, value)
 	}
-	return router.PaginateNodes("parent:"+parentID, cursor, limit, nodes)
+	return router.CompleteNodes("parent:"+parentID, nodes)
 }
 
 func (t *tx) createNode(ctx context.Context, parentID string, definition router.NodeDefinition) (router.Node, error) {

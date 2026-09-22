@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/msql/ast"
@@ -36,7 +37,7 @@ func (engine *Engine) routePolicyManager() (routePolicyRows, error) {
 
 func legacyQueryBudgets() nativeconfig.QueryBudgets {
 	return nativeconfig.QueryBudgets{
-		RouteChildren: 100, OpenLocators: 1, SelectScan: maxQueryScan,
+		OpenLocators: 1, SelectScan: maxQueryScan,
 		SelectRows: maxQueryScan, RouteFrameNodes: 100,
 	}
 }
@@ -107,11 +108,11 @@ func (engine *Engine) alterConfiguration(
 		return Output{}, executeError(result.CodeValidation, "ALTER CONFIGURATION is incomplete")
 	}
 	values := []*ast.Expression{
-		statement.RouteChildren, statement.OpenLocators, statement.SelectScan,
+		statement.OpenLocators, statement.SelectScan,
 		statement.SelectRows, statement.RouteFrameNodes,
 	}
 	labels := []string{
-		"route_children", "open_locators", "select_scan", "select_rows", "route_frame_nodes",
+		"open_locators", "select_scan", "select_rows", "route_frame_nodes",
 	}
 	numbers := make([]int, len(values))
 	for index, expression := range values {
@@ -122,8 +123,8 @@ func (engine *Engine) alterConfiguration(
 		numbers[index] = int(value)
 	}
 	updated, err := manager.UpdateQueryBudgets(ctx, nativeconfig.QueryBudgets{
-		RouteChildren: numbers[0], OpenLocators: numbers[1], SelectScan: numbers[2],
-		SelectRows: numbers[3], RouteFrameNodes: numbers[4],
+		OpenLocators: numbers[0], SelectScan: numbers[1],
+		SelectRows: numbers[2], RouteFrameNodes: numbers[3],
 	}, options.ExpectedRevision, options.Actor, options.Reason)
 	if err != nil {
 		return Output{}, normalizeError(err)
@@ -169,12 +170,25 @@ func configurationOutput(value nativeconfig.Revision, mutation bool) Output {
 		output.AffectedRows = 1
 		output.Revision = &revision
 	}
+	// A revision written while `route_children` still existed keeps the key in
+	// its stored body. The engine answers with the four budgets it has and says
+	// what it ignored, instead of letting a number someone set disappear quietly.
+	if value.Budgets.RetiredRouteChildren != 0 {
+		output.Warnings = append(output.Warnings, result.Notice{
+			Code: result.CodeConfigurationRetiredKey,
+			Message: fmt.Sprintf("this stored revision carries route_children=%d, which was retired with "+
+				"route paging: a route listing returns the whole layer and its size is the Database's "+
+				"route_policy.branch_fanout. The value is ignored; the next configuration write drops it.",
+				value.Budgets.RetiredRouteChildren),
+			Details: map[string]any{"retired_key": "route_children", "retired_value": value.Budgets.RetiredRouteChildren},
+		})
+	}
 	return output
 }
 
 func configurationColumns() []result.Column {
 	return []result.Column{
-		{Name: "config_key", Type: "TEXT"}, {Name: "route_children", Type: "INTEGER"},
+		{Name: "config_key", Type: "TEXT"},
 		{Name: "open_locators", Type: "INTEGER"}, {Name: "select_scan", Type: "INTEGER"},
 		{Name: "select_rows", Type: "INTEGER"}, {Name: "route_frame_nodes", Type: "INTEGER"},
 		{Name: "revision", Type: "INTEGER"}, {Name: "actor", Type: "TEXT"},
@@ -185,7 +199,7 @@ func configurationColumns() []result.Column {
 
 func configurationRow(value nativeconfig.Revision) result.Row {
 	return result.Row{
-		"config_key": value.Key, "route_children": value.Budgets.RouteChildren,
+		"config_key":    value.Key,
 		"open_locators": value.Budgets.OpenLocators, "select_scan": value.Budgets.SelectScan,
 		"select_rows": value.Budgets.SelectRows, "route_frame_nodes": value.Budgets.RouteFrameNodes,
 		"revision": value.Revision, "actor": value.Actor, "reason": value.Reason,

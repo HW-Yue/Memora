@@ -41,24 +41,16 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 			parameters: 1,
 		},
 		{
-			source:     "SHOW ROUTES UNDER :parent CURSOR :cursor LIMIT :limit",
-			kind:       "SHOW",
-			parameters: 3,
-		},
-		{
-			source:     "SHOW ROUTES FROM TABLE work.notes AT ROOT LIMIT :limit",
+			// A layer is answered whole, so the only parameter a route listing
+			// can carry is the node it is under.
+			source:     "SHOW ROUTES UNDER :parent",
 			kind:       "SHOW",
 			parameters: 1,
 		},
 		{
-			source:     "SHOW ROUTES FROM TABLE work.notes AT ROOT CURSOR :cursor LIMIT :limit",
+			source:     "SHOW ROUTES FROM TABLE work.notes AT ROOT",
 			kind:       "SHOW",
-			parameters: 2,
-		},
-		{
-			source:     "SHOW ROUTES UNDER :parent LIMIT :limit",
-			kind:       "SHOW",
-			parameters: 2,
+			parameters: 0,
 		},
 		{
 			source:     "OPEN ROUTE :route LIMIT :limit",
@@ -122,7 +114,7 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 		"ARCHIVE ROUTE",
 		"UNARCHIVE ROUTE",
 		"UNARCHIVE DATABASE",
-		"SHOW ROUTES FROM TABLE work.notes LIMIT 10",
+		"SHOW ROUTES FROM TABLE work.notes",
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :query LIMIT :limit BYTES :bytes",
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING LEXICAL :query LIMIT 8",
 		"SHOW ROUTE CANDIDATES FROM ALL TABLES USING UNKNOWN :query LIMIT 8 BYTES 4096",

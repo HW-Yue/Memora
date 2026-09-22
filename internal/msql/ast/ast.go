@@ -283,7 +283,6 @@ type ApplySchemaChangeStatement struct {
 type ConfigurationStatement struct {
 	Action          string      `json:"action"`
 	Key             string      `json:"key"`
-	RouteChildren   *Expression `json:"route_children,omitempty"`
 	OpenLocators    *Expression `json:"open_locators,omitempty"`
 	SelectScan      *Expression `json:"select_scan,omitempty"`
 	SelectRows      *Expression `json:"select_rows,omitempty"`
@@ -442,7 +441,6 @@ func (document Document) Parameters() []Parameter {
 	case statement.ApplySchema != nil:
 		appendExpression(statement.ApplySchema.Plan)
 	case statement.Configuration != nil:
-		appendExpression(statement.Configuration.RouteChildren)
 		appendExpression(statement.Configuration.OpenLocators)
 		appendExpression(statement.Configuration.SelectScan)
 		appendExpression(statement.Configuration.SelectRows)

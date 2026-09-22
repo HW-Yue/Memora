@@ -281,7 +281,7 @@ func TestRowDocumentModuleUsesDictionaryMetadataAndBoundedParameterizedMSQL(t *t
 	}
 }
 
-func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *testing.T) {
+func TestRouteTreeModuleUsesParameterizedMSQLAndDefinesEveryPageState(t *testing.T) {
 	t.Parallel()
 
 	index, err := fs.ReadFile(embeddedFiles, "dist/index.html")
@@ -312,13 +312,12 @@ func TestRouteTreeModuleUsesBoundedParameterizedMSQLAndDefinesEveryPageState(t *
 	}
 	javascript := string(routes)
 	for _, required := range []string{
-		"DESCRIBE TABLE", "SHOW ROUTES FROM TABLE", "AT ROOT LIMIT :limit",
+		"DESCRIBE TABLE", "SHOW ROUTES FROM TABLE", "AT ROOT",
 		"DESCRIBE ROUTE :route", "SHOW ROUTES UNDER :route", "OPEN ROUTE :route LIMIT 1",
-		"CURSOR :cursor LIMIT :limit", "Route leaf must contain at most one locator", "parameters", "named",
+		"Route leaf must contain at most one locator", "parameters", "named",
 		// Admin 是展示层：后端有多少节点就画多少，一层能有几个是 Agent 的判断
-		// （route_policy.branch_fanout），不是前端的限制。页大小向服务端要
-		// （query_budgets.route_children），并一直翻到 truncated 为 false。
-		"SHOW CONFIGURATION QUERY_BUDGETS", "route_children", "drainPages", "while (page.truncated)",
+		// （route_policy.branch_fanout），不是前端的限制。SHOW ROUTES 现在一次返回
+		// 整层，所以页大小与 cursor 都不再经过这个模块。
 		"loading", "empty", "ready", "truncated", "permission", "corrupt", "revision_conflict",
 		"database_id", "table_id", "row_id", "revision",
 	} {
@@ -362,6 +361,10 @@ func TestRouteTreeModuleValidatesVersionedAliasesContract(t *testing.T) {
 	}
 }
 
+// SHOW ROUTES answers with the whole layer: a layer is bounded by
+// route_policy.branch_fanout (≤100 children), the engine never truncates, and
+// `truncated` is simply false. So the module sends each listing statement once,
+// with no LIMIT and no CURSOR, and there is no next_cursor to follow.
 func TestRouteTreeNeverPaginatesBranchOverflow(t *testing.T) {
 	t.Parallel()
 
@@ -370,7 +373,24 @@ func TestRouteTreeNeverPaginatesBranchOverflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	javascript := string(routes)
-	for _, forbidden := range []string{"继续加载这一层", "route_more_", "appendRootPage", "moreNode"} {
+	for _, required := range []string{
+		"SHOW ROUTES FROM TABLE ${subject} AT ROOT`",
+		`"SHOW ROUTES UNDER :route"`,
+	} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Route Tree does not ask for a whole layer: missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"继续加载这一层", "route_more_", "appendRootPage", "moreNode",
+		// The retired paging parameters and the cursor loop that followed them.
+		// A bare `next_cursor` stays in the module for OPEN ROUTE, which still
+		// pages its locators; SHOW ROUTES itself must carry neither.
+		"AT ROOT LIMIT", "AT ROOT CURSOR", "SHOW ROUTES UNDER :route LIMIT",
+		"SHOW ROUTES UNDER :route CURSOR", "CURSOR :cursor", "routeChildrenBudget",
+		"drainPages", "fetchPage", "rowsOf", "drained",
+		"while (page.truncated)", "Route Tree cursor did not advance",
+	} {
 		if strings.Contains(javascript, forbidden) {
 			t.Errorf("Route Tree still paginates with %q", forbidden)
 		}

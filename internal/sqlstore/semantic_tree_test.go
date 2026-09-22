@@ -85,7 +85,7 @@ func TestTheFixtureTreeIsNavigableLayerByLayer(t *testing.T) {
 	}
 
 	children := map[string]string{}
-	for _, row := range h.run(`SHOW ROUTES UNDER :parent LIMIT 12`,
+	for _, row := range h.run(`SHOW ROUTES UNDER :parent`,
 		map[string]any{"parent": domains["技术"]}, executor.MutationOptions{}).Rows {
 		children[text(row["name"])] = text(row["route_id"])
 	}
