@@ -174,8 +174,8 @@ complete.
 
 Locate Rows with `SHOW ROUTES` (the Agent's main path) and `SELECT` for facts.
 Keyword recall (`RECALL … MATCH`) and vector recall (`RECALL … NEAREST`) are the
-other two product paths; jev is an optional Skill-side chooser on the same
-layer-by-layer surface.
+other two product paths; jev is the fourth and only optional one, a Skill-side
+chooser that reads no database state of its own.
 
 Treat Route results as `navigation_only`. They are neither answers nor evidence.
 Explicitly choose one or more Tables from the compact Atlas. For a selected
@@ -257,15 +257,27 @@ projected them, and `columns` lists only the fields you asked for — do not try
 project the attached ones. A TEXT column's declared ceiling travels with it as
 `max_characters`, counted in Unicode code points: `summary` is a ~1,000-character
 document inside a `TEXT(2500)` ceiling, and a reader can check that without
-guessing at bytes. A point read's `row_detail` also carries `created_at` and
-`updated_at`, which is the only way to say whether a Row that describes itself as
-a living log has actually been written since — `revision` stays 1 until someone
-writes, so it cannot date a "current status". A **point read** (one that names a `row_id`) also
-carries a `row_detail` block per returned Row: schema version, `row_semantics`,
-and the display map naming the title and summary columns. A census does not, and
-`DESCRIBE TABLE` is where that shape comes from if you need it before reading. So
-a point-read batch costs roughly 1.5–2 KB per Row beyond the facts, while a
-census pays for `columns` only.
+guessing at bytes. A **point read** (one that names a `row_id`) also returns a
+`row_detail` object — **once per result, beside `rows`, not per Row**, and absent
+(`omitempty`) on a census: schema version, `row_semantics`, the display map naming
+the title and summary columns, and `created_at`/`updated_at`, which is the only
+way to say whether a Row that describes itself as a living log has actually been
+written since (`revision` stays 1 until someone writes, so it cannot date a
+"current status"). `DESCRIBE TABLE` is where that shape comes from if you need it
+before reading. So a point-read batch costs roughly 1.5–2 KB per Row beyond the
+facts, while a census pays for `columns` only.
+
+**Date your evidence when the answer is about "now".** A Row's `row_detail.updated_at`
+says when that revision was written; `SHOW HISTORY FROM <table> FOR ROW :row LIMIT :limit`
+lists the revisions of that one Row; and the commit log —
+`SHOW CHANGES IN DATABASE :database LIMIT :limit` — is the audit surface that dates
+a whole tree (`IN DATABASE` is required, and change entries carry no column values,
+only Row IDs and revisions). `doctor`'s `changes` and `rows` are instance-wide
+counters: use them to notice that a tree is frozen, never as a substitute for
+reading it. `doctor`'s `route_nodes` also counts the Table **roots**, which no
+`SHOW ROUTES` page ever returns, so a full walk will always come up short by one
+node per Table — read each root's `route_id` from the `parent_id` of its children
+instead of trying to reconcile the total by counting.
 
 There are two ways from a Table to its facts, and the question picks one:
 
