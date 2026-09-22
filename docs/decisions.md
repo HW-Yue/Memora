@@ -1146,3 +1146,26 @@ Row）仍然报 `false`。
 两个现役 Database 的 `anti_scope` 本来就是空串。所以第三轮子 agent 看到的"没有 `anti_scope`"
 是"没有可排除的东西"，不是"被压缩掉了"。**结论：不需要改动**；若将来 `COMPACT` 真的要裁剪
 字段，语义字段（scope/anti_scope/purpose）不得在裁剪之列，这条写在这里当约束。
+
+## 2026-09-22 · `SELECT` 不加 cursor：把截断做成"可执行"，而不是再造一套翻页
+
+**对象**：超过 `select_rows` 的表，`SELECT` 无法只读枚举完（无 cursor、`WHERE` 只能 `row_id` 等值、
+唯一的加预算手段是写配置）。
+
+**结论**：**不加 cursor**。截断时在结果里给出**枚举器**：`output_truncated` 通知的
+`details.enumerate_with` 直接是那条 `SHOW ROUTES FROM TABLE <db>.<table> AT ROOT LIMIT :limit`
+（并带 `returned` 与 `select_rows`）。语义树 walk 本来就是唯一带 cursor 的读面，每个叶子点名它的 Row。
+
+**理由（顾问 2026-09-22）**：真正的缺陷不是"SELECT 不能翻页"，而是"两个枚举面只靠文档连接"——
+三轮无上下文 dogfood 里只撞到一次，而且 agent 处理正确（把超限的表报成"没读"，没有猜），
+这说明护栏在工作。加 keyset cursor 的代价被低估了：要先把扫描顺序提升为**永久协议承诺**
+（当前实现是 `ORDER BY ordinal`，那是存储顺序），再加上 token、快照、过期规则与 `select_scan` 的交互
+——等于把语义树的翻页机制在"点查 + 有界普查"这个动词里重建一遍。
+
+**将来真要动**（写死判据）：某张表超过 ~100 行、树 walk 的往返次数真正成为负担时，**改的是
+`WHERE`**——加一条 `row_id > :x` 的有序比较（agent 自己拿着位置，不需要 token、不需要快照），
+前提是 `row_id` 的序被明确写下来并承诺不再改。在那之前不动。
+
+**证据**：`internal/sqlstore/read_surface_test.go` 的 `TestACensusCutByItsOwnLimitSaysSo`
+（截断的普查恰好带一条 `output_truncated` 通知并点名树 walk；完整普查不带）；
+`skills/memora/SKILL.md` 的普查段说明这个通知就是枚举器的来源。
