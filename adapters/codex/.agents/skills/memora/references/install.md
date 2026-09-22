@@ -63,6 +63,20 @@ local source directory. Do not ask for sudo, change the install script, bypass
 `--yes`, or claim success until its idempotent init, daemon start, and doctor
 checks finish. If offline without a local source tree and Go toolchain, report
 the recoverable blocker.
+## Practise on a throwaway instance
+
+A host that needs to exercise a write path without touching the user's memory runs
+it against a fresh instance, and the recipe is two commands:
+
+```sh
+export HOME=$(mktemp -d)   # a fresh HOME is a fresh instance directory
+memora init
+```
+
+Everything the CLI then does — daemon socket, locks, logs, caches — stays under
+that HOME, so the real instance is untouched. Cleanup is the destroy below, and
+that needs the user's explicit instruction like any other destroy.
+
 ## Removing an instance
 
 Deleting a Row or a leaf is a language operation with an archive behind it.

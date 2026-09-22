@@ -67,6 +67,17 @@ memora schema --plan '{
   create a second Table of the same kind for a slightly different shape.
 ## Write
 
+**"记一下" / "save this" is a dedupe request before it is a write.** Search the
+subject first — `RECALL`, a census, or the Route walk — because the honest answer
+is often "already recorded". When an existing Row covers the subject, the correct
+action is a REVISE of that Row (or an IGNORE plan carrying the reason); a second
+Row for the same subject is how one memory starts contradicting itself.
+
+**After writing a capability or status fact, sweep for its opposite.** Stale
+gap-lists and "待做" notes are exactly where the contradiction hides: search the
+words your new fact denies, and revise what still asserts them. This is a step of
+the write, not a separate task.
+
 Within the user's authorized scope, use:
 
 ```text
@@ -183,6 +194,12 @@ it cannot create the first root, and it is not the path for adding a leaf to
 hold a new Row.
 
 ### Or name the path and let the kernel complete it
+
+**This one needs the Table's root to exist already.** `route_path` completes a
+path under an existing root; on a Table with no root the INSERT is refused
+(`table "…" has no route root yet: create it explicitly, its purpose is
+table-level semantics`). Create the root with `CREATE ROUTE ROOT` first (next
+section), then come back.
 
 An INSERT may carry `route_path` instead of `route_leaf_ids`: one entry per
 segment, each with its own `name`, `kind` and `purpose`. The kernel reuses the

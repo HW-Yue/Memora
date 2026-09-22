@@ -60,3 +60,8 @@ Two rules about that index: the references are **procedure**, and they are longe
 than this file on purpose — load the one the task needs rather than skimming all
 of them; and when the question is already answered by what you have read, no
 reference is needed at all.
+
+When the question is "what did we decide", the memory is not the only source: the
+repository's own docs carry the durable record too (`docs/decisions.md`,
+`docs/planning/*`), and the two are meant to agree. Say which one you answered
+from, and when they disagree, say that instead of picking one.

@@ -48,7 +48,8 @@ memora query --input '{"parameters":{"named":{"cursor":"","limit":12}},"authoriz
 The Atlas already carries every Table of every Database it returns — name,
 `purpose` and `scope` — so `SHOW TABLES FROM <db>` adds nothing unless the Atlas
 page came back `truncated` and you need one Database's Table list on its own.
-`SHOW DATABASES` itself returns `tables: []` on every row: it names Databases
+`SHOW DATABASES` itself returns `tables: []` on every row — it never names a
+Table, so the Atlas call is mandatory before you can choose one: it names Databases
 only, which is why the Atlas is the step that follows it.
 ## Speculative discovery
 
