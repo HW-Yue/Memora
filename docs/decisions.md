@@ -1233,3 +1233,34 @@ Row）仍然报 `false`。
 `internal/sqlstore/skillwrite_plan_test.go`（真库上跑完一个 route_path 计划：receipt committed +
 verified、位置可导航、删行后空分支被剪）；RED 已实测（退回旧校验时两个测试都红）。
 
+
+## 2026-09-22 · 召回说出"哪条臂找到了这个位置"，但不说强弱
+
+**对象**：`RECALL` 的每命中出处；Admin 搜索页的"两臂融合（RRF）"徽章。
+
+**结论**：`RECALL` 的每命中多一列 `arms`（`["keyword","vector"]` / `["keyword"]` / `["vector"]`，
+顺序固定）。它是**出处**不是强度：不据此排序/过滤/设阈值，也不渲染成强弱；顺序、`LIMIT`、
+`truncated`、确定性平分规则一律不变。升格为 [ADR-0015](./decisions/0015-recall-exposes-position-provenance.md)
+（按 ADR-0013 风险节的要求另开 ADR，修订其第 5、6 条的字段清单）。Admin 徽章改成逐位置的中性
+出处（`关键词+向量` / `仅关键词` / `仅向量`），库级事实回到说明行。
+
+**触发（用户截图，真机）**：Admin 搜「实习」，前 10 个位置里第 4、6 个是 `memora.decisions` 的
+ADR-0009 / ADR-0010，看起来毫不相关，而页面给每张卡都盖了"两臂融合（RRF）"。实测：该 Database
+的关键词臂只命中 1 个位置（`运行现状`，正文里真有"实习"二字），那两条**纯粹来自向量臂**；把库里
+44 个单元按余弦全排一遍，真正相关的在 0.34–0.37（CoHabitat 0.3738 / OPPO 0.3423 / 悠悠有品 0.3386），
+ADR-0009 0.2791、ADR-0010 0.2783，中间还夹着 0.30 的原醛、0.31 的阿里——两字中文词的 embedding
+区分度本来就低，引擎没有阈值也不返回分数，向量臂的尾巴就和真命中长得一样。页面那行标签
+（`receipt.vector.ran ? "两臂融合（RRF）" : "关键词"`）是**每库算一次**的，所以把库级事实盖在了
+卡片上——这是本轮真正的缺陷：**呈现层在一个位置级的卡片上断言了一件库级的事**。
+
+**理由（顾问 2026-09-22）**：`arms` 是分类集合、无量纲、不随语料变化、也反推不出 RRF 分数，属于
+"出处"；ADR-0013 禁的"原因"是**相关性解释**（"因为匹配了某词/语义接近"），那才是"向量不产出事实"
+要挡的东西。臂名不解释内容，反而让"这条只是向量定位"可见。顾问同时要求写进决策、不能默认的一条：
+**双臂 ≠ 更相关，不得据此排序、过滤或渲染成强弱**——否则只是把名次换个壳泄出去。
+
+**证据**：`internal/sqlstore/recall_fusion_test.go` 的 `TestRecallSaysWhichArmFoundEachPosition`
+（一库之内三条位置分别只被关键词、只被向量、被两臂命中，逐个核对臂名；单臂语句也要自报）与
+`TestRecallUnionAddsNoNumbersToTheAnswer`（字段白名单加 `arms`，仍无任何数值）；
+`internal/adminapi/search_test.go` 断言网关**原样透传** `arms`（网关丢掉它，卡片就全没标签）；
+`internal/adminui/bundle_test.go` 钉住逐位置标签存在、且旧的那句库级表达式已消失（把 `armLabel`
+改名实测变红）。

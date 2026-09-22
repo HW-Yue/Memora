@@ -2,9 +2,12 @@ package sqlstore_test
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/recall"
+	"github.com/HW-Yue/Memora/internal/result"
 )
 
 // Both arms have their own relevance signal — the vector arm a distance, the
@@ -104,9 +107,86 @@ func TestRecallUnionFusesByRank(t *testing.T) {
 	}
 }
 
-// Fusion changes the order, not the answer's shape: the fields a caller may see
-// are exactly the ones recall has always returned, with no number to threshold,
-// rank by, or explain.
+// The listing says which arm found each position. Without it a caller cannot
+// tell the position both arms agreed on from the tail of a single arm's ranking,
+// and the answer carries no score that would say it either — which is how a
+// search page ends up labelling a weak vector neighbour as a fused hit. The
+// names are provenance, not strength: there is still nothing to threshold.
+func TestRecallSaysWhichArmFoundEachPosition(t *testing.T) {
+	h := newHarness(t)
+	h.seedTree()
+	h.insertAlongPath("共享关键词 共享关键词", pathOf("architecture", "aaa"))
+	bothArms := h.insertAlongPath("共享关键词：标题写长一点，让这一路的排名落在第二位，"+
+		"后面继续堆无关的字", pathOf("architecture", "mmm"))
+	vectorOnly := h.insertAlongPath("与查询无关的标题", pathOf("architecture", "zzz"))
+	h.acceptUnitVector(bothArms, []float32{1, 0})
+	h.acceptUnitVector(vectorOnly, []float32{0.9, 0.1})
+	query, err := recall.EncodeVector([]float32{1, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fused := map[string]string{}
+	for _, row := range h.recallFrom(`RECALL FROM work MATCH :q NEAREST :v LIMIT 3`,
+		map[string]any{"q": "共享关键词", "v": query}).Rows {
+		fused[lastSegment(t, row)] = strings.Join(recallArmsOf(t, row), "+")
+	}
+	want := map[string]string{"mmm": "keyword+vector", "aaa": "keyword", "zzz": "vector"}
+	if len(fused) != len(want) {
+		t.Fatalf("the fused answer must carry every position once: %v", fused)
+	}
+	for leaf, arms := range want {
+		if fused[leaf] != arms {
+			t.Fatalf("position %q came from %q, want %q (all: %v)", leaf, fused[leaf], arms, fused)
+		}
+	}
+
+	for _, row := range h.recallFrom(`RECALL FROM work MATCH :q LIMIT 3`,
+		map[string]any{"q": "共享关键词"}).Rows {
+		if arms := recallArmsOf(t, row); len(arms) != 1 || arms[0] != "keyword" {
+			t.Fatalf("a keyword-only recall must say so, got %v", arms)
+		}
+	}
+	for _, row := range h.recallFrom(`RECALL FROM work NEAREST :v LIMIT 3`,
+		map[string]any{"v": query}).Rows {
+		if arms := recallArmsOf(t, row); len(arms) != 1 || arms[0] != "vector" {
+			t.Fatalf("a vector-only recall must say so, got %v", arms)
+		}
+	}
+}
+
+func lastSegment(t *testing.T, row result.Row) string {
+	t.Helper()
+	segments := []recall.Segment{}
+	if err := json.Unmarshal([]byte(text(row["path"])), &segments); err != nil {
+		t.Fatalf("path is not JSON: %v", err)
+	}
+	if len(segments) == 0 {
+		t.Fatal("a recalled path needs at least one segment")
+	}
+	return segments[len(segments)-1].Name
+}
+
+func recallArmsOf(t *testing.T, row result.Row) []string {
+	t.Helper()
+	value, ok := row["arms"]
+	if !ok {
+		t.Fatalf("every recalled position must name its arms: %v", row)
+	}
+	arms := []string{}
+	if err := json.Unmarshal([]byte(text(value)), &arms); err != nil {
+		t.Fatalf("arms is not a JSON list: %v (%v)", value, err)
+	}
+	for _, arm := range arms {
+		if arm != "keyword" && arm != "vector" {
+			t.Fatalf("unknown recall arm %q", arm)
+		}
+	}
+	return arms
+}
+
+// Fusion changes the order, not the answer's kind: every field is a position or
+// its provenance, and there is no number to threshold, rank by, or explain.
 func TestRecallUnionAddsNoNumbersToTheAnswer(t *testing.T) {
 	h := newHarness(t)
 	h.seedTree()
@@ -118,6 +198,7 @@ func TestRecallUnionAddsNoNumbersToTheAnswer(t *testing.T) {
 	}
 	allowed := map[string]bool{
 		"database": true, "table": true, "path": true, "kind": true, "object_id": true,
+		"arms": true,
 	}
 	for _, row := range h.recallFrom(`RECALL FROM work MATCH :q NEAREST :v LIMIT 5`,
 		map[string]any{"q": "storage engine", "v": query}).Rows {

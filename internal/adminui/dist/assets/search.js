@@ -126,7 +126,19 @@ function validateHits(result) {
     if (objectID !== "" && typeof objectID !== "string") {
       throw new SearchViewError("corrupt", "Recall object id is invalid");
     }
-    hits.push({ database: row.database, table: row.table, kind: row.kind, path, objectID });
+    // Every position says which arm found it. This is provenance, not strength:
+    // there is still no score, distance or rank to show.
+    if (!Array.isArray(row.arms) || row.arms.length === 0) {
+      throw new SearchViewError("corrupt", "Recall row does not say which arm found it");
+    }
+    const arms = [];
+    for (const arm of row.arms) {
+      if (arm !== "keyword" && arm !== "vector") {
+        throw new SearchViewError("corrupt", "Recall row names an unknown arm");
+      }
+      arms.push(arm);
+    }
+    hits.push({ database: row.database, table: row.table, kind: row.kind, path, objectID, arms });
   }
   return hits;
 }
@@ -183,7 +195,7 @@ function interleave(groups, limit) {
       const key = `${group.database}/${hit.table}/${hit.path[hit.path.length - 1].route_id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      merged.push({ ...hit, source: group.source, vectorRan: group.vectorRan, databaseID: group.databaseID });
+      merged.push({ ...hit, vectorRan: group.vectorRan, databaseID: group.databaseID });
       if (merged.length >= limit) break;
     }
     round += 1;
@@ -195,10 +207,21 @@ function pathLabel(hit) {
   return hit.path.map((segment) => segment.name).join(" / ");
 }
 
+// What found this position. It used to be one label per Database — "两臂融合
+// （RRF）" stamped on every card of a Database whose vector arm ran — which said
+// something true about the query and false about the card: a neighbour only the
+// vector arm returned read as an agreed hit.
+function armLabel(hit) {
+  if (hit.vectorRan === undefined) throw new SearchViewError("corrupt", "Result source is unknown");
+  const keyword = hit.arms.includes("keyword");
+  const vector = hit.arms.includes("vector");
+  if (!hit.vectorRan) return "关键词";
+  if (keyword && vector) return "关键词+向量";
+  if (keyword) return "仅关键词";
+  return "仅向量";
+}
+
 function resultCard(hit, tableIDs) {
-  // The label says which arms produced this Database's listing, because once the
-  // engine has fused them there is no per-row provenance left to show — and there
-  // never was a score to show instead.
   const leaf = hit.path[hit.path.length - 1];
   const tableID = tableIDs.get(hit.table);
   const card = element("article", "search-result");
@@ -216,8 +239,7 @@ function resultCard(hit, tableIDs) {
   const badges = element("div", "search-result-badges");
   badges.append(element("span", "schema-badge", hit.database));
   badges.append(element("span", "schema-badge", hit.table));
-  badges.append(element("span", "schema-badge search-source", hit.source));
-  if (hit.vectorRan === undefined) throw new SearchViewError("corrupt", "Result source is unknown");
+  badges.append(element("span", "schema-badge search-source", armLabel(hit)));
   heading.append(badges);
   link.append(heading);
   const meta = element("p", "search-result-meta", tableID
@@ -240,6 +262,9 @@ function resultSection(hits, tableIDs, truncatedDatabases, noticeLines) {
   notes.append(element("p", "", "召回只回答「在哪」：结果是语义位置，不是事实；点进去之后回表读正文。"));
   notes.append(element("p", "", "同一个 Database 内是引擎按名次融合后的顺序（RRF），跨 Database 才是交错；" +
     "召回不返回分数、距离或名次，所以没有可展示的相似度。"));
+  notes.append(element("p", "", "卡片上的徽章是这个位置自己的出处，不是强弱：`关键词+向量` 是两条臂都找到的，" +
+    "`仅向量` 说明关键词臂没有命中它。两字查询的向量臂区分度本来就低，标着 `仅向量` 的位置" +
+    "要回表读正文再判断，不要当成命中。"));
   for (const line of noticeLines) notes.append(element("p", "", line));
   if (truncatedDatabases.length) {
     notes.append(element("p", "", `这些 Database 的命中被 LIMIT ${SEARCH_LIMIT} 截断：` +
@@ -348,7 +373,6 @@ export async function renderSearch(root, options) {
       const hits = validateHits({ rows: receipt.rows });
       groups.push({
         database: scope.name, databaseID: scope.database_id, hits,
-        source: receipt.vector.ran ? "两臂融合（RRF）" : "关键词",
         vectorRan: receipt.vector.ran, source_statement: receipt.source,
       });
       if (receipt.truncated) truncated.push(scope.name);

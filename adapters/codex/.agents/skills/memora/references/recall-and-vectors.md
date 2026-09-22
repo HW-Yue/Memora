@@ -7,18 +7,32 @@ Part of the `memora` Skill. It is loaded on demand: `SKILL.md` holds the constra
 `SHOW ROUTES` walks down from a node you already chose. When you cannot name that
 node, recall answers the other question: **where in the semantic tree does this
 topic live?** It is a locator, not an answer — it returns no fact, no score, no
-distance, no rank, no reason, and not the text it matched.
+distance, no rank, and not the text it matched.
 
 ```sh
 memora query --input '{"parameters":{"named":{"q":"存储引擎","limit":5}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "RECALL FROM work MATCH :q LIMIT :limit"
 memora query --input '{"parameters":{"named":{"q":"存储引擎","limit":5}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "RECALL FROM work IN notes MATCH :q LIMIT :limit"
 ```
 
-Each hit carries `database`, `table`, `kind`, an optional `object_id`, and `path`
-— the root-first segments, each with the `route_id` navigation needs. Continue
+Each hit carries `database`, `table`, `kind`, an optional `object_id`, `path` —
+the root-first segments, each with the `route_id` navigation needs — and `arms`,
+which says which retrieval arm found **that position**: `["keyword","vector"]`
+when both did, `["keyword"]` or `["vector"]` when only one did. Continue
 exactly as after discovery: `OPEN ROUTE` the last segment, then `SELECT` the fact.
 Recall never prefetches: it does not open the leaf, cache the row, or substitute
 for the `SELECT` that produces the answer.
+
+**`arms` is provenance, not strength — and `["vector"]` is the one to be careful
+with.** A keyword hit is a word match you can check by eye; a position only the
+vector arm returned is a *locator* the words did not confirm. That distinction
+matters most for short queries: a bare two-character Chinese word embeds weakly,
+so the vector arm's tail is often noise. Measured on a real library, the genuinely
+relevant records for one two-character query sat at cosine 0.34–0.37 while
+unrelated short records sat at 0.27–0.28 — the engine has no threshold and returns
+no score, so those positions are in the list and look like the rest. Read the
+`arms` list, and when a position is `["vector"]`-only, open it and read the Row
+before you call it relevant. Still nothing to threshold on: order, `LIMIT` and
+`truncated` do not depend on `arms`.
 
 A recall may come back with a `vectors_not_ready` warning. It is not an error:
 it says how many units in the scope no vector path can answer for yet, so the

@@ -74,6 +74,10 @@ func newSearchGateway(t *testing.T, embedder adminapi.Embedder, vectorFails bool
 		statement.Rows = []result.Row{{
 			"database": "memora", "table": "modules", "kind": "leaf", "object_id": "row_1",
 			"path": json.RawMessage(`[{"name":"检索","route_id":"route_a"}]`),
+			// The engine now names the arms that found each position, and the
+			// gateway is a pass-through: the page labels a card from this list, so
+			// dropping it here would leave every card unlabelled.
+			"arms": json.RawMessage(`["keyword","vector"]`),
 		}}
 		return result.Envelope{Version: result.Version, RequestID: "t", OK: true,
 			Results: []result.StatementResult{statement}}, nil
@@ -177,8 +181,14 @@ func TestSearchFusesBothArmsWhenTheHostHasAProvider(t *testing.T) {
 	if source != harness.sources[0] || !strings.Contains(source, "LIMIT :limit") {
 		t.Fatalf("receipt source = %q, ran %v", source, harness.sources)
 	}
-	if rows, ok := payload["rows"].([]any); !ok || len(rows) != 1 {
+	rows, ok := payload["rows"].([]any)
+	if !ok || len(rows) != 1 {
 		t.Fatalf("rows = %v", payload["rows"])
+	}
+	row, _ := rows[0].(map[string]any)
+	arms, ok := row["arms"].([]any)
+	if !ok || len(arms) != 2 || arms[0] != "keyword" || arms[1] != "vector" {
+		t.Fatalf("the receipt dropped the arms that found the position: %v", row)
 	}
 }
 

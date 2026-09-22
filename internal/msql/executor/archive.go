@@ -364,6 +364,25 @@ func rowText(value any) string {
 // relevance judgement the contract would have to explain.
 const recallFusionK = 60.0
 
+// The retrieval arms, named in the answer. Which arm found a position is
+// provenance a caller cannot otherwise recover: the listing carries no score,
+// distance or rank, so without this a position both arms agreed on looks exactly
+// like the tail of one arm's ranking. It is not a relevance judgement — there is
+// still nothing here to threshold or sort by.
+const (
+	recallArmKeyword = "keyword"
+	recallArmVector  = "vector"
+)
+
+// recallArmsValue encodes the arm names as the JSON list the answer carries.
+func recallArmsValue(arms []string) (json.RawMessage, error) {
+	encoded, err := json.Marshal(arms)
+	if err != nil {
+		return nil, executeError(result.CodeInternal, "recalled arms could not be encoded")
+	}
+	return json.RawMessage(encoded), nil
+}
+
 // fuseRecallRows merges two ranked listings by Reciprocal Rank Fusion and
 // returns the fused listing plus whether the limit cut anything.
 //
@@ -373,14 +392,18 @@ const recallFusionK = 60.0
 func fuseRecallRows(keyword, vector []result.Row, limit int) ([]result.Row, bool) {
 	type fusedPosition struct {
 		row   result.Row
+		arms  []string
 		score float64
 		table string
 		path  string
 	}
 	positions := make([]fusedPosition, 0, len(keyword)+len(vector))
 	at := map[string]int{}
-	for _, arm := range [][]result.Row{keyword, vector} {
-		for rank, row := range arm {
+	for _, arm := range []struct {
+		name string
+		rows []result.Row
+	}{{recallArmKeyword, keyword}, {recallArmVector, vector}} {
+		for rank, row := range arm.rows {
 			table, path := rowText(row["table"]), rowText(row["path"])
 			key := table + "|" + path
 			position, exists := at[key]
@@ -389,6 +412,7 @@ func fuseRecallRows(keyword, vector []result.Row, limit int) ([]result.Row, bool
 				position = len(positions) - 1
 				at[key] = position
 			}
+			positions[position].arms = append(positions[position].arms, arm.name)
 			positions[position].score += 1 / (recallFusionK + float64(rank+1))
 		}
 	}
@@ -407,7 +431,15 @@ func fuseRecallRows(keyword, vector []result.Row, limit int) ([]result.Row, bool
 		if index == limit {
 			break
 		}
-		rows = append(rows, position.row)
+		row := position.row
+		encoded, err := recallArmsValue(position.arms)
+		if err != nil {
+			// Two string literals cannot fail to encode; if this ever fires the
+			// listing must not be returned without saying it was fused.
+			return nil, false
+		}
+		row["arms"] = encoded
+		rows = append(rows, row)
 	}
 	return rows, truncated
 }
@@ -638,7 +670,7 @@ func (engine *Engine) recallNearest(ctx context.Context, statement *ast.RecallSt
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
-	return engine.recallOutput(ctx, hits, databaseName, tableName, limit)
+	return engine.recallOutput(ctx, hits, []string{recallArmVector}, databaseName, tableName, limit)
 }
 
 func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallStatement, bound bindings, databaseName, tableName string, limit uint64) (Output, error) {
@@ -661,12 +693,14 @@ func (engine *Engine) recallKeywords(ctx context.Context, statement *ast.RecallS
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
-	return engine.recallOutput(ctx, hits, databaseName, tableName, limit)
+	return engine.recallOutput(ctx, hits, []string{recallArmKeyword}, databaseName, tableName, limit)
 }
 
 // recallOutput is the one place a recall answer is shaped, so both arms keep the
-// same columns, the same stable order and the same notice.
-func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, databaseName, tableName string, limit uint64) (Output, error) {
+// same columns, the same stable order and the same notice. `arms` is the
+// provenance one arm's answer carries for every position it found; a fused
+// answer replaces those rows wholesale with per-position membership.
+func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, arms []string, databaseName, tableName string, limit uint64) (Output, error) {
 	// The arms are asked for one hit more than the caller's LIMIT, so that a
 	// listing which fills exactly to the limit can be told apart from one where
 	// more existed. `truncated` means "at least one more" here, the same thing it
@@ -683,6 +717,7 @@ func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, datab
 			{Name: "path", Type: "JSON"},
 			{Name: "kind", Type: "TEXT"},
 			{Name: "object_id", Type: "ID", Nullable: true},
+			{Name: "arms", Type: "JSON"},
 		},
 		Rows: make([]result.Row, 0, len(hits)),
 	}
@@ -695,9 +730,14 @@ func (engine *Engine) recallOutput(ctx context.Context, hits []recall.Hit, datab
 		if hit.ObjectID != "" {
 			object = hit.ObjectID
 		}
+		encoded, err := recallArmsValue(arms)
+		if err != nil {
+			return Output{}, err
+		}
 		output.Rows = append(output.Rows, result.Row{
 			"database": hit.Database, "table": hit.Table,
 			"path": json.RawMessage(path), "kind": hit.Kind, "object_id": object,
+			"arms": encoded,
 		})
 	}
 	output.Truncated = truncated

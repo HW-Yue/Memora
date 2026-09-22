@@ -2,7 +2,7 @@ import { renderCatalog } from "./catalog.js?v=4";
 import { renderChanges } from "./changes.js?v=4";
 import { renderDiff } from "./diffs.js?v=4";
 import { renderRoutes } from "./routes.js?v=4";
-import { renderSearch } from "./search.js?v=4";
+import { renderSearch } from "./search.js?v=5";
 import { renderRow } from "./rows.js?v=4";
 import { renderTraces } from "./traces.js?v=4";
 

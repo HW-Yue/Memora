@@ -109,10 +109,17 @@
 Row 命中时保留 `object_id`（即 RowID），见
 [检索路线](../query/retrieval-routes-jev.md) §2。
 
+此外每个命中带 **`arms`**：找到这个位置的是哪条臂（`["keyword","vector"]` /
+`["keyword"]` / `["vector"]`）。这是**出处的标注**，不是强度的度量：两臂都命中的位置
+与只有向量臂命中的尾巴，在没有它的时候完全无法区分，而"仅向量"正是短查询里最需要
+警惕的一类——两字中文词 embedding 弱，实测真正相关的记录余弦 0.34–0.37、无关短记录
+0.27–0.28，引擎没有阈值也不返回分数。`arms` 不参与排序、不参与截断，也不是阈值。
+
 ### 不返回什么
 
 - **分数**：score、score_kind、match_count、frequency、cosine、点积；
-- **解释**：reason、matched_fields、predictor 回执与状态；
+- **解释**：reason、matched_fields、predictor 回执与状态（`arms` 不是解释：它说的是
+  **一次查询里哪条路命中**，不是"为什么这条更相关"）；
 - **正文**，或任何免于回表就能当答案用的内容；
 - **裸排名、距离**。
 

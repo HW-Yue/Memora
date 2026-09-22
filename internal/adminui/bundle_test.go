@@ -726,7 +726,7 @@ func TestSearchViewModuleRecallsPositionsAndLinksIntoTheTree(t *testing.T) {
 	}
 	appText := string(app)
 	for _, required := range []string{
-		`from "./search.js?v=4"`, `path === "/search"`, `path.startsWith("/search/")`,
+		`from "./search.js?v=5"`, `path === "/search"`, `path.startsWith("/search/")`,
 		"export async function searchDatabase", `fetch("/api/v1/search"`,
 	} {
 		if !strings.Contains(appText, required) {
@@ -784,6 +784,21 @@ func TestSearchViewModuleRecallsPositionsAndLinksIntoTheTree(t *testing.T) {
 	}
 	if !strings.Contains(javascript, `setAttribute("aria-label"`) {
 		t.Error("Search input has no accessible name now that it has no placeholder")
+	}
+	// The badge on a card is that position's own provenance — which arms found it,
+	// never how strong the match was. It used to be one label per Database
+	// ("两臂融合（RRF）" whenever that Database's vector arm had run), which told
+	// the reader that a neighbour only the vector arm returned had been found by
+	// both arms.
+	for _, required := range []string{"armLabel", "row.arms", "仅向量", "仅关键词", "关键词+向量"} {
+		if !strings.Contains(javascript, required) {
+			t.Errorf("Search module does not label a position with its own arms: missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{`receipt.vector.ran ? "两臂融合`, "hit.source"} {
+		if strings.Contains(javascript, forbidden) {
+			t.Errorf("Search module still labels the whole Database instead of the position (%q)", forbidden)
+		}
 	}
 	for _, forbidden := range []string{
 		"innerHTML", "SELECT ", "SHOW HISTORY", "SHOW CHANGE", "INSERT ", "UPDATE ",
