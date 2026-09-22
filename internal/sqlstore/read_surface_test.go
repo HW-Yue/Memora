@@ -214,3 +214,36 @@ func TestAReadCarriesTheColumnCeilingAndTheRowWriteTime(t *testing.T) {
 		t.Fatalf("updated_at must be a timestamp a reader can parse: %v", err)
 	}
 }
+
+// The ceiling is counted in code points, not bytes, and a reader now sees the
+// same number it is enforced against (`columns[].max_characters`). CJK is where
+// the two differ by a factor of three, so the boundary is tested with CJK: a
+// 1,000-character Chinese document fits a TEXT(1200) column, a 1,201-character
+// one is refused, and the refusal reports the code-point count rather than the
+// byte count a reader would otherwise have to guess at.
+func TestTheTextCeilingCountsCodePointsNotBytes(t *testing.T) {
+	h := newHarness(t)
+	leaves := h.seedLeaves("one", "two")
+	atLimit, overLimit := leaves[0], leaves[1]
+
+	fit := write("boundary fits")
+	fit.RouteLeafIDs = []string{atLimit}
+	h.run(`INSERT INTO work.notes (title) VALUES (:title)`,
+		map[string]any{"title": strings.Repeat("记", 1200)}, fit)
+
+	over := write("boundary over")
+	over.RouteLeafIDs = []string{overLimit}
+	code := h.fails(`INSERT INTO work.notes (title) VALUES (:title)`,
+		map[string]any{"title": strings.Repeat("记", 1201)}, over)
+	if code != result.CodeValueTooLong {
+		t.Fatalf("one code point over the ceiling must be refused with %s, got %s",
+			result.CodeValueTooLong, code)
+	}
+	// The at-limit document is 1200 code points and ~3600 bytes: if the ceiling
+	// were counted in bytes it would have been refused, so reaching here with the
+	// over-limit refusal means the unit is code points. The refused Row left no
+	// mount behind either.
+	if holder := h.leafHolder(overLimit); holder != "" {
+		t.Fatalf("a refused insert must not mount a Row, found %s", holder)
+	}
+}
