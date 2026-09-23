@@ -2013,3 +2013,25 @@ aliases`，再回填 aliases；④ 其余照 `docs/planning/jev-routing-ladder.m
 **教训两条**：① 引擎改动的收尾是"**按 README 的配方重建 + 验一条该改动涉及的能力**"，不是"看一眼版本号"；
 ② **读己方笔记要当二手信息核**（我笔记里的裸 `go build` 就是错的）。**建议（未做）**：启动时断言可选
 SQLite 模块存在，缺 `fts5` 就拒绝服务或至少让 `doctor` 报出来。
+
+## 2026-09-23 · 列表面加两列的连带损伤：严格消费者必须一起改（Admin 页面拒渲）
+
+**现象**（库主人截图）：Admin 的 Route Tree 页显示「Route Tree 响应无法验证 / 页面拒绝展示不完整或
+跨 scope 的语义索引」，整页不画。
+
+**原因**：`SHOW ROUTES` 的每行现在多两个键（`row_id`/`row_revision`），而 Admin 的冻结前端对路由行做
+**精确字段校验**（`internal/adminui/dist/assets/routes.js` 的 `exactKeys(row, childKeys)`）——多一个键就抛
+`corrupt`。**这条守卫是对的**：它拒绝画自己无法验证的数据，而不是画错。错的是我改读取面时**没有一起
+更新这个消费者**，于是它只在真机浏览器里炸，而不是在 CI 里。
+
+**修法**：`childKeys = nodeKeys + row_id + row_revision`，而 `pointKeys = nodeKeys + synopsis` **保持分开**
+——`DESCRIBE ROUTE` 不带行绑定，把列表的键集折进 `pointKeys` 会让点读反过来要求它从不发送的字段。
+新字段按它本来的语义校验：**成对出现、只出现在叶子上**、`row_` 前缀、revision 为正。冻结清单已用
+`scripts/refresh-admin-bundle.py` 重生成，adminui 测试通过，重启本地 admin 服务后**验过服务出去的
+asset 带上了新键集**。
+
+**教训与建议（未做）**：这次的检查清单漏了两项，都是同一类"改完引擎没验消费面"：
+① **严格消费者**（Admin 页面这种精确键集校验）——它是**消费端契约**，加列时必须一起改；
+② 上一轮的 FTS5 事故同源（改完只核版本号、没验能力）。
+**建议加一条 CI 守卫**：把"列表面实际返回的字段集"与"页面写死的键集"钉在一起（例如 devgate 起一个临时
+实例跑一次 `SHOW ROUTES`，与 `routes.js` 里的键集比对），这样下次加列会在 CI 红，而不是在用户浏览器里红。
