@@ -40,6 +40,7 @@
 - [jev 分流阶梯](./planning/jev-routing-ladder.md) — 什么时候走树、什么时候用 jev、剩下的活怎么排
 - [无上下文 subagent 循环实测（2026-09-22）](./development/dogfood-2026-09-22.md) — 五轮摩擦与修复
 - [jev 走树验收（2026-09-23）](./development/acceptance-2026-09-23.md) — 两臂实测、可靠性、一起 FTS5 事故
+- [内部实现审查（2026-09-23）](./development/audit-2026-09-23.md) — 长期使用的薄弱点：7 条必修 + 7 条次级 + 不是问题的清单
 - [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
 - [决策日志](./decisions.md) — 运行中的判断；规范级结论进 ADR
 
