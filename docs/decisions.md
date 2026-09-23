@@ -1842,3 +1842,27 @@ jev 判不出来时宁可整层给出来，也不按顺序赌。
 
 **要改的面**：`docs/query/jev-tree-v1.md` 的落点字段、`skills/memora/references/jev-tree.md`、
 devgate 的录像 fixture 与 `jev_tree_test.go` 的断言（现断言落点带 `row_id`）。
+
+## 2026-09-22 · 更正：落点要给"路径 + 行号"两样，而且回表还缺表名
+
+**我上一条读错了。** 用户的原话"检索到叶子节点，把语义路径返回，然后 agent 看完自己判断要读哪个，
+自己写 msql 回表去查"，我读成了"走树不用取行号、`OPEN ROUTE` 该删"。**错。** 用户当场纠正：
+"**agent 要语义路径和行号，语义路径判断是不是我们要的，行号是拿来去回表查询的，这是两回事。**"
+
+正确的分工：
+
+- **语义路径** → 给 agent 判断"这是不是我要的"；
+- **行号（+ 库、表）** → 给 agent 拿去写自己的 MSQL 回表查事实；
+- **事实内容** → 只有 agent 读。
+
+所以 `OPEN ROUTE`（每叶子一条，宽意图那趟 50 条语句里占 35 条）是**必要的**，因为 `SHOW ROUTES`
+返回的列里没有 `row_id`；要省的是**进程往返**（按层把该层所有叶子的 `OPEN ROUTE` 合成一条请求），
+不是省掉行号。规范 `docs/query/jev-tree-v1.md` 本来就写着"每条落点是一条语义路径 + 它挂的 Row +
+revision"——**规范是对的，是我的计划写错了。**
+
+**顺带查出真缺口**：现在的落点只有 `path` / `leaf_route_id` / `row_id` / `revision`，**没有
+`database` 和 `table`**。两表一起走时，光有 `row_id` 写不出
+`SELECT … FROM <db>.<table> WHERE row_id = :row`——回表的句子里表名是必须的。落点因此补成
+`{database, table, path, leaf_route_id, row_id, revision}`。
+
+**仍然成立的那半条**：落点**只有叶子**，没走到叶子的进"停在这里"字段——这不影响"路径 + 行号都给"。
