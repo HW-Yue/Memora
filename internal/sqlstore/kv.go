@@ -47,9 +47,14 @@ func (kv *KV) Begin(ctx context.Context, mode store.Mode) (store.Tx, error) {
 }
 
 type kvTx struct {
-	kv      *KV
-	sql     *sql.Tx
-	write   bool
+	kv    *KV
+	sql   *sql.Tx
+	write bool
+	// joined marks a Tx that borrows a handle somebody else opened and will
+	// close. Its Commit and Rollback record that this writer is done and leave
+	// the handle alone: the transaction it joined decides what happens to the
+	// rows, and that is the point of joining it.
+	joined  bool
 	mu      sync.Mutex
 	closed  bool
 	release func()
@@ -134,6 +139,9 @@ func (tx *kvTx) Commit() error {
 		return store.ErrTxClosed
 	}
 	tx.closed = true
+	if tx.joined {
+		return nil
+	}
 	defer tx.release()
 	return tx.sql.Commit()
 }
@@ -145,6 +153,9 @@ func (tx *kvTx) Rollback() error {
 		return nil
 	}
 	tx.closed = true
+	if tx.joined {
+		return nil
+	}
 	defer tx.release()
 	return tx.sql.Rollback()
 }

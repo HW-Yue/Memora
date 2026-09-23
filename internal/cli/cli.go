@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/HW-Yue/Memora/internal/adminapi"
 	"github.com/HW-Yue/Memora/internal/config"
@@ -171,6 +172,20 @@ func ensureDaemon(ctx context.Context, dataDir string, stderr io.Writer, depende
 		return err
 	}
 	return nil
+}
+
+// daemonRequestTimeout is the deadline one daemon round trip gets when the
+// caller brings none of its own. Without it the client sends no TimeoutMS, the
+// daemon runs the request under no deadline at all, and a CLI that meets a busy
+// instance waits for a signal rather than for an answer. It is generous on
+// purpose: everything behind it is local, and what it bounds is only waiting.
+//
+// The commands that serve rather than ask — admin, mcp, daemon run — keep their
+// own lifetime; so do the plan runners, whose work is a series of round trips.
+const daemonRequestTimeout = 2 * time.Minute
+
+func requestContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), daemonRequestTimeout)
 }
 
 func defaultExecute(ctx context.Context, dataDir, source string, inputs []executor.StatementInput, readOnly bool) (result.Envelope, error) {
@@ -421,14 +436,16 @@ func runExecute(
 	if code != ExitOK {
 		return code
 	}
-	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+	ctx, cancel := requestContext()
+	defer cancel()
+	if err := ensureDaemon(ctx, dataDir, stderr, dependencies); err != nil {
 		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
 		execute = defaultExecute
 	}
-	envelope, err := execute(context.Background(), dataDir, source, statements, command == "query")
+	envelope, err := execute(ctx, dataDir, source, statements, command == "query")
 	if err != nil {
 		return daemonFailure(stderr, dataDir, command+" MSQL", err)
 	}
@@ -443,7 +460,11 @@ func runExecute(
 	// nothing to do here, and a host with a broken one hears about it without
 	// losing the fact it just recorded.
 	if command == "exec" && len(statements) == 1 {
-		if err := drainAfterWrite(context.Background(), dataDir, statements[0], execute, dependencies, stderr); err != nil {
+		// Its own budget: the drain talks to a provider over the network, and it
+		// starts after the write has already spent some of the write's.
+		drainCtx, cancelDrain := requestContext()
+		defer cancelDrain()
+		if err := drainAfterWrite(drainCtx, dataDir, statements[0], execute, dependencies, stderr); err != nil {
 			_, _ = fmt.Fprintf(stderr, "embeddings: %v; the units stay not-ready\n", err)
 		}
 	}
@@ -664,10 +685,12 @@ func runDoctor(
 	if code != ExitOK {
 		return code
 	}
-	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+	ctx, cancel := requestContext()
+	defer cancel()
+	if err := ensureDaemon(ctx, dataDir, stderr, dependencies); err != nil {
 		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
-	report, err := daemon.Doctor(context.Background(), dataDir)
+	report, err := daemon.Doctor(ctx, dataDir)
 	if err != nil {
 		return commandError(stderr, "inspect database integrity", err)
 	}
@@ -704,10 +727,12 @@ func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies
 	if code != ExitOK {
 		return code
 	}
-	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
+	ctx, cancel := requestContext()
+	defer cancel()
+	if err := ensureDaemon(ctx, dataDir, stderr, dependencies); err != nil {
 		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
-	response, err := daemon.Parse(context.Background(), dataDir, source)
+	response, err := daemon.Parse(ctx, dataDir, source)
 	if err != nil {
 		return commandError(stderr, "parse MSQL", err)
 	}

@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -61,13 +60,25 @@ type Options struct {
 	// Tests turn it on so a new path fails at the commit that broke it; a
 	// production Instance leaves it off and relies on the doctor command.
 	CheckInvariants bool
+	// TransactionIdle is how long an explicit transaction may sit untouched
+	// before it is rolled back. An explicit transaction holds the write lock
+	// from BEGIN to COMMIT, deliberately and across requests, so a caller that
+	// walks away from one would otherwise hold it until the process ends. Zero
+	// selects defaultTransactionIdle; a negative value turns the timer off.
+	TransactionIdle time.Duration
 }
+
+// defaultTransactionIdle is long enough for a person reading a receipt between
+// two statements and short enough that a forgotten BEGIN is not a permanent
+// one.
+const defaultTransactionIdle = 5 * time.Minute
 
 type DB struct {
 	sql             *sql.DB
-	write           sync.Mutex
+	write           writeLock
 	now             func() time.Time
 	checkInvariants bool
+	transactionIdle time.Duration
 }
 
 // Error is a storage failure with a stable result code.
@@ -105,7 +116,14 @@ func Open(path string, options Options) (*DB, error) {
 	if now == nil {
 		now = time.Now
 	}
-	db := &DB{sql: handle, now: func() time.Time { return now().UTC() }, checkInvariants: options.CheckInvariants}
+	idle := options.TransactionIdle
+	if idle == 0 {
+		idle = defaultTransactionIdle
+	}
+	db := &DB{
+		sql: handle, write: newWriteLock(), now: func() time.Time { return now().UTC() },
+		checkInvariants: options.CheckInvariants, transactionIdle: idle,
+	}
 	if err := db.migrate(context.Background()); err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -413,11 +431,13 @@ type queryer interface {
 
 func (t *tx) q() queryer { return t.sql }
 
-// begin opens a write transaction. The Go mutex is what makes writers serial;
+// begin opens a write transaction. The write lock is what makes writers serial;
 // SQLite's immediate lock would do it too, but would turn contention into
 // busy-timeouts instead of a queue.
 func (db *DB) begin(ctx context.Context) (*tx, error) {
-	db.write.Lock()
+	if err := db.write.acquire(ctx); err != nil {
+		return nil, err
+	}
 	handle, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		db.write.Unlock()
@@ -425,6 +445,44 @@ func (db *DB) begin(ctx context.Context) (*tx, error) {
 	}
 	return &tx{db: db, sql: handle, now: db.now()}, nil
 }
+
+// writeLock serialises writers. It is a channel and not a sync.Mutex because a
+// wait on a mutex cannot be given up: a caller that ends up behind a writer
+// that is never coming back waits for the process to die. Here the wait ends
+// when the caller's context does, or at maxWriteWait, and a deadlock the caller
+// could do nothing about becomes an error the caller can report.
+type writeLock struct{ slot chan struct{} }
+
+func newWriteLock() writeLock { return writeLock{slot: make(chan struct{}, 1)} }
+
+// maxWriteWait bounds a wait whose context carries no deadline of its own. It
+// is long: a legitimate writer queued behind a long write must still get
+// through, and this is only the line past which waiting has stopped being
+// queueing and started being a hang.
+const maxWriteWait = 30 * time.Second
+
+func (lock writeLock) acquire(ctx context.Context) error {
+	select {
+	case lock.slot <- struct{}{}:
+		return nil
+	default:
+	}
+	timer := time.NewTimer(maxWriteWait)
+	defer timer.Stop()
+	select {
+	case lock.slot <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return fail(result.CodeCancelled, "waiting for the write lock: %v", ctx.Err())
+		}
+		return fail(result.CodeDeadlineExceeded, "waiting for the write lock: %v", ctx.Err())
+	case <-timer.C:
+		return fail(result.CodeDeadlineExceeded, "waiting for the write lock: nothing released it within %s", maxWriteWait)
+	}
+}
+
+func (lock writeLock) Unlock() { <-lock.slot }
 
 func (t *tx) commit(ctx context.Context) error {
 	defer t.db.write.Unlock()

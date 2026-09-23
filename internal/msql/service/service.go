@@ -138,6 +138,23 @@ func (service *Service) Close() error {
 	return closeErr
 }
 
+// WithActiveTransaction runs fn against the explicit transaction session id
+// holds open, or against nil when there is no such session or it holds none.
+// It does not create a session: a caller asking what a session is in the middle
+// of is not a caller opening one.
+func (service *Service) WithActiveTransaction(
+	id string,
+	fn func(executor.ExplicitTransaction) error,
+) error {
+	service.mu.Lock()
+	session := service.sessions[id]
+	service.mu.Unlock()
+	if session == nil {
+		return fn(nil)
+	}
+	return session.batch.WithActiveTransaction(fn)
+}
+
 // Session serializes requests and owns the explicit transaction for one
 // logical caller. Different Session values may execute concurrently.
 type Session struct {

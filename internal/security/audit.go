@@ -98,13 +98,54 @@ func HashPayload(payload []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// Record writes one audit event on its own transaction. It is the path for a
+// request that holds none of its own; a request executing inside an explicit
+// transaction must use RecordIn instead, or it would go for a write lock it is
+// itself holding.
 func (service *Service) Record(ctx context.Context, input AuditInput) error {
+	event, err := service.newEvent(input)
+	if err != nil {
+		return err
+	}
+	service.mu.Lock()
+	service.pending = append(service.pending, event)
+	service.mu.Unlock()
+	// Best effort, as it has always been: a flush that cannot get through leaves
+	// the event pending for the next one rather than failing the request whose
+	// work is already done.
+	_ = service.Flush(ctx)
+	return nil
+}
+
+// RecordIn writes one audit event through tx — the transaction the request it
+// describes is running in. The trail then ends the way the work does: visible
+// when that transaction commits, gone when it rolls back.
+//
+// The event is not queued if the write fails. Queueing it would put it in line
+// to be flushed on its own later, which is precisely the audit this avoids: a
+// record of a write that never landed.
+func (service *Service) RecordIn(ctx context.Context, input AuditInput, tx store.Tx) error {
+	event, err := service.newEvent(input)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		return securityError(result.CodeInternal, "security audit event could not be encoded")
+	}
+	if err := tx.Put(ctx, AuditBucket, event.ID, encoded); err != nil {
+		return securityError(result.CodeInternal, "security audit event could not be stored")
+	}
+	return nil
+}
+
+func (service *Service) newEvent(input AuditInput) (AuditEvent, error) {
 	if service == nil || service.store == nil {
-		return securityError(result.CodeInternal, "security audit Store is unavailable")
+		return AuditEvent{}, securityError(result.CodeInternal, "security audit Store is unavailable")
 	}
 	id, err := service.ids.Next()
 	if err != nil {
-		return securityError(result.CodeInternal, "security audit ID could not be allocated")
+		return AuditEvent{}, securityError(result.CodeInternal, "security audit ID could not be allocated")
 	}
 	event := AuditEvent{
 		Version: AuditVersion, ID: id, OccurredAt: service.clock.Now().UTC(),
@@ -114,13 +155,9 @@ func (service *Service) Record(ctx context.Context, input AuditInput) error {
 	}
 	sort.Strings(event.AuthorizedDatabases)
 	if err := validateAudit(event); err != nil {
-		return err
+		return AuditEvent{}, err
 	}
-	service.mu.Lock()
-	service.pending = append(service.pending, event)
-	service.mu.Unlock()
-	_ = service.Flush(ctx)
-	return nil
+	return event, nil
 }
 
 func (service *Service) Flush(ctx context.Context) error {

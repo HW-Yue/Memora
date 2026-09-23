@@ -267,6 +267,19 @@ func hasAuthorization(authorization security.Authorization) bool {
 		len(authorization.AuthorizedDatabases) > 0 || authorization.Approval != nil
 }
 
+// WithActiveTransaction runs fn against the explicit transaction this session
+// holds open, or against nil when it holds none, under the same lock that
+// executes statements. The lock is the point: without it the transaction can be
+// committed by the next request between the look and the use.
+func (session *BatchSession) WithActiveTransaction(fn func(ExplicitTransaction) error) error {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return fn(nil)
+	}
+	return fn(session.active)
+}
+
 func (session *BatchSession) Active() bool {
 	session.mu.Lock()
 	defer session.mu.Unlock()

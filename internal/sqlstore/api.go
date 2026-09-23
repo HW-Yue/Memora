@@ -2,11 +2,10 @@ package sqlstore
 
 import (
 	"context"
-
 	"sync"
+	"time"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
-
 	"github.com/HW-Yue/Memora/internal/change"
 	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/recall"
@@ -14,6 +13,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
 	"github.com/HW-Yue/Memora/internal/row"
+	"github.com/HW-Yue/Memora/internal/store"
 )
 
 // operations is the executor.Rows surface, implemented once over a tx. DB runs
@@ -311,6 +311,7 @@ type Transaction struct {
 	t      *tx
 	mu     sync.Mutex
 	closed bool
+	idle   *time.Timer
 }
 
 // BeginTransaction starts an explicit transaction. It holds the write lock
@@ -321,11 +322,17 @@ func (db *DB) BeginTransaction(ctx context.Context) (*Transaction, error) {
 		return nil, err
 	}
 	transaction := &Transaction{db: db, t: t}
+	if db.transactionIdle > 0 {
+		transaction.idle = time.AfterFunc(db.transactionIdle, transaction.rollbackIdle)
+	}
 	transaction.operations = operations{run: func(ctx context.Context, _ bool, fn func(*tx) error) error {
 		transaction.mu.Lock()
 		defer transaction.mu.Unlock()
 		if transaction.closed {
 			return fail(result.CodeInvalidTransaction, "transaction is closed")
+		}
+		if transaction.idle != nil {
+			transaction.idle.Reset(db.transactionIdle)
 		}
 		if metadata, ok := change.MetadataFrom(ctx); ok {
 			transaction.t.claimAttribution(metadata)
@@ -335,6 +342,31 @@ func (db *DB) BeginTransaction(ctx context.Context) (*Transaction, error) {
 	return transaction, nil
 }
 
+// KVTx lends this transaction's open handle to a bucketed key-value writer, so
+// a record about the work can be written with the work itself. The returned Tx
+// commits and rolls back with the transaction and never on its own: it is a
+// second view of one handle, not a second transaction.
+//
+// One handle is one writer at a time: the caller must not use it while the
+// transaction is executing a statement of its own.
+func (transaction *Transaction) KVTx(namespace string) store.Tx {
+	return &kvTx{kv: transaction.db.KV(namespace), sql: transaction.t.sql, write: true, joined: true}
+}
+
+// rollbackIdle ends a transaction nobody is using any more. An explicit
+// transaction holds the write lock on purpose — that is what makes its reads
+// see its own writes — so a caller that opened one and walked away would hold
+// every other writer behind it for as long as the process lives.
+func (transaction *Transaction) rollbackIdle() {
+	transaction.mu.Lock()
+	defer transaction.mu.Unlock()
+	if transaction.closed {
+		return
+	}
+	transaction.closed = true
+	_ = transaction.t.rollback()
+}
+
 func (transaction *Transaction) Commit() error {
 	transaction.mu.Lock()
 	defer transaction.mu.Unlock()
@@ -342,6 +374,7 @@ func (transaction *Transaction) Commit() error {
 		return fail(result.CodeInvalidTransaction, "transaction is closed")
 	}
 	transaction.closed = true
+	transaction.stopIdle()
 	return transaction.t.commit(context.Background())
 }
 
@@ -352,7 +385,14 @@ func (transaction *Transaction) Rollback() error {
 		return nil
 	}
 	transaction.closed = true
+	transaction.stopIdle()
 	return transaction.t.rollback()
+}
+
+func (transaction *Transaction) stopIdle() {
+	if transaction.idle != nil {
+		transaction.idle.Stop()
+	}
 }
 
 func (transaction *Transaction) DescribeDatabase(ctx context.Context, name string) (value catalog.Database, err error) {
