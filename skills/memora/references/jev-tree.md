@@ -80,10 +80,25 @@ intent is one thing.)
 
 ## When it is worth calling
 
-- the requirement maps onto the tree's **structure** ("which of my internships",
-  "where do we keep the decisions about X"), and
-- you want a **reproducible, explainable** path — every layer can say what it
-  chose between, and the whole run can be replayed (`--record`, `--replay`).
+**It is not the default, and on a shallow tree it is not faster.** The default is
+you, reading the layers: one request can carry several `SHOW ROUTES` statements, so
+a whole layer — or every sibling of the next one — is one turn, while this walk
+costs one hosted judgment per branch node. Measured on this library (2 databases,
+6 tables, 62 route nodes, depth 2–3), from the first retrieval action to the facts
+in hand: **the agent walking took 16.27 s / 5 calls / 0.15 s of tool time; this
+walk took 32.74 s / 6 calls / 11.7 s of provider waiting.** The walk's cost scales
+with the number of **branch nodes**; yours scales with the **depth**. Shallow and
+wide is the shape where that is the wrong direction.
+
+Call it when one of these is true, and say which one:
+
+- **a layer comes back wider than about 40 rows** — the listing itself is the
+  problem, and a chooser that reads a layer at a time is the pressure valve;
+- **you are past the fifth layer and still have not reached a leaf** — depth is
+  where this cost model finally points the right way (~0.35 s per layer against
+  your ~3 s per turn);
+- **you need a replayable record of every layer decision** (`--record`) instead of
+  a path that exists only in this conversation.
 
 Do not use it when the requirement is **similarity** rather than structure
 ("everything about storage engines") — `RECALL` is for that and is far cheaper.
@@ -91,11 +106,6 @@ Do not use it for **counting or universal** questions ("how many", "all of
 them"): a walk enumerates positions, it does not count. And when the user already
 names the Database, the Table or the node, do not call it at all — pass
 `"database"`/`"table"`, or just read what they named.
-
-**It is not faster than recall.** A walk costs one jev call per layer with more
-than one child (~1 s each) plus local statements, so a deep tree is seconds;
-recall is one statement. What it buys is a landing that is right by construction
-and an answer that says how it got there.
 
 ## The answer
 

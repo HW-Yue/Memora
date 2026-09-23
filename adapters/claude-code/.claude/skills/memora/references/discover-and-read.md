@@ -43,10 +43,16 @@ with their purposes as your receipt, bind the one Database whose declared
 `purpose`/`scope` covers the question, and **state that inference in your
 answer**. If two or more Databases could cover it, that is not an error to
 report: a requirement can genuinely point at several, and the honest answer is the
-set of them. Put the candidates through jev, **inside the authorized scope only**
-(see [`references/jev-tree.md`](jev-tree.md)), and report the candidates and stop
-only when it comes back `undecided` or `empty`, or when nothing can decide and
-nobody can be asked. Never widen the scope to make a guess fit.
+set of them. **Decide which of them to read yourself**: at this size one
+`SHOW CATALOG ATLAS` plus your own judgment costs less than a provider call, and
+the same holds for the route layers below — **one request can carry several
+`SHOW ROUTES` statements** (one `--input` element each), so a layer, or every
+sibling of the next one, is one turn. Escalate to the jev walk
+([`references/jev-tree.md`](jev-tree.md)) on a signal you can count, never on a
+feeling: **a layer comes back wider than about 40 rows**, or **you are past the
+fifth layer and still have not reached a leaf** — see that reference for the
+measured comparison. Report when nothing can decide and nobody can be asked.
+Never widen the scope to make a guess fit.
 
 ```sh
 memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"
