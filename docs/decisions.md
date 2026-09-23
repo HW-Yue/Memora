@@ -1661,3 +1661,66 @@ agent，一个自己逐层走树、一个把导航交给 `jev_tree.py`，各带�
 
 **状态**：修法已定，代码未动，等开工。涉及 `jev_tree.py`、`references/jev-tree.md`、
 `docs/query/jev-tree-v1.md` 与 devgate 的录像 fixture。
+
+## 2026-09-22 · 语义树的标签质量是可测量的检索损伤（用户看不懂自己的树）
+
+**对象**：57 条 Route（`me` 12 条 + `memora` 44 条）的 `name` / `purpose` / `aliases` / `synopsis`。
+用户的原话是"我自己都不知道这个 rekey 是哪里的"——先量，再判断。
+
+| 指标 | 实测 |
+|---|---|
+| Route 总数 | 56 |
+| `purpose` 与 `name` 完全相同（零信息复读） | **44 / 56 = 79%** |
+| 有 `aliases` 的 | **0 / 56** |
+| 写了 `synopsis` 的 | **0 / 56** |
+
+也就是说：树上 79% 的节点只写了一个 2–6 字的标签，三个本来用来承载信息的字段
+（`purpose` 的用途说明、`aliases` 用户词、`synopsis` 1000 字长说明）覆盖率最高的是 21%。
+
+**这不是审美问题。** 走树交给 jev 的候选描述就是 `purpose or name`——所以 jev 看到的是
+"工作方式"、"引擎与存储"、"接口与检索" 这种光秃秃的词。宽层答 `undecided`、把 9 个混装时给
+无关的 `工作方式` 打 0.83，都是这个原因。**模型的困惑和用户的困惑是同一个困惑。**
+
+**rekey 这个词的来路（可查部分）**：仓库里最早出现在 2026-09-21 `7a3286b8 docs: vectors are
+host-computed, pending is derived, the lock has no rekey`（记录的是"这条路不存在"），随后
+`42191b6d` 计划、`0fcf78e2` 规格、`ec7e3eaa` 实现。词形与引擎语句
+`REKEY VECTOR IDENTITY IN DATABASE :db LIMIT :n [MODEL :m DIMENSIONS :d]` 一致——**它是实现
+词汇，被当成了用户词汇**。（更早的对话已不在本会话上下文里，谁先说出这个词我无法核实，不假装知道。）
+
+**判断**：个人记忆树的唯一职责是**主人能猜到东西放在哪**。主人猜不出 → 树在这一点上就是失败的。
+修法与顺序：
+
+1. **每个 Route 的名字用主人的词，别名装主人会用来搜的说法**（`ALTER ROUTE :route SET ALIASES
+   :aliases` 已存在，≤8 项、单项 ≤64 字符）。例：`/接口与检索/向量 rekey` 的 aliases 应该是
+   `["换向量模型","换 embedding","向量模型换不动","重做向量索引","换 embedding 维度"]`，
+   purpose 写"换了 embedding 模型或维度之后，怎么把整库向量安全换过去"。
+2. **`purpose` 不许复读 `name`**：必须说清"这里装着什么"（44 条待补）。
+3. **写进 Skill 的写路径规则**：新建或重塑 Route 时，`purpose == name` 或 `aliases` 为空即为不合规。
+4. **加体检**：admin/doctor 报出 `purpose == name` 或 `aliases` 为空的 Route，防止再次腐化。
+5. **与 frontier 修法的关系**：标签变实之后宽层 `undecided` 会减少（jev 有真材料可判），
+   但**替代不了**那条结构修复——顺序截断与静默丢弃与标签质量无关。
+
+**边界**：缺口 ②（`row_semantics` 与库/表的 `purpose`/`scope`/`anti_scope` 建表后无语句可改）
+挡的是**库/表级**语义；Route 级有 `ALTER ROUTE SET ALIASES` 与 ROUTE MUTATION，**这部分现在就能动**。
+
+### 补记：规则本来就在，缺的是内容——而且管道把"缺失"藏起来了
+
+用户记得的这条规则不是新要求，**现行规范里三处都写了**：
+
+- `docs/query/implicit-route-path-v1.md`：每段 `name`/`kind`/`purpose` **都必填**；
+- `docs/query/jev-tree-v1.md`：每级"把候选的 `name` + `purpose` 交给 `scripts/jev_select.py`"；
+- `docs/query/retrieval-routes-jev.md`：喂给 jev 的 option 集剥掉 ID，**只留 name 与 purpose**。
+
+代码也确实这么接的：`choose_layer` 取 `(name, purpose)`，`decide` 把 `{name: purpose or name}`
+交给 `build_set_payload`。所以问题**不在规则、也不在管道**——在于"必填"被**名字复读**满足了：
+44/56 的 purpose 就是名字本身，**形式合规，实质为空**。
+
+而 `purpose or name` 这个兜底让"没写"和"写了名字"在管道里长得一模一样，于是**标签缺失永远不会
+被发现**——这正是它能烂到 79% 而没人报错的原因。
+
+据此补两条修法（与前文同一批）：
+
+1. **去掉 `purpose or name` 的静默兜底**：purpose 缺失或等于 name 时如实标注"这一层没有可用描述"，
+   而不是拿名字顶上；可选按需拉 `DESCRIBE ROUTE` 的 synopsis 补进候选描述（本地批量，一层一次）。
+2. **`purpose == name` 在写路径视为不合规**（新建拒绝或至少告警），doctor/admin 报出存量。
+   这与"每段 purpose 必填"是同一条规则的两半：必填的是**内容**，不是一个非空字符串。
