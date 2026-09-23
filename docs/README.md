@@ -37,6 +37,7 @@
 - [向量 rekey](./planning/vector-rekey.md) — 卸下 TOFU 身份，再让排干重新上锁
 - [Route 的描述句](./planning/route-purpose-contract.md) — 必填的是内容，不是非空字符串
 - [整层读取](./planning/whole-layer-read.md) — 读取端不设宽度上限，走不完就说走不完
+- [jev 分流阶梯](./planning/jev-routing-ladder.md) — 什么时候走树、什么时候用 jev、剩下的活怎么排
 - [无上下文 subagent 循环实测（2026-09-22）](./development/dogfood-2026-09-22.md) — 五轮摩擦与修复
 - [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
 - [决策日志](./decisions.md) — 运行中的判断；规范级结论进 ADR
