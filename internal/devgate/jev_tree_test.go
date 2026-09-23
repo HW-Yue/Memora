@@ -86,8 +86,58 @@ func TestJevTreeWalksFromARequirementToLandings(t *testing.T) {
 		if got := paths(result); len(got) != 0 {
 			t.Fatalf("landings = %v, want none", got)
 		}
-		if stopped, _ := result["stopped"].(string); stopped == "" {
-			t.Fatalf("a stopped walk must say why: %v", result)
+		// Stopping is a list of what was never walked, with the reason — not a
+		// string, and not a landing: a branch nobody looked at must not be handed
+		// back in the same array as a position.
+		stopped, _ := result["stopped"].([]any)
+		if len(stopped) == 0 {
+			t.Fatalf("a stopped walk must say what it never reached: %v", result)
+		}
+		entry, _ := stopped[0].(map[string]any)
+		if entry["reason"] == nil || entry["reason"] == "" {
+			t.Fatalf("a stopped branch must carry its reason: %v", stopped[0])
+		}
+		if result["incomplete"] != true {
+			t.Fatalf("a stopped walk is not a whole answer: %v", result)
+		}
+	})
+
+	t.Run("a landing is a leaf path plus the handle a back-table read needs", func(t *testing.T) {
+		// The owner's contract: the walk locates. The path is what the agent judges
+		// against, and the database, table and row id are what it writes its own
+		// `SELECT … WHERE row_id = :row` with — a path alone cannot be turned into
+		// that query, and a row id alone does not say which table to read.
+		result := replay(t, "two-internships.json")
+		for _, landing := range result["landings"].([]any) {
+			entry := landing.(map[string]any)
+			for _, field := range []string{"database", "table", "path", "leaf_route_id", "row_id", "revision"} {
+				if entry[field] == nil || entry[field] == "" {
+					t.Fatalf("a landing must carry %s: %v", field, entry)
+				}
+			}
+			if entry["termination"] != "leaf" {
+				t.Fatalf("a landing is a leaf: %v", entry)
+			}
+		}
+		if _, present := result["stopped"]; present {
+			t.Fatalf("a walk that finished has stopped nothing: %v", result["stopped"])
+		}
+	})
+
+	t.Run("no branch is ever reported as a landing", func(t *testing.T) {
+		// The regression this rule exists for: the walk used to cut its frontier by
+		// arrival order and then write every branch it cut into `landings` with a
+		// `budget:` termination — so "could not reach the answer" and "searched, not
+		// there" came back in the same array, distinguishable only by one string.
+		for _, fixture := range []string{"two-internships.json", "one-internship.json",
+			"across-libraries.json", "undecided-enumerates.json", "purpose-repeats-name.json"} {
+			result := replay(t, fixture)
+			for _, landing := range result["landings"].([]any) {
+				entry := landing.(map[string]any)
+				if entry["termination"] != "leaf" || entry["row_id"] == nil {
+					t.Fatalf("%s: %v was handed back as a position", fixture, entry)
+				}
+			}
 		}
 	})
 

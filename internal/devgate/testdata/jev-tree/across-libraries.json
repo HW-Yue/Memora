@@ -1,7 +1,7 @@
 {
  "version": "memora.jev-tree-recording/v1",
  "request": {
-  "requirement": "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定",
+  "requirement": "用户想同时了解自己的 internship 历史，以及 Memora 这个 project 在产品定位上的决定",
   "authorized_databases": [
    "me",
    "memora"
@@ -12,133 +12,47 @@
    "rows": [
     {
      "aliases": [],
-     "created_at": "2026-09-21T15:19:07.400937Z",
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "database_id": "db_me",
      "name": "me",
-     "purpose": "the user的personalidentity、job seeking与project事实",
-     "schema_version": 5,
-     "scope": "current personal档案、internship、project与job search投递",
-     "tables": [],
-     "updated_at": "2026-09-21T15:19:30.809642Z"
+     "purpose": "the user 的 personal 事实"
     },
     {
      "aliases": [],
-     "created_at": "2026-09-21T15:19:55.779114Z",
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
+     "database_id": "db_memora",
      "name": "memora",
-     "purpose": "Memora 本仓库的当前有效产品知识",
-     "schema_version": 3,
-     "scope": "现行原则、规格、能力、风险与工作方向",
-     "tables": [],
-     "updated_at": "2026-09-21T15:20:22.586375Z"
+     "purpose": "Memora 本仓库的现行产品知识"
     }
    ]
   },
   "{\"databases\": [\"me\"], \"named\": {\"bytes\": 8192, \"limit\": 64}, \"source\": \"SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT\"}": {
    "rows": [
     {
-     "aliases": [],
      "database": "me",
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
      "kind": "database",
-     "purpose": "the user的personalidentity、job seeking与project事实",
-     "schema_version": 5,
-     "scope": "current personal档案、internship、project与job search投递"
+     "purpose": "the user 的 personal 事实",
+     "table": ""
     },
     {
-     "aliases": [],
      "database": "me",
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
      "kind": "table",
-     "purpose": "job search投递与进展",
-     "row_semantics": "一行是一份完整、可独立修改的语义文档",
-     "schema_version": 1,
-     "table": "applications",
-     "table_id": "tbl_20e36c6cf805cb89bcd36196c82d383f"
-    },
-    {
-     "aliases": [],
-     "database": "me",
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "table",
-     "purpose": "internship与工作history",
-     "row_semantics": "一行是一份完整、可独立修改的语义文档",
-     "schema_version": 1,
-     "table": "experiences",
-     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
-    },
-    {
-     "aliases": [],
-     "database": "me",
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "table",
-     "purpose": "current personalidentity与job seeking意向",
-     "row_semantics": "一行是一份完整、可独立修改的语义文档",
-     "schema_version": 1,
-     "table": "profile",
-     "table_id": "tbl_591b0ef08952ebc7d8c27b5993728576"
-    },
-    {
-     "aliases": [],
-     "database": "me",
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "table",
-     "purpose": "presentable key project",
-     "row_semantics": "一行是一份完整、可独立修改的语义文档",
-     "schema_version": 1,
-     "table": "projects",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
+     "purpose": "实习经历",
+     "table": "experiences"
     }
    ]
   },
   "{\"databases\": [\"memora\"], \"named\": {\"bytes\": 8192, \"limit\": 64}, \"source\": \"SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT\"}": {
    "rows": [
     {
-     "aliases": [],
      "database": "memora",
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
      "kind": "database",
-     "purpose": "Memora 本仓库的当前有效产品知识",
-     "schema_version": 3,
-     "scope": "现行原则、规格、能力、风险与工作方向"
+     "purpose": "现行产品知识",
+     "table": ""
     },
     {
-     "aliases": [],
      "database": "memora",
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "table",
-     "purpose": "本仓库的架构决策记录",
-     "row_semantics": "一行是一份完整、可独立修改的语义文档",
-     "schema_version": 1,
-     "table": "decisions",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database": "memora",
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
      "kind": "table",
      "purpose": "现行可独立修改的产品知识模块",
-     "row_semantics": "一行是一份完整、可独立修改的语义文档",
-     "schema_version": 1,
-     "table": "modules",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {}, \"source\": \"SHOW ROUTES FROM TABLE me.applications AT ROOT\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "阿里巴巴",
-     "parent_id": "route_c752777770b89f064f68a8a82c6950a8",
-     "path": "/阿里巴巴",
-     "purpose": "阿里巴巴投递",
-     "revision": 2,
-     "route_id": "route_718f59d5ac5fa10cf4288a23fd89ac8a",
-     "table_id": "tbl_20e36c6cf805cb89bcd36196c82d383f"
+     "table": "modules"
     }
    ]
   },
@@ -146,111 +60,54 @@
    "rows": [
     {
      "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "database_id": "db_x",
      "kind": "branch",
      "name": "internship",
-     "parent_id": "route_b34423a71a3999135ca360407cb5941c",
+     "parent_id": "route_me_exp_root",
      "path": "/internship",
-     "purpose": "internshiphistory",
-     "revision": 3,
-     "route_id": "route_e9a17b1351a01d181496054215306c6f",
-     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
+     "purpose": "实习经历",
+     "revision": 1,
+     "route_id": "route_me_internship"
     }
    ]
   },
-  "{\"databases\": [\"me\"], \"named\": {}, \"source\": \"SHOW ROUTES FROM TABLE me.profile AT ROOT\"}": {
+  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_me_exp_root\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
    "rows": [
     {
      "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "database_id": "db_x",
+     "kind": "branch",
+     "name": "internship",
+     "parent_id": "route_me_exp_root",
+     "path": "/internship",
+     "purpose": "实习经历",
+     "revision": 1,
+     "route_id": "route_me_internship"
+    }
+   ]
+  },
+  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_me_internship\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
+   "rows": [
+    {
+     "aliases": [],
+     "database_id": "db_x",
      "kind": "leaf",
-     "name": "identity档案",
-     "parent_id": "route_35a5b47065b9f480fd5fe79b1a5c243f",
-     "path": "/identity档案",
-     "purpose": "personal档案",
-     "revision": 2,
-     "route_id": "route_5a30f7411ce3ced1c16f3ef092780f16",
-     "table_id": "tbl_591b0ef08952ebc7d8c27b5993728576"
+     "name": "ACME",
+     "parent_id": "route_me_internship",
+     "path": "/internship/ACME",
+     "purpose": "在 ACME 的实习",
+     "revision": 1,
+     "route_id": "route_me_acme"
     }
    ]
   },
-  "{\"databases\": [\"me\"], \"named\": {}, \"source\": \"SHOW ROUTES FROM TABLE me.projects AT ROOT\"}": {
+  "{\"databases\": [\"me\"], \"named\": {\"leaf\": \"route_me_acme\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
    "rows": [
     {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "branch",
-     "name": "personal与科研",
-     "parent_id": "route_44464f2dac5ab2f26f6fe7b53992ea63",
-     "path": "/personal与科研",
-     "purpose": "personalproject与在校科研",
-     "revision": 3,
-     "route_id": "route_62ec387c18658fbd93d5de0f74a44ae8",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "branch",
-     "name": "internshipproject",
-     "parent_id": "route_44464f2dac5ab2f26f6fe7b53992ea63",
-     "path": "/internshipproject",
-     "purpose": "internship期间的project",
-     "revision": 4,
-     "route_id": "route_add33d228d8ece7f54ce2ca7de378eca",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    }
-   ]
-  },
-  "{\"databases\": [\"memora\"], \"named\": {}, \"source\": \"SHOW ROUTES FROM TABLE memora.decisions AT ROOT\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "宿主与评测",
-     "parent_id": "route_8a529eeeb2576339b2a190b7c51f653d",
-     "path": "/宿主与评测",
-     "purpose": "宿主与评测",
-     "revision": 4,
-     "route_id": "route_8fa2ecd38ec37ab9f08465314f23c884",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "工作方式",
-     "parent_id": "route_8a529eeeb2576339b2a190b7c51f653d",
-     "path": "/工作方式",
-     "purpose": "工作方式",
-     "revision": 5,
-     "route_id": "route_1e4160acd9878a5b33d525ff8d57efec",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "引擎与存储",
-     "parent_id": "route_8a529eeeb2576339b2a190b7c51f653d",
-     "path": "/引擎与存储",
-     "purpose": "引擎与存储",
-     "revision": 4,
-     "route_id": "route_04085cdfd2c7695b0397f697859f99ae",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "检索",
-     "parent_id": "route_8a529eeeb2576339b2a190b7c51f653d",
-     "path": "/检索",
-     "purpose": "检索",
-     "revision": 7,
-     "route_id": "route_5b5b9451b1122d67aa8292640fdc0406",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
+     "database_id": "db_me",
+     "revision": 1,
+     "row_id": "row_me_acme",
+     "table_id": "tbl_me"
     }
    ]
   },
@@ -258,483 +115,60 @@
    "rows": [
     {
      "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
+     "database_id": "db_x",
      "kind": "branch",
-     "name": "产品",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/产品",
-     "purpose": "产品",
-     "revision": 3,
-     "route_id": "route_932921983d80f3027f6980342dda1965",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "当前状态",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/当前状态",
-     "purpose": "当前状态",
-     "revision": 3,
-     "route_id": "route_713d6bb494478097ee361c686a5d72ed",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "接口与检索",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/接口与检索",
-     "purpose": "接口与检索",
-     "revision": 8,
-     "route_id": "route_bf4cdb3207e28fdd37626b61a8d55762",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "架构",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/架构",
-     "purpose": "架构",
-     "revision": 5,
-     "route_id": "route_94bcfa10f6a3e68bdf06d5f355d573c2",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "运行与宿主",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/运行与宿主",
-     "purpose": "运行与宿主",
-     "revision": 5,
-     "route_id": "route_f74186505eebf965192898f0ab72d4c1",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_c752777770b89f064f68a8a82c6950a8\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "阿里巴巴",
-     "parent_id": "route_c752777770b89f064f68a8a82c6950a8",
-     "path": "/阿里巴巴",
-     "purpose": "阿里巴巴投递",
-     "revision": 2,
-     "route_id": "route_718f59d5ac5fa10cf4288a23fd89ac8a",
-     "table_id": "tbl_20e36c6cf805cb89bcd36196c82d383f"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"leaf\": \"route_718f59d5ac5fa10cf4288a23fd89ac8a\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
-   "rows": [
-    {
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "name": "product",
+     "parent_id": "route_mo_mod_root",
+     "path": "/product",
+     "purpose": "产品是什么、边界在哪",
      "revision": 1,
-     "row_id": "row_f7c7dd87606386a99c8aa8f005a4515c",
-     "table_id": "tbl_20e36c6cf805cb89bcd36196c82d383f"
+     "route_id": "route_mo_product"
     }
    ]
   },
-  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_b34423a71a3999135ca360407cb5941c\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
+  "{\"databases\": [\"memora\"], \"named\": {\"parent\": \"route_mo_mod_root\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
    "rows": [
     {
      "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "database_id": "db_x",
      "kind": "branch",
-     "name": "internship",
-     "parent_id": "route_b34423a71a3999135ca360407cb5941c",
-     "path": "/internship",
-     "purpose": "internshiphistory",
-     "revision": 3,
-     "route_id": "route_e9a17b1351a01d181496054215306c6f",
-     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_35a5b47065b9f480fd5fe79b1a5c243f\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "identity档案",
-     "parent_id": "route_35a5b47065b9f480fd5fe79b1a5c243f",
-     "path": "/identity档案",
-     "purpose": "personal档案",
-     "revision": 2,
-     "route_id": "route_5a30f7411ce3ced1c16f3ef092780f16",
-     "table_id": "tbl_591b0ef08952ebc7d8c27b5993728576"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"leaf\": \"route_5a30f7411ce3ced1c16f3ef092780f16\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
-   "rows": [
-    {
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "name": "product",
+     "parent_id": "route_mo_mod_root",
+     "path": "/product",
+     "purpose": "产品是什么、边界在哪",
      "revision": 1,
-     "row_id": "row_85bccedae56cdcf2e7924cc92d7f5794",
-     "table_id": "tbl_591b0ef08952ebc7d8c27b5993728576"
+     "route_id": "route_mo_product"
     }
    ]
   },
-  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_44464f2dac5ab2f26f6fe7b53992ea63\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
+  "{\"databases\": [\"memora\"], \"named\": {\"parent\": \"route_mo_product\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
    "rows": [
     {
      "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "branch",
-     "name": "personal与科研",
-     "parent_id": "route_44464f2dac5ab2f26f6fe7b53992ea63",
-     "path": "/personal与科研",
-     "purpose": "personalproject与在校科研",
-     "revision": 3,
-     "route_id": "route_62ec387c18658fbd93d5de0f74a44ae8",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "branch",
-     "name": "internshipproject",
-     "parent_id": "route_44464f2dac5ab2f26f6fe7b53992ea63",
-     "path": "/internshipproject",
-     "purpose": "internship期间的project",
-     "revision": 4,
-     "route_id": "route_add33d228d8ece7f54ce2ca7de378eca",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    }
-   ]
-  },
-  "{\"databases\": [\"memora\"], \"named\": {\"parent\": \"route_8a529eeeb2576339b2a190b7c51f653d\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "宿主与评测",
-     "parent_id": "route_8a529eeeb2576339b2a190b7c51f653d",
-     "path": "/宿主与评测",
-     "purpose": "宿主与评测",
-     "revision": 4,
-     "route_id": "route_8fa2ecd38ec37ab9f08465314f23c884",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "工作方式",
-     "parent_id": "route_8a529eeeb2576339b2a190b7c51f653d",
-     "path": "/工作方式",
-     "purpose": "工作方式",
-     "revision": 5,
-     "route_id": "route_1e4160acd9878a5b33d525ff8d57efec",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "引擎与存储",
-     "parent_id": "route_8a529eeeb2576339b2a190b7c51f653d",
-     "path": "/引擎与存储",
-     "purpose": "引擎与存储",
-     "revision": 4,
-     "route_id": "route_04085cdfd2c7695b0397f697859f99ae",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "检索",
-     "parent_id": "route_8a529eeeb2576339b2a190b7c51f653d",
-     "path": "/检索",
-     "purpose": "检索",
-     "revision": 7,
-     "route_id": "route_5b5b9451b1122d67aa8292640fdc0406",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    }
-   ]
-  },
-  "{\"databases\": [\"memora\"], \"named\": {\"parent\": \"route_b2c2d3b5b63f13980ce9cd3ca5350eb6\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "产品",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/产品",
-     "purpose": "产品",
-     "revision": 3,
-     "route_id": "route_932921983d80f3027f6980342dda1965",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "当前状态",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/当前状态",
-     "purpose": "当前状态",
-     "revision": 3,
-     "route_id": "route_713d6bb494478097ee361c686a5d72ed",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "接口与检索",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/接口与检索",
-     "purpose": "接口与检索",
-     "revision": 8,
-     "route_id": "route_bf4cdb3207e28fdd37626b61a8d55762",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "架构",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/架构",
-     "purpose": "架构",
-     "revision": 5,
-     "route_id": "route_94bcfa10f6a3e68bdf06d5f355d573c2",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "branch",
-     "name": "运行与宿主",
-     "parent_id": "route_b2c2d3b5b63f13980ce9cd3ca5350eb6",
-     "path": "/运行与宿主",
-     "purpose": "运行与宿主",
-     "revision": 5,
-     "route_id": "route_f74186505eebf965192898f0ab72d4c1",
-     "table_id": "tbl_c5a3fc741af1cb7aa17b08a91b3f7b27"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_e9a17b1351a01d181496054215306c6f\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "database_id": "db_x",
      "kind": "leaf",
-     "name": "ACME",
-     "parent_id": "route_e9a17b1351a01d181496054215306c6f",
-     "path": "/internship/ACME",
-     "purpose": "ACME internship",
-     "revision": 2,
-     "route_id": "route_7915ef8a4605ba4e22b906f83a732850",
-     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "GLOBEX",
-     "parent_id": "route_e9a17b1351a01d181496054215306c6f",
-     "path": "/internship/GLOBEX",
-     "purpose": "GLOBEXinternship",
-     "revision": 2,
-     "route_id": "route_edc88a760c7d5d14a2159dca46b9a684",
-     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"leaf\": \"route_7915ef8a4605ba4e22b906f83a732850\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
-   "rows": [
-    {
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
+     "name": "positioning",
+     "parent_id": "route_mo_product",
+     "path": "/product/positioning",
+     "purpose": "Memora 是什么、给谁用",
      "revision": 1,
-     "row_id": "row_9ba155509ce7e0ea1d281ebd098f406b",
-     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
+     "route_id": "route_mo_positioning"
     }
    ]
   },
-  "{\"databases\": [\"me\"], \"named\": {\"leaf\": \"route_edc88a760c7d5d14a2159dca46b9a684\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
+  "{\"databases\": [\"memora\"], \"named\": {\"leaf\": \"route_mo_positioning\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
    "rows": [
     {
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "revision": 1,
-     "row_id": "row_3c3665373dc1c248996cdbf2507bbb0d",
-     "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_62ec387c18658fbd93d5de0f74a44ae8\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "Memora",
-     "parent_id": "route_62ec387c18658fbd93d5de0f74a44ae8",
-     "path": "/personal与科研/Memora",
-     "purpose": "语义数据库",
+     "database_id": "db_memora",
      "revision": 2,
-     "route_id": "route_d280a652021c81d1357aaf354eb9678e",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "原醛科研",
-     "parent_id": "route_62ec387c18658fbd93d5de0f74a44ae8",
-     "path": "/personal与科研/原醛科研",
-     "purpose": "多模态诊断科研",
-     "revision": 2,
-     "route_id": "route_df0d672b2ad40d9f0794afcc777cad50",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"leaf\": \"route_d280a652021c81d1357aaf354eb9678e\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
-   "rows": [
-    {
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "revision": 2,
-     "row_id": "row_4cd12bb001cc837609f53ca9641df9ea",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"parent\": \"route_add33d228d8ece7f54ce2ca7de378eca\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "CoHabitat",
-     "parent_id": "route_add33d228d8ece7f54ce2ca7de378eca",
-     "path": "/internshipproject/CoHabitat",
-     "purpose": "企业内部 AGI 社区",
-     "revision": 2,
-     "route_id": "route_209a34c8c8e9b016de35cf4e8912be1c",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "DSH远程执行",
-     "parent_id": "route_add33d228d8ece7f54ce2ca7de378eca",
-     "path": "/internshipproject/DSH远程执行",
-     "purpose": "远程执行架构",
-     "revision": 2,
-     "route_id": "route_15dc75ad8dcda38240a0310a2b5f5726",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_6adadc69e7a45ea44a6508f3211c284c",
-     "kind": "leaf",
-     "name": "GLOBEX租赁",
-     "parent_id": "route_add33d228d8ece7f54ce2ca7de378eca",
-     "path": "/internshipproject/GLOBEX租赁",
-     "purpose": "租赁核心链路",
-     "revision": 2,
-     "route_id": "route_f9ae1624cc3df2d3b9ee97015ec69174",
-     "table_id": "tbl_a679b178a506c215560c0d6b59615e0e"
-    }
-   ]
-  },
-  "{\"databases\": [\"memora\"], \"named\": {\"parent\": \"route_5b5b9451b1122d67aa8292640fdc0406\"}, \"source\": \"SHOW ROUTES UNDER :parent\"}": {
-   "rows": [
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "leaf",
-     "name": "ADR-0007 Router 权威与候选预测器",
-     "parent_id": "route_5b5b9451b1122d67aa8292640fdc0406",
-     "path": "/检索/ADR-0007 Router 权威与候选预测器",
-     "purpose": "ADR-0007 Router 权威与候选预测器",
-     "revision": 2,
-     "route_id": "route_b1337acf66ab0a23f804337d1f2034ef",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "leaf",
-     "name": "ADR-0008 全内容倒排索引",
-     "parent_id": "route_5b5b9451b1122d67aa8292640fdc0406",
-     "path": "/检索/ADR-0008 全内容倒排索引",
-     "purpose": "ADR-0008 全内容倒排索引",
-     "revision": 2,
-     "route_id": "route_a1f18a7ef9f2d0b4d095d7780414f025",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "leaf",
-     "name": "ADR-0012 Row 向量给叶子路径",
-     "parent_id": "route_5b5b9451b1122d67aa8292640fdc0406",
-     "path": "/检索/ADR-0012 Row 向量给叶子路径",
-     "purpose": "ADR-0012 Row 向量给叶子路径",
-     "revision": 2,
-     "route_id": "route_0719a99371793f132ac61a674ad8d5a3",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "leaf",
-     "name": "ADR-0013 两路召回按名次融合",
-     "parent_id": "route_5b5b9451b1122d67aa8292640fdc0406",
-     "path": "/检索/ADR-0013 两路召回按名次融合",
-     "purpose": "ADR-0013 两路召回按名次融合",
-     "revision": 2,
-     "route_id": "route_5c8f797a5d738bd08ba1f1254f31231d",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "leaf",
-     "name": "召回只返回位置",
-     "parent_id": "route_5b5b9451b1122d67aa8292640fdc0406",
-     "path": "/检索/召回只返回位置",
-     "purpose": "召回只返回位置",
-     "revision": 2,
-     "route_id": "route_1b5b1477d7c9e5adfaabf56bc6f2d470",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
-    },
-    {
-     "aliases": [],
-     "database_id": "db_4a86c8afc83f522b46edc8a5123c83f2",
-     "kind": "leaf",
-     "name": "向量identity rekey",
-     "parent_id": "route_5b5b9451b1122d67aa8292640fdc0406",
-     "path": "/检索/向量identity rekey",
-     "purpose": "向量identity rekey",
-     "revision": 2,
-     "route_id": "route_b421115e0086b2ea4f62ed6ab100bbd7",
-     "table_id": "tbl_d97714f45fe5d39f2a1d3da4cba7c89f"
+     "row_id": "row_memora_positioning",
+     "table_id": "tbl_mo"
     }
    ]
   }
  },
  "jev": {
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || me|memora": {
+  "用户想同时了解自己的 internship 历史，以及 Memora 这个 project 在产品定位上的决定 || me|memora": {
    "mode": "set",
    "relevant": [
     "me",
@@ -742,82 +176,17 @@
    ],
    "decision": "separated",
    "model": "jev-1.13.0",
-   "elapsed_ms": 805
+   "elapsed_ms": 640
   },
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || me.applications|me.experiences|me.profile|me.projects|memora.decisions|memora.modules": {
+  "用户想同时了解自己的 internship 历史，以及 Memora 这个 project 在产品定位上的决定 || me.experiences|memora.modules": {
    "mode": "set",
    "relevant": [
-    "me.applications",
     "me.experiences",
-    "me.profile",
-    "me.projects",
-    "memora.decisions",
     "memora.modules"
    ],
    "decision": "separated",
    "model": "jev-1.13.0",
-   "elapsed_ms": 822
-  },
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || personal与科研|internshipproject": {
-   "mode": "set",
-   "relevant": [
-    "personal与科研",
-    "internshipproject"
-   ],
-   "decision": "separated",
-   "model": "jev-1.13.0",
-   "elapsed_ms": 714
-  },
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || 宿主与评测|工作方式|引擎与存储|检索": {
-   "mode": "set",
-   "relevant": [
-    "检索"
-   ],
-   "decision": "separated",
-   "model": "jev-1.13.0",
-   "elapsed_ms": 842
-  },
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || 产品|当前状态|接口与检索|架构|运行与宿主": {
-   "mode": "set",
-   "relevant": [
-    "产品"
-   ],
-   "decision": "separated",
-   "model": "jev-1.13.0",
-   "elapsed_ms": 768
-  },
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || ACME|GLOBEX": {
-   "mode": "set",
-   "relevant": [
-    "ACME",
-    "GLOBEX"
-   ],
-   "decision": "separated",
-   "model": "jev-1.13.0",
-   "elapsed_ms": 725
-  },
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || Memora|原醛科研": {
-   "mode": "set",
-   "relevant": [
-    "Memora"
-   ],
-   "decision": "separated",
-   "model": "jev-1.13.0",
-   "elapsed_ms": 712
-  },
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || CoHabitat|DSH远程执行|GLOBEX租赁": {
-   "mode": "set",
-   "relevant": [],
-   "decision": "empty",
-   "model": "jev-1.13.0",
-   "elapsed_ms": 1362
-  },
-  "用户想同时了解自己的internshiphistory，以及 Memora 这个project在产品定位上的决定 || ADR-0007 Router 权威与候选预测器|ADR-0008 全内容倒排索引|ADR-0012 Row 向量给叶子路径|ADR-0013 两路召回按名次融合|召回只返回位置|向量identity rekey": {
-   "mode": "set",
-   "relevant": [],
-   "decision": "empty",
-   "model": "jev-1.13.0",
-   "elapsed_ms": 752
+   "elapsed_ms": 700
   }
  }
 }

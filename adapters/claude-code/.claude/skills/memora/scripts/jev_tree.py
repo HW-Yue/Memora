@@ -95,13 +95,17 @@ JEV = os.environ.get(
 AUTHORIZATION_VERSION = "memora.authorization/v2"
 RECORDING_VERSION = "memora.jev-tree-recording/v1"
 
-# Budgets, deliberately constants: they bound a cost, they are not relevance
-# knobs. The jev-call cap is the only real gate; the rest keep one branch from
-# eating the whole answer.
-MAX_JEV_CALLS = 12
-MAX_DEPTH = 5
-MAX_FRONTIER = 4
-MAX_SECONDS = 30.0
+# One budget, and it bounds something outside the tree: a hosted provider that
+# hangs, retries or black-holes. The tree's own size is deliberately not bounded
+# here. A layer's width is the write path's business — `route_policy.
+# branch_fanout` refuses a new child past the limit, and the read side says so
+# itself ("a route layer is bounded by the Database's route_policy.branch_fanout,
+# not by a read-side budget") — the tree is finite, and an `empty` from jev prunes
+# a branch outright. Capping calls, width or depth here was the read side guessing
+# the shape of the write side, and guessing wrong dropped branches by arrival
+# order, which is how a whole Table's root layer could disappear from an answer.
+# See docs/planning/whole-layer-read.md.
+MAX_SECONDS = 120.0
 # Flattening the Table layer into one request is worth it for a handful of
 # databases. Past that the option set stops being a question anything can answer,
 # and the walk asks each database in turn instead.
@@ -126,8 +130,9 @@ class Budget:
         self.started = time.monotonic()
 
     def exhausted(self):
-        if self.jev_calls >= MAX_JEV_CALLS:
-            return "budget: jev calls"
+        # The only gate: the provider's own uncertainty. `jev_calls` is still
+        # counted and reported, because an unbounded walk against a metered API
+        # needs observing — but counting is not capping.
         if time.monotonic() - self.started > MAX_SECONDS:
             return "budget: wall clock"
         return ""
@@ -400,6 +405,27 @@ def select_tables(engine, chooser, budget, selected_databases, requirement, evid
     return tables
 
 
+def incomplete_message(uncertain, stopped):
+    """What a caller should do about an answer that is not whole.
+
+    Two different reasons, said plainly, because they need two different actions:
+    a layer judged from names alone is thin evidence, and a branch the walk never
+    reached is missing evidence. Widening a budget is not one of the actions — the
+    tree's size is the write path's business — so the advice is to narrow the
+    question or name the Table.
+    """
+    if not uncertain and not stopped:
+        return ""
+    parts = []
+    if stopped:
+        parts.append("%d branch(es) were never reached (%s)" % (
+            len(stopped), stopped[0].get("reason", "unknown")))
+    if uncertain:
+        parts.append("%d layer(s) were judged from names alone" % len(uncertain))
+    return ("this answer is not whole: %s. Narrow it — name the Table, or ask one "
+            "topic per call — rather than reading the landings as complete." % "; ".join(parts))
+
+
 def walk(engine, chooser, budget, tables, requirement, evidence):
     """The semantic tree, breadth first.
 
@@ -409,8 +435,10 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
     them.
     """
     landings = []
+    stopped = []
     frontier = []
-    over_walked = {"dropped": 0}
+    damage = []
+    visited = set()
     for database, table in tables:
         rows = engine.query("SHOW ROUTES FROM TABLE %s.%s AT ROOT" % (database, table), [database],
                             label="%s.%s root" % (database, table))["rows"]
@@ -418,58 +446,61 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
             evidence.append({"layer": "%s.%s" % (database, table), "decision": "no_root",
                              "options": [], "relevant": []})
             continue
-        frontier.append({"database": database, "depth": 0, "parent": rows[0]["parent_id"], "path": []})
+        frontier.append({"database": database, "table": table,
+                         "parent": rows[0]["parent_id"], "path": []})
 
     while frontier:
         advanced = []
         for node in frontier:
+            label = "/".join(segment["name"] for segment in node["path"]) or "root"
+            if node["parent"] in visited:
+                # A Route reached twice means the tree has a cycle, which the write
+                # path refuses to build (ROUTE MUTATION checks descent) — so this is
+                # damaged data, and doctor's business. Skipping it here keeps the
+                # walk finite; reporting it keeps it from being silent. A depth cap
+                # used to stand in for this and pretended the tree was too deep.
+                damage.append({"database": node["database"], "table": node["table"],
+                               "route_id": node["parent"],
+                               "path": node["database"] + ":" + label})
+                continue
+            visited.add(node["parent"])
             children = engine.query("SHOW ROUTES UNDER :parent", [node["database"]],
-                                    named={"parent": node["parent"]},
-                                    label="/".join(segment["name"] for segment in node["path"]) or "root")["rows"]
+                                    named={"parent": node["parent"]}, label=label)["rows"]
             options = [(row["name"], row.get("purpose", "")) for row in children]
             # The Database is part of the label: a bare "root" names one layer in
             # each Database, and `incomplete_at` has to say which one it means.
-            layer = node["database"] + ":" + ("/".join(segment["name"] for segment in node["path"]) or "root")
+            layer = node["database"] + ":" + label
             chosen, decision = choose_layer(chooser, budget, options, layer, evidence)
             if decision.startswith("budget:"):
-                landings.append({"path": "/" + "/".join(
-                    segment["name"] for segment in node["path"]), "termination": decision})
+                # Not a landing. The branch was never looked at, and saying it was
+                # "reached" is how an answer that could not reach the fact came to
+                # look exactly like one that searched and found nothing.
+                stopped.append({"layer": layer, "reason": decision, "candidates": len(children)})
                 continue
             for row in children:
                 if row["name"] not in chosen:
                     continue
                 path = node["path"] + [{"name": row["name"], "route_id": row["route_id"]}]
-                label = "/" + "/".join(segment["name"] for segment in path)
+                child = "/" + "/".join(segment["name"] for segment in path)
                 if row["kind"] == "leaf":
                     locator = engine.query("OPEN ROUTE :leaf LIMIT 1", [node["database"]],
-                                           named={"leaf": row["route_id"]}, label="leaf " + label)["rows"]
+                                           named={"leaf": row["route_id"]}, label="leaf " + child)["rows"]
                     landings.append({
-                        "path": label, "leaf_route_id": row["route_id"],
+                        # The Table is what a back-table read needs: a path is unique
+                        # within a Table, and a row id alone cannot be written into
+                        # `SELECT … FROM <db>.<table> WHERE row_id = :row`.
+                        "database": node["database"], "table": node["table"],
+                        "path": child, "leaf_route_id": row["route_id"],
                         "row_id": locator[0]["row_id"] if locator else None,
                         "revision": locator[0]["revision"] if locator else None,
                         "termination": "leaf",
                     })
                     continue
-                advanced.append({"database": node["database"], "depth": node["depth"] + 1,
+                advanced.append({"database": node["database"], "table": node["table"],
                                  "parent": row["route_id"], "path": path})
-        if len(advanced) > MAX_FRONTIER:
-            evidence.append({"layer": "frontier", "decision": "budget: frontier width",
-                             "options": [], "relevant": [],
-                             "kept": MAX_FRONTIER, "dropped": len(advanced) - MAX_FRONTIER})
-            over_walked["dropped"] += len(advanced) - MAX_FRONTIER
-            for node in advanced[MAX_FRONTIER:]:
-                landings.append({"path": "/" + "/".join(
-                    segment["name"] for segment in node["path"]),
-                    "termination": "budget: frontier width"})
-            advanced = advanced[:MAX_FRONTIER]
-        frontier = []
-        for node in advanced:
-            if node["depth"] >= MAX_DEPTH:
-                landings.append({"path": "/" + "/".join(
-                    segment["name"] for segment in node["path"]), "termination": "budget: depth"})
-                continue
-            frontier.append(node)
-    return landings, over_walked["dropped"]
+        # No truncation: everything the layer produced goes on to be looked at.
+        frontier = advanced
+    return landings, stopped, damage
 
 
 def main():
@@ -531,7 +562,7 @@ def main():
                       recorder=recording["jev"] if arguments.record else None,
                       recorded=recording["jev"] if arguments.replay else None, log=log,
                       provider=provider)
-    evidence, stopped = [], ""
+    evidence, stopped_early = [], ""
 
     # Level 0 — which Database. Only the authorized ones are ever offered: a
     # name outside that scope must never reach the model, not even as a negative.
@@ -545,10 +576,10 @@ def main():
     else:
         selected, decision = choose_layer(chooser, budget, options, "databases", evidence)
         if not selected:
-            stopped = "no database matched" if decision == "empty" else decision
+            stopped_early = "no database matched" if decision == "empty" else decision
 
     tables = []
-    if selected and not stopped:
+    if selected and not stopped_early:
         if request.get("table"):
             tables = [(database, request["table"]) for database in selected]
             evidence.append({"layer": "tables", "mode": "named", "options": [],
@@ -556,22 +587,35 @@ def main():
         else:
             tables = select_tables(engine, chooser, budget, selected, requirement, evidence)
         if not tables:
-            stopped = "no table matched"
+            stopped_early = "no table matched"
 
-    landings, dropped_branches = walk(engine, chooser, budget, tables, requirement, evidence) if tables else ([], 0)
+    landings, walked_stops, damage = (walk(engine, chooser, budget, tables, requirement, evidence)
+                                      if tables else ([], [], []))
     uncertain = [entry["layer"] for entry in evidence if entry.get("decision") == "undecided"]
     # Layers whose candidates arrived with no description. Not a failure and not
     # incompleteness — the walk still decided — but the decision was made from
     # names alone, and a caller who cannot see that has no way to know why the
     # answer is thin. Filling those purposes is the repair; this is the meter.
     undescribed_at = [entry["layer"] for entry in evidence if entry.get("undescribed")]
+    # Layers jev pruned by answering "nothing here". That is a result, not a fault,
+    # and it is also why a branch can vanish from an answer: without this line the
+    # pruning would be visible only to a caller that reads the whole evidence list.
+    pruned_at = [entry["layer"] for entry in evidence if entry.get("decision") == "empty"]
+    stopped = walked_stops
+    if stopped_early:
+        # Nothing was walked at all — the Database or Table layer found no match.
+        stopped = [{"layer": "selection", "reason": stopped_early, "candidates": 0}]
     result = {
         "requirement": requirement,
         "authorized_databases": databases,
         "landings": landings,
-        "incomplete": bool(uncertain),
+        # `incomplete` now covers both reasons: a layer judged from names alone,
+        # and a branch the walk never reached. Neither is a partial answer to be
+        # used as a whole one.
+        "incomplete": bool(uncertain or stopped),
         "incomplete_at": uncertain,
         "undescribed_at": undescribed_at,
+        "pruned_at": pruned_at,
         "evidence": evidence,
         "jev_calls": budget.jev_calls,
         "decisions": chooser.decisions,
@@ -582,18 +626,17 @@ def main():
     }
     if stopped:
         result["stopped"] = stopped
-    if dropped_branches:
-        # A requirement that points at more places than the walk can carry is not
-        # a requirement to widen the budget for: it is several requirements. Say
-        # so, because a caller holding a partial set of landings has no way to see
-        # that the branch it wanted was the one dropped.
-        result["suggest"] = ("split the requirement into one topic per call: the walk dropped %d "
-                             "branch(es) at the frontier budget, so landings are partial even where "
-                             "`incomplete` is false" % dropped_branches)
+    if damage:
+        # A Route reached twice: the tree is damaged, and doctor is where that gets
+        # repaired. Reported rather than swallowed, and no longer disguised as a
+        # depth budget running out.
+        result["tree_damage"] = damage
+    if incomplete_message(uncertain, stopped):
+        result["suggest"] = incomplete_message(uncertain, stopped)
     log.emit("done", landings=len(landings), decisions=chooser.decisions,
              statements=len(engine.statements), engine_ms=engine.spent_ms,
-             jev_ms=chooser.spent_ms, incomplete=bool(uncertain),
-             undescribed_at=undescribed_at)
+             jev_ms=chooser.spent_ms, incomplete=bool(uncertain or stopped),
+             undescribed_at=undescribed_at, pruned_at=pruned_at, stopped=len(stopped))
     if provider is not None:
         provider.close()
     if arguments.record:

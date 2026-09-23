@@ -4,13 +4,20 @@ Part of the `memora` Skill. It is loaded on demand: `SKILL.md` holds the constra
 
 ## What this is
 
-One requirement goes in; what comes back is the set of **landings** — semantic
-positions the requirement points at. It is the same kind of answer `RECALL` gives
-and it is not the same answer: recall ranks by similarity and returns
-*candidates*, while this walks the tree and returns positions the walk
-**committed to**. The set is unordered, carries no score, and must not be read as
-a list to choose from. A set of one is not a special case — `n` is simply how
-many places the requirement points at.
+One requirement goes in; what comes back is the set of **landings** — leaf
+positions, each with the path that says what it is and the handle that reads it
+back. It is the same kind of answer `RECALL` gives and it is not the same answer:
+recall ranks by similarity and returns *candidates*, while this walks the tree and
+returns positions the walk **committed to**. The set is unordered, carries no
+score, and must not be read as a list to choose from. A set of one is not a
+special case — `n` is simply how many places the requirement points at.
+
+Every landing is `{database, table, path, leaf_route_id, row_id, revision}`:
+**`path` is what you judge** ("is this the one?"), and **`(database, table,
+row_id)` is what you read with** — a path alone cannot be written into a query,
+and a row id alone does not say which Table to read. **The walk locates; you read
+the fact.** It never returns content and never returns a branch: a branch nobody
+walked goes to `stopped`.
 
 ```sh
 echo '{"requirement":"<what the user wants>","authorized_databases":["<db>","<db>"]}' \
@@ -35,18 +42,17 @@ a decision and is not asked.
 
 ## One requirement, one topic
 
-A walk carries one requirement across Databases, Tables and the tree. That is not
-the same as carrying several requirements at once: hand it "rekey, my internships
-and the current gaps" and the Database layer keeps both Databases, the Table layer
-keeps all six Tables, and the frontier budget then drops branches — measured, that
-run lost seven branches and **did not land either of the two rows the user had
-asked about**, while the agent that walked the tree by hand took 44.9 s against
-that run's 54.7 s. Three narrow calls (one per topic) each land their own rows.
+The walk carries one requirement across Databases, Tables and the tree, and it is
+fine for that requirement to touch several places — a cross-library question is a
+legal answer, not an error. What it cannot carry is **several questions at once**:
+"rekey, my internships and the current gaps" is three requirements, and the layer
+decisions get asked one blended question instead of three clear ones.
 
-So: **one call per topic.** When the walk drops branches it says so — the answer
-carries `suggest` (split the requirement) — and any landing whose `termination`
-starts with `budget:` is a branch the walk stopped at, not an answer. Treat both
-as "ask again, narrower" or "name the Table".
+So: **one call per topic.** (This used to be blamed on a read-side width cap that
+dropped branches by arrival order — that cap is gone; see
+`docs/planning/whole-layer-read.md`. The topic rule survives on its own merits:
+a blended question is a worse question, and `empty` pruning works better when the
+intent is one thing.)
 
 ## When it is worth calling
 
@@ -72,12 +78,15 @@ and an answer that says how it got there.
 ```json
 {
   "landings": [
-    {"path": "/internship/ACME", "leaf_route_id": "route_…", "row_id": "row_…",
-     "revision": 1, "termination": "leaf"}
+    {"database": "work", "table": "experiences", "path": "/internship/ACME",
+     "leaf_route_id": "route_…", "row_id": "row_…", "revision": 1,
+     "termination": "leaf"}
   ],
   "incomplete": false,
   "incomplete_at": [],
   "undescribed_at": ["work:internship"],
+  "pruned_at": [],
+  "stopped": [],
   "evidence": [
     {"layer": "databases", "mode": "set",
      "options": [{"name": "work", "purpose": "…"}],
@@ -89,10 +98,11 @@ and an answer that says how it got there.
 }
 ```
 
-- **Read the Row before answering.** A landing is a position, never a fact.
-- `termination` says how the walk ended there: `leaf` (a Row is mounted),
-  `no_root` (the Table has no semantic tree yet), or a `budget:` reason — the
-  walk stopped, and the landing is the branch it stopped at.
+- **Read the Row before answering.** A landing is a handle, never a fact: open it
+  (or `SELECT … WHERE row_id = :row` with the landing's `database` and `table`).
+- `termination` on a landing is always `leaf`. A branch is never a landing —
+  anything the walk did not reach is in `stopped`, with its reason. (`no_root`
+  appears in `evidence` when a Table has no semantic tree yet.)
 - `incomplete` / `incomplete_at` name every layer the model answered without
   separating. Those layers are **enumerated** (the model made no filter worth
   trusting), which can make the answer wide — say so rather than presenting it as
@@ -110,12 +120,23 @@ and an answer that says how it got there.
   walk still decided, but it decided blind, so a thin or wide answer there is
   explained rather than mysterious. The repair is to write those `purpose`
   sentences ("what is kept here"), not to widen the requirement.
-- `suggest` appears when the walk dropped branches at the frontier budget: the
-  requirement pointed at more places than one call can carry, and the landings are
-  partial even where `incomplete` is false.
-- The budgets are constants, not knobs: 12 jev calls, depth 5, frontier width 4,
-  30 seconds. When one bites, the answer says so — narrow the requirement, or
-  name the Database/Table and read it directly.
+- `stopped` lists every branch the walk **never reached**, with the reason and the
+  candidate count. A branch that was not walked is not a landing: it never appears
+  in `landings`. `incomplete` covers both this and the enumerated layers, so an
+  answer that is not whole cannot be mistaken for one that is.
+- `pruned_at` names the layers jev pruned by answering `empty`. Pruning is a
+  result, not a fault — but a silent prune is why a missing answer could never be
+  attributed, so it is in the answer.
+- `tree_damage` appears when a Route is reached twice: the tree has a cycle the
+  write path refuses to build, so this is damaged data for `doctor`, not a depth
+  budget running out.
+- The **only** budget is a wall-clock valve (120 s) against a hung or retrying
+  provider. There is no width, call or depth cap: a layer's size is the write
+  path's business (`route_policy.branch_fanout`), the tree is finite, and `empty`
+  prunes — so the walk finishes by itself. `jev_calls` is still reported because a
+  metered path needs observing, but counting is not capping. When the valve bites,
+  the branch goes to `stopped` — narrow the requirement, or name the
+  Database/Table and read it directly.
 
 ## Reading a run
 
@@ -146,8 +167,8 @@ model decisions** — the first ~0.8 s pays the TLS handshake and the next two
 while the seven local statements cost ~120 ms in total. Rebuilding that connection
 per decision (or per subprocess) was measured at ~0.73 s every time, which is
 roughly what a walk with nine decisions spent before the connection was reused
-(8.1 s, now 4.5 s). The log is also where a budget shows: the layer that exceeded
-the frontier width is recorded there as the branch landing it became.
+(8.1 s, now 4.5 s). The log is also where a stop shows: a layer the wall-clock
+valve cut is recorded as a `stopped` entry, never as a landing.
 
 A kept connection can be closed by the far end between calls; the provider drops
 it and tries once more, so the cost of reuse is one retry, never a failure.
