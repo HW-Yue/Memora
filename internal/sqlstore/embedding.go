@@ -89,17 +89,25 @@ func (t *tx) acceptVector(ctx context.Context, databaseName string, record Vecto
 	if err != nil {
 		return VectorIdentity{}, err
 	}
+	// The index row goes first and the unit's own columns last, because those
+	// columns are what "ready" means. A write may treat a vector as best effort
+	// and discard this error — the Row is the fact, the vector is an index over
+	// it — and in the other order that left the unit claiming a vector the index
+	// never received: `SHOW PENDING VECTORS` skipped the Row and the caller was
+	// told its vector had landed. This order leaves the unit not-ready, which is
+	// the truth, so the host's next drain picks it up again.
+	// See docs/development/audit-2026-09-23.md, A2. A crash between the two
+	// statements leaves an index row nothing claims, which the next acceptance for
+	// that unit overwrites (`storeVector` deletes before it inserts).
+	if err := t.storeVector(ctx, database.ID, unit.tableID, record.UnitNo, encoded); err != nil {
+		return VectorIdentity{}, err
+	}
 	if _, err := t.q().ExecContext(ctx, `UPDATE mem_recall_units
 		SET embedding = ?, embedded_content_hash = ?, embedding_model = ?, embedding_dimensions = ?,
 			embedded_at = ?, updated_at = ?
 		WHERE unit_no = ?`,
 		encoded, record.ContentHash, record.Model, record.Dimensions, formatTime(t.now), formatTime(t.now),
 		record.UnitNo); err != nil {
-		return VectorIdentity{}, err
-	}
-	// The index is derived from the row just written, in the same transaction:
-	// a crash cannot leave a vector without its index row or the reverse.
-	if err := t.storeVector(ctx, database.ID, unit.tableID, record.UnitNo, encoded); err != nil {
 		return VectorIdentity{}, err
 	}
 	return identity, nil
