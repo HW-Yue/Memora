@@ -219,7 +219,7 @@ point-read the Rows that matter in a second request: that is the shortest honest
 path to a complete, cited answer, and on Tables that fit it replaces the tree walk
 entirely. When a question needs more than one Row, that census —
 followed by point reads of the Rows that matter — replaces the whole
-`SHOW ROUTES … → OPEN ROUTE → SELECT` chain, and no Route walk is needed first.
+`SHOW ROUTES … → SELECT` chain, and no Route walk is needed first.
 Walk the tree when you are looking for *where something is*, or when the Table is
 larger than `select_rows` (see the caveat below).
 
@@ -237,7 +237,8 @@ equality, and the budget can only be raised by a write (`ALTER CONFIGURATION`,
 below). The read-only continuation is a different surface: above `select_rows`
 the sanctioned enumerator is the **Route tree walk**: one `SHOW ROUTES` per level
 returns that whole level — a layer is bounded by `route_policy.branch_fanout`, so
-there is no page and no cursor — and every leaf names its Row. You do not
+there is no page and no cursor — and every leaf names its Row in that same
+listing, as `row_id` and `row_revision`. You do not
 have to remember that: the truncated answer carries an `output_truncated` warning
 whose `details.enumerate_with` is the statement to run. Take a Table's row count
 from the census itself, not from `doctor`, whose `rows` is instance-wide.
@@ -245,8 +246,20 @@ from the census itself, not from `doctor`, whose `rows` is instance-wide.
 
 Compare the user's intent with the bounded Route descriptions returned by each
 call. Choose a node explicitly, request only its immediate children, and repeat
-until a leaf is reached. Every leaf locates at most one active Row, and
-`OPEN ROUTE` returns only that Row's locator; never answer from the locator.
+until a leaf is reached. Every leaf locates at most one active Row, **and the
+layer listing already says which**: a leaf row of `SHOW ROUTES` carries `row_id`
+and `row_revision`, so reaching the leaf is reaching its Row. Do **not** spend an
+`OPEN ROUTE` per leaf to learn what you were just told — that is one extra
+statement per leaf, and on the widest measured walk it was 35 of 50 statements.
+`OPEN ROUTE` stays for the one case it is for: opening a single leaf whose id you
+already have, without listing its layer. Either way it returns only a locator;
+never answer from the locator.
+
+**`row_revision` is the Row's version; `revision` on the same listing row is the
+Route node's.** The node's moves when the position is renamed or re-purposed; the
+Row's moves when the fact is edited. A later `UPDATE … WHERE row_id = :row` needs
+the Row's, and giving it the node's is a revision conflict on an object nobody
+touched.
 Select projected semantic fields by Row ID, then summarize only the returned
 Row. Every SELECT Row already carries its own `route_paths` — the full
 semantic-index path of the single leaf that locates it — so the host need not
@@ -338,7 +351,7 @@ census:     SHOW CATALOG ATLAS → DESCRIBE TABLE → SELECT row_id, title, revi
 navigation: SHOW CATALOG ATLAS → DESCRIBE TABLE
             → SHOW ROUTES FROM TABLE ... AT ROOT
             → choose one node → SHOW ROUTES UNDER ... (repeat as needed)
-            → OPEN ROUTE on a leaf → validate database/table/Row/revision locators
+            → a leaf row of that listing already carries row_id + row_revision
             → SELECT projected fields + row_id + revision
             → answer only from revision-matched SELECT rows
 ```

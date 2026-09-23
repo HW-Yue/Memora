@@ -48,9 +48,19 @@ type Node struct {
 	// semantic-health problem used to say between them — and a field cannot go
 	// stale against the node it lives on, which is what removes those problems
 	// rather than detecting them. See docs/storage/leaf-rowid-v1.md.
-	RowID    string `json:"row_id,omitempty"`
-	Revision uint64 `json:"revision"`
-	Deleted  bool   `json:"deleted"`
+	RowID string `json:"row_id,omitempty"`
+	// RowRevision is the version of the Row named by RowID — the fact's version,
+	// not this node's. Revision below is the Route's own: it moves when the node
+	// is renamed, re-purposed or re-mounted, and it does not move when the fact
+	// under it is edited. Handing one where the other is expected is a revision
+	// conflict on an object nobody touched, so the listing names them apart.
+	//
+	// It is never stored. The Row owns it, and a copy in this node's body could
+	// only go stale — so it is filled by the read that resolves the mount, the
+	// same resolution OPEN ROUTE performs.
+	RowRevision uint64 `json:"-"`
+	Revision    uint64 `json:"revision"`
+	Deleted     bool   `json:"deleted"`
 }
 
 type Locator struct {

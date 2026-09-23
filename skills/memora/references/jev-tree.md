@@ -19,6 +19,13 @@ and a row id alone does not say which Table to read. **The walk locates; you rea
 the fact.** It never returns content and never returns a branch: a branch nobody
 walked goes to `stopped`.
 
+A landing's **`revision` is the Row's** — the version of the fact, which is what a
+later `UPDATE … WHERE row_id = :row` has to be given. It is **not** the Route
+node's `revision`, which is the version of the *position* and moves when the node
+is renamed or re-purposed while the fact under it is untouched. Both arrive on the
+same `SHOW ROUTES` row, as `row_revision` and `revision`; passing one where the
+other belongs is a revision conflict on an object nobody touched.
+
 The same set also comes back grouped as `reads`:
 `[{database, table, columns, rows:[{path, row_id, revision}]}]` — one entry per
 Table that has landings, with the Table's column names, so **write one
@@ -43,7 +50,13 @@ It walks three kinds of layer with one rule each:
 2. **which Table** — `SHOW CATALOG ATLAS`, read one Database at a time. A
    requirement that points at several Databases may return several, and their
    Tables are then asked in a single question whose options carry the Database;
-3. **the semantic tree** — `SHOW ROUTES`, layer by layer, breadth first.
+3. **the semantic tree** — `SHOW ROUTES`, layer by layer, breadth first. The
+   listing carries each leaf's `row_id` and `row_revision`, so reaching a leaf is
+   already reaching its Row — there is **no `OPEN ROUTE` per leaf**. That is one
+   statement per layer instead of one per layer plus one per landing (measured:
+   the widest walk went from 50 statements to about 15). If you walk the tree by
+   hand rather than with this script, take the Row from the listing for the same
+   reason.
 
 Every layer is decided the same way: the children's `name` and `purpose` go to
 `scripts/jev_select.py`, which answers with a set of names plus
@@ -195,8 +208,11 @@ cost".
 ## Boundaries
 
 - **Read-only.** Every statement is a read on the surfaces this path uses
-  (`SHOW DATABASES`, `SHOW CATALOG ATLAS`, `SHOW ROUTES`, `OPEN ROUTE`), and each
-  one carries an authorization object scoped to the single Database it reads.
+  (`SHOW DATABASES`, `SHOW CATALOG ATLAS`, `SHOW ROUTES`, `DESCRIBE TABLE`), and
+  each one carries an authorization object scoped to the single Database it reads.
+  `OPEN ROUTE` is no longer among them — the layer listing already says which Row
+  a leaf holds — but the statement itself still exists for readers that open a
+  single known leaf.
 - **Only authorized Databases are ever offered.** Not as candidates, not as
   negative examples: an unauthorized name in a model prompt is a leak, and it is
   also the first step of widening scope to make an answer fit.

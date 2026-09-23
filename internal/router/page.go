@@ -39,14 +39,20 @@ type readCursorCore struct {
 	Offset   uint64 `json:"offset"`
 }
 
+// pageNode is what the snapshot is taken over: every field the listing reports,
+// so a layer that changed is a layer with a different snapshot. The mounted Row
+// is in here for that reason — a leaf that took a new Row, or whose fact was
+// edited, changed the answer even though no node's own revision moved.
 type pageNode struct {
-	ID       string `json:"route_id"`
-	ParentID string `json:"parent_id,omitempty"`
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	Kind     Kind   `json:"kind"`
-	Purpose  string `json:"purpose"`
-	Revision uint64 `json:"revision"`
+	ID          string `json:"route_id"`
+	ParentID    string `json:"parent_id,omitempty"`
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	Kind        Kind   `json:"kind"`
+	Purpose     string `json:"purpose"`
+	RowID       string `json:"row_id,omitempty"`
+	RowRevision uint64 `json:"row_revision,omitempty"`
+	Revision    uint64 `json:"revision"`
 }
 
 // CompleteNodes returns a listing that has no page: every node, with the
@@ -76,7 +82,8 @@ func PaginateNodes(scope, cursor string, limit int, nodes []Node) ([]Node, ReadP
 	for _, node := range nodes {
 		values = append(values, pageNode{
 			ID: node.ID, ParentID: node.ParentID, Path: node.Path, Name: node.Name,
-			Kind: node.Kind, Purpose: node.Purpose, Revision: node.Revision,
+			Kind: node.Kind, Purpose: node.Purpose, RowID: node.RowID,
+			RowRevision: node.RowRevision, Revision: node.Revision,
 		})
 	}
 	start, page, err := paginateRead("children", scope, cursor, limit, values)

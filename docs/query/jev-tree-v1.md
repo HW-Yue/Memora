@@ -24,6 +24,13 @@ leaf_route_id, row_id, revision}`——`path` 给 agent 判断"这是不是我�
 | 表 | `SHOW CATALOG ATLAS`（**按单库**） | 每张表的 `table` + `purpose` |
 | 树 | `SHOW ROUTES FROM TABLE … AT ROOT` / `SHOW ROUTES UNDER :parent` | 每个 child 的 `name` + `purpose` |
 
+**落点的行号来自这张列表，不再逐叶子 `OPEN ROUTE`**：`SHOW ROUTES` 的叶子带 `row_id` 与
+`row_revision`（[Route Read v1](./route-read-v1.md)），所以走到叶子就已经拿到回表要的两样东西。
+落点里的 `revision` 就是列表里的 `row_revision`——**那个行的版本**，不是路由节点的 `revision`
+（节点 revision 是位置的版本，改名/改 purpose 会动它，底下的事实被编辑不会）。改之前每个叶子
+要单发一条 `OPEN ROUTE :leaf LIMIT 1`：实测最宽那一趟 50 条语句里 35 条是它、引擎侧约 0.7 s，
+现在降到约 15 条。`OPEN ROUTE` 语句本身保留，别的读取方仍在用。
+
 每级都用同一套：把候选的 **name + purpose + aliases** 交给 `scripts/jev_select.py`（`set` 模式：
 每候选一个 `Noul` + floor probe + 最大比例落差切分），拿回名字集合 + `separated|undecided|empty`。
 **只有一个孩子的层不是决定，不问。**
@@ -109,6 +116,7 @@ provider 重放同一趟。这不是调试便利：它让这条路能被回归�
 - [检索四条路与 jev 逐层选择](./retrieval-routes-jev.md)
 - [jev 作为逐层分支选择器](./jev-branch-selection.md)
 - [召回只给路径](../product/query-model.md) §6
+- [MSQL Route Read v1](./route-read-v1.md) — `SHOW ROUTES` 的叶子列 `row_id` / `row_revision`，以及它和节点 `revision` 的区别
 - [Route 的 purpose 契约](./route-purpose-contract-v1.md) — 候选只带 name 与 purpose，所以描述缺失是检索损伤
 - [整层读取](../../docs/planning/whole-layer-read.md) — 为什么读取端不设宽度上限
 - [Skill：jev 走树](../../skills/memora/references/jev-tree.md)

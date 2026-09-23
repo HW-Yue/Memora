@@ -229,6 +229,72 @@ func (t *tx) tableRootChildren(ctx context.Context, databaseID, tableID string) 
 	return t.children(ctx, root.String)
 }
 
+// attachMountedRows fills each leaf's RowRevision, and clears the RowID of any
+// leaf whose Row is not live.
+//
+// "One live Row hangs under exactly one leaf" is the write path's invariant
+// (invariant.go), so leaf → Row is one-to-one and a layer listing can carry it.
+// Before this, the only way to learn a leaf's row id was one `OPEN ROUTE` per
+// leaf; the widest measured walk spent 35 of its 50 statements that way.
+//
+// One statement for the whole layer, not one per leaf and not a scan: a layer is
+// bounded by `route_policy.branch_fanout` and every node in it belongs to one
+// Table, so this is a lookup of a bounded id set in that Table's data table.
+//
+// The liveness filter is not an extra rule — it is the one `leafPage` already
+// applies, so the listing and `OPEN ROUTE` cannot disagree. A leaf naming a Row
+// that is not live is damaged data (doctor's `mismatched_mounts`), and the cheap
+// path must not be the one that reports it as a position.
+func (t *tx) attachMountedRows(ctx context.Context, nodes []router.Node) error {
+	tableID, wanted := "", []any{}
+	for _, node := range nodes {
+		if node.Kind != router.KindLeaf || node.RowID == "" {
+			continue
+		}
+		if tableID == "" {
+			tableID = node.TableID
+		}
+		if node.TableID != tableID {
+			return fail(result.CodeInternal, "a route layer spans two tables")
+		}
+		wanted = append(wanted, node.RowID)
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+	query := `SELECT row_id, revision FROM ` + dataTable(tableID) + ` WHERE row_state = ? AND row_id IN (?` +
+		strings.Repeat(", ?", len(wanted)-1) + `)`
+	rows, err := t.q().QueryContext(ctx, query, append([]any{string(row.StateLive)}, wanted...)...)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	live := make(map[string]uint64, len(wanted))
+	for rows.Next() {
+		var rowID string
+		var revision uint64
+		if err := rows.Scan(&rowID, &revision); err != nil {
+			return err
+		}
+		live[rowID] = revision
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for index, node := range nodes {
+		if node.Kind != router.KindLeaf || node.RowID == "" {
+			continue
+		}
+		revision, ok := live[node.RowID]
+		if !ok {
+			nodes[index].RowID = ""
+			continue
+		}
+		nodes[index].RowRevision = revision
+	}
+	return nil
+}
+
 func (t *tx) children(ctx context.Context, parentID string) ([]router.Node, router.ReadPage, error) {
 	parent, err := t.findRoute(ctx, parentID)
 	if err != nil {
@@ -248,6 +314,9 @@ func (t *tx) children(ctx context.Context, parentID string) ([]router.Node, rout
 			return nil, router.ReadPage{}, err
 		}
 		nodes = append(nodes, value)
+	}
+	if err := t.attachMountedRows(ctx, nodes); err != nil {
+		return nil, router.ReadPage{}, err
 	}
 	return router.CompleteNodes("parent:"+parentID, nodes)
 }

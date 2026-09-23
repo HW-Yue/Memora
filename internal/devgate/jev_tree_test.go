@@ -374,3 +374,127 @@ func TestJevTreeSaysWhenALayerHasNoUsableDescription(t *testing.T) {
 		}
 	}
 }
+
+// The Row comes from the layer listing, and the walk no longer opens each leaf.
+//
+// `SHOW ROUTES` carries `row_id`/`row_revision` on every leaf, because the write
+// path guarantees a live Row hangs under exactly one leaf
+// (internal/sqlstore/invariant.go). Before that, the only way to learn a leaf's
+// row id was one `OPEN ROUTE :leaf LIMIT 1` per leaf: the widest measured walk
+// spent 35 of its 50 statements there, roughly 0.7 s of engine time, and a model
+// walking the tree by hand paid exactly the same.
+//
+// `OPEN ROUTE` is not gone — other readers still use it, and the fixtures still
+// prove it agrees with the listing. What is pinned here is that this walk does
+// not need it: the recordings carry no answer for it, so a walk that asked would
+// fail the replay rather than quietly cost a round trip again.
+func TestJevTreeTakesTheRowFromTheLayerListing(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not on PATH; the Skill's scripts cannot be exercised here")
+	}
+	root := repoRoot(t)
+	fixtures := []string{"two-internships.json", "one-internship.json", "nothing-matches.json",
+		"across-libraries.json", "undecided-enumerates.json", "purpose-repeats-name.json"}
+
+	for _, fixture := range fixtures {
+		path := filepath.Join(root, "internal", "devgate", "testdata", "jev-tree", fixture)
+		recording := map[string]any{}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(body, &recording); err != nil {
+			t.Fatal(err)
+		}
+		for key := range recording["engine"].(map[string]any) {
+			if strings.Contains(key, "OPEN ROUTE") {
+				t.Fatalf("%s: the walk no longer opens leaves, so the recording must not answer %s", fixture, key)
+			}
+		}
+
+		log := filepath.Join(t.TempDir(), "steps.jsonl")
+		command := exec.Command(python, filepath.Join(root, "skills", "memora", "scripts", "jev_tree.py"),
+			"--replay", path, "--log", log, "--quiet")
+		command.Dir = root
+		command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(),
+			"MEMORA_CLI=" + filepath.Join(t.TempDir(), "memora-that-does-not-exist")}
+		output, err := command.Output()
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", fixture, err, output)
+		}
+		steps, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		statements := 0
+		for _, line := range strings.Split(strings.TrimSpace(string(steps)), "\n") {
+			step := map[string]any{}
+			if err := json.Unmarshal([]byte(line), &step); err != nil {
+				t.Fatalf("%s: step log is not JSON lines: %v", fixture, err)
+			}
+			if step["kind"] != "statement" {
+				continue
+			}
+			statements++
+			source, _ := step["source"].(string)
+			if strings.Contains(source, "OPEN ROUTE") {
+				t.Fatalf("%s: the walk issued %q; the layer listing already carried the Row", fixture, source)
+			}
+		}
+
+		// Every landing still carries the Row and its revision — this removed a
+		// round trip, not an answer.
+		result := map[string]any{}
+		if err := json.Unmarshal(output, &result); err != nil {
+			t.Fatalf("%s: output is not JSON: %v", fixture, err)
+		}
+		landings, _ := result["landings"].([]any)
+		for _, landing := range landings {
+			entry := landing.(map[string]any)
+			if entry["row_id"] == nil || entry["row_id"] == "" || entry["revision"] == nil {
+				t.Fatalf("%s: a landing lost its Row: %v", fixture, entry)
+			}
+		}
+		if statements == 0 {
+			t.Fatalf("%s: the step log recorded no statement at all", fixture)
+		}
+	}
+}
+
+// What the change is worth, measured on the recording rather than claimed: the
+// widest fixture used to spend one statement per landing on top of the layer
+// reads, and now spends none.
+func TestJevTreeSpendsNoStatementPerLanding(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not on PATH; the Skill's scripts cannot be exercised here")
+	}
+	root := repoRoot(t)
+	command := exec.Command(python, filepath.Join(root, "skills", "memora", "scripts", "jev_tree.py"),
+		"--replay", filepath.Join(root, "internal", "devgate", "testdata", "jev-tree", "across-libraries.json"))
+	command.Dir = root
+	command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(),
+		"MEMORA_CLI=" + filepath.Join(t.TempDir(), "memora-that-does-not-exist")}
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("replay: %v\n%s", err, output)
+	}
+	result := map[string]any{}
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, output)
+	}
+	landings, _ := result["landings"].([]any)
+	// Three kinds of statement remain, and none of them is per landing:
+	// `SHOW DATABASES` once, `SHOW CATALOG ATLAS` once per Database, one
+	// `SHOW ROUTES` per layer walked, and one `DESCRIBE TABLE` per table that
+	// carries landings.
+	reads, _ := result["reads"].([]any)
+	if got, want := result["statements"], float64(9); got != want {
+		t.Fatalf("statements = %v, want %v (it was %v with one OPEN ROUTE per landing)",
+			got, want, want+float64(len(landings)))
+	}
+	if len(landings) == 0 || len(reads) == 0 {
+		t.Fatalf("the saving must not come from landing nothing: %v", result)
+	}
+}

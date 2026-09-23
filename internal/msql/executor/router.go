@@ -318,12 +318,28 @@ func (engine *Engine) showRoutes(
 			{Name: "aliases", Type: "TEXT_LIST"},
 			{Name: "kind", Type: "TEXT"},
 			{Name: "purpose", Type: "TEXT"},
+			// The Row a leaf holds, reported with the layer rather than fetched by
+			// one `OPEN ROUTE` per leaf: leaf → Row is one-to-one because the write
+			// path enforces it (internal/sqlstore/invariant.go), so the listing can
+			// say it. Null on a root, a branch, and a leaf with nothing live under
+			// it — an empty string would read like an id.
+			{Name: "row_id", Type: "ID", Nullable: true},
+			// The Row's revision, not this node's. `revision` below is the Route
+			// node's own version — it moves when the node is renamed, re-purposed or
+			// re-mounted. `row_revision` is the fact's version, and it is the one an
+			// UPDATE of that Row must be given. See docs/query/route-read-v1.md.
+			{Name: "row_revision", Type: "INTEGER", Nullable: true},
 			{Name: "revision", Type: "INTEGER"},
 		},
 		Rows: make([]result.Row, 0, len(nodes)),
 	}
 	for _, node := range nodes {
-		output.Rows = append(output.Rows, routeResult(node))
+		row := routeResult(node)
+		row["row_id"], row["row_revision"] = nil, nil
+		if node.RowID != "" {
+			row["row_id"], row["row_revision"] = node.RowID, node.RowRevision
+		}
+		output.Rows = append(output.Rows, row)
 	}
 	return output, nil
 }

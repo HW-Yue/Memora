@@ -1,6 +1,7 @@
 # MSQL Route Read v1
 
-状态：F111 已实现；F182a 增加有界 Route aliases 读取列；SHOW 增加 database_id/table_id scope 字段。
+状态：F111 已实现；F182a 增加有界 Route aliases 读取列；SHOW 增加 database_id/table_id scope 字段；
+2026-09-23 `SHOW ROUTES` 的叶子增加 `row_id` / `row_revision` 两个可空列。
 
 ## 目的
 
@@ -27,11 +28,43 @@ OPEN ROUTE :leaf_id LIMIT :limit;
 - `SHOW` 返回一层 child node、非 null `aliases` 与 `database_id/table_id` scope，默认不返回
   synopsis；scope 字段让并发多库导航时每条 Route Frame 都能归并到唯一库表，不再依赖
   `source` 回显；alias 固定最多 8 项且合计最多 512 UTF-8 bytes，不破坏逐层上下文上限；
+  **叶子还带 `row_id` 与 `row_revision`**（见下节）；
 - `OPEN` 只接受 leaf，只返回零个或一个 `database_id/table_id/row_id/revision` locator；
 - 业务字段和正文只能由后续 `SELECT ... WHERE row_id = ... LIMIT ...` 回表。
 
 `OPEN` 的 `LIMIT` 必填，Canonical Skill 固定使用 1；cursor 语法为兼容保留，但合法
 Leaf 不会产生 next cursor。
+
+## 叶子在列表里就带出它挂的行
+
+`SHOW ROUTES` 的每行增加两个**可空**列：
+
+| 列 | 类型 | 语义 |
+|---|---|---|
+| `row_id` | ID，可空 | 这个叶子挂的那个活跃 Row 的稳定行号。root / branch 恒为 `null`；叶子没挂活跃行时也是 `null`（不是空串——空串会被当成一个行号） |
+| `row_revision` | INTEGER，可空 | **那个 Row 的 revision**，即事实的版本 |
+
+**`row_revision` 与同一行上的 `revision` 不是一回事，别混：**
+
+- `revision` 是**路由节点自己的**版本。节点被改名、改 `purpose`、重新挂载时它会动；
+  叶子底下的事实被编辑时它**不动**。它是 `ALTER ROUTE` / `ROUTE MUTATION` 的乐观并发凭据。
+- `row_revision` 是**那个 Row 的**版本。事实被 `UPDATE` 时它会动；节点被改名时它**不动**。
+  它是 `UPDATE … WHERE row_id = :row` 的乐观并发凭据。
+
+把一个当另一个用，结果是在一个谁都没碰过的对象上拿到 `revision_conflict`。
+
+这两列能存在，是因为**写路径保证"一个活跃行只挂在一个叶子上"**
+（`internal/sqlstore/invariant.go`，doctor 用 `orphan_rows` / `multi_leaf_rows` /
+`mismatched_mounts` 计数）：叶子 → 行是一对一的，所以列表说得出来。它不是一个新的事实来源——
+解析用的就是 `OPEN ROUTE` 那段逻辑（只认 `row_state = 'live'`），所以列表与 `OPEN ROUTE`
+不可能给出不同的答案；叶子指着一个已经不活跃的行（doctor 的 `mismatched_mounts`）时，两边
+一致地报"没有行"，而不是让便宜的那条路去报一个读不回来的行号。
+
+代价上这是**每层一条语句**，不是每叶子一条：一层的体量由 `route_policy.branch_fanout` 担保，
+且同层节点属于同一张表，所以是一次按 id 集合的查表，不是扫表。
+
+`OPEN ROUTE` **保留**：它仍然是"只开一个叶子"的读法，别的读取方在用，也是上面那条一致性的
+对照面。只是**逐层走树不必再为每个叶子发一条**——实测最宽那一趟 50 条语句里有 35 条是它。
 
 ## List page
 

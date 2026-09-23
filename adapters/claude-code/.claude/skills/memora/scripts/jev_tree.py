@@ -21,15 +21,26 @@ Contract
              "authorized_databases": ["<db>", ...],
              "database": "<db>",          # optional: skip the Database decision
              "table": "<table>"}          # optional: skip the Table decision
-    stdout: {"requirement": ..., "landings": [{"path", "leaf_route_id", "row_id",
-             "revision", "termination"}], "incomplete": bool, "incomplete_at": [...],
+    stdout: {"requirement": ..., "landings": [{"database", "table", "path",
+             "leaf_route_id", "row_id", "revision", "termination"}],
+             "incomplete": bool, "incomplete_at": [...],
              "undescribed_at": [...], "evidence": [...], "jev_calls": n,
              "elapsed_ms": ms, "model": ...}
     exit  : 0 answered (including "nothing matched") | 2 not configured
             | 3 the provider refused | 4 bad input
 
+A landing's `revision` is the **Row's** revision, which is what a later
+`UPDATE … WHERE row_id = :row` has to be given. It is not the Route node's
+`revision`: that one is the version of the position, and it moves when the node
+is renamed or re-purposed while the fact under it is untouched. Both arrive on
+the same `SHOW ROUTES` row, as `row_revision` and `revision` respectively.
+
 Read-only: every statement carries an authorization object scoped to the one
 Database being read, and nothing here writes.
+
+Three statements per requirement plus one per layer: `SHOW DATABASES`, one
+`SHOW CATALOG ATLAS` per Database, and one `SHOW ROUTES` per layer walked. There
+is no `OPEN ROUTE` per leaf — the layer listing carries each leaf's Row.
 
 `--record FILE` writes every engine answer and every jev answer it saw;
 `--replay FILE` runs the same walk from that recording with no database and no
@@ -527,16 +538,26 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
                 path = node["path"] + [{"name": row["name"], "route_id": row["route_id"]}]
                 child = "/" + "/".join(segment["name"] for segment in path)
                 if row["kind"] == "leaf":
-                    locator = engine.query("OPEN ROUTE :leaf LIMIT 1", [node["database"]],
-                                           named={"leaf": row["route_id"]}, label="leaf " + child)["rows"]
+                    # The Row comes from the layer listing, not from one
+                    # `OPEN ROUTE :leaf LIMIT 1` per leaf. `SHOW ROUTES` carries
+                    # `row_id`/`row_revision` on every leaf because the write path
+                    # guarantees a live Row hangs under exactly one leaf, so the
+                    # listing already knows what opening the leaf would say. The
+                    # widest measured walk spent 35 of its 50 statements asking
+                    # that question one leaf at a time.
+                    #
+                    # `row_revision` is the Row's version, and it is what this
+                    # answer's `revision` has always meant — the node's own
+                    # `revision` is a different counter on a different object and
+                    # must not be handed to a caller writing a Row.
                     landings.append({
                         # The Table is what a back-table read needs: a path is unique
                         # within a Table, and a row id alone cannot be written into
                         # `SELECT … FROM <db>.<table> WHERE row_id = :row`.
                         "database": node["database"], "table": node["table"],
                         "path": child, "leaf_route_id": row["route_id"],
-                        "row_id": locator[0]["row_id"] if locator else None,
-                        "revision": locator[0]["revision"] if locator else None,
+                        "row_id": row.get("row_id"),
+                        "revision": row.get("row_revision"),
                         "termination": "leaf",
                     })
                     continue

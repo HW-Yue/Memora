@@ -70,7 +70,9 @@
      "path": "/internship",
      "purpose": "实习经历",
      "revision": 1,
-     "route_id": "route_me_internship"
+     "route_id": "route_me_internship",
+     "row_id": null,
+     "row_revision": null
     }
    ]
   },
@@ -85,7 +87,9 @@
      "path": "/internship",
      "purpose": "实习经历",
      "revision": 1,
-     "route_id": "route_me_internship"
+     "route_id": "route_me_internship",
+     "row_id": null,
+     "row_revision": null
     }
    ]
   },
@@ -100,17 +104,9 @@
      "path": "/internship/ACME",
      "purpose": "在 ACME 的实习",
      "revision": 1,
-     "route_id": "route_me_acme"
-    }
-   ]
-  },
-  "{\"databases\": [\"me\"], \"named\": {\"leaf\": \"route_me_acme\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
-   "rows": [
-    {
-     "database_id": "db_me",
-     "revision": 1,
+     "route_id": "route_me_acme",
      "row_id": "row_me_acme",
-     "table_id": "tbl_me"
+     "row_revision": 1
     }
    ]
   },
@@ -125,7 +121,9 @@
      "path": "/product",
      "purpose": "产品是什么、边界在哪",
      "revision": 1,
-     "route_id": "route_mo_product"
+     "route_id": "route_mo_product",
+     "row_id": null,
+     "row_revision": null
     }
    ]
   },
@@ -140,7 +138,9 @@
      "path": "/product",
      "purpose": "产品是什么、边界在哪",
      "revision": 1,
-     "route_id": "route_mo_product"
+     "route_id": "route_mo_product",
+     "row_id": null,
+     "row_revision": null
     }
    ]
   },
@@ -155,17 +155,9 @@
      "path": "/product/positioning",
      "purpose": "Memora 是什么、给谁用",
      "revision": 1,
-     "route_id": "route_mo_positioning"
-    }
-   ]
-  },
-  "{\"databases\": [\"memora\"], \"named\": {\"leaf\": \"route_mo_positioning\"}, \"source\": \"OPEN ROUTE :leaf LIMIT 1\"}": {
-   "rows": [
-    {
-     "database_id": "db_memora",
-     "revision": 2,
+     "route_id": "route_mo_positioning",
      "row_id": "row_memora_positioning",
-     "table_id": "tbl_mo"
+     "row_revision": 2
     }
    ]
   },
