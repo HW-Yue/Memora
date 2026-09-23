@@ -19,6 +19,7 @@
 |---|---|---|
 | 选库/表、决定写什么内容 | Agent | 语义 |
 | 节点起名、定层级、改名、移动 | Agent（`CREATE ROUTE` / `ALTER ROUTE`） | 引擎猜不出名字与归属 |
+| 节点描述（purpose / synopsis / aliases）的写与改 | Agent（`ALTER ROUTE … SET`） | 描述是语义，可修订；引擎只判"是不是又把名字抄了一遍" |
 | 拆分边界、合并对象、冲突裁决 | Agent（`SPLIT` / `MERGE` / 请求裁决） | 语义判断 |
 | 叶子生灭、挂载与摘除 | **引擎** | 1:1 之后叶子是行的属性，不是独立实体 |
 | 删行引发的归档、删叶、剪枝、摘链接、删 history | **引擎** | 行的确定后果，见[行删除](../product/row-delete-archive.md) |

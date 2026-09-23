@@ -14,12 +14,13 @@
 而这里要挡的就是"同一个词换个写法"——宽度、大小写、空格（与
 [隐式建路径](./implicit-route-path-v1.md) 里 name 匹配的取舍一致）。
 
-## 三处行为
+## 五处行为
 
 | 位置 | 行为 |
 |---|---|
 | **新建 Route** | **拒**（`validation_error`），错误文本回引本规则 |
 | **改存量 Route** | **只告警**：`route_purpose_repeats_name` notice，带 `route_id`/`path`/`name` |
+| **修存量 Route** | `ALTER ROUTE :route SET PURPOSE :purpose` —— **与新建同一条判定**：复读 name 则拒，写真描述则落盘并 revision++ |
 | **走树** | 该候选以**空 purpose** 交给 jev；该层在 `evidence[].undescribed` 与结果的 `undescribed_at` 里如实列出 |
 | **体检** | `memora doctor` 报 `routes_without_purpose`（数量）与 `routes_without_purpose_paths`（≤50 条 `库.表/路径`） |
 
@@ -31,13 +32,26 @@ ROUTE MUTATION 的每个 target（`Build` 与 `Validate` 两道）。
 把写入者锁在最需要修的那个库外面。notice 出现在 `ALTER ROUTE` 的结果里
 （RENAME 可能**新造成**这个状态，SET SYNOPSIS / SET ALIASES 则是照出它本来就在）。
 
+**为什么必须能修**：只拒新的、修不了旧的，是引擎级自相矛盾——44 条存量会永久无法
+修复。purpose 是**描述**不是身份，身份是 `route_id` 与位置；"冻结"只对
+`scope`/`anti_scope` 成立（那是决定什么行能进的契约）。把描述冻在创建时刻，等于
+要求写入者在信息最少的那一刻写出最终答案，而那正是 44 条复读的成因。
+
+`SET PURPOSE` 上**不再出** `route_purpose_repeats_name` notice：这条语句要么给出
+真描述、要么被拒，没有第三种结果。它要求 `expected_revision`（描述被盲写覆盖
+等于两个写入者互相抹掉），并按 structural 授权。
+
 **隐式路径命中已存在的段不判定**：那段不是新建的。`skillwrite` 的计划期校验同样
 不判定——一段是新建还是复用，只有引擎在事务里知道。
 
 ## 不在这里
 
 - **不回填存量**：回填是按 `skills/memora/` 流程走 MSQL 的写库动作，不是代码改动。
-  `doctor` 的数字就是它的进度条。
+  `SET PURPOSE` 只是把它变成可能，`doctor` 的数字仍然是它的进度条。
+- **不动库/表级语义**：`row_semantics` 与 Database/Table 的 `purpose`/`scope`/`anti_scope`
+  建表后仍无语句可改，照这个形状补是另一块。
+- **不重建派生层**：Route 的 `purpose`/`aliases` 不进召回索引（召回单元取自行的
+  `title`/`summary`），走树每次现读节点，所以改 purpose 没有需要重建的下游。
 - **不接 synopsis 进走树**：`DESCRIBE ROUTE` 的长描述是另一块。
 - **不新增配置项**，`SHOW ROUTES` 的列不变。
 - **aliases 为空不判定**：决策日志把它和 purpose 列在一起，但空 aliases 不会

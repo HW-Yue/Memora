@@ -128,6 +128,18 @@ ALTER ROUTE :route SET ALIASES :aliases;
 `:aliases` 是参数绑定的 TEXT 数组，`[]` 清空；最多 8 项、单项 1–64 个 Unicode
 字符、合计最多 512 UTF-8 bytes。
 
+Route 的 purpose 是**可修订的描述**，不是创建即冻结的身份（身份是 `route_id` 与位置）：
+
+```sql
+ALTER ROUTE :route SET PURPOSE :purpose;
+```
+
+判定与 `CREATE ROUTE` **同一条**（`router.CheckPurpose`）：折叠大小写、宽度与空白后
+等于该 Route 当前的 `name` 即拒（`validation_error`）。它是存量复读 name 的唯一修复
+路径——见 [Route 的 purpose 契约](./route-purpose-contract-v1.md)。三条 `ALTER ROUTE
+SET` 子句（`SYNOPSIS` / `ALIASES` / `PURPOSE`）**一条语句只带一个**，都要求
+`expected_revision`，都按 L2（structural）授权。
+
 AI 已明确语义边界后，使用公开 reshape 语句：
 
 ```sql

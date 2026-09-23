@@ -146,7 +146,21 @@ owner, can place. Write the sentence the owner would use: *"换了 embedding 模
 `route_path` **creates** and to every `SPLIT`/`MERGE` target. It does not apply
 to a segment that already exists: an old Route whose purpose still repeats its
 name is reported, not refused, so a library can be written to while its purposes
-are being filled in. A Row write mounts on exactly one
+are being filled in.
+
+**Repairing one of those is `ALTER ROUTE :route SET PURPOSE :purpose`** — a
+purpose is an amendable description, not identity frozen at creation, and the
+statement is judged by the same rule: a purpose folding down to the Route's own
+name is refused, so the amendment either writes a real description or fails.
+It is an **L2** write and needs the `expected_revision` you just read, like every
+other Route mutation. `memora doctor` counts the backlog in
+`routes_without_purpose` and names them in `routes_without_purpose_paths`.
+
+```sh
+memora exec --input '{"parameters":{"named":{"route":"route_abc","purpose":"换了 embedding 模型或维度之后，怎么把整库向量安全换过去"}},"mutation":{"expected_revision":3,"expected_schema_version":1,"max_affected_rows":1,"actor":"agent:host","source":"conversation:event-9","reason":"the label said nothing"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ALTER ROUTE :route SET PURPOSE :purpose"
+```
+
+A Row write mounts on exactly one
 leaf, and it says so one of two ways — never at the top level of the request,
 always inside `mutation`:
 
