@@ -1765,3 +1765,36 @@ cgo-build 里真跑 `memora doctor` 并输出新字段），`sync-skill --check`
 **还没做**：44 条 Route 的 purpose/aliases 回填（写库动作，按 `skills/memora/` 流程走 MSQL，单列一
 步）；synopsis 接进走树（第三块）；走树的宽度预算（第二块，见
 `docs/planning/frontier-budget-per-parent.md`）。
+
+## 2026-09-22 · 读取端不该有宽度上限（用户纠正 + 摘刀实测）
+
+**用户纠正**：`branch_fanout = 12` 是**写路径**的约束；读取时"当前层有多少节点就读多少个，全部交给
+jev 判"，读取端不该有自己的一套宽度上限。查证成立：
+
+- `internal/router/page.go` 的 `CompleteNodes` 原话：一层的大小受 `route_policy.branch_fanout` 约束，
+  **不是读取端的预算**，所以没有可翻的页，"万一带不下就是错误，不是一页"。
+- `branch_fanout` 在 `internal/sqlstore/routes.go`（每次新建 Route 走 `CheckBranchFanout`）与
+  `internal/sqlstore/route_plan.go`（ROUTE MUTATION 重新挂载）两处都拒。
+
+**所以 `jev_tree.py` 的 `MAX_FRONTIER = 4` 是读取端自己发明的上限，与系统设计矛盾**——它把写路径已经
+保证合法的一层按到达顺序砍掉一部分。我原来写的"上限对齐 `branch_fanout = 12`、按父节点分配预算"这条
+方向被推翻：**不是把 4 改成 12，而是根本不该有读取端的宽度上限。**
+
+**摘刀实测**（把 `/tmp` 里的副本改成无上限，真库只读）：
+
+| 问题 | 决策 | jev 时间 | 真落点 | 结果 |
+|---|---|---|---|---|
+| memora 当前的缺口有哪些 | 12 | 4.43 s | 31 | **命中 `/当前状态/当前缺口`**，`incomplete` |
+| 向量 rekey 的机制是什么 | 12 | 4.44 s | 6 | **命中 `/接口与检索/向量 rekey`**，`incomplete` |
+
+两问在 `MAX_FRONTIER = 4` 下都够不到。摘掉后真正的界变成全局工作预算：12 次 jev 调用用尽，各剩一个
+分支（`/运行与宿主`）没走、`incomplete: true`。**代价是噪声**（缺口那问 31 个真落点）——有意的取舍：
+jev 判不出来时宁可整层给出来，也不按顺序赌。
+
+**修法改为**（见 `docs/planning/whole-layer-read.md`）：
+1. 删掉读取端宽度上限；
+2. 没走完的分支**不许写进 `landings`**——`budget: jev calls` / `wall clock` / `depth` 进单独的
+   "停在这里"字段并令 `incomplete: true`（它们现在混在 `landings` 里，只靠 `termination` 区分，
+   这正是"够不到答案"长得像"搜过、没有"的来源）；
+3. 全局工作预算成为唯一的界，如实报告；
+4. Skill 教怎么读 `incomplete`，以及 `incomplete` 时的正确动作是**收窄**（显式 `table=` 或拆主题）。
