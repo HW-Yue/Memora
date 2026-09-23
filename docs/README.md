@@ -35,6 +35,8 @@
 - [Admin 语义画布的连线](./planning/admin-canvas-connections.md) — 布局吃真实卡高，锚点交给 port
 - [引擎拥有形状](./planning/engine-owned-shape.md) — 讨论稿：列归引擎，命名/描述/位置/正文归 agent
 - [向量 rekey](./planning/vector-rekey.md) — 卸下 TOFU 身份，再让排干重新上锁
+- [Route 的描述句](./planning/route-purpose-contract.md) — 必填的是内容，不是非空字符串
+- [走树的宽度预算](./planning/frontier-budget-per-parent.md) — 按父节点计，溢出如实报 incomplete
 - [无上下文 subagent 循环实测（2026-09-22）](./development/dogfood-2026-09-22.md) — 五轮摩擦与修复
 - [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
 - [决策日志](./decisions.md) — 运行中的判断；规范级结论进 ADR
