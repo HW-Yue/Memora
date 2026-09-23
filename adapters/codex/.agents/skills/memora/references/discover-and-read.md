@@ -209,7 +209,9 @@ which Table each half came from.
 
 **A census is a plain SELECT with no `WHERE`.** `SELECT row_id, title, revision
 FROM <table> LIMIT :limit` is legal, counted against `select_rows` exactly like a
-point read, and it is the cheapest way to see everything a Table holds: it
+point read (the bundled ceiling for `select_rows` is **10 per statement** — a
+census of a larger Table comes back `truncated` and the Route walk is its
+read-only continuation), and it is the cheapest way to see everything a Table holds: it
 returns each Row's `row_id` **and** its `route_paths`, so it locates the Rows
 without walking the tree. Census every Table of the bound Database in **one
 request** — one statement per Table, one `--input` element per statement — then
@@ -248,7 +250,8 @@ until a leaf is reached. Every leaf locates at most one active Row, and
 Select projected semantic fields by Row ID, then summarize only the returned
 Row. Every SELECT Row already carries its own `route_paths` — the full
 semantic-index path of the single leaf that locates it — so the host need not
-reverse-resolve membership after the fact. Report empty, stale, or
+reverse-resolve membership after the fact. It rides along and **cannot be
+projected**: asking for it in the projection is refused, and it arrives anyway. Report empty, stale, or
 permission-limited results instead of inventing a fallback.
 
 **A leaf id from earlier still works after the tree moved.** A `SPLIT` or `MERGE`
@@ -267,7 +270,12 @@ above. **Read one Row per statement.** To read several Rows, send several
 statements in one request — `--input` takes one object per statement as an array,
 in source order, for `query` and `exec` alike, and **each element binds its own
 `parameters.named`** (the element at the same index as its statement), so two
-statements can read two different Rows:
+statements can read two different Rows. The count has to match **even when no
+statement takes a parameter**: four statements need four elements, and one object
+for four statements is refused (`statement input count must be zero or equal the
+parsed statement count`) — use `{}` for the ones that bind nothing — and one named
+parameter cannot carry two different values in one batch, so repeating `:parent`
+across branches means repeating the input object with that branch's id:
 
 ```sh
 memora query --input '[{"parameters":{"named":{"row":"row_01"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}},{"parameters":{"named":{"row":"row_02"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}]' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1; SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT 1"
@@ -342,6 +350,7 @@ at most once when it can materially affect the answer.
 
 ```sh
 memora query --input '{"parameters":{"named":{"parent":"route_architecture"}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES UNDER :parent"
+memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES UNDER 'route_architecture'"
 memora query --input '{"parameters":{"named":{"leaf":"route_storage","limit":1}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "OPEN ROUTE :leaf LIMIT :limit"
 memora query --input '{"parameters":{"named":{"row":"row_01","limit":10}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SELECT title, summary, row_id, revision FROM work.notes WHERE row_id = :row LIMIT :limit"
 ```

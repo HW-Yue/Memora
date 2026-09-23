@@ -142,8 +142,11 @@ func TestJevTreeWalksFromARequirementToLandings(t *testing.T) {
 			t.Fatalf("an enumerated layer makes the answer partial: %v", result)
 		}
 		uncertain, _ := result["incomplete_at"].([]any)
-		if len(uncertain) == 0 || uncertain[0] != "internship" {
-			t.Fatalf("incomplete_at must name the layer: %v", result["incomplete_at"])
+		// The layer name carries its Database: a bare "internship" (or "root") names
+		// one layer in each Database, and which one was enumerated is the whole
+		// point of reporting it.
+		if len(uncertain) == 0 || uncertain[0] != "me:internship" {
+			t.Fatalf("incomplete_at must name the layer with its Database: %v", result["incomplete_at"])
 		}
 	})
 

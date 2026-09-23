@@ -369,6 +369,7 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
     """
     landings = []
     frontier = []
+    over_walked = {"dropped": 0}
     for database, table in tables:
         rows = engine.query("SHOW ROUTES FROM TABLE %s.%s AT ROOT" % (database, table), [database],
                             label="%s.%s root" % (database, table))["rows"]
@@ -385,7 +386,9 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
                                     named={"parent": node["parent"]},
                                     label="/".join(segment["name"] for segment in node["path"]) or "root")["rows"]
             options = [(row["name"], row.get("purpose", "")) for row in children]
-            layer = "/".join(segment["name"] for segment in node["path"]) or "root"
+            # The Database is part of the label: a bare "root" names one layer in
+            # each Database, and `incomplete_at` has to say which one it means.
+            layer = node["database"] + ":" + ("/".join(segment["name"] for segment in node["path"]) or "root")
             chosen, decision = choose_layer(chooser, budget, options, layer, evidence)
             if decision.startswith("budget:"):
                 landings.append({"path": "/" + "/".join(
@@ -412,6 +415,7 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
             evidence.append({"layer": "frontier", "decision": "budget: frontier width",
                              "options": [], "relevant": [],
                              "kept": MAX_FRONTIER, "dropped": len(advanced) - MAX_FRONTIER})
+            over_walked["dropped"] += len(advanced) - MAX_FRONTIER
             for node in advanced[MAX_FRONTIER:]:
                 landings.append({"path": "/" + "/".join(
                     segment["name"] for segment in node["path"]),
@@ -424,7 +428,7 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
                     segment["name"] for segment in node["path"]), "termination": "budget: depth"})
                 continue
             frontier.append(node)
-    return landings
+    return landings, over_walked["dropped"]
 
 
 def main():
@@ -513,7 +517,7 @@ def main():
         if not tables:
             stopped = "no table matched"
 
-    landings = walk(engine, chooser, budget, tables, requirement, evidence) if tables else []
+    landings, dropped_branches = walk(engine, chooser, budget, tables, requirement, evidence) if tables else ([], 0)
     uncertain = [entry["layer"] for entry in evidence if entry.get("decision") == "undecided"]
     result = {
         "requirement": requirement,
@@ -531,6 +535,14 @@ def main():
     }
     if stopped:
         result["stopped"] = stopped
+    if dropped_branches:
+        # A requirement that points at more places than the walk can carry is not
+        # a requirement to widen the budget for: it is several requirements. Say
+        # so, because a caller holding a partial set of landings has no way to see
+        # that the branch it wanted was the one dropped.
+        result["suggest"] = ("split the requirement into one topic per call: the walk dropped %d "
+                             "branch(es) at the frontier budget, so landings are partial even where "
+                             "`incomplete` is false" % dropped_branches)
     log.emit("done", landings=len(landings), decisions=chooser.decisions,
              statements=len(engine.statements), engine_ms=engine.spent_ms,
              jev_ms=chooser.spent_ms, incomplete=bool(uncertain))

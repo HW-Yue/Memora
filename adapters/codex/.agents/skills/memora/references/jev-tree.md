@@ -33,6 +33,21 @@ Every layer is decided the same way: the children's `name` and `purpose` go to
 made — no probability leaves the model call). A layer with a single child is not
 a decision and is not asked.
 
+## One requirement, one topic
+
+A walk carries one requirement across Databases, Tables and the tree. That is not
+the same as carrying several requirements at once: hand it "rekey, my internships
+and the current gaps" and the Database layer keeps both Databases, the Table layer
+keeps all six Tables, and the frontier budget then drops branches — measured, that
+run lost seven branches and **did not land either of the two rows the user had
+asked about**, while the agent that walked the tree by hand took 44.9 s against
+that run's 54.7 s. Three narrow calls (one per topic) each land their own rows.
+
+So: **one call per topic.** When the walk drops branches it says so — the answer
+carries `suggest` (split the requirement) — and any landing whose `termination`
+starts with `budget:` is a branch the walk stopped at, not an answer. Treat both
+as "ask again, narrower" or "name the Table".
+
 ## When it is worth calling
 
 - the requirement maps onto the tree's **structure** ("which of my internships",
@@ -83,7 +98,11 @@ and an answer that says how it got there.
   narrow.
 - `evidence` carries the option text each decision was made from, so a decision
   can be audited or argued with later. It carries names and decisions, never
-  probabilities.
+  probabilities. Its `layer` names carry the Database (`work:root`) because a bare
+  `root` names one layer in each of them.
+- `suggest` appears when the walk dropped branches at the frontier budget: the
+  requirement pointed at more places than one call can carry, and the landings are
+  partial even where `incomplete` is false.
 - The budgets are constants, not knobs: 12 jev calls, depth 5, frontier width 4,
   30 seconds. When one bites, the answer says so — narrow the requirement, or
   name the Database/Table and read it directly.
