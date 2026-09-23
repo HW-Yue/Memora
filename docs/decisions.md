@@ -1518,6 +1518,17 @@ subprocess 而放弃复用同一份决策实现（现在两份都由 `jev_select
    断言两次决策只走一条；把"每次 send 后 close"加回去，测试立刻红（`two requests opened 2 connections`）。
    性能改动如果没有这种可断言的"线上事实"，等于没测。
 
+**受控 A/B（2026-09-22，同一条要求、各跑 3 次、都是 9 次决策 31 条语句）**：走"最长的一条路径"——
+跨两库、四个主题（`me` 的四张表 + `memora` 的两张表）——`JEV_IN_PROCESS=1`（复用）total 中位
+**3788 ms**、jev 3355 ms；`JEV_IN_PROCESS=0`（每次子进程 + 新连接，即改前行为）total 中位 **6279 ms**、
+jev 5962 ms。**整趟快 1.66×（省 2.5 s，40%）**；每次决策：复用后（除第一次）中位 **344 ms**，每次新建
+中位 **665 ms**——**稳定省下约 320 ms/次**，× 8 次 ≈ 2.6 s，与实测的 2.5 s 在run 间噪声内吻合：省的是
+连接/TLS，不是模型。
+
+**本地 loopback HTTP/1.1 的对照（同一实验，去掉 TLS 与跨境）**：每次新建连接中位 **0.31 ms**、复用
+中位 **0.14 ms**——本地只省 0.17 ms/次，**所以那条回归测试证明的是"连接确实被复用"（正确性），
+量不出速度**；速度全部来自远端 TLS 握手与跨境 RTT。
+
 **证据**：`internal/devgate/keepalive_test.go` + `internal/devgate/testdata/jev/keepalive_check.py`；
 `skills/memora/references/jev-tree.md` 的"Reading a run"与 `docs/query/jev-tree-v1.md` 的实测数字。
 ## 2026-09-23 · Admin 画布的布局引擎：compact-box 换成 dagre（修订 2026-09-22 的判词）
