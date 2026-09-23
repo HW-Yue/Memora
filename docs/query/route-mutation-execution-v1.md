@@ -42,7 +42,8 @@ sequence、各类覆盖计数与 `verified=true`。Receipt 是本次提交结果
 ## 不做
 
 - 不修改 Row 正文、History、Schema 或关系；
-- 不由引擎猜语义分组、名称或 purpose；
+- 不由引擎猜语义分组、名称或 purpose；执行前重跑 `Validate`，其中包括
+  「target 的 purpose 不是名字的复读」这一条（[契约](./route-purpose-contract-v1.md)）；
 - 不支持跨 Table/Database 移动；
 - 不为 stale plan 自动 rebase，也不接受 ad hoc action 拼接。
 

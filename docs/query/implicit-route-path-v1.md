@@ -31,6 +31,9 @@
    拿它建树会让同一条路径落两处。大小写不敏感是**有意的**：引擎自己判同父重名就是
    `EqualFold`，解析比创建更严会在"名字已存在但大小写不同"时走进死路；
 3. name 先 `TrimSpace`、空即拒、含 `/` 即拒（与显式 `CREATE ROUTE` 同一条规则）；
+   **新建的段** purpose 规范化后等于 name 即拒（描述缺失，见
+   [Route 的 purpose 契约](./route-purpose-contract-v1.md)）；**命中已存在的段不判定**——
+   那段不是这次新建的，存量库照旧可写；
 4. **中途命中 leaf 还要继续下钻 → 拒**（叶子已挂行，改 branch 是结构迁移，不是 INSERT 的后果）；
 5. **最后一段命中 branch → 拒**（它不定位任何行）；命中 leaf → **复用**，且
    **purpose 不一致即拒**（不静默改写、也不假装成功）；
@@ -51,3 +54,4 @@
 - [Agent 与引擎的分界](./agent-engine-boundary.md) — 为什么补齐算「确定后果」
 - [Route 配套表](../product/route-companion-table.md) — 树的结构与致空规则
 - [MSQL Mutation](./msql-mutation.md) — option 所在位置
+- [Route 的 purpose 契约](./route-purpose-contract-v1.md) — 新建拒、存量只告警

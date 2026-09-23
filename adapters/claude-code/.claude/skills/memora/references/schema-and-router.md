@@ -128,6 +128,11 @@ characters, no spaces. A name that is fine on `CREATE ROUTE` or `route_path`
 `target key, name, purpose, or synopsis is invalid` — you cannot reuse an
 existing node's display name as the merged key.
 
+Each target's `purpose` must describe what will be kept there, not repeat the
+target's name: a reshape is exactly when those sentences get written, and a
+target whose purpose is its own name is refused at plan time with
+`needs a purpose that says what is kept here`.
+
 Verify that the result is `memora.route-mutation-plan/v1`, `status=review_required`,
 and has base snapshot and plan hashes. Show the exact plan and impact to the user.
 Only after explicit approval, submit that unchanged plan through `memora exec`; bind

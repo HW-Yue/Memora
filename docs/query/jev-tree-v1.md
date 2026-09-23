@@ -25,6 +25,12 @@
 `Noul` + floor probe + 最大比例落差切分），拿回名字集合 + `separated|undecided|empty`。
 **只有一个孩子的层不是决定，不问。**
 
+**没有描述的候选以空 purpose 进去，并且说出来**：`purpose` 为空、或规范化后等于 `name`，
+都是"没写描述"——**不拿名字顶上**（那个兜底正是 44/56 复读能烂到没人发现的原因）。该层在
+`evidence[].undescribed` 里列出是哪几个，结果里 `undescribed_at` 列出是哪几层。它**不是**
+`incomplete`：层照走、也照样落点，只是这层是看着光名字判的。规则见
+[Route 的 purpose 契约](./route-purpose-contract-v1.md)。
+
 **`undecided` 一律枚举该层**：模型答了但没分开，那就不信它没做出的筛选——丢掉整层才是真的丢信息。
 枚举会让答案变宽，所以输出里必须带 `incomplete` / `incomplete_at`。
 
@@ -75,4 +81,5 @@ provider 重放同一趟。这不是调试便利：它让这条路能被回归�
 - [检索四条路与 jev 逐层选择](./retrieval-routes-jev.md)
 - [jev 作为逐层分支选择器](./jev-branch-selection.md)
 - [召回只给路径](../product/query-model.md) §6
+- [Route 的 purpose 契约](./route-purpose-contract-v1.md) — 候选只带 name 与 purpose，所以描述缺失是检索损伤
 - [Skill：jev 走树](../../skills/memora/references/jev-tree.md)

@@ -72,6 +72,12 @@ databases, rows, history, relations
 ```
 
 Catalog 或权威记录损坏时 doctor 失败，不伪装为 healthy。当前计数只针对权威逻辑对象。
+（字段以 `internal/sqlstore.Report` 为准，上面这串是早期形状。）
+
+报告里有几项**不是故障**、因此不改变 `status` 的计数：`units_without_vectors`（宿主还没排干的
+向量）、`routes_without_purpose` 与 `routes_without_purpose_paths`（`purpose` 只复读 `name` 的
+Route，数量 + 最多 50 条 `库.表/路径`，见
+[Route 的 purpose 契约](../query/route-purpose-contract-v1.md)）。它们报的是积压，不是损坏。
 
 ## 关联
 

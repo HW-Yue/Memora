@@ -134,7 +134,19 @@ CREATE ROUTE UNDER :parent NAME :name KIND :kind PURPOSE :purpose [SYNOPSIS :syn
 ```
 
 `KIND` is `'branch'` for a grouping node and `'leaf'` for a node that locates a
-Row. Both forms return the new `route_id`. A Row write mounts on exactly one
+Row. Both forms return the new `route_id`.
+
+**`PURPOSE` has to describe the place, not repeat its name.** A purpose equal to
+the name — after folding case, width and padding — is refused
+(`validation_error`), because the semantic tree is read through exactly these two
+fields: the layer-by-layer walk offers a candidate as `name` + `purpose` and
+nothing else, so `NAME 'rekey' PURPOSE 'rekey'` is a node nobody, model or
+owner, can place. Write the sentence the owner would use: *"换了 embedding 模型
+或维度之后，怎么把整库向量安全换过去"*. The same rule applies to every segment a
+`route_path` **creates** and to every `SPLIT`/`MERGE` target. It does not apply
+to a segment that already exists: an old Route whose purpose still repeats its
+name is reported, not refused, so a library can be written to while its purposes
+are being filled in. A Row write mounts on exactly one
 leaf, and it says so one of two ways — never at the top level of the request,
 always inside `mutation`:
 
@@ -208,7 +220,9 @@ table-level semantics`). Create the root with `CREATE ROUTE ROOT` first (next
 section), then come back.
 
 An INSERT may carry `route_path` instead of `route_leaf_ids`: one entry per
-segment, each with its own `name`, `kind` and `purpose`. The kernel reuses the
+segment, each with its own `name`, `kind` and `purpose` — and a purpose that
+describes the segment rather than repeating its name, for the segments this
+write creates (see above). The kernel reuses the
 segments that already exist and creates the ones that do not, in the same
 transaction as the Row. The two options are mutually exclusive, and `route_path`
 is accepted by INSERT only.

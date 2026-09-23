@@ -24,6 +24,9 @@ AI 负责命名目标节点、说明 purpose/synopsis，并明确每个 child Ro
   合并后每个 Leaf 各自 locator ≤1 且互不重叠；
 - MOVE 不把节点移入自身子树，目标 parent 不是 leaf；
 - 结果没有 sibling name 冲突，fan-out ≤12、每个 Leaf locator ≤1；
+- **每个 target 的 purpose 规范化后不等于它的 name**：target 是还不存在的 Route，
+  与 `CREATE ROUTE` 同一条规则（[Route 的 purpose 契约](./route-purpose-contract-v1.md)）。
+  `Build` 与执行前的 `Validate` 各判一道；
 - 扫描有 cursor、数量和总预算上限；任何截断都拒绝生成计划。
 
 ## 计划
