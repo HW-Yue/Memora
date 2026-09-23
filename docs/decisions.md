@@ -2069,3 +2069,39 @@ asset 带上了新键集**。
 **工具时间（0.15 s vs 11.7 s）**这两个低方差量上，它们方向一致且不依赖模型的思考延迟。
 ③ "**4/5 vs 5/5 目标行**"不能当 jev 的准确率优势：单次采样、差一行，而同一批测量里 jev 有
 4 次跑 4/8 的宽层错判，方向相反。
+
+## 2026-09-23 · 协议与审计：请求也要自证协议；审计随事务存亡
+
+审计报告（`docs/development/audit-2026-09-23.md`）的 **A5** 与 **A4** 已修（各自独立分支、RED→GREEN、
+`./scripts/ci.sh` 全绿、`--ff-only` 合入）：
+
+### A5 · 引擎协议改成**双向**，服务端执行前校验
+
+原状：`engine_protocol` 只放在**响应**里，客户端在**拿到响应之后**才比 —— 也就是**写已经提交**，客户端把
+结果整个丢弃；换二进制后旧 daemon 仍在跑时，新 CLI 的写**真的落库**，还跳过向量排干（`cli.go:434-438`）。
+
+现在：**请求也带 `engine_protocol`**，服务端在 `ServeConnection` 里、**framing 检查之后、
+`requestContext`/`handler.Handle` 之前**校验；不匹配就用新码 `engine_protocol`（与 `SkewedError` 同义，
+`errors.Is` 映得回去）拒绝整笔请求。**零副作用由位置本身保证**：handler 从未被调用，所以不执行语句、
+不写审计、不排干；连接保持可用，下一条请求照常。`ensureDaemon` 也改为比对协议，7 处调用点走
+`daemonFailure` 并给出"stop && start"的指引。客户端那条检查保留，但不再是唯一防线。
+`docs/development/dogfood-2026-09-21.md` 里"协议号只放响应、客户端一处校验"那段已标注**被取代**。
+
+### A4 · 审计与业务写**共享事务边界**
+
+原状：`execute.go` 的 defer 无条件 `security.Record`，它走 `store.Begin(ReadWrite)` 去抢 `db.write`
+——**而那把锁正是当前请求（若开了显式事务）自己持有的**。于是"只 `BEGIN` 不 `COMMIT`"的一笔请求
+**连它自己都回不来**（RED 原文：`execute "BEGIN": context deadline exceeded`），此后所有请求（含只读
+ping/doctor）全阻塞，只能 SIGTERM 解开。
+
+现在：**事务开着时审计写进那个已打开的事务**（`RecordIn`），随业务写一起提交/回滚；**写失败不入
+pending**（入队就会变成"记下没落库的写"）；事务之外才自行 Begin（行为不变）。加上三道护栏：
+① 写锁改成带 ctx/超时的获取（超 `maxWriteWait=30s` 报 `deadline_exceeded`，死锁降级为可报错的等待）；
+② CLI 请求默认 deadline（`daemonRequestTimeout=2m`）；③ 显式事务 5 分钟空闲自动回滚
+（`Options.TransactionIdle`）。**明确弃选**：独立连接/独立文件（审计会记下没落库的写）、defer 里无条件
+回滚未提交事务（等于砍掉"事务跨请求存活"这个特性）、异步后台落盘（锁还是那把，死锁变静默积压）。
+
+**顺带补上 daemon 的测试种子**（B7 的第一批）：`internal/daemon` 自此有了进程内起真 daemon + 真 socket +
+真 SQLite 的测试辅助，断言"一个开着不提交的事务不再让 daemon 失联"、"事务内的审计随事务一起消失/可见"、
+"空闲事务会自己回滚"、"等锁会随 ctx 结束"。**B7 的其余部分仍是独立一块**——审计报告的顺序里它排最后，
+且之后每条修复顺手往 daemon 加测试。
