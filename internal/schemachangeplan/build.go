@@ -38,7 +38,15 @@ func Build(
 		return Plan{}, err
 	}
 	scope := Scope{DatabaseID: database.ID, Database: database.Name, TableID: table.ID, Table: table.Name}
-	guards := make([]ColumnShape, 0, len(table.Columns))
+	// Guards describe the shape a later reader can still see, so they are built
+	// from the live Columns: ApplyToSnapshot compares its own live-Column list
+	// against exactly these. `current` keeps every stored Column, archived
+	// included, because an action may legitimately name a retired one — but a
+	// guard list that counted them was one longer than the list it is checked
+	// against, which locked any table that had ever dropped a Column out of every
+	// later change (docs/development/audit-2026-09-23.md, A1).
+	live := catalog.LiveColumns(table.Columns)
+	guards := make([]ColumnShape, 0, len(live))
 	current := make(map[string]ColumnShape, len(table.Columns))
 	for _, column := range table.Columns {
 		shape, err := existingShape(column)
@@ -46,7 +54,9 @@ func Build(
 			return Plan{}, planError(result.CodeInternal, "current Column schema is invalid or duplicated")
 		}
 		current[column.ID] = shape
-		guards = append(guards, shape)
+	}
+	for _, column := range live {
+		guards = append(guards, current[column.ID])
 	}
 	sort.Slice(guards, func(i, j int) bool { return guards[i].ColumnID < guards[j].ColumnID })
 	actions, final, scan, err := buildActions(table, proposal, current)

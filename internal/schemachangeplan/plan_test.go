@@ -159,3 +159,42 @@ func (source *fakeRows) ListPage(context.Context, string, string, int) ([]row.Ro
 	source.calls++
 	return append([]row.Row(nil), source.values...), source.more, nil
 }
+
+// A table that has ever dropped a Column keeps that Column in its stored list
+// with ArchivedAt set. Guards must be built from the *live* Columns, because
+// ApplyToSnapshot compares its own live-Column list against them: one archived
+// Column used to put the plan's guard count one above the live count, so every
+// later schema change on that table failed with `Column guards changed after
+// planning` — and the real library has archived Columns, which made this a
+// permanent dead end rather than a race. See docs/development/audit-2026-09-23.md.
+func TestAnArchivedColumnDoesNotLockTheTableOutOfLaterChanges(t *testing.T) {
+	t.Parallel()
+	database, table := schemaFixture()
+	retired := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
+	table.Columns = append(table.Columns, catalog.Column{
+		ID: "col_legacy", Name: "legacy", Aliases: []string{}, Type: "TEXT", MaxCharacters: 40,
+		Nullable: true, Purpose: "retired Column", SchemaVersion: 1, CreatedAt: retired, UpdatedAt: retired,
+		ArchivedAt: &retired, ArchivedReason: "the owner retired it"})
+	database.Tables = []catalog.Table{table}
+	proposal := schemachangeplan.Proposal{
+		Version: schemachangeplan.ProposalVersion, ID: "proposal_after_archive", Actor: "agent:test",
+		SourceEventID: "event:after-archive", Reason: "rename the title Column",
+		ExpectedTableRevision: table.SchemaVersion,
+		Changes: []schemachangeplan.ChangeProposal{
+			{ID: "title", Action: schemachangeplan.ActionRename, ColumnID: "col_title",
+				ExpectedRevision: 2, NewName: "heading"},
+		},
+	}
+	plan, err := schemachangeplan.Build(context.Background(), &fakeRows{}, database, table, proposal)
+	if err != nil {
+		t.Fatalf("Build() = %v", err)
+	}
+	// One archived Column plus two live ones: the guards describe the shape a
+	// later reader can still see, not the shape that was once stored.
+	if len(plan.ColumnGuards) != 2 {
+		t.Fatalf("ColumnGuards = %d, want the 2 live Columns: %#v", len(plan.ColumnGuards), plan.ColumnGuards)
+	}
+	if _, _, err := schemachangeplan.ApplyToSnapshot(plan, database, table, retired); err != nil {
+		t.Fatalf("a table that archived a Column must still be changeable: %v", err)
+	}
+}
