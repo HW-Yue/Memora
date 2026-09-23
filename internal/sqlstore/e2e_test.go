@@ -28,8 +28,17 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	// The guard is on for every test Instance: a new path that would publish a
 	// live Row outside the one-to-one mount fails at its own commit.
+	return newHarnessWithOptions(t, sqlstore.Options{CheckInvariants: true})
+}
+
+// newHarnessWithOptions opens the Instance the way a caller asks for it. A test
+// about damaged storage needs the options a real Instance runs with — the
+// commit-time invariant scan reads every Row, so with the guard on a corrupt
+// Row fails the statement before the behaviour under test is reached.
+func newHarnessWithOptions(t *testing.T, options sqlstore.Options) *harness {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "memora.db")
-	db, err := sqlstore.Open(path, sqlstore.Options{CheckInvariants: true})
+	db, err := sqlstore.Open(path, options)
 	if err != nil {
 		t.Fatal(err)
 	}

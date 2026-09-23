@@ -2,6 +2,8 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 	"unicode/utf8"
 
@@ -433,13 +435,26 @@ func (t *tx) repairLinks(ctx context.Context, databaseName string, limit int) (R
 		entries = entries[:limit]
 	}
 
+	receipt.Failures = []repair.Failure{}
 	for _, entry := range entries {
-		applied, err := t.repairEndpoint(ctx, entry.tableID, entry.rowID, entry.counterpartTableID,
+		outcome, err := t.repairEndpoint(ctx, entry.tableID, entry.rowID, entry.counterpartTableID,
 			entry.counterpartRowID, entry.reason)
 		if err != nil {
 			return receipt, err
 		}
-		if applied {
+		// An entry leaves the queue only when this pass decided it: applied, or
+		// judged no longer worth applying. An endpoint that could not be read
+		// was decided neither way, so it stays queued and stays reported — the
+		// alternative is a pass that reports a clean queue it never repaired.
+		if outcome.problem != nil {
+			receipt.Failed++
+			receipt.Failures = append(receipt.Failures, repair.Failure{
+				RowID: entry.rowID, CounterpartRowID: entry.counterpartRowID,
+				Reason: entry.reason, Message: outcome.problem.Error(),
+			})
+			continue
+		}
+		if outcome.applied {
 			receipt.Repaired++
 		} else {
 			receipt.Discarded++
@@ -463,48 +478,93 @@ func (t *tx) repairLinks(ctx context.Context, databaseName string, limit int) (R
 // anything. Writes here go straight to the Row: the repair deliberately does not
 // queue the endpoints it touches, or repairing one link would queue the next
 // repair forever.
-func (t *tx) repairEndpoint(ctx context.Context, tableID, holderID, counterpartTableID, counterpartID, reason string) (bool, error) {
+// endpointOutcome is what one queued entry came to. applied and the zero value
+// are both decisions — repaired, or discarded. problem is neither: the pass
+// could not read an endpoint, and a read that failed says nothing about whether
+// the link is still legitimate, so it decides nothing.
+type endpointOutcome struct {
+	applied bool
+	problem error
+}
+
+func (t *tx) repairEndpoint(ctx context.Context, tableID, holderID, counterpartTableID, counterpartID, reason string) (endpointOutcome, error) {
 	holderTable, err := t.tableByID(ctx, tableID)
 	if err != nil {
-		return false, nil
+		return unreadable(err), nil
 	}
 	holder, err := t.readRow(ctx, holderTable, holderID)
-	if err != nil || holder.State != rowmodel.StateLive {
-		return false, nil
+	if err != nil {
+		return unreadable(err), nil
+	}
+	if holder.State != rowmodel.StateLive {
+		return endpointOutcome{}, nil
 	}
 	counterpartTable := holderTable
 	if counterpartTableID != "" && counterpartTableID != tableID {
 		resolved, err := t.tableByID(ctx, counterpartTableID)
 		if err != nil {
-			return false, nil
+			return unreadable(err), nil
 		}
 		counterpartTable = resolved
 	}
 	counterpart, counterpartErr := t.readRow(ctx, counterpartTable, counterpartID)
 	if counterpartErr != nil {
-		// The counterpart is gone: the link has nothing to point at any more.
-		return t.dropHolderLink(ctx, holderTable, holder, counterpartTable.ID, counterpartID)
+		if !missing(counterpartErr) {
+			return unreadable(counterpartErr), nil
+		}
+		// The counterpart is really not there: the link has nothing to point at
+		// any more. This is the only disappearance a repair may act on.
+		applied, err := t.dropHolderLink(ctx, holderTable, holder, counterpartTable.ID, counterpartID)
+		return endpointOutcome{applied: applied}, err
 	}
 
 	switch reason {
 	case RepairStaleReference:
 		terminals, err := t.successorTail(ctx, counterpartTable, counterpart)
 		if err != nil {
-			return false, err
+			return unreadable(err), nil
 		}
-		return t.repointLink(ctx, holderTable, holder, counterpartTable, counterpart, terminals)
+		applied, err := t.repointLink(ctx, holderTable, holder, counterpartTable, counterpart, terminals)
+		return endpointOutcome{applied: applied}, err
 	case RepairStaleSummary:
 		if counterpart.State != rowmodel.StateLive {
 			terminals, err := t.successorTail(ctx, counterpartTable, counterpart)
 			if err != nil {
-				return false, err
+				return unreadable(err), nil
 			}
-			return t.repointLink(ctx, holderTable, holder, counterpartTable, counterpart, terminals)
+			applied, err := t.repointLink(ctx, holderTable, holder, counterpartTable, counterpart, terminals)
+			return endpointOutcome{applied: applied}, err
 		}
-		return t.refreshSummary(ctx, holderTable, holder, counterpartTable, counterpart)
+		applied, err := t.refreshSummary(ctx, holderTable, holder, counterpartTable, counterpart)
+		return endpointOutcome{applied: applied}, err
 	default:
-		return false, nil
+		return endpointOutcome{}, nil
 	}
+}
+
+// unreadable turns a failed read into an outcome. An object that is not there
+// is a decision — the endpoint is gone, so the entry is discarded; anything
+// else is storage this transaction could not read, and the entry waits.
+func unreadable(err error) endpointOutcome {
+	if missing(err) {
+		return endpointOutcome{}
+	}
+	return endpointOutcome{problem: err}
+}
+
+// missing reports whether err is the storage layer saying the object is not
+// there. Nothing else counts as gone: a value that does not decode, or a read
+// that failed, is storage this transaction cannot read — which says nothing
+// about whether the Row, the Table or the link still exists.
+func missing(err error) bool {
+	if errors.Is(err, sql.ErrNoRows) {
+		return true
+	}
+	var stable interface{ StableCode() string }
+	if errors.As(err, &stable) {
+		return result.Code(stable.StableCode()) == result.CodeNotFound
+	}
+	return false
 }
 
 // successorTail follows a superseded Row to the Rows that stand for it now.
@@ -517,7 +577,14 @@ func (t *tx) successorTail(ctx context.Context, table catalog.Table, value store
 		for _, id := range frontier {
 			current, err := t.readRow(ctx, table, id)
 			if err != nil {
-				continue
+				// A successor that is not there ends that branch of the walk. A
+				// successor that cannot be read ends the whole repair instead:
+				// repointing on a partial tail would drop the endpoint it could
+				// not see.
+				if missing(err) {
+					continue
+				}
+				return nil, err
 			}
 			if current.State == rowmodel.StateSuperseded && len(current.SuccessorIDs) > 0 {
 				for _, successor := range current.SuccessorIDs {

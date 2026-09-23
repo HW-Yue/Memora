@@ -168,17 +168,35 @@ func (engine *Engine) repairLinks(ctx context.Context, statement *ast.RepairLink
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
-	return Output{
+	output := Output{
 		Columns: []result.Column{
 			{Name: "repaired", Type: "INTEGER"},
 			{Name: "discarded", Type: "INTEGER"},
+			{Name: "failed", Type: "INTEGER"},
 			{Name: "remaining", Type: "INTEGER"},
 		},
 		Rows: []result.Row{{
-			"repaired": receipt.Repaired, "discarded": receipt.Discarded, "remaining": receipt.Remaining,
+			"repaired": receipt.Repaired, "discarded": receipt.Discarded,
+			"failed": receipt.Failed, "remaining": receipt.Remaining,
 		}},
 		AffectedRows: uint64(receipt.Repaired),
-	}, nil
+	}
+	// A pass that could not read an endpoint left the queue where it was. The
+	// counters alone would read as "nothing to do here", so every entry it
+	// could not finish is named: this is the only surface that says which link
+	// is waiting on damaged storage.
+	for _, failure := range receipt.Failures {
+		output.Warnings = append(output.Warnings, result.Notice{
+			Code: result.CodeInternal,
+			Message: "link repair could not read the endpoint held by Row " + failure.RowID +
+				" pointing at Row " + failure.CounterpartRowID + ": " + failure.Message,
+			Details: map[string]any{
+				"row_id": failure.RowID, "counterpart_row_id": failure.CounterpartRowID,
+				"reason": failure.Reason,
+			},
+		})
+	}
+	return output, nil
 }
 
 // repairVectorIndex reconciles a Database's derived vector indexes with the

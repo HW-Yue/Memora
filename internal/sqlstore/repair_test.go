@@ -1,6 +1,7 @@
 package sqlstore_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/HW-Yue/Memora/internal/msql/executor"
@@ -168,5 +169,88 @@ func TestRepairDiscardsAQueueEntryWhoseHolderIsGone(t *testing.T) {
 	}
 	if repairs := h.repairs(); len(repairs) != 0 {
 		t.Fatalf("the queue must drain: %+v", repairs)
+	}
+}
+
+// A counterpart the repair cannot read is not a counterpart that is gone. The
+// only disappearance a repair may act on is the row not being there; a decode
+// or I/O failure says nothing about whether the link is still legitimate, so
+// the endpoint stays linked, the queue entry stays queued, and the receipt
+// names what it could not finish instead of reporting it discarded.
+func (h *harness) corruptStoredValues(rowID string) {
+	h.t.Helper()
+	if _, err := h.db.SQL().Exec(
+		`UPDATE "data_`+h.notesTableID()+`" SET values_json = '{not json' WHERE row_id = ?`, rowID); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+func TestRepairKeepsALinkWhoseCounterpartCannotBeRead(t *testing.T) {
+	// A real Instance runs without the commit-time invariant scan, and that is
+	// the configuration this behaviour belongs to: with the scan on, the
+	// corrupt Row fails the REPAIR statement before it classifies anything.
+	h := newHarnessWithOptions(t, sqlstore.Options{})
+	one, two, _ := h.threeLeaves()
+	first := h.insertTitle("first", []string{one})
+	second := h.insertTitle("second", []string{two})
+	h.setRowLinks(first, 1, []sqlstore.LinkRef{{RowID: second}})
+
+	refine := write("refine the linked Row")
+	refine.ExpectedRevision = h.revisionOf(second)
+	h.run(`UPDATE work.notes SET title = 'second, revised' WHERE row_id = :row`, map[string]any{"row": second}, refine)
+	if repairs := h.repairs(); len(repairs) != 1 || repairs[0].reason != sqlstore.RepairStaleSummary {
+		t.Fatalf("the write must queue one summary repair: %+v", repairs)
+	}
+
+	// The counterpart's stored values stop decoding. The Row is still there.
+	h.corruptStoredValues(second)
+
+	receipt := h.repair(8)
+	if text(receipt.Rows[0]["repaired"]) != "0" || text(receipt.Rows[0]["discarded"]) != "0" {
+		t.Fatalf("an unreadable counterpart is neither repaired nor discarded: %v", receipt.Rows[0])
+	}
+	if text(receipt.Rows[0]["failed"]) != "1" || text(receipt.Rows[0]["remaining"]) != "1" {
+		t.Fatalf("the entry is still queued and the receipt says so: %v", receipt.Rows[0])
+	}
+	if len(receipt.Warnings) != 1 || receipt.Warnings[0].Code != result.CodeInternal ||
+		!strings.Contains(receipt.Warnings[0].Message, second) {
+		t.Fatalf("the receipt must name the endpoint it could not read: %+v", receipt.Warnings)
+	}
+	if links := h.links(first); len(links) != 1 || links[0].RowID != second {
+		t.Fatalf("the link must survive a counterpart it cannot read: %+v", links)
+	}
+	if repairs := h.repairs(); len(repairs) != 1 {
+		t.Fatalf("an entry that was not applied stays queued: %+v", repairs)
+	}
+}
+
+// The same rule down the successor chain: a successor that cannot be read is
+// not a chain that ended. Repointing on the tail it managed to read would drop
+// the endpoint it could not see, so the pass stops and keeps the entry.
+func TestRepairKeepsALinkWhoseSuccessorCannotBeRead(t *testing.T) {
+	h := newHarnessWithOptions(t, sqlstore.Options{})
+	leaves := h.seedLeaves("source", "watcher", "first", "second")
+	source := h.insertTitle("both facts", []string{leaves[0]})
+	watcher := h.insertTitle("watcher", []string{leaves[1]})
+	h.setRowLinks(watcher, 1, []sqlstore.LinkRef{{RowID: source}})
+
+	split := write("split a linked Row")
+	split.ExpectedRevision = h.revisionOf(source)
+	split.MaxAffectedRows = 3
+	split.TargetRouteLeafIDs = [][]string{{leaves[2]}, {leaves[3]}}
+	parts := h.run(`SPLIT work.notes ROW :row INTO (title) VALUES ('first fact'), ('second fact')`,
+		map[string]any{"row": source}, split)
+	h.corruptStoredValues(text(parts.Rows[0]["row_id"]))
+
+	receipt := h.repair(8)
+	if text(receipt.Rows[0]["failed"]) != "1" || text(receipt.Rows[0]["remaining"]) != "1" ||
+		text(receipt.Rows[0]["repaired"]) != "0" || text(receipt.Rows[0]["discarded"]) != "0" {
+		t.Fatalf("a successor that cannot be read leaves the entry queued: %v", receipt.Rows[0])
+	}
+	if links := h.links(watcher); len(links) != 1 || links[0].RowID != source {
+		t.Fatalf("the endpoint must still point at the Row it was queued for: %+v", links)
+	}
+	if repairs := h.repairs(); len(repairs) != 1 {
+		t.Fatalf("an entry that was not applied stays queued: %+v", repairs)
 	}
 }

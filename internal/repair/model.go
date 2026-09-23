@@ -13,11 +13,26 @@ const (
 	StaleReference = "stale_reference"
 )
 
-// Receipt reports what one bounded repair pass did.
+// Receipt reports what one bounded repair pass did. Repaired and Discarded are
+// both decisions: the entry was applied, or it was judged no longer worth
+// applying, and either way it leaves the queue. Failed is neither — the pass
+// could not read what it needed, so it decided nothing and the entry is still
+// queued. Failures says which endpoints those were, because a count that only
+// goes up is not something an Agent can act on.
 type Receipt struct {
 	Repaired  int
 	Discarded int
+	Failed    int
 	Remaining int
+	Failures  []Failure
+}
+
+// Failure names one queued endpoint a pass could not finish, and why.
+type Failure struct {
+	RowID            string
+	CounterpartRowID string
+	Reason           string
+	Message          string
 }
 
 // VectorReceipt reports what one bounded vector-index repair pass did. There is
