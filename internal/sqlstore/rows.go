@@ -601,6 +601,19 @@ func (t *tx) restore(ctx context.Context, databaseName, tableName, rowID string,
 	if err := t.appendHistory(ctx, table, value, history.OperationCompensate, options.Metadata, nil); err != nil {
 		return row.Row{}, err
 	}
+	// The restored text is what recall has to describe from here on. The unit still
+	// carries the payload of the revision this restore replaced, so without this
+	// the replaced text keeps matching and the restored text matches nothing —
+	// silently, because a stale payload is not something `brokenRecallUnits`
+	// counts. See docs/development/audit-2026-09-23.md, A3.
+	if err := t.syncRecallUnit(ctx, table, value); err != nil {
+		return row.Row{}, err
+	}
+	// Whoever links here holds a summary of the revision being replaced. This write
+	// refreshed no endpoint of its own, so it skips none.
+	if err := t.enqueueInboundRepairs(ctx, table, value, RepairStaleSummary, nil); err != nil {
+		return row.Row{}, err
+	}
 	t.rowChange(table, value, change.OperationRestore, options.Metadata, nil)
 	return project(table, value), nil
 }
