@@ -1986,3 +1986,30 @@ aliases`，再回填 aliases；④ 其余照 `docs/planning/jev-routing-ladder.m
 
 **代价（有意）**：落点变多——宽意图那问 35 个落点，召回换来了噪声。下一步是**按 `(database, table)`
 聚合**（35 个落点真实是 6 张表上的 6 组 row_id，一表一条 `WHERE row_id IN (...)`）。
+
+## 2026-09-23 · 验收结论：形状与成本已经对了；剩下的是 jev 自己的判断错误
+
+**验收报告**：`docs/development/acceptance-2026-09-23.md`（两臂各一次采样 + 脚本层四次重复 + 事故记录）。
+**可以下结论的**：一趟宽意图 **15 条语句**（`OPEN ROUTE` 归零）、落点只到叶子且带 `(库, 表, 行号)`、
+`reads` 把 34 个落点收成 **2 条**可执行读计划、上限只剩一个时间阀、窄意图 1.2–1.6 s 且完整。
+**不能下结论的**：jev 是否比 agent 自己走更快——同两个臂跨轮次是 44.9/39.3 s 对 54.7/65.1 s，
+现在是 67.6 对 58.0 s，**agent 侧方差远大于两条路的差异**，单次采样不足以下判断。
+
+**保留喂 `aliases`**（实测权衡，不是纯赚）：喂时缺口 4/4、rekey 4/8；不喂时缺口 2/4、rekey 8/8，
+合计 **12/12 对 10/12**。它换来的是"更果决"，而果决在 rekey 那层恰好是错的。
+
+**下一步优先级**（按实测伤害）：
+1. **让错误的 `separated` 可恢复**——jev 在 `memora:root` 有时直接选中 `架构`（rekey 在 `接口与检索`），
+   4 次跑 4/8 命中，而 walk **无法自知**。Skill 侧先教：`incomplete: true` 或落点薄 → 换个说法再问、
+   或显式给 `table=`；脚本侧可试"把层路径写进问题"（未测）。
+2. **高层 `empty` 的静默剪枝**：不喂别名时缺口 4 次里 2 次返回 0 落点；考虑裁剪面过宽时降级为 `undecided`。
+3. **FTS5 守卫**（见下）。
+
+**事故（我的）**：两次用**裸 `go build`** 重建，漏了 `-tags sqlite_fts5`，真机 daemon 的关键词召回
+直接失败（`RECALL … MATCH` → `internal_error: query failed`）；`scripts/ci.sh` 的注释正好警告过
+"a build without it produces a binary where recall silently has no index"。**我为什么没发现**：只核了
+`version` 的提交号，**没验能力**。已按 README 配方重建并复验（召回 `succeeded`、doctor healthy、
+`broken_recall_units=0`），**无数据损伤**（回填走 `ALTER ROUTE`，不碰召回单元；期间无行写入）。
+**教训两条**：① 引擎改动的收尾是"**按 README 的配方重建 + 验一条该改动涉及的能力**"，不是"看一眼版本号"；
+② **读己方笔记要当二手信息核**（我笔记里的裸 `go build` 就是错的）。**建议（未做）**：启动时断言可选
+SQLite 模块存在，缺 `fts5` 就拒绝服务或至少让 `doctor` 报出来。
