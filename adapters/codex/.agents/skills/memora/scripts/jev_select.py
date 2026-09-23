@@ -45,7 +45,10 @@ model's own time.
 
 Route IDs are never part of the request. The caller hands over names and purposes
 only, so an identifier that is not an authorization token cannot end up in a
-model prompt — the security rule the retrieval design already wrote down.
+model prompt — the security rule the retrieval design already wrote down. A
+purpose the caller did not write is sent as empty and never as the name: the name
+is already the candidate, so standing it in the purpose's place adds nothing and
+turns "nobody described this layer" into "somebody did".
 
 State of the art, not gospel: `confidence` summarizes how concentrated jev's
 distribution was. It is not permission to act, and it says nothing about whether
@@ -144,7 +147,15 @@ def read_request():
             fail(EXIT_BAD_INPUT, "option names must be unique: %s" % name)
         # Only the human-readable description travels; any other key the caller
         # passed (route_id, for instance) is dropped here rather than trusted.
-        criteria[name] = option.get("purpose") or option.get("name")
+        #
+        # A missing purpose stays missing. Substituting the name here is how a
+        # layer nobody described came to look exactly like a layer somebody did:
+        # the name is already in the candidate, so putting it in the purpose's
+        # place adds no information and hides the absence. The caller that owns
+        # the labels reports them (see `undescribed_at` in jev_tree.py), and the
+        # provider accepts an empty purpose — measured, it answers cleanly when
+        # the other candidates carry real ones.
+        criteria[name] = option.get("purpose") or ""
     if SENTINEL in criteria:
         fail(EXIT_BAD_INPUT, "option name %r is reserved for the floor probe" % SENTINEL)
     return intent, criteria, mode

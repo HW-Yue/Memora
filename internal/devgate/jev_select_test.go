@@ -68,3 +68,52 @@ func TestJevSetCutDecidesFromTheRequestsOwnAnswers(t *testing.T) {
 		}
 	}
 }
+
+// The walk stopped handing jev the name in the purpose's place, and this is
+// where that could quietly be undone: the script is the last thing between the
+// caller and the provider, and it used to substitute the name for a missing
+// purpose. A layer whose labels were never written then looked exactly like a
+// described one — that is how 79% of the tree rotted without anything saying so.
+// `--dry-run` prints the request that would be sent and needs no key or network.
+func TestJevNeverInventsADescriptionFromTheName(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not on PATH; the jev script cannot be exercised here")
+	}
+	root := repoRoot(t)
+	script := filepath.Join(root, "skills", "memora", "scripts", "jev_select.py")
+	request := `{"mode":"set","intent":"memora 项目当前的缺口有哪些","options":[` +
+		`{"name":"工作方式"},` +
+		`{"name":"当前状态","purpose":""},` +
+		`{"name":"当前缺口","purpose":"这个库里还没做完的事"}]}`
+	command := exec.Command(python, script, "--dry-run")
+	command.Dir = root
+	command.Stdin = strings.NewReader(request)
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	decoded := struct {
+		Request struct {
+			State struct {
+				Candidates []struct {
+					Name    string `json:"name"`
+					Purpose string `json:"purpose"`
+				} `json:"candidates"`
+			} `json:"state"`
+		} `json:"request"`
+	}{}
+	if err := json.Unmarshal(output, &decoded); err != nil {
+		t.Fatalf("dry run output is not JSON: %v\n%s", err, output)
+	}
+	candidates := decoded.Request.State.Candidates
+	if len(candidates) != 3 {
+		t.Fatalf("got %d candidates, want 3:\n%s", len(candidates), output)
+	}
+	for index, want := range []string{"", "", "这个库里还没做完的事"} {
+		if candidates[index].Purpose != want {
+			t.Fatalf("candidate %d (%s) carries purpose %q, want %q: a name must never stand in for a missing description",
+				index, candidates[index].Name, candidates[index].Purpose, want)
+		}
+	}
+}

@@ -51,7 +51,7 @@
     },
     {
       "path": ".claude/skills/memora/scripts/jev_select.py",
-      "sha256": "175d3731258b195bc93dbc00a220a72d39f1dd05f5a499685f38603b649c36a6",
+      "sha256": "3485947d499d7312dc081d5ef89e3507e7eddcca3a6104886e905577c6b3d7bc",
       "mode": "0755"
     }
   ]
