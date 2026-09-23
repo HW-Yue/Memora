@@ -88,6 +88,10 @@ F16b 的 request 将 SQL 与每条 statement 的结构化输入分离：
 - 事务外每条语句 autocommit；失败项不阻止后续独立语句；
 - 显式事务中的读失败返回 `failed`，但不自动中止事务；
 - 显式事务中的写失败立即回滚；此前成功项改为 `rolled_back`，后续项和结束边界为 `skipped`；
+- **「是不是写」只有一份判定**：`mutationStatement`。解析失败时批次只拿得到语句的**种类**
+  （残缺语句就是首词），该种类表由 `mutationStatement` 对每个 AST 节点派生，**不另列名单**——
+  曾经的第二份名单漏掉 `REPAIR`/`ACCEPT`/`REKEY`/`ALTER`，于是残缺写后面的 `COMMIT`
+  照常提交了前面的写，重试还会重复应用；
 - 越过被跳过的 COMMIT/ROLLBACK 后，后续事务外语句继续执行；
 - 显式 ROLLBACK 自身为 `succeeded`，事务中此前已执行项为 `rolled_back`；
 - BEGIN/COMMIT/ROLLBACK 的非法状态只让该边界 `failed`，不伪造 Store 状态转换。
