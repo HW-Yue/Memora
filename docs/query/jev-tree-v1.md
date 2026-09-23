@@ -24,9 +24,15 @@ leaf_route_id, row_id, revision}`——`path` 给 agent 判断"这是不是我�
 | 表 | `SHOW CATALOG ATLAS`（**按单库**） | 每张表的 `table` + `purpose` |
 | 树 | `SHOW ROUTES FROM TABLE … AT ROOT` / `SHOW ROUTES UNDER :parent` | 每个 child 的 `name` + `purpose` |
 
-每级都用同一套：把候选的 name + purpose 交给 `scripts/jev_select.py`（`set` 模式：每候选一个
-`Noul` + floor probe + 最大比例落差切分），拿回名字集合 + `separated|undecided|empty`。
+每级都用同一套：把候选的 **name + purpose + aliases** 交给 `scripts/jev_select.py`（`set` 模式：
+每候选一个 `Noul` + floor probe + 最大比例落差切分），拿回名字集合 + `separated|undecided|empty`。
 **只有一个孩子的层不是决定，不问。**
+
+**别名跟着描述一起喂**：`aliases` 是库主人自己会用来搜的**短词**，与描述并排给（`描述 ／ 别名、别名`），
+不是替补。这是 route aliases **目前唯一的消费方**——召回单元取自行的 `title`+`summary`（ADR-0008），
+安全与目录匹配用的是 Database/Table 的 aliases。**长描述（`synopsis`）仍然按需读、不进走树**：短/长
+分工一旦塌掉，synopsis 就变成"长 purpose"，而 1000 字 × 同层 N 条是拿噪声换信号
+（瓶颈是描述是假的，不是描述太短）。
 
 **没有描述的候选以空 purpose 进去，并且说出来**：`purpose` 为空、或规范化后等于 `name`，
 都是"没写描述"——**不拿名字顶上**（那个兜底正是 44/56 复读能烂到没人发现的原因）。该层在
@@ -39,6 +45,11 @@ leaf_route_id, row_id, revision}`——`path` 给 agent 判断"这是不是我�
 
 **剪枝要留痕**：jev 答 `empty` 的分支会被剪掉（`pruned_at` 列出是哪几层）。剪枝是结果不是故障，
 但静默的剪枝让"漏答"永远无法归因，所以它出现在答案里。
+
+**落点再按表聚合成"读计划"**（`reads`）：`[{database, table, columns, rows:[{path, row_id, revision}]}]`，
+列名由每张有落点的表各一次 `DESCRIBE TABLE` 报出（不是假设——行的形状由引擎拥有，ADR-0014）。
+它的用处是把"一落点一条语句"变成"一表一条 `WHERE row_id IN (…)`"：实测最宽那问 35 个落点落在 6 张表上，
+即 35 条语句对 6 条。
 
 **环**：写路径负责（`PLAN ROUTE MUTATION` 会拒成环的移动），读取端只用 `visited` 集合兜底：撞到重复
 就跳过并记进 `tree_damage`——那是数据损坏，是 `doctor` 的领域，**不再用深度上限假装"走得太深"**。

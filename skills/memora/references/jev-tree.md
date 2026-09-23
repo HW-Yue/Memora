@@ -19,6 +19,17 @@ and a row id alone does not say which Table to read. **The walk locates; you rea
 the fact.** It never returns content and never returns a branch: a branch nobody
 walked goes to `stopped`.
 
+The same set also comes back grouped as `reads`:
+`[{database, table, columns, rows:[{path, row_id, revision}]}]` — one entry per
+Table that has landings, with the Table's column names, so **write one
+`SELECT … WHERE row_id IN (…)` per Table** instead of one statement per landing
+(measured: 35 landings across 6 Tables is 6 statements, not 35).
+
+Candidates are offered with their `purpose` **and** their `aliases` — the words
+the owner would search with, short terms beside the description. If you are
+writing the tree, that is why aliases are worth filling in: the walk is the only
+thing that reads them.
+
 ```sh
 echo '{"requirement":"<what the user wants>","authorized_databases":["<db>","<db>"]}' \
   | python3 "<skill-directory>/scripts/jev_tree.py"

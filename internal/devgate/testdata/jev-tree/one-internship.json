@@ -160,6 +160,23 @@
      "table_id": "tbl_17aac4e4810c289fe0936cce1acc2eb8"
     }
    ]
+  },
+  "{\"databases\": [\"me\"], \"named\": {}, \"source\": \"DESCRIBE TABLE me.experiences\"}": {
+   "rows": [
+    {
+     "name": "experiences",
+     "columns": [
+      {
+       "name": "title",
+       "semantic_role": "title"
+      },
+      {
+       "name": "summary",
+       "semantic_role": "summary"
+      }
+     ]
+    }
+   ]
   }
  },
  "jev": {

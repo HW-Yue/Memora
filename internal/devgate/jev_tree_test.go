@@ -200,6 +200,66 @@ func TestJevTreeWalksFromARequirementToLandings(t *testing.T) {
 		}
 	})
 
+	t.Run("the landings come back as the reads they imply", func(t *testing.T) {
+		// The widest measured requirement landed 35 rows across 6 tables. Grouped,
+		// that is six statements with a `WHERE row_id IN (…)` — one per table —
+		// against thirty-five. The columns are reported rather than assumed, because
+		// the engine owns the row's shape (ADR-0014) and the script does not.
+		result := replay(t, "across-libraries.json")
+		reads, _ := result["reads"].([]any)
+		landings, _ := result["landings"].([]any)
+		if len(reads) != 2 {
+			t.Fatalf("two tables carry landings, so there are two reads: %v", reads)
+		}
+		total := 0
+		for _, read := range reads {
+			entry := read.(map[string]any)
+			columns, _ := entry["columns"].([]any)
+			if len(columns) == 0 || columns[0] != "title" {
+				t.Fatalf("a read must carry the table's columns: %v", entry)
+			}
+			rows, _ := entry["rows"].([]any)
+			total += len(rows)
+			for _, row := range rows {
+				position := row.(map[string]any)
+				if position["row_id"] == nil || position["path"] == nil {
+					t.Fatalf("a read row must say what to read: %v", position)
+				}
+			}
+		}
+		if total != len(landings) {
+			t.Fatalf("every landing must appear exactly once in the reads: %d vs %d", total, len(landings))
+		}
+	})
+
+	t.Run("the owner's words for a place are offered beside its description", func(t *testing.T) {
+		// Aliases are short terms, not the synopsis: they ride along with the
+		// description because they are exactly the vocabulary a layer decision needs,
+		// and until this change nothing read them at all.
+		result := replay(t, "across-libraries.json")
+		found := false
+		for _, entry := range result["evidence"].([]any) {
+			record := entry.(map[string]any)
+			if record["layer"] != "databases" {
+				continue
+			}
+			for _, option := range record["options"].([]any) {
+				offered := option.(map[string]any)
+				if offered["name"] != "me" {
+					continue
+				}
+				text, _ := offered["purpose"].(string)
+				if !strings.Contains(text, "personal") || !strings.Contains(text, "私人事实") {
+					t.Fatalf("an alias must reach the candidate text: %q", text)
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("the me database was not offered: %v", result["evidence"])
+		}
+	})
+
 	t.Run("no probability leaves the walk, and every statement is a read", func(t *testing.T) {
 		for _, fixture := range []string{"two-internships.json", "one-internship.json",
 			"nothing-matches.json", "across-libraries.json", "undecided-enumerates.json"} {

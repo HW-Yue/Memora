@@ -327,12 +327,20 @@ def choose_layer(chooser, budget, options, layer, evidence):
     if not options:
         return [], "empty"
     offered, undescribed = [], []
-    for name, purpose in options:
+    for name, purpose, aliases in options:
+        parts = []
         if described(name, purpose):
-            offered.append((name, purpose))
-            continue
-        offered.append((name, ""))
-        undescribed.append(name)
+            parts.append(purpose)
+        if aliases:
+            # The owner's own words for this place, offered beside the description
+            # rather than instead of it. Short terms, not the synopsis: the long
+            # description stays on-demand by design, and a thousand characters per
+            # sibling is noise where a phrase is signal (docs/decisions.md).
+            parts.append("、".join(aliases))
+        text = " ／ ".join(parts)
+        if not text:
+            undescribed.append(name)
+        offered.append((name, text))
     options = offered
     if len(options) == 1:
         if chooser.log:
@@ -370,7 +378,7 @@ def table_options(engine, database, requirement):
     # the wrong library.
     atlas = engine.query("SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT", [database],
                          named={"limit": 64, "bytes": 8192}, label="tables of " + database)
-    return [(row["table"], row.get("purpose", "")) for row in atlas["rows"]
+    return [(row["table"], row.get("purpose", ""), row.get("aliases") or []) for row in atlas["rows"]
             if row.get("kind") == "table"]
 
 
@@ -388,8 +396,8 @@ def select_tables(engine, chooser, budget, selected_databases, requirement, evid
     # stays answerable; past the cap, ask each database in turn.
     flattened = []
     for database in selected_databases:
-        for table, purpose in table_options(engine, database, requirement):
-            flattened.append(("%s.%s" % (database, table), purpose))
+        for table, purpose, aliases in table_options(engine, database, requirement):
+            flattened.append(("%s.%s" % (database, table), purpose, aliases))
     if len(flattened) <= MAX_FLAT_OPTIONS:
         chosen, decision = choose_layer(chooser, budget, flattened, "tables of " + ", ".join(selected_databases), evidence)
         tables = []
@@ -403,6 +411,41 @@ def select_tables(engine, chooser, budget, selected_databases, requirement, evid
         chosen, decision = choose_layer(chooser, budget, options, "tables of " + database, evidence)
         tables.extend((database, table) for table in chosen)
     return tables
+
+
+def read_plan(engine, landings):
+    """The landings grouped into the reads they imply.
+
+    The walk returns positions; reading the facts is the agent's job. Handing the
+    same set back grouped by (database, table), with the table's column names, is
+    the difference between writing one `WHERE row_id IN (…)` per table and writing
+    one statement per landing: the widest measured requirement landed 35 rows
+    across 6 tables, which is 35 statements against 6.
+
+    The columns cost one `DESCRIBE TABLE` per table that actually has landings —
+    never per landing — and they are reported rather than assumed, because the
+    engine owns the row's shape (ADR-0014) and this script does not.
+    """
+    groups, order = {}, []
+    for landing in landings:
+        key = (landing["database"], landing["table"])
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(landing)
+    plan = []
+    for database, table in order:
+        described = engine.query("DESCRIBE TABLE %s.%s" % (database, table), [database],
+                                 label="columns of %s.%s" % (database, table))
+        columns = []
+        if described["rows"]:
+            columns = [column.get("name", "") for column in described["rows"][0].get("columns") or []]
+        plan.append({
+            "database": database, "table": table, "columns": columns,
+            "rows": [{"path": row["path"], "row_id": row["row_id"], "revision": row["revision"]}
+                     for row in groups[(database, table)]],
+        })
+    return plan
 
 
 def incomplete_message(uncertain, stopped):
@@ -466,7 +509,8 @@ def walk(engine, chooser, budget, tables, requirement, evidence):
             visited.add(node["parent"])
             children = engine.query("SHOW ROUTES UNDER :parent", [node["database"]],
                                     named={"parent": node["parent"]}, label=label)["rows"]
-            options = [(row["name"], row.get("purpose", "")) for row in children]
+            options = [(row["name"], row.get("purpose", ""), row.get("aliases") or [])
+                       for row in children]
             # The Database is part of the label: a bare "root" names one layer in
             # each Database, and `incomplete_at` has to say which one it means.
             layer = node["database"] + ":" + label
@@ -568,7 +612,7 @@ def main():
     # name outside that scope must never reach the model, not even as a negative.
     catalogue = engine.query("SHOW DATABASES", databases, label="databases")
     offered = [row for row in catalogue["rows"] if row["name"] in databases]
-    options = [(row["name"], row.get("purpose", "")) for row in offered]
+    options = [(row["name"], row.get("purpose", ""), row.get("aliases") or []) for row in offered]
     if request.get("database"):
         selected = [request["database"]]
         evidence.append({"layer": "databases", "mode": "named", "options": [],
@@ -626,6 +670,10 @@ def main():
     }
     if stopped:
         result["stopped"] = stopped
+    if landings:
+        # The same set, grouped into the reads it implies, so the agent writes one
+        # statement per table instead of one per landing.
+        result["reads"] = read_plan(engine, landings)
     if damage:
         # A Route reached twice: the tree is damaged, and doctor is where that gets
         # repaired. Reported rather than swallowed, and no longer disguised as a

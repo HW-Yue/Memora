@@ -11,7 +11,10 @@
   "{\"databases\": [\"me\", \"memora\"], \"named\": {}, \"source\": \"SHOW DATABASES\"}": {
    "rows": [
     {
-     "aliases": [],
+     "aliases": [
+      "personal",
+      "私人事实"
+     ],
      "database_id": "db_me",
      "name": "me",
      "purpose": "the user 的 personal 事实"
@@ -163,6 +166,40 @@
      "revision": 2,
      "row_id": "row_memora_positioning",
      "table_id": "tbl_mo"
+    }
+   ]
+  },
+  "{\"databases\": [\"me\"], \"named\": {}, \"source\": \"DESCRIBE TABLE me.experiences\"}": {
+   "rows": [
+    {
+     "name": "experiences",
+     "columns": [
+      {
+       "name": "title",
+       "semantic_role": "title"
+      },
+      {
+       "name": "summary",
+       "semantic_role": "summary"
+      }
+     ]
+    }
+   ]
+  },
+  "{\"databases\": [\"memora\"], \"named\": {}, \"source\": \"DESCRIBE TABLE memora.modules\"}": {
+   "rows": [
+    {
+     "name": "modules",
+     "columns": [
+      {
+       "name": "title",
+       "semantic_role": "title"
+      },
+      {
+       "name": "summary",
+       "semantic_role": "summary"
+      }
+     ]
     }
    ]
   }
