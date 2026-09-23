@@ -64,6 +64,12 @@ func (client *Client) callRequest(ctx context.Context, request Request, result a
 	if request.RequestID == "" {
 		request.RequestID = fmt.Sprintf("request-%d", client.nextID.Add(1))
 	}
+	// Stamped here rather than in Call, so that every request this client sends
+	// carries it and no path can forget. A caller that wants to send another
+	// number — only a test about the server's own check does — sets it itself.
+	if request.EngineProtocol == 0 {
+		request.EngineProtocol = EngineProtocol
+	}
 	responses := make(chan Response, 1)
 	client.mu.Lock()
 	select {
@@ -96,7 +102,11 @@ func (client *Client) callRequest(ctx context.Context, request Request, result a
 		return nil
 	case <-ctx.Done():
 		client.removePending(request.RequestID)
-		_ = client.write(Request{Version: Version, RequestID: fmt.Sprintf("cancel-%d", client.nextID.Add(1)), Method: cancelMethod, CancelRequestID: request.RequestID})
+		_ = client.write(Request{
+			Version: Version, EngineProtocol: EngineProtocol,
+			RequestID: fmt.Sprintf("cancel-%d", client.nextID.Add(1)),
+			Method:    cancelMethod, CancelRequestID: request.RequestID,
+		})
 		return ctx.Err()
 	case <-client.done:
 		return ErrClientClosed

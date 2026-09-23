@@ -19,6 +19,12 @@ const (
 	EngineProtocol      = 1
 	DefaultMaxFrameSize = 1 << 20
 	cancelMethod        = "$cancel"
+	// CodeEngineProtocol is the stable code of a refusal for engine protocol
+	// skew. It is not "protocol_version": that one is the framing, and a client
+	// that packs messages correctly but speaks another statement surface is a
+	// different failure with a different fix. It carries the same meaning as
+	// SkewedError, and errors.Is maps it back to one.
+	CodeEngineProtocol = "engine_protocol"
 )
 
 var (
@@ -28,7 +34,13 @@ var (
 )
 
 type Request struct {
-	Version         int             `json:"version"`
+	Version int `json:"version"`
+	// EngineProtocol is the statement surface this request was built against.
+	// It travels with the request because the daemon has to know before it runs
+	// anything: a check that happens after the response is a check that happens
+	// after the write committed. A client that sends nothing decodes as 0, which
+	// is skew, never agreement.
+	EngineProtocol  int             `json:"engine_protocol,omitempty"`
 	RequestID       string          `json:"request_id"`
 	Method          string          `json:"method"`
 	TimeoutMS       int64           `json:"timeout_ms,omitempty"`
@@ -82,6 +94,9 @@ func (err *RemoteError) Error() string {
 }
 
 func (err *RemoteError) Is(target error) bool {
+	if _, ok := target.(*SkewedError); ok {
+		return err.Code == CodeEngineProtocol
+	}
 	switch target {
 	case ErrProtocolVersion:
 		return err.Code == "protocol_version"

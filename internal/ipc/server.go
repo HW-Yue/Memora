@@ -88,6 +88,21 @@ func (server *Server) ServeConnection(connection net.Conn) {
 			})
 			continue
 		}
+		// Before the request context, before the handler, before anything that
+		// could touch the database: a client from another build is refused with
+		// nothing done for it. The check that used to live on the client saw the
+		// response, which is to say it saw the write after it had committed.
+		if request.EngineProtocol != EngineProtocol {
+			writeResponse(connection, &writes, Response{
+				Version: Version, RequestID: request.RequestID, SessionID: session.ID,
+				ServerProtocol: EngineProtocol,
+				Error: &ResponseError{
+					Code:    CodeEngineProtocol,
+					Message: (&SkewedError{Client: request.EngineProtocol, Server: EngineProtocol}).Error(),
+				},
+			})
+			continue
+		}
 		requestCtx, cancel := requestContext(ctx, request.TimeoutMS)
 		activeMu.Lock()
 		active[request.RequestID] = cancel

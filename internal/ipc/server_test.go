@@ -220,3 +220,50 @@ func startTestPair(t *testing.T, handler Handler) (*Server, *Client) {
 	})
 	return server, client
 }
+
+func TestSkewedEngineProtocolIsRefusedBeforeTheHandler(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	server, client := startTestPair(t, HandlerFunc(func(_ context.Context, _ Session, _ Request) (json.RawMessage, error) {
+		calls.Add(1)
+		return json.RawMessage(`{"ok":true}`), nil
+	}))
+	defer server.Close()
+	defer client.Close()
+
+	err := client.callRequest(context.Background(), Request{
+		Version: Version, EngineProtocol: EngineProtocol + 1, Method: "msql.execute",
+	}, nil)
+	if !errors.Is(err, new(SkewedError)) {
+		t.Fatalf("callRequest() error = %v, want engine protocol skew", err)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("handler calls = %d, want 0: the request reached the handler", calls.Load())
+	}
+	if err := client.Call(context.Background(), "ping", nil, nil); err != nil {
+		t.Fatalf("Call() after a skewed request error = %v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("handler calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestClientStampsItsEngineProtocolOnEveryRequest(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan int, 1)
+	server, client := startTestPair(t, HandlerFunc(func(_ context.Context, _ Session, request Request) (json.RawMessage, error) {
+		seen <- request.EngineProtocol
+		return nil, nil
+	}))
+	defer server.Close()
+	defer client.Close()
+
+	if err := client.Call(context.Background(), "ping", nil, nil); err != nil {
+		t.Fatalf("Call() error = %v", err)
+	}
+	if got := <-seen; got != EngineProtocol {
+		t.Fatalf("request engine protocol = %d, want %d", got, EngineProtocol)
+	}
+}

@@ -132,6 +132,17 @@ func ensureDaemon(ctx context.Context, dataDir string, stderr io.Writer, depende
 		return err
 	}
 	if state.Running {
+		// A running daemon is asked who it is before anything is sent to it. The
+		// daemon refuses a skewed request itself, so this round trip is not the
+		// defence — it is the earlier, clearer word, before the statement the
+		// user typed is attributed to a refusal it had nothing to do with.
+		identity, err := daemonIdentity(ctx, dataDir)
+		if err != nil {
+			return err
+		}
+		if identity.EngineProtocol != ipc.EngineProtocol {
+			return &ipc.SkewedError{Client: ipc.EngineProtocol, Server: identity.EngineProtocol}
+		}
 		return nil
 	}
 	// A directory that holds no instance at all is the ordinary state of a fresh
@@ -335,7 +346,7 @@ func runSchema(
 		return code
 	}
 	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
-		return commandError(stderr, "reach the instance", err)
+		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
@@ -411,7 +422,7 @@ func runExecute(
 		return code
 	}
 	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
-		return commandError(stderr, "reach the instance", err)
+		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
@@ -510,7 +521,7 @@ func runAdmin(args []string, stdout, stderr io.Writer, dependencies Dependencies
 		return code
 	}
 	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
-		return commandError(stderr, "reach the instance", err)
+		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
@@ -622,7 +633,7 @@ func runMutate(
 		return code
 	}
 	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
-		return commandError(stderr, "reach the instance", err)
+		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
 	execute := dependencies.ExecuteMSQL
 	if execute == nil {
@@ -654,7 +665,7 @@ func runDoctor(
 		return code
 	}
 	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
-		return commandError(stderr, "reach the instance", err)
+		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
 	report, err := daemon.Doctor(context.Background(), dataDir)
 	if err != nil {
@@ -694,7 +705,7 @@ func runParse(args []string, stdout, stderr io.Writer, dependencies Dependencies
 		return code
 	}
 	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
-		return commandError(stderr, "reach the instance", err)
+		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
 	response, err := daemon.Parse(context.Background(), dataDir, source)
 	if err != nil {
@@ -715,7 +726,7 @@ func runMCP(args []string, stdout, stderr io.Writer, build BuildInfo, dependenci
 		return code
 	}
 	if err := ensureDaemon(context.Background(), dataDir, stderr, dependencies); err != nil {
-		return commandError(stderr, "reach the instance", err)
+		return daemonFailure(stderr, dataDir, "reach the instance", err)
 	}
 	input := dependencies.Stdin
 	if input == nil {
