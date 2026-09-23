@@ -1,6 +1,12 @@
 package sqlstore
 
-import "context"
+import (
+	"context"
+	"strings"
+
+	"github.com/HW-Yue/Memora/internal/catalog"
+	"github.com/HW-Yue/Memora/internal/router"
+)
 
 // Report is the health summary `memora doctor` prints.
 type Report struct {
@@ -43,10 +49,26 @@ type Report struct {
 	// a rekey in progress is not a fault, and a health report that could not tell
 	// the two apart would call every window corruption.
 	RekeyingDatabases int `json:"rekeying_databases"`
+	// RoutesWithoutPurpose counts live Routes whose `purpose` only repeats their
+	// `name` — nothing written, or the name written twice, which is the same
+	// absence. Like UnitsWithoutVectors this is not a fault: the Instance is
+	// intact, the labels are thin. It is reported because the semantic tree is
+	// read through those two fields, so a Route without a description is
+	// measurable retrieval damage that nothing else would ever mention. The
+	// write path refuses new ones; this is the backlog of the old ones.
+	RoutesWithoutPurpose int `json:"routes_without_purpose"`
+	// RoutesWithoutPurposePaths names them — `database.table/path` — so the
+	// count can be acted on instead of only watched. It is capped at
+	// maximumReportedRoutePaths; the count above is always the whole number.
+	RoutesWithoutPurposePaths []string `json:"routes_without_purpose_paths"`
 }
 
+// A health report is read, not paged: enough paths to start repairing, never so
+// many that the report stops being readable. The count carries the rest.
+const maximumReportedRoutePaths = 50
+
 func (db *DB) Doctor(ctx context.Context) (Report, error) {
-	report := Report{Engine: "sqlite"}
+	report := Report{Engine: "sqlite", RoutesWithoutPurposePaths: []string{}}
 	err := db.view(ctx, func(t *tx) error {
 		if err := t.q().QueryRowContext(ctx, `SELECT sqlite_version()`).Scan(&report.SQLiteVersion); err != nil {
 			return err
@@ -103,6 +125,17 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 					return err
 				}
 				report.UnitsWithoutVectors += status.NotReady
+				bare, paths, err := t.routesWithoutPurpose(ctx, database, table)
+				if err != nil {
+					return err
+				}
+				report.RoutesWithoutPurpose += bare
+				for _, path := range paths {
+					if len(report.RoutesWithoutPurposePaths) >= maximumReportedRoutePaths {
+						break
+					}
+					report.RoutesWithoutPurposePaths = append(report.RoutesWithoutPurposePaths, path)
+				}
 				if identity.Model != "" && !rekey.Active {
 					drift, err := t.vectorIndexDrift(ctx, database.ID, table.ID, identity.Dimensions)
 					if err != nil {
@@ -119,4 +152,51 @@ func (db *DB) Doctor(ctx context.Context) (Report, error) {
 		report.Status = "unhealthy"
 	}
 	return report, err
+}
+
+// routesWithoutPurpose finds the live Routes of one Table that carry no
+// description — `purpose` blank, or `purpose` equal to `name` after folding
+// case, width and padding — and names each one `database.table/path`.
+//
+// The whole Table's Routes are read once and the paths are built in memory:
+// doctor walks every Table of every Database, and resolving each ancestor with
+// its own statement would make a health check cost more than the thing it is
+// checking. A Route whose parent chain is broken is still reported, under its
+// own name: doctor is the surface that reports broken trees, so it cannot be a
+// surface that fails on one.
+func (t *tx) routesWithoutPurpose(ctx context.Context, database catalog.Database, table catalog.Table) (int, []string, error) {
+	nodes, err := t.tableRouteNodes(ctx, table.ID)
+	if err != nil {
+		return 0, nil, err
+	}
+	byID := make(map[string]routeNode, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	count, paths := 0, []string{}
+	for _, node := range nodes {
+		if !router.PurposeRepeatsName(node.Name, node.Purpose) {
+			continue
+		}
+		count++
+		paths = append(paths, database.Name+"."+table.Name+routeNodePath(byID, node))
+	}
+	return count, paths, nil
+}
+
+func routeNodePath(byID map[string]routeNode, node routeNode) string {
+	names := []string{}
+	current := node
+	for hops := 0; current.Kind != router.KindRoot; hops++ {
+		names = append(names, current.Name)
+		parent, found := byID[current.ParentID]
+		if !found || hops > 64 {
+			break
+		}
+		current = parent
+	}
+	for left, right := 0, len(names)-1; left < right; left, right = left+1, right-1 {
+		names[left], names[right] = names[right], names[left]
+	}
+	return "/" + strings.Join(names, "/")
 }
