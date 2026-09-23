@@ -77,6 +77,7 @@ and an answer that says how it got there.
   ],
   "incomplete": false,
   "incomplete_at": [],
+  "undescribed_at": ["work:internship"],
   "evidence": [
     {"layer": "databases", "mode": "set",
      "options": [{"name": "work", "purpose": "…"}],
@@ -100,6 +101,15 @@ and an answer that says how it got there.
   can be audited or argued with later. It carries names and decisions, never
   probabilities. Its `layer` names carry the Database (`work:root`) because a bare
   `root` names one layer in each of them.
+- `undescribed_at` names every layer that was chosen **from bare names**: on that
+  layer at least one candidate's `purpose` was blank or only repeated its `name`
+  (compared after folding case, width and padding), which is the same absence
+  either way. Such a candidate is offered to jev **with an empty purpose** — the
+  name is never copied into its place — and the layer's evidence entry lists the
+  ones it means in `undescribed`. This is not a failure and not `incomplete`: the
+  walk still decided, but it decided blind, so a thin or wide answer there is
+  explained rather than mysterious. The repair is to write those `purpose`
+  sentences ("what is kept here"), not to widen the requirement.
 - `suggest` appears when the walk dropped branches at the frontier budget: the
   requirement pointed at more places than one call can carry, and the landings are
   partial even where `incomplete` is false.
@@ -124,6 +134,11 @@ answer alone):
 [ 2685 ms] skipped    layer=root reason=single child options=1 chosen=['internship']
 [ 3516 ms] done       landings=2 decisions=3 statements=7 engine_ms=81 jev_ms=3427
 ```
+
+A `decision` line also carries `undescribed=[…]` when candidates on that layer
+arrived with nothing but their names, and the `done` line repeats the layers as
+`undescribed_at`. A run where that list is long is a run whose layers were picked
+from labels — read the answer as the guess it is, and say so to the user.
 
 One real run of "both internships" reads like that: **1.6 s of 1.7 s is the three
 model decisions** — the first ~0.8 s pays the TLS handshake and the next two

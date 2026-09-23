@@ -23,7 +23,8 @@ Contract
              "table": "<table>"}          # optional: skip the Table decision
     stdout: {"requirement": ..., "landings": [{"path", "leaf_route_id", "row_id",
              "revision", "termination"}], "incomplete": bool, "incomplete_at": [...],
-             "evidence": [...], "jev_calls": n, "elapsed_ms": ms, "model": ...}
+             "undescribed_at": [...], "evidence": [...], "jev_calls": n,
+             "elapsed_ms": ms, "model": ...}
     exit  : 0 answered (including "nothing matched") | 2 not configured
             | 3 the provider refused | 4 bad input
 
@@ -44,6 +45,7 @@ import os
 import subprocess
 import sys
 import time
+import unicodedata
 
 # The sibling script that owns the question and the cut is importable, so a walk
 # can ask it in-process and keep one provider connection for the whole run. It is
@@ -212,7 +214,7 @@ class Chooser:
         # calls, which is what a replay does not make.
         self.decisions = 0
 
-    def decide(self, options, layer=""):
+    def decide(self, options, layer="", undescribed=None):
         # The key is the intent plus the option names in the order they were
         # offered. Not sorted: the caller's order is deterministic, and sorting
         # would make the key depend on collation rather than on the question.
@@ -224,7 +226,7 @@ class Chooser:
             answer = self.recorded[key]
         else:
             self.budget.jev_calls += 1
-            criteria = {name: purpose or name for name, purpose in options}
+            criteria = {name: purpose for name, purpose in options}
             if self.provider is not None:
                 answer = self.ask_in_process(criteria)
             else:
@@ -250,6 +252,7 @@ class Chooser:
         if self.log:
             self.log.emit("decision", layer=layer, options=len(options),
                           option_names=[name for name, _ in options],
+                          undescribed=list(undescribed or []),
                           chosen=answer["relevant"], decision=answer["decision"],
                           provider_ms=answer.get("elapsed_ms"), duration_ms=spent,
                           recorded=self.recorded is not None)
@@ -283,6 +286,26 @@ class Chooser:
                 "model": raw.get("model"), "elapsed_ms": elapsed_ms}
 
 
+def fold(text):
+    """One comparable form for a label: full/half width and compatibility forms
+    folded together, case folded, and the padding gone. Compared raw, a space or
+    a full-width letter would be enough to pass a repeat off as a description.
+    """
+    return " ".join(unicodedata.normalize("NFKC", text or "").split()).casefold()
+
+
+def described(name, purpose):
+    """Whether this candidate carries a description at all.
+
+    A `purpose` that is blank, or that only repeats the `name`, describes
+    nothing — the two are the same absence, and the walk used to erase the
+    difference by handing jev the name in the purpose's place. See
+    docs/decisions.md「语义树的标签质量是可测量的检索损伤」.
+    """
+    folded = fold(purpose)
+    return bool(folded) and folded != fold(name)
+
+
 def choose_layer(chooser, budget, options, layer, evidence):
     """One layer: nothing to decide for a single child, jev otherwise.
 
@@ -290,9 +313,22 @@ def choose_layer(chooser, budget, options, layer, evidence):
     the Skill states: dropping it would silently lose everything behind it, and
     the model did not make a filter worth trusting. `empty` (the floor probe won)
     means nothing here answers the intent, which is a result, not a failure.
+
+    A candidate that carries no description is offered with none, and the layer
+    says so: the name is what the thing is already called, so repeating it in
+    the purpose's place is how a layer nobody described came to look exactly
+    like a layer somebody did.
     """
     if not options:
         return [], "empty"
+    offered, undescribed = [], []
+    for name, purpose in options:
+        if described(name, purpose):
+            offered.append((name, purpose))
+            continue
+        offered.append((name, ""))
+        undescribed.append(name)
+    options = offered
     if len(options) == 1:
         if chooser.log:
             chooser.log.emit("skipped", layer=layer, reason="single child", options=1,
@@ -304,17 +340,22 @@ def choose_layer(chooser, budget, options, layer, evidence):
             chooser.log.emit("skipped", layer=layer, reason=stop, options=len(options))
         return [], stop
     started = time.monotonic()
-    relevant, decision = chooser.decide(options, layer)
+    relevant, decision = chooser.decide(options, layer, undescribed)
     if decision == "undecided":
         relevant = [name for name, _ in options]
-    evidence.append({
+    entry = {
         "layer": layer, "mode": "set",
         # The option text the decision was made from travels with it: an answer
         # that cannot be audited later is a guess with a receipt.
         "options": [{"name": name, "purpose": purpose} for name, purpose in options],
         "relevant": relevant, "decision": decision,
         "options_count": len(options), "elapsed_ms": int((time.monotonic() - started) * 1000),
-    })
+    }
+    if undescribed:
+        # Said in the answer, not swallowed: this layer was chosen from bare
+        # names, so whatever it decided, it decided blind.
+        entry["undescribed"] = undescribed
+    evidence.append(entry)
     return relevant, decision
 
 
@@ -519,12 +560,18 @@ def main():
 
     landings, dropped_branches = walk(engine, chooser, budget, tables, requirement, evidence) if tables else ([], 0)
     uncertain = [entry["layer"] for entry in evidence if entry.get("decision") == "undecided"]
+    # Layers whose candidates arrived with no description. Not a failure and not
+    # incompleteness — the walk still decided — but the decision was made from
+    # names alone, and a caller who cannot see that has no way to know why the
+    # answer is thin. Filling those purposes is the repair; this is the meter.
+    undescribed_at = [entry["layer"] for entry in evidence if entry.get("undescribed")]
     result = {
         "requirement": requirement,
         "authorized_databases": databases,
         "landings": landings,
         "incomplete": bool(uncertain),
         "incomplete_at": uncertain,
+        "undescribed_at": undescribed_at,
         "evidence": evidence,
         "jev_calls": budget.jev_calls,
         "decisions": chooser.decisions,
@@ -545,7 +592,8 @@ def main():
                              "`incomplete` is false" % dropped_branches)
     log.emit("done", landings=len(landings), decisions=chooser.decisions,
              statements=len(engine.statements), engine_ms=engine.spent_ms,
-             jev_ms=chooser.spent_ms, incomplete=bool(uncertain))
+             jev_ms=chooser.spent_ms, incomplete=bool(uncertain),
+             undescribed_at=undescribed_at)
     if provider is not None:
         provider.close()
     if arguments.record:

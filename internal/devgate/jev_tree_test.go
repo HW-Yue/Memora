@@ -173,3 +173,94 @@ func TestJevTreeWalksFromARequirementToLandings(t *testing.T) {
 		}
 	})
 }
+
+// A Route whose `purpose` only repeats its `name` carries no description, and
+// the walk used to hide that: `purpose or name` handed the name to jev as if it
+// were a description, so "nobody wrote one" and "somebody wrote the name" looked
+// identical in the pipeline — which is why 79% of the tree could rot unnoticed
+// (docs/decisions.md「语义树的标签质量是可测量的检索损伤」). The fixture is
+// two-internships with four descriptions taken away in the four ways they go
+// missing; the recording keys are `intent || names`, so the answers still
+// replay.
+func TestJevTreeSaysWhenALayerHasNoUsableDescription(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not on PATH; the Skill's scripts cannot be exercised here")
+	}
+	root := repoRoot(t)
+	command := exec.Command(python, filepath.Join(root, "skills", "memora", "scripts", "jev_tree.py"),
+		"--replay", filepath.Join(root, "internal", "devgate", "testdata", "jev-tree", "purpose-repeats-name.json"))
+	command.Dir = root
+	command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(),
+		"MEMORA_CLI=" + filepath.Join(t.TempDir(), "memora-that-does-not-exist")}
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("replay: %v\n%s", err, output)
+	}
+	result := map[string]any{}
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, output)
+	}
+
+	// The walk still lands: a missing description degrades the question, it does
+	// not stop the descent.
+	landings, _ := result["landings"].([]any)
+	if len(landings) != 2 {
+		t.Fatalf("landings = %v, want the two leaves", result["landings"])
+	}
+
+	layers := map[string][]string{}
+	for _, entry := range result["evidence"].([]any) {
+		record, _ := entry.(map[string]any)
+		undescribed, present := record["undescribed"]
+		if !present {
+			continue
+		}
+		names := []string{}
+		for _, name := range undescribed.([]any) {
+			names = append(names, name.(string))
+		}
+		layers[record["layer"].(string)] = names
+	}
+	// Four ways a description goes missing, all four seen as missing: an exact
+	// repeat, nothing written at all, a full-width repeat, and a repeat with
+	// different case and padding.
+	if got := strings.Join(layers["tables of me"], ","); got != "experiences,profile" {
+		t.Fatalf("tables of me undescribed = %q, want the repeat and the blank", got)
+	}
+	if got := strings.Join(layers["me:internship"], ","); got != "ACME,GLOBEX" {
+		t.Fatalf("me:internship undescribed = %q, want both leaves", got)
+	}
+	// The Database layer has real descriptions, so it must not be named: a
+	// report that flagged everything would be as useless as one that flagged
+	// nothing.
+	if _, flagged := layers["databases"]; flagged {
+		t.Fatalf("a described layer must not be reported: %v", layers)
+	}
+
+	// The layers are named in the answer itself, not only buried in evidence:
+	// a caller reading the result sees which layers were chosen blind.
+	named := []string{}
+	for _, layer := range result["undescribed_at"].([]any) {
+		named = append(named, layer.(string))
+	}
+	if strings.Join(named, ",") != "tables of me,me:internship" {
+		t.Fatalf("undescribed_at = %v", result["undescribed_at"])
+	}
+
+	// And the name never stands in for the description: the option text the
+	// decision was made from shows an empty purpose, not the name again.
+	for _, entry := range result["evidence"].([]any) {
+		record := entry.(map[string]any)
+		for _, option := range record["options"].([]any) {
+			offered := option.(map[string]any)
+			name, purpose := offered["name"].(string), offered["purpose"].(string)
+			if name == "experiences" || name == "profile" || name == "ACME" || name == "GLOBEX" {
+				if purpose != "" {
+					t.Fatalf("%q was offered with purpose %q: the name must not stand in for a description",
+						name, purpose)
+				}
+			}
+		}
+	}
+}
