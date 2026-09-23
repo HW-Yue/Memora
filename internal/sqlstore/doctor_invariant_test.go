@@ -65,9 +65,9 @@ func (h *harness) doctor() sqlstore.Report {
 func TestDoctorCountsMountViolations(t *testing.T) {
 	h := newHarness(t)
 	root, first := h.seedNotes()
-	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'Second'`,
+	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'a second position, so a Row can be mounted twice by hand'`,
 		map[string]any{"p": root}, write("second")).Rows[0]["route_id"])
-	third := text(h.run(`CREATE ROUTE UNDER :p NAME 'third' KIND 'leaf' PURPOSE 'Third'`,
+	third := text(h.run(`CREATE ROUTE UNDER :p NAME 'third' KIND 'leaf' PURPOSE 'a third position, for the mount that points at the wrong Row'`,
 		map[string]any{"p": root}, write("third")).Rows[0]["route_id"])
 
 	orphan := h.insertTitle("loses its leaf", []string{first})

@@ -14,7 +14,7 @@ import (
 func TestInsertRequiresExactlyOneLeaf(t *testing.T) {
 	h := newHarness(t)
 	root, leaf := h.seedNotes()
-	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'Second'`,
+	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'a second position, so a Row can be mounted twice by hand'`,
 		map[string]any{"p": root}, write("second")).Rows[0]["route_id"])
 
 	cases := []struct {
@@ -77,7 +77,7 @@ func TestUpdateMountMovesTheRowInsteadOfAccumulating(t *testing.T) {
 	h := newHarness(t)
 	root, leaf := h.seedNotes()
 	rowID := h.insertTitle("moves", []string{leaf})
-	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'Second'`,
+	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'a second position, so a Row can be mounted twice by hand'`,
 		map[string]any{"p": root}, write("second")).Rows[0]["route_id"])
 
 	move := write("move")

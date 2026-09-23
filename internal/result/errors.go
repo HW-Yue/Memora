@@ -25,6 +25,11 @@ const (
 	// The value is ignored, and this says so: silently dropping it would leave a
 	// host believing a number it set is still in force.
 	CodeConfigurationRetiredKey Code = "configuration_retired_key"
+	// A Route carries a purpose that only repeats its name, so it describes
+	// nothing. New Routes are refused; an existing one is reported here instead,
+	// because a library that already holds such Routes has to stay writable
+	// while they are being filled in. See docs/query/route-purpose-contract.
+	CodeRoutePurposeRepeatsName Code = "route_purpose_repeats_name"
 	CodeInternal                Code = "internal_error"
 )
 
@@ -34,7 +39,7 @@ var registeredCodes = map[Code]struct{}{
 	CodeValueTooLong: {}, CodeTransactionAborted: {}, CodeInvalidTransaction: {},
 	CodeCancelled: {}, CodeDeadlineExceeded: {}, CodeOutputTruncated: {}, CodeInternal: {},
 	CodeVectorsNotReady: {}, CodeRekeyInProgress: {},
-	CodeConfigurationRetiredKey: {},
+	CodeConfigurationRetiredKey: {}, CodeRoutePurposeRepeatsName: {},
 }
 
 func IsRegisteredCode(code Code) bool {

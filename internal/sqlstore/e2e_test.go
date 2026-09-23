@@ -218,9 +218,9 @@ func TestRouteNodeKeepsItsChildIDs(t *testing.T) {
 	h := newHarness(t)
 	h.run(`CREATE DATABASE work PURPOSE 'p' SCOPE 's'`, nil, executor.MutationOptions{})
 	h.run(`CREATE TABLE work.notes PURPOSE 'p' ROW SEMANTICS 'r' (title TEXT NOT NULL PURPOSE 'title' ROLE title)`, nil, executor.MutationOptions{})
-	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'root'`, nil, write("root")).Rows[0]["route_id"])
-	h.run(`CREATE ROUTE UNDER :p NAME 'a' KIND 'leaf' PURPOSE 'a'`, map[string]any{"p": root}, write("a"))
-	h.run(`CREATE ROUTE UNDER :p NAME 'b' KIND 'leaf' PURPOSE 'b'`, map[string]any{"p": root}, write("b"))
+	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'everything the notes Table keeps'`, nil, write("root")).Rows[0]["route_id"])
+	h.run(`CREATE ROUTE UNDER :p NAME 'a' KIND 'leaf' PURPOSE 'the first child, so the parent has two to remember'`, map[string]any{"p": root}, write("a"))
+	h.run(`CREATE ROUTE UNDER :p NAME 'b' KIND 'leaf' PURPOSE 'the second child, so their order can be checked'`, map[string]any{"p": root}, write("b"))
 
 	var tableID string
 	if err := h.db.SQL().QueryRow(`SELECT table_id FROM mem_route_index WHERE route_id = ?`, root).Scan(&tableID); err != nil {
@@ -242,7 +242,7 @@ func TestSplitSupersedesTheSourceWithSuccessors(t *testing.T) {
 	h := newHarness(t)
 	h.run(`CREATE DATABASE work PURPOSE 'p' SCOPE 's'`, nil, executor.MutationOptions{})
 	h.run(`CREATE TABLE work.notes PURPOSE 'p' ROW SEMANTICS 'r' (title TEXT NOT NULL PURPOSE 'title' ROLE title)`, nil, executor.MutationOptions{})
-	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'root'`, nil, write("root")).Rows[0]["route_id"])
+	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'everything the notes Table keeps'`, nil, write("root")).Rows[0]["route_id"])
 	leaves := []string{}
 	for _, name := range []string{"seed", "first", "second"} {
 		leaves = append(leaves, text(h.run(`CREATE ROUTE UNDER :p NAME :name KIND 'leaf' PURPOSE 'leaf'`,

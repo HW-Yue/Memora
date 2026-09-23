@@ -131,7 +131,7 @@ func TestInsertRejectsLeavesThatCannotHoldTheRow(t *testing.T) {
 	root, leaf := h.seedNotes()
 	branch := text(h.run(`CREATE ROUTE UNDER :p NAME 'branch' KIND 'branch' PURPOSE 'Grouping'`,
 		map[string]any{"p": root}, write("branch")).Rows[0]["route_id"])
-	retired := text(h.run(`CREATE ROUTE UNDER :p NAME 'retired' KIND 'leaf' PURPOSE 'Retired'`,
+	retired := text(h.run(`CREATE ROUTE UNDER :p NAME 'retired' KIND 'leaf' PURPOSE 'a position that gets deprecated later in this test'`,
 		map[string]any{"p": root}, write("retired")).Rows[0]["route_id"])
 	h.deprecateLeaf(retired)
 	h.insertTitle("first", []string{leaf})

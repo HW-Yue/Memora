@@ -18,7 +18,7 @@ func TestRouteMutationMovePrunesEmptiedBranches(t *testing.T) {
 	h := newHarness(t)
 	h.run(`CREATE DATABASE work PURPOSE 'p' SCOPE 's'`, nil, executor.MutationOptions{})
 	h.run(`CREATE TABLE work.notes PURPOSE 'p' ROW SEMANTICS 'r' (title TEXT NOT NULL PURPOSE 'title' ROLE title)`, nil, executor.MutationOptions{})
-	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'root'`, nil, write("root")).Rows[0]["route_id"])
+	root := text(h.run(`CREATE ROUTE ROOT FOR TABLE work.notes PURPOSE 'everything the notes Table keeps'`, nil, write("root")).Rows[0]["route_id"])
 	outer := text(h.run(`CREATE ROUTE UNDER :p NAME 'outer' KIND 'branch' PURPOSE 'Outer grouping'`,
 		map[string]any{"p": root}, write("outer")).Rows[0]["route_id"])
 	inner := text(h.run(`CREATE ROUTE UNDER :p NAME 'inner' KIND 'branch' PURPOSE 'Inner grouping'`,

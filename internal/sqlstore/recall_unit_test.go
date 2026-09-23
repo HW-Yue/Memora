@@ -97,7 +97,7 @@ func TestInsertMaterialisesARecallUnit(t *testing.T) {
 func TestRecallUnitKeepsItsVectorWhenTheTextIsUnchanged(t *testing.T) {
 	h := newHarness(t)
 	root := h.seedTree()
-	leaf := text(h.run(`CREATE ROUTE UNDER :p NAME 'one' KIND 'leaf' PURPOSE 'one'`,
+	leaf := text(h.run(`CREATE ROUTE UNDER :p NAME 'one' KIND 'leaf' PURPOSE 'the single position this recall test mounts on'`,
 		map[string]any{"p": root}, write("one")).Rows[0]["route_id"])
 	rowID := h.insertTitle("title only", []string{leaf})
 	h.markEmbedded(rowID, "text-embedding-v4", 1024)

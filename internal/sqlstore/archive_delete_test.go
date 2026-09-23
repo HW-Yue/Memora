@@ -183,7 +183,7 @@ func TestDeleteRemovesHistoryAndEveryReadFace(t *testing.T) {
 func TestDeleteDetachesBothEndsOfALink(t *testing.T) {
 	h := newHarness(t)
 	root, first := h.seedNotes()
-	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'other' KIND 'leaf' PURPOSE 'Other'`,
+	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'other' KIND 'leaf' PURPOSE 'the second position a link can point at'`,
 		map[string]any{"p": root}, write("other")).Rows[0]["route_id"])
 	doomed := h.insertTitle("doomed", []string{first})
 	keeper := h.insertTitle("keeper", []string{second})

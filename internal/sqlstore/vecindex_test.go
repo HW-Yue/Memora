@@ -109,7 +109,7 @@ func TestMovingARowLeavesNoIndexRowBehind(t *testing.T) {
 	root, leaf := h.seedNotes()
 	rowID := h.insertTitle("moves away", []string{leaf})
 	oldUnit := h.acceptUnitVector(rowID, []float32{1, 0})
-	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'Second'`,
+	second := text(h.run(`CREATE ROUTE UNDER :p NAME 'second' KIND 'leaf' PURPOSE 'a second position, so a Row can be moved between two of them'`,
 		map[string]any{"p": root}, write("second")).Rows[0]["route_id"])
 
 	move := write("move the Row to another leaf")

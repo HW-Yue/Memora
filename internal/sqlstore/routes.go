@@ -190,6 +190,9 @@ func (t *tx) createTableRoot(ctx context.Context, databaseName, tableName, purpo
 	if strings.TrimSpace(purpose) == "" {
 		return router.Node{}, fail(result.CodeValidation, "route root requires a purpose")
 	}
+	if err := router.CheckPurpose("root", purpose); err != nil {
+		return router.Node{}, err
+	}
 	var existing sql.NullString
 	if err := t.q().QueryRowContext(ctx, `SELECT router_root_id FROM mem_tables WHERE id = ?`, table.ID).Scan(&existing); err != nil {
 		return router.Node{}, err
@@ -259,6 +262,13 @@ func (t *tx) createNode(ctx context.Context, parentID string, definition router.
 		parent.Deprecated || parent.Kind == router.KindLeaf ||
 		(definition.Kind != router.KindBranch && definition.Kind != router.KindLeaf) {
 		return router.Node{}, fail(result.CodeValidation, "invalid route child definition")
+	}
+	// Every new Route passes here — CREATE ROUTE UNDER and each segment an
+	// implicit path completes — so the rule is checked once. An existing Route
+	// never reaches this point, which is what keeps a library whose purposes
+	// still repeat their names writable.
+	if err := router.CheckPurpose(name, definition.Purpose); err != nil {
+		return router.Node{}, err
 	}
 	table, err := t.tableByID(ctx, parent.TableID)
 	if err != nil {

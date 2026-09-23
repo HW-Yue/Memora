@@ -534,7 +534,7 @@ func validateRouterMutationOptions(options MutationOptions, revision bool) error
 
 func routerNodeMutationOutput(node router.Node) Output {
 	revision := node.Revision
-	return Output{
+	output := Output{
 		Columns: []result.Column{
 			{Name: "route_id", Type: "ID"},
 			{Name: "database_id", Type: "ID"},
@@ -551,4 +551,19 @@ func routerNodeMutationOutput(node router.Node) Output {
 		AffectedRows: 1,
 		Revision:     &revision,
 	}
+	// A new Route with a purpose that only repeats its name is refused before it
+	// exists, so anything reported here is an existing Route — reached by a
+	// rename, or already in that state before this statement touched it. It is
+	// said, not refused: refusing would lock the writer out of the library that
+	// needs the repair. See docs/planning/route-purpose-contract.md.
+	if router.PurposeRepeatsName(node.Name, node.Purpose) {
+		output.Warnings = append(output.Warnings, result.Notice{
+			Code: result.CodeRoutePurposeRepeatsName,
+			Message: fmt.Sprintf("Route %q at %q has a purpose that only repeats its name, so it "+
+				"describes nothing: write one saying what is kept there, or the semantic tree is "+
+				"read through a bare label", node.Name, node.Path),
+			Details: map[string]any{"route_id": node.ID, "path": node.Path, "name": node.Name},
+		})
+	}
+	return output
 }

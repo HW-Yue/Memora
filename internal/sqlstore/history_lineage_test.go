@@ -139,7 +139,7 @@ func TestSplitLeavesTheSourceRevisionAloneAndPointsTheNewHistoriesAtIt(t *testin
 		t.Fatalf("origins from SHOW HISTORY = %+v", origins)
 	}
 	// A Row that was never reshaped has no lineage edge at all.
-	leaf := text(h.run(`CREATE ROUTE UNDER :p NAME 'plain' KIND 'leaf' PURPOSE 'plain'`,
+	leaf := text(h.run(`CREATE ROUTE UNDER :p NAME 'plain' KIND 'leaf' PURPOSE 'a position with nothing special about it'`,
 		map[string]any{"p": root}, write("plain")).Rows[0]["route_id"])
 	plain := h.insertTitle("plain", []string{leaf})
 	shown = h.run(`SHOW HISTORY FROM work.notes FOR ROW :row LIMIT 20`, map[string]any{"row": plain}, executor.MutationOptions{})

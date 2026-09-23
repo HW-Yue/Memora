@@ -78,8 +78,8 @@ func TestInsertReusesTheExistingPrefix(t *testing.T) {
 	h.seedTree()
 	prefix := []router.PathSegment{segment("architecture", router.KindBranch, "架构决策")}
 
-	first := h.insertAlongPath("first", append(append([]router.PathSegment{}, prefix...), segment("sqlite", router.KindLeaf, "SQLite")))
-	second := h.insertAlongPath("second", append(append([]router.PathSegment{}, prefix...), segment("wal", router.KindLeaf, "WAL")))
+	first := h.insertAlongPath("first", append(append([]router.PathSegment{}, prefix...), segment("sqlite", router.KindLeaf, "为什么存储层是 SQLite")))
+	second := h.insertAlongPath("second", append(append([]router.PathSegment{}, prefix...), segment("wal", router.KindLeaf, "预写日志怎么保证提交后读得到")))
 
 	top := h.rootChildren()
 	if len(top) != 1 {
@@ -123,7 +123,7 @@ func TestInsertRejectsPathsItCannotComplete(t *testing.T) {
 	// A leaf cannot be an interior segment: nothing hangs below a leaf.
 	walk := []router.PathSegment{
 		segment("architecture", router.KindBranch, "架构决策"),
-		segment("mqtt", router.KindLeaf, "MQTT"),
+		segment("mqtt", router.KindLeaf, "为什么设备侧走 MQTT"),
 	}
 	h.insertAlongPath("leaf in the middle", walk)
 	deep := write("reject")

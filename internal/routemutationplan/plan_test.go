@@ -144,8 +144,8 @@ func TestBuildMergeBranchSplitAndMoveShapes(t *testing.T) {
 		{Version: router.Version, ID: "route_b", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_source", Kind: router.KindLeaf, Name: "b", Path: "/source/b", Purpose: "B", Revision: 1},
 	}, locators: map[string][]router.Locator{}}
 	branchProposal := splitProposal([]routemutationplan.TargetProposal{
-		{Key: "left", Name: "left", Purpose: "Left", ChildRouteIDs: []string{"route_a"}},
-		{Key: "right", Name: "right", Purpose: "Right", ChildRouteIDs: []string{"route_b"}},
+		{Key: "left", Name: "left", Purpose: "the half that keeps the older notes", ChildRouteIDs: []string{"route_a"}},
+		{Key: "right", Name: "right", Purpose: "the half that keeps the newer notes", ChildRouteIDs: []string{"route_b"}},
 	})
 	branchPlan, err := routemutationplan.Build(context.Background(), branchSource, scope, branchProposal)
 	if err != nil || len(branchPlan.Moves) != 2 || len(branchPlan.MembershipMoves) != 0 {
@@ -181,8 +181,8 @@ func TestValidateRejectsTamperingAndBranchPlansGuardMovedSubtrees(t *testing.T) 
 		{Version: router.Version, ID: "route_sibling", DatabaseID: "db_work", TableID: "tbl_notes", ParentID: "route_source", Kind: router.KindLeaf, Name: "sibling", Path: "/source/sibling", Purpose: "Sibling", Revision: 1},
 	}, locators: map[string][]router.Locator{}}
 	plan, err := routemutationplan.Build(context.Background(), source, scope, splitProposal([]routemutationplan.TargetProposal{
-		{Key: "left", Name: "left", Purpose: "Left", ChildRouteIDs: []string{"route_child"}},
-		{Key: "right", Name: "right", Purpose: "Right", ChildRouteIDs: []string{"route_sibling"}},
+		{Key: "left", Name: "left", Purpose: "the half that keeps the older notes", ChildRouteIDs: []string{"route_child"}},
+		{Key: "right", Name: "right", Purpose: "the half that keeps the newer notes", ChildRouteIDs: []string{"route_sibling"}},
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -218,7 +218,7 @@ func mergeProposal() routemutationplan.Proposal {
 		Version: routemutationplan.ProposalVersion, ID: "proposal_merge", Operation: routemutationplan.OperationMerge,
 		Actor: "agent:host", SourceEventID: "event_1", Reason: "merge",
 		Sources: []routemutationplan.SourceRef{{RouteID: "route_a", ExpectedRevision: 1}, {RouteID: "route_b", ExpectedRevision: 1}},
-		Targets: []routemutationplan.TargetProposal{{Key: "merged", Name: "merged", Purpose: "Merged"}},
+		Targets: []routemutationplan.TargetProposal{{Key: "merged", Name: "merged", Purpose: "the two positions kept as one"}},
 	}
 }
 

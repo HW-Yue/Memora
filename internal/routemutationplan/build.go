@@ -404,6 +404,12 @@ func (b *builder) validateTargets(targets []TargetProposal, siblings []router.No
 			utf8.RuneCountInString(target.Purpose) > 800 || utf8.RuneCountInString(target.Synopsis) > 800 {
 			return planError(result.CodeValidation, "target key, name, purpose, or synopsis is invalid")
 		}
+		// A target is a Route that does not exist yet, so it is held to the rule
+		// CREATE ROUTE is held to: the purpose has to describe what will be kept
+		// there. Reshaping is when those sentences get written.
+		if err := router.CheckPurpose(target.Name, target.Purpose); err != nil {
+			return planError(result.CodeValidation, "target %q: %s", target.Key, err.Error())
+		}
 		keys[target.Key] = true
 		name := canonical(target.Name)
 		if names[name] || siblingConflict(target.Name, siblings, excluded) {

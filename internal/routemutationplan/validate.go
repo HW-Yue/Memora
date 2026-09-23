@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/HW-Yue/Memora/internal/result"
+	"github.com/HW-Yue/Memora/internal/router"
 )
 
 // Validate proves that a plan still has the canonical identity emitted by
@@ -61,6 +62,11 @@ func Validate(plan Plan) error {
 			blank(value.ParentID) || guards[value.ParentID] == 0 || !validRouteName(value.Name) ||
 			blank(value.Purpose) || (value.Kind != "branch" && value.Kind != "leaf") {
 			return planError(result.CodeValidation, "Route creates are invalid or duplicated")
+		}
+		// The second gate: a plan built elsewhere, or built before this rule
+		// existed, is checked on the way in rather than trusted.
+		if err := router.CheckPurpose(value.Name, value.Purpose); err != nil {
+			return planError(result.CodeValidation, "Route create %q: %s", value.TargetKey, err.Error())
 		}
 		created[value.RouteID] = true
 	}
