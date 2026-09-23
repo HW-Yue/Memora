@@ -124,8 +124,13 @@ function tablePoint(result, databaseID, tableID) {
 }
 
 function validateRouteRow(row, point, databaseID = "", tableID = "", parentID = "") {
-  const childKeys = ["route_id", "database_id", "table_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"];
-  const pointKeys = [...childKeys, "synopsis"];
+  // The listing carries the Row a leaf holds; `DESCRIBE ROUTE` does not, so the
+  // point's key set is the node's plus the synopsis rather than the listing's.
+  // Keeping the two apart is the whole value of the exact-key check: a surface
+  // that grew a field without this list is refused instead of drawn wrong.
+  const nodeKeys = ["route_id", "database_id", "table_id", "parent_id", "path", "name", "aliases", "kind", "purpose", "revision"];
+  const childKeys = [...nodeKeys, "row_id", "row_revision"];
+  const pointKeys = [...nodeKeys, "synopsis"];
   if (!row || !exactKeys(row, point ? pointKeys : childKeys)) {
     throw new RouteViewError("corrupt", "Route node fields are invalid");
   }
@@ -136,6 +141,20 @@ function validateRouteRow(row, point, databaseID = "", tableID = "", parentID = 
       typeof row.purpose !== "string" || row.purpose.length === 0 ||
       !["root", "branch", "leaf"].includes(row.kind) || !positiveRevision(row.revision)) {
     throw new RouteViewError("corrupt", "Route node values are invalid");
+  }
+  // A Row binding belongs to a leaf and arrives as a pair or not at all: the
+  // engine reports null on a root, a branch, and on a leaf with nothing live
+  // under it. Half a binding is a broken contract, not a missing value — and the
+  // binding is the fact's handle, so it may not be drawn unchecked.
+  if (!point) {
+    const bound = row.row_id !== null || row.row_revision !== null;
+    if (bound) {
+      if (row.kind !== "leaf") throw new RouteViewError("corrupt", "Route Row binding is on a non-leaf");
+      stableID(row.row_id, "row_", "Route Row");
+      if (!positiveRevision(row.row_revision)) {
+        throw new RouteViewError("corrupt", "Route Row revision is invalid");
+      }
+    }
   }
   validateAliases(row.aliases, row.name);
   if (point) {
