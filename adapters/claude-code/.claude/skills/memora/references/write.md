@@ -103,6 +103,12 @@ empty to "fill in later". If the configured TEXT ceiling cannot hold the
 document, submit a Schema change to widen the Column first (see
 "Evolve schemas"); never silently truncate.
 
+Let the content decide how it is laid out: when a document has parts that are
+different in kind, write them as visibly different layers — a heading, a short
+list, a separate paragraph — instead of running everything into one block. One
+wall of text reads as less than it is, whatever it contains. Nothing more
+prescriptive than that belongs here.
+
 **Legacy Tables already carry Columns you did not choose** (a Database written
 before this rule can have `company`, `role`, `period`, `highlights` and the
 like). Keep writing them out of the picture: put the facts in `summary` and in
