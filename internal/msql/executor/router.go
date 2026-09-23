@@ -25,6 +25,10 @@ type routeAliasRows interface {
 	UpdateRouterAliases(context.Context, string, []string, uint64) (router.Node, error)
 }
 
+type routePurposeRows interface {
+	UpdateRouterPurpose(context.Context, string, string, uint64) (router.Node, error)
+}
+
 func (engine *Engine) createRoute(
 	ctx context.Context,
 	statement *ast.CreateRouteStatement,
@@ -174,6 +178,43 @@ func (engine *Engine) updateRouteAliases(
 		return Output{}, executeError(result.CodeUnsupported, "Route aliases are not supported by this backend")
 	}
 	updated, err := service.UpdateRouterAliases(ctx, routeID, aliases, options.ExpectedRevision)
+	if err != nil {
+		return Output{}, normalizeError(err)
+	}
+	return routerNodeMutationOutput(updated), nil
+}
+
+// updateRoutePurpose amends what a Route says it holds. It is the repair path
+// for the Routes whose purpose only repeats their name: refusing those at
+// creation while offering nothing that can rewrite an existing one would leave
+// the backlog permanently unfixable. The judgement itself is not repeated here
+// — the store applies the same router.CheckPurpose that CREATE ROUTE applies,
+// inside the transaction that reads the Route's own name.
+func (engine *Engine) updateRoutePurpose(
+	ctx context.Context,
+	statement *ast.UpdateRouteStatement,
+	bound bindings,
+	options MutationOptions,
+) (Output, error) {
+	if err := validateRouterMutationOptions(options, true); err != nil {
+		return Output{}, err
+	}
+	routeID, err := routerString(statement.Route, bound, "Router node ID")
+	if err != nil {
+		return Output{}, err
+	}
+	if err := engine.authorizeRouterIDAtLevel(ctx, security.LevelStructural, routeID); err != nil {
+		return Output{}, err
+	}
+	purpose, err := routerString(statement.Purpose, bound, "Router purpose")
+	if err != nil {
+		return Output{}, err
+	}
+	service, ok := engine.rows.(routePurposeRows)
+	if !ok {
+		return Output{}, executeError(result.CodeUnsupported, "Route purpose is not supported by this backend")
+	}
+	updated, err := service.UpdateRouterPurpose(ctx, routeID, purpose, options.ExpectedRevision)
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}

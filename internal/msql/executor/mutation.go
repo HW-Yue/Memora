@@ -86,8 +86,13 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	case statement.RenameRoute != nil:
 		return engine.renameRoute(ctx, statement.RenameRoute, bound, options)
 	case statement.UpdateRoute != nil:
-		if statement.UpdateRoute.Aliases != nil {
+		// One ALTER ROUTE SET carries one amendment, so the clause the parser
+		// filled in is the one executed.
+		switch {
+		case statement.UpdateRoute.Aliases != nil:
 			return engine.updateRouteAliases(ctx, statement.UpdateRoute, bound, options)
+		case statement.UpdateRoute.Purpose != nil:
+			return engine.updateRoutePurpose(ctx, statement.UpdateRoute, bound, options)
 		}
 		return engine.updateRouteSynopsis(ctx, statement.UpdateRoute, bound, options)
 	case statement.OpenRoute != nil:

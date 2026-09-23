@@ -8,6 +8,7 @@ import (
 	"github.com/HW-Yue/Memora/internal/msql/executor"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/router"
+	"github.com/HW-Yue/Memora/internal/security"
 )
 
 // Every Route must carry a `purpose`, and what is required is a description,
@@ -179,5 +180,155 @@ func TestDoctorReportsRoutesWhosePurposeRepeatsTheirName(t *testing.T) {
 	}
 	if described == "" {
 		t.Fatal("the described Route was not created")
+	}
+}
+
+// The rule's third face. Refusing a new name-repeating purpose while offering
+// no statement that can amend an old one is the engine contradicting itself:
+// the 44 Routes the doctor counts would be permanently unrepairable. A purpose
+// is an amendable description — identity is the route id and the position — so
+// `ALTER ROUTE :route SET PURPOSE :purpose` exists and is judged by the very
+// same `router.CheckPurpose` that `CREATE ROUTE` is judged by.
+
+// amendment is what a purpose rewrite is executed with: a Route mutation
+// against the revision the writer read, because a description overwritten
+// blind is two writers silently erasing each other.
+func amendment(revision uint64) executor.MutationOptions {
+	options := write("amend the purpose")
+	options.ExpectedRevision = revision
+	return options
+}
+
+func TestAlterRouteSetPurposeRefusesAPurposeThatRepeatsTheName(t *testing.T) {
+	h := newHarness(t)
+	root := h.seedTree()
+	branch := text(createChild(h, root, "storage", "branch", "内部结构：页、WAL 与恢复归谁负责").Rows[0]["route_id"])
+
+	// The same four spellings CREATE ROUTE refuses. One judgement, two
+	// statements: an amendment that could launder a name through a space would
+	// make the create-side rule decorative.
+	for _, purpose := range []string{"storage", "  storage  ", "STORAGE", "ｓｔｏｒａｇｅ"} {
+		code := h.fails(`ALTER ROUTE :route SET PURPOSE :purpose`,
+			map[string]any{"route": branch, "purpose": purpose}, amendment(1))
+		if code != result.CodeValidation {
+			t.Fatalf("purpose %q was accepted or refused wrongly: %s", purpose, code)
+		}
+	}
+	// And the refusal says what to write instead, in the same words.
+	message := h.failureMessage(`ALTER ROUTE :route SET PURPOSE :purpose`,
+		map[string]any{"route": branch, "purpose": "storage"}, amendment(1))
+	for _, expected := range []string{"purpose", "storage"} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("the refusal must name %q: %s", expected, message)
+		}
+	}
+	// A refused amendment leaves the Route exactly as it was, revision included.
+	described := h.run(`DESCRIBE ROUTE :route`, map[string]any{"route": branch}, executor.MutationOptions{})
+	if got := text(described.Rows[0]["purpose"]); got != "内部结构：页、WAL 与恢复归谁负责" {
+		t.Fatalf("a refused amendment must not change the purpose: %q", got)
+	}
+	if got := text(described.Rows[0]["revision"]); got != "1" {
+		t.Fatalf("a refused amendment must not spend a revision: %q", got)
+	}
+}
+
+func TestAlterRouteSetPurposeWritesTheDescriptionAndBumpsTheRevision(t *testing.T) {
+	h := newHarness(t)
+	root := h.seedTree()
+	branch := text(createChild(h, root, "storage", "branch", "内部结构：页与 WAL").Rows[0]["route_id"])
+
+	amended := "为什么持久化基座是 SQLite，页、Buffer Pool 与崩溃恢复归谁负责"
+	updated := h.run(`ALTER ROUTE :route SET PURPOSE :purpose`,
+		map[string]any{"route": branch, "purpose": amended}, amendment(1))
+	if got := text(updated.Rows[0]["purpose"]); got != amended {
+		t.Fatalf("the amendment must be what the statement said: %q", got)
+	}
+	if got := text(updated.Rows[0]["revision"]); got != "2" {
+		t.Fatalf("an amendment spends a revision: %q", got)
+	}
+	// A purpose that describes something is never reported as a repeat: this
+	// statement either writes a real description or is refused, so the notice
+	// the other mutation surfaces carry has nothing to say here.
+	for _, warning := range updated.Warnings {
+		if warning.Code == "route_purpose_repeats_name" {
+			t.Fatalf("an accepted purpose must not be reported as a repeat: %+v", updated.Warnings)
+		}
+	}
+	// Nothing else about the Route moved.
+	if got := text(updated.Rows[0]["name"]); got != "storage" {
+		t.Fatalf("an amendment must not rename: %q", got)
+	}
+
+	// And it is on disk, not in this process: reopen and read it back.
+	h.reopen()
+	described := h.run(`DESCRIBE ROUTE :route`, map[string]any{"route": branch}, executor.MutationOptions{})
+	if got := text(described.Rows[0]["purpose"]); got != amended {
+		t.Fatalf("the amendment must survive a reopen: %q", got)
+	}
+	if got := text(described.Rows[0]["revision"]); got != "2" {
+		t.Fatalf("the revision must survive a reopen: %q", got)
+	}
+}
+
+// The backlog is now repairable. This is the whole point of the statement: the
+// doctor's count of Routes whose purpose only repeats their name has to be
+// something a writer can drive to zero without recreating the tree.
+func TestAlterRouteSetPurposeRepairsAnExistingRouteThatRepeatsItsName(t *testing.T) {
+	h := newHarness(t)
+	root := h.seedTree()
+	repeating := text(createChild(h, root, "rekey", "leaf", "换 embedding 模型之后怎么把整库向量换过去").Rows[0]["route_id"])
+
+	// Put the Route into the state the real library is in: purpose == name.
+	rename := write("rename")
+	rename.ExpectedRevision = 1
+	h.run(`ALTER ROUTE :route RENAME TO :name`,
+		map[string]any{"route": repeating, "name": "换 embedding 模型之后怎么把整库向量换过去"}, rename)
+	if report := h.doctor(); report.RoutesWithoutPurpose != 1 {
+		t.Fatalf("the backlog must start at 1: %+v", report)
+	}
+
+	amended := "换了 embedding 模型或维度之后，怎么把整库向量安全换过去"
+	h.run(`ALTER ROUTE :route SET PURPOSE :purpose`,
+		map[string]any{"route": repeating, "purpose": amended}, amendment(2))
+
+	if report := h.doctor(); report.RoutesWithoutPurpose != 0 || len(report.RoutesWithoutPurposePaths) != 0 {
+		t.Fatalf("the backlog must be repairable to zero: %+v", report)
+	}
+}
+
+// The amendment is a write against a revision, like every other Route mutation:
+// a description rewritten blind is two writers overwriting each other silently.
+func TestAlterRouteSetPurposeRequiresTheRevisionItSaw(t *testing.T) {
+	h := newHarness(t)
+	root := h.seedTree()
+	branch := text(createChild(h, root, "storage", "branch", "内部结构：页与 WAL").Rows[0]["route_id"])
+	amended := "为什么基座是 SQLite"
+
+	blind := write("amend the purpose")
+	if code := h.fails(`ALTER ROUTE :route SET PURPOSE :purpose`,
+		map[string]any{"route": branch, "purpose": amended}, blind); code != result.CodeValidation {
+		t.Fatalf("an amendment without an expected revision must be refused, got %s", code)
+	}
+	if code := h.fails(`ALTER ROUTE :route SET PURPOSE :purpose`,
+		map[string]any{"route": branch, "purpose": amended},
+		amendment(7)); code != result.CodeRevisionConflict {
+		t.Fatalf("an amendment against the wrong revision must conflict, got %s", code)
+	}
+}
+
+// Rewriting what a Route says it holds is a structural change to the tree, so
+// it takes the same level CREATE ROUTE and RENAME take.
+func TestAlterRouteSetPurposeRequiresStructuralAuthorization(t *testing.T) {
+	h := newHarness(t)
+	root := h.seedTree()
+	branch := text(createChild(h, root, "storage", "branch", "内部结构：页与 WAL").Rows[0]["route_id"])
+
+	amended := "为什么基座是 SQLite"
+	lower := authorization
+	lower.DefaultLevel = security.LevelWrite
+	if code := h.failsAuthorized(lower, `ALTER ROUTE :route SET PURPOSE :purpose`,
+		map[string]any{"route": branch, "purpose": amended},
+		amendment(1)); code != result.CodePermissionDenied {
+		t.Fatalf("a purpose amendment below structural must be forbidden, got %s", code)
 	}
 }

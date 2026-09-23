@@ -609,6 +609,35 @@ func (t *tx) updateAliases(ctx context.Context, routeID string, aliases []string
 	return t.withPath(ctx, node)
 }
 
+// updatePurpose rewrites what a Route says it holds. The same rule a new Route
+// passes applies here — a purpose that only repeats the name is refused — so
+// the two write surfaces cannot drift apart: an amendment that could launder a
+// name through a space or a full-width letter would make the create-side
+// refusal decorative. It is judged against the Route's current name, read in
+// this transaction, because that is the only name the purpose is compared to.
+//
+// Nothing downstream is rebuilt: a Route's purpose and aliases do not enter the
+// recall index, which is built from the Row's own title and summary, and the
+// walk reads the purpose live off the node.
+func (t *tx) updatePurpose(ctx context.Context, routeID, purpose string, expected uint64) (router.Node, error) {
+	table, node, err := t.liveRouteForWrite(ctx, routeID, expected)
+	if err != nil {
+		return router.Node{}, err
+	}
+	if strings.TrimSpace(purpose) == "" {
+		return router.Node{}, fail(result.CodeValidation, "route %q requires a purpose", routeID)
+	}
+	if err := router.CheckPurpose(node.Name, purpose); err != nil {
+		return router.Node{}, err
+	}
+	node.Purpose = purpose
+	if err := t.saveRoute(ctx, table, node, change.OperationUpdate); err != nil {
+		return router.Node{}, err
+	}
+	node.Revision++
+	return t.withPath(ctx, node)
+}
+
 // allNodes lists every live node. Mutation Plan and scans need the whole tree;
 // the tree is metadata-sized.
 func (t *tx) allNodes(ctx context.Context) ([]router.Node, error) {

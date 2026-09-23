@@ -267,6 +267,11 @@ func (o operations) UpdateRouterAliases(ctx context.Context, routeID string, ali
 	return
 }
 
+func (o operations) UpdateRouterPurpose(ctx context.Context, routeID, purpose string, expected uint64) (value router.Node, err error) {
+	err = o.run(ctx, true, func(t *tx) error { value, err = t.updatePurpose(ctx, routeID, purpose, expected); return err })
+	return
+}
+
 func (o operations) ListRouterNodes(ctx context.Context) (values []router.Node, err error) {
 	err = o.run(ctx, false, func(t *tx) error { values, err = t.allNodes(ctx); return err })
 	return

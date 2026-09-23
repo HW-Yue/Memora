@@ -1343,8 +1343,18 @@ func (parser *parser) parseAlterRoute() (ast.Statement, error) {
 			return ast.Statement{}, err
 		}
 		statement.Aliases = &aliases
+	// A purpose is an amendable description, not identity frozen at creation:
+	// the engine refuses a new Route whose purpose only repeats its name, so it
+	// has to offer the statement that repairs an existing one, or the rule has
+	// no execution surface. See docs/query/route-purpose-contract-v1.md.
+	case parser.matchWord("PURPOSE"):
+		purpose, err := parser.parseExpression(1)
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		statement.Purpose = &purpose
 	default:
-		return ast.Statement{}, parser.unexpected("SYNOPSIS or ALIASES")
+		return ast.Statement{}, parser.unexpected("SYNOPSIS, ALIASES or PURPOSE")
 	}
 	return ast.Statement{Kind: "UPDATE_ROUTE", UpdateRoute: statement}, nil
 }

@@ -1,6 +1,9 @@
 package parser
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseParameterizedRouterStatements(t *testing.T) {
 	t.Parallel()
@@ -32,6 +35,14 @@ func TestParseParameterizedRouterStatements(t *testing.T) {
 		},
 		{
 			source:     "ALTER ROUTE :route SET ALIASES :aliases",
+			kind:       "UPDATE_ROUTE",
+			parameters: 2,
+		},
+		{
+			// A purpose is an amendable description, not identity frozen at
+			// creation: the engine refuses a new Route that only repeats its
+			// name, so it must also offer the statement that repairs an old one.
+			source:     "ALTER ROUTE :route SET PURPOSE :purpose",
 			kind:       "UPDATE_ROUTE",
 			parameters: 2,
 		},
@@ -106,6 +117,7 @@ func TestParseRouterStatementsRejectsIncompleteSyntax(t *testing.T) {
 		"CREATE ROUTE UNDER :parent NAME :name PURPOSE :purpose",
 		"ALTER ROUTE :route RENAME",
 		"ALTER ROUTE :route SET ALIASES",
+		"ALTER ROUTE :route SET PURPOSE",
 		"ALTER ROUTE :route SET UNKNOWN :value",
 		"ARCHIVE ROUTE :route REASON :reason",
 		"UNARCHIVE ROUTE :route",
@@ -143,5 +155,33 @@ func TestParseRouteAliasReplacementPreservesArrayParameter(t *testing.T) {
 	if document.Statement.UpdateRoute == nil || document.Statement.UpdateRoute.Route == nil ||
 		document.Statement.UpdateRoute.Aliases == nil || document.Statement.UpdateRoute.Synopsis != nil {
 		t.Fatalf("Route alias AST = %#v", document.Statement)
+	}
+}
+
+func TestParseRoutePurposeAmendmentIsItsOwnClause(t *testing.T) {
+	t.Parallel()
+	document, err := Parse("ALTER ROUTE :route SET PURPOSE :purpose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := document.Statement.UpdateRoute
+	if update == nil || update.Route == nil || update.Purpose == nil ||
+		update.Synopsis != nil || update.Aliases != nil {
+		t.Fatalf("Route purpose AST = %#v", document.Statement)
+	}
+}
+
+// A refusal that lists two of the three clauses sends the writer looking for a
+// statement that exists.
+func TestParseAlterRouteSetNamesEveryClauseItAccepts(t *testing.T) {
+	t.Parallel()
+	_, err := Parse("ALTER ROUTE :route SET UNKNOWN :value")
+	if err == nil {
+		t.Fatal("ALTER ROUTE SET UNKNOWN succeeded")
+	}
+	for _, clause := range []string{"SYNOPSIS", "ALIASES", "PURPOSE"} {
+		if !strings.Contains(err.Error(), clause) {
+			t.Fatalf("the refusal must name %s: %v", clause, err)
+		}
 	}
 }

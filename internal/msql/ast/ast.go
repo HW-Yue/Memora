@@ -181,10 +181,15 @@ type RenameRouteStatement struct {
 	Name  *Expression `json:"name"`
 }
 
+// UpdateRouteStatement carries exactly one amendment. A Route's purpose is an
+// amendable description rather than identity frozen at creation — identity is
+// the route id and the position — so it sits here beside the synopsis and the
+// aliases. See docs/query/route-purpose-contract-v1.md.
 type UpdateRouteStatement struct {
 	Route    *Expression `json:"route"`
 	Synopsis *Expression `json:"synopsis"`
 	Aliases  *Expression `json:"aliases,omitempty"`
+	Purpose  *Expression `json:"purpose,omitempty"`
 }
 
 // RecallStatement asks where a keyword match sits in the semantic tree. It
@@ -403,6 +408,7 @@ func (document Document) Parameters() []Parameter {
 		appendExpression(statement.UpdateRoute.Route)
 		appendExpression(statement.UpdateRoute.Synopsis)
 		appendExpression(statement.UpdateRoute.Aliases)
+		appendExpression(statement.UpdateRoute.Purpose)
 	case statement.Show != nil && statement.Show.Object == "ROUTES":
 		appendExpression(statement.Show.Route)
 		appendExpression(statement.Show.Cursor)
