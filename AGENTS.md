@@ -20,10 +20,16 @@
 - 开始实现前，把已验证的方向性结论提升为独立规格、ADR 或实现计划。
 - 讨论优先，不在每轮对话后向用户展示长篇文档工作；只在结论稳定后后台同步最小必要内容。
 - 一个主题一个小文件，目标不超过约 150 行；需要扩展时拆分并用链接关联，不继续堆积综合长文档。
-- **改了 `skills/memora/` 就跑 `scripts/sync-skill.sh --check`**：Skill 同时活在仓库规范副本、
-  两个 adapter 副本和用户机器上的安装位，它们分叉过一次而没人发现（见
-  `docs/development/dogfood-2026-09-21.md` 的 D1/D4）。`--check` 报告漂移，`--repo` / `--install`
-  / `--publish` 各自同步一段。
+- **改了 `skills/memora/` 就跑 `scripts/sync-skill.sh --check`**：Skill 同时活在**六个**地方——
+  仓库规范副本 `skills/memora/`、两个 adapter 副本（`adapters/*/…/skills/memora`）、
+  **`~/.agents/skills/memora`（DSH 就是从这里加载的）**、`~/.claude/skills/memora`、
+  `~/.cursor/skills/memora`、以及**发布仓库 `~/Developer/memora-skill/memora`**。
+  `--check` 现在把仓库外那几个也一起比（缺的跳过），`--repo` / `--install <dir>` / `--publish <dir>`
+  各自同步一段；`--install` 对每个安装位各跑一次。
+  **发布是半步**：`--publish` 之后要去那个仓库自己提交并推送，否则线上安装位照旧是旧的。
+  分叉发生过两次而没人发现（`docs/development/dogfood-2026-09-21.md` 的 D1/D4；
+  以及 2026-09-23 发现发布仓库缺了 6 个 reference + 3 个脚本，而 `--check` 当时只说"every copy matches"
+  ——因为它只比 adapter）。**改完 Skill 的收尾动作：`--repo` → 每个 `--install` → `--publish` + 推送**。
 - `docs/archive/` 只用于追溯历史，日常任务不要整篇读取归档文档。
 - 回答当前问题前，从 `docs/README.md` 选择最少的相关主题文件，不批量读取整个 `docs/`。
 
