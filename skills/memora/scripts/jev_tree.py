@@ -429,9 +429,11 @@ def read_plan(engine, landings):
 
     The walk returns positions; reading the facts is the agent's job. Handing the
     same set back grouped by (database, table), with the table's column names, is
-    the difference between writing one `WHERE row_id IN (…)` per table and writing
-    one statement per landing: the widest measured requirement landed 35 rows
-    across 6 tables, which is 35 statements against 6.
+    the difference between one call per table and one call per landing: the widest
+    measured requirement landed 35 rows across 6 tables, which is 6 calls against
+    35. Each call carries one statement per landing — `SELECT … WHERE row_id =
+    :row LIMIT 1`, one `--input` element each — because MSQL's read surface has no
+    `IN` on `row_id`, and every `SELECT` carries a `LIMIT`.
 
     The columns cost one `DESCRIBE TABLE` per table that actually has landings —
     never per landing — and they are reported rather than assumed, because the

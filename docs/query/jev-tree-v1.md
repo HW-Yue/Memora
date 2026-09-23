@@ -55,7 +55,7 @@ leaf_route_id, row_id, revision}`——`path` 给 agent 判断"这是不是我�
 
 **落点再按表聚合成"读计划"**（`reads`）：`[{database, table, columns, rows:[{path, row_id, revision}]}]`，
 列名由每张有落点的表各一次 `DESCRIBE TABLE` 报出（不是假设——行的形状由引擎拥有，ADR-0014）。
-它的用处是把"一落点一条语句"变成"一表一条 `WHERE row_id IN (…)`"：实测最宽那问 35 个落点落在 6 张表上，
+它的用处是把"一落点一次调用"变成"**一表一次调用**"：实测最宽那问 35 个落点落在 6 张表上，
 即 35 条语句对 6 条。
 
 **环**：写路径负责（`PLAN ROUTE MUTATION` 会拒成环的移动），读取端只用 `visited` 集合兜底：撞到重复

@@ -35,7 +35,7 @@
 3. **`whole-layer-read.md` 那一包**：删读取端宽度/次数/深度三个上限、只留时间阀；没走完的分支不进
    `landings`；`visited` 防环 + 数据损坏告警；落点带 `database`/`table`；Skill 写清"定位 vs 回表"。
 4. **落点按 `(database, table)` 聚合 + 带列名**：等第 2 步落地后，这基本是纯格式化——35 个落点真实是
-   6 张表上的 6 组 row_id，一表一条 `WHERE row_id IN (...)`；顺手带上列名，省掉 agent 写回表 SQL 前
+   6 张表上的 6 组 row_id；顺手带上列名，省掉 agent 写回表 SQL 前
    还要 `DESCRIBE` 一轮。
 5. **不做**：jev 的缓存、并发、小模型降级、阈值调参——1.4 s 与 6.2 s 都不是瓶颈，现在做是提前优化。
 

@@ -29,7 +29,7 @@ other belongs is a revision conflict on an object nobody touched.
 The same set also comes back grouped as `reads`:
 `[{database, table, columns, rows:[{path, row_id, revision}]}]` — one entry per
 Table that has landings, with the Table's column names, so **write one
-`SELECT … WHERE row_id IN (…)` per Table** instead of one statement per landing
+one **call** per Table** — the request carries one `SELECT … WHERE row_id = :row LIMIT 1` per landing, because MSQL's read surface has no `IN` and every `SELECT` carries a `LIMIT` — instead of one call per landing
 (measured: 35 landings across 6 Tables is 6 statements, not 35).
 
 Candidates are offered with their `purpose` **and** their `aliases` — the words
