@@ -1920,3 +1920,38 @@ revision"——**规范是对的，是我的计划写错了。**
 **三个新坑（进契约）**：`empty` 现在静默（剪枝必须留可审计记录，否则漏答无法归因）；报进
 `undescribed_at` 的层**必须强制按 `undecided` 整层展开**、不许采信 jev 在该层的判断（否则坏标签直接
 变成漏答，这是第一块的后续小改）；无上限 + 按量计费需要**决策次数的观测与告警**，不是再塞一个上限。
+
+## 2026-09-22 · 回填被引擎挡住：purpose 建完改不了；而且 aliases 没人读
+
+按计划开工第一步（回填 44 条 purpose）时撞到两件事，都是**规则漏了执行面**：
+
+**1. Route 的 `purpose` 是"写一次就改不了"。**
+
+```
+$ memora parse "ALTER ROUTE :route SET PURPOSE :purpose"
+{"ok":false,"error":{"code":"unexpected_token","message":"...expected SYNOPSIS or ALIASES, found \"PURPOSE\""}}
+```
+
+`ALTER ROUTE` 只有 `SET SYNOPSIS` / `SET ALIASES`；purpose 只在 `CREATE ROUTE` 与 ROUTE MUTATION 的
+SPLIT/MERGE target 上写入。于是上一块的成果变成死角：**新建复读 name 的 purpose 被拒，存量 44 条却
+没有任何语句能修**。
+
+**咨询结论（Claude）**：Route 的 `purpose` 属于**"可修订的描述"，不是"创建即冻结的身份"**——身份是
+`route_id` 与位置；"冻结"只对 `scope`/`anti_scope` 成立，因为那是**契约**（决定什么行能进）。purpose
+不决定任何行的去留，它只决定 jev 切不切得动，而实测已证明它是个**可调参数**（换一句真描述，.10 对 .88
+立刻出来）。把它冻在创建时刻，等于要求 agent 在信息最少的那一刻写出最终答案——**那正是 44 条复读的
+成因**。修法：加 `ALTER ROUTE :route SET PURPOSE :purpose`，复用 `CREATE ROUTE` 同一条判定
+（`router.CheckPurpose`），缺口 ②（Database/Table 的 `purpose`/`scope`/`anti_scope` 无 amend 路径）
+照这个形状定。**弃选**：把 synopsis 喂给走树——那会让"短 purpose / 长 synopsis"的分工当场塌掉
+（synopsis 一旦进了选层输入就是"长 purpose"），而且 1000 字 × 同层 N 条是拿噪声换信号：**瓶颈从来不是
+描述太短，是描述是假的**。
+
+**2. Route 的 `aliases` 现在没有任何消费方（只写不读）。** 查证：召回单元取自行的 `title`+`summary`
+（ADR-0008），走树只喂 `name`+`purpose`，安全与 `SHOW CATALOG ATLAS` 用的是 **Database/Table** 的
+aliases；route 侧只有 `AliasesAfterRename`（改名时把旧名留成别名）在写。**所以"给每个节点补主人会用的
+词"要成立，前提是走树把 `aliases` 也喂给 jev**（短词，与"别喂 synopsis"不冲突）——否则回填 aliases
+对检索零效果。
+
+**据此的顺序变更**：① 先加 `SET PURPOSE`（引擎）；② 回填 44 条 purpose；③ 让走树喂 `name + purpose +
+aliases`，再回填 aliases；④ 其余照 `docs/planning/jev-routing-ladder.md`。44 条的内容已起草完成
+（purpose 为"这一层装着什么"，aliases 为库主人会用来搜的词），等 ① 落地即可写。

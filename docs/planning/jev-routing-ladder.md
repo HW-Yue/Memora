@@ -20,8 +20,16 @@
 
 ## 剩下的话，按这个顺序
 
-1. **回填 44 条 Route 的 purpose/aliases**——**前置，不是收尾**。标签质量是 jev 准确率的天花板：
-   实测同层里只要有一条真描述，切分就干净（.10 对 .88、地板 .06）；全是复读时它只能 `undecided`。
+1. **先补 `ALTER ROUTE … SET PURPOSE`，再回填 44 条**——**前置，不是收尾**。标签质量是 jev 准确率的
+   天花板：实测同层里只要有一条真描述，切分就干净（.10 对 .88、地板 .06）；全是复读时它只能
+   `undecided`。**但这一步卡在一个引擎缺口上**：`purpose` 建完之后**没有任何语句能改**
+   （`memora parse "ALTER ROUTE :route SET PURPOSE :purpose"` 直接拒，`ALTER ROUTE` 只有
+   `SET SYNOPSIS` / `SET ALIASES`）——于是引擎**拒了新的、修不了旧的**，真库上那 44 条根本无法修复。
+   所以顺序是：**先加 SET PURPOSE（与 `CREATE ROUTE` 同一条判定），再回填**。
+1b. **aliases 要先有人读，才值得填**：查证发现 route 的 `aliases` 现在是**只写不读**——召回单元取的是
+   行的 `title`+`summary`（ADR-0008），走树只喂 `name`+`purpose`，安全与目录匹配用的是
+   **Database/Table** 的 aliases。所以"给每个节点补主人会用的词"这件事，前提是**走树把 aliases 也喂给
+   jev**（短词、不是长文，与"别喂 synopsis"那条不冲突）。否则回填 aliases 对检索零效果。
 2. **让 `SHOW ROUTES` 的叶子顺手带出 `row_id`**——一处改动两路受益：jev 那 35 条 `OPEN ROUTE` 归零，
    **自己逐层走的模型也省**（列表里就有行号，不必再开叶子）。收益最大、风险最低。
 3. **`whole-layer-read.md` 那一包**：删读取端宽度/次数/深度三个上限、只留时间阀；没走完的分支不进
