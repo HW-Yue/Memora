@@ -1825,3 +1825,20 @@ jev 判不出来时宁可整层给出来，也不按顺序赌。
 **顺带查实的环问题**：`MAX_DEPTH` 原来顺带当了环保护，但它不该当。写路径已经负责——`internal/routemutationplan/build.go`
 有 `descendant()` 检查与 "Router subtree contains a cycle"，而 `createNode` 只能挂在既有父节点下、造不出
 环。读取端改为带一个 `visited` 集合：撞重复就跳过并记**数据损坏告警**（那是 doctor 的领域，不是"走得太深"）。
+
+## 2026-09-22 · 落点只到叶子、返回路径，回表归 agent（库主人定的契约）
+
+**用户原话**："就是检索到叶子节点，把语义路径返回，然后 agent 看完自己判断要读哪个，自己写 msql
+回表去查。" 这条同时定死了三件事：
+
+1. **落点只有叶子**：`landings` 是语义路径的集合，不再是"路径 + 行号 + revision"的混合，也不许出现
+   非叶子（没走到叶子的分支进"停在这里"字段）。
+2. **走树不回表**：现在每落一个叶子就发一条 `OPEN ROUTE :leaf LIMIT 1` 去取 `row_id`/`revision`。
+   实测最宽意图那一趟 **50 条语句里 35 条是这个**（2 条目录 + 13 条 `SHOW ROUTES` + 35 条
+   `OPEN ROUTE`）。删掉之后同一趟降到约 15 条，引擎时间从 695 ms 降下来。
+3. **边界干净**：走树负责**定位**，agent 负责"读完自己判断要读哪个、自己写 MSQL 回表"。落点里带
+   `leaf_route_id`（因为 `OPEN ROUTE :leaf_id` 收的是 id），事实一律由 agent 自己读——
+   这也正是"落点看起来像答案"这个老问题的根源：走树半边替人读了。
+
+**要改的面**：`docs/query/jev-tree-v1.md` 的落点字段、`skills/memora/references/jev-tree.md`、
+devgate 的录像 fixture 与 `jev_tree_test.go` 的断言（现断言落点带 `row_id`）。
