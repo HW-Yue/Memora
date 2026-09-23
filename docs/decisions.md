@@ -1724,3 +1724,44 @@ host-computed, pending is derived, the lock has no rekey`（记录的是"这条�
    而不是拿名字顶上；可选按需拉 `DESCRIBE ROUTE` 的 synopsis 补进候选描述（本地批量，一层一次）。
 2. **`purpose == name` 在写路径视为不合规**（新建拒绝或至少告警），doctor/admin 报出存量。
    这与"每段 purpose 必填"是同一条规则的两半：必填的是**内容**，不是一个非空字符串。
+
+## 2026-09-22 · purpose 契约落地：没有描述的层不再拿名字顶上（第一块已合）
+
+**对象**：分支 `feature/route-purpose-contract`（Claude 实现 + 我复核，`--ff-only` 合入主线）。
+依据见上一条「语义树的标签质量是可测量的检索损伤」。CI 全绿（lint×2 / unit / race / cgo-build，
+cgo-build 里真跑 `memora doctor` 并输出新字段），`sync-skill --check` 四份副本一致。
+
+**落地的三件**：
+
+1. **走树不再拿名字顶**：purpose 缺失或与 name 相同（折叠后）时，候选以**空 purpose** 进请求，并在
+   `evidence[].undescribed` 与顶层 `undescribed_at` 如实说出"这一层是拿背影决策的"。落点不变。
+2. **写路径**：**新建** Route 的 purpose 复读 name → 拒绝（`CREATE ROUTE`、隐式路径的每一段、
+   SPLIT/MERGE 目标过同一道闸）；**存量**只出 `route_purpose_repeats_name` notice，不拒绝。
+3. **体检**：`doctor` 报 `routes_without_purpose` + `routes_without_purpose_paths`（`库.表/路径`，
+   上限 50 条，计数永远是全量）。
+
+**复核时我自己抓到并补上的洞**：这个修复原先只在默认的进程内路径生效。`JEV_IN_PROCESS=0` 退回子进程
+时 `jev_select.read_request` 里还有一层自己的 `purpose or name`，把名字又塞回描述位——两条传输路径
+不再"decide identically"（`ask_in_process` 的注释正是这么承诺的），诚实载荷只差一个环境变量就会被
+撤销。已去掉那层替换，并加 `TestJevNeverInventsADescriptionFromTheName`（走 `--dry-run`，无 key
+无网络）钉住：旧代码下该测试失败、新代码下通过。
+
+**真 provider 上补验的两条**（录像测不到的地方）：空 purpose **被接受**；而且只要同层里有一条真描述，
+切分就非常干净——`工作方式` 0.10 对 `当前缺口` 0.88、地板 0.06，只留 `当前缺口`。这印证了"补描述
+能救宽层"的推测，但**仍不替代** frontier 那条结构修复。
+
+**真库实机**：重建二进制（`e36399e3`）并重启 daemon 后，`memora doctor` 在真实例上报
+`routes_without_purpose: 44`，全部落在 `memora.*`（`me` 的 12 条一条没报），`status: healthy`、
+`integrity: ok`、`units_without_vectors: 0`、`vector_index_drift: 0`。
+
+**三条值得留档的边界**：
+
+- **折叠口径两边有意不完全相同**：Go 侧手写 width/case/space（不引 `x/text`，与 implicit-route-path
+  不引 NFC 的取舍一致），Python 侧用 NFKC（超集）。差异已知，不统一。
+- **"新建拒 / 存量告警"的分界落在引擎事务内**——只有那里知道一段是新建还是复用，所以 `skillwrite`
+  计划期一律不判（判了会把存量库锁在外面）。下次加同类规则还会碰到这条边界。
+- 去掉兜底后 `undescribed_at` 会在真库上大面积出现，**这是预期不是回归**；它同时就是回填的进度条。
+
+**还没做**：44 条 Route 的 purpose/aliases 回填（写库动作，按 `skills/memora/` 流程走 MSQL，单列一
+步）；synopsis 接进走树（第三块）；走树的宽度预算（第二块，见
+`docs/planning/frontier-budget-per-parent.md`）。

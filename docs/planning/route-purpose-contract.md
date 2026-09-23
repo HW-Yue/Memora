@@ -1,6 +1,7 @@
 # Route 的描述句：必填的是内容，不是非空字符串
 
-状态：**实现计划**（未开工，等开工）。前置实测见 `docs/decisions.md`
+状态：**已实现**（分支 `feature/route-purpose-contract`，已 `--ff-only` 合回主线；下面"明确不在
+这一块"的两项仍未做）。前置实测见 `docs/decisions.md`
 「语义树的标签质量是可测量的检索损伤」及其补记。
 
 ## 问题
