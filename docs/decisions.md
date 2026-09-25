@@ -2184,11 +2184,16 @@ pending**（入队就会变成"记下没落库的写"）；事务之外才自行
    `anti_scope` 是放置提示不是锁（上一条），所以撤销一条边界声明必须是可表达的。
 4. **字面量，不给绑定参数**：与 `CREATE DATABASE` 一致——整个 Catalog DDL 家族都是字面量，
    参数化的是 Row 与 Route 的写入路径。要参数化就得动 AST 类型和 catalog 绑定，收益不抵这次的范围。
-5. **不加 `expected_schema_version`**（顾问建议加，弃选）：本项目的版本前置条件只存在于 Row 与
+5. **不带 `mutation` 块**：Catalog DDL 不是 `mutationStatement`（`internal/msql/executor/batch.go`
+   的清单里没有 `Create`/`Alter`），所以这条语句既不校验、也不记录 actor / `reason` /
+   `max_affected_rows`——与 `CREATE DATABASE` 相同，但与**同形的** `ALTER ROUTE … SET PURPOSE`
+   不同。照后者抄一个 `mutation` 块会被**静默忽略**，不是报错；Skill 里已写明这条差别，
+   免得下一个作者以为自己留了回执。`authorization` 块照旧带 actor 和 `default_level: "L2"`。
+6. **不加 `expected_schema_version`**（顾问建议加，弃选）：本项目的版本前置条件只存在于 Row 与
    Table 形状（`PLAN/APPLY SCHEMA CHANGE`），库级 DDL 从来没有——`ALTER DATABASE … RENAME` 同样是
    一次不带回滚的库级改动，而且比改描述更重。给描述加、给改名不加，是不一致的。防"改错一版"的
    手段放在流程侧：**改之前先 `DESCRIBE DATABASE`，把旧值念出来**（Skill 已这么教）。
-6. **`ensure` 仍不回写描述**（有意保留）：让每次写入的 ensure 都能改库声明，会把"写得越具体越容易烂"
+7. **`ensure` 仍不回写描述**（有意保留）：让每次写入的 ensure 都能改库声明，会把"写得越具体越容易烂"
    变成"每次写入都可能漂移"。改描述是一次显式动作。
 
 **弃选**：冻结、要改就新建库；`SET` 走绑定参数；给这条语句加 `expected_schema_version` /

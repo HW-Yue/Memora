@@ -37,7 +37,10 @@ from its census.
 **Choosing the Database is yours; it is never a question for the user.** Read the
 discovered names with their `purpose` / `scope` / `anti_scope`, and look before
 you bind: the declaration has to cover the question, and a neighbouring
-Database's `anti_scope` must not exclude it. When exactly one Database fits, bind
+Database's `anti_scope` must not exclude it. When a declaration turns out to be a
+topic list that could not have decided anything, it is the declaration that is
+wrong, not the lookup — see "Amending a Database's description" in
+[`write.md`](write.md). When exactly one Database fits, bind
 that exact name and continue. **Say which one you bound, the declaration you
 matched, and what you checked to rule the others out** — printing the names and
 asking would only suspend the task for something your own answer already carries,

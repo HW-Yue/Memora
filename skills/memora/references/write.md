@@ -54,8 +54,10 @@ memora schema --plan '{
   "reason": "create the <table> Table with the canonical shape",
   "authorized_databases": ["<database>"],
   "ensure": {
-    "database": {"name": "<database>", "purpose": "<what this Database holds>",
-                 "scope": "<what belongs in it>", "anti_scope": "<what does not>"},
+    "database": {"name": "<database>",
+                 "purpose": "<what this Database is, readable by someone who does not know Memora>",
+                 "scope": "<which knowledge it collects>",
+                 "anti_scope": "<which neighbouring Database owns what this one does not>"},
     "table": {
       "name": "<table>",
       "purpose": "<what this Table holds, as a topic>",
@@ -80,6 +82,57 @@ memora schema --plan '{
 - `row_semantics` is the engine's own statement of what a Row is; keep the
   constant above. Reuse an existing Table whenever its `purpose` fits — never
   create a second Table of the same kind for a slightly different shape.
+
+#### What the three Database fields are for
+
+They are not labels. A later write — yours on the next turn, or another agent's
+with no memory of this conversation — reads them to decide where a piece of
+knowledge belongs, so each answers a different question, and a list of topics
+answers none of them:
+
+| field | answers | write it like | not like |
+| --- | --- | --- | --- |
+| `purpose` | what this Database **is** | `关于 Memora——一个供 agent 通过 MSQL 读写的本地个人记忆库——的产品与仓库知识` | `实习与工作经历` alone; or `一行是…`, which describes a Row |
+| `scope` | **which** knowledge it collects | `Memora 当前有效的产品原则、功能规格、MSQL 读写能力、已知风险与开发方向` | `现行原则、规格、能力、风险与工作方向` — the purpose said a second way |
+| `anti_scope` | which **neighbouring** Database owns what this one does not | `个人身份、求职、实习与个人项目经历归 me` | anything, when no neighbour could capture the same content |
+
+Two questions decide a `scope`: does it **exclude** something, and could a
+neighbouring Database's declaration disagree with it? `原则、规格、能力、风险`
+passes neither — it decides no placement, and deciding placement is the only job
+the field has. And a `purpose` has to be readable by someone who does not know
+what this instance already holds: naming the topic is not the same as saying
+what the Database **is**.
+
+**`anti_scope` is a placement hint, not a lock, and it is written only when it
+draws a line.** The engine stores and shows it and enforces nothing — whether a
+piece of text "is" a diary entry is your judgement, not a substring match. A
+Database that nothing else overlaps needs none: an unneeded boundary is a claim
+you then have to maintain.
+
+#### Amending a Database's description
+
+None of the three is welded in at creation, and a `scope` saying "当前有效" is
+exactly the kind that goes stale — which is why the language has an amend path.
+Read the current text first, then write, and say what you changed:
+
+```sh
+memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "DESCRIBE DATABASE work COMPACT"
+memora exec --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L2"}}' "ALTER DATABASE work SET SCOPE '当前有效的产品原则、功能规格与开发方向' ANTI SCOPE '个人身份、求职与个人项目经历归 me'"
+```
+
+- `SET` writes **only the fields it names**; every other field keeps its value.
+- `ANTI SCOPE ''` clears the field. `PURPOSE` and `SCOPE` must stay non-empty.
+- Values are single-quoted string literals, exactly as in `CREATE DATABASE`; a
+  literal `'` inside one is written `''`. Double quotes make a quoted identifier
+  and are refused.
+- **It carries no `mutation` block, and `default_level` has to be `"L2"`.**
+  Catalog DDL is not a mutation statement: there is no `expected_schema_version`,
+  no `max_affected_rows`, and no `reason` recorded, so a `mutation` block copied
+  from the `ALTER ROUTE … SET PURPOSE` example beside this one is ignored rather
+  than honoured. Without L2 the statement fails `permission_denied`.
+- Amending is an explicit act, so report it: name the Database, quote the old
+  text and the new one, and say why the old one misled a placement.
+
 ## Write
 
 **"记一下" / "save this" is a dedupe request before it is a write.** Search the
