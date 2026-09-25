@@ -81,6 +81,24 @@ OPEN ROUTE FROM DATABASE <name> AT '<path>'
 
 答不出来意味着自描述失败，即使数据本身仍可被全文搜索到。
 
+## 描述字段怎么写（2026-09-25 咨询结论）
+
+**实测反例**：本实例库 `memora` 的 `scope` 是「现行原则、规格、能力、风险与工作方向」——只列知识
+类别，不说明这个库是什么，冷启动 agent 读不出"一条内容该不该进这里"。原因之一是 Skill 至今没教
+怎么写这两个字段（`write.md` 只给了 `<what this Database holds>` 这样的占位符）。
+
+**判据**：`purpose` 说明**是什么**（要能让不知道 Memora 是什么的读者读懂），`scope` 画**收哪些的范围**，
+`anti_scope` 对**邻库**画界。核心区分：**关于 Memora 的知识，不是存进 Memora 的所有知识。**
+
+建议值（待定稿）：`purpose`「关于 Memora——一个供 agent 通过 MSQL 读写的本地个人记忆／知识库——
+的产品与仓库知识」；`scope`「Memora 当前有效的产品原则、功能规格、MSQL 读写能力、已知风险与开发方向」；
+`anti_scope`「个人身份、求职、实习与个人项目经历归 `me`」。
+
+**缺口（挡住修改的不是措辞，是语言）**：`ALTER DATABASE` 只有 `RENAME`（`internal/msql/parser/parser.go`
+的 `parseAlter`），`schema --plan` 的 `ensure` 遇到已存在的库只复用、不回写描述，所以这些字段在**建库
+那一刻焊死**。要改就得先补 `ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`（L2 有界元数据写）——
+2026-09-21 已列为候选，见[引擎拥有形状](../planning/engine-owned-shape.md)。
+
 ## 未决问题
 
 - `purpose` 等字段由 AI 自由写，还是使用受限模板？

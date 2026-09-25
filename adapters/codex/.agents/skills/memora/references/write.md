@@ -8,10 +8,17 @@ Before persisting a new piece of knowledge, decide where it belongs. Decide
 from large to small scope and only create when reuse is impossible:
 
 1. Reuse an existing Database whose purpose/scope clearly covers the user's
-   topic and whose anti_scope does not exclude it.
-2. Create a new Database only for a genuinely new domain — the user's first
-   mention of a personal topic with no matching Database warrants a new
-   Database, written before anything else, with an explicit purpose and scope.
+   topic and whose anti_scope does not exclude it. **The choice is yours to
+   make**: never ask the user which Database. Say which one you bound, and the
+   declaration you matched, in your answer (see "Report the landing" below).
+2. Create a new Database yourself when nothing covers it — a genuinely new
+   domain is the user's first mention of a personal topic with no matching
+   Database, so write the new Database before anything else, with an explicit
+   purpose and scope. That is the last resort after looking, not the first
+   guess: a new Database is justified only once the declared purposes of the
+   existing ones have been read and none fits, because a discovery that came
+   back empty because it was incomplete is how one memory shatters into several
+   Databases.
 3. Inside the chosen Database, reuse an existing Table whose purpose fits the
    knowledge; add a Row there.
 4. Create a new Table only when no existing Table fits and the content is a
@@ -27,6 +34,14 @@ from large to small scope and only create when reuse is impossible:
    this: a Column that declares anything other than `ROLE title` or
    `ROLE summary` is refused, with the shape quoted back at you, on `CREATE
    TABLE`, on `ADD COLUMN` and in a Schema-change plan.
+
+**Report the landing.** Every write's answer names the place it wrote: the
+Database and Table, the Route path (or the leaf id), the `row_id`, and the
+`purpose`/`scope` sentence that put it there. When it created the Database, say
+so explicitly and quote the purpose and scope written for it — you are the one
+who invented that declaration, so it is a decision to show, never evidence to
+lean on. The receipt is what makes the autonomy reviewable after the fact; it
+never stands in for looking first.
 
 ### The one Table shape
 
