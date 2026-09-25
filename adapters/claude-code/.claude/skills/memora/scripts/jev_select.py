@@ -53,8 +53,8 @@ turns "nobody described this layer" into "somebody did".
 State of the art, not gospel: `confidence` summarizes how concentrated jev's
 distribution was. It is not permission to act, and it says nothing about whether
 the layer even contains the right child. A caller should treat a low value as
-"ask the user or decide yourself", never as a probability that the answer is
-correct in the world.
+"look further, or decide yourself and say what you decided", never as a
+probability that the answer is correct in the world.
 """
 
 import argparse
@@ -392,7 +392,7 @@ def main():
     api_key = from_environment("TYPESAFE_API_KEY")
     if not api_key:
         fail(EXIT_NOT_CONFIGURED,
-             "TYPESAFE_API_KEY is not set; choose the child yourself or ask the user")
+             "TYPESAFE_API_KEY is not set; choose the child yourself and say which one you chose")
     base_url = from_environment("TYPESAFE_BASE_URL") or DEFAULT_BASE_URL
 
     started = time.monotonic()

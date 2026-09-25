@@ -13,8 +13,8 @@ with no user-named Database, or an expired Route Frame — discover names first.
 `SHOW DATABASES` without an `authorization` object is discovery mode and
 returns every Database. Supplying an `authorization` object switches it to a
 filter that silently drops Databases outside that scope, so a guessed or
-placeholder name can hide the real catalog. Bind authorization only after the
-user has named a Database; never widen or invent the scope. `work`, `notes`,
+placeholder name can hide the real catalog. Bind authorization to the Database
+you have chosen; never widen or invent the scope. `work`, `notes`,
 `row_01` and `route_*` in the examples below are **placeholders** — substitute
 your own Database, Table, Row and Route names; `actor` is free text naming who
 is acting (`agent:host` here), not a fixed literal.
@@ -34,25 +34,25 @@ skew); `doctor` reports **instance-wide** counters — its `rows` and `tables`
 cover every Database, so they size nothing per Table. Take a Table's own count
 from its census.
 
-Show the discovered Database names and purposes to the user and ask which one
-to use before the first authorized read or write. Once the user names a
-Database, continue the bounded discovery below with that exact name. **When
-there is no human in the loop** — a subagent, a scheduled run, a host that
-cannot ask — do not stall and do not guess silently: print the discovered names
-with their purposes as your receipt, bind the one Database whose declared
-`purpose`/`scope` covers the question, and **state that inference in your
-answer**. If two or more Databases could cover it, that is not an error to
-report: a requirement can genuinely point at several, and the honest answer is the
-set of them. **Decide which of them to read yourself**: at this size one
-`SHOW CATALOG ATLAS` plus your own judgment costs less than a provider call, and
-the same holds for the route layers below — **one request can carry several
-`SHOW ROUTES` statements** (one `--input` element each), so a layer, or every
-sibling of the next one, is one turn. Escalate to the jev walk
-([`references/jev-tree.md`](jev-tree.md)) on a signal you can count, never on a
-feeling: **a layer comes back wider than about 40 rows**, or **you are past the
-fifth layer and still have not reached a leaf** — see that reference for the
-measured comparison. Report when nothing can decide and nobody can be asked.
-Never widen the scope to make a guess fit.
+**Choosing the Database is yours; it is never a question for the user.** Read the
+discovered names with their `purpose` / `scope` / `anti_scope`, and look before
+you bind: the declaration has to cover the question, and a neighbouring
+Database's `anti_scope` must not exclude it. When exactly one Database fits, bind
+that exact name and continue. **Say which one you bound, the declaration you
+matched, and what you checked to rule the others out** — printing the names and
+asking would only suspend the task for something your own answer already carries,
+while the receipt is what makes the choice reviewable. When two or more fit,
+decide yourself: at this size one `SHOW CATALOG ATLAS` plus your own judgment
+costs less than a provider call, and a read may honestly take several of them —
+the set you read is an answer, not an error to report. The same holds for the
+route layers below — **one request can carry several `SHOW ROUTES` statements**
+(one `--input` element each), so a layer, or every sibling of the next one, is one
+turn. Low confidence is a signal to look further, never a licence to bind:
+escalate to the jev walk ([`references/jev-tree.md`](jev-tree.md)) on a signal you
+can count, never on a feeling: **a layer comes back wider than about 40 rows**, or
+**you are past the fifth layer and still have not reached a leaf** — see that
+reference for the measured comparison. Never widen the scope to make a guess fit,
+and never turn a choice you can make into a question.
 
 ```sh
 memora query --input '{"parameters":{"named":{"limit":64,"bytes":8192}},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW CATALOG ATLAS LIMIT :limit BYTES :bytes COMPACT"

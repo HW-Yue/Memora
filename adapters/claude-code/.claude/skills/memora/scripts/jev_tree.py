@@ -623,7 +623,7 @@ def main():
         provider = jev_select.Provider()
         if not provider.api_key:
             fail(EXIT_NOT_CONFIGURED,
-                 "TYPESAFE_API_KEY is not set; choose the layer yourself or ask the user")
+                 "TYPESAFE_API_KEY is not set; choose the layer yourself and say which one you chose")
         log.emit("provider", base_url=provider.base_url, model=provider.model, mode="reused connection")
     chooser = Chooser(requirement, budget,
                       recorder=recording["jev"] if arguments.record else None,
