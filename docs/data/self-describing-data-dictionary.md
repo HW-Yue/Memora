@@ -84,7 +84,7 @@ OPEN ROUTE FROM DATABASE <name> AT '<path>'
 ## 描述字段怎么写（2026-09-25 咨询结论）
 
 **实测反例**：本实例库 `memora` 的 `scope` 是「现行原则、规格、能力、风险与工作方向」——只列知识
-类别，不说明这个库是什么，冷启动 agent 读不出"一条内容该不该进这里"。原因之一是 Skill 至今没教
+类别，不说明这个库是什么，冷启动 agent 读不出"一条内容该不该进这里"。原因之一是 Skill 当时没教
 怎么写这两个字段（`write.md` 只给了 `<what this Database holds>` 这样的占位符）。
 
 **判据**：`purpose` 说明**是什么**（要能让不知道 Memora 是什么的读者读懂），`scope` 画**收哪些的范围**，
@@ -94,10 +94,16 @@ OPEN ROUTE FROM DATABASE <name> AT '<path>'
 的产品与仓库知识」；`scope`「Memora 当前有效的产品原则、功能规格、MSQL 读写能力、已知风险与开发方向」；
 `anti_scope`「个人身份、求职、实习与个人项目经历归 `me`」。
 
-**缺口（挡住修改的不是措辞，是语言）**：`ALTER DATABASE` 只有 `RENAME`（`internal/msql/parser/parser.go`
-的 `parseAlter`），`schema --plan` 的 `ensure` 遇到已存在的库只复用、不回写描述，所以这些字段在**建库
-那一刻焊死**。要改就得先补 `ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`（L2 有界元数据写）——
-2026-09-21 已列为候选，见[引擎拥有形状](../planning/engine-owned-shape.md)。
+**曾经的缺口（挡住修改的不是措辞，是语言）**：`ALTER DATABASE` 只有 `RENAME`
+（`internal/msql/parser/parser.go` 的 `parseAlter`），所以这些字段在**建库那一刻焊死**。2026-09-21
+把它列为候选（[引擎拥有形状](../planning/engine-owned-shape.md)），**2026-09-25 已落地**：
+`ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE` 是一条 L2 有界元数据写，`SET` 只写它点名的字段，
+`ANTI SCOPE ''` 撤销一条边界声明。契约见 [MSQL Catalog DDL v1](../query/catalog-ddl.md)；
+Skill 侧同步写清三个字段各管什么（`references/write.md`）。
+
+**`ensure` 仍然只复用、不回写描述**——这是有意的，不是遗留：让每次写入携带的 ensure 计划都能改写库
+声明，等于把"越具体越容易烂"反过来变成"每次写入都可能漂移"。改描述是**一次显式动作**（先读、比较、
+再写），不是 ensure 的副作用。
 
 ## 未决问题
 

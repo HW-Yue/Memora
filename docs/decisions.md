@@ -2165,3 +2165,36 @@ pending**（入队就会变成"记下没落库的写"）；事务之外才自行
 
 **待定**：`ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE` 这条 amend 路径仍待定——
 见[引擎拥有形状](./planning/engine-owned-shape.md)。
+
+## 2026-09-25 · 库描述可修订：补 `ALTER DATABASE … SET`
+
+对象：库级 `purpose`/`scope`/`anti_scope` 的 amend 路径（上一条留下的待定项）。
+
+状态：**已实现**。`ALTER DATABASE <name> SET PURPOSE '…' SCOPE '…' ANTI SCOPE '…'`，字段顺序不限、
+每个最多一次、至少一个。
+
+**结论**：
+
+1. **补语句，不冻结。** 2026-09-21 的两个候选（补 amend / 冻结，要改就新建库）取前者。冻结的代价是
+   每次改描述都要迁库，而这三个字段本来就归 agent 写（[引擎拥有形状](./planning/engine-owned-shape.md)）：
+   给一个对象写入权却不给修订权，等于逼它一次写对——而"一次写对"正是 `scope` 写成
+   「现行原则、规格、能力、风险与工作方向」这类名词列表的原因。
+2. **`SET` 是部分写**：只写点名的字段，未点名的保持原值。语句点名的就是全部指令。
+3. **`ANTI SCOPE ''` 清空**，`PURPOSE`/`SCOPE` 必须非空。一个装不进任何东西的库不是合法结果；
+   `anti_scope` 是放置提示不是锁（上一条），所以撤销一条边界声明必须是可表达的。
+4. **字面量，不给绑定参数**：与 `CREATE DATABASE` 一致——整个 Catalog DDL 家族都是字面量，
+   参数化的是 Row 与 Route 的写入路径。要参数化就得动 AST 类型和 catalog 绑定，收益不抵这次的范围。
+5. **不加 `expected_schema_version`**（顾问建议加，弃选）：本项目的版本前置条件只存在于 Row 与
+   Table 形状（`PLAN/APPLY SCHEMA CHANGE`），库级 DDL 从来没有——`ALTER DATABASE … RENAME` 同样是
+   一次不带回滚的库级改动，而且比改描述更重。给描述加、给改名不加，是不一致的。防"改错一版"的
+   手段放在流程侧：**改之前先 `DESCRIBE DATABASE`，把旧值念出来**（Skill 已这么教）。
+6. **`ensure` 仍不回写描述**（有意保留）：让每次写入的 ensure 都能改库声明，会把"写得越具体越容易烂"
+   变成"每次写入都可能漂移"。改描述是一次显式动作。
+
+**弃选**：冻结、要改就新建库；`SET` 走绑定参数；给这条语句加 `expected_schema_version` /
+approval；让 `schema --plan` 的 ensure 在发现描述不一致时自动回写。
+
+**联动**：Skill 的 `references/write.md` 写清三个字段各管什么（purpose 说"是什么"、scope 说"收哪些"、
+anti_scope 对邻库画界），并把 amend 写成"先读、比较、再写"的动作；契约进
+[MSQL Catalog DDL v1](./query/catalog-ddl.md)。
+

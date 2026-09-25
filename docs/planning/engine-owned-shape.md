@@ -16,7 +16,8 @@ role，`CREATE TABLE` / `ADD COLUMN` / `PLAN SCHEMA CHANGE` 三条路径都拒�
 | **引擎** | **每张表的列集合**：`title` + `summary`（TEXT 上限一次定死），加系统列、每行 `links`、只读 `route_paths` |
 
 agent **不得定义、不得新增列**；也**不设**引擎级全局附加字段。表和列的 stable ID、类型、上限、
-角色、显示选择全部由引擎产生。
+角色、显示选择全部由引擎产生。**库描述的 amend 路径已落地**（2026-09-25，
+`ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`，见下文「三个描述字段是什么」）。
 
 ## 本方案不触及语义索引
 
@@ -49,10 +50,10 @@ agent **不得定义、不得新增列**；也**不设**引擎级全局附加字
 **已定（2026-09-21，用户）**：库级 `purpose`/`scope`/`anti_scope` **保留给 agent 写**，建库时写一次，
 之后每次写入都作为 agent 的放置参考。
 
-**缺口**：`ALTER DATABASE` 只有 `RENAME`（`internal/msql/parser/parser.go` 的 `ADD COLUMN`/`RENAME`），
-**没有 amend 路径**。一个「每次写入都要参考」的字段改不动，`scope` 里那句「当前有效」迟早烂掉。
-候选：加 `ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`（有界的元数据写，走 L2）；或冻结、要改就
-新建库。待定。
+**曾经的缺口（已关闭，2026-09-25）**：`ALTER DATABASE` 曾只有 `RENAME`，**没有 amend 路径**——
+一个「每次写入都要参考」的字段改不动，`scope` 里那句「当前有效」迟早烂掉。两个候选（补 amend 语句
+/ 冻结，要改就新建库）里选了前者：`ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE` 已实现，是一条
+L2 有界元数据写，契约见 [MSQL Catalog DDL v1](../query/catalog-ddl.md)。
 
 ## `row_semantics` 是什么，以及建议
 
@@ -104,7 +105,6 @@ row_id → 点查），没有按字段过滤，`status`/`when` 填了也没人�
 
 - `row_semantics`：撤掉、引擎写常数、还是原样留给 agent 写。
 - 表级 `scope`/`anti_scope`：跟库级一样保留，还是表只留 `purpose`。
-- 库级描述的 **amend 路径**：加 `ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE`，还是冻结。
 - 人（L2）能否例外扩展形状，还是连人也不能。
 - 现存实例先迁移，还是新旧形状并行一段时间。
 - Skill 的写入流程要不要显式加一句「先读目标库的 purpose/scope/anti_scope 再决定放哪」

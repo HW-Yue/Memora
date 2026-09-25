@@ -17,6 +17,9 @@ func TestParseCatalogStatementsGolden(t *testing.T) {
 		"SHOW COLUMNS FROM work.notes COMPACT",
 		"DESCRIBE COLUMN work.notes.title COMPACT",
 		"ALTER DATABASE work RENAME TO projects",
+		"ALTER DATABASE projects SET PURPOSE 'Project knowledge' SCOPE 'Active projects' ANTI SCOPE 'Personal journals'",
+		"ALTER DATABASE projects SET SCOPE 'Active projects'",
+		"ALTER DATABASE projects SET ANTI SCOPE ''",
 		"ALTER TABLE projects.notes RENAME TO knowledge",
 		"ALTER TABLE projects.knowledge RENAME COLUMN title TO heading",
 		"ALTER TABLE projects.knowledge ADD COLUMN status TEXT NULL PURPOSE 'Workflow state'",
@@ -51,6 +54,11 @@ func TestParseCatalogMetadataReportsPreciseErrors(t *testing.T) {
 		"CREATE DATABASE work PURPOSE 'work' PURPOSE 'duplicate' SCOPE 'projects'",
 		"CREATE TABLE work.notes PURPOSE 'notes' ROW 'missing semantics' (body TEXT PURPOSE 'body')",
 		"ALTER TABLE work.notes RENAME COLUMN title heading",
+		"ALTER DATABASE work SET",
+		"ALTER DATABASE work SET PURPOSE 'work' PURPOSE 'duplicate'",
+		"ALTER DATABASE work SET ANTI 'personal'",
+		"ALTER DATABASE work SET PURPOSE 7",
+		"ALTER DATABASE work SET ROW SEMANTICS 'one row'",
 	} {
 		if _, err := Parse(source); err == nil {
 			t.Fatalf("Parse(%q) succeeded", source)

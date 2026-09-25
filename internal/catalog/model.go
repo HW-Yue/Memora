@@ -15,6 +15,18 @@ type DatabaseDefinition struct {
 	AntiScope string `json:"anti_scope,omitempty"`
 }
 
+// DatabaseDescription is a partial amendment to a Database's three description
+// fields — the ones an agent reads before every write to decide where knowledge
+// belongs. A nil field is left as it is; a non-nil field is written as given,
+// which makes a pointer to the empty string the way ANTI SCOPE is cleared. The
+// two required fields cannot be emptied: a Database with no purpose or scope is
+// one nothing can be placed in.
+type DatabaseDescription struct {
+	Purpose   *string `json:"purpose,omitempty"`
+	Scope     *string `json:"scope,omitempty"`
+	AntiScope *string `json:"anti_scope,omitempty"`
+}
+
 type TableDefinition struct {
 	Name         string             `json:"name"`
 	Purpose      string             `json:"purpose"`

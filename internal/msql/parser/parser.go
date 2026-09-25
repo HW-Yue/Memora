@@ -843,10 +843,73 @@ func (parser *parser) parseAlter() (ast.Statement, error) {
 		}
 		alter.Action = "RENAME"
 		alter.NewName = &newName
+	case alter.Object == "DATABASE" && parser.matchWord("SET"):
+		description, err := parser.parseDatabaseDescription()
+		if err != nil {
+			return ast.Statement{}, err
+		}
+		alter.Action = "SET_DESCRIPTION"
+		alter.Purpose = description.purpose
+		alter.Scope = description.scope
+		alter.AntiScope = description.antiScope
 	default:
 		return ast.Statement{}, parser.unexpected("ADD COLUMN or RENAME")
 	}
 	return ast.Statement{Kind: "ALTER", Alter: alter}, nil
+}
+
+type databaseDescription struct {
+	purpose   *string
+	scope     *string
+	antiScope *string
+}
+
+// parseDatabaseDescription reads the `SET` clause of an ALTER DATABASE: the same
+// three fields CREATE DATABASE declares, each at most once and at least one
+// required. Presence is the instruction — a field the statement did not name
+// stays nil and the store leaves its value alone — so `ANTI SCOPE ”` is how a
+// claimed boundary is dropped.
+func (parser *parser) parseDatabaseDescription() (databaseDescription, error) {
+	var description databaseDescription
+	seen := make(map[string]bool)
+	for {
+		var option string
+		switch {
+		case parser.checkWord("PURPOSE"):
+			option = "PURPOSE"
+		case parser.checkWord("SCOPE"):
+			option = "SCOPE"
+		case parser.checkWord("ANTI"):
+			option = "ANTI_SCOPE"
+		default:
+			if len(seen) == 0 {
+				return databaseDescription{}, parser.unexpected("PURPOSE, SCOPE or ANTI SCOPE")
+			}
+			return description, nil
+		}
+		optionToken := parser.advance()
+		if seen[option] {
+			return databaseDescription{}, parser.errorAt(optionToken, option+" only once")
+		}
+		seen[option] = true
+		if option == "ANTI_SCOPE" {
+			if _, err := parser.expectWord("SCOPE"); err != nil {
+				return databaseDescription{}, err
+			}
+		}
+		value, err := parser.expectKind(lexer.KindString, "string literal")
+		if err != nil {
+			return databaseDescription{}, err
+		}
+		switch option {
+		case "PURPOSE":
+			description.purpose = &value.Value
+		case "SCOPE":
+			description.scope = &value.Value
+		case "ANTI_SCOPE":
+			description.antiScope = &value.Value
+		}
+	}
 }
 
 func (parser *parser) parseAlterConfiguration() (ast.Statement, error) {

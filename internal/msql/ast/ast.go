@@ -110,6 +110,14 @@ type AlterStatement struct {
 	ColumnName *Identifier       `json:"column_name,omitempty"`
 	NewName    *Identifier       `json:"new_name,omitempty"`
 	Column     *ColumnDefinition `json:"column,omitempty"`
+	// The three description fields a Database carries. They are pointers
+	// because ALTER DATABASE ... SET is a partial write: which fields the
+	// statement named is the whole instruction, and a nil field is one it did
+	// not name. A non-nil pointer to the empty string therefore means "clear
+	// this field", which is how ANTI SCOPE is dropped.
+	Purpose   *string `json:"purpose,omitempty"`
+	Scope     *string `json:"scope,omitempty"`
+	AntiScope *string `json:"anti_scope,omitempty"`
 }
 
 type TypeRef struct {
