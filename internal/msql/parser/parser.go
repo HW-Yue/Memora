@@ -867,8 +867,8 @@ type databaseDescription struct {
 // parseDatabaseDescription reads the `SET` clause of an ALTER DATABASE: the same
 // three fields CREATE DATABASE declares, each at most once and at least one
 // required. Presence is the instruction — a field the statement did not name
-// stays nil and the store leaves its value alone — so `ANTI SCOPE ”` is how a
-// claimed boundary is dropped.
+// stays nil and the store leaves its value alone — and naming ANTI SCOPE with an
+// empty literal is how a claimed boundary is dropped.
 func (parser *parser) parseDatabaseDescription() (databaseDescription, error) {
 	var description databaseDescription
 	seen := make(map[string]bool)

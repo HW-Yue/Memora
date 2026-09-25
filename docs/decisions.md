@@ -2199,6 +2199,11 @@ pending**（入队就会变成"记下没落库的写"）；事务之外才自行
 **弃选**：冻结、要改就新建库；`SET` 走绑定参数；给这条语句加 `expected_schema_version` /
 approval；让 `schema --plan` 的 ensure 在发现描述不一致时自动回写。
 
+**待定（下一条候选，未做）**：既然 Catalog DDL 不是 `mutationStatement`，那么给它带一个 `mutation` 块
+现在是**静默丢弃**——宿主以为自己记了 actor/`reason`，其实没有。这条语句本身只是把既有行为暴露出来，
+修法是让不受支持的语句**显式拒绝** `mutation` 块并配回归测试。它影响所有 Catalog DDL，是与本块
+无关的独立变更，故不在本次动它。
+
 **联动**：Skill 的 `references/write.md` 写清三个字段各管什么（purpose 说"是什么"、scope 说"收哪些"、
 anti_scope 对邻库画界），并把 amend 写成"先读、比较、再写"的动作；契约进
 [MSQL Catalog DDL v1](./query/catalog-ddl.md)。
