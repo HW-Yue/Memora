@@ -61,7 +61,7 @@ M1 是工程底座（CI 配置、baseline、回归），一条 SQL 都不用写�
 ### M3 节点生命周期 —— 中，2–3 F
 
 空节点在**任何致空操作**里同事务物理删除并递归向上剪枝；`DELETE ROUTE` 从 Agent 表面
-退役；INSERT 允许隐式建路径。见 [分界](../query/agent-engine-boundary.md)、
+退役；INSERT 允许隐式建路径。见 [分界](../implementation/query/agent-engine-boundary.md)、
 [Route 配套表](../product/route-companion-table.md)。
 
 **判据**：删掉最后一行后树上不留空壳；根变空则 `router_root_id` 置空、`AT ROOT` 返回空页；
@@ -94,7 +94,7 @@ M1 是工程底座（CI 配置、baseline、回归），一条 SQL 都不用写�
 ### M7 召回 + 查询 Skill 编排 —— 大，5–6 F（含选型）
 
 关键词与向量两条召回**只返回语义路径**，事实一律 `SELECT` 回表；四条路在 Skill 层单走或组合，
-jev 不进内核。见 [查询形态](../product/query-model.md) §6、[检索路线](../query/retrieval-routes-jev.md)。
+jev 不进内核。见 [查询形态](../product/query-model.md) §6、[检索路线](../implementation/query/retrieval-routes-jev.md)。
 
 **判据**：召回响应里没有分数、距离、理由、正文；命中路径可直接接回逐层导航；
 关键词与向量的可见性口径写死。

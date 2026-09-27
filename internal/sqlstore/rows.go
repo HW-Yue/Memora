@@ -605,7 +605,7 @@ func (t *tx) restore(ctx context.Context, databaseName, tableName, rowID string,
 	// carries the payload of the revision this restore replaced, so without this
 	// the replaced text keeps matching and the restored text matches nothing —
 	// silently, because a stale payload is not something `brokenRecallUnits`
-	// counts. See docs/development/audit-2026-09-23.md, A3.
+	// counts. See docs/issue/audit-2026-09-23.md, A3.
 	if err := t.syncRecallUnit(ctx, table, value); err != nil {
 		return row.Row{}, err
 	}

@@ -220,7 +220,7 @@ func TestSkillSurfaceMatchesLiveCLI(t *testing.T) {
 		"adapters/codex/.codex/rules/memora.rules",
 		"adapters/claude-code/.claude/skills/memora/SKILL.md",
 		"scripts/prototype_smoke.py",
-		"docs/development/macos-launch-agent-v1.md",
+		"docs/implementation/surfaces/macos-launch-agent-v1.md",
 		"internal/adminui/dist/index.html",
 		"internal/adminui/dist/assets/app.js",
 		"internal/adminui/dist/assets/catalog.js",

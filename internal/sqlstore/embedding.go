@@ -96,7 +96,7 @@ func (t *tx) acceptVector(ctx context.Context, databaseName string, record Vecto
 	// never received: `SHOW PENDING VECTORS` skipped the Row and the caller was
 	// told its vector had landed. This order leaves the unit not-ready, which is
 	// the truth, so the host's next drain picks it up again.
-	// See docs/development/audit-2026-09-23.md, A2. A crash between the two
+	// See docs/issue/audit-2026-09-23.md, A2. A crash between the two
 	// statements leaves an index row nothing claims, which the next acceptance for
 	// that unit overwrites (`storeVector` deletes before it inserts).
 	if err := t.storeVector(ctx, database.ID, unit.tableID, record.UnitNo, encoded); err != nil {

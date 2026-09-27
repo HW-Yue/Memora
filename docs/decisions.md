@@ -191,7 +191,7 @@ Feature 本身仍然用题目、分支仍然用 `feature/<short-name>`。
 **弃选**：把 `CREATE ROUTE` 也收进引擎（让 Agent 只写行、路径由引擎从内容猜）——那是让
 引擎猜语义，违反"引擎不替 Agent 选叶子、不起名字"。
 
-**落盘**：[Agent 与引擎的分界](./query/agent-engine-boundary.md)。
+**落盘**：[Agent 与引擎的分界](./implementation/query/agent-engine-boundary.md)。
 
 ## 2026-09-21 · 空分支清理：所有让它变空的操作都做
 
@@ -216,7 +216,7 @@ Feature 本身仍然用题目、分支仍然用 `feature/<short-name>`。
 
 **落盘**：已修订 [Route 配套表](./product/route-companion-table.md)「重构与废弃节点」、
 [行删除](./product/row-delete-archive.md) 第 4 步、[行生命周期](./product/row-lifecycle-successor.md)
-的拆分叶子例外、[Agent 与引擎的分界](./query/agent-engine-boundary.md)。
+的拆分叶子例外、[Agent 与引擎的分界](./implementation/query/agent-engine-boundary.md)。
 
 ## 2026-09-21 · history 指针写在 history 表；与 successor_ids 是同一条边的两面
 
@@ -589,7 +589,7 @@ schema 写了表**（实例里多出 `mem_postings`/`mem_vectors`/`mem_vector_it
 （heading 里纯文本一次、字段列表里 Markdown 一次），直接违反「文档只存在一份」。`row_semantics`
 写成「一行是…」本身没错，它是定义；错的是把它摆在正文位。
 
-**弃选**：不为好看去改 `row_semantics` 的措辞约定（`docs/query/catalog-ddl.md` 的示例继续用
+**弃选**：不为好看去改 `row_semantics` 的措辞约定（`docs/implementation/query/catalog-ddl.md` 的示例继续用
 「一行是…」）；不把 `row_semantics` 放进 Row 页属性区；不在卡片上并列两个语义字段。
 
 **代价与待定**：卡片不再提示行的粒度，信息量压到 `purpose` 的写作质量上（待定：是否回头校
@@ -603,7 +603,7 @@ sha256 与 size，`bundle_test.go` 断言——改 UI 必须同步 dist 资源�
 **开做前的判断（已核对）**：方向无偏差，最大风险是**没有 summary 列的表**——`row-detail/v1`
 允许 `display.summary_column` 为空，`routes.js` 有兜底文案而 `rows.js` 没有；改造后这类表的
 正中主块会空白。所以**先写兜底，再动渲染**，并且每改一次 JS 就同步一次 bundle 哈希与测试。
-落地顺序与坑见 [Admin 显示槽位](./planning/admin-display-slots.md)。
+落地顺序与坑见 [Admin 显示槽位](./implementation/design/admin-display-slots.md)。
 
 ## 2026-09-21 · 引擎拥有形状，agent 只给位置与正文（讨论稿）
 
@@ -732,7 +732,7 @@ OR embedding_dimensions <> 库的维度`（`internal/sqlstore/embedding.go` 的 
 排干循环重跑。
 
 **顺手发现的小错**：`internal/cli/embedding.go` 注释写「One request, one transaction」，
-但多语句 request **不自动开事务**（`docs/query/msql-batch-transactions.md`），批里的
+但多语句 request **不自动开事务**（`docs/implementation/query/msql-batch-transactions.md`），批里的
 `ACCEPT VECTOR` 是**逐条 autocommit**——失败粒度是「一条坏单元只失败它自己」，对排干更有利，
 注释该改。
 
@@ -755,7 +755,7 @@ OR embedding_dimensions <> 库的维度`（`internal/sqlstore/embedding.go` 的 
 宿主的第一条 `ACCEPT` 能把错误身份钉死）。**缓解**：`mem_databases` 加显式中间态 → 期间
 `RECALL … NEAREST` 拒绝、`SHOW PENDING VECTORS` 带目标身份、第一条 `ACCEPT` 成功即退出、`doctor` 报。
 
-全稿见[向量 rekey](./planning/vector-rekey.md)。**未授权开工。**
+全稿见[向量 rekey](./implementation/design/vector-rekey.md)。**未授权开工。**
 **有界性（用户已定，2026-09-21）**：选 **(b) 两阶段有界**，且合并成**一条可重复语句**
 `REKEY VECTOR IDENTITY IN DATABASE :db LIMIT :n [MODEL :m DIMENSIONS :d]`（与 `REPAIR VECTOR
 INDEX` 同族）：第一次调用标记中间态 + drop 派生层 + 清至多 `LIMIT` 个单元，后续调用继续清字节，
@@ -900,7 +900,7 @@ Database（默认全部）走**关键词召回**，跨库**交错合并**取前 
 
 **已知改动面**：`recall_read.go` 的关键词排序、`archive.go` 的 `recallUnion`/`mergeRecallRows`、
 `TestKeywordRecallScopeAndOrder`（现在钉死"按路径有序"）必须重写、保留"字段里不得出现
-score/rank"的断言并补"顺序变、字段不变"、`docs/query/msql.md` 与 ADR-0012 的表述要改、新增一条
+score/rank"的断言并补"顺序变、字段不变"、`docs/implementation/query/msql.md` 与 ADR-0012 的表述要改、新增一条
 ADR 把「名次内用、不外露」写死。Admin 搜索页落地后改用引擎的融合顺序。
 
 **最大风险**：契约腐蚀——A 落地后「引擎内部已经有分数了」会成为下一次要求外露的论据。
@@ -909,7 +909,7 @@ ADR 把「名次内用、不外露」写死。Admin 搜索页落地后改用引�
 用 `unit_no`，且**从不外露**）；关键词臂**今天没有任何分数**——它 `ORDER BY u.unit_no`，是插入序。
 所以 A 里「关键词改用 BM25」不是"把已有的分数拿出来用"，而是**新引入一个相关性序**，只喂融合。
 
-全稿见 [召回融合](./planning/recall-rrf.md)。**未授权开工。**
+全稿见 [召回融合](./implementation/design/recall-rrf.md)。**未授权开工。**
 
 ## 2026-09-21 · RRF 已实现（`feature/recall-rrf`，`884c8f6`）
 
@@ -917,13 +917,13 @@ ADR 把「名次内用、不外露」写死。Admin 搜索页落地后改用引�
 去掉尾部按路径排序）；向量臂去掉尾部按路径排序（单臂第一条现在是真正最近的）；`recallUnion`
 换成 `fuseRecallRows`（RRF `k=60` + 表名/路径字典序做平分回落 + `LIMIT` 截断，`Truncated` 如实
 表示"融合后还有位置被截掉"）；规范升格为 [ADR-0013](./decisions/0013-recall-fusion-by-rank.md)，
-ADR-0012 的表述改为「名次可内用、不可外露」，`docs/query/msql.md` 与检索四条路文档同步，
+ADR-0012 的表述改为「名次可内用、不可外露」，`docs/implementation/query/msql.md` 与检索四条路文档同步，
 Skill 的召回段也改成"按名次融合、别把顺序当置信度"（两个 adapter 副本与 manifest 已同步）。
 
 **证据**：新增 `internal/sqlstore/recall_fusion_test.go` 四个测试（相关性序 vs 插入序、距离序
 vs 路径序、两路都命中压过单路第一且三次运行一致、融合后字段集合不变）；`TestKeywordRecallScopeAndOrder`
 的说法从"按路径有序"改为"平分确定性"；`./scripts/ci.sh` 全绿；真机对照见
-[召回融合计划](./planning/recall-rrf.md)（标题即查询词的两篇升到最前、只捎带提到的那篇落到最后）。
+[召回融合计划](./implementation/design/recall-rrf.md)（标题即查询词的两篇升到最前、只捎带提到的那篇落到最后）。
 
 **已知边界**：两臂候选深度今天等于 `LIMIT`（向量内部先探测 `max(2n, n+8)`），加深属于实现细节；
 Admin 搜索页仍是关键词单臂 + 跨库交错，第二阶段接向量臂后库内顺序直接用引擎融合结果。
@@ -1073,7 +1073,7 @@ provider 失败与库未就绪分开 / 入参校验）、`internal/adminui` 的 
 **切换判据（写死）**：bigram 精度真正成为瓶颈时再换——正文上万行、误召可测量；切分函数集中在
 一处，"换词典分词 + 重建一次索引"的成本本来就低。
 
-全稿见 [中文与短词的召回](./planning/recall-chinese-queries.md)。**未授权开工。**
+全稿见 [中文与短词的召回](./implementation/design/recall-chinese-queries.md)。**未授权开工。**
 
 ## 2026-09-21 · 二字滑窗索引：OR + BM25 覆盖率，不做 AND，不加连续性过滤
 
@@ -1197,7 +1197,7 @@ Row）仍然报 `false`。
 `isCanvasControl`），加回去断言确实红；真机真实输入：改前"按下 + 两次没按键的移动"推相机
 100px/120px，改后纹丝不动；空白处拖拽改前不动、改后能动；19 篇文档全开，打开一篇 16–26ms、
 收起 4–6ms、最差帧 38ms、>50ms 的帧 0 个。落地记录见
-[Admin 语义画布的手势](./planning/admin-canvas-gestures.md)。
+[Admin 语义画布的手势](./implementation/design/admin-canvas-gestures.md)。
 
 ## 2026-09-22 · 写入路径：计划要能表达 `route_path`，而"顺带建位置"仍算 L1
 
@@ -1271,7 +1271,7 @@ ADR-0009 0.2791、ADR-0010 0.2783，中间还夹着 0.30 的原醛、0.31 的阿
 代价说明。
 
 **触发（真机）**：用户让 agent「用 jev 检索一下我的实习经历」。实测那次：**第一次 jev 调用之前有 14 次
-工具调用**（读三份文档、grep 仓库 `docs/query/`、ls 脚本目录、读脚本源码、doctor、atlas、两次
+工具调用**（读三份文档、grep 仓库 `docs/implementation/query/`、ls 脚本目录、读脚本源码、doctor、atlas、两次
 `SHOW ROUTES`、查环境变量…），两次 jev 决策（表层 4 选 1 → `experiences` 1.0；`/实习` 层 2 选 1 →
 `OPPO` 1.0）是整个会话最慢的调用（2.05 s / 2.00 s，其余 14–60 ms），答案最后还是靠 `SELECT` 回表。
 用户的反应是"路径怎么这么离谱""jev 不应该是非常快的吗"。
@@ -1438,7 +1438,7 @@ QUERY_BUDGETS SET` 拒收 `ROUTE_CHILDREN`，两处都指名说明）、`interna
 （整层输出，去掉 page）、`internal/router/page.go` 的 `CompleteNodes`（整层 + snapshot，装不下即
 报错而不是给页）、`internal/sqlstore` 的两个列表方法去掉 cursor/limit、`nativeconfig`（四条预算 +
 retired 识别字段）、`internal/adminui/dist/assets/routes.js`（cursor 循环塌成一次调用 + 重新冻结
-bundle）、Skill/契约示例、`docs/query/route-read-v1.md` 等。
+bundle）、Skill/契约示例、`docs/implementation/query/route-read-v1.md` 等。
 
 **证据**：`internal/msql/parser/route_whole_layer_test.go`（四种带 `LIMIT`/`CURSOR` 的写法必须被拒且
 消息含 "whole layer"；两种不带参数的写法必须解析且 `Limit`/`Cursor` 为空）、
@@ -1471,7 +1471,7 @@ bundle）、Skill/契约示例、`docs/query/route-read-v1.md` 等。
    上限 **≤3 库、≤25 option**，超了退回逐库问。
 7. **政策改了**：原写"两个以上库都可能覆盖就停下报候选，不要自己挑"。改为"授权边界一个字不动；
    库级返回多个是**合法答案**；在授权内由 jev 选并留证；只有 `empty`/`undecided` 才停下报候选"。
-   `discover-and-read.md` 与 `docs/query/jev-tree-v1.md` 同步。
+   `discover-and-read.md` 与 `docs/implementation/query/jev-tree-v1.md` 同步。
 8. **写路径不接（用户 2026-09-22 决定，已成定论）**：读可以对集合扇出（读错多查一张表），
    **写必须塌缩成唯一落点**；将来若要接，形状是 `|set| == 1`（0 个/≥2 个/floor 胜出一律停下问人，
    不做 top1 补救）且**库层要人确认**——写错表大致可追回，**写错库是把个人事实漏进仓库知识库，
@@ -1532,7 +1532,7 @@ jev 5962 ms。**整趟快 1.66×（省 2.5 s，40%）**；每次决策：复用�
 量不出速度**；速度全部来自远端 TLS 握手与跨境 RTT。
 
 **证据**：`internal/devgate/keepalive_test.go` + `internal/devgate/testdata/jev/keepalive_check.py`；
-`skills/memora/references/jev-tree.md` 的"Reading a run"与 `docs/query/jev-tree-v1.md` 的实测数字。
+`skills/memora/references/jev-tree.md` 的"Reading a run"与 `docs/implementation/query/jev-tree-v1.md` 的实测数字。
 ## 2026-09-23 · Admin 画布的布局引擎：compact-box 换成 dagre（修订 2026-09-22 的判词）
 
 **对象**：`/routes/<db>/<table>` 语义画布的树布局由谁承担。2026-09-22 的判词里写的是
@@ -1662,7 +1662,7 @@ agent，一个自己逐层走树、一个把导航交给 `jev_tree.py`，各带�
 如实说"没走完"。显式 `table=` 与"一个要求一个主题"减少的是**待展开分支数**，不是这个 bug 的修法。
 
 **状态**：修法已定，代码未动，等开工。涉及 `jev_tree.py`、`references/jev-tree.md`、
-`docs/query/jev-tree-v1.md` 与 devgate 的录像 fixture。
+`docs/implementation/query/jev-tree-v1.md` 与 devgate 的录像 fixture。
 
 ## 2026-09-22 · 语义树的标签质量是可测量的检索损伤（用户看不懂自己的树）
 
@@ -1709,9 +1709,9 @@ host-computed, pending is derived, the lock has no rekey`（记录的是"这条�
 
 用户记得的这条规则不是新要求，**现行规范里三处都写了**：
 
-- `docs/query/implicit-route-path-v1.md`：每段 `name`/`kind`/`purpose` **都必填**；
-- `docs/query/jev-tree-v1.md`：每级"把候选的 `name` + `purpose` 交给 `scripts/jev_select.py`"；
-- `docs/query/retrieval-routes-jev.md`：喂给 jev 的 option 集剥掉 ID，**只留 name 与 purpose**。
+- `docs/implementation/query/implicit-route-path-v1.md`：每段 `name`/`kind`/`purpose` **都必填**；
+- `docs/implementation/query/jev-tree-v1.md`：每级"把候选的 `name` + `purpose` 交给 `scripts/jev_select.py`"；
+- `docs/implementation/query/retrieval-routes-jev.md`：喂给 jev 的 option 集剥掉 ID，**只留 name 与 purpose**。
 
 代码也确实这么接的：`choose_layer` 取 `(name, purpose)`，`decide` 把 `{name: purpose or name}`
 交给 `build_set_payload`。所以问题**不在规则、也不在管道**——在于"必填"被**名字复读**满足了：
@@ -1793,7 +1793,7 @@ jev 判"，读取端不该有自己的一套宽度上限。查证成立：
 分支（`/运行与宿主`）没走、`incomplete: true`。**代价是噪声**（缺口那问 31 个真落点）——有意的取舍：
 jev 判不出来时宁可整层给出来，也不按顺序赌。
 
-**修法改为**（见 `docs/planning/whole-layer-read.md`）：
+**修法改为**（见 `docs/implementation/design/whole-layer-read.md`）：
 1. 删掉读取端宽度上限；
 2. 没走完的分支**不许写进 `landings`**——`budget: jev calls` / `wall clock` / `depth` 进单独的
    "停在这里"字段并令 `incomplete: true`（它们现在混在 `landings` 里，只靠 `termination` 区分，
@@ -1842,7 +1842,7 @@ jev 判不出来时宁可整层给出来，也不按顺序赌。
    `leaf_route_id`（因为 `OPEN ROUTE :leaf_id` 收的是 id），事实一律由 agent 自己读——
    这也正是"落点看起来像答案"这个老问题的根源：走树半边替人读了。
 
-**要改的面**：`docs/query/jev-tree-v1.md` 的落点字段、`skills/memora/references/jev-tree.md`、
+**要改的面**：`docs/implementation/query/jev-tree-v1.md` 的落点字段、`skills/memora/references/jev-tree.md`、
 devgate 的录像 fixture 与 `jev_tree_test.go` 的断言（现断言落点带 `row_id`）。
 
 ## 2026-09-22 · 更正：落点要给"路径 + 行号"两样，而且回表还缺表名
@@ -1859,7 +1859,7 @@ devgate 的录像 fixture 与 `jev_tree_test.go` 的断言（现断言落点带 
 
 所以 `OPEN ROUTE`（每叶子一条，宽意图那趟 50 条语句里占 35 条）是**必要的**，因为 `SHOW ROUTES`
 返回的列里没有 `row_id`；要省的是**进程往返**（按层把该层所有叶子的 `OPEN ROUTE` 合成一条请求），
-不是省掉行号。规范 `docs/query/jev-tree-v1.md` 本来就写着"每条落点是一条语义路径 + 它挂的 Row +
+不是省掉行号。规范 `docs/implementation/query/jev-tree-v1.md` 本来就写着"每条落点是一条语义路径 + 它挂的 Row +
 revision"——**规范是对的，是我的计划写错了。**
 
 **顺带查出真缺口**：现在的落点只有 `path` / `leaf_route_id` / `row_id` / `revision`，**没有
@@ -1877,7 +1877,7 @@ revision"——**规范是对的，是我的计划写错了。**
 
 | Claude 的钉 | 核实结果 |
 |---|---|
-| `row_id` 必须是稳定主键，不能是 SQLite 隐式 rowid | **成立**：`docs/query/msql.md` 已写明"Row 必须能按稳定 `row_id` 使用 SELECT/UPDATE/DELETE 精确操作"；行是归档不是物理删除，标识不复用 |
+| `row_id` 必须是稳定主键，不能是 SQLite 隐式 rowid | **成立**：`docs/implementation/query/msql.md` 已写明"Row 必须能按稳定 `row_id` 使用 SELECT/UPDATE/DELETE 精确操作"；行是归档不是物理删除，标识不复用 |
 | 落点里的 `revision` 是"表行版本"还是"树节点版本"要说清 | **是表行版本**，取自 `OPEN ROUTE` 的 locator；树节点另有自己的 revision。**现在没写，这是真缺口** |
 | "落点只有叶子"的前提是"只有叶子绑行"由写路径强制 | **成立**：`internal/sqlstore/invariant.go` 定下不变量，doctor 用 `orphan_rows`/`multi_leaf_rows`/`mismatched_mounts` 计数，注释原话 "say exactly what **the write path refuses**" |
 
@@ -2074,7 +2074,7 @@ asset 带上了新键集**。
 
 ## 2026-09-23 · 协议与审计：请求也要自证协议；审计随事务存亡
 
-审计报告（`docs/development/audit-2026-09-23.md`）的 **A5** 与 **A4** 已修（各自独立分支、RED→GREEN、
+审计报告（`docs/issue/audit-2026-09-23.md`）的 **A5** 与 **A4** 已修（各自独立分支、RED→GREEN、
 `./scripts/ci.sh` 全绿、`--ff-only` 合入）：
 
 ### A5 · 引擎协议改成**双向**，服务端执行前校验
@@ -2114,7 +2114,7 @@ pending**（入队就会变成"记下没落库的写"）；事务之外才自行
 
 状态：**用户拍板，成定论**。修订本文件 2026-09-22「jev 走树成为第三条定位路」第 8 条里
 "库层要人确认"与"0 个/≥2 个一律停下问人"两句。全稿见
-[写入落点自主](./planning/autonomous-write.md)。
+[写入落点自主](./implementation/design/autonomous-write.md)。
 
 **结论**：
 
@@ -2151,7 +2151,7 @@ pending**（入队就会变成"记下没落库的写"）；事务之外才自行
 
 1. **不升成引擎不变量。** 命中与否是**主观业务判断**，引擎没有判据——这正是本项目自己的边界：
    "引擎校验结构和 revision，**不替 AI 判断业务含义**"
-   （[自描述 Data Dictionary](./data/self-describing-data-dictionary.md)）。机械匹配（子串、关键词）
+   （[自描述 Data Dictionary](./implementation/data/self-describing-data-dictionary.md)）。机械匹配（子串、关键词）
    只会把"提到日记"和"是日记"混为一谈，假阳假阴都拦不住真正的错放。
 2. `anti_scope` 的唯一读者是 **agent**；引擎只存、只显示。它是放置提示，不是锁。
 3. **写不写看时机**：只有当**相邻的另一个库/表可能捕获同一批内容**时才值得写；一个自成一体的库
@@ -2165,3 +2165,36 @@ pending**（入队就会变成"记下没落库的写"）；事务之外才自行
 
 **待定**：`ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE` 这条 amend 路径仍待定——
 见[引擎拥有形状](./planning/engine-owned-shape.md)。
+
+## 2026-09-26 · 仓库与文档的主线收口：`main` 归位、分支清账、docs 三分
+
+对象：会话散落在各分支、每个都报"发现问题"，主线和报告互相找不到对方。用户直接要求整理。
+
+状态：**已执行**（`main` 与 `rewrite/adr0011` 同指主线 tip）。
+
+**结论**：
+
+1. **`main` 就是主线。** 老 `main`（`d2587ae1`）本来就是主线历史的祖先，所以这次是**快进**不是重写：
+   `main` 直接指到 `rewrite/adr0011` 的 tip，远端 `main` 从 `9ab3cc90` 快进到 `9f44ca53`，无需 force。
+   老线另存 `attic/main-pre-rewrite`（本地 + 远端各一份）。`rewrite/adr0011` 保留为同义名字，两边同步。
+2. **分支清账**：本地 408 个分支里 402 个的 tip 已是主线的祖先 → 删掉 400 个（留下 `main`、主线、6 个未合）。
+   5 个八月旧线分支（F180 provider、F203/F204 OCR 门、embedded-agent 文档、evaluation-scorecard、
+   admin-markdown-node）**只在本地、远端没有对应**，没删：删了就真没了。它们的提交并未进过任何远端线。
+3. **docs 按三个问题分三处**：`docs/issue/`（唯一活账，一个未解决问题一个文件 + `README` 状态表）、
+   `docs/implementation/`（现在真的是怎么实现的：`query/`、`data/`、`agent/`、`storage/`、`surfaces/`、
+   做完的规划进 `design/`）、`docs/planning/`（只放没执行完的）。
+   `product/`（方向与契约）、`decisions/`（ADR）、`decisions.md`（运行判断）、`development/`（带日期的证据）、
+   `research/`、`archive/` 保持原位——它们是"账"之外的层，不塞进三分。
+4. **问题从报告里捞出来落了账**：`audit-2026-09-23.md` 移进 `docs/issue/` 当**证据**，
+   未做的 9 条各成一个文件（A6、B1、B2+B3、B5、B6、B7、C1、C2，加一条 `decisions.md` 里"待定"的
+   Catalog DDL `mutation` 块）。已修的 7 条留在状态表里不删行。
+5. **一份指针留在 `docs/planning/whole-layer-read.md`**：正文已移到 `implementation/design/`，
+   但 Skill 的 `jev-tree.md` / `jev_tree.py` 直接引用这个路径，而 Skill 在仓库外还有三处安装位、
+   本次沙箱不允许写——改 Skill 引用要按 AGENTS.md 的六处同步流程单独做。
+
+**理由**：活账和证据分开，"某个日期的一次审查"就不会再被当成长期状态表；分支与文档一起收，
+下次开工不必先考古。
+
+**弃选**：把 402 个已合分支留着"以防万一"（tip 都是主线祖先，只制造视觉噪音）；
+把已修条目从活账里删掉（会重复怀疑同一件事）；把 `product/` 也并进三分（方向与契约不是"实现"也不是"计划"）。
+

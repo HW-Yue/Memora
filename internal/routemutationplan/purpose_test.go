@@ -13,7 +13,7 @@ import (
 // the same rule as CREATE ROUTE: the purpose has to describe what will be kept
 // there, not repeat the name. Reshaping is exactly when those sentences get
 // written, so this is the cheapest moment to refuse a label that says nothing.
-// See docs/planning/route-purpose-contract.md.
+// See docs/implementation/design/route-purpose-contract.md.
 func TestBuildRefusesATargetWhosePurposeRepeatsItsName(t *testing.T) {
 	t.Parallel()
 	_, err := routemutationplan.Build(context.Background(), branchSplitFixture(),

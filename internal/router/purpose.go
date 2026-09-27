@@ -13,7 +13,7 @@ import (
 // satisfies "not empty" and says nothing — and the retrieval path that reads
 // those two fields is then choosing between bare labels, which is measurably
 // worse retrieval, not a matter of taste. See
-// docs/planning/route-purpose-contract.md and docs/decisions.md
+// docs/implementation/design/route-purpose-contract.md and docs/decisions.md
 // 「语义树的标签质量是可测量的检索损伤」.
 //
 // The comparison is folded rather than literal, because a rule compared raw is

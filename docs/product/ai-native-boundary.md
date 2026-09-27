@@ -50,4 +50,4 @@ AI 不能操作 SQLite 页、offset 或数据库文件。
 - [AI-native 产品契约](./ai-native-contract.md)
 - [质量模型与验收](../archive/product/quality-model.md)
 - [AI 自主权与约束](../archive/agent/autonomy.md)
-- [MSQL](../query/msql.md)
+- [MSQL](../implementation/query/msql.md)

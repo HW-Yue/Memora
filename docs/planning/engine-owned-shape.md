@@ -60,7 +60,7 @@ agent **不得定义、不得新增列**；也**不设**引擎级全局附加字
 Binder 强制必填，`row-detail/v1` 契约里也必填。`me` 库四张卡的「一行是…」就是它。
 
 **建议撤掉**：本方案让每张表的行形状统一之后，这句话对每张表都相同，信息量为零。撤掉要动
-`docs/query/catalog-ddl.md`、parser/binder、`catalog.Table`、`row-detail/v1` 契约、Admin bundle
+`docs/implementation/query/catalog-ddl.md`、parser/binder、`catalog.Table`、`row-detail/v1` 契约、Admin bundle
 里的非空断言——是契约级改动，不是文案改动。**替代**：留一个引擎写的常数（代价是读面上多一句
 废话），或彻底移除（读面更干净）。
 
@@ -85,7 +85,7 @@ row_id → 点查），没有按字段过滤，`status`/`when` 填了也没人�
 - `internal/sqlstore/catalog.go` 的列校验 → 形状校验（拒绝 agent 提交的列定义）；
 - MSQL `CREATE TABLE` 的列清单从 **agent 面**退场（人 / L2 是否保留例外，待定）；
 - Skill 的 `Evolve schemas` 与 `Decide where knowledge lives` 两节重写；
-- Admin：形状统一后，[显示槽位](./admin-display-slots.md) 那条改造自然成立。
+- Admin：形状统一后，[显示槽位](../implementation/design/admin-display-slots.md) 那条改造自然成立。
 
 ## 现存实例怎么收
 

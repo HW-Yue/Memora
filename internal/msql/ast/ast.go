@@ -184,7 +184,7 @@ type RenameRouteStatement struct {
 // UpdateRouteStatement carries exactly one amendment. A Route's purpose is an
 // amendable description rather than identity frozen at creation — identity is
 // the route id and the position — so it sits here beside the synopsis and the
-// aliases. See docs/query/route-purpose-contract-v1.md.
+// aliases. See docs/implementation/query/route-purpose-contract-v1.md.
 type UpdateRouteStatement struct {
 	Route    *Expression `json:"route"`
 	Synopsis *Expression `json:"synopsis"`
@@ -198,7 +198,7 @@ type RecallStatement struct {
 	Database *Name `json:"database"`
 	Table    *Name `json:"table,omitempty"`
 	// Query is the lexical arm: the text to match. Vector is the vector arm: the
-	// query embedding, base64 of little-endian float32 (see docs/query/msql.md).
+	// query embedding, base64 of little-endian float32 (see docs/implementation/query/msql.md).
 	// Both name the same intent — where does this sit in the tree — and answer
 	// with the same shape, so they share one statement rather than two.
 	Query  *Expression `json:"query,omitempty"`

@@ -430,7 +430,7 @@ func (t *tx) renameNode(ctx context.Context, routeID, name string, expected uint
 // the segments that are missing, and returns the leaf it ends at. The Agent
 // named every segment and gave its purpose, so completing the path is this
 // write's consequence rather than the engine inventing semantics. The rules are
-// in docs/query/implicit-route-path-v1.md.
+// in docs/implementation/query/implicit-route-path-v1.md.
 //
 // Resolution and creation share one name rule (trimmed, exact, sibling-unique
 // case-insensitively) because createNode enforces it: resolving more strictly

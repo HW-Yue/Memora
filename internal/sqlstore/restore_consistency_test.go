@@ -7,7 +7,7 @@ import (
 )
 
 // RESTORE has to leave the derived layer describing the text it brought back.
-// Found by the internals audit (docs/development/audit-2026-09-23.md, A3).
+// Found by the internals audit (docs/issue/audit-2026-09-23.md, A3).
 
 // RESTORE brings back the text of an earlier revision, so recall has to describe
 // that text afterwards. The unit was left carrying the payload of the revision

@@ -66,7 +66,7 @@ agent 自身的轮次耗时波动远大于两条路的差异，**单次采样不
 ## 一起事故：我重建的二进制没编 FTS5
 
 - **现象**：我两次用**裸 `go build -o ~/.local/bin/memora ./cmd/memora`** 重建，漏了
-  `-tags sqlite_fts5`（`README` 与 `docs/development/testing.md` 都写着"任何 `go build` 都必须带它"）。
+  `-tags sqlite_fts5`（`README` 与 `docs/implementation/surfaces/testing.md` 都写着"任何 `go build` 都必须带它"）。
   结果是真机 daemon 的**关键词召回直接失败**：`RECALL … MATCH` 返回
   `internal_error: query failed`——`scripts/ci.sh` 的注释正好警告这一点："a build without it produces
   a binary where recall silently has no index"。

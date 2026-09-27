@@ -75,7 +75,7 @@ type Row struct {
 	// it: a RowID is mounted on its leaves before the Row itself is written, so
 	// the list is in hand at the moment the Row is encoded. Answering a
 	// write-time-known question with a separate structure is the structure that
-	// can go stale. See docs/storage/leaf-rowid-v1.md §5.
+	// can go stale. See docs/implementation/storage/leaf-rowid-v1.md §5.
 	RouteLeafIDs []string `json:"route_leaf_ids,omitempty"`
 	Links        []Link   `json:"links,omitempty"`
 }

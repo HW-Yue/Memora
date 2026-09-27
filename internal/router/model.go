@@ -21,7 +21,7 @@ type NodeDefinition struct {
 // gives its purpose, and the engine creates it only when it is missing. Both
 // fields are required, and the kind is explicit rather than inferred from the
 // position — the engine invents neither. See
-// docs/query/implicit-route-path-v1.md.
+// docs/implementation/query/implicit-route-path-v1.md.
 type PathSegment struct {
 	Name    string `json:"name"`
 	Kind    Kind   `json:"kind"`
@@ -47,7 +47,7 @@ type Node struct {
 	// what a whole object kind, its validation surface and three classes of
 	// semantic-health problem used to say between them — and a field cannot go
 	// stale against the node it lives on, which is what removes those problems
-	// rather than detecting them. See docs/storage/leaf-rowid-v1.md.
+	// rather than detecting them. See docs/implementation/storage/leaf-rowid-v1.md.
 	RowID string `json:"row_id,omitempty"`
 	// RowRevision is the version of the Row named by RowID — the fact's version,
 	// not this node's. Revision below is the Route's own: it moves when the node

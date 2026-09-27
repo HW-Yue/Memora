@@ -44,7 +44,7 @@ func Build(
 	// included, because an action may legitimately name a retired one — but a
 	// guard list that counted them was one longer than the list it is checked
 	// against, which locked any table that had ever dropped a Column out of every
-	// later change (docs/development/audit-2026-09-23.md, A1).
+	// later change (docs/issue/audit-2026-09-23.md, A1).
 	live := catalog.LiveColumns(table.Columns)
 	guards := make([]ColumnShape, 0, len(live))
 	current := make(map[string]ColumnShape, len(table.Columns))

@@ -1,7 +1,7 @@
 # M7 召回：详细实施计划
 
 状态：**方案**（2026-09-21 出，待授权）。产品形态见
-[查询形态](../product/query-model.md) §6 与[检索路线](../query/retrieval-routes-jev.md)。
+[查询形态](../product/query-model.md) §6 与[检索路线](../implementation/query/retrieval-routes-jev.md)。
 本文件只管**怎么拆、什么顺序、各自验收**；逐项工单仍以[执行计划](./execution-plan.md)为准。
 
 ## 目标与验收
@@ -105,7 +105,7 @@ memora 侧：列出待向量化单元（有界）  →  脚本：读 ~/.zshrc �
   逐段 `route_id` 路径、按表与路径去重后字典序；缺 limit／越界／短于 3 字被拒；
   输出不含任何被禁字段。
 - **F4 · 词法通路 ✓**（2026-09-21）：FTS5 外部内容表，同事务同步（分词器当日为 `trigram`，
-  已被二字滑窗索引取代，见 [中文与短词的召回](./recall-chinese-queries.md)）；
+  已被二字滑窗索引取代，见 [中文与短词的召回](../implementation/design/recall-chinese-queries.md)）；
   中文查询命中 → `OPEN ROUTE` → `SELECT` 回表闭环已实测（含全角折叠、删除后召不回）。
 - **下一件**：F6（vec0）→ F5（向量队列）→ F7（融合闭环）。
 

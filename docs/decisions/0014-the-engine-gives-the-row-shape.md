@@ -40,6 +40,6 @@ Skill 层从 2026-09-21 起就要求每张表固定 `title` + `summary`、不许
 
 ## 关联
 
-- [宪章](../product/ai-native-product-charter.md) · [MSQL Catalog DDL](../query/catalog-ddl.md)
+- [宪章](../product/ai-native-product-charter.md) · [MSQL Catalog DDL](../implementation/query/catalog-ddl.md)
 - [引擎拥有形状](../planning/engine-owned-shape.md)（落地进度）
 - [ADR-0011 一切建表](./0011-pure-storage-engine-tables-everything.md)
