@@ -7,6 +7,7 @@
 | **现在坏了什么 / 还欠什么？** | [`issue/`](./issue/README.md) —— 唯一活账。一个未解决的问题一个文件，`README` 是状态表 |
 | **现在到底是怎么实现的？** | [`implementation/`](./implementation/README.md) —— 现行内核、数据、Agent 面、对外面、已交付设计 |
 | **还要做什么？** | [`planning/`](./planning/README.md) —— 队列与未完成的设计 |
+| **刚咨询完、还没拍板的推论？** | [`plan.md`](./plan.md) —— 过程稿：顾问结论与待定点，成熟后并入上面三处 |
 
 ## 方向与契约（冲突时以它们为准）
 
