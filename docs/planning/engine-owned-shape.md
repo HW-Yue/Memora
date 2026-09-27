@@ -55,6 +55,12 @@ agent **不得定义、不得新增列**；也**不设**引擎级全局附加字
 / 冻结，要改就新建库）里选了前者：`ALTER DATABASE … SET PURPOSE/SCOPE/ANTI SCOPE` 已实现，是一条
 L2 有界元数据写，契约见 [MSQL Catalog DDL v1](../implementation/query/catalog-ddl.md)。
 
+**边界（2026-09-26，用户定）**：**已有库里的任何东西都要允许改**——写入权与修订权成对给，
+但「允许改」是显式动作，不是 ensure 的副作用。按这条核对出来的**剩余缺口是 Table 的
+`purpose` / `row_semantics`**（解析器的 `SET` 只认 Database，结构变更计划只到列一级），
+记为 [P4](../issue/P4-table-purpose-and-row-semantics-are-welded.md)。
+**先定下面「`row_semantics` 是什么」那一条的去留，再实现表级 amend**，否则可能给一个准备撤掉的字段补路径。
+
 ## `row_semantics` 是什么，以及建议
 
 它是建表时声明的**「一行代表什么」**：`CREATE TABLE ... ROW SEMANTICS '一行是一次可独立更新的投递记录'`，
