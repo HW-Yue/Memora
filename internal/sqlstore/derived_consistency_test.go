@@ -10,7 +10,7 @@ import (
 )
 
 // A vector that cannot land must not be hidden from the caller. Found by the
-// internals audit (docs/development/audit-2026-09-23.md, A2).
+// internals audit (docs/issue/audit-2026-09-23.md, A2).
 
 // A vector offered with a write is best effort: the Row is the fact and the
 // vector is an index over it, so a vector that cannot land must not fail the

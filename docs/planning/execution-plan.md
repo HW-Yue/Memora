@@ -34,11 +34,11 @@ SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_change
 ## 规格在哪
 
 - 模块 1：[决策日志](../decisions.md)「落地顺序」；模块 2：[行必须可导航](./row-navigable.md)
-- 模块 3：[Agent 与引擎的分界](../query/agent-engine-boundary.md)、
+- 模块 3：[Agent 与引擎的分界](../implementation/query/agent-engine-boundary.md)、
   [Route 配套表](../product/route-companion-table.md)「重构与废弃节点」
 - 模块 4：[行删除](../product/row-delete-archive.md)；模块 5：[history 谱系](../product/history-lineage.md)
 - 模块 6：[行链接](../product/row-links.md)
-- 模块 7：[查询形态](../product/query-model.md) §6、[检索路线](../query/retrieval-routes-jev.md)
+- 模块 7：[查询形态](../product/query-model.md) §6、[检索路线](../implementation/query/retrieval-routes-jev.md)
 
 产品形态总纲见 [写入](../product/write-model.md) 与 [查询](../product/query-model.md)。
 
@@ -137,7 +137,7 @@ UPDATE「先清空再重挂」的中间态必然短暂为空，提前校验会�
 
 **Feature 1 已经挖出来的一个真问题**：行级 UPDATE 的挂载现在是**并集**（`mergeLeaves`），
 不是替换——`[]` 是空操作、给第二个 leaf 会累加成两个。所以「非 nil 空数组显式清空」
-这句在行级路径上一直不成立（已修正 [MSQL Mutation](../query/msql-mutation.md)）。
+这句在行级路径上一直不成立（已修正 [MSQL Mutation](../implementation/query/msql-mutation.md)）。
 Feature 2 要把并集改成替换，否则 1:1 永远立不住。基线测试
 `TestUpdateMountIsAUnionNotAReplacement` 钉住了现状。
 

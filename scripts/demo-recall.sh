@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build a small semantic tree, embed it with the host's real provider, and let
 # both recall arms answer. This is an opt-in demo, NOT part of the gate: it calls
-# a model API, which ordinary tests must never do (docs/development/testing.md).
+# a model API, which ordinary tests must never do (docs/implementation/surfaces/testing.md).
 #
 # The provider comes from the environment; if it is not exported here, the script
 # reads the assignments out of ${MEMORA_ENV_FILE:-~/.zshrc} without ever printing

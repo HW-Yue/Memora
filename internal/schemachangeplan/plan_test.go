@@ -166,7 +166,7 @@ func (source *fakeRows) ListPage(context.Context, string, string, int) ([]row.Ro
 // Column used to put the plan's guard count one above the live count, so every
 // later schema change on that table failed with `Column guards changed after
 // planning` — and the real library has archived Columns, which made this a
-// permanent dead end rather than a race. See docs/development/audit-2026-09-23.md.
+// permanent dead end rather than a race. See docs/issue/audit-2026-09-23.md.
 func TestAnArchivedColumnDoesNotLockTheTableOutOfLaterChanges(t *testing.T) {
 	t.Parallel()
 	database, table := schemaFixture()

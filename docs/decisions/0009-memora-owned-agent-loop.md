@@ -65,4 +65,4 @@ F180 可直接实现 OpenAI-compatible HTTP Provider，F181 在现有 Memora-own
 
 - [F179 Runtime Spike](../archive/planning/f179-runtime-spike.md)
 - [可选内置 Agent Runtime](../archive/agent/embedded-agent-runtime.md)
-- [Agent MSQL 边界](../agent/agent-msql-dependency-injection.md)
+- [Agent MSQL 边界](../implementation/agent/agent-msql-dependency-injection.md)

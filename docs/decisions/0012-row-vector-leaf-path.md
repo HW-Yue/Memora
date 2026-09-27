@@ -48,8 +48,8 @@ jev 只在 Skill。Row 向量允许，命中只给叶子路径。当前没有向
 
 ## 关联
 
-- [检索路线与内核面](../query/retrieval-routes-jev.md)
-- [jev 作为逐层分支选择器](../query/jev-branch-selection.md)
+- [检索路线与内核面](../implementation/query/retrieval-routes-jev.md)
+- [jev 作为逐层分支选择器](../implementation/query/jev-branch-selection.md)
 - [ADR-0007：Router 权威，候选预测器可组合](./0007-route-predictor-arsenal.md)
 - [行必须可导航](../planning/row-navigable.md)
 - [F221：Evidence 充分性与导航终止](../archive/planning/f221-evidence-sufficiency.md)

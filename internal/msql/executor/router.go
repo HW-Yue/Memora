@@ -327,7 +327,7 @@ func (engine *Engine) showRoutes(
 			// The Row's revision, not this node's. `revision` below is the Route
 			// node's own version — it moves when the node is renamed, re-purposed or
 			// re-mounted. `row_revision` is the fact's version, and it is the one an
-			// UPDATE of that Row must be given. See docs/query/route-read-v1.md.
+			// UPDATE of that Row must be given. See docs/implementation/query/route-read-v1.md.
 			{Name: "row_revision", Type: "INTEGER", Nullable: true},
 			{Name: "revision", Type: "INTEGER"},
 		},
@@ -612,7 +612,7 @@ func routerNodeMutationOutput(node router.Node) Output {
 	// exists, so anything reported here is an existing Route — reached by a
 	// rename, or already in that state before this statement touched it. It is
 	// said, not refused: refusing would lock the writer out of the library that
-	// needs the repair. See docs/planning/route-purpose-contract.md.
+	// needs the repair. See docs/implementation/design/route-purpose-contract.md.
 	if router.PurposeRepeatsName(node.Name, node.Purpose) {
 		output.Warnings = append(output.Warnings, result.Notice{
 			Code: result.CodeRoutePurposeRepeatsName,

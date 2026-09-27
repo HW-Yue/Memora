@@ -11,7 +11,7 @@ import (
 // An INSERT may name a path instead of a leaf id. Every segment carries its own
 // name, kind and purpose, so completing the path is the write's consequence
 // rather than the engine guessing semantics; see
-// docs/query/implicit-route-path-v1.md.
+// docs/implementation/query/implicit-route-path-v1.md.
 
 func segment(name string, kind router.Kind, purpose string) router.PathSegment {
 	return router.PathSegment{Name: name, Kind: kind, Purpose: purpose}

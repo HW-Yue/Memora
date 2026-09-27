@@ -1,60 +1,32 @@
 # Memora 文档入口
 
-当前有效设计只在这里。历史在 [`archive/`](./archive/README.md)，日常不要读。
+先看你问的是哪一个问题：
 
-持久化基座是 **SQLite**。Page、WAL、B+ Tree、自研恢复都不是本项目对象。
+| 问题 | 去哪 |
+|---|---|
+| **现在坏了什么 / 还欠什么？** | [`issue/`](./issue/README.md) —— 唯一活账。一个未解决的问题一个文件，`README` 是状态表 |
+| **现在到底是怎么实现的？** | [`implementation/`](./implementation/README.md) —— 现行内核、数据、Agent 面、对外面、已交付设计 |
+| **还要做什么？** | [`planning/`](./planning/README.md) —— 队列与未完成的设计 |
 
-## 产品
+## 方向与契约（冲突时以它们为准）
 
-这三份冲突时以它们为准：
-
-1. [写入形态](./product/write-model.md) — 数据表 + history + 语义配套；叶子挂 RowID。
-2. [查询形态](./product/query-model.md) — 四条路；事实一律 `SELECT` 回表。
+1. [写入形态](./product/write-model.md) — 数据表 + history + 语义配套；叶子挂 RowID
+2. [查询形态](./product/query-model.md) — 四条路；事实一律 `SELECT` 回表
 3. [架构原则](./product/architecture-principles.md)
 
 边界：[宪章](./product/ai-native-product-charter.md) ·
 [产品边界](./product/ai-native-boundary.md) ·
 [契约](./product/ai-native-contract.md)
 
-配套：[语义表](./product/route-companion-table.md) ·
-[行生命周期](./product/row-lifecycle-successor.md) ·
-[行删除](./product/row-delete-archive.md) ·
-[history 谱系](./product/history-lineage.md) ·
-[行链接](./product/row-links.md) ·
-[配置](./product/adaptive-configuration.md)
+## 另外两层
 
-## 工作
+- **规范级结论**：[`decisions/`](./decisions/)（ADR）；运行中的判断在 [`decisions.md`](./decisions.md)。
+- **带日期的证据**：[`development/`](./development/)（dogfood 轮次、验收报告）——它们是证据，不是账；
+  其中没做完的结论必须在 [`issue/`](./issue/README.md) 里有一条。
+- **市场调研**：[`research/`](./research/)。
+- **历史**：[`archive/`](./archive/README.md)，只用于追溯，日常不要读。
 
-- [项目计划](./planning/project-plan.md) — 七个里程碑、判据与顺序
-- [M7 召回详细计划](./planning/m7-recall-plan.md) — 七个 Feature、两次闭环、风险
-- [执行计划](./planning/execution-plan.md) — 唯一队列。先落地基座（CI → baseline → 核心回归），
-  再[行必须可导航](./planning/row-navigable.md)
-- [Admin 显示槽位](./planning/admin-display-slots.md) — 文档居中且只渲染一次
-- [Admin 语义画布的性能](./planning/admin-canvas-performance.md) — 卡顿的四个来源与这次的修法
-- [Admin 语义画布的手势](./planning/admin-canvas-gestures.md) — 画布手势只有一层，而且必须能自己结束
-- [Admin 语义画布的连线](./planning/admin-canvas-connections.md) — 布局吃真实卡高，锚点交给 port
-- [引擎拥有形状](./planning/engine-owned-shape.md) — 讨论稿：列归引擎，命名/描述/位置/正文归 agent
-- [向量 rekey](./planning/vector-rekey.md) — 卸下 TOFU 身份，再让排干重新上锁
-- [Route 的描述句](./planning/route-purpose-contract.md) — 必填的是内容，不是非空字符串
-- [整层读取](./planning/whole-layer-read.md) — 读取端不设宽度上限，走不完就说走不完
-- [jev 分流阶梯](./planning/jev-routing-ladder.md) — 什么时候走树、什么时候用 jev、剩下的活怎么排
-- [写入落点自主](./planning/autonomous-write.md) — 讨论稿：分界划在语义歧义，不划在库层
-- [无上下文 subagent 循环实测（2026-09-22）](./development/dogfood-2026-09-22.md) — 五轮摩擦与修复
-- [jev 走树验收（2026-09-23）](./development/acceptance-2026-09-23.md) — 两臂实测、可靠性、一起 FTS5 事故
-- [内部实现审查（2026-09-23）](./development/audit-2026-09-23.md) — 长期使用的薄弱点：7 条必修 + 7 条次级 + 不是问题的清单
-- [TDD](./planning/feature-tdd-protocol.md) · [产品门](./planning/feature-product-gate.md)
-- [决策日志](./decisions.md) — 运行中的判断；规范级结论进 ADR
-
-## 现行内核
-
-- [存储](./storage/README.md)
-- [MSQL](./query/msql.md) · [语义 Router](./query/semantic-routing.md)
-- [Agent 与引擎的分界](./query/agent-engine-boundary.md) — 谁发指令、谁展开
-- [INSERT 隐式建路径](./query/implicit-route-path-v1.md) — 用路径而不是 leaf id 挂载
-- [Route 的 purpose 契约](./query/route-purpose-contract-v1.md) — 必填的是描述，不是非空字符串
-- [检索四条路](./query/retrieval-routes-jev.md) · [jev 逐层选择](./query/jev-branch-selection.md) · [jev 走树](./query/jev-tree-v1.md)
-
-## ADR
+## ADR 索引
 
 [0011 一切建表](./decisions/0011-pure-storage-engine-tables-everything.md) ·
 [0014 行形状归引擎](./decisions/0014-the-engine-gives-the-row-shape.md) ·
@@ -68,10 +40,6 @@
 
 0001、0003–0006 在 [`archive/decisions/`](./archive/decisions/)。
 
-## 使用
+## 基座
 
-[Skill](./agent/canonical-skill-v1.md) ·
-[Skill 写入](./agent/skill-write-v1.md) ·
-[MCP](./agent/mcp-adapter-v1.md) ·
-[CLI](./development/cli-database-workflow.md) ·
-[测试](./development/testing.md)
+持久化基座是 **SQLite**。Page、WAL、B+ Tree、自研恢复都不是本项目对象（[ADR-0011](./decisions/0011-pure-storage-engine-tables-everything.md)）。

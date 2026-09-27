@@ -17,7 +17,7 @@ import (
 // is left choosing between bare labels. The rule has two halves on the write
 // side — a new Route is refused, an existing one is only reported — because a
 // library that already holds such Routes must stay writable while its purposes
-// are being filled in. See docs/planning/route-purpose-contract.md and
+// are being filled in. See docs/implementation/design/route-purpose-contract.md and
 // docs/decisions.md「语义树的标签质量是可测量的检索损伤」.
 
 // failureMessage runs a statement that must fail and returns the message a

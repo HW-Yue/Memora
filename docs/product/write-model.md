@@ -135,7 +135,7 @@ history 只记**原地修改**。拆分、合并产生的新行各建自己的 h
 - **读真实数据**：定位到 RowID，再回数据表点查取当前值。定位四条路——
   语义索引（Agent 主路）、关键词召回、向量召回、Skill 层 jev，
   见 [查询形态](./query-model.md) 与
-  [检索路线](../query/retrieval-routes-jev.md)；
+  [检索路线](../implementation/query/retrieval-routes-jev.md)；
 - **读历史**：拿 `row_id` 在 history 表按 `(row_id, *)` 范围扫，一次拿到全部变更，
   按 revision 有序。
 

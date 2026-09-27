@@ -48,7 +48,7 @@
 
 ## 关联
 
-- [召回契约](../query/msql.md)
+- [召回契约](../implementation/query/msql.md)
 - [ADF-0012 Row 向量给叶子路径](./0012-row-vector-leaf-path.md)
 - [ADR-0007 Router 权威与候选预测器](./0007-route-predictor-arsenal.md)（旧 F21/F23 被撤销的记录）
-- [检索四条路](../query/retrieval-routes-jev.md)
+- [检索四条路](../implementation/query/retrieval-routes-jev.md)

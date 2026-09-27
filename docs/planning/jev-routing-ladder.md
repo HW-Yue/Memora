@@ -1,7 +1,7 @@
 # jev 分流阶梯：什么时候走树、什么时候用 jev、剩下的活怎么排
 
-状态：**实现计划**（未开工，等开工）。契约细节见 `docs/planning/whole-layer-read.md`；
-标签质量见 `docs/planning/route-purpose-contract.md`（已上线）。
+状态：**实现计划**（未开工，等开工）。契约细节见 `docs/implementation/design/whole-layer-read.md`；
+标签质量见 `docs/implementation/design/route-purpose-contract.md`（已上线）。
 
 ## 分流阶梯：判据在输入形状上，不用"试了再说"
 

@@ -28,7 +28,7 @@ const (
 	// A Route carries a purpose that only repeats its name, so it describes
 	// nothing. New Routes are refused; an existing one is reported here instead,
 	// because a library that already holds such Routes has to stay writable
-	// while they are being filled in. See docs/query/route-purpose-contract.
+	// while they are being filled in. See docs/implementation/query/route-purpose-contract.
 	CodeRoutePurposeRepeatsName Code = "route_purpose_repeats_name"
 	CodeInternal                Code = "internal_error"
 )

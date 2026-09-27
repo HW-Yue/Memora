@@ -107,7 +107,7 @@
 **`database` + `table` + 完整语义树路径**，仅此而已。拿到路径就能接回 §2
 的逐层导航。路径**逐段带 `route_id`**，否则现役导航语句无法重入；
 Row 命中时保留 `object_id`（即 RowID），见
-[检索路线](../query/retrieval-routes-jev.md) §2。
+[检索路线](../implementation/query/retrieval-routes-jev.md) §2。
 
 此外每个命中带 **`arms`**：找到这个位置的是哪条臂（`["keyword","vector"]` /
 `["keyword"]` / `["vector"]`）。这是**出处的标注**，不是强度的度量：两臂都命中的位置

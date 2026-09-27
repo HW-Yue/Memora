@@ -29,7 +29,7 @@
 
 - **一次逻辑写入必须落在同一个 SQLite 事务里。** 数据表、history 表、语义配套表、
   `mem_changes` 同提交。违反：提交后再另开事务维护权威数据，或在进程里另建一份
-  与文件不对齐的索引。见 [存储层](../storage/README.md)。
+  与文件不对齐的索引。见 [存储层](../implementation/storage/README.md)。
 
 ## 二、能用一张表解决的，就别造复杂逻辑
 
@@ -112,4 +112,4 @@
 
 - [AI-native 产品宪章](./ai-native-product-charter.md) — 上位
 - [写入形态](./write-model.md)、[查询形态](./query-model.md) — 并列
-- [存储层](../storage/README.md) — 当前物理形态
+- [存储层](../implementation/storage/README.md) — 当前物理形态

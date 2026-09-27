@@ -1346,7 +1346,7 @@ func (parser *parser) parseAlterRoute() (ast.Statement, error) {
 	// A purpose is an amendable description, not identity frozen at creation:
 	// the engine refuses a new Route whose purpose only repeats its name, so it
 	// has to offer the statement that repairs an existing one, or the rule has
-	// no execution surface. See docs/query/route-purpose-contract-v1.md.
+	// no execution surface. See docs/implementation/query/route-purpose-contract-v1.md.
 	case parser.matchWord("PURPOSE"):
 		purpose, err := parser.parseExpression(1)
 		if err != nil {
