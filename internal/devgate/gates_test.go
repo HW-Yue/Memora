@@ -31,6 +31,118 @@ func TestCIFormatStageSucceeds(t *testing.T) {
 	}
 }
 
+// vecextModule is the driver whose header the vendored sqlite3.h must match.
+const vecextModule = "github.com/mattn/go-sqlite3"
+
+// TestVecextHeaderRefreshSurvivesAColdModuleCache covers the CI failure of
+// 2026-09-26. The refresh directive asked `go list -m` for the module's
+// directory, but Go only extracts a module once something needs its files; the
+// format stage runs before any build, so on a runner whose module cache was
+// never populated the query answered "" and `cp` tried /sqlite3-binding.h.
+// Warming the local cache hides that, so the gate reproduces the state
+// offline: a module cache holding only the download cache (the zip), with no
+// extracted module directory.
+func TestVecextHeaderRefreshSurvivesAColdModuleCache(t *testing.T) {
+	root := repoRoot(t)
+	header := filepath.Join(root, "internal/sqlstore/vecext/include/sqlite3.h")
+	before, err := os.ReadFile(header)
+	if err != nil {
+		t.Fatalf("read %s: %v", header, err)
+	}
+
+	// The zip in the download cache is the artifact this gate needs. On a
+	// machine that never built the project, fetch it once; the refresh under
+	// test then has to work without the network.
+	download := exec.Command("go", "mod", "download", vecextModule)
+	download.Dir = root
+	if out, err := download.CombinedOutput(); err != nil {
+		t.Fatalf("go mod download %s: %v\n%s", vecextModule, err, out)
+	}
+	version, err := exec.Command("go", "list", "-m", "-f", "{{.Version}}", vecextModule).Output()
+	if err != nil {
+		t.Fatalf("go list -m %s: %v", vecextModule, err)
+	}
+	cache, err := exec.Command("go", "env", "GOMODCACHE").Output()
+	if err != nil {
+		t.Fatalf("go env GOMODCACHE: %v", err)
+	}
+
+	modulePath := filepath.FromSlash(vecextModule)
+	cold := t.TempDir()
+	// The module cache is read-only by design, and the extracted files the
+	// refresh creates are too; make the copy deletable before TempDir's own
+	// cleanup runs (cleanups run last-registered-first).
+	t.Cleanup(func() { makeWritable(cold) })
+	from := filepath.Join(strings.TrimSpace(string(cache)), "cache", "download", modulePath)
+	to := filepath.Join(cold, "cache", "download", modulePath)
+	if err := copyTree(from, to); err != nil {
+		t.Fatalf("seed the cold cache from %s: %v", from, err)
+	}
+	if extracted := filepath.Join(cold, modulePath+"@"+strings.TrimSpace(string(version))); pathExists(extracted) {
+		t.Fatalf("the cold cache is not cold: %s exists", extracted)
+	}
+
+	refresh := exec.Command("go", "generate", "./internal/sqlstore/vecext/")
+	refresh.Dir = root
+	refresh.Env = append(os.Environ(),
+		"GOMODCACHE="+cold,
+		"GOPROXY=off",
+		"GOCACHE="+t.TempDir(),
+	)
+	if out, err := refresh.CombinedOutput(); err != nil {
+		t.Fatalf("refresh with a cold module cache: %v\n%s", err, out)
+	}
+	after, err := os.ReadFile(header)
+	if err != nil {
+		t.Fatalf("read %s: %v", header, err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("%s changed; the checked-in header is out of step with %s", header, vecextModule)
+	}
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// makeWritable clears the read-only bits Go's module cache uses, so a copy of it
+// can be removed.
+func makeWritable(root string) {
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		mode := os.FileMode(0o644)
+		if info.IsDir() {
+			mode = 0o755
+		}
+		_ = os.Chmod(path, mode)
+		return nil
+	})
+}
+
+func copyTree(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
+}
+
 func TestCIStagesMatchSQLiteKernel(t *testing.T) {
 	cmd := exec.Command("bash", "scripts/ci.sh", "--list")
 	cmd.Dir = repoRoot(t)
