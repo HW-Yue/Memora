@@ -1,6 +1,24 @@
 # P2 · 真实 CI 挂在第一关：冷模块缓存下 `go generate` 拿到空路径
 
-严重度：high（门是红的，等于没有门）。状态：**待做**（2026-09-26 复现）。
+严重度：high（门是红的，等于没有门）。状态：**已关**（2026-09-26 复现，2026-09-27 修复并经真实 CI 验证）。
+
+## 结案
+
+**不是头文件过期，是指令依赖了一个偶然。** 核对过：检入的
+`internal/sqlstore/vecext/include/sqlite3.h` 与 driver `v1.14.32` 本来就一致（本机跑
+`go generate` 后 `git diff` 为空）。
+
+真正的原因：`go-sqlite3` 是在 build tag 后面被 import 的，所以这个包自己的构建**不需要**它的文件；
+冷缓存里 `go list -m -f '{{.Dir}}'` 于是安静地返回空串（exit 0），`cp` 拼出 `/sqlite3-binding.h`。
+本机永远看不出来——缓存早就解出过这个模块；而 CI 的 `format` 跑在任何构建之前，所以每次都挂。
+
+修法：generate 指令先 `go mod download github.com/mattn/go-sqlite3`，让 `{{.Dir}}` 真实存在。
+
+- 修复提交 `237bb066`（merge `65ad5f34`）。
+- 新增**离线可复现**的回归 gate `TestVecextHeaderRefreshSurvivesAColdModuleCache`
+  （模块缓存里只放 download cache、不放解出的模块目录），先 RED 复现 CI 同一句报错，再 GREEN。
+- 真实 CI：run `36326905880` **全绿**（5m22s，macos-latest）。
+- 本地 `./scripts/ci.sh` 六个 stage 全绿。
 
 ## 症状
 
@@ -32,13 +50,16 @@ internal/sqlstore/vecext/generate.go:9: running "sh": exit status 1
 - 判断：`go list -m` **不会**为了取 `.Dir` 去下载模块本体，而 `vecext` 对 go-sqlite3 的 import
   在 build tag 后面，`go generate`（不带 tag）时该模块的包并未被加载 → 冷缓存下 `.Dir` 为空。
 
-## 候选修法（**未验证**，别当已定结论）
+## 当时的候选修法（已选第 1 条）
 
-1. `format` 阶段在 `go generate` 之前先 `go mod download github.com/mattn/go-sqlite3`；
-2. 或把指令改成会强制加载包的形式（例如带 `sqlite_fts5` tag 对**包**目录做 `go list -f '{{.Dir}}'`）；
-3. 或在 CI 的 setup 步骤里显式 `go mod download`（setup-go 的 `cache: true` 只缓存，不保证下载）。
+1. **采用**：让指令自己先 `go mod download github.com/mattn/go-sqlite3` —— 修在指令里，
+   `go generate` 冷热都自足，不依赖谁先跑过构建；
+2. 未采用：把指令改成对**包**目录做 `go list -f '{{.Dir}}'`（冷缓存下它会自己下载，行为上也可行，
+   但语义上要的是"模块目录"，靠"这个包的目录恰好等于模块根"是巧合）；
+3. 未采用：在 ci.sh 或 CI setup 里显式 `go mod download`（能修 CI，但开发者直接跑
+   `go generate` 仍会踩同一个坑）。
 
-修法要保留这条指令的本意：**driver 升级后忘了重新生成时，门必须红**。所以别用"跳过这一步"来修。
+保留住了这条指令的本意：**driver 升级后忘了重新生成时，门必须红** —— 没有用"跳过这一步"来修。
 
 ## 这条为什么记在 issue 而不是计划里
 
