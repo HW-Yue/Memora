@@ -1,6 +1,10 @@
 # P3 · Skill 的仓库外四处安装位带着一个**未合分支**的文本
 
-严重度：high（分叉已经在线上，且 `--check` 在分支上会说"every copy matches"）。状态：**待做**（2026-09-26 发现）。
+严重度：high（分叉已经在线上，且 `--check` 在分支上会说"every copy matches"）。状态：**已关**（2026-09-26 发现，同日走「合入那条分支」的方向解决）。
+
+解决：`feat/alter-database-description` 于 2026-09-26 合入主线（merge `54a0254d`），四个仓库外安装位与
+仓库三份副本随后 `sync-skill.sh --check` 报 **every copy matches** —— 分叉统一到了「新」的一边。
+下面保留当时的症状与教训；**教训仍然有效**：`--check` 的答案取决于你检出了哪条分支。
 
 ## 症状
 

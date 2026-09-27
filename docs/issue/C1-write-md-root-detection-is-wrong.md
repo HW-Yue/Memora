@@ -16,7 +16,7 @@
 
 ## 证据
 
-- `skills/memora/references/write.md:230`（2026-09-26 在主线 `main` 上复核，文本未改）。
+- `skills/memora/references/write.md:283`（2026-09-26 合入 `ALTER DATABASE … SET` 之后在 main 上复核，文本仍未改）。
 - 来源：[audit-2026-09-23.md](./audit-2026-09-23.md) C1。
 
 ## 已定的修法
