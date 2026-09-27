@@ -2,10 +2,10 @@
 
 ## 分支主线
 
-- **开发主线是 `main`。** 2026-09-26 起，原来的 `rewrite/adr0011` 已快进成 `main`（同一条历史、
-  同一个提交）；`rewrite/adr0011` 保留为同义名字，两边必须同步。开发、CI、验证都在主线上做。
-- **`attic/main-pre-rewrite` 是废弃的过去路线。** 它的提交已经全部包含在主线历史里，只作追溯；
-  不拿它当对照或背书。
+- **开发主线是 `main`，没有第二个名字。** 2026-09-26 起 `main` 就是这条线（原来的
+  `rewrite/adr0011` 与更早的 pre-rewrite `main` 都已并入/删除，见
+  [`docs/archive/attic-branches-2026-09-26.md`](./docs/archive/attic-branches-2026-09-26.md)）。
+  开发、CI、验证都在 `main` 上做；别再造同义分支——两个名字必然漂移。
 - Feature、修复、规范调整都从**主线**的最新提交切独立分支，完成并合回主线。
 - 真实 CI 在 `pull_request` 或 `push: main` 上触发 —— 推 `main` 就会跑真实 CI；其他分支仍要一次 PR。
 
