@@ -2261,9 +2261,9 @@ anti_scope 对邻库画界），并把 amend 写成"先读、比较、再写"的
    - Row：`INSERT` / `UPDATE` / `DELETE` / `RESTORE`。
 4. **还没开放的**（按同一条原则就该补）：**Table 的 `purpose` 与 `row_semantics`** ——
    两个建表必填字段没有 amend 路径，解析器的 `SET` 只认 Database，
-   结构变更计划只到列一级 → 记为 [P4](../issue/P4-table-purpose-and-row-semantics-are-welded.md)。
+   结构变更计划只到列一级 → 记为 [P4](./issue/P4-table-purpose-and-row-semantics-are-welded.md)。
    **它有一条设计依赖**：`row_semantics` 是撤掉、引擎写常数、还是留给 agent，
-   [`engine-owned-shape`](../planning/engine-owned-shape.md) 里还没定——先定那个，再实现表级 amend。
+   [`engine-owned-shape`](./planning/engine-owned-shape.md) 里还没定——先定那个，再实现表级 amend。
 
 **理由**：这条边界把"改不动"从一次性抱怨变成一条可核对的检查项：**凡声明字段，问一句「怎么改」**。
 2026-09-25 的库描述和这次的 Table 描述，都是问这一句才暴露出来的。
