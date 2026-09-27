@@ -75,6 +75,28 @@ ALTER TABLE projects.knowledge RENAME COLUMN title TO heading;
 
 rename 保持对象 ID，不移动物理身份，并把旧名称加入 alias。当前名称和所有 alias 参与同一冲突检查。
 
+## Amend the description
+
+```sql
+ALTER DATABASE projects SET PURPOSE '保存项目知识' SCOPE '活跃项目' ANTI SCOPE '私人日记';
+ALTER DATABASE projects SET SCOPE '当前有效的活跃项目';
+ALTER DATABASE projects SET ANTI SCOPE '';
+```
+
+库的三个描述字段**可修订，不是建库时焊死的**。它们不是装饰：冷启动 agent 每次写入前读它们来决定
+这条知识放哪，所以一句 `scope` 写着「当前有效」时，"当前"一变它就变成假话，而且**主动误导放置**。
+
+`SET` **只写它点名的字段**，其余保持原值——语句点名的就是全部指令。`PURPOSE` 与 `SCOPE` 必须非空
+（一个装不进任何东西的库不是合法结果）；`ANTI SCOPE ''` 是撤销一条边界声明的写法，不是错误。
+每个字段最多出现一次，至少写一个；顺序不限。字面量是单引号字符串（与 `CREATE DATABASE` 相同，
+`PURPOSE "x"` 会被当成 quoted identifier 拒绝）。
+
+这是一条**有界的元数据写**：一次一行、一个事务、一条 change 记录，风险等级 L2（任何 `ALTER`
+都是 L2）。它与 `ALTER DATABASE … RENAME` 一样**不带 `expected_schema_version` 前置条件**——
+本项目的版本前置条件只存在于 Row 与 Table 形状的写入（`PLAN/APPLY SCHEMA CHANGE`），库级 DDL
+从来没有，改描述比改名只轻不重。`DESCRIBE DATABASE` / `SHOW DATABASES` 回读三者；`anti_scope`
+未设置时不出现在行里（`omitempty`），所以"设了"和"空"在读面上都是"没有"。
+
 ## Binder 限定名
 
 - Database 必须是一段：`database`；

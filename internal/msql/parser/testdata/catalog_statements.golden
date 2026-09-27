@@ -3,6 +3,9 @@
 {"version":"memora.msql.ast/v1","statement":{"kind":"SHOW","show":{"object":"COLUMNS","table":{"parts":[{"value":"work"},{"value":"notes"}]},"compact":true}}}
 {"version":"memora.msql.ast/v1","statement":{"kind":"DESCRIBE","describe":{"object":"COLUMN","name":{"parts":[{"value":"work"},{"value":"notes"},{"value":"title"}]},"compact":true}}}
 {"version":"memora.msql.ast/v1","statement":{"kind":"ALTER","alter":{"object":"DATABASE","name":{"parts":[{"value":"work"}]},"action":"RENAME","new_name":{"value":"projects"}}}}
+{"version":"memora.msql.ast/v1","statement":{"kind":"ALTER","alter":{"object":"DATABASE","name":{"parts":[{"value":"projects"}]},"action":"SET_DESCRIPTION","purpose":"Project knowledge","scope":"Active projects","anti_scope":"Personal journals"}}}
+{"version":"memora.msql.ast/v1","statement":{"kind":"ALTER","alter":{"object":"DATABASE","name":{"parts":[{"value":"projects"}]},"action":"SET_DESCRIPTION","scope":"Active projects"}}}
+{"version":"memora.msql.ast/v1","statement":{"kind":"ALTER","alter":{"object":"DATABASE","name":{"parts":[{"value":"projects"}]},"action":"SET_DESCRIPTION","anti_scope":""}}}
 {"version":"memora.msql.ast/v1","statement":{"kind":"ALTER","alter":{"object":"TABLE","name":{"parts":[{"value":"projects"},{"value":"notes"}]},"action":"RENAME","new_name":{"value":"knowledge"}}}}
 {"version":"memora.msql.ast/v1","statement":{"kind":"ALTER","alter":{"object":"TABLE","name":{"parts":[{"value":"projects"},{"value":"knowledge"}]},"action":"RENAME_COLUMN","column_name":{"value":"title"},"new_name":{"value":"heading"}}}}
 {"version":"memora.msql.ast/v1","statement":{"kind":"ALTER","alter":{"object":"TABLE","name":{"parts":[{"value":"projects"},{"value":"knowledge"}]},"action":"ADD_COLUMN","column":{"name":{"value":"status"},"type":{"name":{"value":"TEXT"}},"purpose":"Workflow state"}}}}

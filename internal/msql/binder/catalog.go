@@ -17,6 +17,7 @@ type CatalogService interface {
 	ShowDatabases(context.Context) ([]dictionary.Database, error)
 	DescribeDatabase(context.Context, string) (dictionary.Database, error)
 	RenameDatabase(context.Context, string, string) (dictionary.Database, error)
+	SetDatabaseDescription(context.Context, string, dictionary.DatabaseDescription) (dictionary.Database, error)
 	CreateTable(context.Context, string, dictionary.TableDefinition) (dictionary.Table, error)
 	ShowTables(context.Context, string) ([]dictionary.Table, error)
 	DescribeTable(context.Context, string, string) (dictionary.Table, error)
@@ -189,6 +190,19 @@ func (binder *Catalog) alter(ctx context.Context, alter *ast.AlterStatement) (Ca
 			return CatalogResult{}, err
 		}
 		database, err := binder.service.RenameDatabase(ctx, names[0], newName)
+		return CatalogResult{Object: "DATABASE", Database: &database}, catalogError(err)
+	case alter.Object == "DATABASE" && alter.Action == "SET_DESCRIPTION":
+		names, err := qualified(alter.Name, 1, "database")
+		if err != nil {
+			return CatalogResult{}, err
+		}
+		if alter.Purpose == nil && alter.Scope == nil && alter.AntiScope == nil {
+			return CatalogResult{}, bindError(result.CodeValidation,
+				"SET requires at least one of PURPOSE, SCOPE or ANTI SCOPE")
+		}
+		database, err := binder.service.SetDatabaseDescription(ctx, names[0], dictionary.DatabaseDescription{
+			Purpose: alter.Purpose, Scope: alter.Scope, AntiScope: alter.AntiScope,
+		})
 		return CatalogResult{Object: "DATABASE", Database: &database}, catalogError(err)
 	case alter.Object == "TABLE" && alter.Action == "RENAME":
 		names, err := qualified(alter.Name, 2, "table")

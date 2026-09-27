@@ -377,6 +377,59 @@ func (db *DB) RenameDatabase(ctx context.Context, name, newName string) (catalog
 	return renamed, err
 }
 
+// SetDatabaseDescription amends the three description fields a create welds in.
+// Without it they are frozen at creation, and a scope that says "当前有效" turns
+// into a lie the first time what is current changes — the fields are read by a
+// cold-start agent on every write, so a stale one misleads placement rather
+// than merely reading badly. It is a bounded metadata write: one row, one
+// transaction, one change record, and the unnamed fields keep their values.
+func (db *DB) SetDatabaseDescription(ctx context.Context, name string, description catalog.DatabaseDescription) (catalog.Database, error) {
+	if description.Purpose == nil && description.Scope == nil && description.AntiScope == nil {
+		return catalog.Database{}, catalogError(catalog.CodeValidation, "database", name,
+			"at least one of PURPOSE, SCOPE or ANTI SCOPE")
+	}
+	// A Database nothing can be placed in is not a legal outcome, so the two
+	// required fields are checked before the transaction opens. ANTI SCOPE may
+	// be emptied: clearing it is how a boundary stops being claimed.
+	for _, field := range []struct {
+		name  string
+		value *string
+	}{{"purpose", description.Purpose}, {"scope", description.Scope}} {
+		if field.value != nil {
+			if err := validateRequired("database", name, field.name, *field.value); err != nil {
+				return catalog.Database{}, err
+			}
+		}
+	}
+	var amended catalog.Database
+	err := db.update(ctx, func(t *tx) error {
+		databases, err := t.loadDatabases(ctx)
+		if err != nil {
+			return err
+		}
+		database, ok := findDatabase(databases, name)
+		if !ok {
+			return catalogError(catalog.CodeNotFound, "database", name, "")
+		}
+		if description.Purpose != nil {
+			database.Purpose = strings.TrimSpace(*description.Purpose)
+		}
+		if description.Scope != nil {
+			database.Scope = strings.TrimSpace(*description.Scope)
+		}
+		if description.AntiScope != nil {
+			database.AntiScope = strings.TrimSpace(*description.AntiScope)
+		}
+		database.SchemaVersion++
+		database.UpdatedAt = t.now
+		amended = *database
+		t.catalogChange(change.ObjectDatabase, change.OperationUpdate, database.ID, "", database.ID,
+			database.SchemaVersion-1, database.SchemaVersion, database.SchemaVersion)
+		return t.saveDatabase(ctx, *database)
+	})
+	return amended, err
+}
+
 func validateColumnDefinition(definition catalog.ColumnDefinition) error {
 	for _, field := range [][2]string{{"name", definition.Name}, {"type", definition.Type}, {"purpose", definition.Purpose}} {
 		if err := validateRequired("column", definition.Name, field[0], field[1]); err != nil {
