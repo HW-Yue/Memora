@@ -1,6 +1,6 @@
 # Memora（SQLite 原型分支）
 
-> 分支 `rewrite/adr0011`：底层是 **SQLite**。现役是 Catalog、数据表、语义树与
+> 分支 `main`：底层是 **SQLite**。现役是 Catalog、数据表、语义树与
 > `SHOW ROUTES` / `SELECT`。设计依据见
 > [ADR-0011](./docs/decisions/0011-pure-storage-engine-tables-everything.md)。
 

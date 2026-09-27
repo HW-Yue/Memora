@@ -15,3 +15,4 @@
 - [查询/数据/Agent/开发](./query/) — 旧预测器、Relation Store、评测与 Admin 规格
 - [早期调研](./AI_NATIVE_PERSONAL_DATABASE_RESEARCH_2026-07-29.md)
 - [被取代的设计草稿](./design/README.md)
+- [2026-09-26 清掉的分支与原因](./attic-branches-2026-09-26.md)

@@ -28,8 +28,9 @@ Memora 是给 AI Agent 用的本地个人数据库：Agent 自己建模、用 MS
 SQLite 一个文件：Catalog、数据表、history、语义配套、`mem_changes`、配置。
 现役查询主路 `SHOW ROUTES` → `OPEN ROUTE` → `SELECT`；写入 `INSERT` / `UPDATE` /
 `DELETE` / `SPLIT` / `MERGE`；接入 CLI、MCP、只读 Admin、Skill、SDK、daemon。
-源码约 22.5k 行、测试约 5.4k 行。分支 `rewrite/adr0011`；**真实 CI 已跑通一次**（2026-09-21，
-两个平台全绿）。`main` 是另一条路，与这条线无关。
+源码约 22.5k 行、测试约 5.4k 行。主线是 `main`；**真实 CI 在 2026-09-21 跑通过一次**（两个平台全绿），
+但 2026-09-26 起门是红的（冷模块缓存下 `go generate` 拿空路径，见
+[issue/P2](../issue/P2-real-ci-dies-on-a-cold-module-cache.md)）——绿过一次不等于现在绿。
 
 **这七块里什么是编排、什么不是**（免得估工时错判）：存储引擎**零开发**——没有页格式、WAL、
 B+ 树、恢复重放。M2–M6 的主体是「一个事务里按顺序执行若干条 SQL + 判定 + 证据」；
