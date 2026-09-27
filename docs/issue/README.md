@@ -20,6 +20,8 @@
 | [C1](./C1-write-md-root-detection-is-wrong.md) | Skill 的 `write.md` 教错「这张表有没有根」的检查方式 | Skill 文本 bug | [audit](./audit-2026-09-23.md) C1 | 改写那句话（或给一条真能读出根的命令） | 待做 |
 | [C2](./C2-mutate-does-not-drain-vectors.md) | `memora mutate` 不排干向量，而 `write.md` 让你优先用 `mutate` | high（静默的派生层缺口） | [audit](./audit-2026-09-23.md) C2 · `internal/cli/cli.go` | 让 `mutate` 也调 `drainAfterWrite`（首选），或 Skill 明写「之后必须自己排干」 | 待做 |
 | [P1](./P1-catalog-ddl-ignores-the-mutation-block.md) | Catalog DDL 静默忽略 `mutation` 块：宿主以为记了 actor/reason，其实没有 | medium | [decisions.md](../decisions.md) 2026-09-25 尾 | 不受支持的语句显式拒绝 `mutation` 块 + 回归测试 | 待做 |
+| [P2](./P2-real-ci-dies-on-a-cold-module-cache.md) | 真实 CI 挂在第一关：冷模块缓存下 `go generate` 拿到空路径 | high（门是红的） | CI 运行 `36323763732`、`36324033698` | 见文件；**修法未验证** | 待做 |
+| [P3](./P3-skill-installs-carry-an-unmerged-branch.md) | Skill 的四个仓库外安装位带着未合分支 `feat/alter-database-description` 的文本 | high（分叉已在线上） | `scripts/sync-skill.sh --check` | 二选一：合那条分支，或从主线重新同步四处（需仓库外写权限） | 待做 |
 
 ## 已关闭（留档，别重复怀疑）
 
