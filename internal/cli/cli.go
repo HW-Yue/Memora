@@ -670,10 +670,37 @@ func runMutate(
 	if err := json.NewEncoder(stdout).Encode(report.Receipt); err != nil {
 		return writeFailure(stderr, err)
 	}
+	// The host's half of the vector path, exactly as for `exec`: the plan has
+	// committed by here, and the Skill tells the agent to prefer this command,
+	// so this is the path a write usually takes. It runs before the exit code is
+	// decided — a drain that could not finish says so and leaves the units
+	// not-ready; it never changes what the committed write means.
+	drainCtx, cancelDrain := requestContext()
+	defer cancelDrain()
+	if err := drainAfterWrite(drainCtx, dataDir, planCaller(plan), execute, dependencies, stderr); err != nil {
+		_, _ = fmt.Fprintf(stderr, "embeddings: %v; the units stay not-ready\n", err)
+	}
 	if report.Receipt.Status == skillwrite.ReceiptCommittedUnverified {
 		return ExitFailure
 	}
 	return ExitOK
+}
+
+// planCaller is the plan's own authorization, in the shape the drain's round
+// trips take. The drain may only read the work list and offer vectors inside
+// the databases the plan itself was authorized for, so that scope — and nothing
+// wider — is what travels here; it is the same shape skillwrite gives the
+// plan's own statements.
+func planCaller(plan skillwrite.Plan) executor.StatementInput {
+	return executor.StatementInput{
+		Authorization: security.Authorization{
+			Version:             security.AuthorizationVersion,
+			Actor:               plan.Actor,
+			AuthorizedDatabases: append([]string{}, plan.AuthorizedDatabases...),
+			DefaultLevel:        security.LevelWrite,
+		},
+		Mutation: executor.MutationOptions{Actor: plan.Actor, Source: plan.SourceEventID},
+	}
 }
 
 func runDoctor(
