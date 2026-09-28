@@ -14,7 +14,6 @@
 | [A6](./A6-verified-flag-comes-from-readback.md) | 两个 L2 回执无条件 `verified: true`，`VerificationCode` 从不赋值 | high | [audit](./audit-2026-09-23.md) A6 · `route_plan.go:36-39`、`schema_plan.go:25-28` | 提交后只读读回，比对计划声明的目标 | 待做 |
 | [B1](./B1-membership-moves-bypass-the-write-path.md) | 叶子间搬迁走裸 `UPDATE`，不落 revision/history/变更日志 | medium | [audit](./audit-2026-09-23.md) B1 · `route_plan.go:211-249` | 改走正常行写路径；`MembershipMove.Revision` 按 informational 处理 | 待做 |
 | [B2+B3](./B2-B3-tree-cycle-guard-and-hidden-failures.md) | 计划校验不查环、执行期父链遍历无 hop 保护；解析失败被静默吞掉 | medium-high | [audit](./audit-2026-09-23.md) B2/B3 | 校验补环检测 + 两处父链加 hop 上限且不再静默 | 待做 |
-| [B5](./B5-repair-recall-units-never-converges.md) | `REPAIR RECALL UNITS` 对「live 行、叶子数 ≠ 1」永不收敛 | medium | [audit](./audit-2026-09-23.md) B5 · `recall.go:311-314`、`:81-83` | 第二轮必须与第一轮不同：收敛或明确 `blocked` | 待做 |
 | [B6](./B6-instance-destroy-fails-open.md) | `instance destroy` 把 Inspect 的错误当成「没在运行」 | medium | [audit](./audit-2026-09-23.md) B6 · `instance.go:59-66` | 只做 fail-closed，不铺开租约 | 待做 |
 | [B7](./B7-daemon-has-no-tests.md) | `internal/daemon` 920 行、零测试 | medium | [audit](./audit-2026-09-23.md) B7 | 先补三条不变量；之后每条修复顺手加 | 待做 |
 | [P1](./P1-catalog-ddl-ignores-the-mutation-block.md) | Catalog DDL 静默忽略 `mutation` 块：宿主以为记了 actor/reason，其实没有 | medium | [decisions.md](../decisions.md) 2026-09-25 尾 | 不受支持的语句显式拒绝 `mutation` 块 + 回归测试 | 待做 |
@@ -24,6 +23,7 @@
 
 | 编号 | 问题 | 结论 | 证据 |
 |---|---|---|---|
+| [B5](./B5-repair-recall-units-never-converges.md) | `REPAIR RECALL UNITS` 对「live 行、叶子数 ≠ 1」永不收敛 | 已修：这类行改计 `blocked` + `recall_units_blocked` 通知，不再冒充 rebuild，也不再删它仅有的单元 | `a644f672`（merge `1fceff90`）· `TestRepairRecallUnitsReportsRowsItCannotIndex` |
 | [C2](./C2-mutate-does-not-drain-vectors.md) | `memora mutate` 不排干向量（而 Skill 推荐用它） | 已修：`runMutate` 提交后调用与 `exec` 同一个排干，授权用 plan 自己的范围 | `fdd5f8ef`（merge `dfffc398`）· 行为测试 `TestMutateDrainsPendingVectorsLikeExec` |
 | [C1](./C1-write-md-root-detection-is-wrong.md) | Skill 教错「空数组 = 没有根」 | 已修：判据改成建根那一步的拒绝；并钉住「空页在有无根时相同」与拒绝措辞 | `c3665196`（merge `af1ba112`）· `TestRootBootstrapIsLearnedFromTheRefusal` |
 | [P2](./P2-real-ci-dies-on-a-cold-module-cache.md) | 真实 CI 挂在第一关：冷模块缓存下 `go generate` 拿到空路径 | 已修：不是头文件过期，是指令依赖了「缓存已解出该模块」这个偶然；改成先 `go mod download` | `237bb066`（merge `65ad5f34`）· CI run `36326905880` 全绿 |
