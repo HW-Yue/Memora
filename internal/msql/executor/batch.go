@@ -152,6 +152,16 @@ func (session *BatchSession) Execute(ctx context.Context, request BatchRequest) 
 			continue
 		}
 		statement := *item.Statement
+		// The statements this loop handles itself frame other work and record no
+		// mutation of their own, so a mutation block on one is the same trap as on
+		// a read — and it never reaches Engine.Execute to be refused there.
+		if transactionControl(statement.Kind) && !mutationBlockEmpty(inputs[index].Mutation) {
+			results = append(results, failedStatement(
+				index, statement.Kind, source, result.CodeValidation,
+				statement.Kind+" does not record a mutation block: the one supplied would be dropped, so remove it",
+			))
+			continue
+		}
 
 		switch statement.Kind {
 		case "BEGIN":
@@ -402,6 +412,16 @@ func errorResult(err error) (result.Code, string) {
 
 func retryable(code result.Code) bool {
 	return code == result.CodeWriteConflict || code == result.CodeCancelled || code == result.CodeDeadlineExceeded
+}
+
+// transactionControl reports the statements the batch executes itself.
+func transactionControl(kind string) bool {
+	switch kind {
+	case "BEGIN", "COMMIT", "ROLLBACK":
+		return true
+	default:
+		return false
+	}
 }
 
 // mutationStatement is the one judgement of what a write is. Everything that
