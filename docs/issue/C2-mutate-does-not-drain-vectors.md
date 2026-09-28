@@ -1,6 +1,21 @@
 # C2 · `memora mutate` 不排干向量，而 `write.md` 让你优先用 `mutate`
 
-严重度：high（静默的派生层缺口：写全成功，向量永远缺）。状态：**待做**（已在主线上复核仍然如此）。
+严重度：high（静默的派生层缺口：写全成功，向量永远缺）。状态：**已关**（2026-09-26 复核，同日修复）。
+
+## 结案
+
+选了首选修法：**让 `mutate` 也排干**，这样「推荐路径」与「自动排干」重合，Skill 的推荐不再需要
+附加条件。若只改 Skill 文本，坑还在——agent 照推荐走，向量照样缺。
+
+- `runMutate` 在回执写出后调用与 `exec` 同一个 `drainAfterWrite`；授权取 **plan 自己的**
+  `authorized_databases`（与 `skillwrite` 给 plan 语句的授权同形），排干不会越过 plan 的范围。
+- 它跑在 `committed_unverified` 的退出判断**之前**：排干没跑完成只让单元保持未就绪，
+  不改变「写已提交」这件事的退出语义。
+- 证据：`fix(cli)` 分支 → merge `dfffc398`；测试 `TestMutateDrainsPendingVectorsLikeExec`
+  （进程内真 daemon + stub 往返 + 真 OpenAI 兼容 provider，改之前断言「没有任何排干请求」失败）、
+  `TestMutateWithoutAProviderDoesNotDrain`。
+- Skill 两处措辞跟着改（`exec` 与 `mutate` 都排干；plan 在自己授权范围内排干），
+  已按六处同步流程同步并发到发布仓库。
 
 ## 症状
 

@@ -1,6 +1,20 @@
 # C1 · Skill 的 `write.md` 教错「这张表有没有根」
 
-严重度：Skill 文本 bug（照做会重复建根）。状态：**待做**（已在主线上复核仍然错的）。
+严重度：Skill 文本 bug（照做会重复建根）。状态：**已关**（2026-09-26 复核，同日修复）。
+
+## 结案
+
+那一句改成：空数组只说明**还没挂东西**；`AT ROOT` 列的是根的子节点，所以没有根与有根但空着
+返回一模一样；也没有任何查询能报出根本身（`SHOW ROUTES` 只认 `UNDER :id` 或 `FROM TABLE … AT ROOT`，
+`DESCRIBE TABLE` 不带 route root id）。判据来自**建根那一步的拒绝**：
+`table "notes" already has a route root`。
+
+- 引擎行为本来就是对的，**没有 RED 可言**——缺陷在文本。可复现的观测来源是
+  [audit-2026-09-23.md](./audit-2026-09-23.md) C1 的实测记录。
+- 加了 `TestRootBootstrapIsLearnedFromTheRefusal`（`internal/sqlstore`）钉住这条指令**依赖**的两件事：
+  无根与空根给出同样的空页；重复建根的拒绝码（`already_exists`）与措辞。指令教人读拒绝，
+  拒绝本身就必须有测试。
+- 证据：`skill(write)` 分支 → merge `af1ba112`；Skill 六处同步后 `--check` = every copy matches。
 
 ## 症状
 
