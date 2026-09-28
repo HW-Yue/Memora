@@ -86,3 +86,8 @@ irreversible. Ask the user first, name the exact directory, and never point it a
 an instance whose contents you have not shown them. There is no DROP for databases
 or tables, so an instance you created for a test is cleaned up this way rather
 than from inside a statement.
+
+It refuses while it cannot establish that nothing is writing to the instance: a
+running daemon is stopped first, and if it cannot be asked at all the command
+fails and the directory stays where it is. That refusal is the point, not an
+obstacle — find out what holds the instance before deleting it.

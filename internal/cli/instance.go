@@ -56,7 +56,16 @@ func runInstance(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return commandError(stderr, "read instance", err)
 	}
-	if state, inspectErr := daemon.Inspect(dataDir); inspectErr == nil && state.Running {
+	// Fail closed. The question here is whether anything is writing to this
+	// instance, and "I could not tell" is not "nothing is running": deleting the
+	// directory is the one mistake that cannot be undone, so an unanswered
+	// question refuses the deletion instead of proceeding on it. Only a plain
+	// "nothing is running" reaches RemoveAll.
+	state, inspectErr := daemon.Inspect(dataDir)
+	if inspectErr != nil {
+		return commandError(stderr, "inspect the instance's daemon before removing it", inspectErr)
+	}
+	if state.Running {
 		if err := daemon.Stop(context.Background(), dataDir); err != nil {
 			return commandError(stderr, "stop the instance's daemon before removing it", err)
 		}
