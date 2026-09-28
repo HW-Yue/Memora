@@ -438,7 +438,16 @@ func (db *DB) begin(ctx context.Context) (*tx, error) {
 	if err := db.write.acquire(ctx); err != nil {
 		return nil, err
 	}
-	handle, err := db.sql.BeginTx(ctx, nil)
+	// Waiting for the lock honours the caller's context, but the transaction's
+	// lifetime does not: database/sql finishes a transaction by itself once the
+	// context it was opened with is done, and that would end this one behind the
+	// wrapper's back. Closing a session — a disconnect, or the daemon shutting
+	// down — cancels exactly that context, so the wrapper's own rollback would
+	// then fail on an already-finished transaction and an orderly shutdown would
+	// come back as an error. Commit, Rollback and the idle timer are the only
+	// things that end a transaction; the values still travel (attribution reads
+	// them from the context), only the cancellation is dropped.
+	handle, err := db.sql.BeginTx(context.WithoutCancel(ctx), nil)
 	if err != nil {
 		db.write.Unlock()
 		return nil, err
