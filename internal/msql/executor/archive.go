@@ -237,17 +237,30 @@ func (engine *Engine) repairRecallUnits(ctx context.Context, statement *ast.Repa
 	if err != nil {
 		return Output{}, normalizeError(err)
 	}
-	return Output{
+	output := Output{
 		Columns: []result.Column{
 			{Name: "rebuilt", Type: "INTEGER"},
 			{Name: "dropped", Type: "INTEGER"},
 			{Name: "remaining", Type: "INTEGER"},
+			{Name: "blocked", Type: "INTEGER"},
 		},
 		Rows: []result.Row{{
-			"rebuilt": receipt.Rebuilt, "dropped": receipt.Dropped, "remaining": receipt.Remaining,
+			"rebuilt": receipt.Rebuilt, "dropped": receipt.Dropped,
+			"remaining": receipt.Remaining, "blocked": receipt.Blocked,
 		}},
 		AffectedRows: uint64(receipt.Rebuilt + receipt.Dropped),
-	}, nil
+	}
+	// A count alone would read as "the rest is queued". These Rows will never be
+	// indexed by repeating this statement: their mount is what is wrong.
+	if receipt.Blocked > 0 {
+		output.Warnings = append(output.Warnings, result.Notice{
+			Code: result.CodeRecallUnitsBlocked,
+			Message: fmt.Sprintf("%d live Row(s) do not hold exactly one leaf, so the recall "+
+				"layer cannot index them; repair the mount before rebuilding units", receipt.Blocked),
+			Details: map[string]any{"blocked": receipt.Blocked},
+		})
+	}
+	return output, nil
 }
 
 func (engine *Engine) repairVectorIndex(ctx context.Context, statement *ast.RepairVectorStatement, bound bindings, options MutationOptions) (Output, error) {

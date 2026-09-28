@@ -50,7 +50,9 @@ Codex/Claude Skill、CLI、MCP 和外部 SDK 必须提交同一种 MSQL Request�
   与 `REPAIR VECTOR INDEX IN DATABASE :database LIMIT :limit`（把派生向量索引修到与真相一致，
   重复执行直到 `remaining` 为 0；它**不重算向量**）、
   `REPAIR RECALL UNITS IN DATABASE :database LIMIT :limit`（把派生召回层修到与活行一致：
-  补上没有单元的行、删掉行已消失的孤儿单元、刷新文本已变的载荷；**不修改任何行**）
+  补上没有单元的行、删掉行已消失的孤儿单元、刷新文本已变的载荷；**不修改任何行**。
+  不持有恰好一个叶子的活行**修不了**——那要修挂载——因此只计进 `blocked` 并列一条
+  `recall_units_blocked` 通知，不冒充 `rebuilt`）
 - 配置：`SHOW CONFIGURATION` / `HISTORY`、`ALTER CONFIGURATION`、
   `RESTORE CONFIGURATION`
 

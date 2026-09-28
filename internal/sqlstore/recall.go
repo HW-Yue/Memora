@@ -289,6 +289,16 @@ func (t *tx) repairRecallUnits(ctx context.Context, databaseName string, limit i
 		if err != nil {
 			return RecallRepairReceipt{}, err
 		}
+		// A Row that does not hold exactly one leaf has no single position a unit
+		// could name: the mount invariant is what is broken, and no number of recall
+		// repairs will fix it. Counted apart from Rebuilt, and its units are left
+		// alone — deleting the one it still has would make keyword recall lose a
+		// live Row without giving it the unit this pass promises. The caller has to
+		// repair the mount first.
+		if len(value.RouteLeafIDs) != 1 {
+			receipt.Blocked++
+			continue
+		}
 		if err := t.syncRecallUnit(ctx, work.table, value); err != nil {
 			return RecallRepairReceipt{}, err
 		}

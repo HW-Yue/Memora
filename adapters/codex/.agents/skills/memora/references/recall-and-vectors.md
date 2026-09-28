@@ -184,7 +184,13 @@ Row.
 memora exec --input '{"parameters":{"named":{"limit":64}},"mutation":{"max_affected_rows":64,"actor":"agent:host","source":"conversation:event-9","reason":"rebuild the recall layer"},"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L1"}}' "REPAIR RECALL UNITS IN DATABASE work LIMIT :limit"
 ```
 
-Both passes are bounded and repeatable: run them until `remaining` is zero.
+Both passes are bounded and repeatable: run them until `remaining` is zero — but
+read `blocked` before you run it again. `REPAIR RECALL UNITS` reports `blocked` for
+a live Row that does not hold exactly one leaf: such a Row has no single position a
+unit could name, so repeating the repair will never index it. Its unit (if it has
+one) is left alone rather than deleted, and a `recall_units_blocked` notice says so.
+Fix the mount first (`doctor`'s `multi_leaf_rows` / `orphan_rows` name the Rows),
+then run the repair again.
 
 The vector index is derived from the units, and you can reconcile it without
 guessing: a bounded pass repairs index rows so they hold exactly what the units

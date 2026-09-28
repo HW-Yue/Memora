@@ -30,7 +30,11 @@ const (
 	// because a library that already holds such Routes has to stay writable
 	// while they are being filled in. See docs/implementation/query/route-purpose-contract.
 	CodeRoutePurposeRepeatsName Code = "route_purpose_repeats_name"
-	CodeInternal                Code = "internal_error"
+	// A live Row does not hold exactly one leaf, so the recall layer has no single
+	// position to index it by. The repair pass reports it instead of counting it as
+	// rebuilt: only a mount repair clears it.
+	CodeRecallUnitsBlocked Code = "recall_units_blocked"
+	CodeInternal           Code = "internal_error"
 )
 
 var registeredCodes = map[Code]struct{}{
@@ -40,6 +44,7 @@ var registeredCodes = map[Code]struct{}{
 	CodeCancelled: {}, CodeDeadlineExceeded: {}, CodeOutputTruncated: {}, CodeInternal: {},
 	CodeVectorsNotReady: {}, CodeRekeyInProgress: {},
 	CodeConfigurationRetiredKey: {}, CodeRoutePurposeRepeatsName: {},
+	CodeRecallUnitsBlocked: {},
 }
 
 func IsRegisteredCode(code Code) bool {
