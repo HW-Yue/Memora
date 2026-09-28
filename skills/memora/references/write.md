@@ -280,7 +280,11 @@ parser/executor mismatch above.
 ### Bootstrap a Router on a Table that has none
 
 ```sh
-# 1. Confirm the Table really has no root yet — an empty rows array means none.
+# 1. Look at what the Table already holds. `AT ROOT` lists the root's CHILDREN, so
+#    an empty rows array means nothing is mounted yet — not that there is no root:
+#    a Table that never had a root answers exactly the same way, and no query reports
+#    the root itself. The answer comes from step 2, where creating a root that is
+#    already there is refused with `table "notes" already has a route root`.
 memora query --input '{"authorization":{"version":"memora.authorization/v2","actor":"agent:host","authorized_databases":["work"],"default_level":"L0"}}' "SHOW ROUTES FROM TABLE work.notes AT ROOT"
 
 # 2. Create the root (L2, parameterised).
