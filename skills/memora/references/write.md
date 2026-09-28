@@ -334,7 +334,9 @@ leaf and cannot also be reached through a second one.
 plus read-only preflight and verify checks, so Policy validates it before any tool
 call and a multi-step change shares one short transaction. `exec` stays right for
 a one-off read or a statement you have already planned; it is not the way around a
-plan. `expect_rows` is your own claim about what the check must find, so set it to
+plan. Like `exec`, the plan path drains vectors after the commit when this host has
+a provider — a plan is a write, so it owes the host's half of that path too.
+`expect_rows` is your own claim about what the check must find, so set it to
 what the search above must return — 0 when the subject is genuinely new:
 
 ```sh

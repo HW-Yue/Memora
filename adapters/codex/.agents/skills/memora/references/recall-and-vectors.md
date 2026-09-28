@@ -49,11 +49,13 @@ you embedded: the engine recomputes it from what the Row actually holds, refuses
 a mismatch, and writes the Row anyway — a warning on the result says the unit is
 still not-ready, which is the difference between a lost vector and a silent one.
 
-If this host has an embedding provider configured, `memora exec` already does the
-draining for you: after a write commits it asks what units are missing vectors,
-embeds them, and offers the vectors back — a failure there never fails the write,
-and it says so on stderr. What follows is the manual path for when you compute
-embeddings yourself.
+If this host has an embedding provider configured, the CLI already does the
+draining for you — on both write paths: `memora exec` and `memora mutate`. After a
+write commits it asks what units are missing vectors, embeds them, and offers the
+vectors back — a failure there never fails the write, and it says so on stderr.
+The plan path drains inside the databases the plan itself was authorized for, so a
+plan never reaches past its own scope. What follows is the manual path for when you
+compute embeddings yourself.
 
 If you compute embeddings yourself, drain the backlog in three steps: ask what is
 missing, embed the text each unit hands you, then offer each vector back.
