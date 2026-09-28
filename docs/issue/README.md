@@ -26,6 +26,7 @@
 | [B5](./B5-repair-recall-units-never-converges.md) | `REPAIR RECALL UNITS` 对「live 行、叶子数 ≠ 1」永不收敛 | 已修：这类行改计 `blocked` + `recall_units_blocked` 通知，不再冒充 rebuild，也不再删它仅有的单元 | `a644f672`（merge `1fceff90`）· `TestRepairRecallUnitsReportsRowsItCannotIndex` |
 | [C2](./C2-mutate-does-not-drain-vectors.md) | `memora mutate` 不排干向量（而 Skill 推荐用它） | 已修：`runMutate` 提交后调用与 `exec` 同一个排干，授权用 plan 自己的范围 | `fdd5f8ef`（merge `dfffc398`）· 行为测试 `TestMutateDrainsPendingVectorsLikeExec` |
 | [C1](./C1-write-md-root-detection-is-wrong.md) | Skill 教错「空数组 = 没有根」 | 已修：判据改成建根那一步的拒绝；并钉住「空页在有无根时相同」与拒绝措辞 | `c3665196`（merge `af1ba112`）· `TestRootBootstrapIsLearnedFromTheRefusal` |
+| P5 | 会话关闭/daemon 关停会让显式事务被 database/sql 从背后结束，包装层再回滚就报 `sql: transaction has already been committed or rolled back` | 已修：`BeginTx` 用 `context.WithoutCancel(ctx)`——事务只由 Commit/Rollback/空闲计时器结束 | `81843595` · 确定性回归 `TestAnExplicitTransactionOutlivesItsCallersContext`（改前稳定复现）|
 | [P2](./P2-real-ci-dies-on-a-cold-module-cache.md) | 真实 CI 挂在第一关：冷模块缓存下 `go generate` 拿到空路径 | 已修：不是头文件过期，是指令依赖了「缓存已解出该模块」这个偶然；改成先 `go mod download` | `237bb066`（merge `65ad5f34`）· CI run `36326905880` 全绿 |
 | [P3](./P3-skill-installs-carry-an-unmerged-branch.md) | Skill 的四个仓库外安装位带着未合分支的文本 | 已合那条分支（2026-09-26），内外一致到「新」的一边 | merge `54a0254d`；`sync-skill.sh --check` = every copy matches |
 | A1 | 表里有过归档列就永久锁死结构变更 | 已修 `d7f834bf` | [audit](./audit-2026-09-23.md) §一 |
