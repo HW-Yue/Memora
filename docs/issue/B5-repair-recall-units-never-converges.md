@@ -1,6 +1,20 @@
 # B5 · `REPAIR RECALL UNITS` 永不收敛
 
-严重度：medium。状态：**待做**。
+严重度：medium。状态：**已关**（2026-09-26 修复，真实 CI 见下）。
+
+## 结案
+
+取审计给的第一个选项（**明确 blocked**），不取「算进 remaining」：这类行重复多少次都不会好，
+把它们混进 `remaining` 只会让调用方一直重试。
+
+- `RecallReceipt` 加 `Blocked`；`repairRecallUnits` 对「不持有恰好一个叶子」的活行计 `Blocked`
+  并 **跳过** `syncRecallUnit` —— 原来那一步会删掉它仅有的单元，等于让关键词召回丢一个活行。
+- `REPAIR RECALL UNITS` 输出多一列 `blocked`，并在 `blocked > 0` 时给一条
+  `recall_units_blocked` 通知（新登记的稳定码），说明要修的是挂载。
+- RED→GREEN：原实现上报 `{Rebuilt:1 Dropped:0 Remaining:0}`；改后 `blocked=1`、
+  第二轮与第一轮完全一致、单元保留、`RECALL` 仍命中、语句层带通知。
+- 证据：`a644f672`（merge `1fceff90`）；文档 `docs/implementation/query/msql.md` 与 Skill
+  `references/recall-and-vectors.md` 同步，六处一致。
 
 ## 症状
 
