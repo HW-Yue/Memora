@@ -128,8 +128,10 @@ memora exec --input '{"authorization":{"version":"memora.authorization/v2","acto
 - **It carries no `mutation` block, and `default_level` has to be `"L2"`.**
   Catalog DDL is not a mutation statement: there is no `expected_schema_version`,
   no `max_affected_rows`, and no `reason` recorded, so a `mutation` block copied
-  from the `ALTER ROUTE … SET PURPOSE` example beside this one is ignored rather
-  than honoured. Without L2 the statement fails `permission_denied`.
+  from the `ALTER ROUTE … SET PURPOSE` example beside this one is **refused**
+  (`validation_error`) rather than dropped — the statement is refused precisely so
+  you cannot believe a reason was recorded when none was. Send it without the
+  block. Without L2 the statement fails `permission_denied`.
 - Amending is an explicit act, so report it: name the Database, quote the old
   text and the new one, and say why the old one misled a placement.
 

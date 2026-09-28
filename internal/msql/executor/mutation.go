@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/HW-Yue/Memora/internal/catalog"
@@ -18,6 +19,15 @@ import (
 func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, parameters Parameters, options MutationOptions) (Output, error) {
 	if err := engine.authorizeStatement(ctx, statement); err != nil {
 		return Output{}, err
+	}
+	// A mutation block says what a write was and what it was for. A statement
+	// that records none would take the block and drop it, leaving a host
+	// believing an actor and a reason were attached to work that never carried
+	// them. This is the one place every statement passes, so the refusal lives
+	// here rather than in each statement that happens not to read the block.
+	if refusesMutationBlock(statement) && !mutationBlockEmpty(options) {
+		return Output{}, executeError(result.CodeValidation,
+			statement.Kind+" does not record a mutation block: the one supplied would be dropped, so remove it")
 	}
 	ctx = withAttribution(ctx, statement, options)
 	if engine.catalogStatement(statement) {
@@ -118,6 +128,20 @@ func (engine *Engine) Execute(ctx context.Context, statement ast.Statement, para
 	default:
 		return Output{}, unsupported(statement)
 	}
+}
+
+// refusesMutationBlock reports where a mutation block would not be read: on
+// every statement that records none. `mutationStatement` is the one judgement of
+// what records one, so this is a reading of it rather than a second list.
+func refusesMutationBlock(statement ast.Statement) bool {
+	return !mutationStatement(statement)
+}
+
+// mutationBlockEmpty reports whether the request supplied a mutation block at
+// all. Comparing against the zero value covers every field, including ones added
+// later: a block that carries anything is not empty.
+func mutationBlockEmpty(options MutationOptions) bool {
+	return reflect.DeepEqual(options, MutationOptions{})
 }
 
 func validateSourceProvenance(options MutationOptions) error {

@@ -10,6 +10,11 @@ Policy，再由本 Executor 执行；直接 `exec` 仍是底层逻辑 MSQL 入�
 ## Request options
 
 MSQL source 与每条 statement 的 parameter、mutation guard、authorization 分字段提交。
+**`mutation` 只属于真正记录它的语句**：行写（INSERT/UPDATE/DELETE/RESTORE/SPLIT/MERGE）、
+Route 与 Schema 计划的应用、`REPAIR *`、`ACCEPT VECTOR`、`REKEY VECTOR`、`ALTER`/`RESTORE
+CONFIGURATION`。其余语句（Catalog DDL、读、`BEGIN`/`COMMIT`/`ROLLBACK`）**拒绝**带 `mutation`
+块的请求并回 `validation_error`——接受再丢掉会让宿主以为 actor 与 reason 已经记下，而回执里没有。
+
 下面是单条 `StatementInput`：
 
 ```json
