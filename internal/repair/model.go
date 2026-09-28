@@ -45,8 +45,13 @@ type VectorReceipt struct {
 
 // RecallReceipt reports what one bounded recall-unit repair pass did. Dropped
 // counts units whose Row is gone: they point at a position that is not there.
+// Blocked counts live Rows this pass could not index at all — a Row that does not
+// hold exactly one leaf has no single position for a unit to name, so it is the
+// mount that needs repairing, not the derived layer. They are reported apart from
+// Rebuilt because claiming them was how the pass never converged.
 type RecallReceipt struct {
 	Rebuilt   int
 	Dropped   int
 	Remaining int
+	Blocked   int
 }
