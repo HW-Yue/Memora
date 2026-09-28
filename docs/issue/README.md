@@ -17,8 +17,6 @@
 | [B5](./B5-repair-recall-units-never-converges.md) | `REPAIR RECALL UNITS` 对「live 行、叶子数 ≠ 1」永不收敛 | medium | [audit](./audit-2026-09-23.md) B5 · `recall.go:311-314`、`:81-83` | 第二轮必须与第一轮不同：收敛或明确 `blocked` | 待做 |
 | [B6](./B6-instance-destroy-fails-open.md) | `instance destroy` 把 Inspect 的错误当成「没在运行」 | medium | [audit](./audit-2026-09-23.md) B6 · `instance.go:59-66` | 只做 fail-closed，不铺开租约 | 待做 |
 | [B7](./B7-daemon-has-no-tests.md) | `internal/daemon` 920 行、零测试 | medium | [audit](./audit-2026-09-23.md) B7 | 先补三条不变量；之后每条修复顺手加 | 待做 |
-| [C1](./C1-write-md-root-detection-is-wrong.md) | Skill 的 `write.md` 教错「这张表有没有根」的检查方式 | Skill 文本 bug | [audit](./audit-2026-09-23.md) C1 | 改写那句话（或给一条真能读出根的命令） | 待做 |
-| [C2](./C2-mutate-does-not-drain-vectors.md) | `memora mutate` 不排干向量，而 `write.md` 让你优先用 `mutate` | high（静默的派生层缺口） | [audit](./audit-2026-09-23.md) C2 · `internal/cli/cli.go` | 让 `mutate` 也调 `drainAfterWrite`（首选），或 Skill 明写「之后必须自己排干」 | 待做 |
 | [P1](./P1-catalog-ddl-ignores-the-mutation-block.md) | Catalog DDL 静默忽略 `mutation` 块：宿主以为记了 actor/reason，其实没有 | medium | [decisions.md](../decisions.md) 2026-09-25 尾 | 不受支持的语句显式拒绝 `mutation` 块 + 回归测试 | 待做 |
 | [P4](./P4-table-purpose-and-row-semantics-are-welded.md) | Table 的 `purpose` / `row_semantics` 焊死在建表那一刻 | medium-high | 用户 2026-09-26 边界 · `parser.go:835` | 补 `ALTER TABLE … SET`（与库级同形）；**先定 `row_semantics` 的去留** | 待做 |
 
@@ -26,6 +24,8 @@
 
 | 编号 | 问题 | 结论 | 证据 |
 |---|---|---|---|
+| [C2](./C2-mutate-does-not-drain-vectors.md) | `memora mutate` 不排干向量（而 Skill 推荐用它） | 已修：`runMutate` 提交后调用与 `exec` 同一个排干，授权用 plan 自己的范围 | `fdd5f8ef`（merge `dfffc398`）· 行为测试 `TestMutateDrainsPendingVectorsLikeExec` |
+| [C1](./C1-write-md-root-detection-is-wrong.md) | Skill 教错「空数组 = 没有根」 | 已修：判据改成建根那一步的拒绝；并钉住「空页在有无根时相同」与拒绝措辞 | `c3665196`（merge `af1ba112`）· `TestRootBootstrapIsLearnedFromTheRefusal` |
 | [P2](./P2-real-ci-dies-on-a-cold-module-cache.md) | 真实 CI 挂在第一关：冷模块缓存下 `go generate` 拿到空路径 | 已修：不是头文件过期，是指令依赖了「缓存已解出该模块」这个偶然；改成先 `go mod download` | `237bb066`（merge `65ad5f34`）· CI run `36326905880` 全绿 |
 | [P3](./P3-skill-installs-carry-an-unmerged-branch.md) | Skill 的四个仓库外安装位带着未合分支的文本 | 已合那条分支（2026-09-26），内外一致到「新」的一边 | merge `54a0254d`；`sync-skill.sh --check` = every copy matches |
 | A1 | 表里有过归档列就永久锁死结构变更 | 已修 `d7f834bf` | [audit](./audit-2026-09-23.md) §一 |
