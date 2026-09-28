@@ -95,7 +95,12 @@ type NodeMove struct {
 }
 
 type MembershipMove struct {
-	RowID       string   `json:"row_id"`
+	RowID string `json:"row_id"`
+	// Revision is informational. The planner fills it from the leaf locators and
+	// uses it to catch one Row appearing in two source leaves at different
+	// revisions; the executor does not read it, and applying a plan does not
+	// check it. The guard that keeps a stale plan out is the leaf locator set,
+	// checked in full before anything is applied.
 	Revision    uint64   `json:"revision"`
 	FromLeafIDs []string `json:"from_leaf_ids"`
 	ToLeafID    string   `json:"to_leaf_id"`
