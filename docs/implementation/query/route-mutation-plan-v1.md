@@ -39,6 +39,10 @@ hash、Node/revision guards、create/reparent/membership/delete actions、影响
 计划状态固定为 `review_required`。生成计划不修改 Route、membership、Row、History
 或 Change Log。执行协议见 [Route Mutation Execution v1](./route-mutation-execution-v1.md)。
 
+`membership` action 里的 `revision` 是**信息性**的：planner 从叶子 locator 填它，用来发现
+同一个 Row 出现在两个来源叶却 revision 不同；**执行期不读它、也不校验它**。挡住过期计划的是
+整份 leaf locator 集合（`LocatorSetGuards`），它在任何应用动作之前被完整比对。
+
 ## 操作形状
 
 - `SPLIT`：一个 Branch source、至少两个新 Branch target，使用 `child_route_ids` 完整

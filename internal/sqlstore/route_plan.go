@@ -7,6 +7,7 @@ import (
 
 	"github.com/HW-Yue/Memora/internal/catalog"
 	"github.com/HW-Yue/Memora/internal/change"
+	"github.com/HW-Yue/Memora/internal/history"
 	"github.com/HW-Yue/Memora/internal/result"
 	"github.com/HW-Yue/Memora/internal/routemutationplan"
 	"github.com/HW-Yue/Memora/internal/router"
@@ -109,7 +110,7 @@ func (db *DB) ApplyRouteMutationPlan(ctx context.Context, databaseName, tableNam
 		}
 
 		for _, move := range plan.MembershipMoves {
-			if err := t.moveMembership(ctx, table, move); err != nil {
+			if err := t.moveMembership(ctx, table, move, writeMetadata(metadata)); err != nil {
 				return err
 			}
 			receipt.MembershipRevisions++
@@ -208,7 +209,7 @@ func (t *tx) checkPlanGuards(ctx context.Context, table catalog.Table, plan rout
 	return nil
 }
 
-func (t *tx) moveMembership(ctx context.Context, table catalog.Table, move routemutationplan.MembershipMove) error {
+func (t *tx) moveMembership(ctx context.Context, table catalog.Table, move routemutationplan.MembershipMove, metadata row.WriteMetadata) error {
 	value, err := t.readRow(ctx, table, move.RowID)
 	if err != nil || value.State != row.StateLive {
 		return fail(result.CodeRevisionConflict, "Row %q is no longer live", move.RowID)
@@ -241,11 +242,27 @@ func (t *tx) moveMembership(ctx context.Context, table catalog.Table, move route
 	if err := requireSingleLeaf(value); err != nil {
 		return err
 	}
-	if _, err := t.q().ExecContext(ctx, `UPDATE `+dataTable(table.ID)+` SET route_leaf_ids = ? WHERE row_id = ?`,
-		encodeJSON(value.RouteLeafIDs), value.ID); err != nil {
+	// A membership move is a write to the Row, so it is accounted like one: the
+	// revision moves, history carries the plan's own provenance, and the change
+	// log names the Row. It used to be a bare `UPDATE ... SET route_leaf_ids`,
+	// which left a mount change invisible to every audit surface while the
+	// receipt still counted it as a membership revision.
+	related := append([]string{}, move.FromLeafIDs...)
+	related = append(related, target.ID)
+	if err := t.advance(ctx, table, &value); err != nil {
 		return err
 	}
-	return t.syncRecallUnit(ctx, table, value)
+	if err := t.writeRow(ctx, table, value, false); err != nil {
+		return err
+	}
+	if err := t.appendHistory(ctx, table, value, history.OperationUpdate, metadata, nil); err != nil {
+		return err
+	}
+	if err := t.syncRecallUnit(ctx, table, value); err != nil {
+		return err
+	}
+	t.rowChange(table, value, change.OperationUpdate, metadata, related)
+	return nil
 }
 
 // checkTreeShape enforces the invariants a plan must leave behind: parent and

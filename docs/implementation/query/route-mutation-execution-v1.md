@@ -28,7 +28,12 @@ APPLY ROUTE MUTATION PLAN :plan FOR TABLE work.notes;
 ## 原子发布与覆盖证明
 
 一个 native transaction 同时追加新 Route、重挂/重算 path revision、删除 tombstone、
-membership tombstone/attach revision 与一个 Committed Change envelope。执行器在提交前
+membership tombstone/attach revision 与一个 Committed Change envelope。
+
+**叶子间搬迁是对行的写，按行写记账**：Row 的 `revision` 前进、`commit_sequence` 与
+`updated_at` 随之更新，History 追加一条（带计划的 actor/source/reason），Change envelope
+里有该行的条目，召回单元跟着挪到新叶。它曾经是一条裸 `UPDATE ... SET route_leaf_ids`，
+挂载变更因此在审计面上完全隐形。执行器在提交前
 证明所有 action 都被物化且删除节点不再拥有 live child；事务 staging 或 commit 失败
 时不发布部分对象。
 
@@ -41,7 +46,8 @@ sequence、各类覆盖计数与 `verified=true`。Receipt 是本次提交结果
 
 ## 不做
 
-- 不修改 Row 正文、History、Schema 或关系；
+- 不修改 Row 正文、Schema 或关系；行因搬迁被写时，只动它的位置（`route_leaf_ids`）
+  以及随之而来的 revision、History 与 Change 条目；
 - 不由引擎猜语义分组、名称或 purpose；执行前重跑 `Validate`，其中包括
   「target 的 purpose 不是名字的复读」这一条（[契约](./route-purpose-contract-v1.md)）；
 - 不支持跨 Table/Database 移动；

@@ -171,6 +171,17 @@ func metadataFrom(options row.WriteMetadata) change.Metadata {
 	}
 }
 
+// writeMetadata is metadataFrom's reverse: a path that holds change.Metadata (the
+// route-mutation plan carries one) still has to account for a Row through the
+// same history and change surfaces as any other write.
+func writeMetadata(metadata change.Metadata) row.WriteMetadata {
+	return row.WriteMetadata{
+		Actor: metadata.Actor, Source: metadata.Source, Reason: metadata.Reason,
+		SourceReceiptID: metadata.SourceReceiptID, SourceKind: history.SourceKind(metadata.SourceKind),
+		SourceLocator: metadata.SourceLocator, SourceContentHash: metadata.SourceContentHash,
+	}
+}
+
 func (t *tx) appendHistory(ctx context.Context, table catalog.Table, value storedRow, operation history.Operation, metadata row.WriteMetadata, origins []history.Origin) error {
 	projected := project(table, value)
 	record := history.Record{
