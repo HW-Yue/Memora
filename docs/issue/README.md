@@ -12,7 +12,6 @@
 | 编号 | 问题 | 严重度 | 证据 | 已定的修法 | 状态 |
 |---|---|---|---|---|---|
 | [A6](./A6-verified-flag-comes-from-readback.md) | 两个 L2 回执无条件 `verified: true`，`VerificationCode` 从不赋值 | high | [audit](./audit-2026-09-23.md) A6 · `route_plan.go:36-39`、`schema_plan.go:25-28` | 提交后只读读回，比对计划声明的目标 | 待做 |
-| [B1](./B1-membership-moves-bypass-the-write-path.md) | 叶子间搬迁走裸 `UPDATE`，不落 revision/history/变更日志 | medium | [audit](./audit-2026-09-23.md) B1 · `route_plan.go:211-249` | 改走正常行写路径；`MembershipMove.Revision` 按 informational 处理 | 待做 |
 | [B2+B3](./B2-B3-tree-cycle-guard-and-hidden-failures.md) | 计划校验不查环、执行期父链遍历无 hop 保护；解析失败被静默吞掉 | medium-high | [audit](./audit-2026-09-23.md) B2/B3 | 校验补环检测 + 两处父链加 hop 上限且不再静默 | 待做 |
 | [B6](./B6-instance-destroy-fails-open.md) | `instance destroy` 把 Inspect 的错误当成「没在运行」 | medium | [audit](./audit-2026-09-23.md) B6 · `instance.go:59-66` | 只做 fail-closed，不铺开租约 | 待做 |
 | [B7](./B7-daemon-has-no-tests.md) | `internal/daemon` 920 行、零测试 | medium | [audit](./audit-2026-09-23.md) B7 | 先补三条不变量；之后每条修复顺手加 | 待做 |
@@ -23,6 +22,7 @@
 
 | 编号 | 问题 | 结论 | 证据 |
 |---|---|---|---|
+| [B1](./B1-membership-moves-bypass-the-write-path.md) | 叶子间搬迁走裸 `UPDATE`，不落 revision/history/变更日志 | 已修：走 `advance`→`writeRow`→`appendHistory`→`rowChange`，计划的 provenance 一路传下去 | `eaa48223` · `TestMergingLeavesAccountsForTheMovedRows` |
 | [B5](./B5-repair-recall-units-never-converges.md) | `REPAIR RECALL UNITS` 对「live 行、叶子数 ≠ 1」永不收敛 | 已修：这类行改计 `blocked` + `recall_units_blocked` 通知，不再冒充 rebuild，也不再删它仅有的单元 | `a644f672`（merge `1fceff90`）· `TestRepairRecallUnitsReportsRowsItCannotIndex` |
 | [C2](./C2-mutate-does-not-drain-vectors.md) | `memora mutate` 不排干向量（而 Skill 推荐用它） | 已修：`runMutate` 提交后调用与 `exec` 同一个排干，授权用 plan 自己的范围 | `fdd5f8ef`（merge `dfffc398`）· 行为测试 `TestMutateDrainsPendingVectorsLikeExec` |
 | [C1](./C1-write-md-root-detection-is-wrong.md) | Skill 教错「空数组 = 没有根」 | 已修：判据改成建根那一步的拒绝；并钉住「空页在有无根时相同」与拒绝措辞 | `c3665196`（merge `af1ba112`）· `TestRootBootstrapIsLearnedFromTheRefusal` |
