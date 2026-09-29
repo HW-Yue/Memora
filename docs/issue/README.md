@@ -11,15 +11,16 @@
 
 | 编号 | 问题 | 严重度 | 证据 | 已定的修法 | 状态 |
 |---|---|---|---|---|---|
+| [B8](./B8-inspect-deletes-the-pid-file.md) | `daemon.Inspect` 是读操作却删 PID 文件 | medium | [audit](./audit-2026-09-23.md) B7 · `lifecycle.go:110` | 改成纯读，清理交给明确的生命周期操作（顾问判断，单开一块） | 待做 |
 | [A6](./A6-verified-flag-comes-from-readback.md) | 两个 L2 回执无条件 `verified: true`，`VerificationCode` 从不赋值 | high | [audit](./audit-2026-09-23.md) A6 · `route_plan.go:36-39`、`schema_plan.go:25-28` | 提交后只读读回，比对计划声明的目标 | 待做 |
 | [B2+B3](./B2-B3-tree-cycle-guard-and-hidden-failures.md) | 计划校验不查环、执行期父链遍历无 hop 保护；解析失败被静默吞掉 | medium-high | [audit](./audit-2026-09-23.md) B2/B3 | 校验补环检测 + 两处父链加 hop 上限且不再静默 | 待做 |
-| [B7](./B7-daemon-has-no-tests.md) | `internal/daemon` 920 行、零测试 | medium | [audit](./audit-2026-09-23.md) B7 | 先补三条不变量；之后每条修复顺手加 | 待做 |
 | [P4](./P4-table-purpose-and-row-semantics-are-welded.md) | Table 的 `purpose` / `row_semantics` 焊死在建表那一刻 | medium-high | 用户 2026-09-26 边界 · `parser.go:835` | 补 `ALTER TABLE … SET`（与库级同形）；**先定 `row_semantics` 的去留** | 待做 |
 
 ## 已关闭（留档，别重复怀疑）
 
 | 编号 | 问题 | 结论 | 证据 |
 |---|---|---|---|
+| [B7](./B7-daemon-has-no-tests.md) | `internal/daemon` 零测试 → 三条不变量 | 已补断连回滚（`TestADisconnectRollsBackTheOpenTransaction`）；版本偏移两侧已覆盖；Inspect 删 PID 拆成 B8 | `b9325527` |
 | [B6](./B6-instance-destroy-fails-open.md) | `instance destroy` 把 Inspect 的错误当成「没在运行」 | 已修 fail-closed：Inspect 报错即拒绝删除（目录不动），只有明确「没在跑」才删 | `72fe4ad0`（merge `57653198`）· 两条测试（握住租约删 PID／锁打不开） |
 | [P1](./P1-catalog-ddl-ignores-the-mutation-block.md) | Catalog DDL 静默忽略 `mutation` 块 | 已修：凡是**不记录** mutation 的语句（Catalog DDL、读、`BEGIN/COMMIT/ROLLBACK`）一律 `validation_error` 拒收，不再接受后丢掉 | `18866cf3`（merge `a97cdace`）· `TestStatementsThatRecordNoMutationRefuseAMutationBlock` |
 | [B1](./B1-membership-moves-bypass-the-write-path.md) | 叶子间搬迁走裸 `UPDATE`，不落 revision/history/变更日志 | 已修：走 `advance`→`writeRow`→`appendHistory`→`rowChange`，计划的 provenance 一路传下去 | `eaa48223` · `TestMergingLeavesAccountsForTheMovedRows` |
